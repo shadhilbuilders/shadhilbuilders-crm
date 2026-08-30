@@ -1,0 +1,255 @@
+---
+description: PaalStack Next.js Starter conventions — @paalstack/react-ui consumption, project structure, data layer, forms, errors, styling
+globs: **/*.tsx, **/*.ts
+alwaysApply: false
+---
+
+# PaalStack Next.js Starter Conventions
+
+This is an **application** that **consumes** the `@paalstack/react-ui` design system. You are building app features, not authoring library components. The library already provides Button, Card, Form, Dialog, DataTable, Select, Tabs, Toast, and 70+ more — search it before creating anything.
+
+Source of the design system: https://github.com/paalamugan/paalstack-react-ui
+
+---
+
+## Imports
+
+```tsx
+// UI components — from the umbrella package
+import { Button, Card, Form, Box, HStack, TypographyH1, TypographyMuted, toast } from '@paalstack/react-ui';
+
+// Server-safe utilities — from the /lib sub-path
+import { cn, logger } from '@paalstack/react-ui/lib';
+
+// Hooks — client-only, separate package
+import { useDisclosure, useLocalStorage } from '@paalstack/react-hooks';
+
+// Icons — ALWAYS from a family sub-path, never the root barrel
+import { LuSettings, LuMoon, LuSun } from '@paalstack/react-icons/lu';
+```
+
+### Icons
+
+- Import from a family sub-path: `/lu` (Lucide, default) · `/hi2` · `/fa6` · `/tb` · `/md` · `/ri` · `/bi` · `/bs` · `/fi` · `/io5` · `/rx` · `/si` · `/pi` · `/vsc` · `/go`.
+- Never `import { LuUser } from '@paalstack/react-icons'` (root barrel).
+- Never install `lucide-react`, `heroicons`, or `react-icons` directly — the sub-path exists.
+
+### Never use native HTML elements in JSX
+
+Replace native tags with PaalStack components:
+
+```tsx
+// ❌ Native HTML — never use these
+<div> <header> <main> <section> <nav> <footer> <aside> <article>
+<h1> <h2> <h3> <h4> <h5> <h6> <p> <span> <strong> <ul> <ol> <li> <code> <blockquote> <button>
+
+// ✅ Layout — Box + semantic `as` prop
+<Box as="header" />   // <header>
+<Box as="main" />     // <main>
+<Box as="section" />  // <section>
+<Box as="nav" />      // <nav>
+<Box as="footer" />   // <footer>
+
+// ✅ Typography — named exports (NOT Typography.* namespace — undefined in Turbopack)
+<TypographyH1 /> <TypographyH2 /> <TypographyH3 /> <TypographyH4 />
+<TypographyH5 /> <TypographyH6 /> <TypographyP /> <TypographyStrong />
+<TypographyCode /> <TypographyUL /> <TypographyOL /> <TypographyLI />
+<TypographyBlockQuote /> <TypographyLead /> <TypographyMuted /> <TypographySubtle />
+<TypographySmall /> <TypographyLarge />
+
+// ✅ Heading / Text — polymorphic `as` override or inline variants
+<Heading as="h2" />   // dynamic heading level
+<Text as="span" />    // inline text fragment
+
+// ✅ Button — replaces <button>
+<Button />
+```
+
+### Styling
+
+- Use semantic design tokens: `bg-primary`, `text-muted-foreground`, `border-border`, `bg-accent`, `bg-card`, `bg-background`, `bg-sidebar`.
+- No raw hex colors when a semantic token exists.
+- Extend components with `className`; merge via `cn()` from `@paalstack/react-ui/lib`.
+- Dark mode is handled by `NextThemeProvider` in `src/providers/theme-provider.tsx` — test both themes.
+
+---
+
+## Project structure (follow this pattern)
+
+```
+src/
+├── app/                    # Next.js App Router routes
+│   ├── layout.tsx          # Root layout — Providers + SiteHeader
+│   ├── (route)/page.tsx    # Pages
+│   └── api/                # Route Handlers (use withApiErrorHandling)
+├── apis/                   # HTTP layer — one module per endpoint group
+│   └── example/
+│       ├── api.ts          # functions mapping 1:1 to endpoints
+│       ├── type.ts         # request/response types
+│       └── index.ts        # barrel
+├── services/               # Business logic above the API layer
+│   └── api/service.ts      # orchestrates apis, transforms, domain errors
+├── hooks/
+│   ├── queries/            # TanStack Query hooks (useXQuery)
+│   │   └── useExampleQuery/{hook.ts,index.ts}
+│   ├── mutations/          # TanStack Query mutations (useXMutation)
+│   │   └── useExampleMutation/{hook.ts,index.ts}
+│   └── useAppStore/        # Zustand store access
+├── schemas/                # Zod schemas (react-hook-form + zodResolver)
+│   └── example/{schema.ts,index.ts}
+├── features/               # Feature-scoped modules (auth, billing, ...)
+│   └── auth/{hooks,types,index.ts}
+├── components/
+│   ├── ui/                 # App-specific UI wrappers (EmptyState, StatCard, ...)
+│   ├── shared/             # Cross-feature components (ConfirmDialog, AppErrorBoundary)
+│   └── SiteHeader/         # Feature components
+├── constants/              # ROUTES, app config
+├── enums/                  # Status enums
+├── libs/                   # Infrastructure (env, axios, query-client, logger, error, db, supabase, rbac, rate-limit)
+├── providers/              # Providers composition
+├── stores/                 # Zustand stores
+├── types/                  # Shared types
+└── utils/                  # Pure helpers
+```
+
+**Module pattern:** each module is a folder with an implementation file (`component.tsx`, `hook.ts`, `schema.ts`, `api.ts`, `store.ts`) plus an `index.ts` barrel that re-exports. Import via the barrel (`@/components/ExampleCard`, `@/hooks/queries/useExampleQuery`).
+
+---
+
+## Data layer
+
+### Server state → TanStack Query v5
+
+```tsx
+// src/hooks/queries/useExampleQuery/hook.ts
+import { useQuery } from '@tanstack/react-query';
+import { getExampleItems } from '@/apis/example';
+
+export const EXAMPLE_QUERY_KEY = ['example', 'items'] as const;
+
+export const useExampleQuery = (page = 1, pageSize = 10) =>
+  useQuery({
+    queryKey: [...EXAMPLE_QUERY_KEY, { page, pageSize }],
+    queryFn: () => getExampleItems(page, pageSize),
+  });
+```
+
+- Define a `const QUERY_KEY` per query and reuse it for invalidation.
+- Mutations invalidate the related query key in `onSuccess`.
+
+```tsx
+// src/hooks/mutations/useExampleMutation/hook.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createExampleItem } from '@/apis/example';
+import { EXAMPLE_QUERY_KEY } from '@/hooks/queries/useExampleQuery';
+
+export const useCreateExampleMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createExampleItem,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: EXAMPLE_QUERY_KEY });
+    },
+  });
+};
+```
+
+### Client state → Zustand v5
+
+Use Zustand (with `devtools` + `persist` middleware) for global UI state — loading, notifications, theme, sidebar, preferences. Access via a hook in `src/hooks/useAppStore/`. Do not use Zustand for server data.
+
+### HTTP → Axios (`src/libs/axios/client.ts`)
+
+- Use the pre-configured `apiClient` (base URL from env, JSON headers, 30s timeout, auth/error interceptors).
+- Each `src/apis/*/api.ts` function maps to one endpoint and returns `response.data`.
+
+### Env → `@t3-oss/env-nextjs` (`src/libs/env/env.ts`)
+
+- Never read `process.env` directly. Add new vars to `src/libs/env/env.ts` with a Zod schema, then import `env` from `@/libs/env`.
+- Server-only vars go in `server`, client vars (prefixed `NEXT_PUBLIC_`) in `client`.
+
+---
+
+## Forms
+
+Use `Form` + `react-hook-form` + `zod` + `@hookform/resolvers/zod`.
+
+```tsx
+'use client';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { Form, Button, Box, HStack } from '@paalstack/react-ui';
+import { loginSchema, type LoginFormValues } from '@/schemas/auth';
+
+const form = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
+
+<Form
+  form={form}
+  onSubmit={handleSubmit}
+  fields={[
+    { type: 'input', name: 'email', label: 'Email', inputType: 'email', placeholder: 'you@example.com', required: true },
+    { type: 'input', name: 'password', label: 'Password', inputType: 'password', required: true },
+  ]}
+  hideResetButton
+  SubmitButton={({ isSubmitting, onFormSubmit }) => (
+    <Button type="submit" onClick={onFormSubmit} isLoading={isSubmitting} className="w-full">
+      {isSubmitting ? 'Signing in...' : 'Sign in'}
+    </Button>
+  )}
+/>
+```
+
+- Schemas live in `src/schemas/<feature>/schema.ts`; export the inferred type (`z.infer<typeof schema>`).
+- Use `Field` + `Label` for labels/errors, or the `fields` array on `Form`.
+- For custom submit buttons use the `SubmitButton` render prop, or `hideSubmitButton hideResetButton` with your own children.
+
+---
+
+## Errors
+
+Use the typed error system in `src/libs/error/error.ts`:
+
+- `AppErrorBase` hierarchy: `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError`, `DatabaseError`, `ExternalServiceError`, `RateLimitedError`.
+- Each maps to an HTTP status via `ERROR_STATUS_MAP`.
+- In Route Handlers, wrap with `withApiErrorHandling` and return `apiSuccess` / `apiError`:
+
+```tsx
+import { withApiErrorHandling, apiSuccess } from '@/libs/api';
+import { UnauthorizedError } from '@/libs/error';
+
+export const GET = withApiErrorHandling(async (request: NextRequest) => {
+  const { user, error } = await requireAuth();
+  if (error) throw new UnauthorizedError();
+  return apiSuccess(await listItems(user.id));
+});
+```
+
+- Throw the typed errors; never return raw 500 HTML.
+
+---
+
+## Providers
+
+- `src/providers/providers.tsx` composes `PostHogProvider` → `ThemeProvider` → `QueryProvider`.
+- `ThemeProvider` wraps `NextThemeProvider` from `@paalstack/react-ui` (includes ToastProvider — no separate `<Toaster>`).
+- Add new providers to `src/providers/providers.tsx`, not the root layout.
+
+---
+
+## Do Not
+
+- Duplicate Button, Input, Dialog, Table, Form, Select, Checkbox, or common hooks the library provides.
+- Write new `useMediaQuery`, `useLocalStorage`, `useDisclosure` — `@paalstack/react-hooks` covers them.
+- Import the `@paalstack/react-icons` root barrel or install icon packages directly.
+- Use raw hex colors when semantic tokens exist.
+- Use native HTML elements in JSX.
+- Read `process.env` directly — use `env` from `@/libs/env`.
+- Mix Zustand and TanStack Query for the same data.
+- Author library components here — this is a consumer app.
+
+---
+
+## Docs
+
+The design system's full catalogs live in the react-ui monorepo `docs/`:
+COMPONENT_CATALOG.md, HOOKS_CATALOG.md, ICONS_CATALOG.md, UTILITIES_CATALOG.md, TYPES_CATALOG.md, DESIGN_SYSTEM.md, APPLICATION_GUIDE.md.

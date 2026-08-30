@@ -1,0 +1,137 @@
+# Shadhil Builders CRM — Docker Compose for VPS deployment
+#
+# Per plan §10 (Coolify on Hostinger VPS 8GB India region). This file is the
+# Phase 1 reference config — the actual production deploy happens in Week 12
+# via Coolify auto-deploy from GitHub.
+#
+# Services:
+#   postgres    Postgres 16 with max_connections=300 (eng review P1, 150-user cap)
+#   pgbouncer   PgBouncer in session pooling mode (eng review A5 — REQUIRED for RLS)
+#   redis       Redis 7 (SSE pub/sub + cron locks + rate limiting)
+#   api         NestJS 12 backend (port 8080)
+#   web         Next.js 16 frontend (port 3000) — placeholder, not built in Phase 1
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml config   # validate
+#   docker compose -f docker/docker-compose.yml up -d   # start
+#   docker compose -f docker/docker-compose.yml logs -f # tail logs
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shadhil-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shadhil
+      POSTGRES_PASSWORD: shadhil
+      POSTGRES_DB: shadhil_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    command:
+      # eng review P1: max_connections=300 supports ~150 concurrent users
+      # (2 SSE streams/user × 150 = 300 backend sessions).
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=4MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shadhil -d shadhil_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: bitnami/pgbouncer:1.23.1
+    container_name: shadhil-pgbouncer
+    restart: unless-stopped
+    environment:
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
+      # eng review A5: MUST be 'session'. Transaction pooling silently
+      # breaks RLS — per-request SET LOCAL session vars don't survive.
+      PGBOUNCER_POOL_MODE: session
+      PGBOUNCER_MAX_CLIENT_CONN: 1000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 25
+      PGBOUNCER_MIN_POOL_SIZE: 5
+      PGBOUNCER_RESERVE_POOL_SIZE: 5
+      PGBOUNCER_SERVER_IDLE_TIMEOUT: 600
+      PGBOUNCER_SERVER_LIFETIME: 3600
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: shadhil-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+    container_name: shadhil-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: "8080"
+      # Direct (admin) URL — bypasses PgBouncer. Used by migrations + RLS
+      # session variable writes.
+      DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@postgres:5432/shadhil_crm?schema=public
+      # Pooled URL — normal traffic goes through PgBouncer.
+      DATABASE_URL: postgresql://shadhil:shadhil@pgbouncer:6432/shadhil_crm?schema=public
+      # eng review A5: MUST be 'session' — NestJS boot-time check fails otherwise.
+      POOL_MODE: session
+      REDIS_URL: redis://redis:6379
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required (min 32 chars)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm-api.shadhilbuilders.in}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (min 32 chars)}
+      JWT_ISSUER: shadhil-crm
+      # 6 inputs from §17 — placeholders work; real values via Coolify env.
+      WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-placeholder}
+      WA_BUSINESS_ACCOUNT_ID: ${WA_BUSINESS_ACCOUNT_ID:-placeholder}
+      WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-placeholder}
+      WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-placeholder}
+      FREJUN_API_KEY: ${FREJUN_API_KEY:-placeholder}
+      FREJUN_WEBHOOK_SECRET: ${FREJUN_WEBHOOK_SECRET:-placeholder}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # Web app is NOT built in Phase 1. This stub stays here so Coolify can
+  # wire the routing when the Dockerfile lands in Phase 2.
+  # web:
+  #   build:
+  #     context: ..
+  #     dockerfile: apps/web/Dockerfile
+  #   ...
+
+volumes:
+  postgres_data:
+  redis_data:

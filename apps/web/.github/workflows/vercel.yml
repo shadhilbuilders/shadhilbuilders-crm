@@ -1,0 +1,84 @@
+name: Deploy to Vercel
+
+# ──────────────────────────────────────────────────────────────────────────────
+# One-time setup (do this once per project):
+#
+#   1. Install Vercel CLI locally:   pnpm add -g vercel
+#   2. Link your project:            vercel link
+#   3. Open .vercel/project.json and copy the two IDs
+#   4. Add these three secrets to GitHub → Settings → Secrets → Actions:
+#        VERCEL_TOKEN       – https://vercel.com/account/tokens
+#        VERCEL_ORG_ID      – "orgId"     from .vercel/project.json
+#        VERCEL_PROJECT_ID  – "projectId" from .vercel/project.json
+#
+# Works for both personal (Hobby – free) and organization (Pro) Vercel accounts.
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+concurrency:
+  group: vercel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: ${{ github.ref == 'refs/heads/main' && 'Production Deploy' || 'Preview Deploy' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # needed for actions/checkout on a private repo
+      pull-requests: write # needed to post preview URL comment on PRs
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.16.0'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pull Vercel environment info
+        run: |
+          npx vercel pull --yes \
+            --environment=${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        run: |
+          npx vercel build \
+            ${{ github.ref == 'refs/heads/main' && '--prod' || '' }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        id: deploy
+        run: |
+          DEPLOY_URL=$(npx vercel deploy --prebuilt \
+            ${{ github.ref == 'refs/heads/main' && '--prod' || '' }} \
+            --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Preview deployed** (${sha}): ${url}`,
+            });

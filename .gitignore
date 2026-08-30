@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Coverage
+coverage/
+*.lcov
+
+# Turbo
+.turbo/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Vitest
+.vitest-cache/
+
+# ESLint
+.eslintcache
+
+# Prisma
+packages/database/prisma/migrations/dev.db*
+
+# Postgres data
+infra/data/

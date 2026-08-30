@@ -1,0 +1,25 @@
+/* Global styles — imports ui-tokens brand surface first, then Tailwind. */
+@import '@shadhil/ui-tokens/tokens.css';
+@import '@shadhil/ui-tokens/fonts.css';
+@import 'tailwindcss';
+
+@source '../../node_modules/@paalstack/react-ui';
+
+@utility container {
+  @apply mx-auto px-4;
+  @variant lg {
+    @apply max-w-7xl;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

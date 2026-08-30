@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+.next
+out
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+!.env.example
+
+# Dev tooling
+.git
+.gitignore
+.github
+.husky
+.vscode
+.cursor
+
+# Test artifacts
+coverage
+playwright-report
+test-results
+
+# Docs
+*.md
+LICENSE
+
+# OS
+.DS_Store
+Thumbs.db

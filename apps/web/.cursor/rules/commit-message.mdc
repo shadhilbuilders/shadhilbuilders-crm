@@ -1,0 +1,48 @@
+---
+description: Generate commit messages following the project's commitlint rules
+alwaysApply: true
+---
+
+# Commit Message Rules
+
+Always follow these rules (enforced by `commitlint.config.js`) when generating commit messages.
+
+## Format
+
+```
+<type>(<scope>): <subject>
+
+[optional body]
+
+[optional footer]
+```
+
+## Types (only these are allowed)
+
+`feat` | `fix` | `docs` | `style` | `refactor` | `perf` | `test` | `chore` | `ci` | `build` | `revert`
+
+## Rules
+
+- **type**: required, lowercase only
+- **scope**: optional, lowercase or UPPERCASE, in parentheses
+- **subject**: required, max 120 chars, no trailing `.`, no `StartCase`/`PascalCase`/`UPPER_CASE`
+- **body**: optional — blank line before it, max 120 chars per line
+- **footer**: optional — blank line before it, max 100 chars per line, use for `Closes #N`, `BREAKING CHANGE:`
+
+## Examples
+
+```
+feat(auth): add email verification on signup
+fix(api): handle null session on token refresh
+refactor(supabase): extract auth helpers into shared module
+chore(deps): update next to v15.3
+ci: add lint check to GitHub Actions workflow
+```
+
+## Breaking change
+
+```
+feat(api)!: rename /v1/orders to /v1/checkout
+
+BREAKING CHANGE: clients must migrate to /v1/checkout before 2026-07-01.
+```
