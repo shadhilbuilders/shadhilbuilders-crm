@@ -581,7 +581,7 @@ eventSource.onmessage = (e) => {
 
 **Mobile (per `expo-native-ui`):** use `react-native-sse` (per DESIGN.md §9).
 
-**Reconnect logic:** exponential backoff 1s → 2s → 4s → 8s → max 30s. UI shows "Reconnecting…" pill during outage.
+**Reconnect logic:** exponential backoff 1s → 2s → 4s → 8s → max 30s. UI shows "Reconnecting..." pill during outage.
 
 ---
 
@@ -1449,7 +1449,7 @@ Manual reassign is **independent** of Model C handoff:
 
 If a lead is manually reassigned to a Sales Exec while in NEW state, Model C handoff still fires when the visit happens (state machine doesn't care who set the owner).
 
-**Model C exception (ratified at /autoplan gate 2026-08-31, decision A):** Manual reassign of a NEW lead to a Sales Exec is an **explicit, intentional exception** to the §3 ownership invariant (NEW…VISIT_SCHEDULED = Telecaller owns). It is allowed because Admin/Manager judgment overrides the default routing; the invariant is respected everywhere else. Requirements: (1) the reassign audit event carries `exception: 'NEW_TO_EXEC'` when `fromState === 'NEW'` and target is SALES_EXEC; (2) `canTransition` is NOT widened — only the reassign path may set this ownership; (3) `lead-state-machine.test.ts` gets a case asserting manual NEW→SALES_EXEC succeeds via the endpoint and fails via a direct state transition attempt.
+**Model C exception (ratified at /autoplan gate 2026-08-31, decision A):** Manual reassign of a NEW lead to a Sales Exec is an **explicit, intentional exception** to the §3 ownership invariant (NEW...VISIT_SCHEDULED = Telecaller owns). It is allowed because Admin/Manager judgment overrides the default routing; the invariant is respected everywhere else. Requirements: (1) the reassign audit event carries `exception: 'NEW_TO_EXEC'` when `fromState === 'NEW'` and target is SALES_EXEC; (2) `canTransition` is NOT widened — only the reassign path may set this ownership; (3) `lead-state-machine.test.ts` gets a case asserting manual NEW→SALES_EXEC succeeds via the endpoint and fails via a direct state transition attempt.
 
 ### `ManagerAssignmentRule` interaction
 
@@ -1782,7 +1782,7 @@ Codex design voice ran with access to plan + WIREFRAMES.md; it computed contrast
 2. Mobile 5 equal tabs; Overview/Chat dominate — group rest under More (Medium).
 3. Specified states: only empty states; loading/error/partial/retry unspecified per surface (High).
 4. Offline visit-outcome logging absent — Critical for field use in poor connectivity.
-5. SSE reconnect UX: "Reconnecting…" pill exists but placement/visibility/recovery undefined (High).
+5. SSE reconnect UX: "Reconnecting..." pill exists but placement/visibility/recovery undefined (High).
 6. Model C handoff UX reads as neutral transfer; feels punitive to the telecaller losing the lead (High).
 7. Unspecified implementations: Calendar, Toast, Sheet-vs-Modal, upload, optimistic chat, table density (High).
 8. Accessibility: contrast computed against #f8f5ef surface — amber #f59e0b 1.97:1, green #16a34a 3.03:1,

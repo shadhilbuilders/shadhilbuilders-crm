@@ -511,7 +511,7 @@ sequenceDiagram
 
 **Note (v3.1, Model C).** Three small but important design choices in this handoff:
 
-1. **No auto-WhatsApp at the moment of handoff.** The system fires the post-visit WhatsApp (v1.1) but not a "you've been assigned to…" notification at the handoff instant. The Exec personally reaches out — it's a relationship moment, not an automated one.
+1. **No auto-WhatsApp at the moment of handoff.** The system fires the post-visit WhatsApp (v1.1) but not a "you've been assigned to..." notification at the handoff instant. The Exec personally reaches out — it's a relationship moment, not an automated one.
 2. **Read-only is sticky.** Once the Telecaller hands off via visit outcome, they can still see the lead forever (read-only). This is on purpose: it lets them review their own work, learn from wins, and resolve any "but I told them X!" disputes during coaching.
 3. **One audit entry per ownership change.** Every state transition writes its own `LeadAssignment` row with `reason`. Six months later, when leadership asks "how many leads did Exec P. inherit vs. lose to NO_SHOW last quarter?", we can answer in one SQL query.
 

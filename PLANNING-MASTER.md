@@ -33,7 +33,7 @@ byte-verified migration; user decision: "only keep needed ones").
 The plan body still contains some legacy path mentions (`crm/.plans/...`,
 `~/workspace/shadhil-projects/crm/...`). As of this migration the canonical
 locations are the paths in the index above. Old paths are dead; do not recreate
-them. (Path sweep of the plan body: sections 16-17 refer to `.plans/…` names —
+them. (Path sweep of the plan body: sections 16-17 refer to `.plans/...` names —
 same filenames now live in `docs/planning/` — plus the restore-point comment at
 the top of the plan file, which points at an out-of-repo backup and stays valid.)
 
