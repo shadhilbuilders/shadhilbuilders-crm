@@ -11,7 +11,7 @@ the frontend. The monorepo root README covers the system as a whole.
 
 ---
 
-## What's here (Phase 1, August 2026)
+## What's here (Phase 2 UI surface, August 2026)
 
 - **Next.js 16 App Router** with Server Components and Route Handlers
 - **React 19** + TypeScript strict
@@ -31,34 +31,82 @@ the frontend. The monorepo root README covers the system as a whole.
   `src/lib/env/`. Misconfigured deploys fail immediately with a clear error.
 - **better-auth** catch-all at `src/app/api/auth/[...all]/route.ts`,
   sharing the same `auth` instance as the NestJS backend via the
-  `@shadhil/auth` workspace package.
+  `@shadhil/auth` workspace package. The `Jwks` model (required by the
+  jwt() plugin) lives in `packages/database/prisma/schema.prisma` — its
+  absence broke `GET /api/auth/get-session` (500) app-wide.
 - **`next/font` + Inter** — the brand font is self-hosted via `next/font`,
   preloaded, no Google Fonts CDN request. See
   [`packages/ui-tokens/README.md`](../../../packages/ui-tokens/README.md#font-setup-inter-via-nextfont)
   for the setup pattern.
 - **`nextjs-toploader`** for the route-progress bar.
 
-## What is **not** here yet (planned for Phase 2+)
+### App pages (`src/app/(app)/` — authenticated route group)
+
+The auth gate is `src/proxy.ts` (Next 16's renamed middleware): cookieless
+visitors bounce to `/login?next=…`; everything under `(app)/` requires a
+better-auth session cookie.
+
+| Route | What it is | Data source |
+|---|---|---|
+| `/` | Role-aware home — Admin cross-team view, Manager KPI strip + pipeline (KPIs are numbers in a row, NOT cards — locked Decision 0.4), Telecaller/Exec inbox-first home | session only |
+| `/leads` | Lead Inbox — state filter chips, search, overdue-first sort (Decision 0.2), semantic status badges | leads module (pending) |
+| `/leads/[id]` | Lead Detail — two-column layout, embedded chat pane, timeline | leads/chat (pending) |
+| `/visits` | Site Visits week calendar (Mon-start) + schedule dialog | visits module (pending) |
+| `/inventory` | Unit grid shell + status legend | units module (not built) |
+| `/notifications` | Inbox with All/Unread/Leads/Bookings/Visits tabs + mark-all-read | notifications (pending) |
+| `/users` | User management — create + role change + list. **LIVE.** | users module (implemented) |
+| `/audit` | Audit log — admin-only table + export buttons | audit module (pending) |
+
+Roles come from `useSessionUser()` (`src/lib/session.ts`): the header shows
+Users for admin-class + managers and Audit for admin-class only; page-level
+gates mirror `docs/planning/DESIGN.md` §4.
+
+### Auth bridge (`src/app/api/bff/[...path]/route.ts`)
+
+Server components and client hooks never talk to NestJS directly. All
+client traffic goes through the BFF proxy:
+
+```
+browser (session cookie)
+  → /api/bff/<path>          (this route handler)
+      verifies session against DB (cookie value is <token>.<hmac>, the DB
+      stores the bare token — split before lookup)
+      → issueJwt() from @shadhil/auth (same claim shape better-auth emits)
+      → fetch NestJS with Authorization: Bearer <jwt>
+  ← JSON streamed back
+```
+
+TypeScript strict-mode type for the handler params comes from
+`RouteContext<'/api/bff/[...path]'>` (Next 16 generated types).
+
+### Data layer
+
+- **`src/apis/`** — browser API client (`api<T>(path, init)` through
+  `/api/bff`, `ApiError`, `qs` filter-string helper, session user
+  extraction and role constants). Server-only code must not import the
+  client hooks; the BFF handler does its own session→JWT bridge.
+- **`src/hooks/queries/`** — TanStack Query hooks. `users.ts` is live
+  against the backend; `crm.ts` (leads/visits/chat/bookings/notifications/
+  audit) is locked to the Zod contracts in `packages/api-types` and lights
+  up when those controllers ship.
+- **`src/hooks/mutations/`** — write-path re-exports.
+- **Pending-module honesty:** pages whose backend module is still a stub
+  render `src/components/shared/ModulePending.tsx` — an explicit
+  "Not built yet" state. No placeholder/fake data anywhere.
+
+## What is **not** here yet (planned)
 
 The starter template ships a fuller kit; we deliberately haven't pulled it
 all in. Items that will arrive when a feature needs them:
 
-- **TanStack Query hooks** (`src/hooks/queries/`, `src/hooks/mutations/`)
-  — Phase 2, with the Lead Inbox.
-- **`src/apis/`** — typed wrappers around backend endpoints.
 - **Zustand stores** — for UI state that doesn't fit React context
   (theme, sidebar, preferences).
-- **Axios apiClient + interceptors** — the current traffic is `fetch` from
-  Server Components; the BFF proxy will land alongside the Lead Inbox.
-- **`src/schemas/`** — Zod schemas for forms, co-located with the
-  react-hook-form setup. The dev playground already exercises one
-  (`src/app/dev/components/page.tsx`).
 - **`withApiErrorHandling` / typed `AppError*`** — the typed error system
   exists only in `apps/backend/` for now. `apps/web/` route handlers
   throw `HttpError` from `@paalstack/react-ui/lib` directly.
-- **`<Toaster />`** — imported in `src/providers/providers.tsx` but not yet
-  mounted. That's a known Phase 1 TODO. Sonner toasts will appear top-right
-  once it lands.
+- **Backend modules for leads / visits / chat / bookings / notifications /
+  audit** — the UI is built and wired to their locked contracts; the
+  backend controllers ship in Implementation Plan Weeks 4–7.
 - **PostHog, Sentry, Resend** — not wired. Add via `src/providers/` when
   the analytics/monitoring/email feature lands.
 
@@ -82,20 +130,40 @@ apps/web/
 ├── public/                     # Static assets (favicon, etc.)
 ├── scripts/                    # Setup helpers (env-local symlink, postinstall)
 └── src/
+    ├── apis/                   # Browser API client (session → /api/bff → NestJS)
+    │   ├── client.ts           # api<T>, ApiError, qs, SessionUser + role types
+    │   └── index.ts            # Barrel
     ├── app/                    # Next.js App Router
-    │   ├── layout.tsx          # Root layout — Inter font, <Providers>, <SiteHeader>
-    │   ├── page.tsx            # Phase-1 landing (force-dynamic)
-    │   ├── not-found.tsx       # 404 (force-dynamic)
+    │   ├── (app)/              # Authenticated route group (app shell + AppHeader)
+    │   │   ├── layout.tsx      # App shell — AppHeader + container
+    │   │   ├── page.tsx        # Role-aware home (admin / manager / staff)
+    │   │   ├── leads/          # /leads (inbox) + /leads/[id] (detail)
+    │   │   ├── visits/         # /visits week calendar + schedule dialog
+    │   │   ├── inventory/      # /inventory unit grid shell
+    │   │   ├── notifications/  # /notifications inbox
+    │   │   ├── users/          # /users management (LIVE vs users module)
+    │   │   └── audit/          # /audit log (admin only)
+    │   ├── api/
+    │   │   ├── auth/[...all]/route.ts   # better-auth catch-all
+    │   │   ├── bff/[...path]/route.ts   # session→JWT bridge to NestJS
+    │   │   ├── health/route.ts          # GET /api/health
+    │   │   └── docs/page.tsx            # OpenAPI / Swagger UI link
     │   ├── dev/
-    │   │   └── components/page.tsx   # Component dev playground
-    │   └── api/
-    │       ├── auth/[...all]/route.ts   # better-auth catch-all
-    │       ├── health/route.ts          # GET /api/health
-    │       └── docs/page.tsx            # OpenAPI / Swagger UI link
+    │   │   └── components/page.tsx      # Component dev playground
+    │   ├── login/              # /login (LoginForm + page)
+    │   ├── layout.tsx          # Root layout — Inter font, <Providers>
+    │   └── not-found.tsx       # 404 (force-dynamic)
     ├── components/
-    │   └── SiteHeader.tsx      # Phase-1 placeholder header
+    │   ├── app-header.tsx      # Authenticated top nav (role-aware, user menu)
+    │   └── shared/
+    │       └── ModulePending.tsx  # Honest "backend module pending" state
+    ├── hooks/
+    │   ├── queries/            # TanStack Query hooks (users live; crm contracts)
+    │   └── mutations/          # Write-path re-exports
     ├── lib/
-    │   ├── auth.ts             # Re-exports { auth, authClient } from @shadhil/auth
+    │   ├── auth.ts             # Server-side re-export of @shadhil/auth (prisma chain)
+    │   ├── auth-client.ts      # Browser-safe better-auth React client only
+    │   ├── session.ts          # useSessionUser + role/permission helpers
     │   ├── env/
     │   │   ├── env.ts          # t3-env + zod schema (server + client)
     │   │   └── index.ts
@@ -107,6 +175,7 @@ apps/web/
     │   ├── query-provider.tsx
     │   ├── index.ts            # Barrel
     │   └── README.md           # When to add a provider here
+    ├── proxy.ts                # Next 16 auth gate (renamed middleware)
     └── styles/
         └── globals.css         # 3-import cascade + @theme inline + utility overrides
 ```
@@ -140,7 +209,7 @@ The web app expects:
 - **`apps/web/.env.local`** — symlink to `../../.env` at the monorepo
   root. Contains `BETTER_AUTH_SECRET`, `JWT_SECRET`,
   `DIRECT_DATABASE_URL`, `BACKEND_API_URL`, the `NEXT_PUBLIC_*` block,
-  Sentry keys (optional), and the six regulatory inputs (RERA, CMDA, …).
+  Sentry keys (optional), and the six regulatory inputs (RERA, CMDA, ...).
 - **NestJS backend running** at `BACKEND_API_URL` (default
   `http://localhost:8080`) — for `/api/auth/*` and the eventual Lead
   Inbox.
@@ -208,9 +277,10 @@ The order matters — each layer's context is inherited by everything below it:
   export const dynamic = 'force-dynamic';
   ```
 
-  See `src/app/page.tsx`, `src/app/not-found.tsx`,
-  `src/app/dev/components/page.tsx`, `src/app/api/docs/page.tsx` for the
-  pattern.
+  See `src/app/not-found.tsx`, `src/app/dev/components/page.tsx`,
+  `src/app/api/docs/page.tsx` for the pattern; authenticated pages under
+  `(app)/` inherit dynamic rendering from the session-dependent BFF calls
+  in their client components.
 
 ---
 

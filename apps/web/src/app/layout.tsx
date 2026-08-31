@@ -4,7 +4,6 @@ import { Inter } from 'next/font/google';
 import NextTopLoader from 'nextjs-toploader';
 import { type ReactNode } from 'react';
 
-import { SiteHeader } from '@/components/SiteHeader';
 import { Providers } from '@/providers';
 
 import '@/styles/globals.css';
@@ -70,10 +69,7 @@ const RootLayout = ({ children }: RootLayoutProps) => {
     <html lang="en" suppressHydrationWarning>
       <body className={cn(inter.variable, 'antialiased font-sans')}>
         <NextTopLoader showSpinner={false} height={5} color="#62b132" />
-        <Providers>
-          <SiteHeader />
-          {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
