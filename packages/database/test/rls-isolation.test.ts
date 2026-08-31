@@ -18,11 +18,13 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
-import { PrismaClient, Prisma } from '../node_modules/.prisma/client';
 import { DATABASE_AVAILABLE } from './setup';
+// Shared client (packages/database/src) — Prisma 7 requires the pg driver
+// adapter, and the shared instance constructs connection-free so DB-less
+// jobs can still import this file (tests self-skip via DATABASE_AVAILABLE).
+// A bare `new PrismaClient()` here broke unit-CI under Prisma 7.
+import { prisma } from '../src/index';
 import { withRlsContext } from '../src/rls';
-
-const prisma = new PrismaClient();
 
 describe('RLS isolation matrix: role × table × action', () => {
   describe.todo(
@@ -59,8 +61,8 @@ describe('Smoke: client connects', () => {
   it.skipIf(!DATABASE_AVAILABLE)(
     'Prisma client is constructible without throwing',
     () => {
-      expect(prisma).toBeInstanceOf(PrismaClient);
-      expect(Prisma).toBeDefined();
+      expect(prisma).toBeDefined();
+      expect(typeof prisma.$queryRaw).toBe('function');
     },
   );
 

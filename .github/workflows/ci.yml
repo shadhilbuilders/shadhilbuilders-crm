@@ -113,9 +113,13 @@ jobs:
       # 00-init.sql equivalent: CI's bare postgres container has no
       # docker-entrypoint hook, so create the non-owner app role here
       # (AR-1) BEFORE migrations — migration 1's policy block GRANTs to it.
+      # Heredoc-quoting on purpose: $$ in YAML run-blocks gets shell-expanded
+      # (\$\$ landed as the runner PID last run -> 'unterminated dollar-quoted
+      # string'). Fresh container per run, so no IF NOT EXISTS needed.
       - run: |
-          docker exec "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm -c \
-            "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'shadhil_app') THEN CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$;"
+          docker exec "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          SQL
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
