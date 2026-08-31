@@ -120,6 +120,7 @@ jobs:
           docker exec -i "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm <<'SQL'
           CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
+      - run: pnpm --filter @shadhil/database generate
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
