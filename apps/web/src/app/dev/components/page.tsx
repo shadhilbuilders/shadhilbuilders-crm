@@ -55,7 +55,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
     });
 
     toast.promise(promise, {
-      loading: 'Sending message…',
+      loading: 'Sending message...',
       success: `Thanks ${data.name}! We'll reply within 24h.`,
       error: 'Could not send. Try again later.',
     });
@@ -209,7 +209,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
             <Button
               variant="ghost"
               onClick={() => {
-                const id = toast.loading('Uploading 3 photos…');
+                const id = toast.loading('Uploading 3 photos...');
                 setTimeout(() => toast.success('Upload complete.', { id }), 1800);
               }}
             >
@@ -220,7 +220,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
               onClick={() => {
                 const promise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
                 toast.promise(promise, {
-                  loading: 'Syncing with WhatsApp Cloud…',
+                  loading: 'Syncing with WhatsApp Cloud...',
                   success: 'Inbox synced (47 new messages).',
                   error: 'Sync failed.',
                 });
@@ -268,7 +268,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
                     type: 'textarea',
                     name: 'message',
                     label: 'Message',
-                    placeholder: 'Quick note about the 2BHK inquiry…',
+                    placeholder: 'Quick note about the 2BHK inquiry...',
                     required: true,
                   },
                 ]}
