@@ -117,7 +117,7 @@ jobs:
       # (\$\$ landed as the runner PID last run -> 'unterminated dollar-quoted
       # string'). Fresh container per run, so no IF NOT EXISTS needed.
       - run: |
-          docker exec "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm <<'SQL'
+          docker exec -i "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm <<'SQL'
           CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       # 00-init.sql equivalent + schema + policies + FORCE + grants
@@ -145,4 +145,5 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shadhil/database generate
       - run: pnpm build
