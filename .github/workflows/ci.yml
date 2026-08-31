@@ -16,6 +16,13 @@ concurrency:
 #   - RLS matrix: CI provisions Postgres + applies the init migration, and the
 #     never-skip guard makes a missing DB a FAILURE, not a silent skip
 # CI never talks to a real provider — placeholder-shaped vars only.
+#
+# 2026-08-31 (first green effort): the generated Prisma client is gitignored
+# by design, so every job that compiles/imports @shadhil/database sources
+# must run `prisma generate` first. The RLS matrix also bootstraps the
+# non-owner role `shadhil_app` (normally created by docker/postgres-init/
+# 00-init.sql on volume init — CI's service container has no entrypoint
+# hook) BEFORE prisma migrate deploy, because migration 1 GRANTs to it.
 env:
   SKIP_ENV_VALIDATION: 'true'
   NODE_ENV: test
@@ -38,6 +45,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shadhil/database generate
       - run: pnpm type-check
 
   lint:
@@ -53,6 +61,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shadhil/database generate
       - run: pnpm lint
 
   test:
@@ -68,6 +77,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shadhil/database generate
       # Backend has ZERO tests until T-RLSREAL lands — keep passWithNoTests
       # true for now so bundle-1 fixes can ship; the plan flips it to false
       # in the same PR as the first real backend test (AR-5).
@@ -100,6 +110,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # 00-init.sql equivalent: CI's bare postgres container has no
+      # docker-entrypoint hook, so create the non-owner app role here
+      # (AR-1) BEFORE migrations — migration 1's policy block GRANTs to it.
+      - run: |
+          docker exec "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm -c \
+            "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'shadhil_app') THEN CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$;"
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
