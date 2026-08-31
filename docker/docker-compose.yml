@@ -50,41 +50,34 @@ services:
     # edoburu/pgbouncer — actively maintained, CVE-patched upstream images.
     # Bitnami moved bitnami/* behind a paid subscription in Aug 2025; the
     # bitnamilegacy/* namespace is frozen at the version pinned and never
-    # receives security updates. edoburu is a thin Debian + official
-    # PgBouncer image, ~20 MB, and respects a mounted pgbouncer.ini as-is
-    # (so docker/pgbouncer.ini + docker/userlist.txt below keep working
-    # unchanged).
-    image: bitnamilegacy/pgbouncer:1.23.1
+    # receives security updates.
+    #
+    # SWITCHED from bitnamilegacy 2026-08-31 (verified live before swap):
+    # - bitnami IGNORES the mounted docker/pgbouncer.ini and generates its
+    #   own from env vars — the source of the missing [databases] alias
+    #   (PGBOUNCER_DATABASE defaulted to 'postgres'), which silently broke
+    #   every shadhil_crm connection through the pool (see PGBOUNCER_DATABASE
+    #   note below for the archaeology).
+    # - edoburu's entrypoint only generates the ini when it does NOT exist
+    #   (`if [ ! -f ... ]`), so our mounted docker/pgbouncer.ini is used
+    #   as-is: pool_mode=session + [databases] shadhil_crm stay authoritative
+    #   in a file we control. Verified: pgbouncer 1.25.2 up, client SELECT OK,
+    #   SET LOCAL app.user_role inside a transaction (RLS requirement) OK.
+    # - Auth file untouched: entrypoint APPENDS credentials only when the
+    #   user is absent from userlist.txt.
+    # DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME exist ONLY so the
+    # entrypoint can append missing userlist entries; all pool behavior
+    # lives in docker/pgbouncer.ini.
+    image: edoburu/pgbouncer:v1.25.2-p0
     container_name: shadhil-pgbouncer
     restart: unless-stopped
     environment:
-      # edoburu wrapper requires the postgres password to health-probe the
-      # server pool. AR-2c: match POSTGRES_PASSWORD (dev default).
-      POSTGRESQL_USERNAME: shadhil
-      POSTGRESQL_PASSWORD: shadhil
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: "5432"
-      POSTGRESQL_DATABASE: shadhil_crm
-      PGBOUNCER_AUTH_TYPE: scram-sha-256
-      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
-      # CRITICAL (found during Prisma 7 upgrade, 2026-08-31): bitnami pgbouncer
-      # keys the [databases] mapping under its PGBOUNCER_DATABASE env, which
-      # defaults to "postgres" — leaving no shadhil_crm entry, so every
-      # client asking for db shadhil_crm on 6432 dies with
-      # "no such database: shadhil_crm". The legacy Prisma 5 engine never
-      # noticed because it bypassed the pooled URL (schema url pointed at
-      # DIRECT_DATABASE_URL). Prisma 7 + @prisma/adapter-pg connect through
-      # DATABASE_URL (6432), so the alias must exist.
-      PGBOUNCER_DATABASE: shadhil_crm
-      # eng review A5: MUST be 'session'. Transaction pooling silently
-      # breaks RLS — per-request SET LOCAL session vars don't survive.
-      PGBOUNCER_POOL_MODE: session
-      PGBOUNCER_MAX_CLIENT_CONN: 1000
-      PGBOUNCER_DEFAULT_POOL_SIZE: 25
-      PGBOUNCER_MIN_POOL_SIZE: 5
-      PGBOUNCER_RESERVE_POOL_SIZE: 5
-      PGBOUNCER_SERVER_IDLE_TIMEOUT: 600
-      PGBOUNCER_SERVER_LIFETIME: 3600
+      AUTH_TYPE: scram-sha-256
+      DB_USER: shadhil
+      DB_PASSWORD: shadhil
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: shadhil_crm
     ports:
       - "127.0.0.1:6432:6432"
     volumes:
