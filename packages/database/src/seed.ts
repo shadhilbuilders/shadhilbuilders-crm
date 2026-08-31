@@ -24,13 +24,17 @@ interface SeedUser {
   password: string;
 }
 
-function readSeedUser(prefix: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC'): SeedUser {
+function readSeedUser(
+  prefix: 'SUPER_ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC',
+): SeedUser {
   // Plan §17 Input #5: fall back to documented placeholder users so a fresh
   // clone can seed before the client roster arrives. Placeholders MUST be
-  // rotated on first login (plan task T-S).
-  const email = process.env[`SEED_${prefix}_EMAIL`] ?? `${prefix.toLowerCase()}@shadhilbuilders.in`;
-  const name = process.env[`SEED_${prefix}_NAME`] ?? `${prefix[0]}${prefix.slice(1).toLowerCase()} (placeholder)`;
-  const password = process.env[`SEED_${prefix}_PASSWORD`] ?? `${prefix.toLowerCase()}_placeholder_pw`;
+  // rotated on first login (plan task T-S). Round 20: the ADMIN placeholder
+  // is now the single SUPER_ADMIN (exactly one exists — partial unique
+  // index one_super_admin).
+  const email = process.env[`SEED_${prefix}_EMAIL`] ?? `${prefix === 'SUPER_ADMIN' ? 'admin' : prefix.toLowerCase()}@shadhilbuilders.in`;
+  const name = process.env[`SEED_${prefix}_NAME`] ?? `${prefix === 'SUPER_ADMIN' ? 'Super Admin' : prefix[0] + prefix.slice(1).toLowerCase()} (placeholder)`;
+  const password = process.env[`SEED_${prefix}_PASSWORD`] ?? `${prefix === 'SUPER_ADMIN' ? 'admin' : prefix.toLowerCase()}_placeholder_pw`;
 
   if (!email || !name || !password) {
     throw new Error(
@@ -41,7 +45,7 @@ function readSeedUser(prefix: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC')
   return { email, name, password };
 }
 
-type Role = 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC';
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC';
 
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
@@ -93,7 +97,7 @@ async function main() {
     return prisma.$executeRawUnsafe(`SET row_security = off`);
   });
 
-  const admin = readSeedUser('ADMIN');
+  const superAdmin = readSeedUser('SUPER_ADMIN');
   const manager = readSeedUser('MANAGER');
   const telecaller = readSeedUser('TELECALLER');
   const salesExec = readSeedUser('SALES_EXEC');
@@ -112,13 +116,13 @@ async function main() {
     },
   });
 
-  // ── Admin (no team), telecaller + sales exec (team members) ──────────────
-  await upsertUser(admin, 'ADMIN');
+  // ── Super admin (no team), telecaller + sales exec (team members) ────────
+  await upsertUser(superAdmin, 'SUPER_ADMIN');
   await upsertUser(telecaller, 'TELECALLER', team.id);
   await upsertUser(salesExec, 'SALES_EXEC', team.id);
 
   // eslint-disable-next-line no-console
-  console.log('[seed] ✓ admin, manager, telecaller, sales exec created/updated');
+  console.log('[seed] ✓ super admin, manager, telecaller, sales exec created/updated');
   // eslint-disable-next-line no-console
   console.log(`[seed] team: ${team.name} (${team.id})`);
 }

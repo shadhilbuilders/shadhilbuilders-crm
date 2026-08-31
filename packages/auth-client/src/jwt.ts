@@ -20,7 +20,13 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 // (Imported from @shadhil/api-types would create a package cycle; a local
 // union mirror + a compile-time exhaustiveness check in api-types tests
 // covers it. roles.ts is the single runtime source of truth.)
-export const ROLES = ['ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'] as const;
+export const ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'MANAGER',
+  'SALES_EXEC',
+  'TELECALLER',
+] as const;
 export type Role = (typeof ROLES)[number];
 
 export type JwtPayload = {

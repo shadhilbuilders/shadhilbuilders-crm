@@ -4,6 +4,8 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AuthModule } from './auth/auth.module';
+import { BetterAuthMiddlewareModule } from './auth/better-auth.middleware';
+import { UsersModule } from './users/users.module';
 import { LeadsModule } from './leads/leads.module';
 import { VisitsModule } from './visits/visits.module';
 import { ChatModule } from './chat/chat.module';
@@ -24,8 +26,10 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     HealthModule,
 
-    // Feature modules (9 per plan §2)
+    // Feature modules (9 per plan §2 + users)
     AuthModule,
+    UsersModule,
+    BetterAuthMiddlewareModule,
     LeadsModule,
     VisitsModule,
     ChatModule,

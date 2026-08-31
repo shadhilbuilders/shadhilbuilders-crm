@@ -58,12 +58,35 @@ export const SignupDtoSchema = z.object({
   password: passwordSchema,
   name: nameSchema,
   role: RoleSchema.default('TELECALLER'),
-  teamId: z
-    .string()
-    .cuid('teamId must be a valid cuid')
-    .optional(),
+  // Not `.cuid()`: seed teams use readable ids like `seed-team-<userId>`,
+  // so any non-empty short string is accepted (validation of existence
+  // happens in the service).
+  teamId: z.string().trim().min(1).max(64).optional(),
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
+
+/**
+ * POST /api/users — user creation via the role hierarchy
+ * (DECISION-CHANGELOG Round 17): ADMIN → any role; MANAGER →
+ * TELECALLER/SALES_EXEC in their own team; staff roles → nobody.
+ * admin creating a manager without teamId auto-creates the team.
+ */
+export const CreateUserDtoSchema = SignupDtoSchema.extend({
+  role: RoleSchema, // explicit — no default on the admin/manager surface
+});
+export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
+
+/**
+ * PATCH /api/users/:id/role — role change (Round 20). SUPER_ADMIN can
+ * change anyone into anything (except into/out of SUPER_ADMIN); ADMIN can
+ * change MANAGER/TELECALLER/SALES_EXEC into MANAGER/TELECALLER/SALES_EXEC;
+ * MANAGER the same within their team. Guards: no self-changes,
+ * demoting a team-leading manager is blocked, SUPER_ADMIN unassignable.
+ */
+export const ChangeRoleDtoSchema = z.object({
+  role: RoleSchema,
+});
+export type ChangeRoleDto = z.infer<typeof ChangeRoleDtoSchema>;
 
 /**
  * Verified JWT claims. Populated by NestJS after `jose.jwtVerify` on the

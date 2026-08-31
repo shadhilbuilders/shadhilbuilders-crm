@@ -17,8 +17,21 @@ import { z } from 'zod';
 // ────────────────────────────────────────────────────────────────────────────
 
 /** User role. Single primary role per user (A6) — no v1 role switching. */
-export const RoleSchema = z.enum(['ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER']);
+export const RoleSchema = z.enum([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'MANAGER',
+  'SALES_EXEC',
+  'TELECALLER',
+]);
 export type Role = z.infer<typeof RoleSchema>;
+
+/**
+ * Roles an actor may SET on another user (Round 20). SUPER_ADMIN appears
+ * here ONLY so zod accepts it — the users module rejects every assignment
+ * of it at runtime; the single super admin exists via seed/migration only.
+ */
+export const AssignableRoleSchema = RoleSchema.exclude(['SUPER_ADMIN']);
 
 // ────────────────────────────────────────────────────────────────────────────
 // Lead module

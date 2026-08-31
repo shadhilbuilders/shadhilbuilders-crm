@@ -27,3 +27,6 @@ class PrismaService implements OnModuleInit, OnModuleDestroy {
   exports: [PrismaService],
 })
 export class PrismaModule {}
+
+// Exported for sibling modules (users service injects the shared client).
+export { PrismaService };

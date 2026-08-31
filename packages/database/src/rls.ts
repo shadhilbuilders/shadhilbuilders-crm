@@ -25,7 +25,18 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import type { PrismaClient } from '../node_modules/.prisma/client';
-import type { Role } from '../node_modules/.prisma/client';
+
+// SUPER_ADMIN is org-owner (DB enum has it) but carries no RLS powers of
+// its own — withRlsContext downcasts it to ADMIN. There is EXACTLY ONE
+// super admin (partial unique index one_super_admin, migration
+// 20260831110200); they bootstrap admins and are outside the business
+// surfaces (no leads, no teams) by design.
+export type Role =
+  | 'SUPER_ADMIN'
+  | 'ADMIN'
+  | 'MANAGER'
+  | 'SALES_EXEC'
+  | 'TELECALLER';
 
 export interface RlsContext {
   userId: string;
@@ -38,7 +49,7 @@ export type RlsTx = Parameters<
   Parameters<PrismaClient['$transaction']>[0]
 >[0];
 
-const ROLES: readonly string[] = ['ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'];
+const ROLES: readonly string[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'];
 
 /**
  * Inline a string as a Postgres SQL literal.
@@ -71,6 +82,11 @@ export async function withRlsContext<T>(
   ctx: RlsContext,
   fn: (tx: RlsTx) => Promise<T>,
 ): Promise<T> {
+  // SUPER_ADMIN has no policies of its own — it travels as ADMIN at the
+  // RLS layer (superset semantics: policies already treat 'ADMIN' as
+  // unrestricted). Business surfaces key off the JWT's real role, so the
+  // distinction is preserved above Postgres.
+  const rlsRole = ctx.role === 'SUPER_ADMIN' ? 'ADMIN' : ctx.role;
   const teamValue = ctx.teamId ?? '';
 
   if (!ROLES.includes(ctx.role)) {
@@ -79,7 +95,7 @@ export async function withRlsContext<T>(
 
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(ctx.role)}`);
+    await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
     await tx.$executeRawUnsafe(`SET LOCAL app.user_team_id = ${sqlLiteral(teamValue)}`);
 
     return fn(tx as unknown as RlsTx);

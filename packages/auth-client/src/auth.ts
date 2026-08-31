@@ -10,6 +10,9 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { jwt } from 'better-auth/plugins/jwt';
 import { admin } from 'better-auth/plugins/admin';
+// adminAc — better-auth's default admin permission statement set, reused as
+// the definition for our ADMIN role key (Round 20).
+import { adminAc } from 'better-auth/plugins/admin/access';
 
 import { prisma } from '@shadhil/database';
 import { assertAuthEnv } from './env';
@@ -60,9 +63,27 @@ export const auth: any = betterAuth({
         expiresIn: '7d',
       },
     }),
-    // AR-2/B4a: admin() plugin injects role: options.defaultRole ?? "user" on user.create.
-    // "user" is not a Prisma Role enum value -> signUpEmail always failed. Set it.
-    admin({ defaultRole: 'TELECALLER' }),
+    // AR-2/B4a: admin() plugin injects role: options.defaultRole ??
+    // "user" on user.create. "user" is not a Prisma Role enum value ->
+    // signUpEmail always failed. Set it.
+    //
+    // Role model (Round 20, 2026-08-31): one SUPER_ADMIN (seed +
+    // partial unique index only — the API can never create one)
+    // bootstraps ADMINs; ADMIN creates MANAGER users; each MANAGER
+    // creates TELECALLER/SALES_EXEC under their team.
+    // roles: our Prisma Role keys mapped to better-auth statement sets —
+    // ADMIN reuses the stock adminAc; SUPER_ADMIN (org owner, exactly
+    // one per DB constraint) also gets adminAc. adminRoles then gates
+    // better-auth admin endpoints to SUPER_ADMIN + ADMIN (case-
+    // insensitive match).
+    admin({
+      defaultRole: 'TELECALLER',
+      roles: {
+        ADMIN: adminAc,
+        SUPER_ADMIN: adminAc,
+      },
+      adminRoles: ['SUPER_ADMIN', 'ADMIN'],
+    }),
   ],
 
   trustedOrigins: [

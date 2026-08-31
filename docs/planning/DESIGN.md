@@ -148,26 +148,55 @@ Or, with a no-show:
 
 ## 4. Permission matrix (RBAC) — Model C handoff
 
-| Operation | Admin | Manager | Telecaller | Sales Exec |
-|---|---|---|---|---|
-| Create user accounts | ✅ | ❌ | ❌ | ❌ |
-| View any lead | ✅ | their team only | own OR shared (VISIT_SCHEDULED) | own OR shared (VISIT_SCHEDULED) |
-| Assign telecaller to lead | ✅ | ✅ (in team) | ❌ | ❌ |
-| Schedule site visit | ❌ | ❌ | ✅ (own leads) | ❌ (exec conducts, doesn't schedule) |
-| Confirm visit with customer (24h, 2h before) | ❌ | ❌ | ✅ (own leads) | ❌ |
-| Log visit outcome (VISITED / NO_SHOW) | ❌ | ❌ | ✅ (only NO_SHOW — marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
-| Re-engage after no-show | ❌ | ❌ | ✅ (own leads) | ❌ |
-| Log activity (call, note, WhatsApp) | ❌ | ❌ | ✅ (own leads) | ✅ (own leads) |
-| Initiate booking | ❌ | ❌ | ❌ | ✅ (post-visit only) |
-| Approve booking | ✅ | ✅ (in team) | ❌ | ❌ |
-| Send WhatsApp message to customer | ❌ | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
-| Read chat on a lead | ✅ | ✅ (in team) | ✅ (own leads + shared) | ✅ (own leads + shared) |
-| View reports (own KPIs) | ✅ | ✅ (team KPIs) | ✅ (own KPIs) | ✅ (own KPIs) |
-| Edit projects / units / inventory | ✅ | ❌ | ❌ | ❌ |
-| View audit log | ✅ | ❌ | ❌ | ❌ |
-| Configure integrations (WhatsApp, FreJun, Expo Push) | ✅ | ❌ | ❌ | ❌ |
+| Operation | Super Admin | Admin | Manager | Telecaller | Sales Exec |
+|---|---|---|---|---|---|
+| Create user accounts | ✅ (any below) | ✅ (below admin) | ✅ (telecaller + exec, own team) | ❌ | ❌ |
+| Change user roles | ✅ (anyone, any role) | ✅ (below admin) | ✅ (telecaller + exec, own team) | ❌ | ❌ |
+| Create lead / enquiry | ✅ (any team) | ✅ (any team) | ✅ (own team) | ✅ (becomes owner) | ✅ (becomes owner) |
+| View any lead | ✅ | ✅ | their team only | own OR shared (VISIT_SCHEDULED) | own OR shared (VISIT_SCHEDULED) |
+| Assign telecaller to lead | ✅ | ✅ | ✅ (in team) | ❌ | ❌ |
+| Schedule site visit | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ (exec conducts, doesn't schedule) |
+| Confirm visit with customer (24h, 2h before) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
+| Log visit outcome (VISITED / NO_SHOW) | ✅ (any lead) | ✅ (any lead) | ✅ (in team — all outcomes) | ✅ (only NO_SHOW — marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
+| Re-engage after no-show | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
+| Log activity (call, note, WhatsApp) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
+| Initiate booking | ✅ | ✅ (any lead, post-visit) | ✅ (in team, post-visit) | ❌ | ✅ (post-visit only) |
+| Approve booking | ✅ | ✅ | ✅ (in team) | ❌ | ❌ |
+| Send WhatsApp message to customer | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
+| Read chat on a lead | ✅ | ✅ | ✅ (in team) | ✅ (own leads + shared) | ✅ (own leads + shared) |
+| View reports (own KPIs) | ✅ (org KPIs) | ✅ (org KPIs) | ✅ (team KPIs) | ✅ (own KPIs) | ✅ (own KPIs) |
+| Edit projects / units / inventory | ✅ | ✅ | ❌ | ❌ | ❌ |
+| View audit log | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Configure integrations (WhatsApp, FreJun, Expo Push) | ✅ | ✅ | ❌ | ❌ | ❌ |
 
 **What the model C RBAC matrix means in practice:**
+
+- **Role model v2 (Round 20, 2026-08-31):** five roles —
+  SUPER_ADMIN ⊃ ADMIN ⊃ MANAGER ⊃ {TELECALLER, SALES_EXEC}.
+  Exactly ONE SUPER_ADMIN exists (partial unique index
+  `one_super_admin`; created by seed/migration only — the API
+  can never create or assign it, not even the super admin
+  themself). SUPER_ADMIN bootstraps ADMINs and can change any
+  role; ADMIN manages everything below admin; MANAGER manages
+  staff within their team. Role changes are audited
+  (before/after rows in AuditLog). The seeded
+  admin@shadhilbuilders.in account IS the super admin.
+
+- **Authority inheritance (client-confirmed 2026-08-31):**
+  Admin can do anything a Manager can; a Manager can do
+  anything a Telecaller or Sales Exec can. Scope follows the
+  actor, not the role: the manager inherits staff *actions*
+  only within their own team's leads; the admin inherits them
+  across all leads. Role-specific gates that do not flow up:
+  the exec-only scheduling block (exec conducts, never
+  schedules) and the telecaller-only NO_SHOW logging — those
+  stay ❌ for admin/manager because they are role
+  *responsibility* boundaries in Model C, not capability
+  limits.
+- Creation flows: telecaller/exec-created leads start with
+  the creator as `ownerId` (ownerType from their role);
+  manager-created leads land in the manager's team and get
+  assigned; admin-created leads can be assigned to any team.
 
 - A **Telecaller** is responsible for: booking, confirming,
   re-engaging after no-show. They lose credit when a no-show

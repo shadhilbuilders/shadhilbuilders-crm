@@ -466,3 +466,249 @@ of truth.
 **No timeline change.** Model C is the same dev work as
 Model A (same state machine, just different transitions).
 13 weeks to v1.
+
+## Round 17 — 2026-08-31 — User-creation hierarchy locked
+
+Client confirmed the user-creation model:
+
+- ONE admin exists (seeded, placeholder credentials per §17
+  Input #5, rotate on first login). The admin bootstraps the
+  org: can create MANAGER, TELECALLER and SALES_EXEC users.
+- A MANAGER, once created, can create TELECALLER and
+  SALES_EXEC users — scoped to their own team.
+- TELECALLER and SALES_EXEC can create nobody.
+
+Code change baked in now
+(`packages/auth-client/src/auth.ts`): `admin()` plugin options
+extended to `admin({ defaultRole: 'TELECALLER', adminRoles:
+['ADMIN'] })` — better-auth 1.7 gates its admin endpoints
+(user create/list/ban via adminClient) to the ADMIN role only;
+MANAGER keeps plain sign-in. `role`/`teamId` remain
+`input: false` additional fields, so no signup path can
+self-assign a role.
+
+Still to build (not yet in the repo as of this round):
+- `users` module in apps/backend — role-guarded create/list
+  endpoints. ADMIN creates any role; MANAGER creates
+  TELECALLER/SALES_EXEC only within `Team.managerId` scope.
+  Enforce with a NestJS guard, not UI hiding.
+- Credential setup on create must mirror `seed.ts` upsertUser:
+  `Account` row keyed `providerId: 'credential'`,
+  `accountId: user.id`, `issuer: 'local:credential'`,
+  scrypt `salt:key` hash (N=16384, r=16, p=1, dkLen=64,
+  NFKC-normalized) — better-auth 1.7 sign-in contract
+  (dist/api/routes/sign-in.mjs:320).
+- Web UI: admin "Users" page + manager "My Team" page.
+- Open question: when the ADMIN creates a MANAGER, team
+  assignment — creating the manager auto-creates their Team
+  (Team.managerId = manager) vs admin picks an existing team.
+  Recommended: auto-create team on manager creation;
+  manager-created users join the manager's teamId.
+- Open question (superseded by Round 20): the earlier
+  single-ADMIN fragility is resolved by the new SUPER_ADMIN
+  layer instead of admin self-service.
+
+## Round 18 — 2026-08-31 — Lead creation + authority inheritance
+
+Client confirmed two more rules:
+
+1. **Telecaller and Sales Exec CAN create leads/enquiries.**
+   The §4 permission matrix had no "create lead" row at all —
+   it now exists: telecaller/exec creation puts the creator on
+   the lead as `ownerId` (ownerType from their role).
+   Manager-created leads land in the manager's team; admin can
+   create into any team.
+2. **Authority inheritance:** admin ⊇ manager ⊇
+   telecaller/exec. An admin can do any action a manager can,
+   a manager any action a telecaller/exec can. Scope follows
+   the actor: manager inherits staff actions within their own
+   team's leads only; admin across all leads.
+
+Matrix rows flipped from ❌ to ✅ under admin/manager: schedule
+site visit, confirm visit, log visit outcome (manager gets all
+outcomes), re-engage after no-show, log activity, send
+WhatsApp. "Create user accounts" now shows manager ✅ for
+telecaller + exec in their own team (Round 17). Two gates stay
+❌ for superiors on purpose: exec cannot schedule visits and
+telecaller cannot log VISITED — these are Model C
+*responsibility* boundaries (credit/KPI assignment), not
+capability caps. Reports row clarified: admin sees org-wide
+KPIs.
+
+DESIGN.md §4 is updated (matrix + inheritance paragraph +
+creation flows). Backend enforcement notes for the build:
+inherit in NestJS via a role-hierarchy helper
+(e.g. `hasAtLeast(actorRole, requiredRole)`) combined with the
+existing team-scope check, not a second parallel matrix; every
+staff-level endpoint keeps its team/ownership ABAC filter on
+top of the inherited capability.
+
+Ground-truth check against `packages/database/prisma/rls/
+policies.sql` (2026-08-31): the RLS layer already implements
+both rules. `lead_insert` allows all four roles WITH CHECK
+`teamId = app.user_team_id`; staff update own rows, manager
+team-wide, admin unrestricted. Build nuance: the admin's RLS
+context carries their own (usually null) `app.user_team_id`,
+so admin/manager creating a lead INTO another team must have
+the service layer set the RLS context team to the TARGET team
+for that insert, or the WITH CHECK will reject the row.
+
+## Round 19 — 2026-08-31 — Users module BUILT and live-verified
+
+The user-creation hierarchy (Rounds 17/18) is implemented,
+endpoint-tested, and cleaned up after. Uncommitted.
+
+**New files**
+- `apps/backend/src/users/` — module, controller, service:
+  - `POST /api/users` — ADMIN creates any role; MANAGER
+    creates TELECALLER/SALES_EXEC in their own team; staff
+    roles → 403. Admin creating a MANAGER without teamId
+    auto-creates the Team. Admin creating staff without
+    teamId → 400. Unique-email conflict → 409 (Prisma).
+  - `GET /api/users` — admin: all; manager: via
+    `Team.managerId`; staff: self. 403-free for admin/manager
+    paths by role. staff see exactly one row (self).
+  - `apps/backend/src/users/roles.ts` — hierarchy +
+    `assertCanCreateRole`. Explicit per-target rules after
+    live test caught rank-equality bug (manager→manager was
+    201 before the fix).
+  - `apps/backend/src/users/credentials.ts` — better-auth 1.7
+    Account contract: `providerId: 'credential'`,
+    `accountId: user.id`, `issuer: 'local:credential'`,
+    scrypt N=16384/r=16/p=1/dkLen=64 "salt:key" (seed.ts
+    mirror). Verified: admin-created manager signs in 200.
+
+**Changed files**
+- `packages/database/src/index.ts` — re-exports
+  `withRlsContext` / `RlsContext` / `RlsTx` (was internal only).
+- `packages/api-types/src/auth.ts` — `CreateUserDtoSchema` /
+  `CreateUserDto` (Zod, role explicit, no default).
+- `apps/backend/src/auth/better-auth.middleware.ts` —
+  `forRoutes('auth/*splat')` (Nest 12 path-to-regexp v8) +
+  imports AuthModule for the handler token + **now imported in
+  app.module.ts** (it never was — sign-in was broken on the
+  API side until today).
+- `apps/backend/src/app.module.ts` — UsersModule +
+  BetterAuthMiddlewareModule registered.
+- `apps/backend/src/prisma/prisma.module.ts` — exports
+  PrismaService.
+- `packages/auth-client/src/auth.ts` (from earlier today) —
+  `admin({ defaultRole: 'TELECALLER', adminRoles: ['ADMIN'] })`.
+
+**Live verification (dev server, e2e via curl + issueJwt)**
+1. ADMIN creates MANAGER → 201, team auto-created, manager's
+   own teamId set. 2. MANAGER creates TELECALLER → 201, joins
+   manager's team (resolved via Team.managerId). 3. ADMIN
+   creates TELECALLER into an explicit team → 201. 4. MANAGER
+   creating MANAGER → 403. 5. TELECALLER creating anyone →
+   403. 6. Admin-created manager signs in via better-auth →
+   200 (credential contract works). 7. GET scoping: admin 15
+   rows, manager 6 (own team), telecaller 1 (self).
+Test rows deleted after the run (DB back to the 4 seeded
+users).
+
+**Known gaps / follow-ups**
+- better-auth jwt() plugin requires a `Jwks` table that
+  schema.prisma lacks → `GET /api/auth/token` 500s. JWT
+  verification currently uses `issueJwt()` bridge instead.
+  Add the model (id/version/keys/createdAt/updatedAt per
+  better-auth docs) in a follow-up migration.
+- Manager scoping now depends on Team.managerId; the JWT
+  teamId claim should be refreshed from the DB at session
+  issue (or manager JWTs should carry the managed team id) —
+  tracked as a follow-up.
+- Round 17's open question is resolved by implementation:
+  manager creation auto-creates a Team; passing an explicit
+  teamId for a new MANAGER is also supported (admin choice).
+
+
+## Round 20 — 2026-08-31 — 5-role model + role changes, BUILT and live-verified
+
+Client locked the final role model and its change hierarchy:
+
+- Roles: SUPER_ADMIN, ADMIN, MANAGER, TELECALLER, SALES_EXEC.
+- Exactly ONE SUPER_ADMIN, ever (client-confirmed). Exists only
+  via seed/migration; the API refuses to create, assign, or
+  change it — enforced in code AND by a Postgres partial
+  unique index (`one_super_admin`, verified live: inserting a
+  second super admin is rejected at the DB).
+- Create hierarchy: SUPER_ADMIN → any role below itself;
+  ADMIN → MANAGER/TELECALLER/SALES_EXEC; MANAGER →
+  TELECALLER/SALES_EXEC (own team); staff → nobody.
+- Change hierarchy (PATCH /api/users/:id/role): SUPER_ADMIN
+  changes anyone into anything (except into/out of
+  SUPER_ADMIN, and never themself); ADMIN changes roles below
+  admin; MANAGER changes staff roles within their team.
+- Guards, all live-tested: no self-role-changes (403),
+  SUPER_ADMIN unassignable (403), staff cannot change roles
+  (403), manager cannot touch admin rows (403), demoting a
+  manager who still leads a team is blocked until members
+  move (409), promotion to manager auto-creates their team
+  (parity with create), sign-in survives role changes
+  (verified: promoted user signed in 200 with the new role).
+
+**Schema/migration** (packages/database, applied to the live DB):
+- `20260831110000_role_super_admin` — ALTER TYPE Role ADD
+  VALUE 'SUPER_ADMIN' BEFORE 'ADMIN' (split transaction per
+  Postgres ALTER TYPE rules).
+- `20260831110100_bootstrap_super_admin` — seeded
+  admin@shadhilbuilders.in row updated ADMIN → SUPER_ADMIN.
+- `20260831110200_one_super_admin_only` — partial unique index
+  ON "User"(role) WHERE role='SUPER_ADMIN' (Prisma cannot
+  express partial indexes; native SQL only). Live-verified
+  with a deliberate duplicate insert → unique violation.
+- schema.prisma Role enum + regenerated client.
+- seed.ts: 'SUPER_ADMIN' placeholder (admin@ email kept),
+  Role type widened.
+
+**RLS layer** (packages/database/src/rls.ts): SUPER_ADMIN has
+no policies of its own — withRlsContext downcasts it to ADMIN
+so all 19 existing policy sites keep working unchanged.
+app.user_role receives 'ADMIN' for super admins; the JWT and
+API layer keep the distinction. Role registries moved in
+lockstep: rls.ts ROLES + Role union, jwt.ts ROLES,
+api-types RoleSchema (+ new AssignableRoleSchema excluding
+SUPER_ADMIN — unused by the endpoint for now, kept as the
+documented contract), auth-client admin plugin now
+`roles: { ADMIN: adminAc, SUPER_ADMIN: adminAc },
+adminRoles: ['SUPER_ADMIN','ADMIN']` (better-auth 1.7 requires
+adminRoles entries to be keys in `roles`; ADMIN reuses the
+stock adminAc statement set — the package test caught this).
+
+**Users module** (apps/backend/src/users/):
+- roles.ts reworked: RANK total order with SUPER_ADMIN=4,
+  strict-inequality checks (rank equality never passes),
+  assertCanCreateRole + assertCanChangeRole with the three
+  client guards baked in.
+- users.service.ts: changeRole() (existence check, self-change
+  block, hierarchy assert, team-lead demotion guard, manager-
+  promotion auto-team, audited update) + create()/list()
+  widened for SUPER_ADMIN (org-owner class: acts like ADMIN on
+  team surfaces, sees all in list).
+- users.controller.ts: PATCH :id/role endpoint; Zod
+  safeParse helper mapping ZodError → 400 (was 500).
+- api-types: ChangeRoleDtoSchema/ChangeRoleDto; SignupDto
+  teamId relaxed from `.cuid()` to a non-empty string (seed
+  teams are `seed-team-<id>` — a permanent legit pattern the
+  old validator rejected).
+- apps/backend now declares zod (imports it directly for the
+  parse helper).
+
+**Live verification** (dev server, curl + issueJwt bridge):
+RC1 super promotes telecaller → ADMIN (200, audited).
+RC2 admin creating admin → 403. RC3 admin changes telecaller
+→ SALES_EXEC (200). RC4 assigning SUPER_ADMIN → 403 even from
+super. RC5 super changing own role → 403. RC6 staff changing
+roles → 403. RC7 manager touching an admin row → 403. RC8
+demoting a team-leading manager → 409 with the team named in
+the message. RC9 the ADMIN-promoted user signs in → 200
+(credential row untouched by role changes). Audit trail
+verified: user.create + user.changeRole rows with before/after.
+Test data deleted after the run — DB back to the 4 seeded
+users (1 super admin, 1 manager, 1 telecaller, 1 sales exec),
+1 team, audit rows intact.
+
+**Still open (pre-existing, tracked in Round 19):** jwks table
+for better-auth's /api/auth/token; JWT teamId claim refresh
+for managers.
+

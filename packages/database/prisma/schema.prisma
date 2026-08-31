@@ -5,10 +5,11 @@
 // User is shared between better-auth and the business layer (single source of truth).
 //
 // Datasource notes:
-// - url uses DIRECT_DATABASE_URL — bypasses PgBouncer so SET LOCAL session
-//   variables for RLS work reliably. Migrations also use this URL.
-// - For runtime queries via PgBouncer use `DATABASE_URL` + withRlsContext()
-//   which sets per-transaction session vars (POOL_MODE must be 'session').
+// - CLI datasource url lives in prisma.config.ts (Prisma 7: no url in schema).
+// - Direct migration URL: DIRECT_DATABASE_URL (owner role; bypasses PgBouncer
+//   so SET LOCAL session variables for RLS work reliably).
+// - Runtime queries via PgBouncer use DATABASE_URL + withRlsContext() through
+//   the @prisma/adapter-pg driver adapter (POOL_MODE must be 'session').
 //
 // Money: Decimal(12,2) — never Float.
 // IDs: cuid() — short, sortable, URL-safe.
@@ -25,7 +26,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DIRECT_DATABASE_URL")
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ datasource db {
 // ────────────────────────────────────────────────────────────────────────────
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   MANAGER
   SALES_EXEC
