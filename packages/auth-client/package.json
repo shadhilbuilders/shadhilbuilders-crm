@@ -11,6 +11,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./auth-client": {
+      "types": "./src/auth-client.ts",
+      "import": "./src/auth-client.ts",
+      "default": "./src/auth-client.ts"
     }
   },
   "scripts": {
