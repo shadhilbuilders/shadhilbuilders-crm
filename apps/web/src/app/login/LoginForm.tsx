@@ -112,13 +112,14 @@ export function LoginForm() {
         </Field>
 
         {error !== null && (
-          <Alert colorVariant="destructive" className="mb-4" role="alert">
-            {error}
-          </Alert>
+          // NOTE: @paalstack Alert renders text via title/description props —
+          // children are DISCARDED by the component (verified in dist source),
+          // which is why the error initially showed as an empty box.
+          <Alert colorVariant="destructive" title={error} className="mb-4" role="alert" />
         )}
 
         <Button type="submit" className="w-full" disabled={pending}>
-          {pending ? 'Signing in…' : 'Sign in'}
+          {pending ? 'Signing in...' : 'Sign in'}
         </Button>
       </form>
 
