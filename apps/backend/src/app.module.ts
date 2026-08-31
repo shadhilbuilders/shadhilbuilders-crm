@@ -1,7 +1,7 @@
 // NestJS 12 (locked per plan §1) — REST API for Shadhil Builders CRM.
 // Phase 1 scaffold: 9 modules wired with RLS context, JWT auth, OpenAPI docs.
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { LeadsModule } from './leads/leads.module';
@@ -41,7 +41,17 @@ import { RedisModule } from './redis/redis.module';
   providers: [
     // Default-deny: every route needs a valid JWT unless @Public() is set.
     // Phase 1 keeps most routes @Public() — login flow lands in Week 3.
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    //
+    // useFactory + inject: workaround for nestjs/nest#2130 where
+    // useClass for global guards occasionally leaves constructor-injected
+    // deps (here: Reflector) undefined at request time. Explicit inject
+    // forces the DI container to resolve Reflector before calling the
+    // factory.
+    {
+      provide: APP_GUARD,
+      useFactory: (reflector: Reflector) => new JwtAuthGuard(reflector),
+      inject: [Reflector],
+    },
   ],
 })
 export class AppModule {}

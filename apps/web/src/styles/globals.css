@@ -1,10 +1,71 @@
-/* Global styles — imports ui-tokens brand surface first, then Tailwind. */
-@import '@shadhil/ui-tokens/tokens.css';
-@import '@shadhil/ui-tokens/fonts.css';
+/* Global styles — shadcn theming pattern with shadhil-crm brand overrides.
+ *
+ * Cascade order (matters — last :root in source wins for CSS variables):
+ *   1. @paalstack/react-ui/all.css    — The complete library setup in one
+ *                                      file: shadcn default tokens (light
+ *                                      + dark), the extended semantic
+ *                                      tokens (info/warning/success/
+ *                                      danger/destructive), the @theme
+ *                                      inline mapping (--color-X → bg-X,
+ *                                      text-X, border-X, ring-X, etc.),
+ *                                      the 5 Base UI data-state variants
+ *                                      (data-open/closed/starting-style/
+ *                                      ending-style/side), the @custom-
+ *                                      variant dark trigger, the custom
+ *                                      Tailwind utilities (ps-step,
+ *                                      animate-caret-blink, native,
+ *                                      accordion keyframes), and the
+ *                                      sonner toast close-button rules.
+ *                                      Equivalent to importing the library's
+ *                                      `base.css` + `theme.css` +
+ *                                      `utilities.css` + `toast.css` in
+ *                                      order.
+ *   2. @shadhil/ui-tokens/brand.css  — Per-project brand overrides. EDIT
+ *                                      THIS for new projects. brand.css is
+ *                                      the only file that should change
+ *                                      per brand (primary, secondary,
+ *                                      surface). Everything else cascades
+ *                                      from all.css.
+ *   3. tailwindcss                    — base + utilities.
+ *
+ * Why this structure:
+ *
+ * The shadcn theming convention (https://ui.shadcn.com/docs/theming) is:
+ *   - Define your own CSS variables (--background, --primary, ...) in :root
+ *     and .dark
+ *   - Map them to Tailwind utilities via @theme inline
+ *   - Tailwind v4 generates the utility classes
+ *
+ * We follow that convention — but the @theme inline mapping lives in
+ * the library (via all.css), not in this file. brand.css owns the
+ * brand-specific variable overrides (shadhil-crm's navy + green +
+ * off-white). brand.css is the only file you touch for new projects.
+ * If you need to ADD extra @theme inline mappings beyond what the library
+ * provides, declare them here.
+ *
+ * The @source directive scans the library's source for component class
+ * names so Tailwind generates the right utility CSS for components you
+ * use (Card, Dialog, Tooltip, etc.) without needing to import the
+ * library's compiled styles.css.
+ */
+
+@import '@paalstack/react-ui/all.css';
+@import '@shadhil/ui-tokens/brand.css';
 @import 'tailwindcss';
 
 @source '../../node_modules/@paalstack/react-ui';
 
+/* Brand font wire-up — next/font in apps/web/src/app/layout.tsx loads
+ * Inter and sets `--font-inter` on <body>. This points Tailwind's
+ * `font-sans` utility at it. The library's theme.css already defaults
+ * `--font-sans` to `var(--font-inter, ...)`; we redeclare it here as
+ * an explicit contract between the font loader and the design system. */
+@theme inline {
+  --font-sans: var(--font-inter, system-ui, sans-serif);
+}
+
+/* Project-specific container utility — not in the shadcn default but used
+ * across shadhil-crm pages. Kept as a local override. */
 @utility container {
   @apply mx-auto px-4;
   @variant lg {
@@ -12,9 +73,10 @@
   }
 }
 
+
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
   html {
     -webkit-tap-highlight-color: transparent;

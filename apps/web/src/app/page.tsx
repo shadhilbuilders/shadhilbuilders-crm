@@ -1,4 +1,4 @@
-import { env } from '@/libs/env/env';
+import { env } from '@/lib/env/env';
 import { Button, Card, Heading, TypographyP } from '@paalstack/react-ui';
 
 // Force dynamic rendering: the wrapped Providers reads localStorage on mount

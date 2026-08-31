@@ -1,25 +1,28 @@
 ---
-description: PaalStack Next.js Starter conventions — @paalstack/react-ui consumption, project structure, data layer, forms, errors, styling
+description: PaalStack + shadhil-crm conventions for the web app — library consumption rules, project layout, env, providers, route handlers. App-specific; complements the global paalstack-react-ui skill.
 globs: **/*.tsx, **/*.ts
 alwaysApply: false
 ---
 
-# PaalStack Next.js Starter Conventions
+# shadhil-crm (apps/web) — Conventions
 
-This is an **application** that **consumes** the `@paalstack/react-ui` design system. You are building app features, not authoring library components. The library already provides Button, Card, Form, Dialog, DataTable, Select, Tabs, Toast, and 70+ more — search it before creating anything.
-
-Source of the design system: https://github.com/paalamugan/paalstack-react-ui
+This is a **Next.js 16 App Router app that consumes `@paalstack/react-ui`**.
+For library-side knowledge (component APIs, props/composition conventions,
+build, batched release) load the global `paalstack-react-ui` skill at
+`~/.hermes/skills/devops/paalstack-react-ui/SKILL.md`. Don't duplicate
+that here.
 
 ---
 
 ## Imports
 
 ```tsx
-// UI components — from the umbrella package
-import { Button, Card, Form, Box, HStack, TypographyH1, TypographyMuted, toast } from '@paalstack/react-ui';
+// UI components — umbrella package
+import { Button, Card, Form, Box, HStack, Heading, TypographyP, toast }
+  from '@paalstack/react-ui';
 
-// Server-safe utilities — from the /lib sub-path
-import { cn, logger } from '@paalstack/react-ui/lib';
+// Server-safe utilities — /lib sub-path
+import { cn, logger, HttpError, httpClient } from '@paalstack/react-ui/lib';
 
 // Hooks — client-only, separate package
 import { useDisclosure, useLocalStorage } from '@paalstack/react-hooks';
@@ -30,36 +33,29 @@ import { LuSettings, LuMoon, LuSun } from '@paalstack/react-icons/lu';
 
 ### Icons
 
-- Import from a family sub-path: `/lu` (Lucide, default) · `/hi2` · `/fa6` · `/tb` · `/md` · `/ri` · `/bi` · `/bs` · `/fi` · `/io5` · `/rx` · `/si` · `/pi` · `/vsc` · `/go`.
+- Sub-paths: `/lu` (Lucide, default) · `/hi2` · `/fa6` · `/tb` · `/md` · `/ri` · `/bi` · `/bs` · `/fi` · `/io5` · `/rx` · `/si` · `/pi` · `/vsc` · `/go`.
 - Never `import { LuUser } from '@paalstack/react-icons'` (root barrel).
-- Never install `lucide-react`, `heroicons`, or `react-icons` directly — the sub-path exists.
+- Never install `lucide-react`, `heroicons`, or `react-icons` directly.
 
 ### Never use native HTML elements in JSX
 
-Replace native tags with PaalStack components:
+Replace with PaalStack components:
 
 ```tsx
-// ❌ Native HTML — never use these
-<div> <header> <main> <section> <nav> <footer> <aside> <article>
-<h1> <h2> <h3> <h4> <h5> <h6> <p> <span> <strong> <ul> <ol> <li> <code> <blockquote> <button>
+// ❌ Never
+<div> <header> <main> <section> <nav> <footer> <h1>-<h6> <p> <span>
+// <button> <ul> <ol> <li> <code> <blockquote>
 
-// ✅ Layout — Box + semantic `as` prop
-<Box as="header" />   // <header>
-<Box as="main" />     // <main>
-<Box as="section" />  // <section>
-<Box as="nav" />      // <nav>
-<Box as="footer" />   // <footer>
+// ✅ Layout — Box + `as` prop
+<Box as="header" /> <Box as="main" /> <Box as="section" /> <Box as="nav" />
 
-// ✅ Typography — named exports (NOT Typography.* namespace — undefined in Turbopack)
-<TypographyH1 /> <TypographyH2 /> <TypographyH3 /> <TypographyH4 />
-<TypographyH5 /> <TypographyH6 /> <TypographyP /> <TypographyStrong />
-<TypographyCode /> <TypographyUL /> <TypographyOL /> <TypographyLI />
-<TypographyBlockQuote /> <TypographyLead /> <TypographyMuted /> <TypographySubtle />
-<TypographySmall /> <TypographyLarge />
+// ✅ Typography — named exports (the Typography.* namespace is undefined
+//    under Turbopack)
+<TypographyH1 /> <TypographyH2 /> <TypographyH3 />
+<TypographyP /> <TypographyMuted /> <TypographyCode />
 
-// ✅ Heading / Text — polymorphic `as` override or inline variants
-<Heading as="h2" />   // dynamic heading level
-<Text as="span" />    // inline text fragment
+// ✅ Dynamic heading level — `as` override on Heading
+<Heading as="h2" />
 
 // ✅ Button — replaces <button>
 <Button />
@@ -67,189 +63,158 @@ Replace native tags with PaalStack components:
 
 ### Styling
 
-- Use semantic design tokens: `bg-primary`, `text-muted-foreground`, `border-border`, `bg-accent`, `bg-card`, `bg-background`, `bg-sidebar`.
-- No raw hex colors when a semantic token exists.
-- Extend components with `className`; merge via `cn()` from `@paalstack/react-ui/lib`.
-- Dark mode is handled by `NextThemeProvider` in `src/providers/theme-provider.tsx` — test both themes.
+- Semantic tokens: `bg-primary`, `text-muted-foreground`, `border-border`,
+  `bg-accent`, `bg-card`, `bg-background`, `bg-sidebar`. No raw hex when
+  a token exists.
+- Extend with `className`; merge via `cn` from `@paalstack/react-ui/lib`.
+- Brand overrides for shadhil-crm live in
+  `packages/ui-tokens/brand.css` — edit there for primary/secondary/
+  surface, not in `globals.css`.
+- Cascade in `src/styles/globals.css` is intentional and order-sensitive:
+  `@paalstack/react-ui/all.css` → `@shadhil/ui-tokens/brand.css` →
+  `tailwindcss`. Do not reorder.
 
 ---
 
-## Project structure (follow this pattern)
+## Project layout (ground truth, August 2026)
 
 ```
-src/
-├── app/                    # Next.js App Router routes
-│   ├── layout.tsx          # Root layout — Providers + SiteHeader
-│   ├── (route)/page.tsx    # Pages
-│   └── api/                # Route Handlers (use withApiErrorHandling)
-├── apis/                   # HTTP layer — one module per endpoint group
-│   └── example/
-│       ├── api.ts          # functions mapping 1:1 to endpoints
-│       ├── type.ts         # request/response types
-│       └── index.ts        # barrel
-├── services/               # Business logic above the API layer
-│   └── api/service.ts      # orchestrates apis, transforms, domain errors
-├── hooks/
-│   ├── queries/            # TanStack Query hooks (useXQuery)
-│   │   └── useExampleQuery/{hook.ts,index.ts}
-│   ├── mutations/          # TanStack Query mutations (useXMutation)
-│   │   └── useExampleMutation/{hook.ts,index.ts}
-│   └── useAppStore/        # Zustand store access
-├── schemas/                # Zod schemas (react-hook-form + zodResolver)
-│   └── example/{schema.ts,index.ts}
-├── features/               # Feature-scoped modules (auth, billing, ...)
-│   └── auth/{hooks,types,index.ts}
+apps/web/src/
+├── app/                          # Next.js App Router
+│   ├── layout.tsx                # Root layout — Inter font, <Providers>, <SiteHeader>
+│   ├── page.tsx                  # Phase-1 landing (force-dynamic)
+│   ├── not-found.tsx             # (force-dynamic)
+│   └── api/
+│       ├── auth/[...all]/route.ts    # better-auth catch-all
+│       ├── health/route.ts           # GET /api/health
+│       └── docs/page.tsx             # API docs landing
 ├── components/
-│   ├── ui/                 # App-specific UI wrappers (EmptyState, StatCard, ...)
-│   ├── shared/             # Cross-feature components (ConfirmDialog, AppErrorBoundary)
-│   └── SiteHeader/         # Feature components
-├── constants/              # ROUTES, app config
-├── enums/                  # Status enums
-├── libs/                   # Infrastructure (env, axios, query-client, logger, error, db, supabase, rbac, rate-limit)
-├── providers/              # Providers composition
-├── stores/                 # Zustand stores
-├── types/                  # Shared types
-└── utils/                  # Pure helpers
+│   └── SiteHeader.tsx            # Phase-1 placeholder header
+├── lib/
+│   ├── auth.ts                   # Re-exports { auth, authClient } from @shadhil/auth
+│   ├── env/{env.ts,index.ts}     # @t3-oss/env-nextjs + zod (see "Env")
+│   └── query-client/{lib.ts,index.ts}  # TanStack QueryClient singleton
+├── providers/
+│   ├── providers.tsx             # Client provider tree
+│   ├── query-provider.tsx        # QueryClientProvider wrapper
+│   └── index.ts                  # barrel
+└── styles/
+    └── globals.css               # Cascade entry point
 ```
 
-**Module pattern:** each module is a folder with an implementation file (`component.tsx`, `hook.ts`, `schema.ts`, `api.ts`, `store.ts`) plus an `index.ts` barrel that re-exports. Import via the barrel (`@/components/ExampleCard`, `@/hooks/queries/useExampleQuery`).
+**This is the scaffold that exists today.** Folders like `src/apis/`,
+`src/services/`, `src/hooks/queries/`, `src/hooks/mutations/`,
+`src/schemas/`, `src/features/`, `src/stores/`, `src/types/`,
+`src/utils/`, `src/components/ui/`, `src/components/shared/`, and
+`src/libs/{axios,error,logger,db,supabase,rbac,rate-limit}/` are
+**planned but not built**. Do not create them speculatively — when
+Phase 2 needs them, add a single module at a time and update this rule.
 
 ---
 
-## Data layer
+## Env — read only via `@/libs/env`
 
-### Server state → TanStack Query v5
+- Never read `process.env` directly. Import `env` from
+  `@/libs/env` (which re-exports from `./env`).
+- Schema: `src/libs/env/env.ts`. Add new vars there with a Zod schema.
+  Server vars in the `server` block; `NEXT_PUBLIC_*` in `client`.
+- `runtimeEnv` MUST list every var (tsc strict — `createEnv` errors
+  on missing entries).
+- `skipValidation: process.env.SKIP_ENV_VALIDATION === 'true'` exists
+  for build-time tooling; do not set it in app code.
+- The shared `@shadhil/auth` package depends on the same `BETTER_AUTH_*`,
+  `JWT_*`, `DIRECT_DATABASE_URL` keys. Both apps must agree or
+  `pnpm dev` will fail at boot — see `apps/web/.env` for the source.
 
-```tsx
-// src/hooks/queries/useExampleQuery/hook.ts
-import { useQuery } from '@tanstack/react-query';
-import { getExampleItems } from '@/apis/example';
+## Providers — single tree in `src/providers/providers.tsx`
 
-export const EXAMPLE_QUERY_KEY = ['example', 'items'] as const;
+Current order (matters for context inheritance):
 
-export const useExampleQuery = (page = 1, pageSize = 10) =>
-  useQuery({
-    queryKey: [...EXAMPLE_QUERY_KEY, { page, pageSize }],
-    queryFn: () => getExampleItems(page, pageSize),
-  });
-```
+1. `NextThemeProvider` — `next-themes` wrapper, SSR-safe, drives
+   `.dark` on `<html>`. Use this, **not** the homegrown `ThemeProvider`
+   from `@paalstack/react-ui` — that one calls `localStorage.getItem`
+   in a `useState` initializer and crashes SSR.
+2. `QueryProvider` — `QueryClientProvider` over the singleton from
+   `@/libs/query-client` (5 min `staleTime` / `gcTime`, no retries,
+   focus-refetch in production only).
+3. `children`.
 
-- Define a `const QUERY_KEY` per query and reuse it for invalidation.
-- Mutations invalidate the related query key in `onSuccess`.
+`<Toaster />` is imported but not yet mounted — that's a known TODO
+from Phase 1. When you wire it, mount it inside `Providers` (theme
+context is needed for sonner to re-skin on toggle).
 
-```tsx
-// src/hooks/mutations/useExampleMutation/hook.ts
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createExampleItem } from '@/apis/example';
-import { EXAMPLE_QUERY_KEY } from '@/hooks/queries/useExampleQuery';
+## Dynamic rendering for theme persistence
 
-export const useCreateExampleMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: createExampleItem,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: EXAMPLE_QUERY_KEY });
-    },
-  });
-};
-```
-
-### Client state → Zustand v5
-
-Use Zustand (with `devtools` + `persist` middleware) for global UI state — loading, notifications, theme, sidebar, preferences. Access via a hook in `src/hooks/useAppStore/`. Do not use Zustand for server data.
-
-### HTTP → Axios (`src/libs/axios/client.ts`)
-
-- Use the pre-configured `apiClient` (base URL from env, JSON headers, 30s timeout, auth/error interceptors).
-- Each `src/apis/*/api.ts` function maps to one endpoint and returns `response.data`.
-
-### Env → `@t3-oss/env-nextjs` (`src/libs/env/env.ts`)
-
-- Never read `process.env` directly. Add new vars to `src/libs/env/env.ts` with a Zod schema, then import `env` from `@/libs/env`.
-- Server-only vars go in `server`, client vars (prefixed `NEXT_PUBLIC_`) in `client`.
-
----
-
-## Forms
-
-Use `Form` + `react-hook-form` + `zod` + `@hookform/resolvers/zod`.
+The `Providers` subtree reads `localStorage` on mount (theme
+persistence via `next-themes`). Next 16's static prerender chokes on
+that. Any page that renders inside `Providers` must opt out:
 
 ```tsx
-'use client';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { Form, Button, Box, HStack } from '@paalstack/react-ui';
-import { loginSchema, type LoginFormValues } from '@/schemas/auth';
-
-const form = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
-
-<Form
-  form={form}
-  onSubmit={handleSubmit}
-  fields={[
-    { type: 'input', name: 'email', label: 'Email', inputType: 'email', placeholder: 'you@example.com', required: true },
-    { type: 'input', name: 'password', label: 'Password', inputType: 'password', required: true },
-  ]}
-  hideResetButton
-  SubmitButton={({ isSubmitting, onFormSubmit }) => (
-    <Button type="submit" onClick={onFormSubmit} isLoading={isSubmitting} className="w-full">
-      {isSubmitting ? 'Signing in...' : 'Sign in'}
-    </Button>
-  )}
-/>
+export const dynamic = 'force-dynamic';
 ```
 
-- Schemas live in `src/schemas/<feature>/schema.ts`; export the inferred type (`z.infer<typeof schema>`).
-- Use `Field` + `Label` for labels/errors, or the `fields` array on `Form`.
-- For custom submit buttons use the `SubmitButton` render prop, or `hideSubmitButton hideResetButton` with your own children.
+See `src/app/page.tsx` and `src/app/not-found.tsx`. Apply the same to
+every new page until we remove the theme-provider localStorage read.
 
----
-
-## Errors
-
-Use the typed error system in `src/libs/error/error.ts`:
-
-- `AppErrorBase` hierarchy: `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError`, `DatabaseError`, `ExternalServiceError`, `RateLimitedError`.
-- Each maps to an HTTP status via `ERROR_STATUS_MAP`.
-- In Route Handlers, wrap with `withApiErrorHandling` and return `apiSuccess` / `apiError`:
+## Route handlers
 
 ```tsx
-import { withApiErrorHandling, apiSuccess } from '@/libs/api';
-import { UnauthorizedError } from '@/libs/error';
-
-export const GET = withApiErrorHandling(async (request: NextRequest) => {
-  const { user, error } = await requireAuth();
-  if (error) throw new UnauthorizedError();
-  return apiSuccess(await listItems(user.id));
-});
+// src/app/api/<name>/route.ts
+export const GET = () => Response.json({ ok: true });
+export const POST = async (req: Request) => { /* ... */ };
 ```
 
-- Throw the typed errors; never return raw 500 HTML.
+- Better-auth lives at `src/app/api/auth/[...all]/route.ts` via
+  `toNextJsHandler(auth.handler)` from `better-auth/next-js`. The
+  `auth` instance is re-exported from `@shadhil/auth` via
+  `src/lib/auth.ts` — both apps share the same instance.
+- `/api/health` is the canonical liveness probe — extend, don't
+  duplicate.
+- No `withApiErrorHandling` / `apiSuccess` / typed `AppError*` wrapper
+  exists yet in apps/web. The Nest backend has one
+  (`apps/backend/src/common/error/`); **don't** assume Next route
+  handlers inherit it. Until the wrapper lands here, throw
+  `HttpError` from `@paalstack/react-ui/lib` or return `Response.json(
+  { error }, { status })` directly.
 
----
+## Env-aware backend calls
 
-## Providers
-
-- `src/providers/providers.tsx` composes `PostHogProvider` → `ThemeProvider` → `QueryProvider`.
-- `ThemeProvider` wraps `NextThemeProvider` from `@paalstack/react-ui` (includes ToastProvider — no separate `<Toaster>`).
-- Add new providers to `src/providers/providers.tsx`, not the root layout.
+`NEXT_PUBLIC_API_BASE_URL` points at the Nest backend (default
+`http://localhost:8080`). Use the `httpClient` from
+`@paalstack/react-ui/lib` or your own axios/fetch — but always go
+through the env var, never hardcode `localhost`.
 
 ---
 
 ## Do Not
 
-- Duplicate Button, Input, Dialog, Table, Form, Select, Checkbox, or common hooks the library provides.
-- Write new `useMediaQuery`, `useLocalStorage`, `useDisclosure` — `@paalstack/react-hooks` covers them.
-- Import the `@paalstack/react-icons` root barrel or install icon packages directly.
+- Author library components here. This is a consumer app — push changes
+  to `paalstack-react-ui` upstream.
+- Duplicate Button/Input/Dialog/Table/Form/Select/Checkbox or the common
+  hooks the library already provides.
+- Write new `useMediaQuery`, `useLocalStorage`, `useDisclosure` —
+  `@paalstack/react-hooks` covers them.
+- Import the `@paalstack/react-icons` root barrel or install icon
+  packages directly.
 - Use raw hex colors when semantic tokens exist.
 - Use native HTML elements in JSX.
 - Read `process.env` directly — use `env` from `@/libs/env`.
-- Mix Zustand and TanStack Query for the same data.
-- Author library components here — this is a consumer app.
+- Use the homegrown `ThemeProvider` from `@paalstack/react-ui` — it
+  crashes SSR. Use `NextThemeProvider`.
+- Skip `export const dynamic = 'force-dynamic'` on pages wrapped by
+  `Providers`.
+- Create `src/apis/`, `src/hooks/queries/`, `src/hooks/mutations/`,
+  `src/schemas/`, `src/features/`, `src/stores/`, `src/types/`,
+  `src/utils/`, `src/components/ui/`, `src/components/shared/`,
+  `src/libs/axios/`, `src/libs/error/`, or `src/libs/logger/`
+  directories until the first feature actually needs them. Update
+  this rule when you do.
 
 ---
 
-## Docs
+## Reference
 
-The design system's full catalogs live in the react-ui monorepo `docs/`:
-COMPONENT_CATALOG.md, HOOKS_CATALOG.md, ICONS_CATALOG.md, UTILITIES_CATALOG.md, TYPES_CATALOG.md, DESIGN_SYSTEM.md, APPLICATION_GUIDE.md.
+- Library conventions, build, release:
+  `~/.hermes/skills/devops/paalstack-react-ui/SKILL.md`
+- Component catalog: `references/component-inventory.md` (same skill)
+- Commit message format: `.cursor/rules/commit-message.mdc`

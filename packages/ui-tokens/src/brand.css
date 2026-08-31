@@ -1,0 +1,30 @@
+/**
+ * @shadhil/ui-tokens — brand.css
+ *
+ * Per-project brand overrides. This is the ONLY file you edit when
+ * starting a new project. Everything else cascades from
+ * `@paalstack/react-ui/all.css` (which the consumer imports in
+ * globals.css BEFORE this file). Last :root declaration wins.
+ *
+ * Shadhil Builders CRM brand values (plan §4):
+ *   --primary       navy   #001a4c → oklch(0.238 0.099 260.3)
+ *   --secondary     green  #62b132 → oklch(0.684 0.178 136.1)
+ */
+
+:root {
+  /* ── Brand slots (override these for a new project) ─────────────── */
+  --primary: oklch(0.238 0.099 260.3);
+  --primary-foreground: oklch(0.971 0.009 84.6);
+
+  --secondary: oklch(0.684 0.178 136.1);
+  --secondary-foreground: oklch(0.145 0 0);
+}
+
+.dark {
+  /* ── Brand slots in dark mode (override these for a new project) ── */
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+}

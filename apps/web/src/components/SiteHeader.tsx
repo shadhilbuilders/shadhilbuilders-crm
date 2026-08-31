@@ -1,7 +1,7 @@
 // Minimal header — Phase 1 placeholder. Real nav comes in Phase 2.
 import Link from 'next/link';
 
-import { env } from '@/libs/env/env';
+import { env } from '@/lib/env/env';
 
 export const SiteHeader = () => {
   return (

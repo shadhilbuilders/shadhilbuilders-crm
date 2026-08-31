@@ -1,6 +1,6 @@
 // OpenAPI docs — proxy to NestJS Swagger UI at /api/docs.
 // This is the BFF rewrite target (see next.config.ts).
-import { env } from '@/libs/env/env';
+import { env } from '@/lib/env/env';
 import { Button, Heading, TypographyP } from '@paalstack/react-ui';
 
 export const dynamic = 'force-dynamic';

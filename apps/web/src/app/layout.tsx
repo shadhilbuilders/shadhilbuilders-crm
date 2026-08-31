@@ -1,20 +1,20 @@
 import { cn } from '@paalstack/react-ui/lib';
 import { type Metadata, type Viewport } from 'next';
-import { IBM_Plex_Sans } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import NextTopLoader from 'nextjs-toploader';
 import { type ReactNode } from 'react';
 
 import { SiteHeader } from '@/components/SiteHeader';
 import { Providers } from '@/providers';
 
-import '@shadhil/ui-tokens/fonts.css';
-import '@shadhil/ui-tokens/tokens.css';
 import '@/styles/globals.css';
 
-// IBM Plex Sans — locked brand font per plan §4.
-// Inter and Geist are explicitly excluded.
-const ibmPlexSans = IBM_Plex_Sans({
-  variable: '--font-ibm-plex-sans',
+// Inter — brand font. Loaded via next/font (self-hosted, preloaded,
+// no external Google Fonts CDN requests). The `--font-inter` CSS
+// variable that next/font sets on <body> is wired to Tailwind's
+// `font-sans` utility via `--font-sans` in apps/web/src/styles/globals.css.
+const inter = Inter({
+  variable: '--font-inter',
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
   display: 'swap',
@@ -64,7 +64,7 @@ type RootLayoutProps = {
 const RootLayout = ({ children }: RootLayoutProps) => {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(ibmPlexSans.variable, 'antialiased font-sans')}>
+      <body className={cn(inter.variable, 'antialiased font-sans')}>
         <NextTopLoader showSpinner={false} height={5} color="#62b132" />
         <Providers>
           <SiteHeader />

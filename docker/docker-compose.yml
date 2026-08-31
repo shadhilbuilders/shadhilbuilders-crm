@@ -47,7 +47,14 @@ services:
       retries: 5
 
   pgbouncer:
-    image: bitnami/pgbouncer:1.23.1
+    # edoburu/pgbouncer — actively maintained, CVE-patched upstream images.
+    # Bitnami moved bitnami/* behind a paid subscription in Aug 2025; the
+    # bitnamilegacy/* namespace is frozen at the version pinned and never
+    # receives security updates. edoburu is a thin Debian + official
+    # PgBouncer image, ~20 MB, and respects a mounted pgbouncer.ini as-is
+    # (so docker/pgbouncer.ini + docker/userlist.txt below keep working
+    # unchanged).
+    image: edoburu/pgbouncer:1.25.2-p0
     container_name: shadhil-pgbouncer
     restart: unless-stopped
     environment:
