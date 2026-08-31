@@ -1,1 +1,13 @@
-"shadhil" "md5d7f2d4c4c7f6e9a1b2c3d4e5f6a7b8c"
+; PgBouncer auth file — SCRAM (auth_type = scram-sha-256 in pgbouncer.ini).
+; SECOND-ROUND AUDIT (AR-2c): userlist previously held a stale md5 verifier
+; that did not match POSTGRES_PASSWORD and could never authenticate under
+; scram-sha-256. With plaintext entries, PgBouncer derives the SCRAM
+; verifier on the fly (supported when auth_type = scram-sha-256) and stays
+; in sync with whatever POSTGRES_PASSWORD the DB actually has.
+;
+; This file MUST be regenerated/rotated when POSTGRES_PASSWORD changes.
+; Dev-only value below matches docker-compose dev defaults. For the VPS,
+; mount a generated userlist via Coolify volumes instead of this file.
+;
+"shadhil" "shadhil"
+"shadhil_app" "shadhil"

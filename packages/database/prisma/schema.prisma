@@ -178,6 +178,11 @@ model User {
   @@index([teamId])
   @@index([role])
   @@index([email])
+  banned         Boolean?
+  banReason      String?
+  banExpires     DateTime?
+
+  // better-auth admin() plugin fields (AR-8: required by admin plugin user model)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -581,6 +586,8 @@ model Account {
   userId       String
   accountId    String
   providerId   String
+  // better-auth >=1.7 writes issuer on credential accounts ("local:credential")
+  issuer       String?
   accessToken  String?   @db.Text
   refreshToken String?   @db.Text
   idToken      String?   @db.Text

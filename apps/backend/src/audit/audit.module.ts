@@ -10,13 +10,11 @@
 import { Controller, Get, Module, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditLogQueryDto } from '@shadhil/api-types';
-import { Public } from '../auth/public.decorator';
 
 @ApiTags('audit')
 @ApiBearerAuth('jwt')
 @Controller('audit')
 class AuditController {
-  @Public()
   @Get()
   query(@Query() _q: AuditLogQueryDto): { message: string; phase: number } {
     return { message: 'Audit query lands in Week 9', phase: 1 };

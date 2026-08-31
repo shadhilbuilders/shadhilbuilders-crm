@@ -26,7 +26,7 @@ services:
       POSTGRES_PASSWORD: shadhil
       POSTGRES_DB: shadhil_crm
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -54,10 +54,17 @@ services:
     # PgBouncer image, ~20 MB, and respects a mounted pgbouncer.ini as-is
     # (so docker/pgbouncer.ini + docker/userlist.txt below keep working
     # unchanged).
-    image: edoburu/pgbouncer:1.25.2-p0
+    image: bitnamilegacy/pgbouncer:1.23.1
     container_name: shadhil-pgbouncer
     restart: unless-stopped
     environment:
+      # edoburu wrapper requires the postgres password to health-probe the
+      # server pool. AR-2c: match POSTGRES_PASSWORD (dev default).
+      POSTGRESQL_USERNAME: shadhil
+      POSTGRESQL_PASSWORD: shadhil
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DATABASE: shadhil_crm
       PGBOUNCER_AUTH_TYPE: scram-sha-256
       PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
       # eng review A5: MUST be 'session'. Transaction pooling silently
@@ -70,7 +77,7 @@ services:
       PGBOUNCER_SERVER_IDLE_TIMEOUT: 600
       PGBOUNCER_SERVER_LIFETIME: 3600
     ports:
-      - "6432:6432"
+      - "127.0.0.1:6432:6432"
     volumes:
       - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
@@ -83,7 +90,7 @@ services:
     container_name: shadhil-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -104,12 +111,14 @@ services:
       API_PORT: "8080"
       # Direct (admin) URL — bypasses PgBouncer. Used by migrations + RLS
       # session variable writes.
+      # AR-2c: app connects as the NON-OWNER role (RLS-enforced). Owner role
+      # `shadhil` is migrations/seed only (DIRECT_DATABASE_URL).
       DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@postgres:5432/shadhil_crm?schema=public
-      # Pooled URL — normal traffic goes through PgBouncer.
-      DATABASE_URL: postgresql://shadhil:shadhil@pgbouncer:6432/shadhil_crm?schema=public
+      DATABASE_URL: postgresql://shadhil_app:shadhil@pgbouncer:6432/shadhil_crm?schema=public
       # eng review A5: MUST be 'session' — NestJS boot-time check fails otherwise.
       POOL_MODE: session
       REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: https://crm.shadhilbuilders.in,http://localhost:3000,http://localhost:8081
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required (min 32 chars)}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm-api.shadhilbuilders.in}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (min 32 chars)}

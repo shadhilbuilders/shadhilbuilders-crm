@@ -6,13 +6,11 @@
 // one NestJS replica processes each tick.
 import { Controller, Get, Module } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Public } from '../auth/public.decorator';
 
 @ApiTags('reminders')
 @ApiBearerAuth('jwt')
 @Controller('reminders')
 class RemindersController {
-  @Public()
   @Get()
   list(): { message: string; phase: number } {
     return { message: 'Reminder cron lands in Week 7', phase: 1 };

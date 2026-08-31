@@ -4,12 +4,28 @@
 // Pattern (eng review A4): verify on every NestJS request, then SET LOCAL
 // app.user_id / app.user_role / app.user_team_id in a transaction so RLS
 // policies in Postgres can filter per request.
+//
+// SECOND-ROUND AUDIT (AR-2, 2026-08-31):
+//   - Role values are EXACTLY the Prisma `Role` enum (UPPERCASE): ADMIN |
+//     MANAGER | SALES_EXEC | TELECALLER. The policies compare
+//     `current_setting('app.user_role') = 'ADMIN'` etc. — a lowercase or
+//     differently-spelled value would filter every row for every non-admin.
+//   - A token WITHOUT an explicit role claim is now REJECTED (was: silently
+//     defaulted to 'telecaller', which let role-less tokens read/write any
+//     telecaller-scoped row).
 
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
+// Keep in lockstep with packages/database/prisma/schema.prisma enum Role.
+// (Imported from @shadhil/api-types would create a package cycle; a local
+// union mirror + a compile-time exhaustiveness check in api-types tests
+// covers it. roles.ts is the single runtime source of truth.)
+export const ROLES = ['ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'] as const;
+export type Role = (typeof ROLES)[number];
+
 export type JwtPayload = {
   sub: string; // user id
-  role: 'admin' | 'manager' | 'telecaller' | 'sales_executive';
+  role: Role;
   teamId: string | null;
   email: string;
   iat: number;
@@ -28,9 +44,23 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+/** Validate a raw role claim against the Prisma Role enum (AR-2). */
+function parseRole(raw: unknown): Role {
+  if (typeof raw !== 'string') {
+    throw new Error('JWT missing role claim');
+  }
+  const normalized = raw.trim().toUpperCase();
+  if (!(ROLES as readonly string[]).includes(normalized)) {
+    throw new Error(`JWT role "${raw}" is not a valid Role enum value`);
+  }
+  return normalized as Role;
+}
+
 /**
  * Verify a JWT issued by better-auth's jwt() plugin and return a typed payload.
  * Throws on invalid/expired tokens — caller maps to 401.
+ * Also throws when the token lacks a role claim or carries a role that is not
+ * exactly one of the Prisma enum values (no silent defaults — AR-2).
  */
 export async function verifyJwt(token: string): Promise<JwtPayload> {
   const { payload } = await jwtVerify(token, getSecret(), {
@@ -55,7 +85,7 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
 
   return {
     sub: payload.sub,
-    role: (roleRaw as JwtPayload['role']) ?? 'telecaller',
+    role: parseRole(roleRaw),
     teamId: teamRaw ?? null,
     email: emailRaw,
     iat: payload.iat ?? 0,

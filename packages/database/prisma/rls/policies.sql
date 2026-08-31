@@ -14,6 +14,14 @@
 --
 -- ENG REVIEW A5: POOL_MODE must be 'session' for SET LOCAL to persist
 -- across the transaction. Boot-check.ts fails startup otherwise.
+--
+-- SECOND-ROUND AUDIT AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY on every
+-- business table. Without it, the TABLE OWNER (and any role with the
+-- table's ownership chain, e.g. the original `shadhil` superuser-adjacent
+-- role) silently bypasses every policy below. The application connects as
+-- the non-owner role `shadhil_app` (created in docker/postgres-init/
+-- 00-init.sql); the owner role is reserved for migrations/seed via
+-- DIRECT_DATABASE_URL.
 -- ────────────────────────────────────────────────────────────────────────────
 
 -- ── Lead ───────────────────────────────────────────────────────────────────
@@ -314,3 +322,52 @@ CREATE POLICY consent_insert_owner ON "Consent"
         )
     )
   );
+-- ────────────────────────────────────────────────────────────────────────────
+-- AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY.
+-- ENABLE alone does NOT constrain the table owner — FORCE does. These run
+-- after all policies; ALTER TABLE on an existing table is idempotent-safe
+-- when wrapped in a guard via DO blocks (no-op if already forced).
+-- Also grants the non-owner app role access (00-init.sql creates the role).
+-- ────────────────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'Lead','Activity','SiteVisit','Message','Booking','Reminder',
+    'Notification','PushSubscription','PushNotification','AuditLog',
+    'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
+    'Phase','Unit'
+  ]
+  LOOP
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
+  END LOOP;
+END
+$$;
+
+-- App role permissions: it owns nothing, so it needs SELECT/INSERT/UPDATE/
+-- DELETE grants on every business table + sequences + Session/Account/
+-- Verification (auth tables written by better-auth through the pooled path).
+-- The migration (not this file) is the canonical application point when run
+-- via prisma migrate; this block ALSO lives in the migration wrapper so a
+-- plain `psql -f policies.sql` works identically.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'Lead','Activity','SiteVisit','Message','Booking','Reminder',
+    'Notification','PushSubscription','PushNotification','AuditLog',
+    'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
+    'Phase','Unit'
+  ]
+  LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);
+  END LOOP;
+END
+$$;
+
+-- Sequences (cuid is app-side; serial/backing sequences for safety)
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shadhil_app;
+
+-- Auth tables (better-auth writes these on the pooled URL too)
+GRANT SELECT, INSERT, UPDATE, DELETE ON "User", "Session", "Account", "Verification" TO shadhil_app;

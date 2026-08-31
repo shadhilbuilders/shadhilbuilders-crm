@@ -1,23 +1,20 @@
-// ────────────────────────────────────────────────────────────────────────────
-// Shadhil Builders CRM — Placeholder seed
-// ────────────────────────────────────────────────────────────────────────────
-// Creates 1 admin, 1 manager (with their own team), 1 telecaller and 1
-// sales exec (both members of the manager's team). Reads credentials from
-// the SEED_*_EMAIL/NAME/PASSWORD env vars defined in .env.example §17 input #5.
-//
-// NOTE: This is a placeholder. better-auth's User.create() handles password
-// hashing via its own API; for the seed we use a simple bcrypt-equivalent
-// placeholder via Node's crypto.scrypt so this works without a better-auth
-// server running. The real seed will live in apps/api and use better-auth.
-// ────────────────────────────────────────────────────────────────────────────
-
-import 'dotenv/config';
 import { randomBytes, scryptSync } from 'node:crypto';
-import { prisma } from './index.js';
+import { prisma } from './index';
+
+// ────────────────────────────────────────────────────────────────────────────
+// Shadhil Builders CRM — bootstrap seed.
+// AR-8/B4b (2026-08-31): credentials are created in the EXACT shape better-auth
+// 1.7 expects at sign-in (dist/api/routes/sign-in.mjs:320):
+//   account.accountId === user.id  AND  account.issuer === 'local:credential'
+// Passwords use @better-auth/utils scrypt params (N=16384, r=16, p=1, dkLen=64,
+// NFKC-normalized) stored as "salt:key".
+// Placeholder fallbacks per plan §17 Input #5 — rotate on first login (T-S).
+// ────────────────────────────────────────────────────────────────────────────
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
+  const normalized = password.normalize('NFKC');
+  const hash = scryptSync(normalized, salt, 64, { N: 16384, r: 16, p: 1, maxmem: 128 * 16384 * 16 * 2 }).toString('hex');
   return `${salt}:${hash}`;
 }
 
@@ -28,9 +25,12 @@ interface SeedUser {
 }
 
 function readSeedUser(prefix: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC'): SeedUser {
-  const email = process.env[`SEED_${prefix}_EMAIL`];
-  const name = process.env[`SEED_${prefix}_NAME`];
-  const password = process.env[`SEED_${prefix}_PASSWORD`];
+  // Plan §17 Input #5: fall back to documented placeholder users so a fresh
+  // clone can seed before the client roster arrives. Placeholders MUST be
+  // rotated on first login (plan task T-S).
+  const email = process.env[`SEED_${prefix}_EMAIL`] ?? `${prefix.toLowerCase()}@shadhilbuilders.in`;
+  const name = process.env[`SEED_${prefix}_NAME`] ?? `${prefix[0]}${prefix.slice(1).toLowerCase()} (placeholder)`;
+  const password = process.env[`SEED_${prefix}_PASSWORD`] ?? `${prefix.toLowerCase()}_placeholder_pw`;
 
   if (!email || !name || !password) {
     throw new Error(
@@ -39,6 +39,49 @@ function readSeedUser(prefix: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC')
   }
 
   return { email, name, password };
+}
+
+type Role = 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC';
+
+/**
+ * Upsert user, then upsert the credential account keyed on user.id (the
+ * better-auth 1.7 sign-in contract: sign-in.mjs requires
+ * account.accountId === user.id && account.issuer === 'local:credential').
+ * Password is refreshed on every seed run so re-seeding after a password
+ * rotation works.
+ */
+async function upsertUser(
+  user: SeedUser,
+  role: Role,
+  teamId?: string,
+) {
+  const dbUser = await prisma.user.upsert({
+    where: { email: user.email },
+    update: { role, ...(teamId ? { teamId } : {}) },
+    create: {
+      email: user.email,
+      name: user.name,
+      role,
+      teamId,
+      emailVerified: true,
+    },
+  });
+
+  await prisma.account.upsert({
+    where: {
+      providerId_accountId: { providerId: 'credential', accountId: dbUser.id },
+    },
+    update: { password: hashPassword(user.password), issuer: 'local:credential' },
+    create: {
+      accountId: dbUser.id,
+      providerId: 'credential',
+      issuer: 'local:credential',
+      userId: dbUser.id,
+      password: hashPassword(user.password),
+    },
+  });
+
+  return dbUser;
 }
 
 async function main() {
@@ -56,24 +99,7 @@ async function main() {
   const salesExec = readSeedUser('SALES_EXEC');
 
   // ── Manager first so we have a teamId ────────────────────────────────────
-  const managerUser = await prisma.user.upsert({
-    where: { email: manager.email },
-    update: {},
-    create: {
-      email: manager.email,
-      name: manager.name,
-      role: 'MANAGER',
-      emailVerified: true,
-      // password lives in better-auth Account, not on User — placeholder here
-      accounts: {
-        create: {
-          accountId: manager.email,
-          providerId: 'credential',
-          password: hashPassword(manager.password),
-        },
-      },
-    },
-  });
+  const managerUser = await upsertUser(manager, 'MANAGER');
 
   // ── Team owned by the manager ────────────────────────────────────────────
   const team = await prisma.team.upsert({
@@ -86,64 +112,10 @@ async function main() {
     },
   });
 
-  // ── Admin (no team) ───────────────────────────────────────────────────────
-  await prisma.user.upsert({
-    where: { email: admin.email },
-    update: {},
-    create: {
-      email: admin.email,
-      name: admin.name,
-      role: 'ADMIN',
-      emailVerified: true,
-      accounts: {
-        create: {
-          accountId: admin.email,
-          providerId: 'credential',
-          password: hashPassword(admin.password),
-        },
-      },
-    },
-  });
-
-  // ── Telecaller ────────────────────────────────────────────────────────────
-  await prisma.user.upsert({
-    where: { email: telecaller.email },
-    update: { teamId: team.id },
-    create: {
-      email: telecaller.email,
-      name: telecaller.name,
-      role: 'TELECALLER',
-      teamId: team.id,
-      emailVerified: true,
-      accounts: {
-        create: {
-          accountId: telecaller.email,
-          providerId: 'credential',
-          password: hashPassword(telecaller.password),
-        },
-      },
-    },
-  });
-
-  // ── Sales exec ────────────────────────────────────────────────────────────
-  await prisma.user.upsert({
-    where: { email: salesExec.email },
-    update: { teamId: team.id },
-    create: {
-      email: salesExec.email,
-      name: salesExec.name,
-      role: 'SALES_EXEC',
-      teamId: team.id,
-      emailVerified: true,
-      accounts: {
-        create: {
-          accountId: salesExec.email,
-          providerId: 'credential',
-          password: hashPassword(salesExec.password),
-        },
-      },
-    },
-  });
+  // ── Admin (no team), telecaller + sales exec (team members) ──────────────
+  await upsertUser(admin, 'ADMIN');
+  await upsertUser(telecaller, 'TELECALLER', team.id);
+  await upsertUser(salesExec, 'SALES_EXEC', team.id);
 
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ admin, manager, telecaller, sales exec created/updated');
@@ -156,9 +128,9 @@ main()
     await prisma.$disconnect();
     process.exit(0);
   })
-  .catch(async (err) => {
+  .catch(async (e) => {
     // eslint-disable-next-line no-console
-    console.error('[seed] FAIL:', err);
+    console.error('[seed] FAIL:', e instanceof Error ? e.message : e);
     await prisma.$disconnect();
     process.exit(1);
   });

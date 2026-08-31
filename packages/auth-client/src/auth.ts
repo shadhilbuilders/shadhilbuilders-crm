@@ -27,6 +27,29 @@ export const auth: any = betterAuth({
     autoSignIn: true,
   },
 
+  // SECOND-ROUND AUDIT B4a (2026-08-31): the Prisma `User.role` column is a
+  // NOT NULL Role enum with no default — better-auth's signUpEmail inserts a
+  // bare user and Prisma rejects it ("Invalid value for argument `role`").
+  // Declare role/teamId as additional fields with server-side defaults so
+  // every better-auth-created user lands with a valid enum role and a team
+  // slot to be filled by an admin (plan A6: single primary role).
+  user: {
+    additionalFields: {
+      role: {
+        type: 'string',
+        required: false,
+        defaultValue: 'TELECALLER',
+        input: false, // AR-8: roles are set by admins/seed only, never via signup input
+      },
+      teamId: {
+        type: 'string',
+        required: false,
+        defaultValue: null,
+        input: false,
+      },
+    },
+  },
+
   // Per better-auth-best-practices skill: jwt + admin only.
   // NO organization() — Team model is the single grouping.
   plugins: [
@@ -37,7 +60,9 @@ export const auth: any = betterAuth({
         expiresIn: '7d',
       },
     }),
-    admin(),
+    // AR-2/B4a: admin() plugin injects role: options.defaultRole ?? "user" on user.create.
+    // "user" is not a Prisma Role enum value -> signUpEmail always failed. Set it.
+    admin({ defaultRole: 'TELECALLER' }),
   ],
 
   trustedOrigins: [

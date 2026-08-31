@@ -51,15 +51,57 @@ describe('@shadhil/auth — JWT helpers', () => {
     const { issueJwt, verifyJwt } = await import('../src/jwt');
     const token = await issueJwt({
       sub: 'user_123',
-      role: 'manager',
+      role: 'MANAGER',
       teamId: 'team_1',
       email: 'mgr@example.com',
     });
     const payload = await verifyJwt(token);
     expect(payload.sub).toBe('user_123');
-    expect(payload.role).toBe('manager');
+    expect(payload.role).toBe('MANAGER');
     expect(payload.teamId).toBe('team_1');
     expect(payload.iss).toBe('shadhil-crm');
+  });
+
+  it('verifyJwt normalizes lowercase role claims to the Prisma enum (AR-2)', async () => {
+    process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
+    const { issueJwt, verifyJwt } = await import('../src/jwt');
+    const token = await issueJwt({
+      sub: 'user_123',
+      // lowercase legacy claim — normalized to enum at verify time
+      role: 'manager' as never,
+      teamId: 'team_1',
+      email: 'mgr@example.com',
+    });
+    const payload = await verifyJwt(token);
+    expect(payload.role).toBe('MANAGER');
+  });
+
+  it('verifyJwt REJECTS tokens lacking a role claim (AR-2 — no silent defaults)', async () => {
+    process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
+    const { SignJWT } = await import('jose');
+    const token = await new SignJWT({ user: { teamId: 'team_1', email: 'x@y.com' } })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user_123')
+      .setIssuer('shadhil-crm')
+      .setAudience('shadhil-crm')
+      .setIssuedAt()
+      .setExpirationTime('60s')
+      .sign(new TextEncoder().encode('a'.repeat(32)));
+    const { verifyJwt } = await import('../src/jwt');
+    await expect(verifyJwt(token)).rejects.toThrow(/missing role claim/i);
+  });
+
+  it('verifyJwt REJECTS unknown role values (AR-2)', async () => {
+    process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
+    const { issueJwt } = await import('../src/jwt');
+    const token = await issueJwt({
+      sub: 'user_123',
+      role: 'SUPERUSER' as never,
+      teamId: null,
+      email: 'a@b.com',
+    });
+    const { verifyJwt } = await import('../src/jwt');
+    await expect(verifyJwt(token)).rejects.toThrow(/not a valid Role/);
   });
 
   it('verifyJwt rejects token signed with different secret', async () => {
@@ -67,7 +109,7 @@ describe('@shadhil/auth — JWT helpers', () => {
     const { issueJwt } = await import('../src/jwt');
     const token = await issueJwt({
       sub: 'user_123',
-      role: 'admin',
+      role: 'ADMIN',
       teamId: null,
       email: 'a@b.com',
     });
