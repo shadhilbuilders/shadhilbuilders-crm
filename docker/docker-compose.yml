@@ -67,6 +67,15 @@ services:
       POSTGRESQL_DATABASE: shadhil_crm
       PGBOUNCER_AUTH_TYPE: scram-sha-256
       PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
+      # CRITICAL (found during Prisma 7 upgrade, 2026-08-31): bitnami pgbouncer
+      # keys the [databases] mapping under its PGBOUNCER_DATABASE env, which
+      # defaults to "postgres" — leaving no shadhil_crm entry, so every
+      # client asking for db shadhil_crm on 6432 dies with
+      # "no such database: shadhil_crm". The legacy Prisma 5 engine never
+      # noticed because it bypassed the pooled URL (schema url pointed at
+      # DIRECT_DATABASE_URL). Prisma 7 + @prisma/adapter-pg connect through
+      # DATABASE_URL (6432), so the alias must exist.
+      PGBOUNCER_DATABASE: shadhil_crm
       # eng review A5: MUST be 'session'. Transaction pooling silently
       # breaks RLS — per-request SET LOCAL session vars don't survive.
       PGBOUNCER_POOL_MODE: session

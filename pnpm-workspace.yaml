@@ -17,3 +17,11 @@ minimumReleaseAgeExclude:
   - '@paalstack/react-ui@1.3.1 || 1.4.0 || 1.4.1'
   - '@paalstack/react-hooks@1.1.2'
   - '@paalstack/react-icons@1.1.1'
+
+overrides:
+  # eslint-config-next (transitively) pins eslint-plugin-react@7.37.5,
+  # whose peer range caps at eslint ^9.7. Nothing in this repo's flat
+  # configs imports the React plugins, so the pair is inert — keep the
+  # (already-latest) plugin and silence the stale peer range so the
+  # eslint 10 upgrade doesn't fail resolution.
+  'eslint-plugin-react': '7.37.5'
