@@ -129,7 +129,10 @@ jobs:
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
         env:
+          # Both URLs: DIRECT for migrate; DATABASE for the runtime adapter
+          # (src/index.ts reads DATABASE_URL — Prisma 7 pg-adapter client).
           DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public
+          DATABASE_URL: postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public
           RLS_MATRIX_REQUIRED: 'true'
 
   build:
