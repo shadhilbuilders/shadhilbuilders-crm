@@ -1,6 +1,9 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
-  "globalDependencies": ["**/.env.*local", "tsconfig.base.json"],
+  "globalDependencies": [
+    "**/.env.*local",
+    "tsconfig.base.json"
+  ],
   "globalEnv": [
     "NODE_ENV",
     "DATABASE_URL",
@@ -14,12 +17,19 @@
     "WEB_PORT",
     "NEXT_PUBLIC_API_BASE_URL",
     "NEXT_PUBLIC_APP_URL",
-    "NEXT_PUBLIC_APP_NAME"
+    "NEXT_PUBLIC_APP_NAME",
+    "CORS_ORIGINS"
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "^tsconfig.base.json",
@@ -33,7 +43,9 @@
       "outputs": []
     },
     "lint": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -43,7 +55,9 @@
       ]
     },
     "type-check": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -53,13 +67,15 @@
       ]
     },
     "test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "coverage/**"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "vitest.config.*",
-        "!**/*.test.tsx",
-        "!**/*.test.ts"
+        "vitest.config.*"
       ]
     },
     "clean": {
@@ -67,8 +83,17 @@
       "outputs": []
     },
     "transit": {
-      "dependsOn": ["^transit"],
+      "dependsOn": [
+        "^transit"
+      ],
       "outputs": []
+    },
+    "test:integration": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [],
+      "cache": false
     }
   }
 }

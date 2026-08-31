@@ -2,7 +2,7 @@
   "name": "shadhil-crm",
   "version": "0.1.0",
   "private": true,
-  "description": "Shadhil Builders CRM — Next.js 16 + NestJS 12 + Prisma monorepo",
+  "description": "Shadhil Builders CRM \u2014 Next.js 16 + NestJS 12 + Prisma monorepo",
   "packageManager": "pnpm@11.24.0",
   "engines": {
     "node": ">=22",
@@ -18,7 +18,10 @@
     "db:generate": "pnpm --filter @shadhil/database generate",
     "db:migrate": "pnpm --filter @shadhil/database migrate",
     "db:studio": "pnpm --filter @shadhil/database studio",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache"
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache",
+    "docker:up": "pnpm --filter @shadhil/database docker:up",
+    "db:seed": "pnpm --filter @shadhil/database seed",
+    "db:policies": "docker exec -i shadhil-postgres psql -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 < packages/database/prisma/rls/policies.sql"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

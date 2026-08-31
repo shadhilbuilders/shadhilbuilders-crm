@@ -28,6 +28,7 @@ export const Providers = ({ children }: ProvidersProps) => {
       enableSystem
       disableTransitionOnChange
     >
+      <Toaster />
       <QueryProvider>{children}</QueryProvider>
     </NextThemeProvider>
   );

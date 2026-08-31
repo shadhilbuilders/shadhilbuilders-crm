@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# SECOND-ROUND AUDIT (AR-3/AR-4): workflows moved from apps/web/.github to the
+# repo root (GitHub only reads root workflows in a monorepo) and repaired:
+#   - .nvmrc replaced by node-version from package.json engines
+#   - format:check / test:coverage referenced scripts that didn't exist
+#   - RLS matrix: CI provisions Postgres + applies the init migration, and the
+#     never-skip guard makes a missing DB a FAILURE, not a silent skip
+# CI never talks to a real provider — placeholder-shaped vars only.
+env:
+  SKIP_ENV_VALIDATION: 'true'
+  NODE_ENV: test
+  NEXT_PUBLIC_API_BASE_URL: https://api.example.com/v1
+  NEXT_PUBLIC_APP_NAME: Shadhil
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_DEBUG_MODE: false
+
+jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm type-check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Backend has ZERO tests until T-RLSREAL lands — keep passWithNoTests
+      # true for now so bundle-1 fixes can ship; the plan flips it to false
+      # in the same PR as the first real backend test (AR-5).
+      - run: pnpm test
+
+  rls-matrix:
+    name: RLS Isolation Matrix
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shadhil
+          POSTGRES_PASSWORD: shadhil
+          POSTGRES_DB: shadhil_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shadhil -d shadhil_crm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # 00-init.sql equivalent + schema + policies + FORCE + grants
+      - run: cd packages/database && npx prisma migrate deploy
+        env:
+          DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public
+      # AR-4 companion: the matrix FAILS if the DB is unreachable — a missing
+      # DATABASE_URL must never silently skip the security suite.
+      - run: cd packages/database && pnpm test
+        env:
+          DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public
+          RLS_MATRIX_REQUIRED: 'true'
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [type-check, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build

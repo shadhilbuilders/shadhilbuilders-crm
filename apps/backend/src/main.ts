@@ -21,12 +21,16 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = new Logger('Bootstrap');
 
+  // AR-8: allowlist from env, localhost only outside production. Compose sets
+  // CORS_ORIGINS in prod; defaults here are dev-only.
+  const corsOrigins = (process.env.CORS_ORIGINS ??
+    'http://localhost:3000,http://localhost:8081')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:8081', // Expo dev
-      'https://crm.shadhilbuilders.in',
-    ],
+    origin: corsOrigins,
     credentials: true,
   });
 
