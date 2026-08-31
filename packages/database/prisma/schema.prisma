@@ -614,3 +614,25 @@ model Verification {
   @@index([identifier])
   @@index([expiresAt])
 }
+
+// Jwks — required by better-auth's jwt() plugin (HS256 mode still creates the
+// key store lazily on first token request). Its absence breaks
+// GET /api/auth/get-session with "Model jwks does not exist" (500), which
+// takes down authClient.useSession() across the web UI. Column set follows
+// better-auth 1.7's jwt() plugin schema (publicKey/privateKey/createdAt
+// required; expiresAt/alg/crv/n/e optional — they ARE written even in
+// HS256/EdDSA lazy-key mode, so they must exist, not just be nullable).
+model Jwks {
+  id           String    @id @default(cuid())
+  publicKey    String    @db.Text
+  privateKey   String    @db.Text
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime?
+  alg          String?
+  crv          String?
+  n            String?
+  e            String?
+  kty          String?
+  kid          String?
+  use          String?
+}
