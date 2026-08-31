@@ -51,9 +51,13 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
+  // Do NOT pin maximumScale — pinch-zoom is a WCAG 1.4.4 accessibility
+  // requirement (and Android Chrome honors the pin, locking out low-vision
+  // users). iOS ignores it anyway.
+  viewportFit: 'cover', // let content extend under notches; safe-area padding below
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f8f5ef' }, // brand surface
+    { media: '(prefers-color-scheme: dark)', color: '#0a0f1e' }, // dark surface
   ],
 };
 

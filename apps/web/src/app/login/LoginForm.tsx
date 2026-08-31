@@ -82,10 +82,11 @@ export function LoginForm() {
             name="email"
             type="email"
             autoComplete="email"
+            inputMode="email"
             required
             autoFocus
             placeholder="you@shadhilbuilders.in"
-            className="border-input bg-transparent mt-1.5 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+            className="border-input bg-transparent mt-1.5 min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
             value={email}
             onChange={(e) => setEmail(e.currentTarget.value)}
             disabled={pending}
@@ -103,10 +104,12 @@ export function LoginForm() {
             type="password"
             autoComplete="current-password"
             required
-            className="border-input bg-transparent mt-1.5 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+            // min-h-11 = 44px touch target (WCAG 2.5.8 / iOS HIG)
+            className="border-input bg-transparent mt-1.5 min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
             disabled={pending}
+            placeholder="Enter your password"
             aria-invalid={error !== null}
           />
         </Field>
@@ -115,10 +118,10 @@ export function LoginForm() {
           // NOTE: @paalstack Alert renders text via title/description props —
           // children are DISCARDED by the component (verified in dist source),
           // which is why the error initially showed as an empty box.
-          <Alert colorVariant="destructive" title={error} className="mb-4" role="alert" />
+          <Alert colorVariant="danger" title={error} className="mb-4" role="alert" />
         )}
 
-        <Button type="submit" className="w-full" disabled={pending}>
+        <Button type="submit" className="mt-2 h-11 w-full" disabled={pending}>
           {pending ? 'Signing in...' : 'Sign in'}
         </Button>
       </form>

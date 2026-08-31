@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-16">
+    <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
       <Suspense fallback={null}>
         <LoginForm />
       </Suspense>
