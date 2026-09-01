@@ -10,6 +10,7 @@
     "analyze": "ANALYZE=true next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
+    "typegen": "next typegen",
     "lint": "eslint src --report-unused-disable-directives --max-warnings 0 --no-warn-ignored --cache",
     "lint:fix": "pnpm lint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache",

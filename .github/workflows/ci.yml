@@ -46,6 +46,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate
+      # next typegen emits .next/types/routes.d.ts, which declares the
+      # RouteContext<'/route'> helper that route handlers in src/app/api/**
+      # use for their second argument. Without this step a fresh checkout
+      # has no generated types, and tsc fails with
+      # "Cannot find name 'RouteContext'" (the type is only created by
+      # next dev / next build / next typegen — not by pnpm install).
+      - run: pnpm --filter @shadhil/web typegen
       - run: pnpm type-check
 
   lint:
