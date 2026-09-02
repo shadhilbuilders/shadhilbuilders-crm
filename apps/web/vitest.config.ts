@@ -12,6 +12,8 @@ export default defineConfig({
     passWithNoTests: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', '.next', '.idea', '.git', '.cache'],
+    // Polyfill IndexedDB for tests that use @shadhil/offline-store.
+    setupFiles: ['./src/test/idb-setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json', 'lcov', 'cobertura'],

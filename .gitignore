@@ -50,3 +50,6 @@ packages/database/prisma/migrations/dev.db*
 
 # Postgres data
 infra/data/
+
+.hermes/
+.gstack

@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google';
 import NextTopLoader from 'nextjs-toploader';
 import { type ReactNode } from 'react';
 
+import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar';
+import { InstallPrompt } from '@/components/install-prompt';
 import { Providers } from '@/providers';
 
 import '@/styles/globals.css';
@@ -45,6 +47,17 @@ export const metadata: Metadata = {
     index: false, // Internal CRM — not indexed
     follow: false,
   },
+  // PWA manifest. Next.js file convention `app/manifest.ts` is auto-served
+  // at `/manifest.webmanifest` (registered in the build manifest).
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Shadhil CRM',
+    // `black-translucent` lets the WebView's status bar float over the
+    // app's surface — required for iOS "Add to Home Screen" to render
+    // a real splash instead of a screenshot.
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export const viewport: Viewport = {
@@ -69,7 +82,11 @@ const RootLayout = ({ children }: RootLayoutProps) => {
     <html lang="en" suppressHydrationWarning>
       <body className={cn(inter.variable, 'antialiased font-sans')}>
         <NextTopLoader showSpinner={false} height={5} color="#62b132" />
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <ServiceWorkerRegistrar />
+          <InstallPrompt />
+        </Providers>
       </body>
     </html>
   );
