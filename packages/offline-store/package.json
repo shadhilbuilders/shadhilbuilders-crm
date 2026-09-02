@@ -1,0 +1,41 @@
+{
+  "name": "@shadhil/offline-store",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shadhil CRM — Offline data store: IDB-backed mutation queue, photo blob store, TanStack Query persistence, LWW conflict resolver. Platform-agnostic; consumed by apps/web (PWA) and apps/mobile (Expo, future).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "test",
+    "README.md"
+  ],
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "idb-keyval": "6.3.0"
+  },
+  "peerDependencies": {
+    "fake-indexeddb": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "fake-indexeddb": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "fake-indexeddb": "^6.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
