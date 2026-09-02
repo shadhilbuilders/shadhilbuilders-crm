@@ -28,7 +28,8 @@
       "outputs": [
         "dist/**",
         ".next/**",
-        "!.next/cache/**"
+        "!.next/cache/**",
+        "node_modules/.prisma/client/**"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
