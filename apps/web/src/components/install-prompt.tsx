@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Button, toast } from '@paalstack/react-ui';
 import { LuDownload, LuX } from '@paalstack/react-icons/lu';
 
@@ -59,10 +59,18 @@ const safeSetItem = (key: string, value: string): void => {
  *
  * Dismissal is persisted in localStorage; the toast re-shows only
  * when the manifest's `id` version changes (per design review D4).
+ *
+ * Implementation note (2026-09-02): the previous version stored the
+ * deferred `BeforeInstallPromptEvent` in React state and read it from
+ * the Install button's onClick closure. That was a stale-closure bug:
+ * sonner renders toast content imperatively and does NOT re-render it
+ * when the parent component re-renders, so the Install button kept
+ * seeing `deferred = null` from the closure captured at toast-creation
+ * time and silently no-op'd on every click. The fix captures the event
+ * directly in the `onPrompt` closure (a local `const`), so each toast
+ * has its own live reference to the event that triggered it.
  */
 export const InstallPrompt = () => {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-
   useEffect(() => {
     const dismissed = safeGetItem(DISMISS_KEY);
     const currentVersion = getCurrentDataVersion();
@@ -70,9 +78,13 @@ export const InstallPrompt = () => {
 
     const onPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
-      // D4: bottom-attached toast. `duration: Infinity` so it stays
-      // until the user explicitly chooses Install or Not now.
+      // Capture the event in this closure. The Install button's onClick
+      // will close over `evt`, not over React state, so it stays valid
+      // for the lifetime of the toast (sonner keeps the toast DOM node
+      // alive across parent re-renders, so a `useState` capture would
+      // be stale by the time the user clicks).
+      const evt = e as BeforeInstallPromptEvent;
+
       toast(
         <div className="motion-reduce:transition-none flex w-full items-center gap-3">
           <LuDownload className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -80,9 +92,17 @@ export const InstallPrompt = () => {
           <Button
             size="sm"
             onClick={async () => {
-              if (deferred) {
-                await deferred.prompt();
-                setDeferred(null);
+              // BeforeInstallPromptEvent.prompt() is one-shot per event
+              // (Chromium spec); after it resolves the user has either
+              // accepted or dismissed. Calling it twice throws.
+              try {
+                await evt.prompt();
+              } catch (err) {
+                // Surface the failure so it shows up in console when the
+                // user reports "install button doesn't work" — without
+                // this, a thrown prompt() is invisible.
+                // eslint-disable-next-line no-console
+                console.error('[InstallPrompt] prompt() threw:', err);
               }
             }}
           >
@@ -109,7 +129,7 @@ export const InstallPrompt = () => {
 
     window.addEventListener('beforeinstallprompt', onPrompt);
     return () => window.removeEventListener('beforeinstallprompt', onPrompt);
-  }, [deferred]);
+  }, []);
 
   return null;
 };
