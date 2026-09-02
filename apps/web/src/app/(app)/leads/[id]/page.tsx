@@ -80,10 +80,6 @@ export default function LeadDetailPage() {
   );
 }
 
-// StatusBadge is intentionally exported from the inbox page module —
-// reuse it here on live data:
-export { StatusBadge } from '../page';
-
 function LeadTabsPanel({
   lead,
   activities,

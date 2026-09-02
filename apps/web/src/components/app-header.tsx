@@ -24,6 +24,7 @@ import {
   canViewAudit,
   useSessionUser,
 } from '@/lib/session';
+import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 
 const NAV_ITEMS: { href: string; label: string }[] = [
   { href: '/', label: 'Dashboard' },
@@ -109,6 +110,10 @@ export function AppHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {/* OfflineQueueBadge (per design review 2A): mount next to the
+              UserMenu. No notification bell exists in the actual app-header
+              (DESIGN.md §11 specifies one but it's deferred). */}
+          <OfflineQueueBadge />
           {!isPending && user !== null ? (
             <UserMenu
               name={user.name || user.email}
