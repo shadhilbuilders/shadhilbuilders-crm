@@ -101,7 +101,6 @@ export const InstallPrompt = () => {
                 // Surface the failure so it shows up in console when the
                 // user reports "install button doesn't work" — without
                 // this, a thrown prompt() is invisible.
-                // eslint-disable-next-line no-console
                 console.error('[InstallPrompt] prompt() threw:', err);
               }
             }}
