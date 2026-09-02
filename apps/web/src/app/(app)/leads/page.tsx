@@ -14,6 +14,7 @@ import { Button, Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
+import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { useLeads } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
@@ -188,7 +189,7 @@ function LeadTable({ rows }: { rows: LeadRow[] }) {
                 </Link>
               </td>
               <td className="px-4 py-2.5">
-                <StatusBadge status={row.status ?? 'UNKNOWN'} />
+                <LeadStatusBadge status={row.status ?? 'UNKNOWN'} />
               </td>
               <td className="text-muted-foreground hidden px-4 py-2.5 text-sm sm:table-cell">
                 {row.source ?? '—'}
@@ -204,28 +205,3 @@ function LeadTable({ rows }: { rows: LeadRow[] }) {
   );
 }
 
-const STATE_BADGE_CLASS: Record<string, string> = {
-  NEW: 'bg-secondary text-secondary-foreground',
-  CONTACTED: 'bg-info-soft text-info-foreground',
-  VISIT_REQUESTED: 'bg-warning-soft text-warning-foreground',
-  VISIT_SCHEDULED: 'bg-warning text-warning-foreground',
-  VISITED: 'bg-success-soft text-success-foreground',
-  NEGOTIATION: 'bg-info-soft text-info-foreground',
-  BOOKING_INITIATED: 'bg-info-soft text-info-foreground',
-  WON: 'bg-success text-success-foreground',
-  LOST: 'bg-destructive-soft text-destructive-foreground',
-  COLD: 'bg-secondary text-secondary-foreground',
-  NO_SHOW: 'bg-destructive text-destructive-foreground',
-  RESCHEDULED: 'bg-warning-soft text-warning-foreground',
-  UNKNOWN: 'bg-secondary text-secondary-foreground',
-};
-
-export function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATE_BADGE_CLASS[status] ?? STATE_BADGE_CLASS['UNKNOWN']}`}
-    >
-      {status.replace(/_/g, ' ')}
-    </span>
-  );
-}
