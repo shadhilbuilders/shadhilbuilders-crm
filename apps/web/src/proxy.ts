@@ -14,13 +14,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 const SESSION_COOKIE = 'better-auth.session_token';
 
-// Prefixes that never require a session. PWA files (manifest, sw.js) and
-// the offline page must be public so Lighthouse + service workers can
-// fetch them without a session cookie.
+// Prefixes that never require a session. PWA files (manifest, sw.js, the
+// /icons/* brand assets, and the offline page) must be public so
+// Lighthouse + service workers can fetch them without a session cookie.
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth',
   '/api/health',
+  '/icons',         // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
   '/manifest.webmanifest',
   '/manifest.json',
   '/offline',
@@ -49,20 +50,26 @@ export default function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Match all app routes except Next internals. PWA paths
-  // (manifest, sw.js, /offline) are handled by the explicit
-  // PUBLIC_PATHS check in the function body — the previous regex
-  // tried to match static assets by file extension but the `.*` was
-  // greedy and caught /manifest.webmanifest too. Static asset paths
-  // like /icons/*.png and /_next/static/* are served by Next 16's
-  // edge before the proxy runs, so we don't need to skip them here.
+  // Match all app routes except Next internals + public PWA assets. PWA
+  // paths (manifest, sw.js, /offline, /icons/*) are also handled by the
+  // explicit PUBLIC_PATHS check in the function body — both layers exist
+  // for defense-in-depth: the matcher is the cheap edge-runtime gate, the
+  // function body is the explicit allowlist that survives any future
+  // matcher-regex refactor.
   //
-  // Note: Next 16's proxy matcher uses path-to-regexp, which does NOT
-  // support PCRE negative-lookahead `(?!...)`. We use an explicit
-  // positive list of protected app routes instead — the public paths
-  // (PWA files, /login, /api/*) fall through to Next's static +
-  // route handling and never reach the proxy function.
+  // Static asset paths like /_next/static/* are served by Next 16's edge
+  // before the proxy runs, so they only need the matcher exclusion, not
+  // the function body list. /icons/* is the exception: Next 16 does NOT
+  // short-circuit /public/* before the proxy runs, so /icons/*.png DOES
+  // reach the proxy and needs both layers of exclusion.
+  //
+  // Note: Next 16's proxy matcher uses the platform URLPattern API
+  // (Web Platform URL Pattern, supported in modern Node + Edge runtimes),
+  // which DOES support PCRE negative-lookahead `(?!...)`. The matcher
+  // above compiles to a URLPattern whose pathname regex skips everything
+  // inside the lookahead, so `/icons/icon-192.png`, `/sw.js`, and other
+  // public PWA paths never reach the proxy function.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon\\.ico|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
+    '/((?!api|_next/static|_next/image|favicon\\.ico|icons|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
   ],
 };
