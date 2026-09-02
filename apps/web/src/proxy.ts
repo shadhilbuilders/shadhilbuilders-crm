@@ -54,8 +54,15 @@ export const config = {
   // PUBLIC_PATHS check in the function body — the previous regex
   // tried to match static assets by file extension but the `.*` was
   // greedy and caught /manifest.webmanifest too. Static asset paths
-  // like /icons/*.png and /_next/static/* are served before the
-  // proxy runs (Next 16 edge behavior), so we don't need to skip
-  // them here.
-  matcher: ['/((?!_next/|favicon\\.ico).*)'],
+  // like /icons/*.png and /_next/static/* are served by Next 16's
+  // edge before the proxy runs, so we don't need to skip them here.
+  //
+  // Note: Next 16's proxy matcher uses path-to-regexp, which does NOT
+  // support PCRE negative-lookahead `(?!...)`. We use an explicit
+  // positive list of protected app routes instead — the public paths
+  // (PWA files, /login, /api/*) fall through to Next's static +
+  // route handling and never reach the proxy function.
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon\\.ico|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
+  ],
 };
