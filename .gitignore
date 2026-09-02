@@ -54,3 +54,21 @@ infra/data/
 .hermes/
 .gstack
 .vercel
+
+# Lighthouse temp user-data-dirs. When the lighthouse CLI runs on Linux/macOS
+# but the underlying Chromium was built with a Windows-style temp path
+# resolver, it creates a directory literally named
+#   C:\Users\<user>\AppData\Local\lighthouse.<NNNNNN>\
+# (yes, with backslashes in the directory name) inside whatever the cwd
+# is at launch time. Without this rule, every `scripts/lighthouse-pwa.sh`
+# run litters the repo with ~16 MB Chromium profile dirs and `git status`
+# shows them.
+#
+# IMPORTANT: backslashes in `.gitignore` are escape characters. To match
+# a literal backslash in a filename, double it in the pattern. The pattern
+# below matches the literal directory name; the leading wildcard covers
+# the random numeric suffix Lighthouse appends.
+#
+# Delete existing junk manually:
+#   find . -maxdepth 1 -type d -name 'C:*' -exec rm -rf {} +
+C:\\Users\\*\\AppData\\Local\\lighthouse.*
