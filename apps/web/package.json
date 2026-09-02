@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "postinstall": "bash scripts/setup-env-local.sh",
+    "prebuild": "pnpm --filter @shadhil/database generate",
     "build": "BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-buildtime_placeholder_secret_at_least_32_chars} BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000} DIRECT_DATABASE_URL=${DIRECT_DATABASE_URL:-postgresql://x:***@localhost:5432/x} JWT_SECRET=${JWT_SECRET:-buildtime_placeholder_secret_at_least_32_chars} SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build --webpack",
     "analyze": "ANALYZE=true next build",
     "start": "next start",
