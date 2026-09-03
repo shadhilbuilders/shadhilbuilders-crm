@@ -60,6 +60,10 @@ infra/data/
 .gstack
 .vercel
 
+.agents/
+.claude/
+skills-lock.json
+
 # Lighthouse temp user-data-dirs. When the lighthouse CLI runs on Linux/macOS
 # but the underlying Chromium was built with a Windows-style temp path
 # resolver, it creates a directory literally named
