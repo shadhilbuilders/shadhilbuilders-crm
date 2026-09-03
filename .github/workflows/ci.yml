@@ -157,4 +157,19 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate
-      - run: pnpm build
+      # (build) — Run turbo with --concurrency=1 so workspace package
+      # builds (@shadhil/database, @shadhil/auth, @shadhil/offline-store,
+      # @shadhil/api-types) complete fully before the consuming apps
+      # (@shadhil/backend, @shadhil/web) start their tsc.
+      #
+      # Default turbo concurrency is 10, which schedules dependent tasks
+      # to start as soon as a dep is *scheduled* rather than *finished*.
+      # On this monorepo that means @shadhil/backend's `nest build` (or
+      # @shadhil/web's `next build`) can start while @shadhil/auth's
+      # `tsc` is still running, erroring with TS2307 "Cannot find module
+      # '@shadhil/auth'" because the dist isn't on disk yet. Serial
+      # execution forces the topological order to be honored.
+      #
+      # Cost: ~2m on a fresh runner vs ~15s with concurrency=10 on local
+      # dev. CI accepts that cost; the bug it avoids is a hard failure.
+      - run: pnpm exec turbo run build --concurrency=1
