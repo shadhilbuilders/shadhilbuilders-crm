@@ -28,6 +28,7 @@ import { LuBell, LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
 import { SidebarTrigger } from '@paalstack/react-ui';
 
 import { Skeleton } from '@/components/shared/Skeleton';
+import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { useSignOut } from '@/lib/auth-actions';
 import { useSessionUser } from '@/lib/session';
 import { useNotifications } from '@/hooks/queries/crm';
@@ -46,6 +47,12 @@ export function AppHeader() {
 
       <div className="flex shrink-0 items-center gap-1">
         <OfflineQueueBadge />
+        {/* T-D3: SSE connection-state pill — sits next to the bell so
+            the user sees the realtime channel status at a glance.
+            Connects to /api/sse/ping (the existing heartbeat endpoint)
+            and reports Connected / Reconnecting / Offline with a
+            colored dot + screen-reader label. */}
+        <SseStatusPill className="text-muted-foreground px-2" />
         <NotificationBell />
         {/* T23 (PR3): render a UserSkeleton placeholder in the slot
             where the UserMenu will mount once the session resolves.
