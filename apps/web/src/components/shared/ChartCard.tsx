@@ -49,6 +49,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { SkeletonContainer } from '@/components/shared/SkeletonContainer';
+import type { ChartDataHint } from '@/components/shared/Skeleton';
 
 export type ChartCardProps<T> = {
   /** Human title shown in the card header and in the pending fallback. */
@@ -75,6 +77,14 @@ export type ChartCardProps<T> = {
    * layout stability on first paint.
    */
   emptyTitle?: string;
+  /**
+   * T19 / T34: shape hint for the chart skeleton so the placeholder
+   * matches the real chart's geometry. Defaults to `'bar'` (the most
+   * common case — PipelineFunnelChart and VisitsThisWeekChart both
+   * use bar layouts). Pass `'pie'` for LeadStatusPie, `'line'` for
+   * AuditTimeline, etc.
+   */
+  dataHint?: ChartDataHint;
 };
 
 /**
@@ -95,18 +105,23 @@ export function ChartCard<T>({
   query,
   children,
   emptyTitle = 'No data yet',
+  dataHint = 'bar',
 }: ChartCardProps<T>) {
-  // 1. Loading — defer entirely to ModulePending (T19 swaps the inner
-  //    text for a Skeleton variant, but this file does not change).
+  // 1. Loading — render a shape-matched chart skeleton (T19) inside the
+  //    cross-fade SkeletonContainer (T17) so the transition to real data
+  //    is a 200ms fade rather than a pop.
   if (query.isLoading) {
     return (
       <ChartFrame title={title}>
-        <ModulePending
-          title={title}
-          description={description}
-          error={null}
+        <SkeletonContainer
           isLoading
-        />
+          skeleton={{ variant: 'chart', dataHint }}
+        >
+          {/* Children render only after isLoading flips, so this is
+              a placeholder. The SkeletonContainer keeps the chart
+              frame stable so the layout doesn't shift on hydration. */}
+          <div aria-hidden="true" />
+        </SkeletonContainer>
       </ChartFrame>
     );
   }
@@ -141,8 +156,16 @@ export function ChartCard<T>({
     );
   }
 
-  // 4. Has data — render the chart inside the frame.
-  return <ChartFrame title={title}>{children(query.data)}</ChartFrame>;
+  // 4. Has data — render the chart inside the frame. SkeletonContainer
+  //    keeps the cross-fade in place: when isLoading was true and now
+  //    is false, the skeleton layer fades out and the children fade in.
+  return (
+    <ChartFrame title={title}>
+      <SkeletonContainer isLoading={false}>
+        {children(query.data)}
+      </SkeletonContainer>
+    </ChartFrame>
+  );
 }
 
 // ---------------------------------------------------------------------------

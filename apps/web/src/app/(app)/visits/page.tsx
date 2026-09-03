@@ -13,6 +13,7 @@ import { LuPlus } from '@paalstack/react-icons/lu';
 import { useMemo, useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { useVisits } from '@/hooks/queries/crm';
 import { canScheduleVisits, useSessionUser } from '@/lib/session';
 
@@ -132,9 +133,7 @@ export default function VisitsPage() {
       />
 
       {visitsQuery.isLoading ? (
-        <div className="text-muted-foreground py-16 text-center text-sm">
-          Loading visits…
-        </div>
+        <Skeleton variant="card" />
       ) : visitsQuery.data !== undefined && Array.isArray(visitsQuery.data) ? (
         <WeekGrid days={weekDays} visits={visitsQuery.data} />
       ) : (

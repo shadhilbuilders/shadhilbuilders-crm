@@ -9,6 +9,7 @@ import { Button } from '@paalstack/react-ui';
 import { useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '../PageHeader';
 import {
   useMarkNotificationsRead,
@@ -66,9 +67,7 @@ export default function NotificationsPage() {
       </div>
 
       {notificationsQuery.isLoading ? (
-        <div className="text-muted-foreground py-16 text-center text-sm">
-          Loading notifications…
-        </div>
+        <Skeleton variant="text" />
       ) : notificationsQuery.data !== undefined &&
         Array.isArray(notificationsQuery.data) ? (
         <ul className="border-border divide-border divide-y rounded-lg border">
