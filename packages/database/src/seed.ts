@@ -166,13 +166,50 @@ async function main() {
   // ── Owner (no team), Admin (no team), telecaller + sales exec (team members)
   await upsertUser(owner, 'OWNER');
   await upsertUser(admin, 'ADMIN');
-  await upsertUser(telecaller, 'TELECALLER', team.id);
+  const telecallerUser = await upsertUser(telecaller, 'TELECALLER', team.id);
   await upsertUser(salesExec, 'SALES_EXEC', team.id);
 
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec created/updated');
   // eslint-disable-next-line no-console
   console.log(`[seed] team: ${team.name} (${team.id})`);
+
+  // ── Demo leads — one per LeadState so the Lead Inbox renders variety. ───
+  // Phone numbers are 10-digit Indian-style; using the +91 98xxx / 87xxx /
+  // 76xxx ranges so they don't collide with real customer numbers. The seed
+  // is idempotent (upsert on phone) so re-running is safe. Owner is the
+  // telecaller (the most common assignment in production).
+  const demoLeads = [
+    { name: 'Priya Sharma',   phone: '9876500001', email: 'priya.sharma@example.in',  source: 'META_AD',     state: 'NEW' },
+    { name: 'Arjun Reddy',    phone: '9876500002', email: 'arjun.reddy@example.in',   source: 'LANDING',    state: 'CONTACTED' },
+    { name: 'Kavya Iyer',     phone: '9876500003', email: 'kavya.iyer@example.in',    source: 'REFERRAL',   state: 'VISIT_REQUESTED' },
+    { name: 'Rahul Verma',    phone: '9876500004', email: 'rahul.verma@example.in',   source: 'META_AD',    state: 'VISIT_SCHEDULED' },
+    { name: 'Anita Krishnan', phone: '9876500005', email: 'anita.k@example.in',       source: 'WALK_IN',    state: 'VISITED' },
+    { name: 'Sanjay Patel',   phone: '9876500006', email: 'sanjay.patel@example.in',  source: 'REFERRAL',   state: 'NEGOTIATION' },
+    { name: 'Deepa Nair',     phone: '9876500007', email: 'deepa.nair@example.in',    source: 'META_AD',    state: 'BOOKING_INITIATED' },
+    { name: 'Vikram Singh',   phone: '9876500008', email: 'vikram.singh@example.in',  source: 'LANDING',    state: 'WON' },
+    { name: 'Meera Joshi',    phone: '9876500009', email: 'meera.joshi@example.in',   source: 'WALK_IN',    state: 'LOST' },
+    { name: 'Rohan Gupta',    phone: '9876500010', email: 'rohan.gupta@example.in',   source: 'REFERRAL',   state: 'COLD' },
+  ] as const;
+
+  for (const lead of demoLeads) {
+    await prisma.lead.upsert({
+      where: { phone: lead.phone },
+      update: { state: lead.state, name: lead.name },
+      create: {
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        source: lead.source,
+        state: lead.state,
+        ownerId: telecallerUser.id,
+        ownerType: 'TELECALLER',
+        teamId: team.id,
+      },
+    });
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[seed] ✓ ${demoLeads.length} demo leads created/updated across all LeadStates`);
 }
 
 main()
