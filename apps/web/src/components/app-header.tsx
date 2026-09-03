@@ -27,6 +27,7 @@ import {
 import { LuBell, LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
 import { SidebarTrigger } from '@paalstack/react-ui';
 
+import { Skeleton } from '@/components/shared/Skeleton';
 import { useSignOut } from '@/lib/auth-actions';
 import { useSessionUser } from '@/lib/session';
 import { useNotifications } from '@/hooks/queries/crm';
@@ -46,7 +47,18 @@ export function AppHeader() {
       <div className="flex shrink-0 items-center gap-1">
         <OfflineQueueBadge />
         <NotificationBell />
-        {!isPending && user !== null ? (
+        {/* T23 (PR3): render a UserSkeleton placeholder in the slot
+            where the UserMenu will mount once the session resolves.
+            Keeps the topbar height stable during the first paint
+            and signals "loading" via shape, not text. */}
+        {isPending ? (
+          <div
+            className="min-w-[120px] px-2"
+            data-qa="user-skeleton-topbar"
+          >
+            <Skeleton variant="user" />
+          </div>
+        ) : user !== null ? (
           <UserMenu
             name={user.name || user.email}
             role={user.role}

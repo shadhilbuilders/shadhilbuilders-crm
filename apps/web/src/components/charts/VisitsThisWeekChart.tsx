@@ -34,9 +34,10 @@ import {
   Chart,
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from '@paalstack/react-ui';
 import { Bar, BarChart, XAxis, YAxis } from 'recharts';
+
+import { ChartTooltipWithSkeleton } from '@/components/shared/ChartTooltipWithSkeleton';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -111,7 +112,28 @@ export function VisitsThisWeekChart({ data }: VisitsThisWeekChartProps) {
         <BarChart data={buckets} margin={{ top: 8, left: 8, right: 16 }}>
           <XAxis dataKey="day" tickLine={false} axisLine={false} />
           <YAxis allowDecimals={false} />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip
+            content={(props) => (
+              <ChartTooltipWithSkeleton
+                {...props}
+                renderTooltip={({ label, items }: { label: string; items: Array<{ label: string; value: string; color?: string }> }) => (
+                  <div className="border-border bg-background min-w-[180px] rounded-md border p-3 shadow-sm">
+                    <p className="text-muted-foreground text-xs">{label}</p>
+                    {items.map((item: { label: string; value: string; color?: string }) => (
+                      <p key={item.label} className="text-sm">
+                        <span
+                          className="mr-2 inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                        {item.label}: {item.value}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              />
+            )}
+          />
           <Bar
             dataKey="count"
             fill="var(--color-count)"

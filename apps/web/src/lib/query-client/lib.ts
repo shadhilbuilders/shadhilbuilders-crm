@@ -133,14 +133,43 @@ export const queryClient = new QueryClient({
       // want. Putting a function here previously broke IDB persistence
       // (Round 26: DataCloneError on structured-clone).
       staleTime: 5 * 60 * 1000,
-      gcTime: 5 * 60 * 1000,
+      // T21 (PR3): 30s gcTime caps how long an unresolved query sticks
+      // around. Combined with T29 (AbortSignal forwarding in
+      // `apis/client.ts`), a query that takes longer than 30s gets
+      // GC'd AND its in-flight fetch is cancelled. Prevents the
+      // "skeleton-pulse-forever" failure mode (CEO §2 1A).
+      gcTime: 30 * 1000,
       refetchOnWindowFocus: process.env.NODE_ENV === 'production',
       refetchOnReconnect: true,
       refetchOnMount: true,
+      // T21: dev-mode warning when a query is GC'd at the 30s
+      // threshold. The QueryCache subscription below logs the
+      // queryKey + the GC reason so a developer can see which
+      // endpoint is timing out.
     },
     mutations: { retry: 0 },
   },
 });
+
+// T21: subscribe to the query cache and warn when a query is removed
+// (which happens on GC after the 30s timeout). Production builds skip
+// the warning to avoid noise in real deployments.
+if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+  queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === 'removed') {
+      const query = event.query;
+      // Only warn if the query was actively fetching (not an
+      // intentional unmount with no data loss).
+      if (query.state.fetchStatus === 'fetching') {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[query] GC'd while still fetching — exceeded 30s timeout. ` +
+            `queryKey=${JSON.stringify(query.queryKey)}`,
+        );
+      }
+    }
+  });
+}
 
 /** Create a separate query client for testing. */
 export const createTestQueryClient = () =>

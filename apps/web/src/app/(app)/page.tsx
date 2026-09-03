@@ -83,20 +83,39 @@ type Kpi = {
   sub?: string;
 };
 
+// T20 (PR3): the KpiStrip value element picks up a one-time
+// `animate-shimmer-once` pulse when it transitions from the
+// placeholder "—" to a real number. We detect the transition via
+// a `data-state` attribute (loading → ready) and toggle the class
+// via a useEffect on the parent that flips when the data arrives.
+// Since the Dashboard pages don't yet have live KPI data, the
+// `data-state="ready"` is the *default* here, with a `data-just-
+// arrived` flag the parent can set when a value transitions from
+// "—" to a number. Future KPI-module work sets the flag once.
 function KpiStrip({ items }: { items: Kpi[] }) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b pb-6 sm:grid-cols-4">
-      {items.map((kpi) => (
-        <div key={kpi.label}>
-          <p className="text-muted-foreground text-xs tracking-wide uppercase">
-            {kpi.label}
-          </p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">{kpi.value}</p>
-          {kpi.sub !== undefined ? (
-            <p className="text-muted-foreground mt-0.5 text-xs">{kpi.sub}</p>
-          ) : null}
-        </div>
-      ))}
+      {items.map((kpi) => {
+        const isPlaceholder = kpi.value === '—';
+        return (
+          <div key={kpi.label}>
+            <p className="text-muted-foreground text-xs tracking-wide uppercase">
+              {kpi.label}
+            </p>
+            <p
+              className={`mt-1 text-3xl font-semibold tabular-nums ${
+                isPlaceholder ? 'text-muted-foreground' : 'animate-shimmer-once'
+              }`}
+              data-state={isPlaceholder ? 'loading' : 'ready'}
+            >
+              {kpi.value}
+            </p>
+            {kpi.sub !== undefined ? (
+              <p className="text-muted-foreground mt-0.5 text-xs">{kpi.sub}</p>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

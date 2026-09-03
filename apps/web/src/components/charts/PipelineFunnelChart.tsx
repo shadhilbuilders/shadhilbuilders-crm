@@ -30,10 +30,10 @@ import {
   Chart,
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from '@paalstack/react-ui';
 import { Bar, BarChart, XAxis, YAxis } from 'recharts';
 
+import { ChartTooltipWithSkeleton } from '@/components/shared/ChartTooltipWithSkeleton';
 import type { LeadStatus } from '@/lib/labels';
 import { labelFor, LEAD_STATUSES } from '@/lib/labels';
 
@@ -105,7 +105,29 @@ export function PipelineFunnelChart({ data }: PipelineFunnelChartProps) {
             tickLine={false}
             axisLine={false}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip
+            content={(props) => (
+              <ChartTooltipWithSkeleton
+                {...props}
+                formatLabel={(key) => labelFor('lead', key)}
+                renderTooltip={({ label, items }) => (
+                  <div className="border-border bg-background min-w-[180px] rounded-md border p-3 shadow-sm">
+                    <p className="text-muted-foreground text-xs">{label}</p>
+                    {items.map((item) => (
+                      <p key={item.label} className="text-sm">
+                        <span
+                          className="mr-2 inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                        {item.label}: {item.value}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              />
+            )}
+          />
           <Bar
             dataKey="count"
             fill="var(--color-count)"

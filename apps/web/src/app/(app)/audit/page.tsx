@@ -8,6 +8,7 @@ import { Button, Heading, TypographyP } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useAuditLog } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
@@ -25,6 +26,10 @@ const FILTER_ACTIONS = [
 export default function AuditPage() {
   const auditQuery = useAuditLog({ limit: 50 });
   const { user, isPending: sessionPending } = useSessionUser();
+  // T25 (PR3): wire the offline-aware skeleton. When the user is
+  // offline and the list is loading, the skeleton surfaces a
+  // "Will sync when online" hint.
+  const isOnline = useOnlineStatus();
 
   if (sessionPending) {
     return <Skeleton variant="user" className="py-24" />;
@@ -67,7 +72,10 @@ export default function AuditPage() {
       </div>
 
       {auditQuery.isLoading ? (
-        <Skeleton variant="text" />
+        <Skeleton
+          variant="text"
+          isOffline={!isOnline}
+        />
       ) : auditQuery.data !== undefined && Array.isArray(auditQuery.data) ? (
         <AuditTable rows={auditQuery.data as Record<string, unknown>[]} />
       ) : (

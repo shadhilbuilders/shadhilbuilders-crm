@@ -72,6 +72,7 @@ import {
   useNavSync,
   type NavItem,
 } from '@/lib/nav';
+import { Skeleton } from '@/components/shared/Skeleton';
 import {
   canManageUsers,
   canViewAudit,
@@ -227,12 +228,12 @@ function UserMenuFooter() {
   const signOut = useSignOut();
 
   if (isPending || user === null) {
-    // Render a placeholder row so the footer height is stable while the
-    // session is resolving (avoids a layout shift on first paint).
+    // T23 (PR3): render a UserSkeleton placeholder while the session
+    // resolves — no "Loading…" text, the avatar+lines shape matches
+    // the resolved footer so the layout doesn't shift on hydration.
     return (
-      <div className="text-muted-foreground flex items-center gap-2 px-2 py-1.5 text-xs">
-        <LuUserRound className="h-4 w-4" />
-        <span>Loading…</span>
+      <div className="px-2 py-1.5" data-qa="user-skeleton-footer">
+        <Skeleton variant="user" />
       </div>
     );
   }

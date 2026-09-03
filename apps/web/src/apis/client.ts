@@ -70,15 +70,26 @@ export function sessionUserFromSession(session: unknown): SessionUser | null {
 /**
  * Authenticated fetch through the BFF. Throws ApiError on non-2xx so
  * TanStack Query surfaces a typed error.
+ *
+ * T29 (PR3): accepts an optional `signal` (AbortSignal) and forwards
+ * it to the underlying `fetch`. This makes TanStack Query's
+ * internal `signal` (passed by `queryFn({ signal })`) actually
+ * cancel the request when the query is unmounted, retried, or GC'd
+ * after a 30s timeout. Without this, the network request would run
+ * to completion even after the React tree dropped the consumer.
  */
 export async function api<T>(
   path: string,
   init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
-  const { json, headers, ...rest } = init;
+  const { json, signal, headers, ...rest } = init;
 
   const response = await fetch(`/api/bff${path}`, {
     ...rest,
+    // Forward AbortSignal from the caller (TanStack Query passes one
+    // via queryFn context). If the signal aborts, fetch throws
+    // AbortError, which TanStack surfaces as a normal error.
+    signal,
     headers: {
       'Content-Type': 'application/json',
       ...headers,
