@@ -85,7 +85,7 @@ export const InstallPrompt = () => {
       // be stale by the time the user clicks).
       const evt = e as BeforeInstallPromptEvent;
 
-      toast(
+      const toastId = toast(
         <div className="motion-reduce:transition-none flex w-full items-center gap-3">
           <LuDownload className="h-5 w-5 shrink-0" aria-hidden="true" />
           <p className="flex-1 text-sm">Install Shadhil CRM for offline use</p>
@@ -111,7 +111,14 @@ export const InstallPrompt = () => {
             size="sm"
             variant="ghost"
             onClick={() => {
+              // Persist the dismissal first so re-firing of
+              // `beforeinstallprompt` (browsers re-emit on navigation)
+              // does not resurrect the toast, then close the live
+              // sonner toast via its id. Without toast.dismiss(toastId)
+              // the toast sits on screen until reload — the user can see
+              // the X click "do nothing" even though localStorage is set.
               safeSetItem(DISMISS_KEY, currentVersion);
+              toast.dismiss(toastId);
             }}
             aria-label="Dismiss"
           >
