@@ -7,6 +7,7 @@
 import { Button, Heading, TypographyP } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { useAuditLog } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
@@ -26,7 +27,7 @@ export default function AuditPage() {
   const { user, isPending: sessionPending } = useSessionUser();
 
   if (sessionPending) {
-    return <div className="text-muted-foreground py-24 text-center text-sm">Loading…</div>;
+    return <Skeleton variant="user" className="py-24" />;
   }
   if (user === null || !canViewAudit(user.role)) {
     return (
@@ -66,9 +67,7 @@ export default function AuditPage() {
       </div>
 
       {auditQuery.isLoading ? (
-        <div className="text-muted-foreground py-16 text-center text-sm">
-          Loading audit entries…
-        </div>
+        <Skeleton variant="text" />
       ) : auditQuery.data !== undefined && Array.isArray(auditQuery.data) ? (
         <AuditTable rows={auditQuery.data as Record<string, unknown>[]} />
       ) : (

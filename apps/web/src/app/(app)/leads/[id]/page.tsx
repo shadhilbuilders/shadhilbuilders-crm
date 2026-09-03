@@ -11,6 +11,7 @@ import { useParams } from 'next/navigation';
 
 import { BackLink } from '@/components/shared/ModulePending';
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import {
   useLead,
   useLeadActivities,
@@ -44,7 +45,12 @@ export default function LeadDetailPage() {
 
       <BackLink href="/leads" label="Back to inbox" />
 
-      {leadQuery.data !== undefined && leadQuery.data !== null ? (
+      {leadQuery.isLoading ? (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+          <Skeleton variant="card" />
+          <Skeleton variant="list" count={4} />
+        </div>
+      ) : leadQuery.data !== undefined && leadQuery.data !== null ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
           {/* Left — lead info + tabs */}
           <div className="space-y-4">

@@ -27,6 +27,7 @@ import Link from 'next/link';
 
 import { ChartCard } from '@/components/shared/ChartCard';
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import {
   canManageUsers,
   canViewAudit,
@@ -48,11 +49,7 @@ export default function DashboardPage() {
   const { user, isPending: sessionPending } = useSessionUser();
 
   if (sessionPending) {
-    return (
-      <div className="text-muted-foreground py-24 text-center text-sm">
-        Loading…
-      </div>
-    );
+    return <Skeleton variant="user" className="py-24" />;
   }
 
   if (user === null) {

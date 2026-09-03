@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { ModulePending } from '@/components/shared/ModulePending';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { useLeads } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
 
@@ -55,12 +56,6 @@ export default function LeadInboxPage() {
     });
   }, [leadsQuery.data]);
 
-  const loadingSkeleton = (
-    <div className="text-muted-foreground py-16 text-center text-sm">
-      Loading leads…
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -90,7 +85,7 @@ export default function LeadInboxPage() {
       />
 
       {leadsQuery.isLoading ? (
-        loadingSkeleton
+        <Skeleton variant="table" />
       ) : leadsQuery.data !== undefined && Array.isArray(leadsQuery.data) ? (
         <LeadTable rows={sorted} />
       ) : (

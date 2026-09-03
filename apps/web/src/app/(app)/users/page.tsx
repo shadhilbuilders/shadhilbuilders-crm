@@ -31,6 +31,7 @@ import {
   useSessionUser,
 } from '@/lib/session';
 
+import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '../PageHeader';
 
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
@@ -42,7 +43,7 @@ export default function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   if (sessionPending) {
-    return <div className="text-muted-foreground py-24 text-center text-sm">Loading…</div>;
+    return <Skeleton variant="user" className="py-24" />;
   }
   if (user === null || !canManageUsers(user.role)) {
     return (
@@ -89,9 +90,7 @@ export default function UsersPage() {
       />
 
       {usersQuery.isLoading ? (
-        <div className="text-muted-foreground py-16 text-center text-sm">
-          Loading users…
-        </div>
+        <Skeleton variant="table" />
       ) : usersQuery.data !== undefined && Array.isArray(usersQuery.data) ? (
         <UserTable
           users={usersQuery.data}
