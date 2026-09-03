@@ -9,6 +9,15 @@
  * Shadhil Builders CRM brand values (plan §4):
  *   --primary       navy   #001a4c → oklch(0.238 0.099 260.3)
  *   --secondary     green  #62b132 → oklch(0.684 0.178 136.1)
+ *
+ * Plan §12 (T12): the library's default `--sidebar*` tokens are
+ * neutral-gray (`chroma: 0`), so the sidebar reads as "default shadcn"
+ * rather than as the Shadhil brand. Override the sidebar tokens here
+ * (NOT in `all.css`, which is library-owned) so the Sidebar nav and
+ * footer align with the navy primary. The plan's text mentioned
+ * "orange/amber" — that was the plan author's assumption; the actual
+ * brand is navy + green, decided in commit c1118a7 (brand/logo.png)
+ * and the original brand.css. This file is the source of truth.
  */
 
 :root {
@@ -18,6 +27,20 @@
 
   --secondary: oklch(0.684 0.178 136.1);
   --secondary-foreground: oklch(0.145 0 0);
+
+  /* ── Sidebar brand overrides (T12) ────────────────────────────────
+   * Tinted to harmonize with the navy primary instead of the
+   * library's neutral gray. Active-state (--sidebar-accent) uses
+   * the navy at 8% opacity so the active nav item reads as
+   * "selected" without breaking dark-mode contrast. */
+  --sidebar: oklch(0.99 0.005 260);
+  --sidebar-foreground: oklch(0.18 0.04 260);
+  --sidebar-primary: oklch(0.238 0.099 260.3);
+  --sidebar-primary-foreground: oklch(0.971 0.009 84.6);
+  --sidebar-accent: oklch(0.238 0.099 260.3 / 0.08);
+  --sidebar-accent-foreground: oklch(0.238 0.099 260.3);
+  --sidebar-border: oklch(0.92 0.01 260);
+  --sidebar-ring: oklch(0.238 0.099 260.3);
 }
 
 .dark {
@@ -27,4 +50,17 @@
 
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
+
+  /* ── Sidebar brand overrides — dark mode (T12) ────────────────────
+   * The library's dark defaults make the sidebar a near-black void.
+   * Replace with a deep navy-tinted gray so the sidebar still feels
+   * "Shadhil" rather than "default." */
+  --sidebar: oklch(0.18 0.03 260);
+  --sidebar-foreground: oklch(0.96 0.005 260);
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.922 0 0 / 0.1);
+  --sidebar-accent-foreground: oklch(0.96 0.005 260);
+  --sidebar-border: oklch(1 0 0 / 0.08);
+  --sidebar-ring: oklch(0.922 0 0);
 }

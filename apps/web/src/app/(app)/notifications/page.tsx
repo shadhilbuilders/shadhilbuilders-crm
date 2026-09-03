@@ -5,10 +5,11 @@
 // / Visits, date grouping, mark-all-read, deep links. The notifications
 // module (SSE + REST) is a backend stub; the bell in AppHeader shows the
 // live unread badge once it lands.
-import { Button, Heading, TypographyP } from '@paalstack/react-ui';
+import { Button } from '@paalstack/react-ui';
 import { useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { PageHeader } from '../PageHeader';
 import {
   useMarkNotificationsRead,
   useNotifications,
@@ -33,23 +34,22 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Heading className="mb-1">Notifications</Heading>
-          <TypographyP className="text-muted-foreground text-sm">
-            In-app inbox for all 12 triggers. 90-day visibility.
-          </TypographyP>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-h-11"
-          disabled={markRead.isPending}
-          onClick={() => markRead.mutate([])}
-        >
-          Mark all as read
-        </Button>
-      </div>
+      <PageHeader
+        title="Notifications"
+        breadcrumb={[{ label: 'Work' }, { label: 'Notifications' }]}
+        subtitle="In-app inbox for all 12 triggers. 90-day visibility."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            disabled={markRead.isPending}
+            onClick={() => markRead.mutate([])}
+          >
+            Mark all as read
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-1.5">
         {FILTERS.map((item) => (

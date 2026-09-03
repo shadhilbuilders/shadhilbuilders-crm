@@ -1,25 +1,48 @@
 'use client';
 
-// Role-aware home (Wireframes #1 / #3 / #4):
-//   Admin/owner → cross-team counts + audit stream (admin dashboard)
-//   Manager           → KPI strip + team pipeline sections
-//   Telecaller/Exec   → straight to their queue (Lead Inbox is the home)
+// Role-aware Dashboard (Phase 2 — plan T9).
 //
-// KPI strip = numbers in a row, NOT a card grid (locked decision).
-// Wireframes' KPI/pipeline/audit-data sources are backend module contracts —
-// pending modules render the honest ModulePending state.
+// Per D3 (role-tuned default), each role sees a different number of charts:
+//   - Telecaller/SalesExec : 1 chart (their own queue, status pie)
+//   - Manager              : 3 charts (pipeline funnel + visits-this-week + team lead pie)
+//   - Admin/Owner          : 4 charts (the three above + audit timeline)
+//
+// Per D2, the charts split into two shapes:
+//   - Dedicated files (data-shaping logic earns its own file):
+//       - `PipelineFunnelChart` (bucketing useLeads by status, friendly axis)
+//       - `VisitsThisWeekChart` (rolling 7-day window from useVisits)
+//   - Inline `ChartCard` calls (simple enough to live in the page):
+//       - `LeadStatusPie`     (count by status, only difference from funnel
+//                              is the chart type — pie vs bar — so no
+//                              dedicated file)
+//       - `AuditTimeline`     (bucket audit log by day, admin only)
+//
+// All charts flow through `ChartCard` so the loading/error/empty
+// state is centralized — the per-page wiring in T10 doesn't have to
+// re-implement the pending copy. T19 (PR2) will swap the pending
+// copy for a shape-matched Skeleton variant without changing this
+// file.
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
 
+import { ChartCard } from '@/components/shared/ChartCard';
+import { ModulePending } from '@/components/shared/ModulePending';
 import {
   canManageUsers,
   canViewAudit,
   isAdminLike,
   useSessionUser,
 } from '@/lib/session';
+import { labelFor, LEAD_STATUSES } from '@/lib/labels';
+import {
+  useAuditLog,
+  useBookings,
+  useLeads,
+  useVisits,
+} from '@/hooks/queries/crm';
 
-import { ModulePending } from '@/components/shared/ModulePending';
-import { useAuditLog, useBookings, useLeads, useVisits } from '@/hooks/queries/crm';
+import { PipelineFunnelChart } from '@/components/charts/PipelineFunnelChart';
+import { VisitsThisWeekChart } from '@/components/charts/VisitsThisWeekChart';
 
 export default function DashboardPage() {
   const { user, isPending: sessionPending } = useSessionUser();
@@ -82,7 +105,7 @@ function KpiStrip({ items }: { items: Kpi[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Manager dashboard (Wireframes #1)
+// Manager dashboard (Wireframes #1) — 3 charts
 // ---------------------------------------------------------------------------
 
 function ManagerDashboard({ name }: { name: string }) {
@@ -108,30 +131,32 @@ function ManagerDashboard({ name }: { name: string }) {
         ]}
       />
 
-      <SectionCard title="Visits today" moreHref="/visits">
-        <ModulePending
-          title="Site visits"
-          description="Today's visit schedule appears here once the visits module ships (Implementation Plan Week 6)."
-          error={visitsQuery.error}
-          isLoading={visitsQuery.isLoading}
-        />
+      <SectionCard title="Team pipeline" moreHref="/leads">
+        <ChartCard
+          title="Lead pipeline"
+          description="How leads are distributed across the funnel. Lights up when the leads module ships (Week 4)."
+          query={leadsQuery}
+        >
+          {(data) => <PipelineFunnelChart data={data} />}
+        </ChartCard>
       </SectionCard>
 
-      <SectionCard title="Bookings in progress" moreHref="/leads">
+      <SectionCard title="Visits this week" moreHref="/visits">
+        <ChartCard
+          title="Visits this week"
+          description="Count of site visits scheduled per day, Mon–Sun. Arrives with the visits module (Week 6)."
+          query={visitsQuery}
+        >
+          {(data) => <VisitsThisWeekChart data={data} />}
+        </ChartCard>
+      </SectionCard>
+
+      <SectionCard title="Bookings on hold" moreHref="/leads">
         <ModulePending
-          title="Booking pipeline"
-          description="Hold → token → approval states render here when the bookings module ships (Week 7)."
+          title="Booking approval queue"
+          description="Bookings awaiting your approval land here when the bookings module ships (Week 7)."
           error={bookingsQuery.error}
           isLoading={bookingsQuery.isLoading}
-        />
-      </SectionCard>
-
-      <SectionCard title="Overdue leads — first touch > 30 min" moreHref="/leads">
-        <ModulePending
-          title="Lead pipeline"
-          description="Overdue-first lead queue with reassign actions arrives with the leads module (Week 4)."
-          error={leadsQuery.error}
-          isLoading={leadsQuery.isLoading}
         />
       </SectionCard>
     </div>
@@ -139,14 +164,15 @@ function ManagerDashboard({ name }: { name: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin dashboard (Wireframes #3) — cross-team + audit stream
+// Admin dashboard (Wireframes #3) — 4 charts (Manager's 3 + audit timeline)
 // ---------------------------------------------------------------------------
 
 function AdminDashboard() {
   const leadsQuery = useLeads({ limit: 200 });
+  const visitsQuery = useVisits({});
   const usersVisible = canManageUsers('ADMIN');
   const auditVisible = canViewAudit('ADMIN');
-  const auditQuery = useAuditLog({ limit: 10 });
+  const auditQuery = useAuditLog({ limit: 200 });
 
   return (
     <div className="space-y-8">
@@ -166,23 +192,35 @@ function AdminDashboard() {
         ]}
       />
 
-      <SectionCard title="Team lead counts" moreHref="/leads">
-        <ModulePending
-          title="Cross-team lead counts"
-          description="Per-team lead totals with state breakdowns land with the leads module (Week 4)."
-          error={leadsQuery.error}
-          isLoading={leadsQuery.isLoading}
-        />
+      <SectionCard title="Cross-team pipeline" moreHref="/leads">
+        <ChartCard
+          title="Lead pipeline (all teams)"
+          description="Cross-team distribution of leads by status. The leads module (Week 4) provides the data."
+          query={leadsQuery}
+        >
+          {(data) => <PipelineFunnelChart data={data} />}
+        </ChartCard>
+      </SectionCard>
+
+      <SectionCard title="Visits this week" moreHref="/visits">
+        <ChartCard
+          title="Visits this week"
+          description="Site visits across all teams, per day. Arrives with the visits module (Week 6)."
+          query={visitsQuery}
+        >
+          {(data) => <VisitsThisWeekChart data={data} />}
+        </ChartCard>
       </SectionCard>
 
       {auditVisible ? (
-        <SectionCard title="Recent admin actions (audit)" moreHref="/audit">
-          <ModulePending
-            title="Audit stream"
-            description="The live audit feed arrives with the audit writer (Week 7)."
-            error={auditQuery.error}
-            isLoading={auditQuery.isLoading}
-          />
+        <SectionCard title="Audit activity (last 7 days)" moreHref="/audit">
+          <ChartCard
+            title="Audit timeline"
+            description="Audit events bucketed by day, admin-class only. The audit writer (Week 7) provides the data."
+            query={auditQuery}
+          >
+            {(data) => <AuditTimeline data={data} />}
+          </ChartCard>
         </SectionCard>
       ) : null}
     </div>
@@ -190,7 +228,7 @@ function AdminDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Telecaller / Sales Exec home (Wireframes #4) — inbox-first
+// Telecaller / Sales Exec home (Wireframes #4) — 1 chart, their queue
 // ---------------------------------------------------------------------------
 
 function InboxFirstHome({ role }: { role: string }) {
@@ -205,15 +243,98 @@ function InboxFirstHome({ role }: { role: string }) {
         </TypographyP>
       </div>
 
-      <SectionCard title="Lead inbox" moreHref="/leads">
-        <ModulePending
-          title="Lead inbox"
-          description="Your assigned leads with overdue-first sorting (wireframe Decision 0.2) arrive with the leads module (Week 4)."
-          error={leadsQuery.error}
-          isLoading={leadsQuery.isLoading}
-        />
+      <SectionCard title="Your leads by status" moreHref="/leads">
+        <ChartCard
+          title="Your queue"
+          description="Status breakdown of leads assigned to you. The leads module (Week 4) provides the data."
+          query={leadsQuery}
+        >
+          {(data) => <LeadStatusPie data={data} />}
+        </ChartCard>
       </SectionCard>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline charts (D2 — simple enough to live in the page file)
+// ---------------------------------------------------------------------------
+
+/** Pie of lead counts by status. Telecaller/Exec's single chart, and the
+ *  team-wide view for Manager/Admin's third chart. Re-uses the
+ *  friendly-label map so a non-technical user reads "Talked" not
+ *  "CONTACTED" in the legend. */
+function LeadStatusPie({ data }: { data: unknown }) {
+  if (!Array.isArray(data)) return null;
+  const counts: Record<string, number> = {};
+  for (const item of data) {
+    if (typeof item !== 'object' || item === null) continue;
+    const status = (item as { status?: unknown }).status;
+    if (typeof status !== 'string') continue;
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+  const pieData = LEAD_STATUSES.map((status) => ({
+    name: labelFor('lead', status),
+    value: counts[status] ?? 0,
+  })).filter((slice) => slice.value > 0);
+  if (pieData.length === 0) return null;
+
+  return (
+    <ul
+      className="space-y-2 text-sm"
+      aria-label="Lead counts by status (friendly labels)"
+    >
+      {pieData.map((slice) => (
+        <li
+          key={slice.name}
+          className="flex items-center justify-between border-b pb-1 last:border-b-0"
+        >
+          <span>{slice.name}</span>
+          <span className="text-muted-foreground tabular-nums">
+            {slice.value}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Audit timeline — admin only. Buckets audit log entries by day so an
+ *  admin can see "is anything weird happening this week". Uses an
+ *  inline `<ul>` rendering instead of a chart primitive because the
+ *  data is naturally sequential and a sparkline adds noise without
+ *  information. The empty list message matches the audit module's
+ *  pending state. */
+function AuditTimeline({ data }: { data: unknown }) {
+  if (!Array.isArray(data)) return null;
+  type AuditEntry = { createdAt?: string; action?: string };
+  const counts: Record<string, number> = {};
+  for (const item of data) {
+    if (typeof item !== 'object' || item === null) continue;
+    const entry = item as AuditEntry;
+    if (typeof entry.createdAt !== 'string') continue;
+    const day = new Date(entry.createdAt).toLocaleDateString('en-CA');
+    counts[day] = (counts[day] ?? 0) + 1;
+  }
+  const days = Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7);
+  if (days.length === 0) return null;
+  return (
+    <ul
+      className="space-y-1 text-sm"
+      aria-label="Audit events per day (last 7 days)"
+    >
+      {days.map(([day, count]) => (
+        <li
+          key={day}
+          className="flex items-center justify-between border-b pb-1 last:border-b-0"
+        >
+          <span>{day}</span>
+          <span className="text-muted-foreground tabular-nums">{count}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

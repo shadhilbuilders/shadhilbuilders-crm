@@ -10,7 +10,7 @@
 // page renders the honest ModulePending state. The DataTable columns and
 // filter UI below are already locked to the api-types LeadFilterDto shape so
 // the switch to live data is a query-key flip, not a rewrite.
-import { Button, Heading, TypographyP } from '@paalstack/react-ui';
+import { Button, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
@@ -18,6 +18,8 @@ import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { useLeads } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
+
+import { PageHeader } from '../PageHeader';
 
 type LeadRow = {
   id: string;
@@ -61,15 +63,17 @@ export default function LeadInboxPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Heading className="mb-1">Lead Inbox</Heading>
-          <TypographyP className="text-muted-foreground text-sm">
-            {user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC')
-              ? 'Your assigned leads, next action first.'
-              : 'Team lead queue with overdue-first sorting.'}
-          </TypographyP>
-        </div>
+      <PageHeader
+        title="Lead Inbox"
+        breadcrumb={[{ label: 'Work' }, { label: 'Leads' }]}
+        subtitle={
+          user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC')
+            ? 'Your assigned leads, next action first.'
+            : 'Team lead queue with overdue-first sorting.'
+        }
+      />
+
+      <div className="flex justify-end">
         <LeadStateFilterChips
           value={stateFilter}
           onChange={(next) => setStateFilter(next)}
