@@ -172,15 +172,17 @@ Or, with a no-show:
 **What the model C RBAC matrix means in practice:**
 
 - **Role model v2 (Round 20, 2026-08-31):** five roles —
-  SUPER_ADMIN ⊃ ADMIN ⊃ MANAGER ⊃ {TELECALLER, SALES_EXEC}.
-  Exactly ONE SUPER_ADMIN exists (partial unique index
-  `one_super_admin`; created by seed/migration only — the API
-  can never create or assign it, not even the super admin
-  themself). SUPER_ADMIN bootstraps ADMINs and can change any
+  OWNER ⊃ ADMIN ⊃ MANAGER ⊃ {TELECALLER, SALES_EXEC}.
+  Exactly ONE OWNER exists (partial unique index
+  `one_owner`; created by seed/migration only — the API
+  can never create or assign it, not even the owner
+  themself). OWNER bootstraps ADMINs and can change any
   role; ADMIN manages everything below admin; MANAGER manages
   staff within their team. Role changes are audited
   (before/after rows in AuditLog). The seeded
-  admin@shadhilbuilders.in account IS the super admin.
+  admin@shadhilbuilders.in account IS the owner. (Round 20
+  named this role SUPER_ADMIN; Round 21 renamed it OWNER
+  — see DECISION-CHANGELOG.)
 
 - **Authority inheritance (client-confirmed 2026-08-31):**
   Admin can do anything a Manager can; a Manager can do

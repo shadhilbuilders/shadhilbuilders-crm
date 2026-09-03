@@ -17,6 +17,7 @@ export default [
       '.next/**',
       'coverage/**',
       'src/test/e2e/**',
+      'public/sw.js',
     ],
   },
   {

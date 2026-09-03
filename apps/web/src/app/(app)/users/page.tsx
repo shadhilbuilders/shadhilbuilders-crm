@@ -1,8 +1,8 @@
 'use client';
 
 // Users management — LIVE against apps/backend/src/users (the one built
-// backend module). Role hierarchy (Round 17/20, locked):
-//   SUPER_ADMIN ≙ ADMIN on this surface → create any role below admin,
+// backend module). Role hierarchy (Round 17/20/21, locked):
+//   OWNER ≙ ADMIN on this surface → create any role below admin,
 //   MANAGER → TELECALLER / SALES_EXEC in own team.
 // Guards enforced server-side; the UI mirrors them for fast feedback and
 // shows real API errors (400 = policy rejection) verbatim.

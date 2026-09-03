@@ -2,6 +2,11 @@
 node_modules/
 .pnpm-store/
 
+# Prisma 7: new `prisma-client` generator emits plain TS into src/generated.
+# Don't commit — the compiled query engine binary in there isn't portable
+# across OS/arch and will be re-emitted on `pnpm prisma generate`.
+packages/database/src/generated/
+
 # Build output
 dist/
 build/

@@ -17,10 +17,14 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "db:generate": "pnpm --filter @shadhil/database generate",
     "db:migrate": "pnpm --filter @shadhil/database migrate",
+    "db:seed": "pnpm --filter @shadhil/database seed",
     "db:studio": "pnpm --filter @shadhil/database studio",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache",
     "docker:up": "pnpm --filter @shadhil/database docker:up",
-    "db:seed": "pnpm --filter @shadhil/database seed",
+    "docker:stack": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f",
+    "docker:restart": "docker compose --env-file .env -f docker/docker-compose.yml restart",
     "db:policies": "docker exec -i shadhil-postgres psql -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 < packages/database/prisma/rls/policies.sql"
   },
   "devDependencies": {

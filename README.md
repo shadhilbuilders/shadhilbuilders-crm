@@ -13,11 +13,20 @@ edoburu/pgbouncer 1.25 · Postgres 16 · Redis 7.
 ```bash
 pnpm install
 cp .env.example .env          # edit secrets (BETTER_AUTH_SECRET, JWT_SECRET)
-pnpm docker:up                # postgres + pgbouncer (session pool) + redis
+pnpm docker:stack             # postgres + pgbouncer (session pool) + redis + api container
 pnpm --filter @shadhil/database generate  # prisma client (gitignored)
 pnpm --filter @shadhil/database migrate   # schema + RLS policies + grants
-pnpm --filter @shadhil/database seed      # super admin + manager + 2 staff
-pnpm dev                      # turbo dev — web :3000, api :8080
+pnpm --filter @shadhil/database seed      # owner + admin + manager + 2 staff
+```
+
+The api is now live on http://localhost:8080/api (Swagger at `/api/docs`).
+For the web UI plus hot-reload dev loop, run `pnpm docker:down` first
+(frees port 8080) then `pnpm dev` — it fans out to web + api + workspace
+`tsc --watch` via turbo:
+
+```bash
+pnpm docker:down              # free port 8080
+pnpm dev                      # web on :3000, api on :8080 (turbo dev)
 ```
 
 Then open http://localhost:3000/login and sign in with a seeded placeholder
@@ -25,16 +34,17 @@ account (rotate these before any real use):
 
 | Email | Role | Password |
 |---|---|---|
-| admin@shadhilbuilders.in | SUPER_ADMIN (exactly one, ever) | `admin_placeholder_pw` |
+| owner@shadhilbuilders.in | OWNER (exactly one, ever) | `owner_placeholder_pw` |
+| admin@shadhilbuilders.in | ADMIN | `admin_placeholder_pw` |
 | manager@shadhilbuilders.in | MANAGER | `manager_placeholder_pw` |
 | telecaller@shadhilbuilders.in | TELECALLER | `telecaller_placeholder_pw` |
 | sales_exec@shadhilbuilders.in | SALES_EXEC | `sales_exec_placeholder_pw` |
 
-Role model: SUPER_ADMIN ⊃ ADMIN ⊃ MANAGER ⊃ TELECALLER / SALES_EXEC. The
-super admin creates admins; admins create managers + staff; managers create
+Role model: OWNER ⊃ ADMIN ⊃ MANAGER ⊃ TELECALLER / SALES_EXEC. The
+owner creates admins; admins create managers + staff; managers create
 staff in their own team. Role changes follow the same hierarchy and are
 written to the audit log (see `docs/planning/DECISION-CHANGELOG.md` Rounds
-17–20). Users are created/changed via the API (`POST /api/users`,
+17–21). Users are created/changed via the API (`POST /api/users`,
 `PATCH /api/users/:id/role`) until the admin UI lands.
 
 ## Layout
@@ -57,13 +67,32 @@ PLANNING-MASTER.md  Index to every planning document
 
 | Command | What it does |
 |---|---|
-| `pnpm docker:up` | Start postgres/pgbouncer/redis (edoburu pgbouncer; ini is authoritative) |
+| `pnpm docker:up` | Start postgres/pgbouncer/redis only (edoburu pgbouncer; ini is authoritative) — use when you want the data services without the api container |
+| `pnpm docker:stack` | Start the full stack: postgres + pgbouncer + redis + api (the compiled-CJS container). Runs on the same ports as `pnpm dev` (3000 / 8080) — convenient for verifying the production image locally |
+| `pnpm docker:down` | Stop and remove containers (volumes preserved) |
+| `pnpm docker:logs` | Tail logs from all services (`-f` follow) |
+| `pnpm docker:restart` | Restart containers — useful after `.env` changes |
+| `pnpm dev` | `turbo run dev` — fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first |
 | `pnpm --filter @shadhil/database generate` | Generate the Prisma client (gitignored — required after install) |
 | `pnpm --filter @shadhil/database migrate` | Apply schema + RLS (prisma migrate) |
-| `pnpm --filter @shadhil/database seed` | Super admin + manager + team + staff (placeholders unless SEED_* set) |
+| `pnpm --filter @shadhil/database seed` | Owner + admin + manager + team + staff (placeholders unless SEED_* set) |
 | `pnpm db:policies` | Re-apply policies.sql directly (idempotent) |
 | `pnpm test` | All package tests (unit runs anywhere; DB suite needs live Postgres) |
 | `pnpm type-check` / `pnpm lint` | Gates that must stay green |
+
+### Dev vs Docker stack
+
+Both `pnpm dev` and `pnpm docker:stack` bind ports 3000 (web) and 8080
+(api). They can't run at the same time — pick one:
+
+- **For the dev loop (hot-reload, `tsc --watch`):** `pnpm docker:down` then
+  `pnpm dev` — runs the backend via `nest start --watch` and the web via
+  `next dev`. Edit any workspace package and its `dist/` is rebuilt
+  automatically; the backend picks it up.
+- **For verifying the production image locally (or running on a VPS):**
+  `pnpm docker:stack` — runs the multi-stage `nest build` image.
+
+Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
 
 ## Security model (read before touching data access)
 
@@ -76,11 +105,11 @@ PLANNING-MASTER.md  Index to every planning document
   (RLS-forced with zero policies), and system crons. The Prisma 7 pg-adapter
   client reads `DATABASE_URL` (pooled); SQLite-free CI note: keep the
   adapter constructor connection-free.
-- Roles are the Prisma `Role` enum (UPPERCASE): `SUPER_ADMIN | ADMIN |
+- Roles are the Prisma `Role` enum (UPPERCASE): `OWNER | ADMIN |
   MANAGER | SALES_EXEC | TELECALLER`. JWT claims are normalized/validated in
   `packages/auth-client/src/jwt.ts` — a token without a valid role claim is
-  rejected. Exactly one SUPER_ADMIN exists (partial unique index
-  `one_super_admin`); it cannot be created or assigned through the API.
+  rejected. Exactly one OWNER exists (partial unique index
+  `one_owner`); it cannot be created or assigned through the API.
 - `@Public()` is for health, auth, and signature-verified webhooks only.
   Nowhere else.
 
@@ -103,5 +132,5 @@ Schema changes flow ONLY through Prisma migrations
 (`packages/database/prisma/migrations/`). RLS policy changes belong in the
 same migration as the table change — keep `prisma/rls/policies.sql` as the
 canonical source and copy into the migration. Postgres-level constraints that
-Prisma can't express (e.g. the partial unique index `one_super_admin`) live
+Prisma can't express (e.g. the partial unique index `one_owner`) live
 in their own native-SQL migrations.

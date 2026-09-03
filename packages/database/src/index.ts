@@ -9,11 +9,13 @@
 // DO NOT instantiate PrismaClient inline elsewhere — import { prisma } from here.
 // ────────────────────────────────────────────────────────────────────────────
 
-// The Prisma generator `output` in schema.prisma points to a custom directory
-// (../node_modules/.prisma/client), so the generated client is NOT re-exported
-// from the default `@prisma/client` package. Import directly from the
-// generator output path.
-import { PrismaClient } from '../node_modules/.prisma/client';
+// The Prisma generator in schema.prisma uses the new `prisma-client` provider
+// (Prisma 7 default), with output to `../src/generated/prisma`. The generator
+// emits plain TypeScript files (e.g. `client.ts`) that we import like any
+// other source — no more directory imports, no `ERR_UNSUPPORTED_DIR_IMPORT`.
+// The `moduleFormat: "esm"` field is honored by this provider (silently
+// ignored by the old `prisma-client-js`).
+import { PrismaClient } from './generated/prisma/client';
 // Prisma 7: the client no longer reads a datasource url from schema.prisma —
 // it connects through a driver adapter. @prisma/adapter-pg + pg Pool keyed on
 // DATABASE_URL (the PgBouncer pooled path; POOL_MODE must be 'session' for
@@ -60,7 +62,7 @@ if (process.env.NODE_ENV !== 'production') {
 export { verifyPoolMode, PoolModeError } from './boot-check';
 export { withRlsContext } from './rls';
 export type { RlsContext, RlsTx } from './rls';
-export type { PrismaClient } from '../node_modules/.prisma/client';
+export type { PrismaClient } from './generated/prisma/client';
 export type {
   User,
   Team,
@@ -98,4 +100,4 @@ export type {
   Account,
   Verification,
   Role,
-} from '../node_modules/.prisma/client';
+} from './generated/prisma/client';

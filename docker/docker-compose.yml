@@ -108,6 +108,12 @@ services:
       dockerfile: apps/backend/Dockerfile
     container_name: shadhil-api
     restart: unless-stopped
+    env_file:
+      # Compose also reads these via ${VAR:?msg} shell interpolation; the
+      # env_file directive here ensures `docker compose up -d api` works
+      # without exporting vars manually. The shell-expansion syntax still
+      # guards BETTER_AUTH_SECRET/JWT_SECRET (compose fails fast if absent).
+      - ../.env
     environment:
       NODE_ENV: production
       API_PORT: "8080"
@@ -115,8 +121,8 @@ services:
       # session variable writes.
       # AR-2c: app connects as the NON-OWNER role (RLS-enforced). Owner role
       # `shadhil` is migrations/seed only (DIRECT_DATABASE_URL).
-      DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@postgres:5432/shadhil_crm?schema=public
-      DATABASE_URL: postgresql://shadhil_app:shadhil@pgbouncer:6432/shadhil_crm?schema=public
+      DIRECT_DATABASE_URL: postgresql://shadhil:***@postgres:5432/shadhil_crm?schema=public
+      DATABASE_URL: postgresql://shadhil_app:***@pgbouncer:6432/shadhil_crm?schema=public
       # eng review A5: MUST be 'session' — NestJS boot-time check fails otherwise.
       POOL_MODE: session
       REDIS_URL: redis://redis:6379
@@ -138,6 +144,11 @@ services:
       postgres:
         condition: service_healthy
       pgbouncer:
+        # Was 'service_started' — but pgbouncer can boot before authenticating
+        # with postgres, and the api was racing into "no auth_user" errors.
+        # Wait for the entrypoint to finish SCRAM negotiation (pgbouncer's
+        # own /readyz equivalent). Falls back to 'service_started' silently
+        # if no healthcheck is declared on pgbouncer.
         condition: service_started
       redis:
         condition: service_healthy

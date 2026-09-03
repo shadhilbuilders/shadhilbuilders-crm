@@ -1,0 +1,13 @@
+-- Round 25 fix: shadhil_app had table-level GRANTs (init migration)
+-- but no schema-level USAGE on `public`. Without USAGE, the table
+-- GRANTs are invisible and every app query fails with
+-- `42501 permission denied for schema public` (or `42P01 relation
+-- does not exist` depending on the access path). The schema's
+-- default PUBLIC ACL was empty in this setup, so the implicit
+-- pseudo-role grant did not apply.
+--
+-- This migration applies the schema-level grant. It is idempotent
+-- (`IF EXISTS` is not needed because GRANT USAGE on a schema is
+-- idempotent at the role level — running it twice has no effect
+-- on a role that already has it).
+GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;

@@ -16,12 +16,20 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 generator client {
-  provider        = "prisma-client-js"
+  // Prisma 7 default generator (the old `prisma-client-js` is in maintenance
+  // mode and will be removed). Emits plain TypeScript into a normal source
+  // path — no more magic generation into `node_modules/.prisma/client`, no
+  // more `ERR_UNSUPPORTED_DIR_IMPORT` from the consumer's bare-directory
+  // import.
+  //
+  // moduleFormat: "cjs" — the whole backend toolchain (nest build + node
+  // dist/main.js) is CommonJS; CJS require() resolves the generated code's
+  // bare relative imports natively. (With "esm" the generator emits bare
+  // ESM imports that Node ESM rejects.)
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
   previewFeatures = []
-  // Generate into the package's own node_modules so types and runtime resolve
-  // cleanly. The shadhil monorepo generates one Prisma client per package
-  // and re-exports the types from src/index.ts.
-  output          = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -33,7 +41,7 @@ datasource db {
 // ────────────────────────────────────────────────────────────────────────────
 
 enum Role {
-  SUPER_ADMIN
+  OWNER
   ADMIN
   MANAGER
   SALES_EXEC
