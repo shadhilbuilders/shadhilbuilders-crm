@@ -121,8 +121,17 @@ services:
       # session variable writes.
       # AR-2c: app connects as the NON-OWNER role (RLS-enforced). Owner role
       # `shadhil` is migrations/seed only (DIRECT_DATABASE_URL).
-      DIRECT_DATABASE_URL: postgresql://shadhil:***@postgres:5432/shadhil_crm?schema=public
-      DATABASE_URL: postgresql://shadhil_app:***@pgbouncer:6432/shadhil_crm?schema=public
+      #
+      # eng review 2026-09-03: the source DATABASE_URL / DIRECT_DATABASE_URL
+      # in ../.env use `localhost` (correct for host-side tooling: `pnpm
+      # db:migrate`, the BFF in `pnpm dev`). From inside the api container,
+      # `localhost` is the container itself, not the postgres/pgbouncer
+      # services. The api container runs `sed` at start to rewrite the host
+      # portion (see `command:` below) so the runtime URL points at the
+      # docker-network DNS names. Source values still come from ../.env.
+      # Production deploys via Coolify override this command block entirely.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required in .env}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL required in .env}
       # eng review A5: MUST be 'session' — NestJS boot-time check fails otherwise.
       POOL_MODE: session
       REDIS_URL: redis://redis:6379
@@ -138,6 +147,17 @@ services:
       WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-placeholder}
       FREJUN_API_KEY: ${FREJUN_API_KEY:-placeholder}
       FREJUN_WEBHOOK_SECRET: ${FREJUN_WEBHOOK_SECRET:-placeholder}
+    # Rewrite the localhost in DATABASE_URL/DIRECT_DATABASE_URL to the
+    # docker-internal DNS names (pgbouncer, postgres), then exec the
+    # original NestJS start command. Idempotent — sed swaps only the host
+    # segment between :// and the next :, leaving user/password/port/db/query
+    # untouched. The DATABASE_URL/DIRECT_DATABASE_URL seen by the Node
+    # process is the rewritten one. POSIX sed (no bash-only constructs) so
+    # the alpine busybox sh in the production image handles this.
+    command:
+      - "sh"
+      - "-c"
+      - "export DATABASE_URL=$$(echo \"$$DATABASE_URL\" | sed 's|@localhost:|@pgbouncer:|') && export DIRECT_DATABASE_URL=$$(echo \"$$DIRECT_DATABASE_URL\" | sed 's|@localhost:|@postgres:|') && echo \"[entrypoint] DATABASE_URL host rewritten to $$(echo $$DATABASE_URL | sed 's|.*@|@|')\" && exec node apps/backend/dist/main.js"
     ports:
       - "8080:8080"
     depends_on:

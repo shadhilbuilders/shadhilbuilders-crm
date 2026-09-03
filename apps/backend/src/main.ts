@@ -4,6 +4,14 @@
 // - /api/health      → health check (Coolify uptime monitor)
 // - /api/*           → feature routes
 //
+// T-G8 (eng review A2 / 2026-09-03): fail-fast at boot for every required
+// env var. The previous behavior (process.env.X ?? 'silent-default') led
+// to production running with a localhost Redis URL when the real one was
+// missing — silent failure of pub/sub + cron leases. assertBootEnv() runs
+// FIRST so the container exits with a clear error instead of starting
+// half-dead. The validator lives in ./boot-env.ts and is unit-tested in
+// boot-env.test.ts.
+//
 // Eng review A5: POOL_MODE must be 'session' (RLS requirement). Boot-time
 // check throws if not.
 import { NestFactory } from '@nestjs/core';
@@ -11,11 +19,19 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { verifyPoolMode } from '@shadhil/database';
 import { AppModule } from './app.module';
+import { assertBootEnv } from './boot-env';
 
 async function bootstrap(): Promise<void> {
+  // T-G8: fail fast on missing/invalid boot env BEFORE any other init.
+  // A misconfigured container exits with the full list of gaps, not a
+  // half-initialized Nest app failing on the first Redis call.
+  const env = assertBootEnv();
+
   // Eng review A5: fail fast if POOL_MODE != 'session' (otherwise RLS breaks).
   // Set POOL_MODE=transaction only after a careful migration plan; the boot
-  // check is here to prevent silent data leaks.
+  // check is here to prevent silent data leaks. assertBootEnv already
+  // validated the value; verifyPoolMode double-checks against the actual
+  // PgBouncer config it can introspect.
   await verifyPoolMode();
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -23,9 +39,7 @@ async function bootstrap(): Promise<void> {
 
   // AR-8: allowlist from env, localhost only outside production. Compose sets
   // CORS_ORIGINS in prod; defaults here are dev-only.
-  const corsOrigins = (process.env.CORS_ORIGINS ??
-    'http://localhost:3000,http://localhost:8081')
-    .split(',')
+  const corsOrigins = env.CORS_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean);
 
@@ -73,7 +87,7 @@ async function bootstrap(): Promise<void> {
     swaggerOptions: { persistAuthorization: true },
   });
 
-  const port = Number(process.env.API_PORT ?? 8080);
+  const port = env.API_PORT;
   await app.listen(port);
   logger.log(`Shadhil CRM API listening on http://localhost:${port}/api`);
   logger.log(`Swagger UI: http://localhost:${port}/api/docs`);

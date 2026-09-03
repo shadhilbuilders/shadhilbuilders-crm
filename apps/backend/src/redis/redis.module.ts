@@ -2,6 +2,14 @@
 //  - SSE pub/sub (eng review A9: per-channel event broadcast)
 //  - @Cron locks (eng review A3: SET NX EX 50 to prevent double-fire)
 //  - rate limiting (per-request quotas)
+//
+// T-G8: REDIS_URL is now REQUIRED. The previous `process.env.REDIS_URL ?? 'redis://localhost:6379'`
+// silent default caused prod to silently lose pub/sub + cron locks
+// whenever the real env var was missing. assertBootEnv() in main.ts
+// throws before this module instantiates if REDIS_URL is unset — so
+// reaching this constructor with no URL means someone bypassed the
+// boot check (e.g. unit test stub). We still defensively throw here so
+// the failure mode is the same.
 import { Global, Module, OnModuleDestroy, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 
@@ -12,7 +20,12 @@ class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
 
   constructor() {
-    const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    const url = process.env.REDIS_URL;
+    if (url === undefined || url.length === 0) {
+      throw new Error(
+        '[redis] REDIS_URL is not set. assertBootEnv() should have caught this — if you see this error, you bypassed main.ts (e.g. unit test stub).',
+      );
+    }
     this.client = new Redis(url, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
