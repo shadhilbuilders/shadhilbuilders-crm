@@ -3,11 +3,7 @@
 //   POST   /api/users         → CreatedUser   (role hierarchy enforced server-side)
 //   GET    /api/users         → CreatedUser[] (scope filtered per role)
 //   PATCH  /api/users/:id/role → CreatedUser
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs, type Role } from '@/apis/client';
 
@@ -32,8 +28,9 @@ const USERS_KEY = ['users'] as const;
 export function useUsers() {
   return useQuery({
     queryKey: USERS_KEY,
-    queryFn: () => api<BackendCreatedUser[]>('/users'),
+    queryFn: ({ signal }) => api<BackendCreatedUser[]>('/users', { signal }),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 

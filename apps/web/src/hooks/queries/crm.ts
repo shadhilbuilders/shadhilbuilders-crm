@@ -1,4 +1,4 @@
-// Lead, visit, chat, booking, notification, and audit hooks.
+// Leads, visits, chat, bookings, notifications, and audit hooks.
 //
 // IMPORTANT (honest-state contract): the leads/visits/chat/bookings/
 // notifications/audit modules on the backend are SCAFFOLDED but not yet
@@ -6,7 +6,11 @@
 // the exact endpoint contracts defined in packages/api-types/src/*.ts so
 // they light up automatically when the controllers land. Until then pages
 // render their typed error/empty states — never fake data.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+//
+// T24 (PR3): every list-shape query has `placeholderData: keepPreviousData`
+// so the skeleton only renders on first load, not on refetch (avoids the
+// "stale data → skeleton → fresh data" flicker on navigation).
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 
@@ -26,7 +30,7 @@ export type LeadFilterInput = {
 export function useLeads(filter: LeadFilterInput = {}) {
   return useQuery({
     queryKey: ['leads', filter] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<unknown[]>(
         `/leads${qs({
           state: filter.state?.join(','),
@@ -36,8 +40,10 @@ export function useLeads(filter: LeadFilterInput = {}) {
           limit: filter.limit,
           offset: filter.offset,
         })}`,
+        { signal },
       ),
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -45,7 +51,7 @@ export function useLead(id: string | null) {
   return useQuery({
     queryKey: ['leads', id] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: () => api<unknown>(`/leads/${id as string}`),
+    queryFn: ({ signal }) => api<unknown>(`/leads/${id as string}`, { signal }),
   });
 }
 
@@ -53,7 +59,7 @@ export function useLeadActivities(id: string | null) {
   return useQuery({
     queryKey: ['leads', id, 'activities'] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: () => api<unknown[]>(`/leads/${id as string}/activities`),
+    queryFn: ({ signal }) => api<unknown[]>(`/leads/${id as string}/activities`, { signal }),
   });
 }
 
@@ -64,9 +70,10 @@ export function useLeadActivities(id: string | null) {
 export function useVisits(params: { from?: string; to?: string } = {}) {
   return useQuery({
     queryKey: ['visits', params] as const,
-    queryFn: () =>
-      api<unknown[]>(`/visits${qs({ from: params.from, to: params.to })}`),
+    queryFn: ({ signal }) =>
+      api<unknown[]>(`/visits${qs({ from: params.from, to: params.to })}`, { signal }),
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -78,7 +85,7 @@ export function useMessages(leadId: string | null) {
   return useQuery({
     queryKey: ['chat', leadId] as const,
     enabled: leadId !== null && leadId.length > 0,
-    queryFn: () => api<unknown[]>(`/chat/${leadId as string}`),
+    queryFn: ({ signal }) => api<unknown[]>(`/chat/${leadId as string}`, { signal }),
   });
 }
 
@@ -103,8 +110,9 @@ export function useSendMessage(leadId: string) {
 export function useBookings(params: { status?: string } = {}) {
   return useQuery({
     queryKey: ['bookings', params] as const,
-    queryFn: () => api<unknown[]>(`/bookings${qs({ status: params.status })}`),
+    queryFn: ({ signal }) => api<unknown[]>(`/bookings${qs({ status: params.status })}`, { signal }),
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -115,10 +123,11 @@ export function useBookings(params: { status?: string } = {}) {
 export function useNotifications(params: { unreadOnly?: boolean } = {}) {
   return useQuery({
     queryKey: ['notifications', params] as const,
-    queryFn: () =>
-      api<unknown[]>(`/notifications${qs({ unreadOnly: params.unreadOnly })}`),
+    queryFn: ({ signal }) =>
+      api<unknown[]>(`/notifications${qs({ unreadOnly: params.unreadOnly })}`, { signal }),
     staleTime: 10_000,
     refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -145,7 +154,7 @@ export function useAuditLog(
 ) {
   return useQuery({
     queryKey: ['audit', params] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<unknown[]>(
         `/audit${qs({
           action: params.action,
@@ -153,7 +162,9 @@ export function useAuditLog(
           to: params.to,
           limit: params.limit,
         })}`,
+        { signal },
       ),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }

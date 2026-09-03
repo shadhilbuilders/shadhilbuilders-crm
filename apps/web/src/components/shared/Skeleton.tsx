@@ -55,6 +55,15 @@ export type SkeletonProps = {
   count?: number;
   /** Chart inside-shape — only consulted when `variant="chart"`. */
   dataHint?: ChartDataHint;
+  /**
+   * T25 (PR3): when true, the skeleton renders an offline hint
+   * ("Will sync when online") alongside the shape. The hook that
+   * renders the skeleton (e.g. a page) decides this based on
+   * `navigator.onLine`; this component just adds the label.
+   * Only meaningful for `variant="list"` — the other variants
+   * are too small for a meaningful inline message.
+   */
+  isOffline?: boolean;
   /** Extra classes appended to the wrapper. */
   className?: string;
 };
@@ -150,6 +159,7 @@ export function Skeleton({
   variant,
   count,
   dataHint,
+  isOffline = false,
   className,
 }: SkeletonProps) {
   const c = count ?? SKELETON_SHAPES[variant].count;
@@ -214,22 +224,29 @@ export function Skeleton({
 
       case 'list':
         return (
-          <ul
-            className="space-y-3"
-            data-qa="skeleton-list"
-          >
-            {Array.from({ length: c }).map((_, index) => (
-              <li key={index} className="flex items-center gap-3">
-                <LibSkeleton
-                  className={`${SKELETON_SHAPES.list.item.avatar} rounded-full`}
-                />
-                <div className="flex-1 space-y-2">
-                  <LibSkeleton className="h-3 w-3/4" />
-                  <LibSkeleton className="h-3 w-1/2" />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-3" data-qa="skeleton-list">
+            {isOffline ? (
+              <p
+                className="text-muted-foreground text-xs"
+                data-qa="skeleton-offline-hint"
+              >
+                Will sync when online
+              </p>
+            ) : null}
+            <ul className="space-y-3">
+              {Array.from({ length: c }).map((_, index) => (
+                <li key={index} className="flex items-center gap-3">
+                  <LibSkeleton
+                    className={`${SKELETON_SHAPES.list.item.avatar} rounded-full`}
+                  />
+                  <div className="flex-1 space-y-2">
+                    <LibSkeleton className="h-3 w-3/4" />
+                    <LibSkeleton className="h-3 w-1/2" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         );
 
       case 'card':

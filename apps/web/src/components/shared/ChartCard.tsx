@@ -46,7 +46,7 @@
 // already passes `isLoading` to ModulePending, and ModulePending is the
 // single point that knows how to render a "module loading" state.
 
-import { Card, CardContent, CardHeader, CardTitle } from '@paalstack/react-ui';
+import { Card, CardContent, CardHeader, CardTitle, Empty, ErrorBoundary } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { SkeletonContainer } from '@/components/shared/SkeletonContainer';
@@ -100,6 +100,40 @@ function isEmptyData(data: unknown): boolean {
 }
 
 export function ChartCard<T>({
+  title,
+  description,
+  query,
+  children,
+  emptyTitle = 'No data yet',
+  dataHint = 'bar',
+}: ChartCardProps<T>) {
+  // T22 + T31: the entire ChartCard body is wrapped in an ErrorBoundary
+  // so a render throw inside a chart (e.g. malformed data) shows an
+  // <Empty> fallback instead of a white screen or infinite skeleton.
+  // The skeleton is *not* a valid fallback here — a skeleton hides the
+  // failure, which makes the bug unobservable. The user needs to see
+  // the error so they can report it (CEO §2 1B + re-review 1D).
+  return (
+    <ErrorBoundary FallbackComponent={ChartCardErrorFallback}>
+      <ChartCardBody
+        title={title}
+        description={description}
+        query={query}
+        emptyTitle={emptyTitle}
+        dataHint={dataHint}
+      >
+        {children}
+      </ChartCardBody>
+    </ErrorBoundary>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Internal: actual state-machine, separated so the ErrorBoundary can
+// catch render throws without re-entering the boundary.
+// ---------------------------------------------------------------------------
+
+function ChartCardBody<T>({
   title,
   description,
   query,
@@ -165,6 +199,44 @@ export function ChartCard<T>({
         {children(query.data)}
       </SkeletonContainer>
     </ChartFrame>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// T22 + T31: ErrorBoundary fallback. Renders an <Empty> with the
+// error message so the failure is visible to the user. We deliberately
+// do NOT render a Skeleton (skeleton hides the failure) and we do NOT
+// log to console here — the ErrorBoundary logs by default.
+// ---------------------------------------------------------------------------
+
+function ChartCardErrorFallback({
+  error,
+  resetErrorBoundary,
+}: {
+  error: unknown;
+  resetErrorBoundary: () => void;
+}) {
+  const message = error instanceof Error ? error.message : 'Chart failed to render.';
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Chart unavailable</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Empty
+          title="This chart failed to load"
+          description={message}
+        >
+          <button
+            type="button"
+            onClick={resetErrorBoundary}
+            className="text-primary text-sm underline underline-offset-4"
+          >
+            Try again
+          </button>
+        </Empty>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -10,6 +10,7 @@ import { useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { PageHeader } from '../PageHeader';
 import {
   useMarkNotificationsRead,
@@ -32,6 +33,9 @@ export default function NotificationsPage() {
     unreadOnly: filter === 'UNREAD',
   });
   const markRead = useMarkNotificationsRead();
+  // T25 (PR3): when the browser is offline and the list is loading,
+  // show the "Will sync when online" hint via the skeleton.
+  const isOnline = useOnlineStatus();
 
   return (
     <div className="space-y-6">
@@ -67,7 +71,10 @@ export default function NotificationsPage() {
       </div>
 
       {notificationsQuery.isLoading ? (
-        <Skeleton variant="text" />
+        <Skeleton
+          variant="text"
+          isOffline={!isOnline}
+        />
       ) : notificationsQuery.data !== undefined &&
         Array.isArray(notificationsQuery.data) ? (
         <ul className="border-border divide-border divide-y rounded-lg border">
