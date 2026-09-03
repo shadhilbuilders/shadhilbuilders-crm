@@ -25,3 +25,17 @@ overrides:
   # (already-latest) plugin and silence the stale peer range so the
   # eslint 10 upgrade doesn't fail resolution.
   'eslint-plugin-react': '7.37.5'
+
+  # ── Dependabot 2026-09-03 — security floor (T-G8 sibling). ─────────────
+  # Pinned transitive-dep versions to clear 4 high + 3 medium advisories:
+  #   browserslist   CVE-2026-73088 + CVE-2026-73089 (memory growth / RCE)
+  #   deepmerge-ts   CVE-2026-40345 (stack exhaustion)
+  #   mysql2         cleartext credential leak (auth plugin downgrade)
+  #   qs             CVE-2026-82417 + CVE-2026-82562 (DoS, array-limit bypass)
+  # Dependabot should auto-close the alerts once the lockfile reflects
+  # these versions. Re-evaluate when new fixed releases ship — these
+  # pins may lag behind.
+  'browserslist': '4.28.7'
+  'deepmerge-ts': '8.0.0'
+  'mysql2': '3.23.1'
+  'qs': '6.16.0'
