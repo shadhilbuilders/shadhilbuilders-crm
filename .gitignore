@@ -77,3 +77,5 @@ infra/data/
 # Delete existing junk manually:
 #   find . -maxdepth 1 -type d -name 'C:*' -exec rm -rf {} +
 C:\\Users\\*\\AppData\\Local\\lighthouse.*
+
+docs/**/*.jsonl
