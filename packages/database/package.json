@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && prisma generate",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "dev": "tsc -p tsconfig.build.json --watch",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",

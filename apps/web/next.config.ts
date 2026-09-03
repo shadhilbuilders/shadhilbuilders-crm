@@ -34,6 +34,16 @@ const nextConfig: NextConfig = {
     '@paalstack/react-icons',
     '@shadhil/ui-tokens',
     '@shadhil/auth',
+    // Workspace packages consumed via pnpm symlinks. The prebuild
+    // hook in package.json ensures their dist/ is rebuilt before
+    // next build runs (Vercel cache + tsc incremental can otherwise
+    // leave the symlink target missing, causing TS2307 / Module
+    // not found). Keeping these in transpilePackages is also needed
+    // for Next 16 App Router server-component transpilation of any
+    // files that are pulled into the server bundle.
+    '@shadhil/database',
+    '@shadhil/api-types',
+    '@shadhil/offline-store',
   ],
 
   images: {
