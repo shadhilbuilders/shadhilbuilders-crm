@@ -18,6 +18,8 @@ import {
 } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
 
+import { PageHeader } from '../../PageHeader';
+
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
   const leadId = typeof params?.id === 'string' ? params.id : null;
@@ -31,6 +33,15 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Lead"
+        breadcrumb={[
+          { label: 'Work' },
+          { label: 'Leads', href: '/leads' },
+          { label: typeof (leadQuery.data as { name?: string } | undefined)?.name === 'string' ? (leadQuery.data as { name: string }).name : 'Detail' },
+        ]}
+      />
+
       <BackLink href="/leads" label="Back to inbox" />
 
       {leadQuery.data !== undefined && leadQuery.data !== null ? (

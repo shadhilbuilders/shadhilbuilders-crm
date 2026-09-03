@@ -1,11 +1,22 @@
 'use client';
 
-// Authenticated app shell + top navigation.
+// AppHeader — slim topbar inside the (app) layout's SidebarInset.
 //
-// Replaces the Phase-1 SiteHeader on app pages. Left = brand + module nav,
-// right = notification bell (badge) + user menu with role + sign-out.
-// Nav is role-aware: Users shows for admin-class+managers, Audit for
-// admin-class only (DESIGN.md §4 permission matrix).
+// History: Phase-1 had a full horizontal top-nav (logo + module nav +
+// user menu) here. The Phase-2 shell (plan §3.1) moves module nav
+// into the sidebar; this topbar becomes:
+//   - SidebarTrigger (mobile-only hamburger that opens the Sheet)
+//   - page title slot (left blank — T10 wires per-page titles)
+//   - OfflineQueueBadge (D6: revalidation signal sits next to the user
+//     surface that queues work, not in a global <main>)
+//   - UserMenu popover (avatar + sign out)
+//
+// Plan §3.2 / §11 T8. Note: the notification bell is rendered
+// explicitly with `useNotifications({unreadOnly:true})` so the count
+// is honest — it reads from the live query, never a hard-coded value.
+// Until the notifications module ships, the count stays at 0 (which
+// matches the badge contract in ModulePending: no fake numbers).
+
 import {
   Button,
   PopoverContent,
@@ -13,117 +24,67 @@ import {
   PopoverTrigger,
   Separator,
 } from '@paalstack/react-ui';
-import { LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useCallback } from 'react';
+import { LuBell, LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
+import { SidebarTrigger } from '@paalstack/react-ui';
 
-import { authClient } from '@/lib/auth-client';
-import {
-  canManageUsers,
-  canViewAudit,
-  useSessionUser,
-} from '@/lib/session';
+import { useSignOut } from '@/lib/auth-actions';
+import { useSessionUser } from '@/lib/session';
+import { useNotifications } from '@/hooks/queries/crm';
+
 import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 
-const NAV_ITEMS: { href: string; label: string }[] = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/leads', label: 'Leads' },
-  { href: '/visits', label: 'Visits' },
-  { href: '/inventory', label: 'Inventory' },
-  { href: '/notifications', label: 'Notifications' },
-];
-
 export function AppHeader() {
-  const pathname = usePathname();
-  const router = useRouter();
   const { user, isPending } = useSessionUser();
-
-  const signOut = useCallback(async () => {
-    await authClient.signOut();
-    router.replace('/login');
-    router.refresh();
-  }, [router]);
-
-  const manageUsersVisible = canManageUsers(user?.role);
-  const auditVisible = canViewAudit(user?.role);
+  const signOut = useSignOut();
 
   return (
-    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur">
-      <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-          <Link
-            href="/"
-            className="text-primary -ml-2 inline-flex min-h-11 shrink-0 items-center px-2 font-semibold"
-          >
-            Shadhil CRM
-          </Link>
-          <Separator orientation="vertical" className="hidden h-5 sm:block" />
-          <nav className="flex min-w-0 items-center overflow-x-auto">
-            {NAV_ITEMS.map((item) => {
-              const active =
-                item.href === '/'
-                  ? pathname === '/'
-                  : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={`inline-flex min-h-11 items-center whitespace-nowrap px-3 text-sm ${
-                    active
-                      ? 'text-foreground font-medium'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-            {manageUsersVisible ? (
-              <Link
-                href="/users"
-                aria-current={pathname.startsWith('/users') ? 'page' : undefined}
-                className={`inline-flex min-h-11 items-center whitespace-nowrap px-3 text-sm ${
-                  pathname.startsWith('/users')
-                    ? 'text-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Users
-              </Link>
-            ) : null}
-            {auditVisible ? (
-              <Link
-                href="/audit"
-                aria-current={pathname.startsWith('/audit') ? 'page' : undefined}
-                className={`inline-flex min-h-11 items-center whitespace-nowrap px-3 text-sm ${
-                  pathname.startsWith('/audit')
-                    ? 'text-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Audit
-              </Link>
-            ) : null}
-          </nav>
-        </div>
+    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
+      <div className="flex min-w-0 items-center gap-2">
+        <SidebarTrigger className="-ml-1 md:hidden" />
+      </div>
 
-        <div className="flex shrink-0 items-center gap-1">
-          {/* OfflineQueueBadge (per design review 2A): mount next to the
-              UserMenu. No notification bell exists in the actual app-header
-              (DESIGN.md §11 specifies one but it's deferred). */}
-          <OfflineQueueBadge />
-          {!isPending && user !== null ? (
-            <UserMenu
-              name={user.name || user.email}
-              role={user.role}
-              onSignOut={() => void signOut()}
-            />
-          ) : null}
-        </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <OfflineQueueBadge />
+        <NotificationBell />
+        {!isPending && user !== null ? (
+          <UserMenu
+            name={user.name || user.email}
+            role={user.role}
+            onSignOut={() => void signOut()}
+          />
+        ) : null}
       </div>
     </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notification bell — honest count from useNotifications, not a stub.
+// Until the backend module ships, useNotifications errors → count is 0.
+// ---------------------------------------------------------------------------
+
+function NotificationBell() {
+  const query = useNotifications({ unreadOnly: true });
+  const count = Array.isArray(query.data) ? query.data.length : 0;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="relative min-h-11 min-w-11 gap-1 px-2"
+      aria-label={
+        count === 0 ? 'Notifications' : `${count} unread notifications`
+      }
+    >
+      <LuBell className="h-4 w-4" />
+      {count > 0 ? (
+        <span
+          className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
+          aria-hidden="true"
+        >
+          {count}
+        </span>
+      ) : null}
+    </Button>
   );
 }
 

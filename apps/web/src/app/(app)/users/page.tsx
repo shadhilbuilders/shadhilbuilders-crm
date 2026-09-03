@@ -31,6 +31,8 @@ import {
   useSessionUser,
 } from '@/lib/session';
 
+import { PageHeader } from '../PageHeader';
+
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
@@ -59,31 +61,32 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Heading className="mb-1">Users</Heading>
-          <TypographyP className="text-muted-foreground text-sm">
-            {isAdminLike(user.role)
-              ? 'All users across the organization.'
-              : 'Your team members.'}
-          </TypographyP>
-        </div>
-        <Dialog
-          trigger={
-            <Button size="sm" className="min-h-11">
-              <LuPlus className="mr-1 h-4 w-4" /> Create user
-            </Button>
-          }
-          header={{ title: 'Create a user' }}
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-        >
-          <CreateUserForm
-            creatableRoles={[...creatableRoles]}
-            onDone={() => setCreateOpen(false)}
-          />
-        </Dialog>
-      </div>
+      <PageHeader
+        title="Users"
+        breadcrumb={[{ label: 'Admin' }, { label: 'Users' }]}
+        subtitle={
+          isAdminLike(user.role)
+            ? 'All users across the organization.'
+            : 'Your team members.'
+        }
+        action={
+          <Dialog
+            trigger={
+              <Button size="sm" className="min-h-11">
+                <LuPlus className="mr-1 h-4 w-4" /> Create user
+              </Button>
+            }
+            header={{ title: 'Create a user' }}
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+          >
+            <CreateUserForm
+              creatableRoles={[...creatableRoles]}
+              onDone={() => setCreateOpen(false)}
+            />
+          </Dialog>
+        }
+      />
 
       {usersQuery.isLoading ? (
         <div className="text-muted-foreground py-16 text-center text-sm">

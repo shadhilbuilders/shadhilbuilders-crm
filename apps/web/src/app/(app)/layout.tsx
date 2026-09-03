@@ -1,22 +1,80 @@
-import { type ReactNode } from 'react';
+'use client';
 
+// Authenticated app shell — Phase 2.
+//
+// Wraps the (app) route group in `SidebarProvider` from @paalstack/react-ui.
+// The library handles the mobile / desktop breakpoint internally: ≤768px
+// the Sidebar becomes a Sheet (slide-in from the left), ≥768px it's a
+// persistent inset rail. The cookie-persisted `sidebar_state` defaults to
+// `true` on desktop so first-paint is "open and readable", and to
+// `false` on mobile so the first paint is "hamburger + page" rather than
+// a Sheet overlay flashing over a fresh route (T30 — the cookie SSR
+// flash was a re-review landmine).
+//
+// Architecture note (Eng-review Section 1 P1): this layout is
+// deliberately a client component. The proxy middleware
+// (`apps/web/src/proxy.ts`) redirects cookieless visitors to /login
+// before this layout ever renders, so SSR is unnecessary here. Trying
+// to split server/client would re-introduce a "shell appears before
+// session" flash that the client-only path avoids entirely.
+//
+// ASCII layout (matches plan §3.1):
+//
+//   SidebarProvider defaultOpen=isDesktop   (set after mount to avoid
+//   │                                         a mobile-vs-desktop
+//   │                                         cookie flash)
+//   ├── <AppShell>                         (logo, nav groups, footer)
+//   └── <SidebarInset>                     (replaces the old <main>)
+//       ├── <AppHeader>                    (slim topbar — T8 rewrites it)
+//       │   ├── SidebarTrigger             (mobile only, opens the Sheet)
+//       │   └── <OnlineRevalidationBar />  (D6: fixed at top of inset)
+//       └── <main>{children}</main>
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+
+import { SidebarInset, SidebarProvider } from '@paalstack/react-ui';
+
+import { AppShell } from '@/components/app-shell';
 import { AppHeader } from '@/components/app-header';
-import { OnlineRevalidationBar } from '@/components/online-revalidation-bar';
 
-// Authenticated app shell. The proxy redirects cookieless visitors to
-// /login before this layout ever renders, so everything inside is
-// session-scoped UI.
+const DESKTOP_BREAKPOINT_QUERY = '(min-width: 768px)';
+
+function useIsDesktop(): boolean {
+  // Start `true` on the server so SSR markup matches the default-open
+  // desktop path; reconcile with the actual viewport after mount. The
+  // cookie is read on the client only, so there is no SSR-vs-CSR
+  // hydration mismatch from this hook.
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia(DESKTOP_BREAKPOINT_QUERY);
+    setIsDesktop(mql.matches);
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsDesktop(event.matches);
+    };
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  return isDesktop;
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
+  const isDesktop = useIsDesktop();
+  // Mobile: defaultOpen=false so the first paint shows the page, not a
+  // Sheet overlay. Desktop: defaultOpen=true so the rail is visible
+  // immediately. The library cookie-persists the user-toggle so this
+  // initial value only matters on first visit.
   return (
-    <div className="flex min-h-[100dvh] flex-col">
-      <AppHeader />
-      <main className="container mx-auto w-full max-w-7xl flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
-        {/* D6: visual signal that data is fresh after reconnect. Fixed
-            at the top of <main> so it overlays the page content without
-            pushing layout. */}
-        <OnlineRevalidationBar />
-        {children}
-      </main>
-    </div>
+    <SidebarProvider defaultOpen={isDesktop}>
+      <AppShell />
+      <SidebarInset>
+        <AppHeader />
+        <main className="container mx-auto w-full max-w-7xl flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
+          {children}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

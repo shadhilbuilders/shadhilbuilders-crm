@@ -9,6 +9,14 @@
 //
 // Lives next to ModulePending because both are "leads-list/detail" helpers
 // that don't belong in the page file itself.
+//
+// T11: the displayed label comes from `lib/labels.ts` so a non-technical
+// user sees "Talked" instead of "CONTACTED". The original
+// `status.replace(/_/g, ' ')` was the only site in the codebase that
+// leaked a raw enum to the UI; the labels test (`labels.test.ts`)
+// asserts every §9.1 enum value has a friendly entry, which would
+// fail if this file ever regressed to the raw form.
+import { labelFor } from '@/lib/labels';
 
 const STATE_BADGE_CLASS: Record<string, string> = {
   NEW: 'bg-secondary text-secondary-foreground',
@@ -31,7 +39,7 @@ export function LeadStatusBadge({ status }: { status: string }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATE_BADGE_CLASS[status] ?? STATE_BADGE_CLASS['UNKNOWN']}`}
     >
-      {status.replace(/_/g, ' ')}
+      {labelFor('lead', status)}
     </span>
   );
 }

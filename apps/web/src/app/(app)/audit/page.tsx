@@ -10,6 +10,8 @@ import { ModulePending } from '@/components/shared/ModulePending';
 import { useAuditLog } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
+import { PageHeader } from '../PageHeader';
+
 const FILTER_ACTIONS = [
   'LEAD_REASSIGNED',
   'USER_CREATED',
@@ -39,23 +41,21 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Heading className="mb-1">Audit Log</Heading>
-          <TypographyP className="text-muted-foreground text-sm">
-            Every login, lead view, state transition, message, call, and
-            consent change. 7-year retention (RERA).
-          </TypographyP>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="min-h-11" disabled>
-            Export CSV
-          </Button>
-          <Button variant="outline" size="sm" className="min-h-11" disabled>
-            Export JSON
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Audit Log"
+        breadcrumb={[{ label: 'Admin' }, { label: 'Audit' }]}
+        subtitle="Every login, lead view, state transition, message, call, and consent change. 7-year retention (RERA)."
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="min-h-11" disabled>
+              Export CSV
+            </Button>
+            <Button variant="outline" size="sm" className="min-h-11" disabled>
+              Export JSON
+            </Button>
+          </div>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-1.5">
         {FILTER_ACTIONS.map((action) => (

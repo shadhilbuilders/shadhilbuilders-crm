@@ -7,9 +7,10 @@
 // it lands. There is no Units DTO in api-types v1 — the page renders the
 // locked column spec against the documented shape and flips live when the
 // endpoint exists.
-import { Heading, TypographyP } from '@paalstack/react-ui';
+import { TypographyP } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { PageHeader } from '../PageHeader';
 
 const INVENTORY_COLUMNS = [
   'Villa #',
@@ -32,12 +33,11 @@ const STATUS_CLASS: Record<UnitStatus, string> = {
 export default function InventoryPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <Heading className="mb-1">Inventory</Heading>
-        <TypographyP className="text-muted-foreground text-sm">
-          Shadhil Metro Heights · villa availability by phase, BHK, and facing.
-        </TypographyP>
-      </div>
+      <PageHeader
+        title="Inventory"
+        breadcrumb={[{ label: 'Work' }, { label: 'Inventory' }]}
+        subtitle="Shadhil Metro Heights · villa availability by phase, BHK, and facing."
+      />
 
       {/* Column spec preview — the real DataTable consumes /api/units when
           the inventory module exists. Kept visible so the surface is
