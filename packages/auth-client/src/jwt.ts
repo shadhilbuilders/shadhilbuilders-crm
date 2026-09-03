@@ -21,7 +21,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 // union mirror + a compile-time exhaustiveness check in api-types tests
 // covers it. roles.ts is the single runtime source of truth.)
 export const ROLES = [
-  'SUPER_ADMIN',
+  'OWNER',
   'ADMIN',
   'MANAGER',
   'SALES_EXEC',

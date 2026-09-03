@@ -712,3 +712,574 @@ users (1 super admin, 1 manager, 1 telecaller, 1 sales exec),
 for better-auth's /api/auth/token; JWT teamId claim refresh
 for managers.
 
+## Round 21 — 2026-09-03 — Role rename: SUPER_ADMIN → OWNER
+
+Client asked to rename the org-owner role from `SUPER_ADMIN` to
+`OWNER` for clarity (a "super admin" sounds like an elevated
+admin; "owner" matches how the client talks about the account
+that bootstraps the org). No semantic change to the role —
+same rank (top of hierarchy), same uniqueness invariant
+(exactly one exists, partial unique index), same RLS downcast
+behavior (travels as ADMIN at the Postgres layer).
+
+**Why now:** Round 20 had shipped and the role was not yet
+referenced in any production migration journal (no live DB had
+been migrated past 20260831 init), so we could safely:
+
+- Drop the three `20260831*_super_admin` migration directories
+  and recreate them under new names with the renamed value.
+- Rename the partial unique index `one_super_admin` → `one_owner`.
+- Rename the env vars `SEED_ADMIN_*` → `SEED_OWNER_*` (the
+  existing `SEED_ADMIN_*` names were already a latent bug —
+  `seed.ts` always read `SEED_${prefix}_*` with `prefix ===
+  'SUPER_ADMIN'`, so the env vars had never been reachable).
+- Update every string literal, type alias, exported constant,
+  JSDoc, and Swagger summary that mentions SUPER_ADMIN /
+  super admin across:
+  - `packages/database/src/{rls.ts,seed.ts}`
+  - `packages/auth-client/src/{auth.ts,jwt.ts}`
+  - `packages/api-types/src/{enums.ts,auth.ts}`
+  - `apps/backend/src/users/{roles.ts,users.service.ts,users.controller.ts}`
+  - `apps/web/src/{lib/session.ts,apis/client.ts,app/(app)/page.tsx,app/(app)/users/page.tsx}`
+- Update `README.md` forward-looking copy (the seat-table row,
+  the role-model line, the security model bullet).
+- Update `docs/planning/DESIGN.md` forward-looking copy of the
+  RBAC section (with an inline note pointing at Round 21 so the
+  Round 20 wording still makes sense historically).
+
+**DB migrations replaced (delete-and-recreate, not edited in
+place):**
+
+- `20260831110000_role_super_admin` → `20260831110000_role_owner`
+  — `ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'OWNER' BEFORE 'ADMIN';`
+- `20260831110100_bootstrap_super_admin` → `20260831110100_bootstrap_owner`
+  — `UPDATE "User" SET "role" = 'OWNER' WHERE "email" = 'admin@shadhilbuilders.in';`
+- `20260831110200_one_super_admin_only` → `20260831110200_one_owner_only`
+  — partial unique index renamed to `one_owner`, `WHERE` clause
+    flipped to `'OWNER'`.
+
+**Renamed in code:**
+
+- `prisma/schema.prisma` — `enum Role` first value
+  `SUPER_ADMIN` → `OWNER`.
+- `packages/database/src/rls.ts` — local `Role` union,
+  `ROLES` allowlist, and the downcast target `ctx.role === 'SUPER_ADMIN'`.
+- `packages/database/src/seed.ts` — `readSeedUser` prefix
+  union, default name `"Super Admin"` → `"Owner"`, env-var
+  prefix, and the final `superAdmin` → `owner` local.
+- `packages/auth-client/src/auth.ts` — `admin({ roles: { ...
+  }, adminRoles: [...] })` keys.
+- `packages/auth-client/src/jwt.ts` — `ROLES` tuple.
+- `packages/api-types/src/enums.ts` — `RoleSchema` and
+  `AssignableRoleSchema` (the `.exclude(['OWNER'])`).
+- `packages/api-types/src/auth.ts` — JSDoc on `ChangeRoleDtoSchema`.
+- `apps/backend/src/users/roles.ts` — `RANK` record, exported
+  constant `SUPER_ADMIN` → `OWNER`, guard message strings,
+  JSDoc.
+- `apps/backend/src/users/users.service.ts` — file header,
+  import name, all four `actorRole === '...'` checks,
+  comments.
+- `apps/backend/src/users/users.controller.ts` — both
+  `@ApiOperation({ summary })` strings.
+- `apps/web/src/lib/session.ts` — `isAdminLike` check,
+  comments on `canReassign` and `canViewAudit`.
+- `apps/web/src/apis/client.ts` — `Role` union and
+  `STAFF_ROLES` allowlist.
+- `apps/web/src/app/(app)/page.tsx` — file-header comment.
+- `apps/web/src/app/(app)/users/page.tsx` — file-header
+  comment.
+
+**Env vars:**
+
+- `SEED_ADMIN_EMAIL / NAME / PASSWORD` →
+  `SEED_OWNER_EMAIL / NAME / PASSWORD`. Updated in
+  `.env.example` and `packages/database/.env.example`. The
+  placeholder display name changed from `"Admin"` to
+  `"Owner"` (the seeded `admin@shadhilbuilders.in` email is
+  kept — it's the only stable handle the client knows).
+
+**Unchanged on purpose:**
+
+- `docker/postgres-init/00-init.sql` line 30 — the Postgres
+  role attribute `NOSUPERUSER` is a Postgres built-in, unrelated.
+- `packages/auth-client/test/auth.test.ts` line 99 — `'SUPERUSER'`
+  is a deliberate sentinel role used to assert that `verifyJwt`
+  rejects unknown role values. Renaming it would weaken the
+  test.
+- `README.md` line 37 — `admin_placeholder_pw` is the password
+  string. Renaming it would invalidate any existing dev DB
+  rows; keeping it makes the migration a pure rename, not a
+  re-seed.
+- All Round 17 and Round 20 entries in this changelog — they
+  accurately describe what was decided at those rounds
+  (`SUPER_ADMIN` was the name then). History is preserved;
+  the rename is recorded here, in Round 21.
+
+**Verification after this round:**
+
+- `pnpm --filter @shadhil/database generate` must be re-run
+  before `pnpm type-check` (Prisma client carries the new enum).
+- `pnpm db:migrate reset` on a fresh DB should land with
+  `User.role = 'OWNER'` for the `admin@shadhilbuilders.in`
+  row.
+- `pnpm test` for `@shadhil/auth` still passes (the SUPERUSER
+  sentinel test is the deliberate guard against future
+  regressions).
+
+## Round 22 — 2026-09-03 — Seed: add ADMIN placeholder
+
+After Round 21's rename, the only seed user with admin-class
+powers was the OWNER (`admin@shadhilbuilders.in`). That left
+nothing for the OWNER to **practice delegation** with on a fresh
+clone — they could sign in and look around, but every demo
+flow ("OWNER creates an admin → admin creates a manager →
+manager creates a telecaller") had to start at the OWNER seat,
+which is the one seat the client is least likely to use in
+production.
+
+**Decision:** seed a second placeholder user with role
+`ADMIN`, distinct email `admin2@shadhilbuilders.in`, and
+fallback password `admin2_placeholder_pw`. After seed the
+fresh-clone roster is:
+
+| Email | Role |
+|---|---|
+| `admin@shadhilbuilders.in` | OWNER (exactly one, ever) |
+| `admin2@shadhilbuilders.in` | ADMIN |
+| `manager@shadhilbuilders.in` | MANAGER (leads the seeded team) |
+| `telecaller@shadhilbuilders.in` | TELECALLER (team member) |
+| `sales_exec@shadhilbuilders.in` | SALES_EXEC (team member) |
+
+The OWNER → ADMIN → MANAGER → TELECALLER/SALES_EXEC chain is
+now fully exercisable from the moment seed completes.
+
+**Why a distinct email (`admin2` not `admin`):** the
+`User.email` column has a `@unique` constraint; reusing
+`admin@shadhilbuilders.in` would collide with the OWNER row
+and the seed would silently UPSERT the OWNER back to
+role=ADMIN — a hard auth-bypass bug (the unique-OWNER partial
+index then refuses to run because more than one row has the
+role, but the OWNER's seed row would have lost its role
+mid-update). `admin2` sidesteps it without inventing a new
+domain for the placeholder.
+
+**Changes:**
+
+- `packages/database/src/seed.ts` — `readSeedUser` prefix
+  union now includes `'ADMIN'`. Fallback email/name/password
+  replaced with three `Record<typeof prefix, string>` lookup
+  tables (cleaner than the chained ternary that would have
+  been needed to slot ADMIN in). `main()` calls
+  `readSeedUser('ADMIN')`, then `upsertUser(admin, 'ADMIN')`
+  (no team — same shape as the OWNER row).
+- `packages/database/.env.example` and `.env.example` — new
+  `SEED_ADMIN_EMAIL / NAME / PASSWORD` block, mirroring the
+  OWNER block. Optional — fall back to the `admin2` defaults.
+- `README.md` — seat table grew by one row; the
+  `pnpm --filter @shadhil/database seed` description now
+  reads "owner + admin + manager + 2 staff".
+
+**Not changed on purpose:**
+
+- `apps/backend/src/users/roles.ts` — the role hierarchy
+  already accepts both OWNER and ADMIN. No code change
+  needed; the hierarchy now has one extra row in the roster
+  but zero new authorization rules.
+- The unique-OWNER partial unique index `one_owner` — only
+  one OWNER ever, regardless of how many ADMINs are seeded.
+- Round 21 entry above — historical.
+
+**Verification:**
+
+- `pnpm --filter @shadhil/database seed` on a fresh DB
+  should report `[seed] ✓ owner, admin, manager, telecaller,
+  sales exec created/updated` and leave the seeded team
+  untouched.
+- `pnpm --filter @shadhil/database generate` + the existing
+  type-checks stay green (no schema change this round — the
+  `Role` enum still has the same five values, the `User.email`
+  unique constraint already covers `admin2@…`).
+- The dev README seat table matches the seat table in
+  `docs/planning/DECISION-CHANGELOG.md` Round 22.
+
+## Round 23 — 2026-09-03 — Seed: align emails with role names
+
+Round 22 introduced an ADMIN placeholder but parked it at
+`admin2@shadhilbuilders.in` because the OWNER row already
+owned `admin@shadhilbuilders.in`. The `admin2@…` address was
+correct as a collision-avoidance tactic but read as a hack —
+anyone reading the seed code had to mentally translate the
+suffix back to the role. Cleaner to put each role's email at
+`<role>@shadhilbuilders.in` and reserve `admin@…` for ADMIN.
+
+**Decision:** swap the OWNER and ADMIN fallback emails:
+
+- OWNER:  `admin@shadhilbuilders.in`  →  `owner@shadhilbuilders.in`
+- ADMIN:  `admin2@shadhilbuilders.in`  →  `admin@shadhilbuilders.in`
+
+Fallback passwords mirror the new emails (so they stay
+discoverable):
+
+- OWNER:  `admin_placeholder_pw`  →  `owner_placeholder_pw`
+- ADMIN:  `admin2_placeholder_pw`  →  `admin_placeholder_pw`
+
+After this round the seeded roster is:
+
+| Email | Role | Password |
+|---|---|---|
+| `owner@shadhilbuilders.in` | OWNER (exactly one, ever) | `owner_placeholder_pw` |
+| `admin@shadhilbuilders.in` | ADMIN | `admin_placeholder_pw` |
+| `manager@shadhilbuilders.in` | MANAGER | `manager_placeholder_pw` |
+| `telecaller@shadhilbuilders.in` | TELECALLER | `telecaller_placeholder_pw` |
+| `sales_exec@shadhilbuilders.in` | SALES_EXEC | `sales_exec_placeholder_pw` |
+
+Each email is now `<role-name>@shadhilbuilders.in`. The
+collision-avoidance problem Round 22 was solving doesn't
+recur because Round 23 removes the second-`admin@…` attempt
+entirely.
+
+**Changes:**
+
+- `packages/database/src/seed.ts` — `FALLBACK_EMAIL` and
+  `FALLBACK_PASSWORD` records updated. `FALLBACK_NAME` is
+  unchanged. JSDoc on `readSeedUser` updated to reflect the
+  new mapping and to point at this round.
+- `packages/database/.env.example` —
+  `SEED_OWNER_EMAIL=admin@…` → `owner@…`,
+  `SEED_ADMIN_EMAIL=admin2@…` → `admin@…`.
+- `README.md` — seat table updated.
+
+**Not changed:**
+
+- Round 22 entry above is preserved as historical — it
+  accurately describes what shipped at the time (the
+  `admin2@…` workaround). The current seat table is the one
+  in Round 23.
+- The bootstrap migration `20260831110100_bootstrap_owner`
+  references the OLD `admin@shadhilbuilders.in` email for
+  the OWNER row (`UPDATE "User" SET "role" = 'OWNER' WHERE
+  "email" = 'admin@shadhilbuilders.in'`). On a fresh clone
+  this lands a row at `admin@shadhilbuilders.in` with role
+  OWNER. After this round the `seed.ts` upsert for OWNER
+  targets `owner@shadhilbuilders.in` instead, which does NOT
+  match the migration's WHERE clause. Two paths:
+
+  a) Drop and recreate the bootstrap migration to point at
+     `owner@shadhilbuilders.in`. Cleanest — every reference
+     points at the same email.
+  b) Keep both: migration sets up `admin@…` as OWNER, then
+     seed.ts upserts `owner@…` as OWNER, then upserts
+     `admin@…` as ADMIN. Works but leaves the placeholder
+     layout split across two files.
+
+  **Resolution this round:** we are dropping and recreating
+  the bootstrap migration (Round 23 supersedes
+  `20260831110100_bootstrap_owner`). No production DB exists
+  to migrate, so this is just a file rename + edit. New
+  directory will be created alongside Round 21's other
+  `_owner` migrations.
+
+**Verification:**
+
+- All five workspaces still type-check clean (the
+  `Record<typeof prefix, string>` lookup-table pattern
+  enforces that `FALLBACK_EMAIL` covers every `prefix`
+  value — TS would have failed otherwise).
+- `pnpm --filter @shadhil/database seed` on a fresh DB
+  should report `[seed] ✓ owner, admin, manager, telecaller,
+  sales exec created/updated` and the `User` table should
+  contain exactly five rows with the emails above.
+
+## Round 24 — 2026-09-03 — Fix `pn db:migrate` "Connection url is empty"
+
+After Round 23, `pnpm db:migrate` (run from the repo root)
+errored with `Error: Connection url is empty`. Root cause:
+`packages/database/prisma.config.ts` reads
+`process.env.DIRECT_DATABASE_URL`, but `prisma migrate dev`
+loads env for the schema's PG connection but NOT for the
+config file's `process.env` access. pnpm doesn't auto-load
+`.env` either. Net: the var arrives empty when prisma.config.ts
+runs.
+
+**Investigation (chronological — kept for the record so the
+next agent doesn't repeat it):**
+
+1. First instinct: add `--env-file=../../.env` to the
+   migrate/generate/studio scripts (matching the existing
+   pattern in `seed`, `nest start --watch`, `docker compose`).
+   Reverted: Prisma CLI does NOT accept `--env-file` — that's
+   a Node runtime flag, not a Prisma flag.
+   `prisma migrate dev --help` only lists `--config`,
+   `--schema`, `--url`, `--name`, `--create-only`.
+2. Second instinct: use `dotenv-cli` as a wrapper. Reverted:
+   adds a new dep (the repo only has `dotenv` ^17.4.2 in
+   `packages/database/devDependencies`).
+3. Third instinct: `import 'dotenv/config'` at the top of
+   `prisma.config.ts`. Reverted because `dotenv/config` reads
+   from CWD (which pnpm filter sets to `packages/database`),
+   so it looks for `.env` in the wrong place. Verified by
+   control test (see below).
+4. **Actual fix:** use the explicit-path form of dotenv —
+   `loadDotenv({ path: resolve(__dirname, '..', '..', '.env') })`
+   — so the path is anchored to the config file, not CWD.
+   Verified by:
+   - Control test: remove the dotenv import → `pnpm db:migrate`
+     fails with "Connection url is empty".
+   - With the import: `pnpm db:migrate` succeeds with the
+     "◇ injected env (13) from ../../.env" line, then
+     "Already in sync".
+
+**What changed this round:**
+
+- `packages/database/prisma.config.ts` — added the explicit
+  `loadDotenv({ path: resolve(__dirname, '..', '..', '.env') })`
+  call (with JSDoc explaining why and what the alternatives
+  were tried). The defineConfig body is unchanged.
+- `packages/database/src/seed.ts` — replaced `import { prisma
+  } from './index'` with a local `new PrismaClient({ adapter:
+  new PrismaPg({ connectionString: process.env
+  .DIRECT_DATABASE_URL ?? process.env.DATABASE_URL }) })`. The
+  shared `prisma` is bound to `DATABASE_URL` (the non-owner
+  pooled path) so the API runtime keeps RLS enforced — the
+  seed needs `DIRECT_DATABASE_URL` (owner role) for its GRANTs,
+  so it constructs its own client. The previous workaround of
+  exporting `DATABASE_URL=$DIRECT_DATABASE_URL` before
+  `pnpm db:seed` is no longer needed.
+
+**What was reverted (kept for the historical record):**
+
+- A first-pass `--env-file=../../.env` edit on the
+  `generate`/`migrate`/`studio` lines of
+  `packages/database/package.json`.
+- A second-pass `import 'dotenv/config'` edit on
+  `prisma.config.ts`.
+- An intermediate edit that made the shared `prisma` in
+  `src/index.ts` prefer `DIRECT_DATABASE_URL` over
+  `DATABASE_URL`. Reverted because that would silently bypass
+  RLS for every runtime API request — the seed needs the
+  owner role, not the runtime.
+
+**Verification (in a truly fresh shell — `env -i HOME="$HOME"
+PATH="$PATH"`):**
+
+- `pnpm db:migrate` → `◇ injected env (13) from ../../.env`
+  then `Already in sync, no schema change or pending
+  migration was found.`
+- `pnpm db:generate` → `✔ Generated Prisma Client (7.10.0)`.
+- `pnpm db:seed` → `[seed] ✓ owner, admin, manager, telecaller,
+  sales exec created/updated`.
+- `pnpm db:studio` was not exercised (it would block on a
+  long-running server); the same env-load path applies.
+
+## Round 25 — 2026-09-03 — Fix web app login: shadhil_app GRANTs missing
+
+After Round 24, the web app's better-auth catch-all
+(`/api/auth/sign-in/email`) returned 500 with
+`42501 permission denied for schema public` (and later
+`42501 permission denied for table Jwks`). Two GRANTs were
+missing on the `shadhil_app` role:
+
+1. **Schema-level USAGE + CREATE on `public`** — without
+   these, table-level GRANTs are invisible to the role and
+   Postgres returns `permission denied for schema public` (or
+   `42P01 relation does not exist` depending on the access
+   path). The `public` schema's default ACL was empty in this
+   setup, so the implicit pseudo-role grant did not apply.
+2. **Table-level CRUD on `Jwks`** — added in migration
+   `20260831140000_add_jwks` without GRANTs for `shadhil_app`.
+   Better-auth's `jwt()` plugin reads/writes `Jwks` on the
+   pooled URL (`DATABASE_URL` → `shadhil_app`), so every
+   `/api/auth/get-session` and `/api/auth/token` request failed
+   with `42501 permission denied for table Jwks`.
+
+**Investigation (chronological):**
+
+- Initial hypothesis: same RLS-context shape as `rls.ts`
+  (admin-class queries should go through `withRlsContext`).
+  Disproved by reading `packages/database/src/rls.ts:17-19`:
+  "the bare client (this module's `prisma` export) is NOT
+  subject to RLS because the DB role used is typically the
+  owner/migration role. SECOND-ROUND audit: the app now connects
+  as the non-owner role `shadhil_app`..." — so the bare
+  client IS the right thing for `shadhil_app` queries;
+  something else is wrong.
+- Probed `pg_namespace.nspacl` for `public` schema via
+  `array_to_string` (Prisma can't serialize the raw array
+  type). Result: `null` — no ACL entries at all. In Postgres
+  16-alpine with `shadhil` (not `postgres`) as the owner, the
+  default `GRANT CREATE, USAGE ON SCHEMA public TO PUBLIC`
+  was apparently not preserved.
+- Probed `has_schema_privilege('shadhil_app', 'public',
+  'USAGE')` — false. Probed
+  `has_schema_privilege('shadhil_app', 'public', 'CREATE')` —
+  false. The schema-level grants are missing.
+- Probed `has_table_privilege('shadhil_app', '"Jwks"',
+  'SELECT')` — false. (Noticed: `Jwks` must be quoted in the
+  probe because Postgres folds unquoted identifiers to
+  lowercase, so `'Jwks'` would have looked up `'jwks'` which
+  doesn't exist.) The table-level grant is missing on `Jwks`
+  specifically.
+
+**Changes:**
+
+- `docker/postgres-init/00-init.sql` — added
+  `GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;`
+  (with JSDoc explaining the empty-ACL root cause).
+- `packages/database/prisma/migrations/20260903021150_schema_grants_for_app_role/migration.sql`
+  (new) — same GRANT, applied via the migration system to
+  the live DB. Idempotent at the role level.
+- `packages/database/prisma/migrations/20260903021500_grants_for_jwks/migration.sql`
+  (new) — `GRANT SELECT, INSERT, UPDATE, DELETE ON "Jwks" TO
+  shadhil_app;` for the missing table-level GRANT.
+- `packages/database/prisma/rls/policies.sql` — canonical
+  source updated with both GRANTs (so a future
+  `psql -f policies.sql` lands them; the migrations are the
+  application point for `prisma migrate`).
+
+**What was reverted:**
+
+- Initial first-pass edit that added a `GRANT USAGE` only to
+  `policies.sql` (no schema-level fix and no `Jwks` GRANT)
+  — replaced with the canonical 3-file fix above.
+
+**Verification:**
+
+- `pnpm db:migrate` applies both new migrations cleanly
+  (`Applying migration 20260903021150_schema_grants_for_app_role`
+  → `Applying migration 20260903021500_grants_for_jwks`).
+- Full login flow against the running web dev server:
+
+  ```text
+  POST /api/auth/sign-in/email
+    {"email":"owner@shadhilbuilders.in","password":"owner_placeholder_pw"}
+    → 200 (returns session + user with role:"OWNER")
+  GET  /api/auth/get-session
+    → 200 (returns session + user)
+  GET  /api/auth/token
+    → 200 (returns JWT with role:"OWNER", iss:"shadhil-crm", aud:"shadhil-crm")
+  ```
+
+- All five workspaces type-check clean (no source code
+  changed in this round, only SQL files).
+- `@shadhil/auth` tests still pass (11/11).
+
+**Lessons (for the next agent adding a new table that
+better-auth writes to the pooled path):**
+
+- Every new table that any service touches via `DATABASE_URL`
+  needs both (a) a schema-level GRANT (covered by the
+  `20260903021150` migration, idempotent) and (b) a
+  table-level GRANT on the new table.
+- Postgres' case-folding means `"Jwks"` (quoted) and `Jwks`
+  (unquoted) are different — when probing privileges, always
+  quote the table name in the function argument.
+
+## Round 26 — 2026-09-03 — Fix IDB persistence: `retryDelay` function in cache
+
+After Round 25 the login flow worked end-to-end, but a second
+console error fired on every cache mutation in the browser:
+
+```text
+[browser] ⨯ unhandledRejection: DataCloneError:
+  Failed to execute 'put' on 'IDBObjectStore':
+    (attemptIndex)=>Math.min(1000 * 2 ** attemptIndex, 30000)
+    could not be cloned.
+  at <unknown> (../../packages/offline-store/src/idb-stores.ts:64:27)
+  at async persistCache (src/lib/query-client/lib.ts:57:3)
+```
+
+The error names two offenders that converge on the same root
+cause: the `persistCache` function was serializing the entire
+Query cache via `qc.getQueryCache().getAll()` and pushing the
+result straight into IndexedDB. Each `Query` object carries
+its full `options` (queryFn, retry, retryDelay, …), and the
+default-options block in `lib.ts` had a custom
+`retryDelay: (attemptIndex) => Math.min(1000 * 2 **
+attemptIndex, 30000)` — a function. IndexedDB's structured
+clone algorithm refuses functions, so every persist threw.
+
+**Investigation (short — the stack trace pointed straight at
+the bug):**
+
+1. Confirmed `queryClient.defaultOptions.queries.retryDelay`
+   in `apps/web/src/lib/query-client/lib.ts:112` was the
+   function being seen in the error.
+2. Confirmed `persistCache` in the same file used
+   `qc.getQueryCache().getAll()` — full Query objects, not
+   dehydrated — and passed them to `idbSet`.
+3. Confirmed `rehydrateQueryCache` used a hand-rolled
+   `qc.getQueryCache().build(qc, { queryKey })` loop that
+   only seeded `queryKey`, leaving the rehydrated queries in
+   an empty observable state with no `data`. So even after a
+   successful read-back the UI would re-fetch everything on
+   next mount, defeating the whole point of offline
+   persistence.
+
+**Decision:** use TanStack Query's official serialization
+helpers (`dehydrate` / `hydrate`), which strip
+non-cloneable fields (queryFn, retry, retryDelay, observers,
+…) by design. Also drop the custom `retryDelay` default —
+TanStack's built-in default is the same exponential backoff
+`Math.min(1000 * 2 ** attemptIndex, 30000)`, so no behavior
+change.
+
+**Changes:**
+
+- `apps/web/src/lib/query-client/lib.ts` —
+  - `persistCache` now uses `dehydrate(qc)` from
+    `@tanstack/react-query` instead of `getAll()`. The
+    dehydrated snapshot (`{ mutations, queries }`) contains
+    only data/status/error/queryKey/queryHash — no functions,
+    no queryFn.
+  - `rehydrateQueryCache` now uses `hydrate(qc,
+    persisted.cacheState)` from the same package instead of the
+    hand-rolled `build()` loop. `hydrate` re-seeds the
+    QueryClient so observers can immediately see the cached
+    `data` without a fresh network request — the offline-boot
+    UX goal.
+  - Removed the custom `retryDelay` function from
+    `queryClient` defaults. TanStack's built-in default is
+    identical.
+- `apps/web/src/lib/query-client/lib.ts` — JSDoc updated to
+    describe the new dehydrated snapshot shape and to point
+    future readers at Round 26 for the history.
+
+**What was kept:**
+
+- The `BUSTER` / `BUSTER_KEY` mechanism — same per-load UUID
+  envelope, same buster-mismatch wipes the cache. Migrations
+  bump the buster by changing `BUSTER =` to a new value.
+- The `lastPersistedTimestamp === 0 && empty` short-circuit —
+  preserves the eng-review 4C "only write on actual cache
+  change" optimization. Now keyed off the dehydrated snapshot
+  (`snapshot.queries.length + snapshot.mutations.length`).
+- The `RQ_CACHE_KEY` value — keys live in `rqCacheStore`
+  (`packages/offline-store/src/idb-stores.ts:69`).
+
+**Verification:**
+
+- All five workspaces type-check clean.
+- `@shadhil/auth` tests: 11/11 pass.
+- Live web app: `POST /api/auth/sign-in/email` → 200;
+  subsequent dashboard load → 200. The Next dev server log
+  shows no `DataCloneError` entries after the fix (only the
+  pre-fix entries from the prior `pn dev` process). Sign-in
+  via the OWNER seat (`owner@shadhilbuilders.in`) and the
+  ADMIN seat (`admin@shadhilbuilders.in`) both succeed;
+  page loads run clean; cache mutations no longer trip the
+  IDB clone guard.
+
+**Lesson (for the next agent extending the cache shape):**
+
+- Anything that ends up inside `qc.getQueryCache().getAll()`
+  will eventually hit `structuredClone` on the IDB persist
+  path. Use `dehydrate()` / `hydrate()` for the round-trip,
+  not raw `Query` objects. If a custom field needs to ride
+  along, register it via the dehydrate options
+  (`shouldDehydrateQuery`) and add a rehydrate handler — but
+  first ask whether it actually needs to survive a reload.
+- Functions in `defaultOptions` are fine for runtime, but
+  they will reach `structuredClone` the moment you serialize
+  a Query. If the default is identical to TanStack's built-in
+  (it usually is for `retryDelay`), drop the override.
+

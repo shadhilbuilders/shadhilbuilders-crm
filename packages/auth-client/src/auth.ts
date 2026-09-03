@@ -67,22 +67,21 @@ export const auth: any = betterAuth({
     // "user" on user.create. "user" is not a Prisma Role enum value ->
     // signUpEmail always failed. Set it.
     //
-    // Role model (Round 20, 2026-08-31): one SUPER_ADMIN (seed +
-    // partial unique index only — the API can never create one)
+    // Role model (Round 20/21, 2026-08-31 → 2026-09-03): one OWNER
+    // (seed + partial unique index only — the API can never create one)
     // bootstraps ADMINs; ADMIN creates MANAGER users; each MANAGER
     // creates TELECALLER/SALES_EXEC under their team.
     // roles: our Prisma Role keys mapped to better-auth statement sets —
-    // ADMIN reuses the stock adminAc; SUPER_ADMIN (org owner, exactly
-    // one per DB constraint) also gets adminAc. adminRoles then gates
-    // better-auth admin endpoints to SUPER_ADMIN + ADMIN (case-
-    // insensitive match).
+    // ADMIN reuses the stock adminAc; OWNER (org owner, exactly one per
+    // DB constraint) also gets adminAc. adminRoles then gates better-auth
+    // admin endpoints to OWNER + ADMIN (case-insensitive match).
     admin({
       defaultRole: 'TELECALLER',
       roles: {
         ADMIN: adminAc,
-        SUPER_ADMIN: adminAc,
+        OWNER: adminAc,
       },
-      adminRoles: ['SUPER_ADMIN', 'ADMIN'],
+      adminRoles: ['OWNER', 'ADMIN'],
     }),
   ],
 

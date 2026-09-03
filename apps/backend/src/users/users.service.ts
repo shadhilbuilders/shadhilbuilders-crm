@@ -1,21 +1,21 @@
-// Users service — the user-creation + role-change model (Rounds 17–20).
+// Users service — the user-creation + role-change model (Rounds 17–21).
 //
-// SUPER_ADMIN (exactly one, seed-only): creates any role except
-// SUPER_ADMIN; changes the role of anyone. ADMIN: creates/changes
+// OWNER (exactly one, seed-only): creates any role except OWNER;
+// changes the role of anyone. ADMIN: creates/changes
 // MANAGER/TELECALLER/SALES_EXEC. MANAGER: creates TELECALLER/SALES_EXEC in
 // their own team. Staff roles: nothing.
 //
-// Guards on changeRole (client-confirmed Round 20): no self-role-changes;
-// only SUPER_ADMIN touches ADMIN rows (rank check covers this); never
-// assign or revoke SUPER_ADMIN; demoting a manager who still leads a team
-// is blocked until members move.
+// Guards on changeRole (client-confirmed Round 20, rename 21): no
+// self-role-changes; only OWNER touches ADMIN rows (rank check covers
+// this); never assign or revoke OWNER; demoting a manager who still
+// leads a team is blocked until members move.
 //
 // Write paths:
 //   - User/Account/Team: bare prisma client (no RLS on auth tables; Team is
 //     RLS-FORCED with zero policies, so the app role cannot write it inside
 //     an RLS context — seed.ts precedent).
 //   - AuditLog: withRlsContext (its insert policy requires app.user_id).
-//     SUPER_ADMIN travels as ADMIN at the RLS layer (downcast in rls.ts).
+//     OWNER travels as ADMIN at the RLS layer (downcast in rls.ts).
 import {
   BadRequestException,
   ConflictException,
@@ -28,7 +28,7 @@ import { withRlsContext, type Role, type PrismaClient } from '@shadhil/database'
 import type { JwtPayload } from '@shadhil/auth';
 import type { CreateUserDto, ChangeRoleDto } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
-import { assertCanCreateRole, assertCanChangeRole, SUPER_ADMIN } from './roles';
+import { assertCanCreateRole, assertCanChangeRole, OWNER } from './roles';
 import { upsertCredentialAccount } from './credentials';
 
 export interface CreatedUser {
@@ -55,9 +55,9 @@ export class UsersService {
   async create(actor: JwtPayload, dto: CreateUserDto): Promise<CreatedUser> {
     const actorRole = actor.role;
     const actorIsManager = actorRole === 'MANAGER';
-    // Org-owner class: SUPER_ADMIN behaves like ADMIN on this surface
+    // Org-owner class: OWNER behaves like ADMIN on this surface
     // (create into any team; auto-team for MANAGER targets).
-    const actorIsOrgOwner = actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN';
+    const actorIsOrgOwner = actorRole === 'OWNER' || actorRole === 'ADMIN';
 
     // 1. Role hierarchy gate (fails closed for any staff role).
     assertCanCreateRole(actorRole, dto.role);
@@ -180,13 +180,13 @@ export class UsersService {
     }
 
     // 2. Absolute guard: nobody changes their own role (not even the
-    //    super admin — role changes on self are how orgs get locked out).
+    //    owner — role changes on self are how orgs get locked out).
     if (target.id === actor.sub) {
       throw new ForbiddenException('You cannot change your own role');
     }
 
-    // 3. Role-level hierarchy (includes: SUPER_ADMIN unassignable,
-    //    only super touches ADMIN rows, actor must strictly outrank both
+    // 3. Role-level hierarchy (includes: OWNER unassignable,
+    //    only owner touches ADMIN rows, actor must strictly outrank both
     //    the target's current role and the new role).
     assertCanChangeRole(actor.role, target.role as Role, dto.role);
 
@@ -222,7 +222,7 @@ export class UsersService {
       data: { role: dto.role, teamId },
     });
 
-    // 6. Audit row in the actor's RLS context (SUPER_ADMIN downcasts to
+    // 6. Audit row in the actor's RLS context (OWNER downcasts to
     //    ADMIN there — rls.ts).
     await withRlsContext(
       this.client,
@@ -254,9 +254,9 @@ export class UsersService {
   async list(actor: JwtPayload): Promise<CreatedUser[]> {
     // Manager scoping resolves TEAM.managerId, same as create() — the JWT
     // teamId claim is unreliable for managers (seed keeps it null).
-    // SUPER_ADMIN and ADMIN see all.
+    // OWNER and ADMIN see all.
     let where: Record<string, unknown>;
-    if (actor.role === 'SUPER_ADMIN' || actor.role === 'ADMIN') {
+    if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       where = {};
     } else if (actor.role === 'MANAGER') {
       const team = await this.client.team.findFirst({

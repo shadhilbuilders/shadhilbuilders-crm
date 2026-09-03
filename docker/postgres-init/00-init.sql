@@ -35,6 +35,16 @@ $$;
 
 COMMENT ON ROLE shadhil_app IS 'Shadhil CRM app role — non-owner, RLS-enforced. NEVER use for migrations.';
 
+-- Schema-level USAGE + CREATE grants. Without USAGE on `public`,
+-- the table-level GRANTs in policies.sql are invisible to shadhil_app
+-- and Postgres returns `42501 permission denied for schema public` (or
+-- `42P01 relation does not exist` depending on the access path). CREATE
+-- is needed for Prisma's $executeRawUnsafe during bootstrap migrations.
+-- Round 25 (2026-09-03): explicit grants added — the schema's default
+-- PUBLIC ACL was empty in this setup, so the implicit pseudo-role grant
+-- did not apply.
+GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;
+
 -- NOTE on the password: this default matches POSTGRES_PASSWORD from
 -- docker-compose for local dev (dev-only throwaway, same as the owner role).
 -- Production MUST override both via Coolify env vars; compose passes
