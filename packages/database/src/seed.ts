@@ -163,6 +163,14 @@ async function main() {
     },
   });
 
+  // BUG FIX (Day 3 demo prep): the manager was upserted above WITHOUT a
+  // teamId because the team didn't exist yet. Re-upsert with the team id
+  // now that we have one. Without this the manager has teamId=null,
+  // RLS team-scoped queries return 0 rows for them, and the demo inbox
+  // renders empty. The original ordering bug means a fresh seed run
+  // produces a manager with no team even though the team is created.
+  await upsertUser(manager, 'MANAGER', team.id);
+
   // ── Owner (no team), Admin (no team), telecaller + sales exec (team members)
   await upsertUser(owner, 'OWNER');
   await upsertUser(admin, 'ADMIN');
