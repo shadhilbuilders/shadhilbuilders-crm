@@ -528,60 +528,168 @@ From `~/.hermes/skills/devops/paalstack-react-ui/SKILL.md` (the consumer-side Pa
 
 ## 5. Realtime Architecture (SSE)
 
-From DESIGN.md §9. Three SSE channels, all from NestJS, all auth'd via JWT (in `?token=` query param because `EventSource` doesn't support custom headers).
+Three SSE channels: **chat** (per-lead message stream), **notifications**
+(current-user Notification inbox), **audit** (current-user AuditLog
+visibility, with ADMIN/OWNER see-all as in the REST list).
 
-**Implementation pattern (eng review A9 — lastEventId resume added):**
+### 5.0 Subdomain allocation (locked 2026-09-04)
 
-```typescript
-// apps/backend/src/realtime/sse.controller.ts
-@Sse('leads/:id/stream')
-async leadStream(
-  @Param('id') leadId: string,
-  @Query('token') token: string,
-  @Headers('last-event-id') lastEventId: string | undefined,
-): Promise<Observable<MessageEvent>> {
-  const payload = await verifyJwt(token);
-  await assertCanAccessLead(payload.sub, leadId);
+| Subdomain | Service | Port | TLS | Why |
+|---|---|---|---|---|
+| `crm.shadhilbuilders.in` | Next.js web (apps/web) | 3000 → 443 via reverse proxy | yes (h2) | User-facing SPA, holds the better-auth session cookie |
+| `api.crm.shadhilbuilders.in` | NestJS backend (apps/backend) | 8080 → 443 via reverse proxy | yes (h2) | Auth-gated REST API; also owns `POST /api/realtime/ticket` (JWT-gated) |
+| `sse.crm.shadhilbuilders.in` | Standalone SSE service (apps/realtime-sse) | 8090 → 443 via reverse proxy | yes (h2) | Long-lived `EventSource` connections, separate cookie scope |
 
-  // Replay missed events since lastEventId (if provided)
-  // Source of truth: Postgres chat_message table; ordered by createdAt asc.
-  const replay = lastEventId
-    ? await this.prisma.message.findMany({
-        where: {
-          leadId,
-          createdAt: { gt: await this.resolveTimestampFromEventId(lastEventId) },
-        },
-        orderBy: { createdAt: 'asc' },
-        take: 100,
-      })
-    : [];
+**Why a distinct subdomain for SSE, not a path on the API:**
 
-  return merge(
-    from(replay).pipe(map(msg => ({ id: msg.id, data: msg } as MessageEvent))),
-    this.redisSub.subscribe(`lead:${leadId}:messages`).pipe(
-      map(msg => ({ id: msg.eventId, data: msg } as MessageEvent)),
-    ),
-  );
+1. **Cookie isolation.** The ticket in the SSE URL is the auth credential. If
+   `sse.*` and `api.*` were siblings under `crm.shadhilbuilders.in`, the
+   browser would send the `better-auth.session_token` cookie on every SSE
+   request — expanding the cookie's attack surface (XSS in one site
+   exfiltrates the other). A separate subdomain scopes the cookie to the
+   API only; the SSE connection authenticates purely via the
+   unguessable 5-min single-use cuid.
+2. **HTTP/2 multiplexing pool isolation.** Per the MDN warning on
+   `EventSource`: HTTP/1.1 caps 6 connections per origin per browser
+   instance, marked "Won't fix" in Chrome + Firefox. With SSE on its own
+   subdomain, the h2 connection pool for SSE is separate from the
+   API's, so a misbehaving SSE handler can't exhaust stream IDs and
+   starve the API's normal traffic.
+3. **Operational visibility.** Long-lived connections have a different
+   operational shape (timeouts, keep-alive, proxy buffering) from
+   short-lived REST. Putting them on a distinct subdomain makes
+   firewall rules, log dashboards, and rate-limit policies easier to
+   reason about.
+
+### 5.1 Topology in production
+
+```
+Browser
+  │
+  ├─ https://crm.shadhilbuilders.in             (Next.js, Vercel or self-hosted)
+  │
+  ├─ https://api.crm.shadhilbuilders.in/...     (Caddy → NestJS, :8080)
+  │   └─ POST /api/realtime/ticket   (mint a 5-min single-use StreamTicket)
+  │
+  └─ https://sse.crm.shadhilbuilders.in/api/sse/...   (Caddy → apps/realtime-sse, :8090)
+      ├─ /api/sse/notifications?ticket=<cuid>
+      ├─ /api/sse/audit?ticket=<cuid>
+      └─ /api/sse/chat/:leadId?ticket=<cuid>
+```
+
+**Reverse proxy (Caddy) config sketch** for the SSE host. The standalone
+service is plain HTTP/1.1 on localhost; Caddy terminates TLS and serves
+h2 to the browser. This is the same pattern Caddy uses for the API
+host already.
+
+```caddyfile
+sse.crm.shadhilbuilders.in {
+    encode zstd gzip
+    reverse_proxy localhost:8090 {
+        # Critical: SSE must NOT be buffered. Caddy's default reads the
+        # whole response into memory before flushing; flush_interval=-1
+        # disables that and streams as bytes arrive.
+        flush_interval -1
+        # Standard streaming response headers (mirrors the values the
+        # standalone service sets on its own writeHead; Caddy passes
+        # them through if absent here, but being explicit is cheaper
+        # than debugging "why is my SSE not streaming").
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+    tls {
+        # mkcert in dev; Let's Encrypt (or Caddy's on-demand TLS) in prod.
+    }
 }
 ```
 
-**Resume token (eng review A9):** Each SSE event carries an `id:` field that maps to the message row's id. Clients (web EventSource + react-native-sse) reconnect with `Last-Event-ID` header. Server replays from that point. Implementation in §5 must store per-channel `lastEventId` in Redis so a crash-restart can recover.
+**Dev note:** The 6-conn-per-origin limit applies to HTTP/1.1 cleartext
+too. For local dev with multiple browser tabs and 3 SSE channels each,
+the limit becomes noticeable. The fix is identical to prod: put Caddy
+(or `caddy` via `docker compose`) in front of `:8090` with mkcert
+certificates, then the browser multiplexes everything over h2. The
+`apps/realtime-sse` source code is unchanged; only the network topology
+shifts. The existing `docker/docker-compose.yml` already runs a Caddy
+container — adding an SSE host block is the only edit.
 
-**Client side (web):**
+### 5.2 Why a separate service (T-E2 implementation note, 2026-09-04)
 
-```typescript
-const eventSource = new EventSource(
-  `${API_BASE}/leads/${leadId}/stream?token=${jwt}`,
-);
-eventSource.onmessage = (e) => {
-  const message = JSON.parse(e.data);
-  queryClient.setQueryData(['lead', leadId, 'messages'], (old) => [...old, message]);
-};
-```
+`@nestjs/core@12.0.1`'s `@Sse()` decorator is broken for any
+subscription chain that requires an `await` inside its factory — the
+async-handler, sync-handler+defer, and raw-`@Res()` shapes all commit
+the SSE headers and run the DB queries, but zero `data:` frames reach
+the socket. `@fastify/sse@0.6.0` has the same shape of bug (verified
+2026-09-04). The standalone bare-`node:http` service in
+`apps/realtime-sse/` is the only path with empirical evidence behind
+it: the working `/api/sse/ping` canary in the Nest app (plain
+`interval()`, no async setup) flushed frames; the same canary shape
+ported to fastify flushed frames; the real routes with async setup
+silently swallowed frames in both. See skill
+`~/.hermes/skills/devops/shadhil-crm-dev/references/ci-workflow-pitfalls.md`
+Pitfall 9 for the full diagnostic record (13+ runs).
 
-**Mobile (per `expo-native-ui`):** use `react-native-sse` (per DESIGN.md §9).
+The standalone service:
+- uses bare `node:http` (no framework SSE plugin) — zero new runtime deps
+- implements the exact pattern the canary proved works: `res.writeHead(200, ...)` +
+  `res.write(': stream-open\n\n')` synchronously, then `setInterval` drives writes
+- shares `@shadhil/database` and `@shadhil/api-types` workspace packages
+- owns only the SSE consumer side; the StreamTicket model + mint flow stay in
+  the Nest app (which is where the JWT-auth and `withRlsContext` patterns already live)
 
-**Reconnect logic:** exponential backoff 1s → 2s → 4s → 8s → max 30s. UI shows "Reconnecting..." pill during outage.
+### 5.3 StreamTicket (auth model)
+
+The browser's `EventSource` cannot set `Authorization` headers (spec
+limitation). The StreamTicket is the workaround: an unguessable cuid
+that lives in the URL query string, bound to (user, channel),
+single-use, expires in 5 minutes. Leaked tickets are worthless after
+the 5-min TTL or the first connect — whichever comes first.
+
+**Mint (Nest, JWT-auth):** `POST /api/realtime/ticket` with body
+`{ channel: "notifications" | "audit" | "chat:<leadId>" }`. For
+`chat:<leadId>`, the Nest service performs a lead-visibility check
+inside `withRlsContext` — the same check the REST list uses
+(owner / same-team / admin-or-owner). Returns `{ ticket, channel,
+expiresAt }`.
+
+**Consume (SSE service, ticket-only):** `GET /api/sse/<channel>?ticket=<cuid>`.
+The SSE service authenticates the ticket (no JWT — the ticket IS the
+auth), deletes the row, and opens the stream. Channel-mismatch
+rejection (defends against a leaked notification ticket being replayed
+on the audit channel).
+
+### 5.4 Channel access rules
+
+| Channel | Mint-time check | Stream-time filter |
+|---|---|---|
+| `notifications` | Always allowed (row userId = ticket userId) | All rows where `userId = ticket.userId` |
+| `audit` | Always allowed | `userId = ticket.userId` for SALES_EXEC/TELECALLER/MANAGER; all rows for ADMIN/OWNER (seeAll) |
+| `chat:<leadId>` | Nest `withRlsContext` lead-visibility check (the actor must be able to read the lead) | All `Message` rows where `leadId = <id>` (visibility enforced at mint) |
+
+### 5.5 Last-Event-ID resume
+
+Every event carries `id: <row-cuid>`. Clients reconnect with
+`?lastEventId=<cuid>` (the SSE spec's `Last-Event-ID` header isn't
+readable from `EventSource`, so we use the query string). The SSE
+service resolves the cuid to the row's `createdAt` timestamp and
+replays rows newer than that.
+
+### 5.6 Client (web, BFF)
+
+The browser calls `POST /api/bff/realtime/ticket` (BFF mints via the
+JWT-authed backend), then opens `new EventSource('/api/sse/<path>?ticket=<cuid>')`.
+The BFF route at `apps/web/src/app/api/sse/[...path]/route.ts` is a
+streaming proxy: it verifies the better-auth session cookie (so
+unauthenticated browsers can't open streams) and pipes the
+`fetch('/api/sse/<path>', { origin: SSE_BACKEND_URL }).body` through
+`new Response(upstream.body, { headers })`. Next.js 15+ streams this
+without buffering. Path allowlist (only `ping | healthz | notifications
+| audit | chat/<cuid>`) prevents open-proxy abuse.
+
+### 5.7 Reconnect logic
+
+Exponential backoff 1s → 2s → 4s → 8s → max 30s, re-minting the
+ticket on each new connection (single-use tickets are consumed on
+connect). UI shows a "Reconnecting…" pill during outage.
 
 ---
 
@@ -2015,6 +2123,9 @@ client-locked) → surfaced at gate.
 | 30 | Design | `useNavSync()` hook in `lib/nav.ts` closes the mobile Sheet on `usePathname()` change. Encapsulates the library-drift risk so future library updates don't silently reintroduce the "stuck open Sheet" bug. | mechanical | P1,P6 | without this hook, the mobile Sheet would block the route change; library doesn't auto-close | (A) close-on-click handler per link, (B) library's default behavior (assumed but not guaranteed) |
 | 31 | Eng | Skeleton is one generic component with variants (`text`/`card`/`chart`/`table`/`kpi`/`user`), not 4 dedicated files (CEO §5 1D). `SkeletonContainer` cross-fade = CSS-only (`opacity-0/100 duration-200` + `motion-reduce:transition-none`). T32 (shape-count tests) + T33 (computed-style assertion) replace fragile `vi.useFakeTimers` for animations. | mechanical | P1,P6 | DRY; CSS animations are not pauseable by fake timers (known pitfall) | (A) 4 dedicated files, (B) fake-timer-based tests |
 | 32 | Design | ErrorBoundary fallback = `Empty`, not `Skeleton` (CEO §1 1B). A skeleton hides the failure; `Empty` makes the failure visible so the user can report it. Applied at the chart layer in T31. | taste | P1,P5 | honest error surface | (A) generic error.tsx, (B) skeleton as fallback |
+| 33 | Eng | Standalone bare-`node:http` SSE service (`apps/realtime-sse`, port 8090) instead of `@Sse()` in Nest or `@fastify/sse` plugin. Both framework SSE layers are broken for any subscription that needs `await` inside its factory (verified 2026-09-04: Nest 12.0.1 + fastify-sse 0.6.0 both swallow frames silently). Bare-Node is the only path with empirical evidence. | mechanical | P1,P5,P6 | Nest has only 1 published 12.x version (12.0.1) — no upstream patch; downgrading is 6-module blast radius; fastify is the same shape of bug. Standalone service is ~260 lines, zero new runtime deps, and uses the exact pattern the canary proved works. | (A) keep Nest `@Sse` and pray for 12.0.2, (B) downgrade to 11.2.3, (C) use `@fastify/sse` |
+| 34 | Eng | SSE consumer gets a distinct subdomain `sse.crm.shadhilbuilders.in` (not a path on `api.crm.shadhilbuilders.in`). Three subdomains total: `crm.*` (web), `api.*` (Nest + ticket mint), `sse.*` (SSE service). Cookie isolation, h2 connection-pool isolation, and operational visibility are the three reasons. | mechanical | P1,P5 | The ticket in the URL is the auth credential; sibling subdomains would expand the cookie attack surface. h2 multiplexing pool is per-origin in browsers, so isolating SSE prevents it from starving the API's h2 stream IDs. Long-lived connections have a different ops shape (timeouts, buffering, dashboards). | (A) `api.crm.shadhilbuilders.in/api/sse/*` (same origin = cookie leak risk, pool coupling), (B) `crm.shadhilbuilders.in/api/sse/*` (web origin = better-auth cookie always sent) |
+| 35 | Eng | Caddy terminates TLS + serves h2 to the browser for the SSE host; standalone service stays plain HTTP/1.1 on `localhost:8090`. Caddy config: `flush_interval -1` on the reverse_proxy block (critical — default Caddy buffers the whole response). | mechanical | P1,P5 | TLS termination belongs in the load balancer, not the app. Node code stays the same across dev (mkcert + local Caddy) and prod (Let's Encrypt via Caddy on-demand TLS). The 6-conn-per-origin limit on HTTP/1.1 cleartext applies in dev too, so the local Caddy gives us h2 multiplexing without code changes. | (A) Node does TLS directly (cert management in app, wrong layer), (B) `node:http2` directly (h2c has zero browser support; forces TLS in app) |
 
 ## Cross-Phase Themes
 
