@@ -33,6 +33,7 @@
 //   │   │   │   ├── Leads            (badge: lead count)
 //   │   │   │   ├── Visits           (no badge)
 //   │   │   │   ├── Inventory        (no badge)
+//   │   │   │   ├── Bookings         (no badge — T-F5, T-BOOK backend)
 //   │   │   │   └── Notifications    (badge: unread count)
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
@@ -55,6 +56,7 @@ import {
   LuBell,
   LuShieldCheck,
   LuUserCog,
+  LuHandshake,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -115,6 +117,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/inventory',
     label: 'Inventory',
     icon: LuPackage,
+    group: 'work',
+  },
+  // T-F5 (T-BOOK backend). Bookings are visible to every authenticated
+  // user (the bookings controller has no role guard for the list path;
+  // transition is MANAGER+ via PATCH /bookings/:id — a per-row gate
+  // handled on the page, not by hiding the route).
+  {
+    href: '/bookings',
+    label: 'Bookings',
+    icon: LuHandshake,
     group: 'work',
   },
   {

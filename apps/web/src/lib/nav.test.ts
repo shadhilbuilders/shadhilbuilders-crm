@@ -52,6 +52,7 @@ describe('lib/nav', () => {
         '/leads',
         '/visits',
         '/inventory',
+        '/bookings',
         '/notifications',
       ]);
     });
@@ -63,6 +64,7 @@ describe('lib/nav', () => {
         '/leads',
         '/visits',
         '/inventory',
+        '/bookings',
         '/notifications',
       ]);
     });
