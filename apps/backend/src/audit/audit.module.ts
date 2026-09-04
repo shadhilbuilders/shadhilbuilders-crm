@@ -1,25 +1,21 @@
-// Audit log module — every controller action is logged here.
+// Audit module — filterable audit log list (READ ONLY).
 //
-// Eng review A2: audit writes MUST be transactional (prisma.$transaction).
-// High-stakes actions (reassign, state transitions) accept a `tx` client
-// and write their audit row inside the same transaction. Lower-stakes
-// actions use the AuditInterceptor (TODO: Phase 2) which falls back to a
-// fresh transaction.
+// T-AUDIT (2026-09-07): replaces the Phase-1 stub. The audit rows
+// themselves are written by every other module as a side effect of
+// their mutations (per eng-review A2: audit writes MUST be
+// transactional with the triggering action). This module ONLY
+// READS — no creation endpoint.
 //
-// Read API: /api/audit?userId=...&entityType=...&from=...&to=...
-import { Controller, Get, Module, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { AuditLogQueryDto } from '@shadhil/api-types';
+// The page wiring (apps/web/src/hooks/queries/crm.ts) calls
+// useAuditLog — it lights up against this module's GET endpoint.
+import { Module } from '@nestjs/common';
 
-@ApiTags('audit')
-@ApiBearerAuth('jwt')
-@Controller('audit')
-class AuditController {
-  @Get()
-  query(@Query() _q: AuditLogQueryDto): { message: string; phase: number } {
-    return { message: 'Audit query lands in Week 9', phase: 1 };
-  }
-}
+import { AuditController } from './audit.controller';
+import { AuditService } from './audit.service';
 
-@Module({ controllers: [AuditController] })
+@Module({
+  controllers: [AuditController],
+  providers: [AuditService],
+  exports: [AuditService],
+})
 export class AuditModule {}
