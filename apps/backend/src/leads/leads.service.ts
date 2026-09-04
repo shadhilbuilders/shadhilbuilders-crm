@@ -449,7 +449,7 @@ export class LeadsService {
       if (rule.teamId !== team.id) continue;
       if (!rule.active) continue;
       if (rule.source !== lead.source) continue;
-      if (!ruleMatchesCriteria(rule, lead)) continue;
+      if (!this.ruleMatchesCriteria(rule, lead)) continue;
       const target = await resolveTarget(rule.targetUserId);
       if (target === null) continue;
       if (!canUserBeAssignedTo(target)) continue;
