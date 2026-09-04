@@ -1,9 +1,30 @@
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
+  resolve: {
+    alias: [
+      // CI resilience (runs 33892679873/33893618023): @shadhil/auth
+      // resolves through dist/ which is flaky on GH runners (stale
+      // tsbuildinfo skip-emit + cache-restore timing). Alias to the
+      // package's TS source — always present after pnpm install.
+      {
+        find: /^@shadhil\/auth\/auth-client$/,
+        replacement: fileURLToPath(
+          new URL('../../packages/auth-client/src/auth-client.ts', import.meta.url),
+        ),
+      },
+      {
+        find: /^@shadhil\/auth$/,
+        replacement: fileURLToPath(
+          new URL('../../packages/auth-client/src/index.ts', import.meta.url),
+        ),
+      },
+    ],
+  },
   test: {
     globals: true,
     environment: 'jsdom',
