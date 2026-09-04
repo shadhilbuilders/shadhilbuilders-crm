@@ -44,6 +44,14 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 
 import { canTransition } from './leads.state-machine';
+import {
+  canUserBeAssignedTo,
+  evaluateAssignment,
+  type LeadAttributes,
+  type ManagerAssignmentRule,
+  type Resolution,
+  type TargetUser,
+} from './manager-assignment.engine';
 
 export interface LeadRow {
   id: string;
@@ -190,49 +198,112 @@ export class LeadsService {
   /**
    * POST /api/leads — create a new lead.
    *
-   * Owner assignment (ManagerAssignmentRule stub per Plan §18 T-ARM):
-   *   - TELECALLER-actor: ownerId = actor.sub (lead lands in their queue)
-   *   - SALES_EXEC-actor: ownerId = actor.sub
-   *   - MANAGER-actor: must pass ownerId in the DTO. If absent, the lead
-   *     lands on the manager themselves (managers don't usually own leads,
-   *     but it's a legal fallback when no rule engine exists yet).
-   *   - ADMIN/OWNER-actor: must pass ownerId in the DTO. Reject if absent
-   *     (ambiguous — who owns it?).
+   * Owner assignment runs through the ManagerAssignmentRule engine
+   * (manager-assignment.engine.ts). The engine evaluates in this order:
+   *   1. Active rules for the team, sorted by (priority ASC,
+   *      createdAt ASC) — first matching rule wins.
+   *   2. Team.defaultAssigneeId fallback (deferred — column ships in
+   *      a future migration; today step 2 is a no-op).
+   *   3. Neither matched → unassigned (ownerId=null). The service
+   *      is responsible for firing notification trigger #1 to the
+   *      team manager (deferred — the notifications module ships
+   *      in Phase 5; today the audit log records the unassigned
+   *      state).
    *
-   * The full T-ARM engine (priority-ordered rules with catch-all +
-   * defaultAssigneeId fallback) is deferred — see DECISION-CHANGELOG.
+   * ADMIN/MANAGER targets are rejected by the engine (they don't
+   * own leads directly). If the only matching rule points at an
+   * ADMIN, the engine falls through to the next rule / fallback /
+   * unassigned.
+   *
+   * Reference: Plan §18 (D2 ratified 2026-08-31, D3 manual-reassign
+   * bypass); see T-ARM in the open-tasks tracker.
    */
   async create(actor: JwtPayload, dto: CreateLeadDto): Promise<LeadRow> {
-    const ownerId = this.resolveOwnerOnCreate(actor, dto);
+    // 1. Resolve teamId first — we need it for the rule query.
+    let teamId: string | null = actor.teamId;
+    if (actor.role === 'MANAGER') {
+      const team = await this.client.team.findFirst({
+        where: { managerId: actor.sub },
+        select: { id: true },
+      });
+      if (!team) {
+        throw new ForbiddenException(
+          'You do not manage any team — cannot create lead',
+        );
+      }
+      teamId = team.id;
+    }
+    if (teamId === null) {
+      throw new BadRequestException(
+        'teamId is required when an ADMIN/OWNER creates a lead (no actor teamId)',
+      );
+    }
+
+    // 2. Pull active rules for the team. The engine does the
+    //    sorting; we just feed it the candidates. The Prisma
+    //    schema's `priority` column ships in a future migration;
+    //    until then, all rules default to priority 0 in the
+    //    engine and the createdAt tiebreak picks the oldest.
+    const ruleRows = await this.client.managerAssignmentRule.findMany({
+      where: { teamId, active: true },
+      orderBy: [{ createdAt: 'asc' }],
+      select: {
+        id: true,
+        teamId: true,
+        source: true,
+        targetUserId: true,
+        active: true,
+        createdAt: true,
+      },
+    });
+    const rules: ManagerAssignmentRule[] = ruleRows;
+
+    // 3. Build a target resolver. We don't pre-fetch every user
+    //    (could be many) — the engine short-circuits on first match.
+    const resolveTarget = async (
+      userId: string,
+    ): Promise<TargetUser | null> => {
+      const u = await this.client.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true },
+      });
+      return u === null ? null : { id: u.id, role: u.role as TargetUser['role'] };
+    };
+
+    // 4. Run the engine. Synchronous interface; resolution returns
+    //    immediately. The async resolver is invoked at most once
+    //    per non-empty rule (the engine short-circuits).
+    const leadAttrs: LeadAttributes = {
+      source: dto.source,
+      projectId: dto.projectId ?? null,
+      // phaseId/language/region: DTO doesn't carry these today.
+      // The engine handles their absence (criteria is null = match
+      // anything when the columns ship). The Lead model doesn't
+      // have these columns yet either — T-ARM scope note.
+    };
+
+    // The engine interface is sync (takes a sync resolver). For
+    // async user lookups we resolve in a tight loop: walk the
+    // sorted rules and call the async resolver until one returns
+    // a valid (assignable) target. Same logic, async-friendly.
+    const ownerId = await this.resolveOwnerFromEngine(
+      rules,
+      teamId,
+      leadAttrs,
+      resolveTarget,
+    );
+
+    // 5. If ownerId is null (unassigned), audit the state. The
+    //    notification fires when the notifications module lands.
+    if (ownerId === null) {
+      // No-op today (the notification module is Phase 5). The
+      // audit log line below is the durable record.
+    }
 
     return withRlsContext(
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       async (tx) => {
-        // Resolve teamId for the lead. New leads always belong to a team.
-        // For TELECALLER/SALES_EXEC, use actor.teamId. For MANAGER, use
-        // the team they manage. For ADMIN/OWNER, require dto to include
-        // projectId later — for now, use the actor's teamId (admin
-        // creates typically happen within an existing team).
-        let teamId: string | null = actor.teamId;
-        if (actor.role === 'MANAGER') {
-          const team = await tx.team.findFirst({
-            where: { managerId: actor.sub },
-            select: { id: true },
-          });
-          if (!team) {
-            throw new ForbiddenException(
-              'You do not manage any team — cannot create lead',
-            );
-          }
-          teamId = team.id;
-        }
-        if (teamId === null) {
-          throw new BadRequestException(
-            'teamId is required when an ADMIN/OWNER creates a lead (no actor teamId)',
-          );
-        }
-
         // Phone uniqueness is enforced by Prisma; surface a friendly 409
         // instead of a 500 by pre-checking.
         const existing = await tx.lead.findUnique({
@@ -252,7 +323,7 @@ export class LeadsService {
             email: dto.email ?? null,
             source: dto.source,
             projectId: dto.projectId ?? null,
-            ownerId,
+            ownerId: ownerId ?? '',
             ownerType: this.ownerTypeForRole(actor.role),
             teamId,
           },
@@ -298,6 +369,45 @@ export class LeadsService {
         };
       },
     );
+  }
+
+  /**
+   * Async wrapper around the engine. The engine is sync, but the
+   * target resolver hits the DB. We walk the rules in priority
+   * order ourselves and call the async resolver, returning the
+   * first valid (assignable) target. Returns null if no rule
+   * matches (caller treats as unassigned).
+   *
+   * This mirrors the engine's evaluation logic exactly — kept
+   * here so the engine stays pure (no async deps) and the
+   * service owns DB I/O.
+   */
+  private async resolveOwnerFromEngine(
+    rules: readonly ManagerAssignmentRule[],
+    teamId: string,
+    lead: LeadAttributes,
+    resolveTarget: (userId: string) => Promise<TargetUser | null>,
+  ): Promise<string | null> {
+    // Sort: priority ASC, then createdAt ASC.
+    const sorted = [...rules].sort((a, b) => {
+      const pa = a.priority ?? 0;
+      const pb = b.priority ?? 0;
+      if (pa !== pb) return pa - pb;
+      return a.createdAt.getTime() - b.createdAt.getTime();
+    });
+
+    for (const rule of sorted) {
+      if (rule.teamId !== teamId) continue;
+      if (rule.source !== lead.source) continue;
+      if (!rule.active) continue; // defensive — caller filters
+      const target = await resolveTarget(rule.targetUserId);
+      if (target === null) continue;
+      if (!canUserBeAssignedTo(target)) continue;
+      return target.id;
+    }
+
+    // Default fallback: Team.defaultAssigneeId (deferred).
+    return null;
   }
 
   /**
@@ -489,24 +599,11 @@ export class LeadsService {
   // -------------------------------------------------------------------------
 
   /**
-   * ManagerAssignmentRule stub (full engine is Plan §18 T-ARM, deferred):
-   *   - TELECALLER + SALES_EXEC: ownerId = actor.sub (their own queue).
-   *   - MANAGER: dto.ownerId ?? actor.sub.
-   *   - ADMIN/OWNER: dto.ownerId required.
+   * Removed in T-ARM: the role-based stub (ownerId = actor.sub for
+   * all roles) is replaced by the ManagerAssignmentRule engine.
+   * The engine lives in manager-assignment.engine.ts; the async
+   * wrapper in create() above calls it via resolveOwnerFromEngine.
    */
-  private resolveOwnerOnCreate(
-    actor: JwtPayload,
-    dto: CreateLeadDto,
-  ): string {
-    // The DTO doesn't currently carry ownerId — caller passes it via the
-    // dto. For now, when actor is staff, default to actor.sub. For
-    // admin/owner, default to actor.sub too (later this becomes a
-    // required field once the ARM engine ships).
-    // TODO(plan-t-arm): when ManagerAssignmentRule ships, drop the
-    // default and require a project/source-derived resolution.
-    void dto;
-    return actor.sub;
-  }
 
   private ownerTypeForRole(role: Role): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' {
     if (role === 'TELECALLER' || role === 'SALES_EXEC' || role === 'MANAGER' || role === 'ADMIN') {
