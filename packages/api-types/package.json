@@ -25,7 +25,6 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
-    "prebuild": "pnpm --filter @shadhil/database build",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
