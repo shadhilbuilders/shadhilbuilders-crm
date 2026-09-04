@@ -88,12 +88,16 @@ jobs:
       # Day 5 T-G4: @shadhil/database exports point to ./dist/index.js.
       # The test job runs vitest which imports from the workspace;
       # the import resolves to dist (per package.json `main`), not
-      # src. turbo's `test.dependsOn: ['^build']` SHOULD run the
-      # database build first, but on a cold cache the build may
-      # run concurrently with the test (turbo's default concurrency
-      # is 10). Run it explicitly here so dist/ exists on disk
-      # before any test imports the package.
+      # src. With turbo's default concurrency=10, the auth-client
+      # build can race the database build on a cold cache and
+      # fail with TS2307 'Cannot find module @shadhil/database'.
+      # Two fixes layered here:
+      #   (1) Build the database explicitly first so dist/ exists
+      #       on disk before any test/build task runs.
+      #   (2) Run all other package builds serially
+      #       (`--concurrency=1`) so the dep chain is always honored.
       - run: pnpm --filter @shadhil/database build
+      - run: pnpm exec turbo run build --concurrency=1
       # Backend has ZERO tests until T-RLSREAL lands — keep passWithNoTests
       # true for now so bundle-1 fixes can ship; the plan flips it to false
       # in the same PR as the first real backend test (AR-5).
