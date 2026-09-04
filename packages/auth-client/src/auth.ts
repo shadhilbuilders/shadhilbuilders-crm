@@ -5,6 +5,19 @@
 //   - A4: NO organization() plugin — Team is the single grouping concept
 //   - JWT plugin (HS256, issuer: 'shadhil-crm') is the bridge to NestJS JwtStrategy
 //   - admin() plugin for role gating (admin role check)
+//
+// T-S (2026-09-03): placeholder-password lockdown. The seed script
+// (packages/database/src/seed.ts) provisions owner@/admin@/manager@/
+// telecaller@/sales_exec@shadhilbuilders.in with a documented
+// placeholder password per Plan §17 Input #5. If a production DB
+// ever runs the seed, those credentials are live until manually
+// rotated. The gate itself lives in apps/backend/src/auth/
+// placeholder-gate.middleware.ts as a Nest middleware (sitting in
+// front of the better-auth catch-all in BetterAuthMiddlewareModule).
+// The placeholder email list is in packages/auth-client/
+// placeholder-users.json — committed, lists the 5 seed emails. The
+// file is empty in production deploys that don't run the seed; the
+// gate is a no-op.
 
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
