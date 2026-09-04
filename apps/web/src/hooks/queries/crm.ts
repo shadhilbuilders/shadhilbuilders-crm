@@ -14,6 +14,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api, qs } from '@/apis/client';
 
+import type { CreateLeadDto } from '@shadhil/api-types';
+
 // ---------------------------------------------------------------------------
 // Leads (contracts: packages/api-types/src/leads.ts)
 // ---------------------------------------------------------------------------
@@ -60,6 +62,25 @@ export function useLeadActivities(id: string | null) {
     queryKey: ['leads', id, 'activities'] as const,
     enabled: id !== null && id.length > 0,
     queryFn: ({ signal }) => api<unknown[]>(`/leads/${id as string}/activities`, { signal }),
+  });
+}
+
+/**
+ * Create a new lead. Invalidates the leads-list query cache on success so the
+ * inbox shows the new lead without a manual refresh. The form's success
+ * handler should `router.push('/leads/${data.id}')` for the optimistic flow.
+ *
+ * Note: owner is assigned server-side by the ManagerAssignmentRule engine
+ * (IMPLEMENTATION-PLAN §7). The form does NOT pick the owner.
+ */
+export function useCreateLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateLeadDto) =>
+      api<unknown>('/leads', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
   });
 }
 

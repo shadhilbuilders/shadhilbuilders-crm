@@ -66,6 +66,19 @@ export default function LeadInboxPage() {
             ? 'Your assigned leads, next action first.'
             : 'Team lead queue with overdue-first sorting.'
         }
+        action={
+          // The "+ New lead" button is hidden for TELECALLER per
+          // Plan §3 — leads are created by managers/landing site, then
+          // routed by the assignment rule. SALES_EXEC and above can
+          // self-source leads (e.g. walk-ins).
+          user !== null && user.role !== 'TELECALLER' ? (
+            <Button asChild variant="default" size="sm">
+              <Link href="/leads/new" data-qa="new-lead-button">
+                + New lead
+              </Link>
+            </Button>
+          ) : null
+        }
       />
 
       <div className="flex justify-end">
