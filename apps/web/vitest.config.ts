@@ -31,8 +31,21 @@ export default defineConfig({
     // Nothing fails CI just because a fresh feature area hasn't grown tests
     // yet — coverage is opt-in per module, not enforced repo-wide.
     passWithNoTests: true,
+    // Playwright e2e tests live in src/test/e2e/ — they have their
+    // own runner (`pnpm test:e2e` → `playwright test`) and must not
+    // be picked up by vitest, which would try to execute
+    // `test.describe(...)` and fail with "Playwright Test did not
+    // expect test.describe() to be called here".
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', '.next', '.idea', '.git', '.cache'],
+    exclude: [
+      'node_modules',
+      'dist',
+      '.next',
+      '.idea',
+      '.git',
+      '.cache',
+      'src/test/e2e/**',
+    ],
     // Polyfill IndexedDB for tests that use @shadhil/offline-store.
     setupFiles: ['./src/test/idb-setup.ts'],
     coverage: {
