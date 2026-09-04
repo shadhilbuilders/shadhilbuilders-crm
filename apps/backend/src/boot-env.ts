@@ -73,7 +73,6 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     issues.push('  - BETTER_AUTH_URL: missing (required)');
   } else {
     try {
-      // eslint-disable-next-line no-new
       new URL(BETTER_AUTH_URL);
     } catch {
       issues.push(
