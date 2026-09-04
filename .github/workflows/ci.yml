@@ -153,7 +153,10 @@ jobs:
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
-          DIRECT_DATABASE_URL: postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public
+          # NOTE: GH Actions does NOT shell-expand ${VAR} inside env: map
+          # values — that's bash syntax. Use the ${{ }} expression form or
+          # Prisma gets the literal '${...}' as the password (P1000).
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
       # AR-4 companion: the matrix FAILS if the DB is unreachable — a missing
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
@@ -163,8 +166,8 @@ jobs:
           # is RLS-enforced and must connect as the non-owner shadhil_app
           # role — using shadhil here bypasses RLS and the matrix flips
           # green for the wrong reason).
-          DIRECT_DATABASE_URL: postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public
-          DATABASE_URL: postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@localhost:5432/shadhil_crm?schema=public
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
+          DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
           RLS_MATRIX_REQUIRED: 'true'
 
   build:
