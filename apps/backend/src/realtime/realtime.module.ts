@@ -1,26 +1,19 @@
-// Realtime SSE module — 3 channels: lead chat, notifications, audit.
+// Realtime ticket-mint controller — owns the POST /api/realtime/ticket
+// endpoint. The SSE consumer endpoints (GET /api/sse/*) live in the
+// standalone apps/realtime-sse/ service (T-E2 fix, 2026-09-04).
 //
-// T-E2 (Week 6, 2026-09-04): replaces the Phase-1 stub with a real
-// ticket-mint + Last-Event-ID resume flow.
-//
-//   POST /api/realtime/ticket        — mint a 5-minute single-use ticket
-//   GET  /api/sse/chat/:leadId       — Message stream (ticket = "chat:<id>")
-//   GET  /api/sse/notifications      — Notification stream (ticket = "notifications")
-//   GET  /api/sse/audit              — AuditLog stream (ticket = "audit")
-//   GET  /api/sse/ping               — heartbeat-only canary (no ticket)
-//
-// Every real event carries `id: <row-cuid>`; clients reconnect with
-// Last-Event-ID (via ?lastEventId= for EventSource compatibility) and the
-// controller replays missed rows from Postgres before resuming live.
-// Heartbeats every 15s keep proxies from timing out idle connections.
-import { Body, Controller, Get, Inject, Module, Post, Req, Sse } from '@nestjs/common';
+// Why the split: @nestjs/core 12.0.1's @Sse() handler is broken for
+// any subscription chain that requires an await inside its factory
+// (see ~/.hermes/skills/devops/shadhil-crm-dev/references/ci-workflow-pitfalls.md
+// Pitfall 9). The standalone service uses bare node:http to avoid the
+// framework layer entirely. The ticket mint stays in Nest because it
+// fits the existing JWT-auth + service-injection pattern.
+
+import { Body, Controller, Inject, Module, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { interval, map, Observable } from 'rxjs';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import type { MintTicketDto, MintTicketResponse } from '@shadhil/api-types';
 
-import { Public } from '../auth/public.decorator';
-import { RealtimeController } from './realtime.controller';
 import { RealtimeService } from './realtime.service';
 
 @ApiTags('realtime')
@@ -58,21 +51,8 @@ export class RealtimeTicketController {
   }
 }
 
-// Minimal canary: pure-interval SSE with no DB work. If THIS doesn't
-// flush frames to the socket, the problem is transport-level (compression
-// middleware, proxy), not the stream construction.
-@ApiTags('realtime')
-@Controller()
-export class RealtimePingController {
-  @Public()
-  @Sse('sse/ping')
-  ping(): Observable<{ data: { type: 'ping'; ts: number } }> {
-    return interval(2_000).pipe(map(() => ({ data: { type: 'ping' as const, ts: Date.now() } })));
-  }
-}
-
 @Module({
-  controllers: [RealtimeTicketController, RealtimeController, RealtimePingController],
+  controllers: [RealtimeTicketController],
   providers: [RealtimeService],
   exports: [RealtimeService],
 })
