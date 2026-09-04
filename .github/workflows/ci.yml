@@ -106,6 +106,13 @@ jobs:
   rls-matrix:
     name: RLS Isolation Matrix
     runs-on: ubuntu-latest
+    env:
+      # shadhil_app password matches the PASSWORD literal in the
+      # CREATE ROLE heredoc below; both must change together.
+      SHADHIL_APP_PASSWORD: shadhil
+      # shadhil (owner) password matches DIRECT_DATABASE_URL below
+      # and the postgres service POSTGRES_PASSWORD env above.
+      SHADHIL_OWNER_PASSWORD: '***'
     services:
       postgres:
         image: postgres:16-alpine
@@ -133,18 +140,20 @@ jobs:
       # 00-init.sql equivalent: CI's bare postgres container has no
       # docker-entrypoint hook, so create the non-owner app role here
       # (AR-1) BEFORE migrations — migration 1's policy block GRANTs to it.
-      # Heredoc-quoting on purpose: $$ in YAML run-blocks gets shell-expanded
-      # (\$\$ landed as the runner PID last run -> 'unterminated dollar-quoted
-      # string'). Fresh container per run, so no IF NOT EXISTS needed.
+      # Use 'psql' directly against localhost:5432 (the service's exposed
+      # port). Heredoc-quoting on purpose: $$ in YAML run-blocks gets
+      # shell-expanded ($\$$ landed as the runner PID last run ->
+      # 'unterminated dollar-quoted string'). Fresh container per run,
+      # so no IF NOT EXISTS needed.
       - run: |
-          docker exec -i "$(docker ps -qf name=postgres)" psql -U shadhil -d shadhil_crm <<'SQL'
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
           CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       - run: pnpm --filter @shadhil/database generate
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
-          DIRECT_DATABASE_URL: postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public
+          DIRECT_DATABASE_URL: postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public
       # AR-4 companion: the matrix FAILS if the DB is unreachable — a missing
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
@@ -154,8 +163,8 @@ jobs:
           # is RLS-enforced and must connect as the non-owner shadhil_app
           # role — using shadhil here bypasses RLS and the matrix flips
           # green for the wrong reason).
-          DIRECT_DATABASE_URL: postgresql://shadhil:***@localhost:5432/shadhil_crm?schema=public
-          DATABASE_URL: postgresql://shadhil_app:***@localhost:5432/shadhil_crm?schema=public
+          DIRECT_DATABASE_URL: postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public
+          DATABASE_URL: postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@localhost:5432/shadhil_crm?schema=public
           RLS_MATRIX_REQUIRED: 'true'
 
   build:
