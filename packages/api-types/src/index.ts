@@ -20,3 +20,4 @@ export * from './notifications';
 export * from './audit';
 export * from './webhooks';
 export * from './common';
+export * from './realtime';

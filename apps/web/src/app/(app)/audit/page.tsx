@@ -11,6 +11,7 @@ import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useAuditLog } from '@/hooks/queries/crm';
+import { useAuditLogRealtime } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '../PageHeader';
@@ -38,6 +39,9 @@ export default function AuditPage() {
     limit: 50,
     ...(actionFilter !== null ? { action: actionFilter } : {}),
   });
+  // T-E2 (Week 6): live audit stream — new rows (from lead transitions,
+  // bookings, logins) stream in via SSE and invalidate the list.
+  useAuditLogRealtime();
   const { user, isPending: sessionPending } = useSessionUser();
   // T25 (PR3): wire the offline-aware skeleton. When the user is
   // offline and the list is loading, the skeleton surfaces a

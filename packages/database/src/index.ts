@@ -99,5 +99,6 @@ export type {
   Session,
   Account,
   Verification,
+  StreamTicket,
   Role,
 } from './generated/prisma/client';

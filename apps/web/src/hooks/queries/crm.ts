@@ -12,6 +12,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
+import { useRealtimeChannel } from '@/hooks/use-realtime-channel';
 
 import type {
   BookingTransitionDto,
@@ -247,6 +248,17 @@ export function useMessages(leadId: string | null) {
   });
 }
 
+// T-E2 (Week 6): live chat updates via the SSE channel instead of
+// send-triggered refetch only. Mount inside the lead detail page; the
+// subscription invalidates the chat query whenever a new Message row
+// appears (inbound WhatsApp, another staff member, or the customer).
+export function useMessagesRealtime(leadId: string | null): void {
+  const queryClient = useQueryClient();
+  useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {
+    void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
+  });
+}
+
 export function useSendMessage(leadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -355,8 +367,17 @@ export function useNotifications(params: { unreadOnly?: boolean } = {}) {
           : 0,
     }),
     staleTime: 10_000,
-    refetchInterval: 60_000,
     placeholderData: keepPreviousData,
+  });
+}
+
+// T-E2 (Week 6): the notifications list is kept fresh by the SSE
+// realtime channel instead of 60s polling. The subscription lives in
+// useNotificationsRealtime() below so hooks stay pure queries.
+export function useNotificationsRealtime(): void {
+  const queryClient = useQueryClient();
+  useRealtimeChannel('notifications', () => {
+    void queryClient.invalidateQueries({ queryKey: ['notifications'] });
   });
 }
 
@@ -411,5 +432,16 @@ export function useAuditLog(
     }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
+  });
+}
+
+// T-E2 (Week 6): the audit log gains live updates via the SSE channel.
+// The initial fetch still happens on page load; new audit rows (from
+// lead transitions, booking changes, logins) stream in and invalidate
+// the list without a manual refresh.
+export function useAuditLogRealtime(enabled: boolean = true): void {
+  const queryClient = useQueryClient();
+  useRealtimeChannel(enabled ? 'audit' : null, () => {
+    void queryClient.invalidateQueries({ queryKey: ['audit'] });
   });
 }

@@ -195,6 +195,7 @@ model User {
   pushSubscriptions PushSubscription[]
   pushNotifications PushNotification[]
   auditLogs         AuditLog[]
+  streamTickets     StreamTicket[]
 
   @@index([teamId])
   @@index([role])
@@ -697,4 +698,50 @@ model Jwks {
   kty          String?
   kid          String?
   use          String?
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 19. StreamTicket — short-lived auth tokens for the SSE realtime layer.
+// ────────────────────────────────────────────────────────────────────────────
+// T-E2 (Week 6, 2026-09-04): the SSE endpoint needs to authenticate without
+// driving every connection through the JwtAuthGuard + RLS interceptor stack
+// (the EventSource browser API can't carry an Authorization header and can't
+// run SET LOCAL on its long-lived connection cheaply). The compromise:
+//
+//   - POST /api/realtime/ticket  (JWT-authed) mints a single-use StreamTicket
+//     row scoped to (userId, channel). 5-minute TTL — long enough for a
+//     realistic chat session, short enough that ticket leakage is bounded.
+//   - GET /api/sse/<channel>?ticket=<id>  (ticket-authed) consumes the row,
+//     opens the SSE stream, and uses the user's JWT identity (stored on the
+//     row at mint time) to scope every query.
+//
+// Single-use is enforced by the controller deleting the row on connect. The
+// `channel` column is a freeform string with a small fixed vocabulary:
+//   "notifications"         — current user's Notification inbox
+//   "audit"                 — current user's AuditLog visibility
+//   "chat:<leadId>"         — Message stream for a specific lead
+//
+// Channel-scope checks happen at the mint endpoint (withRlsContext as the
+// actor — the role gates which channels the user can ask for). The SSE
+// controller itself uses the bare prisma client (with the actor's userId
+// baked into the URL), so RLS still gates the actual data.
+//
+// We deliberately do NOT add an RLS policy for StreamTicket. The table is an
+// auth-bypass surface: the ticket IS the credential for the SSE path. The
+// only legitimate writer is the mint endpoint (which writes with the
+// actor's role set); the only legitimate reader is the SSE controller
+// (which deletes the row on consume). Forcing RLS here would add a join
+// for no security gain — the ticket's cuid is unguessable and its TTL is
+// bounded. The GRANTs go to shadhil_app so the pooled path can read/write.
+model StreamTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  channel   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

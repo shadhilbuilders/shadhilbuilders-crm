@@ -430,7 +430,7 @@ BEGIN
     'Lead','Activity','SiteVisit','Message','Booking','Reminder',
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
-    'Phase','Unit'
+    'Phase','Unit','StreamTicket'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);

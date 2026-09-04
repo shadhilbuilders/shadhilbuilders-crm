@@ -16,6 +16,7 @@ import {
   useMarkNotificationsRead,
   useNotifications,
 } from '@/hooks/queries/crm';
+import { useNotificationsRealtime } from '@/hooks/queries/crm';
 
 // T-F2 keeps the filter tabs honest: only ALL + UNREAD are wired to
 // backend query params; the others stay visible (matches the locked
@@ -46,6 +47,9 @@ export default function NotificationsPage() {
   const notificationsQuery = useNotifications({
     unreadOnly: filter === 'UNREAD',
   });
+  // T-E2 (Week 6): live updates — new notifications stream in via SSE
+  // and invalidate the list query (no 60s polling).
+  useNotificationsRealtime();
   const markRead = useMarkNotificationsRead();
   // T25 (PR3): when the browser is offline and the list is loading,
   // show the "Will sync when online" hint via the skeleton.
