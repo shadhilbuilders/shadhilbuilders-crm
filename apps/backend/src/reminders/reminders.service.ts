@@ -28,6 +28,7 @@ import {
   type Reminder,
   type ReminderStatus,
   type ReminderType,
+  withRlsContext,
 } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -275,21 +276,34 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         // the lock check (e.g. during the renewal window) will see
         // zero rows here and exit cleanly — no duplicate fire.
         //
-        // BYPASSRLS on shadhil_app lets us UPDATE any reminder row
-        // regardless of owner. The cron's "actor" is a synthetic
-        // service account (claimedBy = replicaId); we don't write
-        // reminders as a real user.
-        const claimed = await this.client.reminder.updateMany({
-          where: {
-            status: 'SCHEDULED',
-            scheduledFor: { lte: new Date() },
+        // T-CRONS (2026-09-07): wrapped in withRlsContext as
+        // CRON_SERVICE so the reminder_cron_service RLS policy
+        // matches — the cron is a service account, not a real user,
+        // and can't satisfy the owner-only reminder_write_owner
+        // policy. See
+        // packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
+        // for the policy and known-runtime-bugs.md Bug 8 for context.
+        const claimResult = await withRlsContext(
+          this.client,
+          {
+            userId: 'cron-service',
+            role: 'CRON_SERVICE',
+            teamId: null,
           },
-          data: {
-            status: 'PROCESSING',
-            claimedAt: new Date(),
-            claimedBy: this.replicaId,
-          },
-        });
+          async (tx) =>
+            (tx as unknown as PrismaClient).reminder.updateMany({
+              where: {
+                status: 'SCHEDULED',
+                scheduledFor: { lte: new Date() },
+              },
+              data: {
+                status: 'PROCESSING',
+                claimedAt: new Date(),
+                claimedBy: this.replicaId,
+              },
+            }),
+        );
+        const claimed = { count: claimResult.count };
         tick.claimed = claimed.count;
 
         if (claimed.count === 0) {
@@ -299,14 +313,23 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
         // Fetch the rows we just claimed (filter by claimedBy to
         // avoid grabbing rows another replica claimed in a race).
-        const due = await this.client.reminder.findMany({
-          where: {
-            status: 'PROCESSING',
-            claimedBy: this.replicaId,
+        const due = await withRlsContext(
+          this.client,
+          {
+            userId: 'cron-service',
+            role: 'CRON_SERVICE',
+            teamId: null,
           },
-          take: BATCH_SIZE,
-          orderBy: { scheduledFor: 'asc' },
-        });
+          async (tx) =>
+            (tx as unknown as PrismaClient).reminder.findMany({
+              where: {
+                status: 'PROCESSING',
+                claimedBy: this.replicaId,
+              },
+              take: BATCH_SIZE,
+              orderBy: { scheduledFor: 'asc' },
+            }),
+        );
 
         for (const reminder of due) {
           if (!tick.renewedLease) {
@@ -317,15 +340,24 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
           }
           try {
             await deliverReminder(reminder);
-            await this.client.reminder.update({
-              where: { id: reminder.id },
-              data: {
-                status: 'SENT',
-                sentAt: new Date(),
-                claimedAt: null,
-                claimedBy: null,
+            await withRlsContext(
+              this.client,
+              {
+                userId: 'cron-service',
+                role: 'CRON_SERVICE',
+                teamId: null,
               },
-            });
+              async (tx) =>
+                (tx as unknown as PrismaClient).reminder.update({
+                  where: { id: reminder.id },
+                  data: {
+                    status: 'SENT',
+                    sentAt: new Date(),
+                    claimedAt: null,
+                    claimedBy: null,
+                  },
+                }),
+            );
             tick.sent++;
           } catch (err) {
             // FAILED is sticky — the row stays PROCESSING until the
@@ -335,10 +367,19 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
             this.logger.error(
               `Reminder ${reminder.id} delivery failed: ${err instanceof Error ? err.message : String(err)}`,
             );
-            await this.client.reminder.update({
-              where: { id: reminder.id },
-              data: { status: 'FAILED' },
-            });
+            await withRlsContext(
+              this.client,
+              {
+                userId: 'cron-service',
+                role: 'CRON_SERVICE',
+                teamId: null,
+              },
+              async (tx) =>
+                (tx as unknown as PrismaClient).reminder.update({
+                  where: { id: reminder.id },
+                  data: { status: 'FAILED' },
+                }),
+            );
             tick.failed++;
           }
         }
