@@ -28,7 +28,7 @@
 import { Button } from '@paalstack/react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useMessages, useSendMessage } from '@/hooks/queries/crm';
+import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
 
 type Direction = 'IN' | 'OUT';
@@ -64,6 +64,11 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
   const { user } = useSessionUser();
   const messagesQuery = useMessages(leadId);
   const sendMessage = useSendMessage(leadId ?? '');
+  // T-E2 (Week 6): live message stream — invalidates the chat query
+  // whenever a new Message row lands (inbound WhatsApp, another staff
+  // member's reply, or the customer's own message). The pane re-renders
+  // from the TanStack cache without a manual refresh.
+  useMessagesRealtime(leadId);
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
 

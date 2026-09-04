@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/queries/crm', () => ({
   useAuditLog: vi.fn(),
+  useAuditLogRealtime: vi.fn(),
 }));
 
 vi.mock('@/hooks/use-online-status', () => ({

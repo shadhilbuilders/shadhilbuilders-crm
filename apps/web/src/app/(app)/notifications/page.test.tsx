@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/queries/crm', () => ({
   useNotifications: vi.fn(),
+  useNotificationsRealtime: vi.fn(),
   useMarkNotificationsRead: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
