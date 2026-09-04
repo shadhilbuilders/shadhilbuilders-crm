@@ -15,7 +15,7 @@ import Redis from 'ioredis';
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
-class RedisService implements OnModuleDestroy {
+export class RedisService implements OnModuleDestroy {
   private readonly client: Redis;
   private readonly logger = new Logger(RedisService.name);
 
@@ -68,6 +68,41 @@ class RedisService implements OnModuleDestroy {
       end
     `;
     await this.client.eval(lua, 1, key, token);
+  }
+
+  /**
+   * Renew (bump TTL) a lock we still own. T-G4: the reminder cron takes
+   * the lock for `lockTtl = 50s`, but a batch of due reminders can run
+   * longer than 60s (especially on cold start with a backlog). If the
+   * lock expires mid-batch, another replica acquires it and starts
+   * processing the same rows — duplicate fires.
+   *
+   * The cron renews the lease every `lockTtl / 2 = 25s` inside its
+   * batch loop. The Lua script is atomic: we only bump TTL if the
+   * stored value is still OUR token (compare-and-set). Returns true
+   * if renewed, false if we no longer hold the lock (the batch
+   * should bail in that case).
+   */
+  async renewLease(
+    key: string,
+    token: string,
+    ttlSec: number,
+  ): Promise<boolean> {
+    const lua = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("expire", KEYS[1], ARGV[2])
+      else
+        return 0
+      end
+    `;
+    const result = (await this.client.eval(
+      lua,
+      1,
+      key,
+      token,
+      String(ttlSec),
+    )) as number;
+    return result === 1;
   }
 
   async onModuleDestroy(): Promise<void> {

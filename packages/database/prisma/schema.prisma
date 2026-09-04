@@ -120,6 +120,11 @@ enum ReminderType {
 
 enum ReminderStatus {
   SCHEDULED
+  // T-G4: PROCESSING is the intermediate state during a cron's lease.
+  // The processor claims rows by updateMany(SCHEDULED → PROCESSING) so a
+  // second cron tick (different replica, lock expired) sees zero rows
+  // and exits cleanly — no duplicate fire.
+  PROCESSING
   SENT
   FAILED
   CANCELLED
@@ -435,6 +440,15 @@ model Reminder {
   status       ReminderStatus @default(SCHEDULED)
   scheduledFor DateTime
   sentAt       DateTime?
+  // T-G4: claim bookkeeping. When the cron claims a row (updateMany
+  // SCHEDULED → PROCESSING), it sets claimedAt + claimedBy (replica id).
+  // A stuck PROCESSING row (cron died mid-fire) can be recovered by:
+  //   UPDATE "Reminder" SET status = 'SCHEDULED', claimedAt = NULL
+  //   WHERE status = 'PROCESSING' AND claimedAt < NOW() - INTERVAL '5m'
+  // The recovery job ships separately (post-Week 7 reminders module);
+  // for now, a manual query is sufficient.
+  claimedAt    DateTime?
+  claimedBy    String?
   createdAt    DateTime       @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -444,6 +458,7 @@ model Reminder {
   @@index([userId])
   @@index([status])
   @@index([scheduledFor])
+  @@index([status, scheduledFor])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
