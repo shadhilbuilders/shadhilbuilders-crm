@@ -275,6 +275,10 @@ CREATE POLICY notification_delete_owner ON "Notification"
   FOR DELETE
   USING ("userId" = current_setting('app.user_id', true));
 
+CREATE POLICY notification_insert_owner ON "Notification"
+  FOR INSERT
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
 -- ── AuditLog (admin sees all; others see their own) ────────────────────────
 ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
 
