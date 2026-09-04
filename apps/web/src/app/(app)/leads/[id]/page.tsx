@@ -10,6 +10,7 @@ import { Heading, TypographyP } from '@paalstack/react-ui';
 import { useParams } from 'next/navigation';
 
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
+import { LeadChatPane } from '@/components/shared/LeadChatPane';
 import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
 import { BackLink } from '@/components/shared/ModulePending';
 import { ModulePending } from '@/components/shared/ModulePending';
@@ -17,9 +18,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import {
   useLead,
   useLeadActivities,
-  useMessages,
 } from '@/hooks/queries/crm';
-import { useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '../../PageHeader';
 
@@ -29,8 +28,6 @@ export default function LeadDetailPage() {
 
   const leadQuery = useLead(leadId);
   const activitiesQuery = useLeadActivities(leadId);
-  const messagesQuery = useMessages(leadId);
-  const { user } = useSessionUser();
 
   const notFound = leadQuery.error !== null && leadQuery.error !== undefined && !leadQuery.isLoading;
 
@@ -96,11 +93,7 @@ export default function LeadDetailPage() {
             <div className="border-border border-b px-4 py-2.5 text-xs font-semibold tracking-wide uppercase">
               Chat
             </div>
-            <ChatPane
-              leadId={leadId}
-              messages={messagesQuery.data}
-              canSend={user !== null}
-            />
+            <LeadChatPane leadId={leadId} />
           </aside>
         </div>
       ) : (
@@ -147,37 +140,6 @@ function LeadTabsPanel({
           activities endpoint lands (Week 4).
         </TypographyP>
       )}
-    </div>
-  );
-}
-
-function ChatPane({
-  leadId,
-  messages,
-  canSend,
-}: {
-  leadId: string | null;
-  messages: unknown;
-  canSend: boolean;
-}) {
-  const hasMessages = Array.isArray(messages);
-  return (
-    <div className="space-y-2 p-4">
-      {hasMessages ? (
-        <ul className="space-y-2">
-          {(messages as unknown[]).map((message, index) => (
-            <li key={index} className="text-sm">
-              {JSON.stringify(message).slice(0, 200)}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <TypographyP className="text-muted-foreground text-sm">
-          Messages with this customer appear here (SSE live) when the chat
-          module ships (Week 5){leadId !== null ? '' : ''}.
-        </TypographyP>
-      )}
-      {canSend ? null : null}
     </div>
   );
 }
