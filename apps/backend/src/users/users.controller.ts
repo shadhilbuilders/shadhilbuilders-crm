@@ -7,6 +7,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Inject,
   Param,
   Patch,
@@ -15,8 +16,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  ChangePasswordDtoSchema,
   ChangeRoleDtoSchema,
   CreateUserDtoSchema,
+  type ChangePasswordDto,
   type ChangeRoleDto,
   type CreateUserDto,
 } from '@shadhil/api-types';
@@ -76,6 +79,30 @@ export class UsersController {
   ): Promise<CreatedUser> {
     const dto: ChangeRoleDto = ChangeRoleDtoSchema.parse(body);
     return this.users.changeRole(req.user!, id, dto);
+  }
+
+  /**
+   * T-S hardening (2026-09-04, Week 5):
+   * POST /api/users/:id/change-password
+   *
+   * Self-service password rotation + admin reset. The actor must be
+   * the target user themselves OR ADMIN/OWNER (enforced in the
+   * service). On success, User.mustChangePassword flips to false and
+   * the JwtAuthGuard stops returning PASSWORD_CHANGE_REQUIRED.
+   */
+  @Post(':id/change-password')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Change a user password (self or admin/owner). Verifies the old password, hashes the new with the seed scrypt params, flips User.mustChangePassword=false.',
+  })
+  async changePassword(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ ok: true; mustChangePassword: false }> {
+    const dto: ChangePasswordDto = ChangePasswordDtoSchema.parse(body);
+    return this.users.changePassword(req.user!, id, dto);
   }
 
   @Get()

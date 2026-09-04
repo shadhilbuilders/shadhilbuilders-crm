@@ -119,3 +119,30 @@ export const RefreshTokenDtoSchema = z.object({
   refreshToken: z.string().min(20),
 });
 export type RefreshTokenDto = z.infer<typeof RefreshTokenDtoSchema>;
+
+/**
+ * T-S hardening (2026-09-04, Week 5): POST /api/users/:id/change-password.
+ *
+ * Change a user's own password (or, for ADMIN/OWNER, any user's).
+ * The actor must be the target user themselves, OR have an ADMIN/OWNER
+ * role (mirrors the existing role gates in users.service.ts). The old
+ * password is validated against the user's credential Account row
+ * (better-auth's scrypt hash); on success, the new password is hashed
+ * with the same scrypt params and the Account row is updated. User.
+ * mustChangePassword flips to false so JwtAuthGuard stops returning
+ * PASSWORD_CHANGE_REQUIRED.
+ *
+ * Both `oldPassword` and `newPassword` are required and must be ≥ 8
+ * chars (matches the seed's CreateUserDto shape).
+ */
+export const ChangePasswordDtoSchema = z.object({
+  oldPassword: z
+    .string()
+    .min(1, 'Current password is required')
+    .max(200, 'Password is too long'),
+  newPassword: z
+    .string()
+    .min(8, 'New password must be at least 8 characters')
+    .max(200, 'Password is too long'),
+});
+export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;

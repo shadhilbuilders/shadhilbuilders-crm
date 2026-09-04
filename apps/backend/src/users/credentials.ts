@@ -10,7 +10,7 @@
 // shadhil_app but never FORCEs them), so these writes run on the bare client
 // — exactly the seed's path. Auth tables are pre-RLS by design: better-auth's
 // own HTTP handlers write them session-agnostically.
-import { randomBytes, scryptSync } from 'node:crypto';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const SCRYPT_PARAMS = {
   N: 16384,
@@ -30,6 +30,37 @@ export function hashPassword(password: string): string {
     SCRYPT_PARAMS,
   ).toString('hex');
   return `${salt}:${hash}`;
+}
+
+/**
+ * Verify a plaintext password against a stored "salt:key" string.
+ * Constant-time comparison (timingSafeEqual) so an attacker can't
+ * extract the scrypt-params from response-time variance. Returns
+ * false on any malformed stored value (not "throw") so the caller
+ * can map to a single BadRequestException for "wrong password".
+ */
+export function verifyPassword(
+  plaintext: string,
+  stored: string | null | undefined,
+): boolean {
+  if (stored === null || stored === undefined || stored.length === 0) {
+    return false;
+  }
+  const [salt, key] = stored.split(':');
+  if (
+    salt === undefined ||
+    key === undefined ||
+    salt.length === 0 ||
+    key.length === 0
+  ) {
+    return false;
+  }
+  const normalized = plaintext.normalize('NFKC');
+  const expected = Buffer.from(key, 'hex');
+  if (expected.length === 0) return false;
+  const candidate = scryptSync(normalized, salt, expected.length, SCRYPT_PARAMS);
+  if (candidate.length !== expected.length) return false;
+  return timingSafeEqual(candidate, expected);
 }
 
 /**

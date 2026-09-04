@@ -105,6 +105,30 @@ export async function api<T>(
     )}`;
     throw new ApiError('Not authenticated', 401);
   }
+  if (response.status === 403) {
+    // T-S hardening (Week 5, 2026-09-04): the JwtAuthGuard returns
+    // 403 + PASSWORD_CHANGE_REQUIRED when the session is valid but
+    // the user's mustChangePassword flag is still true. Bounce to
+    // /change-password so the seed users (owner/admin/manager/
+    // telecaller/sales_exec) can rotate their placeholder password
+    // on first sign-in. The demo user is exempted in the migration
+    // so this redirect never fires for demo@shadhilbuilders.in.
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      /* not JSON — fall through to the generic 403 handler below */
+    }
+    if (
+      body !== null &&
+      typeof body === 'object' &&
+      'code' in body &&
+      (body as { code?: unknown }).code === 'PASSWORD_CHANGE_REQUIRED'
+    ) {
+      window.location.href = '/change-password';
+      throw new ApiError('Password change required', 403);
+    }
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new ApiError(

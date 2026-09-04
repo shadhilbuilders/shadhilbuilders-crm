@@ -26,10 +26,10 @@ import {
 } from '@nestjs/common';
 import { withRlsContext, type Role, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { CreateUserDto, ChangeRoleDto } from '@shadhil/api-types';
+import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { assertCanCreateRole, assertCanChangeRole, OWNER } from './roles';
-import { upsertCredentialAccount } from './credentials';
+import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 export interface CreatedUser {
   id: string;
@@ -249,6 +249,114 @@ export class UsersService {
       role: updated.role,
       teamId: updated.teamId,
     };
+  }
+
+  /**
+   * T-S hardening (2026-09-04, Week 5):
+   * POST /api/users/:id/change-password
+   *
+   * Change a user's password. The actor must be:
+   *   - the target user themselves (self-service rotation after the
+   *     mustChangePassword gate fires), OR
+   *   - ADMIN / OWNER (admin reset, e.g. locked-out operator).
+   *
+   * Verifies the old password against the credential Account row
+   * (scrypt-hashed with the same params the seed uses), then hashes
+   * the new password and writes both Account.password and
+   * User.mustChangePassword = false. The audit row records who did
+   * what and the user being changed (the actor is the writer; the
+   * entity is the User row).
+   *
+   * 404 if the target user doesn't exist; 403 if the actor isn't
+   * self/admin/owner; 400 if the old password is wrong.
+   */
+  async changePassword(
+    actor: JwtPayload,
+    targetUserId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ ok: true; mustChangePassword: false }> {
+    // 1. Target must exist.
+    const target = await this.client.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true, mustChangePassword: true },
+    });
+    if (target === null) {
+      throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+
+    // 2. Role gate: self OR ADMIN/OWNER.
+    const isSelf = target.id === actor.sub;
+    const isPrivileged = actor.role === 'ADMIN' || actor.role === 'OWNER';
+    if (!isSelf && !isPrivileged) {
+      throw new ForbiddenException(
+        'You can only change your own password (admin/owner can reset others)',
+      );
+    }
+
+    // 3. Verify the old password against the credential Account row.
+    // Account uses (providerId='credential', accountId=user.id) as the
+    // better-auth 1.7 sign-in contract (see credentials.ts).
+    const account = await this.client.account.findUnique({
+      where: {
+        providerId_accountId: {
+          providerId: 'credential',
+          accountId: target.id,
+        },
+      },
+      select: { password: true },
+    });
+    if (
+      account === null ||
+      !verifyPassword(dto.oldPassword, account.password)
+    ) {
+      // 400 (not 401) — this is a request-body validation error from
+      // the client's perspective. Same shape better-auth's sign-in uses
+      // for wrong-password so a probe can't tell the difference between
+      // "no such user" and "wrong password" by status code alone.
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    // 4. Hash the new password + flip mustChangePassword. Bare client
+    // is correct here — User/Account are auth tables without FORCE
+    // RLS (same precedent as create()).
+    await this.client.account.update({
+      where: {
+        providerId_accountId: {
+          providerId: 'credential',
+          accountId: target.id,
+        },
+      },
+      data: {
+        password: hashPassword(dto.newPassword),
+        issuer: 'local:credential',
+      },
+    });
+    await this.client.user.update({
+      where: { id: target.id },
+      data: { mustChangePassword: false },
+    });
+
+    // 5. Audit row in the actor's RLS context so the AuditLog policy
+    // admits the insert (it gates on app.user_id).
+    await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.changePassword',
+            entityType: 'User',
+            entityId: target.id,
+            before: { mustChangePassword: target.mustChangePassword },
+            after: { mustChangePassword: false },
+            reason: `password changed by ${actor.email} (${actor.role})`,
+          },
+        });
+      },
+    );
+
+    return { ok: true, mustChangePassword: false };
   }
 
   async list(actor: JwtPayload): Promise<CreatedUser[]> {
