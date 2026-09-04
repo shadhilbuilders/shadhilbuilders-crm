@@ -23,12 +23,34 @@ export const dynamic = 'force-dynamic';
 const SESSION_COOKIE = 'better-auth.session_token';
 const SSE_BACKEND_URL = process.env.SSE_BACKEND_URL ?? 'http://localhost:8090';
 
+// T-PERF-2 #2: Origin allowlist. Defends against a foreign origin driving
+// the BFF into opening proxy connections. Default is the two dev origins
+// (web on :3000, Expo on :8081). In prod, set ALLOWED_SSE_ORIGINS to a
+// comma-separated list like
+// 'https://crm.shadhilbuilders.in,https://admin.crm.shadhilbuilders.in'.
+const ALLOWED_SSE_ORIGINS = (process.env.ALLOWED_SSE_ORIGINS ?? 'http://localhost:3000,http://localhost:8081')
+  .split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+
 /** Allow only known SSE paths — defends against an open-proxy abuse
  *  if the path is later broadened. */
 function isAllowedPath(path: string): boolean {
-  if (path === 'ping' || path === 'healthz' || path === 'notifications' || path === 'audit') return true;
+  if (path === 'ping' || path === 'healthz' || path === 'metrics' || path === 'notifications' || path === 'audit') return true;
   if (/^chat\/[^/]+$/.test(path)) return true;
   return false;
+}
+
+/** Reject the request if the Origin header is present and not in the
+ *  allowlist. Absent Origin is allowed (curl, server-to-server).
+ *  Returns null on pass, a Response on fail. */
+function checkOrigin(origin: string | null): Response | null {
+  if (origin === null) return null;
+  if (ALLOWED_SSE_ORIGINS.includes(origin)) return null;
+  return new Response(
+    JSON.stringify({ message: 'Origin not allowed' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } },
+  );
 }
 
 export async function GET(
@@ -43,6 +65,12 @@ export async function GET(
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  // T-PERF-2 #2: Origin allowlist check (BEFORE session check, so
+  // unauthenticated probes from foreign origins get 403 not 401 —
+  // we don't want to reveal whether a session exists at this origin).
+  const originRejection = checkOrigin(request.headers.get('origin'));
+  if (originRejection !== null) return originRejection;
 
   // Session check: the SSE service authenticates the ticket, not the
   // session, but the BFF still needs the user to be signed in (the

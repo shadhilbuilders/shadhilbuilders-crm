@@ -1,0 +1,123 @@
+# Local dev proxy — Traefik v3 with mkcert certs.
+#
+# T-PERF-2 #5 (2026-09-04). Why this exists:
+#   - The 6-connection-per-origin limit on HTTP/1.1 cleartext (marked
+#     "Won't fix" in Chrome + Firefox per MDN) bites hard during dev
+#     with multiple tabs and 3 SSE channels each.
+#   - The fix is h2 multiplexing, which requires TLS (browsers reject
+#     HTTP/2 cleartext).
+#   - mkcert gives you locally-trusted dev certs in 2 minutes without
+#     the Let's Encrypt DNS dance.
+#
+# What this gives you:
+#   - https://crm.local       → apps/web:3000
+#   - https://api.crm.local   → apps/backend:8080
+#   - https://sse.crm.local   → apps/realtime-sse:8090
+#
+# One-time setup:
+#   1. Install mkcert: `brew install mkcert` (or apt install mkcert on Linux)
+#   2. Install the local CA: `mkcert -install`
+#   3. Generate the certs: `mkcert -cert-file ./certs/crm.local.pem -key-file ./certs/crm.local-key.pem crm.local api.crm.local sse.crm.local`
+#      (the file path args put the certs in a known location that matches the volumes below)
+#   4. Add to /etc/hosts (or use dnsmasq / systemd-resolved):
+#      127.0.0.1 crm.local api.crm.local sse.crm.local
+#   5. From the apps/web/ directory, set: `NEXT_PUBLIC_API_BASE_URL=https://api.crm.local`
+#   6. From the apps/realtime-sse/ directory, set: `SSE_BACKEND_URL=http://apps.realtime-sse:8090`
+#      (or just `http://localhost:8090` if running outside the dev-proxy network)
+#   7. Start the dev proxy: `docker compose -f docker/docker-compose.dev-proxy.yml up -d`
+#
+# Then visit https://crm.local — TLS works, h2 multiplexes, all 3 SSE
+# channels share one connection per browser tab.
+#
+# Why Traefik (not Caddy): Coolify (the prod platform) is built around
+# Traefik — picking it for dev means the same label-based config syntax
+# you'll use in prod. See plan §5.1 for the full reasoning.
+
+services:
+  traefik-dev:
+    image: traefik:v3
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--accesslog=true"
+      - "--accesslog.fields.headers.names.Authorization=drop"
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Pre-generated mkcert certs. Generate with:
+      #   mkcert -cert-file ./certs/crm.local.pem \
+      #          -key-file ./certs/crm.local-key.pem \
+      #          crm.local api.crm.local sse.crm.local
+      - ./certs:/certs:ro
+    networks:
+      - dev-proxy-net
+
+  # Add the existing services to this compose so they pick up the
+  # Traefik labels. If you already have apps/web/api/sse running on
+  # the host (not in Docker), the Traefik container can still reach
+  # them via host.docker.internal. See "External services" below.
+  apps-web:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/web dev"
+    volumes:
+      - ../:/app
+      - ../.env:/app/.env:ro
+    networks:
+      - dev-proxy-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crm-local.rule=Host(`crm.local`)"
+      - "traefik.http.routers.crm-local.entrypoints=websecure"
+      - "traefik.http.routers.crm-local.tls=true"
+      - "traefik.http.routers.crm-local.tls.certificatesresolvers=mkcert.acme.tlschallenge=false"
+      # mkcert certs are static files, not ACME. Use a file provider:
+      - "traefik.http.routers.crm-local.tls.certFile=/certs/crm.local.pem"
+      - "traefik.http.routers.crm-local.tls.keyFile=/certs/crm.local-key.pem"
+      - "traefik.http.services.crm-local.loadbalancer.server.port=3000"
+
+  apps-backend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/backend start:dev"
+    volumes:
+      - ../:/app
+      - ../.env:/app/.env:ro
+    networks:
+      - dev-proxy-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-local.rule=Host(`api.crm.local`)"
+      - "traefik.http.routers.api-local.entrypoints=websecure"
+      - "traefik.http.routers.api-local.tls=true"
+      - "traefik.http.routers.api-local.tls.certFile=/certs/crm.local.pem"
+      - "traefik.http.routers.api-local.tls.keyFile=/certs/crm.local-key.pem"
+      - "traefik.http.services.api-local.loadbalancer.server.port=8080"
+
+  apps-realtime-sse:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/realtime-sse start"
+    volumes:
+      - ../:/app
+      - ../.env:/app/.env:ro
+    networks:
+      - dev-proxy-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sse-local.rule=Host(`sse.crm.local`)"
+      - "traefik.http.routers.sse-local.entrypoints=websecure"
+      - "traefik.http.routers.sse-local.tls=true"
+      - "traefik.http.routers.sse-local.tls.certFile=/certs/crm.local.pem"
+      - "traefik.http.routers.sse-local.tls.keyFile=/certs/crm.local-key.pem"
+      - "traefik.http.services.sse-local.loadbalancer.server.port=8090"
+
+networks:
+  dev-proxy-net:
+    driver: bridge

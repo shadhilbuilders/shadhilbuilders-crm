@@ -99,11 +99,29 @@ export const auth: any = betterAuth({
   ],
 
   trustedOrigins: [
-    'http://localhost:3000', // Next.js web
+    'http://localhost:3000', // Next.js web (dev)
     'http://localhost:8081', // Expo dev server
-    'https://crm.shadhilbuilders.in',
-    'https://crm-api.shadhilbuilders.in',
+    'https://crm.shadhilbuilders.in',           // user-facing app
+    'https://api.crm.shadhilbuilders.in',       // backend API
   ],
+
+  // T-PERF-2 #1: cookie scope (plan Decision Audit #37).
+  //
+  // The default better-auth cookie scope is host-only — which is
+  // exactly what we want. We must NOT enable `crossSubDomainCookies`
+  // because that would set Domain: '.crm.shadhilbuilders.in' and
+  // auto-send the session cookie to BOTH crm.shadhilbuilders.in
+  // (the app) AND api.crm.shadhilbuilders.in (the API) per RFC 6265.
+  //
+  // If a future feature legitimately needs cross-subdomain cookies
+  // (e.g., sharing session with admin.crm.shadhilbuilders.in), set
+  // an EXPLICIT whitelist via `additionalCookies` so only the named
+  // cookies cross, not the session token.
+  //
+  // Production deploys that need to override the default (e.g., to
+  // share cookies with a *.shadhilbuilders.in marketing site) should
+  // set BETTER_AUTH_ALLOW_CROSS_SUBDOMAIN_COOKIES=true, but the
+  // default (and the recommendation for this deployment) is off.
 
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,

@@ -22,7 +22,7 @@
 //   - "chat:<leadId>" — allowed only if the actor could read the lead
 //                       (same RLS visibility the REST list enforces:
 //                       owner, same-team, or admin/owner)
-import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   type PrismaClient,
   withRlsContext,
@@ -34,6 +34,55 @@ import { parseChannel } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 
 const TICKET_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// T-PERF-2 #3: per-user rate limit on ticket mint. Two windows: 10/min
+// and 60/hour. In-memory Map with lazy TTL cleanup. Loses state on
+// restart, which is fine for a single-instance deployment; swap to
+// Redis when we go multi-instance.
+const TICKETS_PER_MINUTE = 10;
+const TICKETS_PER_HOUR = 60;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+interface RateLimitWindow {
+  minute: number[]; // timestamps (ms) of recent mints in the past minute
+  hour: number[]; // timestamps (ms) of recent mints in the past hour
+}
+const rateLimitMap = new Map<string, RateLimitWindow>();
+
+function trimWindow(window: number[], nowMs: number, ttlMs: number): number[] {
+  const cutoff = nowMs - ttlMs;
+  // window is append-only and chronologically sorted; the first index
+  // where timestamps[i] > cutoff is where the live window starts.
+  let i = 0;
+  while (i < window.length && window[i] <= cutoff) i++;
+  return i === 0 ? window : window.slice(i);
+}
+
+function checkAndRecordMint(userId: string): void {
+  const now = Date.now();
+  let w = rateLimitMap.get(userId);
+  if (w === undefined) {
+    w = { minute: [], hour: [] };
+    rateLimitMap.set(userId, w);
+  }
+  w.minute = trimWindow(w.minute, now, MINUTE_MS);
+  w.hour = trimWindow(w.hour, now, HOUR_MS);
+  if (w.minute.length >= TICKETS_PER_MINUTE) {
+    throw new HttpException(
+      `ticket-mint rate limit exceeded: ${TICKETS_PER_MINUTE}/min`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  if (w.hour.length >= TICKETS_PER_HOUR) {
+    throw new HttpException(
+      `ticket-mint rate limit exceeded: ${TICKETS_PER_HOUR}/hour`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  w.minute.push(now);
+  w.hour.push(now);
+}
 
 @Injectable()
 export class RealtimeService {
@@ -50,6 +99,10 @@ export class RealtimeService {
    * may not read the channel; 400 if the channel string is malformed.
    */
   async mintTicket(actor: JwtPayload, dto: MintTicketDto): Promise<MintTicketResponse> {
+    // T-PERF-2 #3: rate limit FIRST (before any DB work), so a
+    // misbehaving client can't burn a DB connection on every request.
+    checkAndRecordMint(actor.sub);
+
     // 1. Parse + validate the channel.
     const parsed = parseChannel(dto.channel);
     if (parsed === null) {
