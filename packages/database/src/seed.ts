@@ -114,6 +114,11 @@ async function upsertUser(
       role,
       teamId,
       emailVerified: true,
+      // T-S hardening (2026-09-04, Week 5): the 5 seed placeholders
+      // carry mustChangePassword=true so the post-login /change-password
+      // gate fires for every operator signing in with a placeholder.
+      // Demo users (setup-demo-user.ts) are exempt — see that script.
+      mustChangePassword: true,
     },
   });
 
@@ -218,6 +223,67 @@ async function main() {
   }
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ ${demoLeads.length} demo leads created/updated across all LeadStates`);
+
+  // ── Demo ManagerAssignmentRule rows (T-ARM-SCHEMA, 2026-09-04) ────────
+  // Three rules demonstrating the priority + criteria engine:
+  //   priority 10 (lowest) → telecaller — META_AD only
+  //   priority 20          → sales_exec — LANDING only
+  //   priority 30          → manager    — catch-all (any source)
+  // Plus: Team.defaultAssigneeId → manager (the team's catch-all).
+  //
+  // The ManagerAssignmentRule model's unique constraint is now
+  // (teamId, source, priority, projectId, phaseId, language, region) so
+  // we can have multiple rules for the same source differentiated by
+  // priority. The seed is idempotent — re-running upserts each rule by
+  // a stable composite key in the orderBy of createdAt.
+  const rules = [
+    { source: 'META_AD', priority: 10, targetEmail: telecaller.email },
+    { source: 'LANDING', priority: 20, targetEmail: salesExec.email },
+    { source: 'REFERRAL', priority: 30, targetEmail: manager.email },
+    { source: 'WALK_IN', priority: 30, targetEmail: manager.email },
+  ] as const;
+
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i]!;
+    const target = await prisma.user.findUnique({
+      where: { email: r.targetEmail },
+      select: { id: true },
+    });
+    if (target === null) continue;
+    // Stable composite id so the upsert is idempotent across re-runs.
+    // Real rule creation goes through the future admin endpoint; this
+    // is a seed-time helper.
+    const ruleId = `seed-rule-${team.id}-${r.source}-${r.priority}`;
+    await prisma.managerAssignmentRule.upsert({
+      where: { id: ruleId },
+      update: {
+        teamId: team.id,
+        source: r.source,
+        priority: r.priority,
+        targetUserId: target.id,
+        active: true,
+      },
+      create: {
+        id: ruleId,
+        teamId: team.id,
+        source: r.source,
+        priority: r.priority,
+        targetUserId: target.id,
+        active: true,
+      },
+    });
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[seed] ✓ ${rules.length} demo ManagerAssignmentRule rows for team ${team.id}`);
+
+  // Team.defaultAssigneeId → manager (the per-team catch-all after
+  // rules fail to match).
+  await prisma.team.update({
+    where: { id: team.id },
+    data: { defaultAssigneeId: managerUser.id },
+  });
+  // eslint-disable-next-line no-console
+  console.log(`[seed] ✓ team.defaultAssigneeId = ${managerUser.id} (manager)`);
 }
 
 main()

@@ -47,12 +47,21 @@ async function main() {
   // 1. Upsert demo user (no team yet — the team needs demoUser.id).
   const demoUser = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
-    update: { name: DEMO_NAME, role: 'MANAGER' },
+    update: {
+      name: DEMO_NAME,
+      role: 'MANAGER',
+      // T-S hardening (Week 5): the demo user is exempt from the
+      // mustChangePassword gate so the Sunday client demo path works
+      // without a forced rotation. The 5 seed placeholders keep the
+      // gate (see packages/database/src/seed.ts).
+      mustChangePassword: false,
+    },
     create: {
       email: DEMO_EMAIL,
       name: DEMO_NAME,
       role: 'MANAGER',
       emailVerified: true,
+      mustChangePassword: false,
     },
   });
 
