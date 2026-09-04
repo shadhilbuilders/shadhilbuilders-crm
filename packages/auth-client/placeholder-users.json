@@ -1,0 +1,10 @@
+{
+  "description": "T-S: placeholder email list — better-auth sign-in is REJECTED for any email in this list until a real password is set (via a future password-change flow that removes the entry). Seed scripts append to this list; production deploys that don't run the seed have an empty list. See packages/auth-client/src/placeholder-users.json or the T-S commit message for the design rationale.",
+  "emails": [
+    "owner@shadhilbuilders.in",
+    "admin@shadhilbuilders.in",
+    "manager@shadhilbuilders.in",
+    "telecaller@shadhilbuilders.in",
+    "sales_exec@shadhilbuilders.in"
+  ]
+}
