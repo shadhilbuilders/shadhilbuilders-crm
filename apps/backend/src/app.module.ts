@@ -5,6 +5,7 @@ import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { BetterAuthMiddlewareModule } from './auth/better-auth.middleware';
+import { PlaceholderGateModule } from './auth/placeholder-gate.middleware';
 import { UsersModule } from './users/users.module';
 import { LeadsModule } from './leads/leads.module';
 import { VisitsModule } from './visits/visits.module';
@@ -29,6 +30,11 @@ import { RedisModule } from './redis/redis.module';
     // Feature modules (9 per plan §2 + users)
     AuthModule,
     UsersModule,
+    // T-S: PlaceholderGateModule must come BEFORE BetterAuthMiddlewareModule
+    // so its middleware fires first (Nest applies module middlewares in
+    // the order modules appear in `imports`). The gate rejects sign-in
+    // for placeholder emails before better-auth sees the request.
+    PlaceholderGateModule,
     BetterAuthMiddlewareModule,
     LeadsModule,
     VisitsModule,
