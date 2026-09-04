@@ -24,7 +24,7 @@
     "type-check": "tsc --noEmit",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
