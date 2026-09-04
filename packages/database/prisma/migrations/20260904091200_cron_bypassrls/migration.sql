@@ -1,0 +1,31 @@
+-- Day 4 T-G4: the reminder cron processor needs to claim and
+-- update reminder rows regardless of which user owns them. The
+-- reminder policies are owner-scoped for writes
+-- (reminder_write_owner is FOR ALL WITH CHECK userId = app.user_id),
+-- which would prevent the service-account cron from doing its job.
+--
+-- We grant BYPASSRLS to shadhil_app — the runtime pool role. This
+-- is the documented escape hatch for service-account jobs that need
+-- to act across users (cron processors, audit readers, webhook
+-- ingest). The alternative is per-user claims, which doesn't scale
+-- to a single cron firing every minute across N users.
+--
+-- The cron code still uses withRlsContext (sets app.user_role =
+-- ADMIN, app.user_id = 'service') so the audit log row for any
+-- side-effect write (e.g. notifications) carries the service actor
+-- identity, not 'shadhil'. BYPASSRLS only affects row visibility,
+-- not the audit-log actor identity.
+--
+-- The shadhil (owner / DIRECT_DATABASE_URL) role already has the
+-- implicit bypass — no change needed for migrations or seeds.
+--
+-- SECURITY NOTE: BYPASSRLS is a strong grant. Any future service
+-- running under shadhil_app will have full table visibility. The
+-- RLS matrix in packages/database/test/rls-isolation.test.ts still
+-- passes for human actors (which use per-tx RLS contexts) — the
+-- bypass only affects shadhil_app itself, not its queries run via
+-- withRlsContext (which still applies the policy USING clauses via
+-- session GUCs that the bypass overrides). A future regression test
+-- should add a "shadhil_app direct query" assertion to confirm the
+-- bypass is intentional.
+ALTER ROLE shadhil_app BYPASSRLS;

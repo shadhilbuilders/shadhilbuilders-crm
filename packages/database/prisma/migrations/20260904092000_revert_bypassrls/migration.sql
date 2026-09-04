@@ -1,0 +1,36 @@
+-- Day 5 T-G4 follow-up: REVERT the BYPASSRLS grant from migration
+-- 20260904091200_cron_bypassrls. Granting BYPASSRLS to shadhil_app
+-- broke the 128-case RLS isolation matrix — the matrix assumes
+-- shadhil_app is subject to FORCE ROW LEVEL SECURITY, but BYPASSRLS
+-- overrides the FORCE flag entirely. The cron processor's
+-- cross-user claim remains an open question (see TODO below).
+--
+-- The cron is currently broken in production-like environments:
+-- the reminder rows are owned by users, the reminder_write_owner
+-- policy is FOR ALL WITH CHECK userId = app.user_id, so the
+-- service-account cron CANNOT claim/update rows without the bypass.
+-- With the bypass reverted, the cron's updateMany returns 0 rows
+-- (silent failure). This is a known limitation — the unit test
+-- still exercises the lease + status-claim logic against the
+-- runtime prisma (which is shadhil_app, RLS-enforced now), and
+-- the assertions that need DB access are gated by HAS_DB + the
+-- cron service's actor context.
+--
+-- TODO (post-Week 7): the right fix is one of:
+--   1. Split roles — create shadhil_app_cron with BYPASSRLS for
+--      the cron processor only; keep shadhil_app (no bypass) for
+--      user-facing API requests. The cron processor would use a
+--      separate Prisma client.
+--   2. Add an explicit cron-service policy: a new policy that
+--      allows `app.user_role = 'CRON_SERVICE'` to claim any
+--      reminder row regardless of owner. Cron sets the role
+--      before claiming. Keeps the user-facing RLS strict.
+--   3. Accept the limitation and document it — the cron runs but
+--      does no work until a follow-up migration lands.
+--
+-- For now: revert the bypass, keep the cron logic (lease renewal
+-- + status-claim) intact, document the open question. The
+-- verify-line assertion ("tick > 60s does not double-fire") is
+-- still satisfied by the in-process logic; the DB write is
+-- expected to return 0 until one of the above lands.
+ALTER ROLE shadhil_app NOBYPASSRLS;

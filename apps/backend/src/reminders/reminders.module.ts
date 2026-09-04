@@ -1,21 +1,21 @@
-// Reminders module — 4 reminder types + cron processor.
+// Reminders module — wires the cron processor + Redis lease + Prisma.
+// T-G4: the cron fires every minute; Redis lock prevents duplicate
+// fires across replicas; status-claim (updateMany SCHEDULED →
+// PROCESSING) is the second-line idempotency primitive.
 //
-// Eng review A3: cron job is Redis-locked. The processor lives in
-// reminders.processor.ts and runs every minute, picking up SCHEDULED
-// reminders where scheduledFor <= NOW(). The Redis lock ensures only
-// one NestJS replica processes each tick.
-import { Controller, Get, Module } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+// The ScheduleModule.forRoot() in main.ts enables @Cron decorators
+// globally; this module just registers the service.
+import { Module } from '@nestjs/common';
 
-@ApiTags('reminders')
-@ApiBearerAuth('jwt')
-@Controller('reminders')
-class RemindersController {
-  @Get()
-  list(): { message: string; phase: number } {
-    return { message: 'Reminder cron lands in Week 7', phase: 1 };
-  }
-}
+import { PrismaModule } from '../prisma/prisma.module';
 
-@Module({ controllers: [RemindersController] })
+import { RemindersController } from './reminders.controller';
+import { RemindersService } from './reminders.service';
+
+@Module({
+  imports: [PrismaModule],
+  controllers: [RemindersController],
+  providers: [RemindersService],
+  exports: [RemindersService],
+})
 export class RemindersModule {}

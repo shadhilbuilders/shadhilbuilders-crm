@@ -2,6 +2,7 @@
 // Phase 1 scaffold: 9 modules wired with RLS context, JWT auth, OpenAPI docs.
 import { Module } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule'; // T-G4: cron scheduler
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { BetterAuthMiddlewareModule } from './auth/better-auth.middleware';
@@ -26,6 +27,11 @@ import { RedisModule } from './redis/redis.module';
     PrismaModule,
     RedisModule,
     HealthModule,
+
+    // T-G4: enable @Cron decorators (reminder processor uses one).
+    // forRoot() with no args = default config; the cron loop is
+    // driven by the schedule expressions on each @Cron handler.
+    ScheduleModule.forRoot(),
 
     // Feature modules (9 per plan §2 + users)
     AuthModule,
