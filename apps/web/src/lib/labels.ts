@@ -128,18 +128,6 @@ const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
  * failing assertion so the label table gets updated before merge.
  */
 export function labelFor(
-  kind: 'lead',
-  value: string,
-): string;
-export function labelFor(
-  kind: 'visit',
-  value: string,
-): string;
-export function labelFor(
-  kind: 'inventory',
-  value: string,
-): string;
-export function labelFor(
   kind: 'lead' | 'visit' | 'inventory',
   value: string,
 ): string {

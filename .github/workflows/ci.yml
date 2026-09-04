@@ -112,7 +112,7 @@ jobs:
       SHADHIL_APP_PASSWORD: shadhil
       # shadhil (owner) password matches DIRECT_DATABASE_URL below
       # and the postgres service POSTGRES_PASSWORD env above.
-      SHADHIL_OWNER_PASSWORD: '***'
+      SHADHIL_OWNER_PASSWORD: shadhil
     services:
       postgres:
         image: postgres:16-alpine
