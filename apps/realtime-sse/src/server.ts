@@ -21,6 +21,7 @@ import { prisma, type PrismaClient } from '@shadhil/database';
 
 import { config } from './config.js';
 import { auditFetcher, chatFetcher, notificationsFetcher } from './fetchers.js';
+import { metrics } from './metrics.js';
 import { consumeTicket, type SseFrame } from './stream.js';
 
 // ── CORS ────────────────────────────────────────────────────────────
@@ -96,12 +97,22 @@ async function handleStream(
   const anchor = await anchorFor(opts.anchorModel, lastEventId, extra);
   const fetcher = opts.fetcher(prisma, scope);
 
+  // T-PERF-2 #4: track active connections via a gauge. Increment on
+  // stream open, decrement on close. The gauge value is the live count of
+  // open SSE streams at scrape time.
+  bumpActive(1);
+  // Derive a low-cardinality channel label (notifications, audit, chat)
+  // for the metrics — the full channel string includes the leadId for
+  // chat, which would explode label cardinality.
+  const channelLabel = opts.channel.startsWith('chat:') ? 'chat' : opts.channel;
+
   // Open the stream first — this commits the SSE headers synchronously.
   openSse(res);
 
   // Backlog flush.
   try {
     const backlog = await fetcher(anchor);
+    metrics.gauge('realtime_sse_backlog_size', { channel: channelLabel }, backlog.length);
     for (const f of backlog) writeFrame(res, f);
   } catch (err) {
     writeFrame(res, { event: 'error', data: { message: errMsg(err) } });
@@ -116,13 +127,17 @@ async function handleStream(
   let stopped = false;
   const tickTimer = setInterval(() => {
     if (stopped) return;
+    const startedAt = Date.now();
     fetcher(lastSeenAt)
       .then((frames) => {
         if (stopped) return;
+        // T-PERF-2 #4: observe the tick latency per channel.
+        metrics.observe(
+          'realtime_sse_tick_duration_seconds',
+          { channel: channelLabel },
+          (Date.now() - startedAt) / 1000,
+        );
         for (const f of frames) writeFrame(res, f);
-        // Advance the high-water mark to now; the fetcher uses
-        // createdAt > lastSeenAt so a single tick can never re-emit
-        // the same row.
         if (frames.length > 0) lastSeenAt = new Date();
       })
       .catch((err: unknown) => {
@@ -139,6 +154,8 @@ async function handleStream(
     stopped = true;
     clearInterval(tickTimer);
     clearInterval(heartbeatTimer);
+    // T-PERF-2 #4: decrement the active-connections gauge.
+    bumpActive(-1);
   });
 }
 
@@ -189,6 +206,15 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && path === '/api/sse/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, service: 'realtime-sse' }));
+    return;
+  }
+
+  // T-PERF-2 #4: Prometheus metrics endpoint. No auth (intended for
+  // an internal scraper; expose only on localhost in prod via the
+  // reverse proxy — see plan §10 / references/prod-deployment.md).
+  if (req.method === 'GET' && path === '/api/sse/metrics') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' });
+    res.end(metrics.render());
     return;
   }
 
@@ -257,3 +283,13 @@ const shutdown = (): void => {
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+// T-PERF-2 #4: in-process counter of currently-open SSE connections.
+// Module-level so all handlers share the same count. Incremented on
+// stream open, decremented on stream close (via bumpActive()).
+let _activeConnections = 0;
+const activeConnections = (): number => _activeConnections;
+const bumpActive = (delta: number): void => {
+  _activeConnections = Math.max(0, _activeConnections + delta);
+  metrics.gauge('realtime_sse_active_connections', {}, _activeConnections);
+};

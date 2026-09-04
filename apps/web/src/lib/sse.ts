@@ -46,15 +46,23 @@ export function openStream<T>(opts: OpenStreamOptions<T>): () => void {
   let source: EventSource | null = null;
   let backoffMs = BASE_BACKOFF_MS;
   let lastEventId: string | null = null;
+  // T-PERF-2 #6: hoisted so the cleanup() return can abort the in-flight
+  // ticket mint when a tab closes during the BFF round-trip.
+  let connectAbort: AbortController | null = null;
 
   async function connect(): Promise<void> {
     if (closed) return;
+    connectAbort = new AbortController();
     try {
       // 1. Mint a ticket (BFF-authed via the session cookie).
       const minted = await api<MintTicketResponse>('/realtime/ticket', {
         method: 'POST',
         json: { channel: opts.channel },
+        signal: connectAbort.signal,
       });
+
+      // If the tab was closed during the await, don't open an EventSource.
+      if (closed) return;
 
       // 2. Open the SSE. EventSource can't set headers, so the ticket
       //    rides the query string. lastEventId rides with it (the
@@ -109,6 +117,9 @@ export function openStream<T>(opts: OpenStreamOptions<T>): () => void {
   void connect();
   return () => {
     closed = true;
+    // T-PERF-2 #6: abort any in-flight ticket mint so a tab close
+    // during the BFF round-trip doesn't leak an EventSource.
+    connectAbort?.abort();
     source?.close();
     source = null;
   };
