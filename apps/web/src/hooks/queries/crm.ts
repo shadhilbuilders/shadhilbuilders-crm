@@ -16,8 +16,10 @@ import { api, qs } from '@/apis/client';
 
 import type {
   CreateLeadDto,
+  CreateSiteVisitDto,
   LeadStateTransitionDto,
   UpdateLeadDto,
+  UpdateVisitOutcomeDto,
 } from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
@@ -153,6 +155,62 @@ export function useVisits(params: { from?: string; to?: string } = {}) {
       api<unknown[]>(`/visits${qs({ from: params.from, to: params.to })}`, { signal }),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Schedule a new site visit. Invalidates ['visits'] + the parent
+ * lead's caches on success — the parent lead auto-advances from
+ * VISIT_REQUESTED → VISIT_SCHEDULED on the server, so the lead
+ * inbox needs a fresh fetch.
+ */
+export function useCreateVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateSiteVisitDto) =>
+      api<unknown>('/visits', { method: 'POST', json: body }),
+    onSuccess: (data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['visits'] });
+      const leadId =
+        typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
+          ? (data as { leadId: string }).leadId
+          : variables.leadId;
+      if (typeof leadId === 'string') {
+        void queryClient.invalidateQueries({ queryKey: ['leads'] });
+        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
+/**
+ * Record visit outcome (COMPLETED, NO_SHOW, CANCELLED). On COMPLETED
+ * the parent lead auto-advances to VISITED via the server-side lead
+ * state machine.
+ */
+export function useUpdateVisitOutcome(visitId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateVisitOutcomeDto) => {
+      if (visitId === null) {
+        return Promise.reject(new Error('Visit id required'));
+      }
+      return api<unknown>(`/visits/${visitId}/outcome`, {
+        method: 'PATCH',
+        json: body,
+      });
+    },
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['visits'] });
+      const leadId =
+        typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
+          ? (data as { leadId: string }).leadId
+          : null;
+      if (leadId !== null) {
+        void queryClient.invalidateQueries({ queryKey: ['leads'] });
+        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      }
+    },
   });
 }
 

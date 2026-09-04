@@ -1,16 +1,20 @@
-// Site visit scheduling + outcomes module.
-import { Controller, Get, Module } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+// Visits module — site-visit scheduling, outcomes, and reschedule.
+//
+// VisitsService depends on LeadsService for the lead state handoff
+// (e.g. scheduling a visit auto-advances Lead VISIT_REQUESTED →
+// VISIT_SCHEDULED; recording COMPLETED drives Lead → VISITED). We
+// import LeadsModule so DI can resolve the dependency.
+import { Module } from '@nestjs/common';
 
-@ApiTags('visits')
-@ApiBearerAuth('jwt')
-@Controller('visits')
-class VisitsController {
-  @Get()
-  list(): { message: string; phase: number } {
-    return { message: 'Visit CRUD lands in Week 5', phase: 1 };
-  }
-}
+import { LeadsModule } from '../leads/leads.module';
 
-@Module({ controllers: [VisitsController] })
+import { VisitsController } from './visits.controller';
+import { VisitsService } from './visits.service';
+
+@Module({
+  imports: [LeadsModule],
+  controllers: [VisitsController],
+  providers: [VisitsService],
+  exports: [VisitsService],
+})
 export class VisitsModule {}

@@ -4,14 +4,11 @@
 // 7 days × hourly rows, color-coded by exec per wireframe; "+ Schedule
 // visit" opens a Dialog (leads + date/time + exec). Backend visits module
 // is pending; data arrives via the locked api-types VisitFilterDto contract.
-import {
-  Button,
-  Dialog,
-  TypographyP,
-} from '@paalstack/react-ui';
+import { Button } from '@paalstack/react-ui';
 import { LuPlus } from '@paalstack/react-icons/lu';
 import { useMemo, useState } from 'react';
 
+import { ScheduleVisitDialog } from '@/components/shared/ScheduleVisitDialog';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useVisits } from '@/hooks/queries/crm';
@@ -94,39 +91,24 @@ export default function VisitsPage() {
               Next →
             </Button>
             {canScheduleVisits(user?.role) ? (
-              <Dialog
-                trigger={
-                  <Button size="sm" className="min-h-11">
-                    <LuPlus className="mr-1 h-4 w-4" /> Schedule visit
-                  </Button>
-                }
-                header={{ title: 'Schedule a site visit' }}
-                footer={
-                  <div className="flex w-full justify-end gap-2">
-                    <Button variant="ghost" onClick={() => setScheduleOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button disabled title="Requires the visits module (Week 6)">
-                      Schedule
-                    </Button>
-                  </div>
-                }
-                open={scheduleOpen}
-                onOpenChange={setScheduleOpen}
-              >
-                <div className="space-y-3 text-sm">
-                  <TypographyP className="text-muted-foreground">
-                    Pick a lead, a date/time slot, and (optionally) the sales
-                    exec who conducts the visit. The form activates when the
-                    visits module ships (Week 6).
-                  </TypographyP>
-                  <div className="border-border rounded-md border border-dashed p-6 text-center text-xs">
-                    Form fields locked to{' '}
-                    <code>CreateSiteVisitDtoSchema</code>: leadId ·
-                    scheduledFor · salesExecId · notes
-                  </div>
-                </div>
-              </Dialog>
+              <>
+                <Button
+                  size="sm"
+                  className="min-h-11"
+                  onClick={() => setScheduleOpen(true)}
+                  data-qa="schedule-visit-button"
+                >
+                  <LuPlus className="mr-1 h-4 w-4" /> Schedule visit
+                </Button>
+                <ScheduleVisitDialog
+                  open={scheduleOpen}
+                  onOpenChange={setScheduleOpen}
+                  onCreated={() => {
+                    // No-op: TanStack Query invalidation in the hook
+                    // refetches ['visits']; the dialog closes itself.
+                  }}
+                />
+              </>
             ) : null}
           </div>
         }
@@ -193,9 +175,9 @@ function WeekGrid({
               {days.map((day) => {
                 const cellVisits = pending
                   ? []
-                  : (visits as { scheduledAt?: string }[]).filter((visit) => {
-                      if (visit.scheduledAt === undefined) return false;
-                      const visitDate = new Date(visit.scheduledAt);
+                  : (visits as { scheduledFor?: string }[]).filter((visit) => {
+                      if (visit.scheduledFor === undefined) return false;
+                      const visitDate = new Date(visit.scheduledFor);
                       return (
                         visitDate.getDate() === day.getDate() &&
                         visitDate.getMonth() === day.getMonth() &&
@@ -213,7 +195,7 @@ function WeekGrid({
                             key={index}
                             className="bg-primary/10 text-primary rounded px-1.5 py-1 text-xs"
                           >
-                            {new Date(visit.scheduledAt ?? '').toLocaleTimeString('en-IN', {
+                            {new Date(visit.scheduledFor ?? '').toLocaleTimeString('en-IN', {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}
