@@ -102,7 +102,6 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
         // (parseBody in chat.controller.ts turns ZodError → 400).
         // Surface them via toast — toast is global so we import
         // lazily to keep this component dependency-light.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { toast } = require('@paalstack/react-ui') as {
           toast: { error: (msg: string) => void };
         };
