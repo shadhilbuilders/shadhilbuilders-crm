@@ -159,6 +159,46 @@ async function buildFixture(): Promise<Fixture> {
     create: { id: teamBId, name: 'Fixture B', managerId: managerBId },
   });
 
+  // ── ManagerAssignmentRule rows for the T-ARM-SCHEMA 129-130 cases.
+  // One rule per team so the SELECT-positive / SELECT-negative
+  // assertions have a non-empty fixture to filter against.
+  await adminPrisma.managerAssignmentRule.upsert({
+    where: { id: 'fixture-rule-a' },
+    update: {
+      teamId: teamAId,
+      source: 'META_AD',
+      targetUserId: teleAId,
+      active: true,
+      priority: 10,
+    },
+    create: {
+      id: 'fixture-rule-a',
+      teamId: teamAId,
+      source: 'META_AD',
+      targetUserId: teleAId,
+      active: true,
+      priority: 10,
+    },
+  });
+  await adminPrisma.managerAssignmentRule.upsert({
+    where: { id: 'fixture-rule-b' },
+    update: {
+      teamId: teamBId,
+      source: 'META_AD',
+      targetUserId: teleBId,
+      active: true,
+      priority: 10,
+    },
+    create: {
+      id: 'fixture-rule-b',
+      teamId: teamBId,
+      source: 'META_AD',
+      targetUserId: teleBId,
+      active: true,
+      priority: 10,
+    },
+  });
+
   // Pass 3: now that both ends of the FK exist, set User.teamId.
   const teamMap: Record<string, string> = {
     [managerAId]: teamAId,
@@ -1145,4 +1185,89 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
       },
     );
   }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-ARM-SCHEMA (2026-09-04) — the 129th + 130th cases (Plan §18 D2).
+// ────────────────────────────────────────────────────────────────────────────
+// The ManagerAssignmentRule table ships with a `managerassignmentrule_select_team`
+// RLS policy (see packages/database/prisma/rls/policies.sql + the Week-5
+// migration). It lets:
+//   - MANAGER read rules where teamId = app.user_team_id
+//   - ADMIN/OWNER read every rule
+//   - TELECALLER / SALES_EXEC read NO rules (DEFAULT DENY — there's no
+//     rule policy that admits them today; rule editing is admin-class).
+//
+// Two assertions pin this end-to-end:
+//   (a) SELECT-positive: MANAGER on team-a sees the alpha rule + is
+//       HIDDEN the beta rule.
+//   (b) SELECT-negative: TELECALLER on team-a sees neither rule (no
+//       rule policy admits staff roles).
+//
+// These two cases bring the matrix from 128 → 130 (4 × 8 × 4 + 2
+// standalone cases for the new table's policy).
+
+describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy', () => {
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+  }, 60_000);
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'MANAGER on team-a can SELECT own team\'s rules, NOT the other team',
+    { timeout: 30_000 },
+    async () => {
+      const managerCtx: RlsContext = {
+        userId: fixture.managerAId,
+        role: 'MANAGER',
+        teamId: fixture.teamAId,
+      };
+      const rows = await withRlsContext(prisma, managerCtx, async (tx) =>
+        (
+          tx as unknown as {
+            managerAssignmentRule: {
+              findMany: (a: {
+                where: { id: { in: string[] };
+              };
+            }) => Promise<Array<{ id: string; teamId: string }>>;
+            };
+          }
+        ).managerAssignmentRule.findMany({
+          where: { id: { in: ['fixture-rule-a', 'fixture-rule-b'] } },
+        }),
+      );
+      expect(rows.length).toBe(1);
+      expect(rows[0]?.id).toBe('fixture-rule-a');
+      expect(rows[0]?.teamId).toBe(fixture.teamAId);
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER on team-a cannot SELECT any rule (DEFAULT DENY — no policy for staff roles)',
+    { timeout: 30_000 },
+    async () => {
+      const tcCtx: RlsContext = {
+        userId: fixture.teleAId,
+        role: 'TELECALLER',
+        teamId: fixture.teamAId,
+      };
+      const rows = await withRlsContext(prisma, tcCtx, async (tx) =>
+        (
+          tx as unknown as {
+            managerAssignmentRule: {
+              findMany: (a: {
+                where: { id: { in: string[] };
+              };
+            }) => Promise<Array<{ id: string }>>;
+            };
+          }
+        ).managerAssignmentRule.findMany({
+          where: { id: { in: ['fixture-rule-a', 'fixture-rule-b'] } },
+        }),
+      );
+      expect(rows.length).toBe(0);
+    },
+  );
 });

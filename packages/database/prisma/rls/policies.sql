@@ -361,6 +361,30 @@ CREATE POLICY consent_insert_owner ON "Consent"
         )
     )
   );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Week 5 — ManagerAssignmentRule RLS (Plan §18 D2 + T-ARM-SCHEMA).
+-- ────────────────────────────────────────────────────────────────────────────
+-- The rules table is server-side state consulted by the engine at lead-
+-- creation time (apps/backend/src/leads/leads.service.ts::create). Every
+-- MANAGER needs to SELECT their team's rules so the engine can evaluate
+-- them; ADMIN/OWNER see everything. No INSERT/UPDATE/DELETE policies —
+-- rule management is an admin-class concern, exercised today via the
+-- seed/bootstrap path (DIRECT_DATABASE_URL bypasses RLS) and tomorrow
+-- via a dedicated admin endpoint with its own RLS-friendly write path.
+-- Until that endpoint ships, INSERT/UPDATE/DELETE return zero rows
+-- (DEFAULT DENY) on the pooled role.
+ALTER TABLE "ManagerAssignmentRule" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
+  FOR SELECT
+  USING (
+    (
+      current_setting('app.user_role', true) = 'MANAGER'
+      AND "teamId" = current_setting('app.user_team_id', true)
+    )
+    OR current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
+  );
 -- ────────────────────────────────────────────────────────────────────────────
 -- AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY.
 -- ENABLE alone does NOT constrain the table owner — FORCE does. These run

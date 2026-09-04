@@ -166,6 +166,12 @@ model User {
   phone         String?
   role          Role     @default(TELECALLER)
   teamId        String?
+  // T-S hardening (2026-09-04): a placeholder-password gate.
+  // Seeded users (owner/admin/manager/telecaller/sales_exec) keep
+  // mustChangePassword=true until they complete /change-password.
+  // The demo user is exempted (mustChangePassword=false) so the
+  // Sunday demo path works without a forced rotation.
+  mustChangePassword Boolean @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -176,6 +182,7 @@ model User {
   // business relations
   team              Team?              @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
   managedTeams      Team[]             @relation("TeamManager")
+  defaultAssigneeOf Team[]             @relation("TeamDefaultAssignee")
   ownedLeads        Lead[]             @relation("LeadOwner")
   coOwnedLeads      Lead[]             @relation("LeadCoOwner")
   activities        Activity[]
@@ -204,17 +211,26 @@ model User {
 // ────────────────────────────────────────────────────────────────────────────
 
 model Team {
-  id        String   @id @default(cuid())
-  name      String
-  managerId String?
-  createdAt DateTime @default(now())
+  id                String   @id @default(cuid())
+  name              String
+  managerId         String?
+  // T-ARM-SCHEMA (2026-09-04): per-team fallback assignee. The
+  // ManagerAssignmentRule engine falls back to this user when no
+  // rule matches the lead's criteria. The target must still be
+  // TELECALLER or SALES_EXEC (the engine rejects ADMIN/MANAGER).
+  // nullable: a team without a default assignee → leads that don't
+  // match any rule stay unassigned (notification trigger fires).
+  defaultAssigneeId String?
+  createdAt         DateTime @default(now())
 
   manager         User?                   @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
+  defaultAssignee User?                   @relation("TeamDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
   members         User[]                  @relation("TeamMembers")
   leads           Lead[]
   assignmentRules ManagerAssignmentRule[]
 
   @@index([managerId])
+  @@index([defaultAssigneeId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -226,14 +242,37 @@ model ManagerAssignmentRule {
   teamId       String
   source       String // e.g. "meta_ads", "website", "referral"
   targetUserId String
+  // T-ARM-SCHEMA (2026-09-04, Plan §18 D2): priority-ordered routing.
+  // Lower number = higher priority (CSS-like). Two rules with the same
+  // priority fall through to createdAt ASC tiebreak. Default 0 so the
+  // existing single-rule setup behaves identically.
+  priority     Int      @default(0)
+  // Optional criteria — when present, the rule only matches leads where
+  // the same attribute equals this value. NULL = wildcard (rule matches
+  // any value). All four columns are independent: a rule with
+  // projectId="A" AND phaseId=null matches leads in project A regardless
+  // of phase. Combined with the priority ordering, a team can declare:
+  //   (priority 10, projectId=A, source=META_AD) → senior TC
+  //   (priority 20, projectId=A)                → TC pool
+  //   (priority 30)                             → catch-all
+  projectId    String?
+  phaseId      String?
+  language     String? // ISO 639-1 short code: "en", "hi", "ta"
+  region       String? // ISO 3166-1 / UN region: "IN-TN", "IN-KA"
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@unique([teamId, source])
+  // Composite unique — the previous [teamId, source] constraint forced
+  // one rule per (team, source). The widened constraint lets a team
+  // declare multiple rules for the same source differentiated by
+  // priority + criteria (e.g. "META_AD on project A" vs "META_AD on
+  // project B" both coexist).
+  @@unique([teamId, source, priority, projectId, phaseId, language, region], name: "teamId_source_priority_projectId_phaseId_language_region")
   @@index([teamId])
   @@index([targetUserId])
+  @@index([priority])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
