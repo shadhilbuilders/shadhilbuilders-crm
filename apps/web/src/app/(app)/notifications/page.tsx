@@ -1,10 +1,10 @@
 'use client';
 
 // Notification Center — full page (Wireframes #7 dropdown, #12 mobile; web
-// full page per DESIGN.md §11): filter tabs All / Unread / Leads / Bookings
-// / Visits, date grouping, mark-all-read, deep links. The notifications
-// module (SSE + REST) is a backend stub; the bell in AppHeader shows the
-// live unread badge once it lands.
+// full page per DESIGN.md §11): filter tabs All / Unread, mark-all-read,
+// unread counter. The notifications REST module (Pass 1) returns
+// `{ total, unread, rows }` — useNotifications unwraps the rows + exposes
+// the counters (T-F1).
 import { Button } from '@paalstack/react-ui';
 import { useState } from 'react';
 
@@ -17,15 +17,29 @@ import {
   useNotifications,
 } from '@/hooks/queries/crm';
 
+// T-F2 keeps the filter tabs honest: only ALL + UNREAD are wired to
+// backend query params; the others stay visible (matches the locked
+// wireframe) but are disabled until backend filtering by leadId/bookingId/
+// visitId lands.
 type Filter = 'ALL' | 'UNREAD' | 'LEADS' | 'BOOKINGS' | 'VISITS';
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'ALL', label: 'All' },
-  { value: 'UNREAD', label: 'Unread' },
-  { value: 'LEADS', label: 'Leads' },
-  { value: 'BOOKINGS', label: 'Bookings' },
-  { value: 'VISITS', label: 'Visits' },
+const FILTERS: { value: Filter; label: string; enabled: boolean }[] = [
+  { value: 'ALL', label: 'All', enabled: true },
+  { value: 'UNREAD', label: 'Unread', enabled: true },
+  { value: 'LEADS', label: 'Leads', enabled: false },
+  { value: 'BOOKINGS', label: 'Bookings', enabled: false },
+  { value: 'VISITS', label: 'Visits', enabled: false },
 ];
+
+type NotificationRow = {
+  id: string;
+  type?: string;
+  title?: string;
+  body?: string;
+  leadId?: string | null;
+  read?: boolean;
+  createdAt?: string;
+};
 
 export default function NotificationsPage() {
   const [filter, setFilter] = useState<Filter>('ALL');
@@ -37,21 +51,27 @@ export default function NotificationsPage() {
   // show the "Will sync when online" hint via the skeleton.
   const isOnline = useOnlineStatus();
 
+  const rows = notificationsQuery.data?.rows ?? [];
+  const unread = notificationsQuery.data?.unread ?? 0;
+  const total = notificationsQuery.data?.total ?? 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Notifications"
         breadcrumb={[{ label: 'Work' }, { label: 'Notifications' }]}
-        subtitle="In-app inbox for all 12 triggers. 90-day visibility."
+        subtitle="In-app inbox. 90-day visibility."
         action={
           <Button
             variant="outline"
             size="sm"
             className="min-h-11"
-            disabled={markRead.isPending}
+            disabled={markRead.isPending || unread === 0}
             onClick={() => markRead.mutate([])}
+            data-qa="mark-all-read"
           >
             Mark all as read
+            {unread > 0 ? ` (${unread})` : ''}
           </Button>
         }
       />
@@ -60,10 +80,18 @@ export default function NotificationsPage() {
         {FILTERS.map((item) => (
           <Button
             key={item.value}
-            variant={filter === item.value ? 'default' : 'outline'}
+            variant={
+              item.enabled && filter === item.value ? 'default' : 'outline'
+            }
             size="sm"
             className="min-h-11"
-            onClick={() => setFilter(item.value)}
+            disabled={!item.enabled}
+            onClick={() => {
+              if (item.enabled) setFilter(item.value);
+            }}
+            aria-label={
+              item.enabled ? undefined : `${item.label} (coming soon)`
+            }
           >
             {item.label}
           </Button>
@@ -71,38 +99,105 @@ export default function NotificationsPage() {
       </div>
 
       {notificationsQuery.isLoading ? (
-        <Skeleton
-          variant="text"
-          isOffline={!isOnline}
-        />
-      ) : notificationsQuery.data !== undefined &&
-        Array.isArray(notificationsQuery.data) ? (
+        <Skeleton variant="text" isOffline={!isOnline} />
+      ) : rows.length > 0 ? (
         <ul className="border-border divide-border divide-y rounded-lg border">
-          {(notificationsQuery.data as Record<string, unknown>[]).map(
-            (notification, index) => (
-              <li key={index} className="flex items-start gap-3 px-4 py-3">
-                <span aria-hidden className="mt-1.5">
-                  {notification.read === true ? '○' : '●'}
+          {rows.map((raw, index) => {
+            const row = raw as NotificationRow;
+            const isRead = row.read === true;
+            return (
+              <li
+                key={typeof row.id === 'string' ? row.id : `n-${index}`}
+                className="flex items-start gap-3 px-4 py-3"
+                data-qa="notification-row"
+              >
+                <span
+                  aria-hidden
+                  className={
+                    isRead
+                      ? 'text-muted-foreground mt-1.5'
+                      : 'mt-1.5 text-blue-600'
+                  }
+                >
+                  {isRead ? '○' : '●'}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">
-                    {String(notification.title ?? 'Notification')}
+                    {typeof row.title === 'string' && row.title.length > 0
+                      ? row.title
+                      : 'Notification'}
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    {String(notification.body ?? '')}
+                    {typeof row.body === 'string' ? row.body : ''}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-[10px] tracking-wide uppercase">
+                    {typeof row.createdAt === 'string'
+                      ? new Date(row.createdAt).toLocaleString('en-IN')
+                      : ''}
+                    {typeof row.type === 'string' && row.type.length > 0
+                      ? ` · ${row.type}`
+                      : ''}
                   </p>
                 </div>
               </li>
-            ),
-          )}
+            );
+          })}
         </ul>
       ) : (
-        <ModulePending
-          title="Notification Center"
-          description="Every trigger event lands here — new leads, handoffs, approvals, reminders (DESIGN.md §11). The notifications module ships in Implementation Plan Week 7 with the SSE channel."
+        <NotificationsEmpty
+          filter={filter}
+          total={total}
+          unread={unread}
           error={notificationsQuery.error}
         />
       )}
+    </div>
+  );
+}
+
+function NotificationsEmpty({
+  filter,
+  total,
+  unread,
+  error,
+}: {
+  filter: Filter;
+  total: number;
+  unread: number;
+  error: unknown;
+}) {
+  // If the backend returned rows=[] on the ALL filter, we render the
+  // friendly "no notifications yet" empty state — the inbox genuinely
+  // is empty. The error/non-built branches surface ModulePending
+  // (ModulePending owns the loading / 404 / 500 surface contract).
+  if (error !== null && error !== undefined) {
+    return (
+      <ModulePending
+        title="Notification Center"
+        description="Every trigger event lands here — new leads, handoffs, approvals, reminders (DESIGN.md §11)."
+        error={error}
+      />
+    );
+  }
+  return (
+    <div
+      className="border-border rounded-lg border p-10 text-center"
+      data-qa="notifications-empty"
+    >
+      <p className="text-sm font-medium">
+        {filter === 'UNREAD'
+          ? unread === 0
+            ? 'No unread notifications.'
+            : 'No matches.'
+          : 'No notifications yet.'}
+      </p>
+      <p className="text-muted-foreground mt-1 text-xs">
+        {filter === 'UNREAD'
+          ? 'New leads, handoffs, and reminders land here automatically.'
+          : total === 0
+            ? 'Trigger events will appear here as soon as they happen.'
+            : 'Try switching to the All tab.'}
+      </p>
     </div>
   );
 }
