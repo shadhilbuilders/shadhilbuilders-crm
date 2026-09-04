@@ -4,10 +4,10 @@
   "private": true,
   "description": "Shadhil Builders CRM — NestJS 12 REST API",
   "scripts": {
-    "dev": "nest start --watch --env-file=../../.env",
+    "dev": "tsx watch --env-file=../../.env src/main.ts",
     "build": "nest build",
     "start": "node dist/main.js",
-    "start:dev": "nest start --env-file=../../.env",
+    "start:dev": "tsx --env-file=../../.env src/main.ts",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --max-warnings 0",
     "test": "vitest run",
