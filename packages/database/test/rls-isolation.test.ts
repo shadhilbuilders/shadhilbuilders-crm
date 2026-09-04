@@ -518,7 +518,8 @@ const SELECT_EXPECTATIONS: Readonly<Record<Role, 'own' | 'all'>> = {
  *                write someone else's reminder)
  *   Notification:SELECT/UPDATE/DELETE (owner only — even admin/manager
  *                can't see/touch someone else's notification),
- *                INSERT: no policy → DEFAULT DENY
+ *                INSERT (owner-only, Day 4 — was DEFAULT DENY before the
+ *                notification_insert_owner migration landed)
  *   AuditLog:    SELECT (admin OR owner),
  *                INSERT (any authenticated actor),
  *                UPDATE/DELETE: NO POLICY → DEFAULT DENY
@@ -554,7 +555,10 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     Message: 'allowed',
     Booking: 'allowed',
     Reminder: 'allowed', // owner-only — admin creates their own reminder
-    Notification: 'rejected', // NO INSERT POLICY → DEFAULT DENY
+    Notification: 'allowed', // notification_insert_owner (Day 4):
+                          // owner can write their own notif. Admin's
+                          // ctx.userId is managerA — they can write
+                          // notifs owned by managerA.
     AuditLog: 'allowed',
   },
   MANAGER: {
@@ -564,7 +568,7 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     Message: 'allowed',
     Booking: 'allowed',
     Reminder: 'allowed', // owner-only — manager creates their own
-    Notification: 'rejected',
+    Notification: 'allowed', // owner can write own notif
     AuditLog: 'allowed',
   },
   SALES_EXEC: {
@@ -576,7 +580,7 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     Message: 'rejected',
     Booking: 'rejected',
     Reminder: 'allowed', // owner-only — exec creates their own
-    Notification: 'rejected',
+    Notification: 'allowed', // owner can write own notif
     AuditLog: 'allowed',
   },
   TELECALLER: {
@@ -586,7 +590,7 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     Message: 'allowed',
     Booking: 'allowed',
     Reminder: 'allowed', // owner-only — tele creates their own
-    Notification: 'rejected',
+    Notification: 'allowed', // owner can write own notif (teleA IS the owner)
     AuditLog: 'allowed',
   },
 };
