@@ -10,6 +10,7 @@ import { Heading, TypographyP } from '@paalstack/react-ui';
 import { useParams } from 'next/navigation';
 
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
+import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
 import { BackLink } from '@/components/shared/ModulePending';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -72,6 +73,14 @@ export default function LeadDetailPage() {
                   id: string;
                   name?: string;
                   email?: string;
+                  status?: string;
+                }
+              }
+            />
+            <LeadVisitPanel
+              lead={
+                leadQuery.data as {
+                  id: string;
                   status?: string;
                 }
               }
