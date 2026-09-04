@@ -129,7 +129,7 @@ function parseColorTriples(css: string): Record<string, RgbTriple> {
   const re = /--([a-z0-9-]+):\s*oklch\(\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(css)) !== null) {
-    const name = m[1];
+    const name = m[1] ?? '';
     const L = Number(m[2]);
     const C = Number(m[3]);
     const H = (Number(m[4]) * Math.PI) / 180;
@@ -172,7 +172,7 @@ try {
   // Only the :root block is light mode. Pull it out so dark-mode
   // overrides don't contaminate the resolution.
   const rootMatch = /:root\s*\{([\s\S]*?)\}/.exec(css);
-  if (rootMatch !== null) lightTokens = parseColorTriples(rootMatch[1]);
+  if (rootMatch !== null) lightTokens = parseColorTriples(rootMatch[1] ?? '');
 } catch {
   /* empty — tests that need lightTokens will skip via the catch below */
 }
