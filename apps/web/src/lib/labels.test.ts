@@ -1,10 +1,10 @@
 // Source-of-truth assertion for `lib/labels.ts`.
 //
 // Per Eng-review Section 1 P1: every Prisma enum value listed in
-// `LEAD_STATUSES` / `VISIT_OUTCOMES` / `INVENTORY_STATUSES` MUST have a
-// matching entry in the corresponding labels table. This test fails the
-// build the moment a new enum value lands in the Prisma schema but the
-// UI table is forgotten.
+// `LEAD_STATUSES` / `VISIT_OUTCOMES` / `INVENTORY_STATUSES` /
+// `BOOKING_STATUSES` MUST have a matching entry in the corresponding
+// labels table. This test fails the build the moment a new enum
+// value lands in the Prisma schema but the UI table is forgotten.
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,9 +13,11 @@ import {
   LEAD_STATUSES,
   INVENTORY_STATUSES,
   VISIT_OUTCOMES,
+  BOOKING_STATUSES,
   type LeadStatus,
   type VisitOutcome,
   type InventoryStatus,
+  type BookingStatus,
 } from '@/lib/labels';
 
 describe('lib/labels', () => {
@@ -86,6 +88,28 @@ describe('lib/labels', () => {
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('inventory', enumValue)).toBe(expected);
+      }
+    });
+  });
+
+  describe('BOOKING_STATUSES — every enum value has a friendly label', () => {
+    it.each(BOOKING_STATUSES)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('booking', value);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(value);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('contains the explicit §0.11 mappings', () => {
+      const expectations: Record<BookingStatus, string> = {
+        HOLD: 'On hold',
+        TOKEN: 'Token received',
+        APPROVED: 'Approved',
+        REJECTED: 'Rejected',
+        CANCELLED: 'Cancelled',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('booking', enumValue)).toBe(expected);
       }
     });
   });

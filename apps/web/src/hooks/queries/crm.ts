@@ -1,11 +1,10 @@
 // Leads, visits, chat, bookings, notifications, and audit hooks.
 //
-// IMPORTANT (honest-state contract): the leads/visits/chat/bookings/
-// notifications/audit modules on the backend are SCAFFOLDED but not yet
-// implemented (only `users` is live as of Aug 31, 2026). These hooks call
-// the exact endpoint contracts defined in packages/api-types/src/*.ts so
-// they light up automatically when the controllers land. Until then pages
-// render their typed error/empty states — never fake data.
+// Wire-shape contract (verified 2026-09-04, Pass 1 backend live):
+//   - `users` is the only list-returning module that returns a bare
+//     array — every other list endpoint returns
+//     `{ total: number, rows: T[] }`. Each hook here unwraps `rows` so
+//     page consumers can read `.data` as a normal array.
 //
 // T24 (PR3): every list-shape query has `placeholderData: keepPreviousData`
 // so the skeleton only renders on first load, not on refetch (avoids the
@@ -15,12 +14,34 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api, qs } from '@/apis/client';
 
 import type {
+  BookingTransitionDto,
+  CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
   LeadStateTransitionDto,
+  SendMessageDto,
   UpdateLeadDto,
   UpdateVisitOutcomeDto,
 } from '@shadhil/api-types';
+
+// ---------------------------------------------------------------------------
+// Wire-shape helpers (pass-through to the API; pages consume `.data` as the
+// row shape, not the wrapper)
+// ---------------------------------------------------------------------------
+
+type WithRows<T> = { total: number; rows: T[] };
+
+function unwrapRows<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    Array.isArray((payload as WithRows<T>).rows)
+  ) {
+    return (payload as WithRows<T>).rows;
+  }
+  return [];
+}
 
 // ---------------------------------------------------------------------------
 // Leads (contracts: packages/api-types/src/leads.ts)
@@ -232,7 +253,7 @@ export function useSendMessage(leadId: string) {
     mutationFn: (body: string) =>
       api<unknown>('/chat/send', {
         method: 'POST',
-        json: { leadId, body, channel: 'IN_APP' },
+        json: { leadId, body, channel: 'IN_APP' } satisfies SendMessageDto,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
@@ -242,26 +263,97 @@ export function useSendMessage(leadId: string) {
 
 // ---------------------------------------------------------------------------
 // Bookings (contract: packages/api-types/src/bookings.ts)
+//
+// The bookings controller returns `{ total, rows }` (BookingListResult
+// — verified 2026-09-04, T-BOOK). `useBookings` unwraps so the page
+// reads `.data` as the row array.
 // ---------------------------------------------------------------------------
 
 export function useBookings(params: { status?: string } = {}) {
   return useQuery({
     queryKey: ['bookings', params] as const,
-    queryFn: ({ signal }) => api<unknown[]>(`/bookings${qs({ status: params.status })}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<WithRows<unknown>>(`/bookings${qs({ status: params.status })}`, { signal }),
+    select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
 }
 
+/**
+ * Create a new booking in HOLD state. Invalidates the bookings list and
+ * the parent lead's caches on success.
+ */
+export function useCreateBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBookingDto) =>
+      api<unknown>('/bookings', { method: 'POST', json: body }),
+    onSuccess: (data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      const leadId =
+        typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
+          ? (data as { leadId: string }).leadId
+          : variables.leadId;
+      if (typeof leadId === 'string') {
+        void queryClient.invalidateQueries({ queryKey: ['leads'] });
+        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
+/**
+ * Advance booking state (HOLD → TOKEN → APPROVED, etc.). Manager-only
+ * approval. Invalidates the bookings list on success.
+ */
+export function useUpdateBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; body: BookingTransitionDto }) =>
+      api<unknown>(`/bookings/${args.id}`, {
+        method: 'PATCH',
+        json: args.body,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Notifications (contract: packages/api-types/src/notifications.ts)
+//
+// Controller returns `{ total, unread, rows }` (NotificationListResult).
+// We surface `total` + `rows` so the page renders the list and the
+// "Mark all as read" handler can show how many were updated.
 // ---------------------------------------------------------------------------
+
+export type NotificationsListResult = {
+  rows: unknown[];
+  total: number;
+  unread: number;
+};
 
 export function useNotifications(params: { unreadOnly?: boolean } = {}) {
   return useQuery({
     queryKey: ['notifications', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown[]>(`/notifications${qs({ unreadOnly: params.unreadOnly })}`, { signal }),
+      api<WithRows<unknown> & { unread?: number }>(
+        `/notifications${qs({ unreadOnly: params.unreadOnly })}`,
+        { signal },
+      ),
+    select: (raw): NotificationsListResult => ({
+      rows: unwrapRows<unknown>(raw),
+      total:
+        raw !== null && typeof raw === 'object' && typeof (raw as { total?: unknown }).total === 'number'
+          ? ((raw as { total: number }).total)
+          : 0,
+      unread:
+        raw !== null && typeof raw === 'object' && typeof (raw as { unread?: unknown }).unread === 'number'
+          ? ((raw as { unread: number }).unread)
+          : 0,
+    }),
     staleTime: 10_000,
     refetchInterval: 60_000,
     placeholderData: keepPreviousData,
@@ -284,7 +376,16 @@ export function useMarkNotificationsRead() {
 
 // ---------------------------------------------------------------------------
 // Audit log (contract: packages/api-types/src/audit.ts)
+//
+// Controller returns `{ total, rows }` (AuditListResult). Page renders
+// the rows; `total` is available if the page later wants to add
+// pagination.
 // ---------------------------------------------------------------------------
+
+export type AuditListResult = {
+  rows: unknown[];
+  total: number;
+};
 
 export function useAuditLog(
   params: { action?: string; from?: string; to?: string; limit?: number } = {},
@@ -292,7 +393,7 @@ export function useAuditLog(
   return useQuery({
     queryKey: ['audit', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown[]>(
+      api<WithRows<unknown>>(
         `/audit${qs({
           action: params.action,
           from: params.from,
@@ -301,6 +402,13 @@ export function useAuditLog(
         })}`,
         { signal },
       ),
+    select: (raw): AuditListResult => ({
+      rows: unwrapRows<unknown>(raw),
+      total:
+        raw !== null && typeof raw === 'object' && typeof (raw as { total?: unknown }).total === 'number'
+          ? ((raw as { total: number }).total)
+          : 0,
+    }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

@@ -83,6 +83,20 @@ export const INVENTORY_STATUSES = [
 ] as const;
 export type InventoryStatus = (typeof INVENTORY_STATUSES)[number];
 
+/**
+ * Booking-lifecycle values per the Prisma `Booking.status` enum.
+ * Added 2026-09-04 alongside the booking page wire-up. The friendly
+ * labels match §0.11 plan copy.
+ */
+export const BOOKING_STATUSES = [
+  'HOLD',
+  'TOKEN',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+
 // ---------------------------------------------------------------------------
 // Lookup tables
 // ---------------------------------------------------------------------------
@@ -114,6 +128,14 @@ const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
   SOLD: 'Sold',
 };
 
+const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
+  HOLD: 'On hold',
+  TOKEN: 'Token received',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  CANCELLED: 'Cancelled',
+};
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -128,7 +150,7 @@ const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
  * failing assertion so the label table gets updated before merge.
  */
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory',
+  kind: 'lead' | 'visit' | 'inventory' | 'booking',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -137,8 +159,11 @@ export function labelFor(
   } else if (kind === 'visit') {
     const mapped = (VISIT_OUTCOME_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
-  } else {
+  } else if (kind === 'inventory') {
     const mapped = (INVENTORY_STATUS_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else {
+    const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   }
   return humanize(value);
