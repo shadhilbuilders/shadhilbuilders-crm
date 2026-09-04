@@ -26,6 +26,7 @@
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "type-check": "tsc --noEmit",
     "dev": "tsc -p tsconfig.build.json --watch",
+    "prebuild": "pnpm --filter @shadhil/database build",
     "test": "vitest run",
     "test:watch": "vitest"
   },
