@@ -31,12 +31,23 @@ import type { PrismaClient } from './generated/prisma/client';
 // (partial unique index one_owner, migration 20260831110200); they
 // bootstrap admins and are outside the business surfaces (no leads, no
 // teams) by design.
+//
+// CRON_SERVICE is a service-account marker, NOT a real user role — it
+// lives only in the Postgres `app.user_role` GUC set by withRlsContext
+// so the reminder cron's claim UPDATE can satisfy the
+// reminder_cron_service RLS policy. It has no Prisma enum value, no
+// JWT claim (auth-client/Role excludes it), and no business-surface
+// permissions. The cron uses `userId: 'cron-service'` to satisfy the
+// NOT-NULL gate on audit inserts. See
+// packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
+// for the policy and known-runtime-bugs.md Bug 8 for context.
 export type Role =
   | 'OWNER'
   | 'ADMIN'
   | 'MANAGER'
   | 'SALES_EXEC'
-  | 'TELECALLER';
+  | 'TELECALLER'
+  | 'CRON_SERVICE';
 
 export interface RlsContext {
   userId: string;
@@ -49,7 +60,14 @@ export type RlsTx = Parameters<
   Parameters<PrismaClient['$transaction']>[0]
 >[0];
 
-const ROLES: readonly string[] = ['OWNER', 'ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'];
+const ROLES: readonly string[] = [
+  'OWNER',
+  'ADMIN',
+  'MANAGER',
+  'SALES_EXEC',
+  'TELECALLER',
+  'CRON_SERVICE',
+];
 
 /**
  * Inline a string as a Postgres SQL literal.
@@ -86,7 +104,12 @@ export async function withRlsContext<T>(
   // layer (superset semantics: policies already treat 'ADMIN' as
   // unrestricted). Business surfaces key off the JWT's real role, so the
   // distinction is preserved above Postgres.
-  const rlsRole = ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
+  //
+  // CRON_SERVICE is a service-account marker — it must travel AS-IS so
+  // the reminder_cron_service policy can match its GUC. Downcasting
+  // would defeat the bypass.
+  const rlsRole =
+    ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
   const teamValue = ctx.teamId ?? '';
 
   if (!ROLES.includes(ctx.role)) {

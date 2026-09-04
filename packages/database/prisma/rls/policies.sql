@@ -259,6 +259,41 @@ CREATE POLICY reminder_write_owner ON "Reminder"
   USING ("userId" = current_setting('app.user_id', true))
   WITH CHECK ("userId" = current_setting('app.user_id', true));
 
+-- T-CRONS (2026-09-07): explicit service-account policy so the reminder
+-- cron (role=CRON_SERVICE) can claim any row regardless of owner. The
+-- cron's updateMany(SCHEDULED → PROCESSING) was returning 0 rows because
+-- reminder_write_owner is FOR ALL with userId=app.user_id and the cron
+-- actor's userId='cron-service' doesn't match any real reminder's userId.
+-- PostgreSQL OR's overlapping FOR ALL policies, so this policy is the
+-- bypass for service-account jobs without removing the owner check for
+-- real users.
+--
+-- Impersonation guard: the CRON_SERVICE branch requires BOTH
+-- app.user_role='CRON_SERVICE' AND app.user_id='cron-service'. A user
+-- who somehow sets app.user_role='CRON_SERVICE' but uses their own
+-- userId cannot satisfy this AND clause, so they fall through to the
+-- OR'd owner check and the bypass is denied. The cron is the only
+-- legitimate caller of withRlsContext with role='CRON_SERVICE' (see
+-- reminders.service.ts:tick), so userId='cron-service' is the
+-- canonical service-account sentinel.
+CREATE POLICY reminder_cron_service ON "Reminder"
+  FOR ALL
+  TO shadhil_app
+  USING (
+    (
+      current_setting('app.user_role', true) = 'CRON_SERVICE'
+      AND current_setting('app.user_id', true) = 'cron-service'
+    )
+    OR "userId" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    (
+      current_setting('app.user_role', true) = 'CRON_SERVICE'
+      AND current_setting('app.user_id', true) = 'cron-service'
+    )
+    OR "userId" = current_setting('app.user_id', true)
+  );
+
 -- ── Notification (only owner) ──────────────────────────────────────────────
 ALTER TABLE "Notification" ENABLE ROW LEVEL SECURITY;
 

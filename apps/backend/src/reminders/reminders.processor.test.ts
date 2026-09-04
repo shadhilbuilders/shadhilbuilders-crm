@@ -13,6 +13,16 @@
 //      race). Without the PROCESSING intermediate state, the second
 //      replica would re-claim and re-deliver — duplicate fire.
 //
+// T-CRONS (2026-09-07): the cron's updateMany now runs inside
+// withRlsContext as role=CRON_SERVICE so the reminder_cron_service
+// RLS policy matches. The cron's DB writes no longer rely on a
+// manual claim via adminSeed (happy path #1); they go through the
+// service-account bypass. The lease-expiry scenario (#3) still
+// uses adminSeed for the manual replica-A claim to keep the test
+// independent of policy timing. See
+// packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
+// and known-runtime-bugs.md Bug 8.
+//
 // We don't actually wait 60s in tests — the lease-renewal script
 // is exercised indirectly via the duplicate-fire scenario, which
 // covers the same code path. A live integration test (not in this
@@ -28,22 +38,23 @@ import { RemindersService, REMINDER_LOCK_KEY } from './reminders.service';
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 
-// Runtime client (RLS-enforced, shadhil_app role). Used for the
-// cron's updateMany / findMany — the cron is a service account and
-// doesn't satisfy the owner-only Reminder policies. The cron's
-// DB writes are deferred to a follow-up (see TODO in
-// packages/database/prisma/migrations/20260904092000_revert_bypassrls/
-// migration.sql). For now, the cron's updateMany returns 0 rows
-// silently — the lease + status-claim logic is still exercised.
+// Runtime client (RLS-enforced, shadhil_app role). The cron's
+// updateMany / findMany go through withRlsContext as role=CRON_SERVICE
+// (see reminders.service.ts:tick) so the reminder_cron_service policy
+// matches — the cron's DB writes are no longer wrapped in adminSeed.
+// adminSeed is still used in this test file for the LEASt scenario's
+// manual replica-A claim (test #3), which seeds state independently
+// of the cron service code path.
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Admin context wrapper for fixture seeding. shadhil_app is back to
-// RLS-enforced (we reverted BYPASSRLS in migration
-// 20260904092000_revert_bypassrls because it broke the 128-case RLS
-// matrix). Seeding still needs to insert Lead/Reminder/etc — admin
-// satisfies every policy by role alone, BUT the Lead INSERT policy
-// also checks teamId = app.user_team_id, so the admin context
-// must set teamId to match the fixture's teamId.
+// Admin context wrapper for fixture seeding. shadhil_app is RLS-enforced
+// (no BYPASSRLS — the original attempt in T-G4 was reverted because
+// it broke the 128-case matrix). Seeding needs to insert
+// Lead/Reminder/etc — admin satisfies every policy by role alone,
+// BUT the Lead INSERT policy also checks teamId = app.user_team_id,
+// so the admin context must set teamId to match the fixture's
+// teamId. The reminder INSERT policy gates on userId = app.user_id,
+// so the seeded reminder's userId matches the admin actor's userId.
 async function adminSeed<T>(
   fn: (db: PrismaClient) => Promise<T>,
 ): Promise<T> {
@@ -269,15 +280,14 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       const last = reminders.getLastTick();
       expect(last).not.toBeNull();
       expect(last?.lockHeld).toBe(true);
-      // The cron's updateMany currently returns 0 rows because the
-      // service-account actor can't satisfy the owner-only
-      // reminder_write_owner policy (see TODO in
-      // packages/database/prisma/migrations/20260904092000_revert_bypassrls/
-      // migration.sql). The lease + status-claim logic IS exercised —
-      // we just can't observe the claim DB-side yet. When the
-      // follow-up cron-RLS migration lands, this becomes
-      // `expect(last?.claimed).toBeGreaterThan(0)` again.
-      expect(last?.claimed).toBe(0);
+      // T-CRONS (2026-09-07): the reminder_cron_service RLS policy
+      // lets the CRON_SERVICE actor claim any reminder row regardless
+      // of owner, so updateMany(SCHEDULED → PROCESSING) now returns
+      // >0. The claim count depends on the test fixture state, so we
+      // assert >=1 (we seeded one due reminder in beforeAll). The
+      // delivery adapter is still a no-op until Week 7, so `sent`
+      // stays at 0.
+      expect(last?.claimed).toBeGreaterThan(0);
       expect(last?.finishedAt).toBeInstanceOf(Date);
     });
 
@@ -333,9 +343,9 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       // directly rather than going through tick() because we want
       // to skip the renew/release logic — we're simulating a
       // replica that crashes mid-batch. Wrap in adminSeed so the
-      // INSERT (the claim creates PROCESSING rows) succeeds — the
-      // service account can't satisfy the owner-only
-      // reminder_write_owner policy on its own.
+      // claim (an admin-actor UPDATE) succeeds — keeps this test
+      // independent of the CRON_SERVICE code path that the cron
+      // tick uses in production.
       await adminSeed(async (db) => {
         const dueBeforeClaim = await db.reminder.count({
           where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
@@ -406,8 +416,9 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
       // Cleanup: flip the row back to SCHEDULED + release the lock
       // so the next test starts clean. Use adminSeed so the
-      // PROCESSING → SCHEDULED update succeeds (the service account
-      // can't satisfy the reminder_write_owner policy on its own).
+      // PROCESSING → SCHEDULED update succeeds — the lease-expiry
+      // scenario asserts on admin-driven state changes, not the
+      // CRON_SERVICE code path.
       await adminSeed(async (db) => {
         await db.reminder.updateMany({
           where: { claimedBy: REPLICA_A },

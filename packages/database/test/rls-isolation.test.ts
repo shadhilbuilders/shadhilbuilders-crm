@@ -868,7 +868,15 @@ async function runCase(
               state: 'NEW',
               teamId: ctx.teamId ?? '',
               ownerId: ctx.userId,
-              ownerType: roleFromCtx(ctx),
+              // roleFromCtx is widened to include CRON_SERVICE for the
+              // T-CRONS standalone cases; this path runs only for the
+              // 4×8×4 matrix's real user roles, so cast down to the
+              // LeadOwnerType enum the schema requires.
+              ownerType: roleFromCtx(ctx) as
+                | 'TELECALLER'
+                | 'SALES_EXEC'
+                | 'MANAGER'
+                | 'ADMIN',
             },
           });
         }
@@ -946,10 +954,11 @@ async function runCase(
   });
 }
 
-function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' {
+function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' | 'CRON_SERVICE' {
   // The matrix only tests the 4 RLS-visible roles. OWNER travels as
   // ADMIN at the RLS layer (rls.ts:50), so the type is narrowed to
-  // exclude it here.
+  // exclude it here. CRON_SERVICE appears only in T-CRONS' standalone
+  // cases (outside the 4×8×4 matrix).
   if (ctx.role === 'OWNER') return 'ADMIN';
   return ctx.role;
 }
@@ -1008,5 +1017,132 @@ describe('RLS isolation matrix: 4 roles × 8 tables × 4 actions = 128 cases', (
         );
       }
     }
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-CRONS (2026-09-07) — the 129th test case.
+// ────────────────────────────────────────────────────────────────────────────
+// The reminder_cron_service RLS policy lets the reminder cron (a
+// service account, role=CRON_SERVICE AND userId='cron-service') UPDATE
+// any Reminder row regardless of owner. The cron's claim UPDATE was
+// returning 0 rows before this policy because reminder_write_owner is
+// FOR ALL WITH CHECK userId = app.user_id and the cron actor's userId
+// ('cron-service') never matches a real reminder's userId.
+//
+// Three things to pin:
+//   (a) The canonical cron-service pair (role=CRON_SERVICE AND
+//       userId='cron-service') CAN UPDATE any Reminder — proves the
+//       bypass works end-to-end against a real DB.
+//   (b) The canonical cron-service pair CAN SELECT all Reminders (the
+//       policy is FOR ALL so it widens both read and write).
+//   (c) A user role that sets role=CRON_SERVICE but keeps their own
+//       userId CANNOT widen their privilege — the impersonation guard
+//       at the policy AND clause keeps the bypass closed.
+//
+// ADMIN is excluded from (c) — admin already has full UPDATE
+// privilege via reminder_select_owner's admin branch; the impersonation
+// guard is meaningful for non-admin roles only.
+
+describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+  }, 60_000);
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'canonical cron-service pair (role=CRON_SERVICE + userId=cron-service) can UPDATE any Reminder',
+    { timeout: 30_000 },
+    async () => {
+      // The legitimate cron actor — both role and userId match the
+      // service-account sentinel pair. The policy's CRON_SERVICE
+      // branch matches and the bypass applies.
+      const cronCtx: RlsContext = {
+        userId: 'cron-service',
+        role: 'CRON_SERVICE',
+        teamId: null,
+      };
+      const result = await withRlsContext(prisma, cronCtx, async (tx) => {
+        try {
+          await (tx as unknown as {
+            reminder: { update: (a: { where: { id: string }; data: { claimedBy: string } }) => Promise<unknown> };
+          }).reminder.update({
+            where: { id: fixture.rowIds.Reminder.own },
+            data: { claimedBy: 'cron-test-claim' },
+          });
+          return { kind: 'ok' as const };
+        } catch (err) {
+          return { kind: 'err' as const, err };
+        }
+      });
+      expect(result.kind).toBe('ok');
+
+      // Reset the column so the next test sees a clean fixture.
+      await adminPrisma.reminder.update({
+        where: { id: fixture.rowIds.Reminder.own },
+        data: { claimedBy: null },
+      });
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'canonical cron-service pair can SELECT all Reminder rows (bypass applies to read too)',
+    { timeout: 30_000 },
+    async () => {
+      const cronCtx: RlsContext = {
+        userId: 'cron-service',
+        role: 'CRON_SERVICE',
+        teamId: null,
+      };
+      const rows = await withRlsContext(prisma, cronCtx, async (tx) =>
+        (tx as unknown as {
+          reminder: { findMany: (a: { where: { id: { in: string[] } } }) => Promise<unknown[]> };
+        }).reminder.findMany({
+          where: { id: { in: [fixture.rowIds.Reminder.own, fixture.rowIds.Reminder.other] } },
+        }),
+      );
+      expect(rows.length).toBe(2);
+    },
+  );
+
+  for (const userRole of ['MANAGER', 'SALES_EXEC', 'TELECALLER'] as const) {
+    it.skipIf(!DATABASE_AVAILABLE)(
+      `${userRole} actor cannot impersonate CRON_SERVICE — keeps their own userId, role=CRON_SERVICE still rejected`,
+      { timeout: 30_000 },
+      async () => {
+        // Impersonation attempt: a user role sets
+        // app.user_role='CRON_SERVICE' to widen their write privilege,
+        // but keeps their own userId (so the AND-clause in the policy
+        // does not match — they need BOTH role=CRON_SERVICE AND
+        // userId='cron-service'). The owner-only branch requires
+        // userId = the row's userId (teleA), and the impersonator's
+        // userId doesn't match — both branches fail, the UPDATE is
+        // rejected.
+        const ctx: RlsContext = {
+          userId: fixture.managerAId, // a real user from fixture
+          role: 'CRON_SERVICE', // <-- the impersonation attempt
+          teamId: null,
+        };
+        const result = await withRlsContext(prisma, ctx, async (tx) => {
+          try {
+            await (tx as unknown as {
+              reminder: { update: (a: { where: { id: string }; data: { claimedBy: string } }) => Promise<unknown> };
+            }).reminder.update({
+              where: { id: fixture.rowIds.Reminder.own },
+              data: { claimedBy: `impersonated-${userRole}` },
+            });
+            return { kind: 'ok' as const };
+          } catch (err) {
+            return { kind: 'err' as const, err };
+          }
+        });
+        // Expected: rejected — the impersonator's userId doesn't
+        // match the row's userId (teleA), and the CRON_SERVICE branch
+        // requires userId='cron-service' which doesn't match either.
+        expect(result.kind).toBe('err');
+      },
+    );
   }
 });
