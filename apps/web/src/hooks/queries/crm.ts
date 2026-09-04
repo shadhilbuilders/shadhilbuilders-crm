@@ -14,7 +14,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api, qs } from '@/apis/client';
 
-import type { CreateLeadDto } from '@shadhil/api-types';
+import type {
+  CreateLeadDto,
+  LeadStateTransitionDto,
+  UpdateLeadDto,
+} from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Leads (contracts: packages/api-types/src/leads.ts)
@@ -80,6 +84,60 @@ export function useCreateLead() {
       api<unknown>('/leads', { method: 'POST', json: body }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+/**
+ * Partial update — name and email only (per LeadUpdateDto contract;
+ * state transitions and ownership go through dedicated endpoints).
+ */
+export function useUpdateLead(leadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateLeadDto) => {
+      if (leadId === null) {
+        return Promise.reject(new Error('Lead id required'));
+      }
+      return api<unknown>(`/leads/${leadId}`, {
+        method: 'PATCH',
+        json: body,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (leadId !== null) {
+        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
+/**
+ * Drive the lead state machine (Model C — DECISION-CHANGELOG §3).
+ * Server enforces role + transition guards; UI shows all TRANSITIONS
+ * for the current state (server may reject with 403 ROLE_FORBIDDEN).
+ */
+export function useTransitionLead(leadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LeadStateTransitionDto) => {
+      if (leadId === null) {
+        return Promise.reject(new Error('Lead id required'));
+      }
+      return api<unknown>(`/leads/${leadId}/transition`, {
+        method: 'POST',
+        json: body,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (leadId !== null) {
+        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+        void queryClient.invalidateQueries({
+          queryKey: ['lead', leadId, 'activities'],
+        });
+      }
     },
   });
 }

@@ -9,6 +9,7 @@
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import { useParams } from 'next/navigation';
 
+import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
 import { BackLink } from '@/components/shared/ModulePending';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -65,6 +66,16 @@ export default function LeadDetailPage() {
                 {(leadQuery.data as { phone?: string }).phone ?? ''}
               </TypographyP>
             </div>
+            <LeadActionPanel
+              lead={
+                leadQuery.data as {
+                  id: string;
+                  name?: string;
+                  email?: string;
+                  status?: string;
+                }
+              }
+            />
             <LeadTabsPanel
               lead={leadQuery.data as Record<string, unknown>}
               activities={activitiesQuery.data}
