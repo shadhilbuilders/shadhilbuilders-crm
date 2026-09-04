@@ -1,16 +1,19 @@
-// Booking lifecycle + manager approval flow.
-import { Controller, Get, Module } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+// Bookings module — booking lifecycle (HOLD → TOKEN → APPROVED/etc.).
+//
+// T-BOOK (2026-09-07): replaces the Phase-1 stub. BookingsService
+// doesn't depend on LeadsService today (booking creation/transition
+// doesn't drive lead state changes in Phase 1), so no LeadsModule
+// import is needed. If T-BOOK ever needs to drive a lead state
+// transition (e.g. WON on approval), add LeadsModule to imports and
+// @Inject(LeadsService) on the service constructor.
+import { Module } from '@nestjs/common';
 
-@ApiTags('bookings')
-@ApiBearerAuth('jwt')
-@Controller('bookings')
-class BookingsController {
-  @Get()
-  list(): { message: string; phase: number } {
-    return { message: 'Booking lifecycle lands in Week 7', phase: 1 };
-  }
-}
+import { BookingsController } from './bookings.controller';
+import { BookingsService } from './bookings.service';
 
-@Module({ controllers: [BookingsController] })
+@Module({
+  controllers: [BookingsController],
+  providers: [BookingsService],
+  exports: [BookingsService],
+})
 export class BookingsModule {}
