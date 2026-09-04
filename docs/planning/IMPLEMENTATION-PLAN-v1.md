@@ -109,7 +109,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] Create workspace structure (`apps/web`, `apps/mobile`, `apps/backend`, `packages/{database,api-types,auth-client,ui-tokens}`)
 - [ ] Configure `pnpm-workspace.yaml` and root `package.json` (per `monorepo-management` skill)
 - [ ] Provision Hostinger VPS 8GB India region
-- [ ] Install Coolify on VPS, configure DNS for `crm.shadhilbuilders.in` and `crm-api.shadhilbuilders.in`
+- [ ] Install Coolify on VPS, configure DNS for `crm.shadhilbuilders.in` and `api.crm.shadhilbuilders.in`
 - [ ] SSL via Let's Encrypt (Coolify auto)
 - [ ] Set up Docker Compose on VPS: NestJS, Postgres 16, PgBouncer, Redis 7
 - [ ] Initialize `apps/web` from `paalstack-nextjs-starter` template
@@ -362,7 +362,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] Coolify deploy from GitHub (main branch auto-deploy)
 - [ ] Production environment variables set in Coolify (DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, JWT_SECRET, WhatsApp creds, FreJun creds, Expo Push creds, VAPID keys, R2 creds)
 - [ ] SSL verified (Coolify auto)
-- [ ] Subdomains live: `crm.shadhilbuilders.in` + `crm-api.shadhilbuilders.in`
+- [ ] Subdomains live: `crm.shadhilbuilders.in` + `api.crm.shadhilbuilders.in`
 - [ ] Smoke test in production:
   - Login → JWT → REST call → SSE stream
   - Lead Inbox loads
@@ -536,9 +536,9 @@ visibility, with ADMIN/OWNER see-all as in the REST list).
 
 | Subdomain | Service | Port | TLS | Why |
 |---|---|---|---|---|
-| `crm.shadhilbuilders.in` | Next.js web (apps/web) | 3000 → 443 via reverse proxy | yes (h2) | User-facing SPA, holds the better-auth session cookie |
+| `crm.shadhilbuilders.in` | Next.js web (apps/web) | 3000 → 443 via reverse proxy | yes (h2) | User-facing SPA; better-auth session cookie scoped to this host only |
 | `api.crm.shadhilbuilders.in` | NestJS backend (apps/backend) | 8080 → 443 via reverse proxy | yes (h2) | Auth-gated REST API; also owns `POST /api/realtime/ticket` (JWT-gated) |
-| `sse.crm.shadhilbuilders.in` | Standalone SSE service (apps/realtime-sse) | 8090 → 443 via reverse proxy | yes (h2) | Long-lived `EventSource` connections, separate cookie scope |
+| `sse.crm.shadhilbuilders.in` | Standalone SSE service (apps/realtime-sse) | 8090 → 443 via reverse proxy | yes (h2) | Long-lived `EventSource` connections, no cookies (StreamTicket in URL) |
 
 **Why a distinct subdomain for SSE, not a path on the API:**
 
@@ -566,51 +566,67 @@ visibility, with ADMIN/OWNER see-all as in the REST list).
 ```
 Browser
   │
-  ├─ https://crm.shadhilbuilders.in             (Next.js, Vercel or self-hosted)
+  ├─ https://crm.shadhilbuilders.in/             (Next.js, Vercel or self-hosted)
   │
-  ├─ https://api.crm.shadhilbuilders.in/...     (Caddy → NestJS, :8080)
+  ├─ https://api.crm.shadhilbuilders.in/...        (Traefik → NestJS, :8080)
   │   └─ POST /api/realtime/ticket   (mint a 5-min single-use StreamTicket)
   │
-  └─ https://sse.crm.shadhilbuilders.in/api/sse/...   (Caddy → apps/realtime-sse, :8090)
+  └─ https://sse.crm.shadhilbuilders.in/api/sse/...  (Traefik → apps/realtime-sse, :8090)
       ├─ /api/sse/notifications?ticket=<cuid>
       ├─ /api/sse/audit?ticket=<cuid>
       └─ /api/sse/chat/:leadId?ticket=<cuid>
 ```
 
-**Reverse proxy (Caddy) config sketch** for the SSE host. The standalone
-service is plain HTTP/1.1 on localhost; Caddy terminates TLS and serves
-h2 to the browser. This is the same pattern Caddy uses for the API
-host already.
+**Reverse proxy — single Traefik (Coolify default).** All three
+subdomains route through Coolify's built-in Traefik. The SSE
+service uses Docker labels for per-route config (compress
+exclusion). No dedicated reverse-proxy container needed; no
+Caddyfile to author by hand.
 
-```caddyfile
-sse.crm.shadhilbuilders.in {
-    encode zstd gzip
-    reverse_proxy localhost:8090 {
-        # Critical: SSE must NOT be buffered. Caddy's default reads the
-        # whole response into memory before flushing; flush_interval=-1
-        # disables that and streams as bytes arrive.
-        flush_interval -1
-        # Standard streaming response headers (mirrors the values the
-        # standalone service sets on its own writeHead; Caddy passes
-        # them through if absent here, but being explicit is cheaper
-        # than debugging "why is my SSE not streaming").
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-    }
-    tls {
-        # mkcert in dev; Let's Encrypt (or Caddy's on-demand TLS) in prod.
-    }
-}
+SSE service Docker labels (set in Coolify's per-service config or
+the `docker-compose.yml` deployable resource):
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  # Router: match the SSE subdomain
+  - "traefik.http.routers.sse.rule=Host(`sse.crm.shadhilbuilders.in`)"
+  - "traefik.http.routers.sse.entrypoints=websecure"
+  - "traefik.http.routers.sse.tls=true"
+  - "traefik.http.routers.sse.tls.certresolver=letsencrypt"
+  # Skip compression on SSE routes (compression breaks streaming)
+  - "traefik.http.routers.sse.middlewares=no-sse-compress"
+  - "traefik.http.middlewares.no-sse-compress.compress=true"
+  - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
+  # Service: route to the standalone SSE container
+  - "traefik.http.services.sse.loadbalancer.server.port=8090"
 ```
 
-**Dev note:** The 6-conn-per-origin limit applies to HTTP/1.1 cleartext
-too. For local dev with multiple browser tabs and 3 SSE channels each,
-the limit becomes noticeable. The fix is identical to prod: put Caddy
-(or `caddy` via `docker compose`) in front of `:8090` with mkcert
-certificates, then the browser multiplexes everything over h2. The
-`apps/realtime-sse` source code is unchanged; only the network topology
-shifts. The existing `docker/docker-compose.yml` already runs a Caddy
-container — adding an SSE host block is the only edit.
+**Why no explicit `flushInterval` config:** Traefik auto-detects
+streaming responses when `Content-Type: text/event-stream` is set
+(per official Traefik v3 docs: "FlushInterval is ignored when
+ReverseProxy recognizes a response as a streaming response"). The
+standalone service already sets that header on its own `writeHead`,
+so the right `Content-Type` is enough.
+
+**Why this beats the Caddy split I considered earlier (decision
+audit #35 superseded 2026-09-04):** Coolify is built around
+Traefik — every tutorial, every issue thread, every GH discussion
+in coollabsio/coolify assumes Traefik. Caddy has known override
+bugs in Coolify's label system (Issues #3083, #2069) that the
+Traefik path doesn't have. The dedicated-Caddy split I previously
+recommended is the right shape of solution to a problem that
+vanishes when you use the platform's first-class citizen.
+
+**Dev note:** The 6-conn-per-origin limit applies to HTTP/1.1
+cleartext too. For local dev with multiple browser tabs and 3 SSE
+channels each, the limit becomes noticeable. The fix: the existing
+`docker/docker-compose.yml` already runs a Caddy container for
+local dev — leave it in place for the `crm.local` and `api.crm.local`
+hosts (with mkcert certs), and add a small Traefik container
+(`traefik:v3` with Docker provider enabled) for the SSE host.
+The `apps/realtime-sse` source code is unchanged; only the local
+dev proxy story shifts.
 
 ### 5.2 Why a separate service (T-E2 implementation note, 2026-09-04)
 
@@ -898,13 +914,43 @@ Per DESIGN.md §6.
 **Infrastructure:**
 - **Hostinger VPS 8GB**, India region (Mumbai), ~₹2,500/month
 - **Coolify** handles SSL (Let's Encrypt), backups (daily Postgres dump to Backblaze B2), deploys from Git
-- **Docker Compose on VPS:** NestJS, Postgres 16, PgBouncer, Redis 7
-- **Subdomains:** `crm.shadhilbuilders.in` (Next.js) + `crm-api.shadhilbuilders.in` (NestJS)
+- **Docker Compose on VPS:** Next.js, NestJS, Postgres 16, PgBouncer, Redis 7, standalone SSE service (apps/realtime-sse)
+- **Subdomains** (see §5.0 for the full rationale):
+  - `crm.shadhilbuilders.in` — Next.js (apps/web) on port 3000
+  - `api.crm.shadhilbuilders.in` — NestJS (apps/backend) on port 8080
+  - `sse.crm.shadhilbuilders.in` — standalone SSE (apps/realtime-sse) on port 8090
+- **Reverse proxy:** **Traefik** (Coolify's default; we don't change
+  it). All three subdomains route through Coolify's built-in
+  Traefik. The SSE service uses Docker labels to opt out of
+  response compression on its routes (Traefik auto-detects
+  streaming on `Content-Type: text/event-stream`, so no explicit
+  `flushInterval` is needed). Full label config, dev-proxy story,
+  and the compression pitfall are in
+  `~/.hermes/skills/devops/shadhil-crm-dev/references/prod-deployment.md`
+  (Traefik integration, observability, and performance sections).
 
 **CI/CD:**
 - GitHub Actions for tests + lint + type-check on every PR
 - Coolify auto-deploys from `main` branch
 - Manual approval for production releases
+
+**Observability baseline (Week 13+):**
+- Caddy JSON access logs piped to a rotating file (or Loki if you set
+  it up)
+- Alert on `5xx` for any path under `/api/sse/` — real incident
+  because it means a client connection is dead
+- Don't add Prometheus + Grafana until >500 concurrent SSE
+  connections (the SSE service's own `/metrics` endpoint is a
+  T-PERF-2 follow-up)
+
+**Performance thresholds (Hostinger VPS 8GB / 4 vCPU):**
+- <500 concurrent SSE: polling + current architecture is correct
+- 500-2000: raise Prisma connection_limit, watch event-loop
+- 2000-5000: migrate to Postgres LISTEN/NOTIFY (T-PERF-3)
+- 5000+: load-balanced Node + Redis pub/sub (post-launch)
+
+**Set `ulimit -n 65536`** on the SSE service container (the Docker
+default 1024 will EMFILE at ~500 connections).
 
 **Backups:**
 - Daily Postgres dump → Backblaze B2 (encrypted)
@@ -2124,8 +2170,10 @@ client-locked) → surfaced at gate.
 | 31 | Eng | Skeleton is one generic component with variants (`text`/`card`/`chart`/`table`/`kpi`/`user`), not 4 dedicated files (CEO §5 1D). `SkeletonContainer` cross-fade = CSS-only (`opacity-0/100 duration-200` + `motion-reduce:transition-none`). T32 (shape-count tests) + T33 (computed-style assertion) replace fragile `vi.useFakeTimers` for animations. | mechanical | P1,P6 | DRY; CSS animations are not pauseable by fake timers (known pitfall) | (A) 4 dedicated files, (B) fake-timer-based tests |
 | 32 | Design | ErrorBoundary fallback = `Empty`, not `Skeleton` (CEO §1 1B). A skeleton hides the failure; `Empty` makes the failure visible so the user can report it. Applied at the chart layer in T31. | taste | P1,P5 | honest error surface | (A) generic error.tsx, (B) skeleton as fallback |
 | 33 | Eng | Standalone bare-`node:http` SSE service (`apps/realtime-sse`, port 8090) instead of `@Sse()` in Nest or `@fastify/sse` plugin. Both framework SSE layers are broken for any subscription that needs `await` inside its factory (verified 2026-09-04: Nest 12.0.1 + fastify-sse 0.6.0 both swallow frames silently). Bare-Node is the only path with empirical evidence. | mechanical | P1,P5,P6 | Nest has only 1 published 12.x version (12.0.1) — no upstream patch; downgrading is 6-module blast radius; fastify is the same shape of bug. Standalone service is ~260 lines, zero new runtime deps, and uses the exact pattern the canary proved works. | (A) keep Nest `@Sse` and pray for 12.0.2, (B) downgrade to 11.2.3, (C) use `@fastify/sse` |
-| 34 | Eng | SSE consumer gets a distinct subdomain `sse.crm.shadhilbuilders.in` (not a path on `api.crm.shadhilbuilders.in`). Three subdomains total: `crm.*` (web), `api.*` (Nest + ticket mint), `sse.*` (SSE service). Cookie isolation, h2 connection-pool isolation, and operational visibility are the three reasons. | mechanical | P1,P5 | The ticket in the URL is the auth credential; sibling subdomains would expand the cookie attack surface. h2 multiplexing pool is per-origin in browsers, so isolating SSE prevents it from starving the API's h2 stream IDs. Long-lived connections have a different ops shape (timeouts, buffering, dashboards). | (A) `api.crm.shadhilbuilders.in/api/sse/*` (same origin = cookie leak risk, pool coupling), (B) `crm.shadhilbuilders.in/api/sse/*` (web origin = better-auth cookie always sent) |
-| 35 | Eng | Caddy terminates TLS + serves h2 to the browser for the SSE host; standalone service stays plain HTTP/1.1 on `localhost:8090`. Caddy config: `flush_interval -1` on the reverse_proxy block (critical — default Caddy buffers the whole response). | mechanical | P1,P5 | TLS termination belongs in the load balancer, not the app. Node code stays the same across dev (mkcert + local Caddy) and prod (Let's Encrypt via Caddy on-demand TLS). The 6-conn-per-origin limit on HTTP/1.1 cleartext applies in dev too, so the local Caddy gives us h2 multiplexing without code changes. | (A) Node does TLS directly (cert management in app, wrong layer), (B) `node:http2` directly (h2c has zero browser support; forces TLS in app) |
+| 34 | Eng | SSE consumer gets a distinct subdomain `sse.crm.shadhilbuilders.in` (not a path on `api.crm.shadhilbuilders.in`). Three subdomains total: `crm.shadhilbuilders.in` (web, user-facing apex), `api.crm.shadhilbuilders.in` (Nest + ticket mint, child of the app's parent), and `sse.crm.shadhilbuilders.in` (SSE, sibling of the app). The h2 connection-pool isolation and operational visibility are the two reasons (cookie isolation handled separately by Decision #37, and is now a hard requirement because the API is a child of the app's parent domain). | mechanical | P1,P5 | h2 multiplexing pool is per-origin in browsers, so isolating SSE prevents it from starving the API's h2 stream IDs. Long-lived connections have a different ops shape (timeouts, buffering, dashboards). The API and SSE subdomains are both children of the user-facing app's parent (`crm.shadhilbuilders.in`), so each is its own origin for h2/cookie/CSP purposes. | (A) `api.crm.shadhilbuilders.in/api/sse/*` (same origin as API = pool coupling), (B) `crm.shadhilbuilders.in/api/sse/*` (web origin = better-auth cookie in URL) |
+| 35 | Eng | (SUPERSEDED 2026-09-04 by #36) Originally: Caddy terminates TLS + serves h2 to the browser for the SSE host; standalone service stays plain HTTP/1.1 on `localhost:8090`. | mechanical | P1,P5 | — | — |
+| 36 | Eng | **Use Traefik (Coolify's default) for all three subdomains**, not Caddy. Coolify is built around Traefik — every tutorial, every issue thread, every GH discussion in coollabsio/coolify assumes Traefik. Caddy has known override bugs in Coolify's label system (Issues #3083, #2069) that the Traefik path doesn't have. SSE works out of the box on Traefik because it auto-detects streaming on `Content-Type: text/event-stream` (no explicit `flushInterval` config needed per official Traefik v3 docs). The only required SSE-specific override is excluding `text/event-stream` from the compression middleware. | mechanical | P1,P5 | Traefik is the default and most-tested Coolify proxy; choosing anything else means fighting the platform on every non-default config. The dedicated-Caddy split I considered (in the same turn) was the right shape of solution to a problem that vanishes when you use the platform's first-class citizen. | (A) Caddy with the dedicated-container split (operationally heavier, no upside), (B) nginx (same as Caddy — non-default in Coolify) |
+| 37 | Eng | **Better-auth session cookie is explicitly scoped to `crm.shadhilbuilders.in`** (not `.crm.shadhilbuilders.in` and not `.shadhilbuilders.in`). Set via the `Domain` attribute on the session cookie in `packages/auth-client/src/auth.ts` (the `useCookies` config of the better-auth instance). The three subdomains are `crm.shadhilbuilders.in` (app), `api.crm.shadhilbuilders.in` (API), and `sse.crm.shadhilbuilders.in` (SSE). The API is intentionally a *child* of the user-facing app's parent (`api.crm.shadhilbuilders.in` shares the `crm.shadhilbuilders.in` parent with the app), so without explicit scope the browser would auto-send the session cookie to the API by RFC 6265. The BFF mints a fresh JWT before calling the API, so the API never needs the better-auth cookie in the current architecture — but the explicit scope is now a hard requirement (not just defense-in-depth), because the parent domain is shared. | mechanical | P1,P5 | RFC 6265 cookie scoping: when `Domain` is unset, the cookie is host-only; when `Domain: crm.shadhilbuilders.in` is set, the cookie is sent to that host AND all subdomains (`api.crm.shadhilbuilders.in` and `sse.crm.shadhilbuilders.in` are both subdomains of `crm.shadhilbuilders.in`). To prevent the auto-send to `api.*`, the `Domain` attribute must EITHER be unset (host-only) OR set to a value that doesn't include the API's parent. Setting it explicitly to `crm.shadhilbuilders.in` (no leading dot, no parent match) is the documented better-auth way. | (A) Leave default (host-only, no explicit Domain attribute) — works today but breaks the moment anyone adds a cookie reader to the API, (B) Scope to `.shadhilbuilders.in` — wrong direction, sends cookie to all three subdomains including the SSE service, (C) Scope to `.crm.shadhilbuilders.in` — wrong direction, sends cookie to BOTH the app and the API |
 
 ## Cross-Phase Themes
 
