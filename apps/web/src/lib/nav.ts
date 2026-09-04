@@ -180,7 +180,6 @@ export function useNavBadge(key: NavBadgeKey | undefined): number {
   // Lazy-require to avoid a circular import in the test harness (T15 builds
   // a pure-function test that never mounts the app, so the queries module's
   // session/BFF dependencies must not be loaded at import time).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
   const { useLeads, useNotifications } = require('@/hooks/queries/crm') as {
     useLeads: () => { data: unknown };
     useNotifications: (params: { unreadOnly?: boolean }) => { data: unknown };
@@ -237,7 +236,6 @@ export function useNavSync(): void {
   // (e.g. the eventual `<head>` consumers) without pulling the entire
   // Sidebar context into a server bundle. The hook is a no-op on the
   // server because `useEffect` never fires there.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
   const { useSidebar } = require('@paalstack/react-ui') as {
     useSidebar: () => { setOpenMobile: (open: boolean) => void };
   };

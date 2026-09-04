@@ -161,7 +161,6 @@ if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
       // Only warn if the query was actively fetching (not an
       // intentional unmount with no data loss).
       if (query.state.fetchStatus === 'fetching') {
-        // eslint-disable-next-line no-console
         console.warn(
           `[query] GC'd while still fetching — exceeded 30s timeout. ` +
             `queryKey=${JSON.stringify(query.queryKey)}`,
