@@ -286,7 +286,7 @@ export class LeadsService {
     // async user lookups we resolve in a tight loop: walk the
     // sorted rules and call the async resolver until one returns
     // a valid (assignable) target. Same logic, async-friendly.
-    const ownerId = await this.resolveOwnerFromEngine(
+    const engineOwner = await this.resolveOwnerFromEngine(
       rules,
       teamId,
       leadAttrs,
@@ -295,10 +295,17 @@ export class LeadsService {
 
     // 5. If ownerId is null (unassigned), audit the state. The
     //    notification fires when the notifications module lands.
-    if (ownerId === null) {
+    if (engineOwner === null) {
       // No-op today (the notification module is Phase 5). The
       // audit log line below is the durable record.
     }
+
+    // Fallback: when no ManagerAssignmentRule matches, default to the
+    // actor (the MANAGER creating the lead becomes its owner). Without
+    // this, the lead.create() below sends `ownerId = ''` and trips the
+    // FK constraint (Lead.ownerId_fkey), returning 500. The ownerType is
+    // set via ownerTypeForRole(actor.role) below; we keep that path.
+    const ownerId = engineOwner ?? actor.sub;
 
     return withRlsContext(
       this.client,
