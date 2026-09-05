@@ -65,7 +65,7 @@ export function ThemeToggleButton({
       type="button"
       variant="ghost"
       size="sm"
-      className={className ?? 'min-h-11 min-w-11 px-2'}
+      className={className ?? 'my-1.5 min-h-12 min-w-12 px-2.5'}
       onClick={onClick}
       aria-label={label}
       data-qa="theme-toggle"
@@ -95,7 +95,7 @@ export function ThemeToggle() {
 
   return (
     <ThemeToggleButton
-      icon={<Icon className="h-4 w-4" />}
+      icon={<Icon className="h-5 w-5" />}
       label={label}
       mode={mounted ? (isDark ? 'dark' : 'light') : 'unknown'}
       onClick={() => setTheme(nextTheme)}
