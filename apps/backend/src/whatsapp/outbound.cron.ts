@@ -31,6 +31,7 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import type { OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -38,6 +39,7 @@ import { randomUUID } from 'node:crypto';
 
 import { type PrismaClient, withRlsContext } from '@shadhil/database';
 
+import { AlertsService } from '../alerts/alerts.module';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 
@@ -70,6 +72,11 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(OutboundService) private readonly outbound: OutboundService,
+    // T-E2b: optional so the cron works without AlertsModule wired in
+    // (e.g. the cron's own test harness constructs it directly with
+    // 3 args). When AlertsModule is imported (the production path),
+    // the AlertsService is injected automatically.
+    @Optional() @Inject(AlertsService) private readonly alerts?: AlertsService,
   ) {}
 
   /** Test factory: construct with a known replicaId so the test can
@@ -79,8 +86,14 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
     redis: RedisService,
     outbound: OutboundService,
     replicaId: string,
+    alerts?: AlertsService,
   ): OutboundCronService {
-    const svc = new OutboundCronService(prismaService, redis, outbound);
+    const svc = new OutboundCronService(
+      prismaService,
+      redis,
+      outbound,
+      alerts,
+    );
     (svc as unknown as { replicaId: string }).replicaId = replicaId;
     return svc;
   }
@@ -193,6 +206,23 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
         `outbound tick claimed=${tick.claimed} sent=${tick.sent} failed=${tick.failed}`,
       );
     }
+
+    // T-E2b: feed the tick into the alerts service. Best-effort —
+    // AlertsService.recordTickResult never throws. If AlertsModule
+    // isn't wired (alerts === undefined), this is a no-op skip.
+    if (this.alerts !== undefined) {
+      try {
+        await this.alerts.recordTickResult(tick);
+      } catch (err) {
+        // Defense-in-depth: the alerts service is supposed to be
+        // no-throw, but if it ever does, we MUST NOT crash the cron
+        // (the next tick must still run).
+        this.logger.error(
+          `alerts.recordTickResult threw unexpectedly: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     return tick;
   }
 

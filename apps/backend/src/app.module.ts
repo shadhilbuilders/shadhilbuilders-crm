@@ -22,6 +22,7 @@ import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whats
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
   imports: [
@@ -61,6 +62,11 @@ import { RedisModule } from './redis/redis.module';
     // (in a future iteration) trigger an outbound reply; today it
     // just creates a Lead via LeadsService.
     WhatsappUnknownContactsModule,
+    // T-E2b systematic-failure alert: Telegram channel send when
+    // the outbound cron sees N consecutive all-failed ticks.
+    // @Global() so WhatsappModule's OutboundCronService can inject
+    // AlertsService without an explicit imports chain.
+    AlertsModule,
   ],
   providers: [
     // Default-deny: every route needs a valid JWT unless @Public() is set.
