@@ -827,3 +827,45 @@ model StreamTicket {
   @@index([userId])
   @@index([expiresAt])
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-E2b (2026-09-04): WhatsappUnknownContact
+// ────────────────────────────────────────────────────────────────────────────
+// When a lead we don't know about messages us on WhatsApp, we can't
+// auto-create a Lead (per the T-E2b product decision: don't create
+// Leads on unknown inbound). But we DO need to capture the number
+// so a telecaller can follow up — otherwise the contact is lost.
+//
+// This table is the dedup-by-phone, admin-visible "pending follow-up"
+// queue. One row per phone; multiple messages from the same number
+// bump `lastMessageAt` and `messageCount` rather than creating new
+// rows. Lifecycle:
+//   PENDING  — fresh inbound; telecaller hasn't seen it yet
+//   CONVERTED — telecaller called, real lead; `convertedToLeadId` set
+//   SPAM     — not a real person; ignored
+// Week 8+ ships the admin UI to process these. For now, the row
+// exists and is queryable via psql — a real lead is not lost.
+model WhatsappUnknownContact {
+  id               String                          @id @default(cuid())
+  phoneE164        String                          @unique
+  firstMessageAt   DateTime
+  lastMessageAt    DateTime
+  messageCount     Int                             @default(1)
+  firstMessageBody String?                         @db.Text
+  status           WhatsappUnknownContactStatus    @default(PENDING)
+  // When status = CONVERTED, this links to the Lead that was created
+  // from this contact. Nullable for PENDING and SPAM.
+  convertedToLeadId String?                        @unique
+  notes            String?                         @db.Text
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+enum WhatsappUnknownContactStatus {
+  PENDING
+  CONVERTED
+  SPAM
+}

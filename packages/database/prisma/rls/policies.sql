@@ -400,7 +400,8 @@ BEGIN
     'Lead','Activity','SiteVisit','Message','Booking','Reminder',
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
-    'Phase','Unit'
+    'Phase','Unit','StreamTicket','OutboundMessage',
+    'WhatsappUnknownContact'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -430,7 +431,8 @@ BEGIN
     'Lead','Activity','SiteVisit','Message','Booking','Reminder',
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
-    'Phase','Unit','StreamTicket'
+    'Phase','Unit','StreamTicket','OutboundMessage',
+    'WhatsappUnknownContact'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);
@@ -448,3 +450,92 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON "User", "Session", "Account", "Verificat
 -- 20260831140000_add_jwks; original migration omitted the GRANTs
 -- (Round 25 fix). Listed here for future psql -f policies.sql runs.
 GRANT SELECT, INSERT, UPDATE, DELETE ON "Jwks" TO shadhil_app;
+
+-- ────────────────────────────────────────────────────────────────────
+-- T-E2b (2026-09-04): WebhookEvent + WhatsappUnknownContact RLS
+-- ────────────────────────────────────────────────────────────────────
+-- The RLS policies for these tables live in migration
+-- 20260905000100_t_e2b_inbound_rls_and_grants/migration.sql.
+-- This block adds the table-level GRANTs to shadhil_app (the role
+-- migration runner / psql -f policies.sql may not have applied
+-- them in a fresh deploy) and a mirror of the RLS policies so the
+-- canonical policies.sql stays the source of truth for greenfield
+-- deploys.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "WebhookEvent" TO shadhil_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "WhatsappUnknownContact" TO shadhil_app;
+
+ALTER TABLE "WebhookEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "WhatsappUnknownContact" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY webhook_cron_service_all ON "WebhookEvent"
+  FOR ALL
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+CREATE POLICY webhook_select_admin ON "WebhookEvent"
+  FOR SELECT
+  USING (current_setting('app.user_role', true) = 'ADMIN');
+
+CREATE POLICY webhook_update_admin ON "WebhookEvent"
+  FOR UPDATE
+  USING (current_setting('app.user_role', true) = 'ADMIN')
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
+CREATE POLICY wa_unknown_cron_service_all ON "WhatsappUnknownContact"
+  FOR ALL
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+CREATE POLICY wa_unknown_select_admin ON "WhatsappUnknownContact"
+  FOR SELECT
+  USING (current_setting('app.user_role', true) = 'ADMIN');
+
+CREATE POLICY wa_unknown_update_admin ON "WhatsappUnknownContact"
+  FOR UPDATE
+  USING (current_setting('app.user_role', true) = 'ADMIN')
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
+-- ────────────────────────────────────────────────────────────────────
+-- T-E2b (2026-09-04): Message INSERT bypass for CRON_SERVICE
+-- ────────────────────────────────────────────────────────────────────
+-- The WhatsApp inbound webhook handler creates Message rows
+-- (channel=WHATSAPP, direction=INBOUND) when a lead replies. The
+-- handler runs as CRON_SERVICE — no app.user_id is set, because
+-- the sender is the lead (a customer), not an internal user. The
+-- existing message_insert_team policy gates on app.user_id being
+-- set to a staff member, which doesn't apply for inbound leads.
+--
+-- Adding this CRON_SERVICE bypass lets the handler insert messages
+-- without needing to fake an internal user_id. The row's
+-- visibility is still gated by the lead's existing select_team
+-- policy (the Message row is visible to the lead's team only).
+CREATE POLICY message_insert_cron_service ON "Message"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- OutboundMessage status updates from the WhatsApp status webhook
+-- (delivered/read/failed) also run as CRON_SERVICE. The existing
+-- outbound_update_team policy requires the actor to be a staff
+-- member with lead visibility, which doesn't apply — the actor IS
+-- the system. Add a CRON_SERVICE bypass.
+CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
+  FOR UPDATE
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- The inbound handler also needs to SELECT the Lead (to look it
+-- up by phoneE164) and SELECT the existing WhatsappUnknownContact
+-- row (for the upsert path). The existing lead_select_* policies
+-- require staff-role context; add a CRON_SERVICE bypass so the
+-- system can resolve "is this phone a known lead?" without
+-- faking a staff user. The CRON_SERVICE role then writes
+-- Message (via the CRON_SERVICE bypass above) — the Message row
+-- inherits the lead's visibility through the message_select_team
+-- policy, so staff still only see messages for leads they own.
+CREATE POLICY lead_select_cron_service ON "Lead"
+  FOR SELECT
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- WhatsappUnknownContact SELECT for the upsert: the existing
+-- cron_service_all policy already covers this (FOR ALL = all
+-- commands), so no extra policy needed.

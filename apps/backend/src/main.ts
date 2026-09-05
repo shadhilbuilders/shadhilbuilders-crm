@@ -34,7 +34,16 @@ async function bootstrap(): Promise<void> {
   // PgBouncer config it can introspect.
   await verifyPoolMode();
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // T-E2b: enable raw body capture so the WhatsApp webhook signature
+  // guard can HMAC-SHA256 the original POST bytes (Meta signs the exact
+  // request body; re-stringifying JSON.parse()'d objects would change
+  // whitespace/encoding and break the verification). The buffer is held
+  // on `req.rawBody` (Buffer) and consumed only by signature middleware
+  // — the JSON body parser still produces `req.body` as normal.
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   const logger = new Logger('Bootstrap');
 
   // AR-8: allowlist from env, localhost only outside production. Compose sets
