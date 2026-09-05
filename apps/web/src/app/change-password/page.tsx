@@ -40,6 +40,7 @@ import {
 import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
 import { AuthTopBar } from '@/components/auth-top-bar';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { api } from '@/apis/client';
 import { useSessionUser } from '@/lib/session';
 
@@ -58,8 +59,32 @@ export default function ChangePasswordPage() {
     return (
       <div className="bg-background flex min-h-[100dvh] flex-col">
         <AuthTopBar />
-        <main className="text-ink flex flex-1 items-center justify-center px-4">
-          <p className="text-muted-foreground text-sm">Loading…</p>
+        <main className="text-ink flex flex-1 items-center justify-center px-4 py-8">
+          {/* Card-shaped skeleton mirroring the real form below it —
+              the swap from pending → form doesn't shift layout. */}
+          <div
+            role="status"
+            aria-busy="true"
+            aria-live="polite"
+            aria-label="Loading change password"
+            data-qa="change-password-skeleton"
+            className="w-full max-w-md space-y-4 rounded-lg border p-6"
+          >
+            <div className="mb-6 space-y-2 text-center">
+              <Skeleton variant="text" count={1} className="mx-auto [&>div]:h-6 [&>div]:w-44" />
+              <Skeleton variant="text" count={1} className="mx-auto [&>div]:h-4 [&>div]:w-64" />
+            </div>
+            <Skeleton variant="text" count={1} className="[&>div]:h-4 [&>div]:w-32" />
+            <Skeleton variant="card" className="[&>div]:h-11 [&>div]:rounded-md" />
+            <Skeleton variant="text" count={1} className="[&>div]:h-4 [&>div]:w-28" />
+            <Skeleton variant="card" className="[&>div]:h-11 [&>div]:rounded-md" />
+            <Skeleton variant="text" count={1} className="[&>div]:h-4 [&>div]:w-40" />
+            <Skeleton variant="card" className="[&>div]:h-11 [&>div]:rounded-md" />
+            <div className="flex gap-3 pt-2">
+              <Skeleton variant="card" className="[&>div]:h-9 [&>div]:w-20 [&>div]:rounded-md" />
+              <Skeleton variant="card" className="[&>div]:h-9 [&>div]:w-40 [&>div]:rounded-md" />
+            </div>
+          </div>
         </main>
       </div>
     );
