@@ -13,22 +13,16 @@
 //     middleware handles server-side; this covers after-login revisits).
 //   - Password visibility toggle via the shared PasswordInput (2026-09-05).
 //
-// VALIDATION (2026-09-05): declarative zod via zodResolver. The schema
-// is derived from the server's LoginDtoSchema (packages/api-types) —
-// extending it with an explicit min-length message for the empty
-// password case — so client and server rules can't drift. Field-level
-// zod errors render under each input via the library Form's FieldError;
-// the generic account-enumeration Alert stays for AUTH failures
-// (bad credentials), which zod can't know about.
+// FORM (2026-09-05): the library's props-API <Form> renders the fields,
+// labels, inline zod errors, and the submit button. Field-shape errors
+// (empty / bad email) are zod-inline under each field via the Form's
+// FieldError. The generic "Invalid email or password" auth failure is a
+// toast.error — an API-level outcome, not a field-shape problem, and it
+// must not be mistaken for validation feedback pinned under a field.
+// Account-enumeration defense preserved: zod judges shape only; the
+// generic message fires only on real credential rejection.
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Card,
-  Field,
-  FieldError,
-  Heading,
-} from '@paalstack/react-ui';
+import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -41,10 +35,10 @@ import { z } from 'zod';
 
 /**
  * Client form contract for the login form. Derived from the server's
- * LoginDtoSchema (email rules: trim+lowercase, 3..254, email format;
- * password: min 1) so the client validation is a superset of what the
- * server enforces — never a divergent copy. The password's min(1) is
- * re-messaged to 'Password is required' for the inline empty-case hint.
+ * LoginDtoSchema (email: trim+lowercase, 3..254, format; password: min 1)
+ * so the client validation is aligned with what the server enforces —
+ * never a divergent copy. Password min(1) re-messaged inline as
+ * 'Password is required'.
  */
 const LoginFormSchema = z.object({
   email: z
@@ -72,7 +66,6 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
-  const [authError, setAuthError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const form = useForm<LoginFormValues>({
@@ -84,7 +77,6 @@ export function LoginForm() {
   const nextPath = isSafeNextPath(searchParams.get('next'));
 
   async function onSubmit(values: LoginFormValues) {
-    setAuthError(null);
     setPending(true);
 
     const { error: authError } = await authClient.signIn.email({
@@ -93,7 +85,10 @@ export function LoginForm() {
     });
 
     if (authError) {
-      setAuthError('Invalid email or password.');
+      // API error → toast (NOT an inline field error): the credentials
+      // are shape-valid, the server rejected them. Generic message per
+      // the account-enumeration defense — never say WHICH field failed.
+      toast.error('Invalid email or password.');
       setPending(false);
       return;
     }
@@ -115,58 +110,52 @@ export function LoginForm() {
         </p>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
-        <Field className="mb-4">
-          <label htmlFor="login-email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            autoFocus
-            placeholder="you@shadhilbuilders.in"
-            className="border-input bg-transparent mt-1.5 min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
-            {...form.register('email')}
-            disabled={pending}
-            aria-invalid={form.formState.errors.email !== undefined || authError !== null}
-            data-qa="login-email"
-          />
-          <FieldError errors={[form.formState.errors.email]} className="mt-1" />
-        </Field>
-
-        <Field className="mb-4">
-          <label htmlFor="login-password" className="text-sm font-medium">
-            Password
-          </label>
-          <div className="mt-1.5">
-            <PasswordInput
-              autoComplete="current-password"
-              className="min-h-11 w-full text-sm"
-              disabled={pending}
-              placeholder="Enter your password"
-              {...form.register('password')}
-              aria-invalid={form.formState.errors.password !== undefined || authError !== null}
-              data-qa="login-password"
-            />
-          </div>
-          <FieldError errors={[form.formState.errors.password]} className="mt-1" />
-        </Field>
-
-        {authError !== null && (
-          // NOTE: @paalstack Alert renders text via title/description props —
-          // children are DISCARDED by the component (verified in dist source),
-          // which is why the error initially showed as an empty box.
-          // This Alert is AUTH failure ONLY (bad credentials); field-shape
-          // errors are zod's inline FieldErrors above.
-          <Alert colorVariant="danger" title={authError} className="mb-4" role="alert" />
-        )}
-
-        <Button type="submit" className="mt-2 h-11 w-full" disabled={pending}>
-          {pending ? 'Signing in...' : 'Sign in'}
-        </Button>
-      </form>
+      <Form
+        form={form}
+        onSubmit={onSubmit}
+        submitText="Sign in"
+        hideResetButton
+        className="space-y-4"
+        submitButtonProps={{ className: 'h-11 w-full' }}
+        isSubmitting={pending}
+        fields={[
+          {
+            name: 'email',
+            label: 'Email',
+            type: 'custom',
+            required: true,
+            render: ({ field }) => (
+              <input
+                {...field}
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                autoFocus
+                placeholder="you@shadhilbuilders.in"
+                className="border-input bg-transparent min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+                disabled={pending}
+                data-qa="login-email"
+              />
+            ),
+          },
+          {
+            name: 'password',
+            label: 'Password',
+            type: 'custom',
+            required: true,
+            render: ({ field }) => (
+              <PasswordInput
+                {...field}
+                autoComplete="current-password"
+                className="min-h-11 w-full text-sm"
+                disabled={pending}
+                placeholder="Enter your password"
+                data-qa="login-password"
+              />
+            ),
+          },
+        ]}
+      />
 
       <p className="text-muted-foreground mt-6 text-center text-xs">
         Shadhil Builders internal system — access is provisioned by an admin.
