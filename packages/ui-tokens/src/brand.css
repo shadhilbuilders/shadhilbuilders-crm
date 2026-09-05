@@ -18,6 +18,13 @@
  * "orange/amber" — that was the plan author's assumption; the actual
  * brand is navy + green, decided in commit c1118a7 (brand/logo.png)
  * and the original brand.css. This file is the source of truth.
+ *
+ * T-D8 (WCAG AA status badge contrast): the @paalstack/react-ui
+ * defaults for --success / --destructive / --info and their "-soft"
+ * variants fail WCAG 2.x AA-normal (CR < 4.5) for text. Override
+ * them here. The `test/compliance.test.ts` audit pins every
+ * status pair to CR >= 4.5; if you change a value here, update the
+ * mirrored `SHADHIL_AA_OVERRIDES` map in that test too.
  */
 
 :root {
@@ -41,6 +48,23 @@
   --sidebar-accent-foreground: oklch(0.238 0.099 260.3);
   --sidebar-border: oklch(0.92 0.01 260);
   --sidebar-ring: oklch(0.238 0.099 260.3);
+
+  /* ── T-D8: status badge contrast (light mode) ─────────────────────
+   * The library's default --success / --destructive / --info are too
+   * bright for white text (CR 3.10, 3.92, 4.23 respectively) and the
+   * "-soft" variants pair near-white text on near-white tints (CR ~1.1,
+   * essentially invisible). Override the three that fail, plus add
+   * explicit dark foregrounds for the soft tints. The plan's verify
+   * line "contrast check script in compliance.test.ts" audits every
+   * pair below to CR >= 4.5. */
+  --success: oklch(0.530 0.16 160);            /* was oklch(0.63 0.16 160); CR was 3.10, now 4.53 */
+  --destructive: oklch(0.585 0.21 25);        /* was oklch(0.62 0.21 25); CR was 3.92, now 4.53 */
+  --info: oklch(0.560 0.19 255);               /* was oklch(0.58 0.19 255); CR was 4.23, now 4.59 */
+  --success-soft-fg: oklch(0.495 0.16 160);     /* was --success-foreground (white, CR 1.08); now 5.43 */
+  --destructive-soft-fg: oklch(0.495 0.21 25); /* was --destructive-foreground (white, CR 1.13); now 5.37 */
+  --info-soft-fg: oklch(0.495 0.19 255);       /* was --info-foreground (white, CR 1.10); now 5.41 */
+  /* warning + warning-soft: library defaults already pass AA (the
+   * library uses a dark amber foreground on both). Left unchanged. */
 }
 
 .dark {

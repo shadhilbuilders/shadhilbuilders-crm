@@ -16,18 +16,26 @@
 // leaked a raw enum to the UI; the labels test (`labels.test.ts`)
 // asserts every §9.1 enum value has a friendly entry, which would
 // fail if this file ever regressed to the raw form.
+//
+// T-D8: the soft-variant text uses `--{color}-soft-fg` (not
+// `--{color}-foreground`) because the library's default
+// --success-foreground / --destructive-foreground / --info-foreground
+// are near-white, which fails WCAG AA against the soft bg tints. The
+// override values in `packages/ui-tokens/src/brand.css` provide the
+// dark-foreground variants. The `test/compliance.test.ts` audit
+// pins every pair to CR >= 4.5.
 import { labelFor } from '@/lib/labels';
 
 const STATE_BADGE_CLASS: Record<string, string> = {
   NEW: 'bg-secondary text-secondary-foreground',
-  CONTACTED: 'bg-info-soft text-info-foreground',
+  CONTACTED: 'bg-info-soft text-info-soft-fg',
   VISIT_REQUESTED: 'bg-warning-soft text-warning-foreground',
   VISIT_SCHEDULED: 'bg-warning text-warning-foreground',
-  VISITED: 'bg-success-soft text-success-foreground',
-  NEGOTIATION: 'bg-info-soft text-info-foreground',
-  BOOKING_INITIATED: 'bg-info-soft text-info-foreground',
+  VISITED: 'bg-success-soft text-success-soft-fg',
+  NEGOTIATION: 'bg-info-soft text-info-soft-fg',
+  BOOKING_INITIATED: 'bg-info-soft text-info-soft-fg',
   WON: 'bg-success text-success-foreground',
-  LOST: 'bg-destructive-soft text-destructive-foreground',
+  LOST: 'bg-destructive-soft text-destructive-soft-fg',
   COLD: 'bg-secondary text-secondary-foreground',
   NO_SHOW: 'bg-destructive text-destructive-foreground',
   RESCHEDULED: 'bg-warning-soft text-warning-foreground',
