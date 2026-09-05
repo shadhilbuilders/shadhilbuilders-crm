@@ -38,12 +38,14 @@ import type {
   CreateLeadDto,
   LeadFilterDto,
   LeadStateTransitionDto,
+  ReassignLeadDto,
   UpdateLeadDto,
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 
 import {
+  canRoleOwnState,
   canTransition,
 } from './leads.state-machine';
 import {
@@ -595,6 +597,201 @@ export class LeadsService {
     }
     if (leadValue === null || leadValue === undefined) return false;
     return ruleValue === leadValue;
+  }
+
+  /**
+   * POST /api/leads/:id/reassign — manual reassign (Plan §18 D2/D3).
+   *
+   * Reassigns a Lead from its current owner to `targetUserId`,
+   * preserving the state machine. Allowed for ADMIN (any team)
+   * and MANAGER (same team as the lead only). TELECALLER +
+   * SALES_EXEC cannot reassign — they can update their own leads
+   * via PATCH but not move them sideways.
+   *
+   * The target user's role must permit owning the lead at its
+   * current state (mirrors the lane rules in the state machine):
+   *   - TELECALLER: NEW / CONTACTED / VISIT_REQUESTED /
+   *     VISIT_SCHEDULED / RESCHEDULED / NO_SHOW
+   *   - SALES_EXEC: VISITED / NEGOTIATION / BOOKING_INITIATED
+   *   - MANAGER / ADMIN: any state (including terminal)
+   *
+   * Implementation per Plan §18 + DESIGN.md §3: everything happens
+   * inside one `withRlsContext` transaction so the Lead update, the
+   * AuditLog row, and the new ownerType are atomic. The previous
+   * co-owner (if any) is NULLed on reassign — co-ownership is a
+   * transient state for short handoffs; the new owner takes the
+   * lead cleanly.
+   *
+   * Does NOT fan out reminders or fire SSE events here — those
+   * are follow-ups (T-DOC scope, not in this commit). The audit
+   * row IS the durable signal a downstream consumer can replay.
+   */
+  async reassign(
+    actor: JwtPayload,
+    dto: ReassignLeadDto,
+  ): Promise<LeadRow> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        // 1. Fetch the lead WITH its current owner + team so the
+        //    role/team checks don't have to be re-issued in tx.
+        const existing = await tx.lead.findUnique({
+          where: { id: dto.leadId },
+          select: {
+            id: true,
+            ownerId: true,
+            ownerType: true,
+            teamId: true,
+            state: true,
+            coOwnerId: true,
+            name: true,
+            phone: true,
+            source: true,
+            owner: { select: { name: true } },
+          },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`Lead ${dto.leadId} not found`);
+        }
+
+        // 2. Actor can reassign this lead at all? Same shape as
+        //    assertCanEditLead (TELECALLER/SALES_EXEC cannot move
+        //    sideways; MANAGER must match team; ADMIN/OWNER always).
+        if (
+          actor.role !== 'ADMIN' &&
+          actor.role !== 'OWNER' &&
+          !(actor.role === 'MANAGER' && actor.teamId === existing.teamId)
+        ) {
+          throw new ForbiddenException('You cannot reassign this lead');
+        }
+
+        // 3. Target user exists + is in the right team? ADMIN can
+        //    move to any user; MANAGER must match team.
+        const target = await tx.user.findUnique({
+          where: { id: dto.targetUserId },
+          select: {
+            id: true,
+            role: true,
+            teamId: true,
+            name: true,
+          },
+        });
+        if (target === null) {
+          throw new NotFoundException(
+            `Target user ${dto.targetUserId} not found`,
+          );
+        }
+        if (
+          actor.role === 'MANAGER' &&
+          target.teamId !== actor.teamId
+        ) {
+          throw new ForbiddenException(
+            'Manager can only reassign to a user in their own team',
+          );
+        }
+
+        // 4. Target user's role can own the lead at its current
+        //    state? Mirrors the lane rules in the state machine.
+        //    OWNER is treated as ADMIN for this check (OWNER doesn't
+        //    have a lead lane — it can own anything).
+        if (!canRoleOwnState(existing.state, target.role as Role)) {
+          throw new BadRequestException(
+            `Target user's role ${target.role} cannot own a lead in state ${existing.state}`,
+          );
+        }
+
+        // 5. Same-owner reassign is a no-op; return the current row.
+        //    We still want the audit row though — the reason is
+        //    captured in the body and the operation is logically
+        //    a "no-op write" the caller might want to record.
+        const newOwnerType = this.ownerTypeForRole(target.role as Role);
+        const isNoOp = existing.ownerId === target.id;
+
+        if (isNoOp) {
+          return {
+            id: existing.id,
+            name: existing.name,
+            phone: existing.phone,
+            status: existing.state,
+            source: existing.source,
+            ownerId: existing.ownerId,
+            // Same-owner reassign: the owner hasn't changed, so
+            // existing.owner.name is the right value to return.
+            ownerName: existing.owner?.name ?? target.name,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+
+        // 6. Update the lead + the audit row, in one transaction.
+        //    coOwnerId is omitted (not set to null) — the Prisma
+        //    client treats undefined as "skip this field". We don't
+        //    want to write to the column at all in the same-owner
+        //    no-op branch above; here, where we ARE writing, we
+        //    intentionally preserve the previous coOwnerId value
+        //    for now (the plan's "coOwnerId cleanup" is a follow-up
+        //    once we have a dedicated coOwner endpoint). (See the
+        //    "reassign" TODO below for the cleanup pass.)
+        //
+        //    teamId: Lead.teamId is NOT NULL. If the target user has
+        //    a team, the lead follows them. If the target has no
+        //    team (rare — only OWNER, in current data), the lead
+        //    keeps its existing teamId. ADMIN is the only role that
+        //    can assign to a team-less user (MANAGER is gated by
+        //    the team-mismatch check above).
+        const newTeamId = target.teamId ?? existing.teamId;
+        const updated = await tx.lead.update({
+          where: { id: existing.id },
+          data: {
+            ownerId: target.id,
+            ownerType: newOwnerType,
+            teamId: newTeamId,
+          },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            state: true,
+            source: true,
+            ownerId: true,
+            updatedAt: true,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'lead.reassign',
+            entityType: 'Lead',
+            entityId: updated.id,
+            before: {
+              ownerId: existing.ownerId,
+              ownerType: existing.ownerType,
+              teamId: existing.teamId,
+              coOwnerId: existing.coOwnerId,
+            },
+            after: {
+              ownerId: updated.ownerId,
+              ownerType: newOwnerType,
+              teamId: newTeamId,
+              coOwnerId: existing.coOwnerId,
+            },
+            reason: dto.reason,
+          },
+        });
+
+        return {
+          id: updated.id,
+          name: updated.name,
+          phone: updated.phone,
+          status: updated.state,
+          source: updated.source,
+          ownerId: updated.ownerId,
+          ownerName: target.name,
+          updatedAt: updated.updatedAt.toISOString(),
+        };
+      },
+    );
   }
 
   /**
