@@ -341,7 +341,15 @@ model Unit {
 model Lead {
   id        String        @id @default(cuid())
   name      String
+  // T-E2b (2026-09-04): `phone` keeps the user-entered display format
+  // (e.g. "98765 43210"); `phoneE164` is the E.164-normalized form
+  // (e.g. "919876543210"). Outbound WhatsApp sends to phoneE164;
+  // inbound webhook looks up by phoneE164. The unique index on phone
+  // stays for display-layer dedup; phoneE164 has its own unique index.
+  // Existing rows are backfilled by the 2026_09_04_t_e2b_phone_e164
+  // migration (UPDATE ... SET phoneE164 = digits-only-of-phone).
   phone     String        @unique
+  phoneE164 String?       @unique
   email     String?
   source    String?
   state     LeadState     @default(NEW)
@@ -360,6 +368,7 @@ model Lead {
   activities Activity[]
   visits     SiteVisit[]
   messages   Message[]
+  outboundMessages OutboundMessage[]
   bookings   Booking[]
   reminders  Reminder[]
   consents   Consent[]
@@ -434,6 +443,7 @@ model Message {
 
   lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outbound OutboundMessage?
 
   @@index([leadId])
   @@index([userId])
@@ -621,6 +631,78 @@ model WebhookEvent {
 
   @@index([source])
   @@index([processed])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-E2b (2026-09-04): Outbound message queue
+// ────────────────────────────────────────────────────────────────────────────
+// The chat service writes Message + OutboundMessage in one transaction
+// (so a failed message insert never leaves a half-sent outbox row). A
+// cron processor scans OutboundMessage WHERE status = 'PENDING' and
+// calls the Meta WhatsApp Cloud API, updating status to SENT/FAILED
+// based on the response. The same claim-leasing pattern as Reminder
+// (T-G4) prevents duplicate sends if the cron runs on multiple
+// replicas.
+//
+// `wamid` is Meta's message ID returned from the send call — used by
+// the status-callback webhook to correlate delivery receipts back to
+// our outbox row. The unique constraint is per-attempt; retries on
+// the same message get fresh `wamid` values (which we don't need to
+// keep — only the latest is meaningful for the delivery-receipt
+// correlation).
+model OutboundMessage {
+  id              String    @id @default(cuid())
+  // FK to Message. 1:1 — one outbox row per outbound message. Cascade
+  // delete so removing a Message also removes its outbox row (e.g. on
+  // a chat retract — not implemented yet but the schema supports it).
+  messageId       String    @unique
+  leadId          String
+  // Send type: FREEFORM (within 24h of lead's last inbound) or TEMPLATE
+  // (after 24h, or for proactive outreach like the visit_followup and
+  // visit_reminder templates). Recorded for analytics — "how much of our
+  // outbound is 24h+?" is a useful business question.
+  sendType        OutboundSendType @default(FREEFORM)
+  // Template name + variable values, populated when sendType=TEMPLATE.
+  // For FREEFORM, templateName is null and templateVars is null.
+  templateName    String?
+  templateVars    Json?
+  // Freeform text body, populated when sendType=FREEFORM. Truncated
+  // to 1000 chars by the chat service before write (leaves headroom
+  // under Meta's 1024-char limit).
+  freeformBody    String?   @db.Text
+  status          OutboundStatus @default(PENDING)
+  attempts        Int       @default(0)
+  lastAttemptAt   DateTime?
+  lastError       String?   @db.Text
+  // Meta's message ID, set on successful send. Used by the status
+  // webhook to update status (sent → delivered → read).
+  wamid           String?
+  // T-G4-style claim bookkeeping, for the cron lease pattern.
+  claimedAt       DateTime?
+  claimedBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  message         Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastAttemptAt])  // cron scan: PENDING rows that aren't being retried too soon
+  @@index([leadId])
+  @@index([wamid])
+}
+
+enum OutboundSendType {
+  FREEFORM
+  TEMPLATE
+}
+
+enum OutboundStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 // ────────────────────────────────────────────────────────────────────────────

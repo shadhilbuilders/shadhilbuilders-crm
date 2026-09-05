@@ -76,7 +76,12 @@ function makeService(): {
     },
   };
   const prismaService = { $client: client } as never;
-  const service = new ChatService(prismaService);
+  // T-E2b: ChatService now takes OutboundService as the 2nd arg. The
+  // existing test stubs don't exercise the send() code path (only
+  // list), so a minimal no-op stub is fine here. The send() tests
+  // live in chat.service.send.test.ts (added in this commit).
+  const outboundStub = { enqueue: vi.fn().mockResolvedValue(undefined) } as never;
+  const service = new ChatService(prismaService, outboundStub);
   return { service, client };
 }
 

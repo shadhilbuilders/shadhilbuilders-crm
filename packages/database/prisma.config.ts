@@ -28,5 +28,10 @@ export default defineConfig({
   },
   datasource: {
     url: process.env.DIRECT_DATABASE_URL ?? '',
+    // T-E2b (2026-09-04): shadow database for `prisma migrate diff`.
+    // Reuses the main dev DB; Prisma creates/drops a temporary schema
+    // for the diff calculation. For prod cutover, switch to a
+    // dedicated shadow DB (see prisma docs).
+    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL ?? process.env.DIRECT_DATABASE_URL ?? '',
   },
 });

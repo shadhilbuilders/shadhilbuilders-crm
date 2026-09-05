@@ -35,6 +35,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { OutboundService } from '../whatsapp/outbound.service';
 
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
@@ -60,6 +61,7 @@ export type MessageListResult = MessageRow[];
 export class ChatService {
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    @Inject(OutboundService) private readonly outbound: OutboundService,
   ) {}
 
   private get client(): PrismaClient {
@@ -154,7 +156,7 @@ export class ChatService {
         // the BFF gets a clear 404 rather than a 500.
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: dto.leadId },
-          select: { id: true },
+          select: { id: true, name: true },
         });
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
@@ -194,6 +196,34 @@ export class ChatService {
             reason: `Message sent to lead ${created.leadId} by ${actor.email} (${actor.role})`,
           },
         });
+
+        // T-E2b: also look up the lead's first name in-RLS so we
+        // can build the template vars without a second RLS-scoped
+        // query (which would fail because the bare prisma client is
+        // RLS-restricted).
+        const firstName = (lead.name ?? '').trim().split(/\s+/)[0] ?? lead.name ?? '';
+
+        // T-E2b: if the channel is WHATSAPP, enqueue an outbound
+        // message. We do this INSIDE the withRlsContext block so
+        // the OutboundMessage INSERT runs under the actor's RLS
+        // (the outbound_insert_authenticated policy requires
+        // app.user_id to be set, which the bare client can't
+        // provide). The cron processor later picks it up via the
+        // CRON_SERVICE role.
+        if (created.channel === 'WHATSAPP') {
+          const templateName = process.env.WHATSAPP_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply';
+          const body = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
+          await this.outbound.enqueue({
+            messageId: created.id,
+            leadId: created.leadId,
+            sendType: 'TEMPLATE',
+            templateName,
+            templateVars: {
+              '1': firstName,
+              '2': body,
+            },
+          });
+        }
 
         return {
           id: created.id,
