@@ -10,6 +10,7 @@ import { PlaceholderGateModule } from './auth/placeholder-gate.middleware';
 import { UsersModule } from './users/users.module';
 import { LeadsModule } from './leads/leads.module';
 import { TeamsModule } from './teams/teams.module';
+import { ProjectsModule } from './projects/projects.module';
 import { VisitsModule } from './visits/visits.module';
 import { ChatModule } from './chat/chat.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -48,6 +49,9 @@ import { AlertsModule } from './alerts/alerts.module';
     BetterAuthMiddlewareModule,
     LeadsModule,
     TeamsModule,
+    // T-ProjectSwitch: real project registry CRUD (GET feeds the sidebar
+    // switcher; POST/PATCH admin-class; DELETE owner-only).
+    ProjectsModule,
     VisitsModule,
     ChatModule,
     BookingsModule,

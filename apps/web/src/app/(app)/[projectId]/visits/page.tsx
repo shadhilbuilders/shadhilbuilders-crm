@@ -11,10 +11,12 @@ import { useMemo, useState } from 'react';
 import { ScheduleVisitDialog } from '@/components/shared/ScheduleVisitDialog';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { useParams } from 'next/navigation';
+
 import { useVisits } from '@/hooks/queries/crm';
 import { canScheduleVisits, useSessionUser } from '@/lib/session';
 
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '../../PageHeader';
 
 const HOURS = [9, 10, 11, 12, 14, 15, 16, 17] as const;
 
@@ -39,7 +41,10 @@ export default function VisitsPage() {
     return end.toISOString();
   }, [weekStart]);
 
-  const visitsQuery = useVisits({ from, to });
+  // T-ProjectSwitch: the calendar shows only the active project's visits.
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
+  const visitsQuery = useVisits({ from, to, projectId });
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => {

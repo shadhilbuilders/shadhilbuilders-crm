@@ -14,6 +14,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
+  // T-ProjectSwitch: the page reads the URL project id.
+  useParams: () => ({ projectId: 'proj-test-1' }),
 }));
 
 vi.mock('@/hooks/queries/crm', () => ({

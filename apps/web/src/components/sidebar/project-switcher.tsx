@@ -2,17 +2,21 @@
 
 // ProjectSwitcher - sidebar-07 pattern, adapted for shadhil-crm.
 //
-// In shadhil-crm the rows in this dropdown represent PROJECTS (not
-// abstract "teams"). Today the schema has one project at a time
-// (Shadhil Metro Heights is the live one; future ones are planned:
-// Skyline Towers, Lakeview Residences). The dropdown surfaces the
-// full list so the user can see what's coming.
+// T-ProjectSwitch (2026-09-05): REAL project switching. The dropdown rows
+// are Project-table rows (GET /api/projects); clicking one navigates to
+// /{projectId}/{currentSection} - the first URL segment IS the active
+// project. Work surfaces (leads, visits, inventory, bookings,
+// notifications) live under that segment and every list query filters by
+// it. Selection is URL-owned: no localStorage, no context - the URL is
+// the source of truth (shareable, back/forward safe).
 //
-// This is a DISPLAY-ONLY switcher for now (T-Sidebar07, 2026-09-05).
-// Clicking a project does NOT yet change which leads/visits/etc the
-// user sees - that requires a schema change (Lead.projectId column)
-// and is tracked as a follow-up. Until that lands, the active project
-// remains User.teamId (the user's home project from the seed).
+// Default project (when the URL carries none): the product-locked
+// primary project (slug 'shadhil-metro-heights'), falling back to the
+// first registry row - see pickDefaultProject() in hooks/queries/projects.
+//
+// Manage projects (create / rename / edit): admin-class surface inside
+// the dropdown footer (ProjectsManageDialog). Delete is owner-only and
+// guarded server-side (409 when bookings exist).
 //
 // Honest state contract: the dropdown is always openable, even when
 // the projects list is empty (the BE module might not be wired, the
@@ -25,6 +29,7 @@
 // trigger renders the SidebarMenuButton; the content positions right
 // on desktop, bottom on mobile (useSidebar().isMobile).
 
+import { useRouter } from 'next/navigation';
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -41,21 +46,31 @@ import { LuBuilding2, LuChevronsUpDown, LuPlus } from '@paalstack/react-icons/lu
 
 export type ProjectListItem = {
   id: string;
+  slug: string;
   name: string;
-  defaultAssigneeId: string | null;
-  memberCount: number;
+  address: string;
+  reraNumber: string | null;
+  cmdaNumber: string | null;
+  createdAt: string;
 };
 
 export function ProjectSwitcher({
   projects,
   activeProjectId,
+  canManageProjects,
 }: {
   projects: ProjectListItem[];
-  /** The user's current project (User.teamId). Used to mark the active row. */
+  /** The project id from the URL's first segment. */
   activeProjectId: string | null;
+  /** ADMIN/OWNER only - shows the manage-projects dialog entry. */
+  canManageProjects: boolean;
 }) {
   const { isMobile } = useSidebar();
-  const active = projects.find((p) => p.id === activeProjectId) ?? projects[0] ?? null;
+  const router = useRouter();
+  const active =
+    projects.find((p) => p.id === activeProjectId) ??
+    projects[0] ??
+    null;
 
   return (
     <SidebarMenu>
@@ -77,9 +92,7 @@ export function ProjectSwitcher({
                     {active?.name ?? 'No project'}
                   </span>
                   <span className="truncate text-xs">
-                    {active !== null
-                      ? `${active.memberCount} member${active.memberCount === 1 ? '' : 's'}`
-                      : 'Select a project'}
+                    {active !== null ? active.slug : 'Select a project'}
                   </span>
                 </div>
                 <LuChevronsUpDown className="ml-auto" />
@@ -109,6 +122,12 @@ export function ProjectSwitcher({
                   data-qa="project-switcher-item"
                   data-active={project.id === activeProjectId}
                   className="data-[active=true]:bg-accent data-[active=true]:text-accent-foreground cursor-pointer gap-2 p-2"
+                  onSelect={() => {
+                    // Real switching: the first URL segment IS the active
+                    // project. Navigate to the same work surface under the
+                    // new project (dashboard stays project-less).
+                    router.push(`/${project.id}/leads`);
+                  }}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">
                     <LuBuilding2 className="size-3.5 shrink-0" />
@@ -125,23 +144,23 @@ export function ProjectSwitcher({
                 </DropdownMenuItem>
               ))
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled
-              data-qa="project-switcher-add"
-              className="text-muted-foreground gap-2 p-2"
-            >
-              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                <LuPlus className="size-4" />
-              </div>
-              <div className="font-medium">Add project</div>
-              <span
-                aria-hidden
-                className="text-muted-foreground ml-auto text-[10px] uppercase tracking-wide"
-              >
-                Soon
-              </span>
-            </DropdownMenuItem>
+            {canManageProjects ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-qa="project-switcher-manage"
+                  className="cursor-pointer gap-2 p-2"
+                  onSelect={() => {
+                    router.push('/projects');
+                  }}
+                >
+                  <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                    <LuPlus className="size-4" />
+                  </div>
+                  <div className="font-medium">Manage projects</div>
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenuRoot>
       </SidebarMenuItem>

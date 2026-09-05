@@ -11,11 +11,13 @@ import { useState } from 'react';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '../../PageHeader';
 import {
   useMarkNotificationsRead,
   useNotifications,
 } from '@/hooks/queries/crm';
+import { useParams } from 'next/navigation';
+
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
 
 // T-F2 keeps the filter tabs honest: only ALL + UNREAD are wired to
@@ -44,8 +46,13 @@ type NotificationRow = {
 
 export default function NotificationsPage() {
   const [filter, setFilter] = useState<Filter>('ALL');
+  // T-ProjectSwitch: the inbox shows the active project's lead
+  // notifications (server resolves through Notification.lead.projectId).
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
   const notificationsQuery = useNotifications({
     unreadOnly: filter === 'UNREAD',
+    projectId,
   });
   // T-E2 (Week 6): live updates - new notifications stream in via SSE
   // and invalidate the list query (no 60s polling).

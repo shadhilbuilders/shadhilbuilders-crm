@@ -74,6 +74,8 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
     state,
     ownerId: typeof query['ownerId'] === 'string' ? query['ownerId'] : undefined,
     teamId: typeof query['teamId'] === 'string' ? query['teamId'] : undefined,
+    projectId:
+      typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
     search: typeof query['search'] === 'string' ? query['search'] : undefined,
     limit:
       typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,

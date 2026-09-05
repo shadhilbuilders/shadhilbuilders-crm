@@ -52,6 +52,8 @@ export type LeadFilterInput = {
   state?: string[];
   ownerId?: string;
   teamId?: string;
+  // T-ProjectSwitch: the active project filter (sidebar switcher).
+  projectId?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -66,6 +68,7 @@ export function useLeads(filter: LeadFilterInput = {}) {
           state: filter.state?.join(','),
           ownerId: filter.ownerId,
           teamId: filter.teamId,
+          projectId: filter.projectId,
           search: filter.search,
           limit: filter.limit,
           offset: filter.offset,
@@ -96,7 +99,9 @@ export function useLeadActivities(id: string | null) {
 /**
  * Create a new lead. Invalidates the leads-list query cache on success so the
  * inbox shows the new lead without a manual refresh. The form's success
- * handler should `router.push('/leads/${data.id}')` for the optimistic flow.
+ * handler should `router.push(\`/${projectId}/leads/${data.id}\`)` for the
+ * optimistic flow (T-ProjectSwitch: work surfaces live under the active
+ * project's URL segment).
  *
  * Note: owner is assigned server-side by the ManagerAssignmentRule engine
  * (IMPLEMENTATION-PLAN §7). The form does NOT pick the owner.
@@ -170,11 +175,20 @@ export function useTransitionLead(leadId: string | null) {
 // Visits (contract: packages/api-types/src/visits.ts)
 // ---------------------------------------------------------------------------
 
-export function useVisits(params: { from?: string; to?: string } = {}) {
+export function useVisits(
+  params: { from?: string; to?: string; projectId?: string } = {},
+) {
   return useQuery({
     queryKey: ['visits', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown[]>(`/visits${qs({ from: params.from, to: params.to })}`, { signal }),
+      api<unknown[]>(
+        `/visits${qs({
+          from: params.from,
+          to: params.to,
+          projectId: params.projectId,
+        })}`,
+        { signal },
+      ),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
@@ -281,11 +295,16 @@ export function useSendMessage(leadId: string) {
 // reads `.data` as the row array.
 // ---------------------------------------------------------------------------
 
-export function useBookings(params: { status?: string } = {}) {
+export function useBookings(
+  params: { status?: string; projectId?: string } = {},
+) {
   return useQuery({
     queryKey: ['bookings', params] as const,
     queryFn: ({ signal }) =>
-      api<WithRows<unknown>>(`/bookings${qs({ status: params.status })}`, { signal }),
+      api<WithRows<unknown>>(
+        `/bookings${qs({ status: params.status, projectId: params.projectId })}`,
+        { signal },
+      ),
     select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
@@ -347,12 +366,17 @@ export type NotificationsListResult = {
   unread: number;
 };
 
-export function useNotifications(params: { unreadOnly?: boolean } = {}) {
+export function useNotifications(
+  params: { unreadOnly?: boolean; projectId?: string } = {},
+) {
   return useQuery({
     queryKey: ['notifications', params] as const,
     queryFn: ({ signal }) =>
       api<WithRows<unknown> & { unread?: number }>(
-        `/notifications${qs({ unreadOnly: params.unreadOnly })}`,
+        `/notifications${qs({
+          unreadOnly: params.unreadOnly,
+          projectId: params.projectId,
+        })}`,
         { signal },
       ),
     select: (raw): NotificationsListResult => ({

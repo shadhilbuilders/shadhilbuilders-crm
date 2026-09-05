@@ -182,42 +182,75 @@ async function main() {
   const telecallerUser = await upsertUser(telecaller, 'TELECALLER', team.id);
   const salesExecUser = await upsertUser(salesExec, 'SALES_EXEC', team.id);
 
-  // ── Demo projects for the sidebar-07 ProjectSwitcher (T-Sidebar07) ──────
-  // Shadhil Builders runs one construction project at a time; the Team
-  // table is the project registry. The live project (above) carries the
-  // demo leads; the two below are upcoming projects so the switcher
-  // dropdown shows a realistic 3-row list. Staff are members of all
-  // three (implicit M2M via Team.members).
+  // ── Demo projects - the REAL Project registry (T-ProjectSwitch) ─────────
+  // Phase 2 of real project switching: the sidebar switcher reads
+  // GET /api/projects (the Project table), NOT the Team table. Metro
+  // Heights is created FIRST so createdAt-ordering makes it the default
+  // active project. Lead.projectId points at these rows; demo leads below
+  // are attached to Metro Heights.
   const staffIds = [
     { id: managerUser.id },
     { id: telecallerUser.id },
     { id: salesExecUser.id },
   ];
+  const metroHeights = await prisma.project.upsert({
+    where: { id: 'seed-project-metro-heights' },
+    update: {
+      name: 'Shadhil Metro Heights',
+      slug: 'shadhil-metro-heights',
+      address: 'Metro Heights, Chennai, Tamil Nadu (placeholder address)',
+    },
+    create: {
+      id: 'seed-project-metro-heights',
+      name: 'Shadhil Metro Heights',
+      slug: 'shadhil-metro-heights',
+      address: 'Metro Heights, Chennai, Tamil Nadu (placeholder address)',
+      // RERA/CMDA numbers are still open inputs (sign-off doc §Inputs);
+      // left null until the client supplies the certificate values.
+    },
+  });
   const upcomingProjects = [
-    { id: 'seed-project-skyline', name: 'Shadhil Skyline Towers' },
-    { id: 'seed-project-lakeview', name: 'Shadhil Lakeview Residences' },
+    {
+      id: 'seed-project-skyline',
+      name: 'Shadhil Skyline Towers',
+      slug: 'shadhil-skyline-towers',
+    },
+    {
+      id: 'seed-project-lakeview',
+      name: 'Shadhil Lakeview Residences',
+      slug: 'shadhil-lakeview-residences',
+    },
   ];
   for (const p of upcomingProjects) {
-    await prisma.team.upsert({
+    await prisma.project.upsert({
       where: { id: p.id },
-      update: { name: p.name },
+      update: { name: p.name, slug: p.slug },
       create: {
         id: p.id,
         name: p.name,
-        managerId: managerUser.id,
-        members: { connect: staffIds },
+        slug: p.slug,
+        address: 'Upcoming project (placeholder address)',
       },
     });
   }
-  // The live team also gets its members connected (the upsert create
-  // above didn't include telecaller/sales exec on first run; on later
-  // runs the connect is idempotent).
+  // T-ProjectSwitch cleanup: the sidebar-07 iteration seeded the two
+  // upcoming projects as FAKE TEAMS (Team-as-registry hack). Remove them
+  // now that the Project table is the registry. deleteMany is idempotent
+  // (0 rows on re-runs) and the Team rows have no leads pointing at them.
+  await prisma.team.deleteMany({
+    where: { id: { in: ['seed-project-skyline', 'seed-project-lakeview'] } },
+  });
+  // The live team keeps its members connected (the upsert create above
+  // didn't include telecaller/sales exec on first run; on later runs the
+  // connect is idempotent).
   await prisma.team.update({
     where: { id: team.id },
     data: { members: { connect: staffIds } },
   });
   // eslint-disable-next-line no-console
-  console.log('[seed] ✓ 2 upcoming projects created for the project switcher');
+  console.log(`[seed] ✓ project registry: ${metroHeights.name} (default) + 2 upcoming`);
+  // eslint-disable-next-line no-console
+  console.log('[seed] ✓ legacy fake project-teams removed');
 
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec created/updated');
@@ -245,7 +278,13 @@ async function main() {
   for (const lead of demoLeads) {
     await prisma.lead.upsert({
       where: { phone: lead.phone },
-      update: { state: lead.state, name: lead.name },
+      update: {
+        state: lead.state,
+        name: lead.name,
+        // T-ProjectSwitch: backfill the project on re-seed (older rows
+        // have projectId=null).
+        projectId: metroHeights.id,
+      },
       create: {
         name: lead.name,
         phone: lead.phone,
@@ -255,6 +294,7 @@ async function main() {
         ownerId: telecallerUser.id,
         ownerType: 'TELECALLER',
         teamId: team.id,
+        projectId: metroHeights.id,
       },
     });
   }

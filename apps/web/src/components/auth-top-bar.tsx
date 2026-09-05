@@ -53,6 +53,7 @@ export function AuthTopBar() {
               priority
               className="h-12 w-auto object-contain"
               data-qa="auth-brand-logo"
+              loading="eager"
             />
           </span>
         </div>

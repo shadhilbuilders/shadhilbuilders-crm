@@ -152,6 +152,9 @@ export class LeadsService {
     }
     if (dto.ownerId !== undefined) where['ownerId'] = dto.ownerId;
     if (dto.teamId !== undefined) where['teamId'] = dto.teamId;
+    // T-ProjectSwitch: filter by the active project (sidebar switcher
+    // navigates via /[projectId]/... and every list page passes the id).
+    if (dto.projectId !== undefined) where['projectId'] = dto.projectId;
     if (dto.search !== undefined && dto.search.length > 0) {
       where['OR'] = [
         { name: { contains: dto.search, mode: 'insensitive' } },

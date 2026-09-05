@@ -110,6 +110,11 @@ export class VisitsService {
 
         if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
         if (dto.salesExecId !== undefined) where['userId'] = dto.salesExecId;
+        // T-ProjectSwitch: filter by the active project via the parent
+        // Lead (SiteVisit has no projectId of its own).
+        if (dto.projectId !== undefined) {
+          where['lead'] = { ...(where['lead'] as object | undefined), projectId: dto.projectId };
+        }
         if (dto.status !== undefined) {
           where['status'] = Array.isArray(dto.status)
             ? { in: dto.status }

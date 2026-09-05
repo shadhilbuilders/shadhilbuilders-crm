@@ -62,11 +62,15 @@ import { LuPanelLeft } from '@paalstack/react-icons/lu';
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
-import { useTeams } from '@/hooks/queries';
+import { useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import {
+  activeProjectIdFromPathname,
   getVisibleNav,
   isNavItemActive,
+  isProjectScopedNavPath,
+  projectHref,
+  stripProjectSegment as stripProjectSegmentForNav,
   NAV_ITEMS,
   useNavBadge,
   useNavSync,
@@ -82,6 +86,11 @@ import {
 export function AppShell() {
   // T37: close the mobile Sheet whenever the route changes.
   useNavSync();
+  // T-ProjectSwitch: the active project is the URL's first segment on
+  // work surfaces (/proj-1/leads). Computed here once and passed down
+  // to the switcher slot + nav groups so every link resolves against it.
+  const pathname = usePathname();
+  const activeProjectId = activeProjectIdFromPathname(pathname);
   // T-Sidebar07: collapsed state drives the logo swap (wide lockup ↔
   // square brand icon). Read from the sidebar context.
   const { state: sidebarState } = useSidebar();
@@ -112,6 +121,7 @@ export function AppShell() {
                 height={28}
                 className="size-7 object-contain"
                 data-qa="sidebar-brand-icon-collapsed"
+                loading="eager"
               />
             ) : (
               <Image
@@ -121,6 +131,7 @@ export function AppShell() {
                 height={34}
                 className="h-11/12 w-auto object-contain"
                 data-qa="sidebar-brand-logo-expanded"
+                loading="eager"
               />
             )}
           </Link>
@@ -133,11 +144,11 @@ export function AppShell() {
             dropdown (display-only for now - see project-switcher.tsx).
             Hidden until the session resolves so the collapsed rail
             doesn't flash an empty switcher. */}
-        <SidebarSwitcherSlot />
+        <SidebarSwitcherSlot activeProjectId={activeProjectId} />
       </SidebarHeader>
       <SidebarContent className="min-w-0 overflow-x-hidden">
-        <WorkNavGroup />
-        <AdminNavGroup />
+        <WorkNavGroup activeProjectId={activeProjectId} />
+        <AdminNavGroup activeProjectId={activeProjectId} />
       </SidebarContent>
       <SidebarFooter className="min-w-0 overflow-x-hidden">
         <UserMenuFooter />
@@ -154,23 +165,31 @@ export function AppShell() {
 
 // ---------------------------------------------------------------------------
 // Project switcher slot (sidebar-07 pattern): sits directly below the
-// brand chip in the header. Reads the teams list via useTeams() and the
-// active project from the session user's teamId. While the session is
-// pending or unauthenticated it renders nothing (no skeleton - the
-// header already shows the brand chip, which keeps the shape stable).
+// brand chip in the header. T-ProjectSwitch: reads the REAL project
+// registry (useProjects) and the active project from the URL's first
+// segment. While the session is pending or unauthenticated it renders
+// nothing (no skeleton - the header already shows the brand chip, which
+// keeps the shape stable).
 // ---------------------------------------------------------------------------
 
-function SidebarSwitcherSlot() {
+function SidebarSwitcherSlot({
+  activeProjectId,
+}: {
+  activeProjectId: string | null;
+}) {
   const { user } = useSessionUser();
-  const { data: projects } = useTeams();
+  const { data: projects } = useProjects();
 
   // No session yet - render nothing (the nav groups below do the same).
   if (user === null) return null;
 
+  const canManageProjects = user.role === 'ADMIN' || user.role === 'OWNER';
+
   return (
     <ProjectSwitcher
       projects={projects ?? []}
-      activeProjectId={user.teamId}
+      activeProjectId={activeProjectId}
+      canManageProjects={canManageProjects}
     />
   );
 }
@@ -206,7 +225,11 @@ export function SidebarToggleButton({ className }: { className?: string }) {
 // new route added to `lib/nav.ts` lights up here automatically.
 // ---------------------------------------------------------------------------
 
-function WorkNavGroup() {
+function WorkNavGroup({
+  activeProjectId,
+}: {
+  activeProjectId: string | null;
+}) {
   const pathname = usePathname();
   const { user } = useSessionUser();
   const items = getVisibleNav(user?.role).filter(
@@ -222,6 +245,7 @@ function WorkNavGroup() {
             key={item.href}
             item={item}
             pathname={pathname}
+            activeProjectId={activeProjectId}
           />
         ))}
       </SidebarMenu>
@@ -235,7 +259,11 @@ function WorkNavGroup() {
 // `/teams` slots in without changing this file.
 // ---------------------------------------------------------------------------
 
-function AdminNavGroup() {
+function AdminNavGroup({
+  activeProjectId,
+}: {
+  activeProjectId: string | null;
+}) {
   const pathname = usePathname();
   const { user } = useSessionUser();
   const role = user?.role;
@@ -261,6 +289,7 @@ function AdminNavGroup() {
               key={item.href}
               item={item}
               pathname={pathname}
+              activeProjectId={activeProjectId}
             />
           ))}
         </SidebarMenu>
@@ -277,12 +306,27 @@ function AdminNavGroup() {
 function NavMenuItem({
   item,
   pathname,
+  activeProjectId,
 }: {
   item: NavItem;
   pathname: string;
+  activeProjectId: string | null;
 }) {
   const badge = useNavBadge(item.badgeKey);
-  const active = isNavItemActive(item.href, pathname);
+  // T-ProjectSwitch: work-surface hrefs resolve under the active project
+  // (/proj-1/leads). Active-state strips the project segment back to the
+  // template so /proj-1/leads/abc still highlights Leads. Unscoped items
+  // (/, /users, /audit) keep template behavior.
+  const href = projectHref(activeProjectId, item.href);
+  const scoped = isProjectScopedNavPath(item.href);
+  const active = scoped
+    ? isNavItemActive(
+        item.href,
+        activeProjectId === null
+          ? pathname
+          : stripProjectSegmentForNav(pathname),
+      )
+    : isNavItemActive(item.href, pathname);
   const Icon = item.icon;
   return (
     <SidebarMenuItem>
@@ -292,7 +336,7 @@ function NavMenuItem({
         tooltip={item.label}
       >
         <Link
-          href={item.href}
+          href={href}
           aria-current={active ? 'page' : undefined}
         >
           <Icon className="size-4 shrink-0" />

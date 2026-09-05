@@ -119,6 +119,12 @@ export class BookingsService {
         const where: Record<string, unknown> = {};
         if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
         if (dto.unitId !== undefined) where['unitId'] = dto.unitId;
+        // T-ProjectSwitch: filter by the active project via the parent
+        // Lead (Booking has no projectId of its own; its unit's project
+        // always matches the lead's project in practice).
+        if (dto.projectId !== undefined) {
+          where['lead'] = { ...(where['lead'] as object | undefined), projectId: dto.projectId };
+        }
         if (dto.approvedById !== undefined)
           where['approvedById'] = dto.approvedById;
         if (dto.status !== undefined) {

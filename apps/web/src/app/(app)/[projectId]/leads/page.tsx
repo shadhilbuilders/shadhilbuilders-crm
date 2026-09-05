@@ -17,10 +17,12 @@ import { useMemo, useState } from 'react';
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { useParams } from 'next/navigation';
+
 import { useLeads } from '@/hooks/queries/crm';
 import { useSessionUser } from '@/lib/session';
 
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '../../PageHeader';
 
 type LeadRow = {
   id: string;
@@ -34,11 +36,16 @@ type LeadRow = {
 
 export default function LeadInboxPage() {
   const { user } = useSessionUser();
+  // T-ProjectSwitch: the first URL segment IS the active project; the
+  // inbox queries only that project's leads.
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const leadsQuery = useLeads({
     state: stateFilter !== null ? [stateFilter] : undefined,
+    projectId: projectId ?? undefined,
     search: search.length >= 2 ? search : undefined,
     limit: 100,
   });
@@ -73,7 +80,7 @@ export default function LeadInboxPage() {
           // self-source leads (e.g. walk-ins).
           user !== null && user.role !== 'TELECALLER' ? (
             <Button asChild variant="default" size="sm">
-              <Link href="/leads/new" data-qa="new-lead-button">
+              <Link href={`/${projectId}/leads/new`} data-qa="new-lead-button">
                 + New lead
               </Link>
             </Button>
