@@ -9,6 +9,8 @@
 //   6. API_PORT non-numeric or <= 0 → BootEnvError.
 //   7. CORS_ORIGINS defaults to localhost list when absent.
 //   8. Multi-issue env → single BootEnvError with ALL issues (atomic).
+//   9. T-E2b Telegram vars are OPTIONAL — missing → defaults filled
+//      in, no error. Malformed (non-numeric) → BootEnvError.
 //
 // These run without a DB or Redis. The validator is pure — passes
 // process.env explicitly so we don't mutate real env.
@@ -208,5 +210,92 @@ describe('assertBootEnv — atomic error: every gap reported in one pass', () =>
       expect(msg).toMatch(/^\[boot-env\] 1 required env var\(s\) invalid:/);
       expect(msg).toMatch(/Refusing to start/);
     }
+  });
+});
+
+describe('assertBootEnv — T-E2b Telegram alert env vars (optional)', () => {
+  it('all Telegram vars missing → defaults filled, no error', () => {
+    const env = { ...VALID_ENV };
+    delete env.TELEGRAM_BOT_TOKEN;
+    delete env.TELEGRAM_CHANNEL_ID;
+    delete env.TELEGRAM_BOT_NAME;
+    delete env.TELEGRAM_ALERT_THRESHOLD;
+    delete env.TELEGRAM_ALERT_COOLDOWN_MS;
+
+    const result = assertBootEnv(env);
+    expect(result.TELEGRAM_BOT_TOKEN).toBe('');
+    expect(result.TELEGRAM_CHANNEL_ID).toBe('');
+    expect(result.TELEGRAM_BOT_NAME).toBe('ShadhilCRMAlertsBot');
+    expect(result.TELEGRAM_ALERT_THRESHOLD).toBe(3);
+    expect(result.TELEGRAM_ALERT_COOLDOWN_MS).toBe(900_000);
+  });
+
+  it('TELEGRAM_BOT_NAME explicit → surfaced on BootEnv', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_BOT_NAME: 'MyCustomBot',
+    };
+    const result = assertBootEnv(env);
+    expect(result.TELEGRAM_BOT_NAME).toBe('MyCustomBot');
+  });
+
+  it('TELEGRAM_ALERT_THRESHOLD explicit (custom) → surfaced', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_ALERT_THRESHOLD: '5',
+    };
+    const result = assertBootEnv(env);
+    expect(result.TELEGRAM_ALERT_THRESHOLD).toBe(5);
+  });
+
+  it('TELEGRAM_ALERT_THRESHOLD malformed (non-numeric) → BootEnvError', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_ALERT_THRESHOLD: 'not-a-number',
+    };
+    try {
+      assertBootEnv(env);
+      expect.fail('should have thrown');
+    } catch (err) {
+      const issues = (err as BootEnvError).issues.join('\n');
+      expect(issues).toMatch(/TELEGRAM_ALERT_THRESHOLD/);
+    }
+  });
+
+  it('TELEGRAM_ALERT_THRESHOLD < 1 → BootEnvError', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_ALERT_THRESHOLD: '0',
+    };
+    try {
+      assertBootEnv(env);
+      expect.fail('should have thrown');
+    } catch (err) {
+      const issues = (err as BootEnvError).issues.join('\n');
+      expect(issues).toMatch(/TELEGRAM_ALERT_THRESHOLD.*positive/);
+    }
+  });
+
+  it('TELEGRAM_ALERT_COOLDOWN_MS negative → BootEnvError', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_ALERT_COOLDOWN_MS: '-100',
+    };
+    try {
+      assertBootEnv(env);
+      expect.fail('should have thrown');
+    } catch (err) {
+      const issues = (err as BootEnvError).issues.join('\n');
+      expect(issues).toMatch(/TELEGRAM_ALERT_COOLDOWN_MS/);
+    }
+  });
+
+  it('TELEGRAM_ALERT_COOLDOWN_MS = 0 is allowed (no cooldown)', () => {
+    const env = {
+      ...VALID_ENV,
+      TELEGRAM_ALERT_COOLDOWN_MS: '0',
+    };
+    const result = assertBootEnv(env);
+    expect(result.TELEGRAM_ALERT_COOLDOWN_MS).toBe(0);
   });
 });

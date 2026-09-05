@@ -451,5 +451,63 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       expect(row?.lastError).toContain('Meta API: 400 invalid template');
       expect(row?.attempts).toBe(MAX_ATTEMPTS);
     });
+
+    it('T-E2b: every runOnce passes the tick result to alerts.recordTickResult', async () => {
+      // Stub the alerts service. The cron service is reconstructed
+      // for this test so we can inject the stub via the
+      // OutboundCronService.withReplicaId factory (which now takes
+      // an optional 5th arg).
+      const recordTickResult = vi.fn(
+        async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) =>
+          undefined,
+      );
+      const stubAlerts = {
+        recordTickResult,
+      } as unknown as import('../alerts/alerts.module').AlertsService;
+      const cronWithAlerts = OutboundCronService.withReplicaId(
+        prismaService,
+        stubRedis as unknown as RedisService,
+        outbound,
+        REPLICA_ID,
+        stubAlerts,
+      );
+
+      // Run once with a happy path — recordTickResult must be called
+      // exactly once with the resulting tick.
+      await seedOutbound('alerts-happy');
+      stubWhatsApp.nextResult = { wamid: 'wamid.alerts' };
+      const tick = await cronWithAlerts.runOnce();
+      expect(recordTickResult).toHaveBeenCalledTimes(1);
+      // The argument must be the same tick object the cron returned.
+      expect(recordTickResult.mock.calls[0]?.[0]).toBe(tick);
+    });
+
+    it('T-E2b: a throwing alerts service does NOT crash the cron (best-effort)', async () => {
+      // If alerts.recordTickResult throws (it shouldn't — it's
+      // contractually no-throw — but defense-in-depth), the cron
+      // must still complete and return a tick.
+      const stubAlerts = {
+        recordTickResult: vi.fn(
+          async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) => {
+            throw new Error('telegram down hard');
+          },
+        ),
+      } as unknown as import('../alerts/alerts.module').AlertsService;
+      const cronWithAlerts = OutboundCronService.withReplicaId(
+        prismaService,
+        stubRedis as unknown as RedisService,
+        outbound,
+        REPLICA_ID,
+        stubAlerts,
+      );
+
+      await seedOutbound('alerts-throw');
+      stubWhatsApp.nextResult = { wamid: 'wamid.alerts-throw' };
+
+      // runOnce must NOT throw.
+      const tick = await cronWithAlerts.runOnce();
+      expect(tick.lockHeld).toBe(true);
+      expect(tick.sent).toBe(1);
+    });
   },
 );
