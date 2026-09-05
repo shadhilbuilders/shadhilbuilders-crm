@@ -201,3 +201,48 @@ export function allowedNextStates(
   }
   return TRANSITIONS[from].filter((to) => canRoleTransition(from, to, role));
 }
+
+/**
+ * Can a user with `role` OWN a lead currently in state `state`?
+ *
+ * Distinct from canRoleTransition: that function gates the
+ * `from → to` edge; this one gates the *static* fact of whether
+ * the role is allowed to be the lead's owner in that state. Used
+ * by the manual-reassign flow (Plan §18 D2/D3) — when an admin
+ * or manager moves a lead to a new owner, the target user's role
+ * must permit owning the lead at its current state. (The
+ * transition is "self → self" in the state graph, so the regular
+ * canTransition check is trivially OK; the missing constraint is
+ * whether the target role is even a valid owner of that state.)
+ *
+ *   - TELECALLER: NEW / CONTACTED / VISIT_REQUESTED / VISIT_SCHEDULED
+ *     / RESCHEDULED / NO_SHOW (the lane Model C assigns to telecallers)
+ *   - SALES_EXEC: VISITED / NEGOTIATION / BOOKING_INITIATED (the
+ *     exec lane; the handoff at visit outcome is the boundary)
+ *   - MANAGER / ADMIN / OWNER: any state, including terminal
+ *     (managers run team pipelines end-to-end; admin + owner
+ *     own everything by definition).
+ */
+export function canRoleOwnState(state: LeadState, role: Role): boolean {
+  if (role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER') {
+    return true;
+  }
+  if (role === 'TELECALLER') {
+    return (
+      state === 'NEW' ||
+      state === 'CONTACTED' ||
+      state === 'VISIT_REQUESTED' ||
+      state === 'VISIT_SCHEDULED' ||
+      state === 'RESCHEDULED' ||
+      state === 'NO_SHOW'
+    );
+  }
+  if (role === 'SALES_EXEC') {
+    return (
+      state === 'VISITED' ||
+      state === 'NEGOTIATION' ||
+      state === 'BOOKING_INITIATED'
+    );
+  }
+  return false;
+}

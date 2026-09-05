@@ -28,10 +28,12 @@ import {
   CreateLeadDtoSchema,
   LeadFilterDtoSchema,
   LeadStateTransitionDtoSchema,
+  ReassignLeadDtoSchema,
   UpdateLeadDtoSchema,
   type CreateLeadDto,
   type LeadFilterDto,
   type LeadStateTransitionDto,
+  type ReassignLeadDto,
   type UpdateLeadDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
@@ -149,5 +151,31 @@ export class LeadsController {
     const parsed = parseBody(LeadStateTransitionDtoSchema, body);
     const dto: LeadStateTransitionDto = { ...parsed, leadId: id };
     return this.leads.transition(req.user!, dto);
+  }
+
+  @Post(':id/reassign')
+  @ApiOperation({
+    summary:
+      'Manual reassign (Plan §18 D2/D3). Allowed for ADMIN (any team) and MANAGER (same team). Server enforces the role + team + state-lane checks inside one withRlsContext transaction.',
+  })
+  async reassign(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<LeadRow> {
+    // The DTO already carries `leadId`; the param `id` is the
+    // URL-authoritative lead id. The DTO's leadId is set from
+    // the param (matches the transition endpoint's pattern) so
+    // a malicious body can't reassign a different lead.
+    const parsed = parseBody(ReassignLeadDtoSchema, body);
+    if (parsed.leadId !== id) {
+      // Belt + suspenders: the param is the source of truth. The
+      // body could try to claim a different leadId; reject.
+      throw new BadRequestException(
+        'leadId in body does not match URL id',
+      );
+    }
+    const dto: ReassignLeadDto = parsed;
+    return this.leads.reassign(req.user!, dto);
   }
 }
