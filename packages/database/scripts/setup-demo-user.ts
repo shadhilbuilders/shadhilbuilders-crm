@@ -111,8 +111,12 @@ async function main() {
   });
 
   // 3. Reassign all leads to the demo user + demo team.
+  // EXCLUDE test-fixture rows (ids prefixed `test-`) — backend tests
+  // (outbound.cron.test.ts et al.) create fixtures with fixed ids and
+  // fixed owner/team; stealing them breaks RLS scoping in those tests
+  // (42501 on message.create) for any run AFTER this script executes.
   const reassign = await prisma.lead.updateMany({
-    where: {},
+    where: { id: { not: { startsWith: 'test-' } } },
     data: { ownerId: demoUser.id, ownerType: 'MANAGER', teamId: demoTeam.id },
   });
 

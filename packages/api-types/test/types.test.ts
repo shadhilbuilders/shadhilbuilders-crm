@@ -15,6 +15,8 @@ import {
   AuditLogQueryDtoSchema,
   WhatsAppWebhookPayloadSchema,
   PaginationDtoSchema,
+  ChangePasswordDtoSchema,
+  ChangePasswordFormSchema,
 } from '../src';
 
 describe('@shadhil/api-types — enums', () => {
@@ -216,5 +218,70 @@ describe('@shadhil/api-types — common DTOs', () => {
   });
   it('PaginationDtoSchema caps limit at 200', () => {
     expect(() => PaginationDtoSchema.parse({ limit: 500 })).toThrow();
+  });
+});
+
+describe('@shadhil/api-types — change-password (T-S page + zod validation)', () => {
+  const valid = { oldPassword: 'oldpass1', newPassword: 'newpass12', confirmPassword: 'newpass12' };
+
+  it('ChangePasswordDtoSchema (server wire contract) parses old+new only', () => {
+    const r = ChangePasswordDtoSchema.parse({
+      oldPassword: 'oldpass12',
+      newPassword: 'newpass12',
+    });
+    expect(r.newPassword).toBe('newpass12');
+  });
+
+  it('ChangePasswordFormSchema parses a valid matching trio', () => {
+    const r = ChangePasswordFormSchema.parse(valid);
+    expect(r.confirmPassword).toBe('newpass12');
+  });
+
+  it('Form schema rejects newPassword under 8 chars (same rule as the server DTO)', () => {
+    expect(() =>
+      ChangePasswordFormSchema.parse({ ...valid, newPassword: 'short' }),
+    ).toThrow();
+  });
+
+  it('Form schema rejects empty confirmPassword', () => {
+    expect(() =>
+      ChangePasswordFormSchema.parse({ ...valid, confirmPassword: '' }),
+    ).toThrow();
+  });
+
+  it('Form schema rejects mismatched confirmation, attaching the error to confirmPassword', () => {
+    const result = ChangePasswordFormSchema.safeParse({
+      ...valid,
+      confirmPassword: 'different456',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('confirmPassword');
+      const confirmIssue = result.error.issues.find(
+        (i) => i.path.join('.') === 'confirmPassword',
+      );
+      expect(confirmIssue?.message).toBe(
+        'New password and confirmation do not match',
+      );
+    }
+  });
+
+  it('Form schema is a strict superset: every value valid for the FORM is valid for the server DTO (no drift)', () => {
+    // The drift guard: strip confirmPassword and the remaining payload
+    // MUST satisfy the server contract. If someone loosens the form
+    // schema independently of the server DTO, this fails.
+    const formParsed = ChangePasswordFormSchema.parse(valid);
+    const wire = ChangePasswordDtoSchema.safeParse({
+      oldPassword: formParsed.oldPassword,
+      newPassword: formParsed.newPassword,
+    });
+    expect(wire.success).toBe(true);
+  });
+
+  it('Server DTO rejects newPassword under 8 chars (unchanged contract)', () => {
+    expect(() =>
+      ChangePasswordDtoSchema.parse({ oldPassword: 'x', newPassword: 'short' }),
+    ).toThrow();
   });
 });
