@@ -2185,21 +2185,24 @@ client-locked) → surfaced at gate.
 
 ## Implementation Tasks (aggregated)
 
-- [ ] **T-D4 (P1, human ~6h / CC ~45min)** — mobile+backend — Offline visit-outcome queue (save-local, retry, dedupe, conflict rule)
+- [x] **T-D4 (P1, human ~6h / CC ~45min)** — mobile+backend — Offline visit-outcome queue (save-local, retry, dedupe, conflict rule)
   - Surfaced by: design D4 + eng #11 — Files: apps/mobile visit module, apps/backend visits controller
   - Verify: Maestro flow offline-outcome.yaml + unit test for conflict resolution
-- [ ] **T-D3 (P1, human ~4h / CC ~30min)** — all UI — State matrix: loading/empty/error/partial per surface + SSE Connected/Reconnecting/Offline pill spec
+  - DONE 2026-09-05 (commit d72819e): web+backend slice — idempotent-replay + stale-write 409 conflict rule (visits.service), enqueueUnique dedupe (offline-store), LeadVisitPanel offline fallback + isOfflineError, replay auth fix (/api/bff — old /api/backend rewrite dropped the `api` prefix AND had no Bearer token → every replay 401/404), badge replay query invalidation. Gates: backend 646, RLS 135, web 219, offline-store 26. DEFERRED with mobile (Weeks 8-10): Maestro offline-outcome.yaml, SW Background Sync replay handler, apps/mobile visit module.
+- [x] **T-D3 (P1, human ~4h / CC ~30min)** — all UI — State matrix: loading/empty/error/partial per surface + SSE Connected/Reconnecting/Offline pill spec
   - Surfaced by: design D3+D5 — Files: apps/web features, apps/mobile screens, WIREFRAMES.md
   - Verify: Playwright per-surface state tests
+  - DONE 2026-09-05 (commit 0bdcf67): docs/planning/STATE-MATRIX.md (single source of truth for the loading/empty/error/partial contract + SSE pill states) + vitest state-matrix tests for the 3 largest untested surfaces (leads list 4 cases, leads/[id] detail 3, users 5 — pins the users page's inline-error-by-design choice). Remaining smaller surfaces (visits calendar, inventory, bookings/new, root dashboard) are listed as gaps in STATE-MATRIX.md; Playwright e2e variant deferred with apps/mobile (vitest chosen per repo convention — no @testing-library/react).
 - [ ] **T-D8 (P1, human ~1h / CC ~10min)** — ui-tokens — WCAG AA status token set + chip styles
   - Surfaced by: design D8 — Files: packages/ui-tokens, WIREFRAMES.md legend
   - Verify: contrast check script in compliance.test.ts
 - [ ] **T-E2 (P1, human ~3h / CC ~25min)** — backend — SSE one-time stream tickets (?ticket=, short TTL, bind userId+leadId, no token in logs)
   - Surfaced by: eng voice #2 — Files: apps/backend/src/realtime, new tickets service
   - Verify: integration test: expired/replayed ticket rejected
-- [ ] **T-G1 (P1, human ~4h / CC ~30min)** — backend — Route ALL request-scoped business writes through withRlsContext; §18 reassign rewritten in-transaction (fetch+update+reminders+audit+SSE), owner/ADMIN guard, coOwnerId cleanup
+- [x] **T-G1 (P1, human ~4h / CC ~30min)** — backend — Route ALL request-scoped business writes through withRlsContext; §18 reassign rewritten in-transaction (fetch+update+reminders+audit+SSE), owner/ADMIN guard, coOwnerId cleanup
   - Surfaced by: eng G-1/G-5-critical — Files: apps/backend/src/leads/*, packages/database/src/rls.ts
   - Verify: reassign integration test + lint rule/grep CI check banning bare prisma in controllers
+  - DONE 2026-09-05 (commits f49eae2 + this one): reassign endpoint (POST /api/leads/:id/reassign) fully inside withRlsContext — owner/ADMIN guard, team-scoped MANAGER guard, canRoleOwnState target-role check, same-owner no-op, coOwnerId preserved (dedicated coOwner endpoint is the follow-up), teamless-target teamId preservation; leads.reassign.test.ts 11 real-DB tests (ADMIN cross-team, MANAGER same/cross-team 403, TELECALLER/SALES_EXEC 403 incl. RLS-404 caveat, target-role-in-state 400, VISITED-lane happy path, audit before/after, no-op no-audit); bare-prisma CI guardrail (scripts/check-bare-prisma.mjs + guardrails job — tamper-verified exit 1 on planted violation; ALLOWLIST documents the 5 sanctioned bare-client paths). Gates: backend 646, RLS 135, type-check clean.
 - [ ] **T-G2 (P1, human ~2h / CC ~15min)** — database — Fix reminder_select_manager team leak + unset-var deny-all hardening across policies
   - Surfaced by: eng G-2/G-3 — Files: packages/database/prisma/rls/policies.sql
   - Verify: RLS matrix negative cases

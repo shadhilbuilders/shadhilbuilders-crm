@@ -71,6 +71,19 @@ jobs:
       - run: pnpm --filter @shadhil/database generate
       - run: pnpm lint
 
+  # T-G1 verify item: "lint rule/grep CI check banning bare prisma in
+  # controllers". Node script (no DB, ~1s) — scans apps/backend/src for
+  # bare prisma-client imports that never pass the client into
+  # withRlsContext. Sanctioned paths (webhook ingest, system cron,
+  # better-auth session lookup) live in the script's ALLOWLIST with a
+  # documented why.
+  guardrails:
+    name: Guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/check-bare-prisma.mjs
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
