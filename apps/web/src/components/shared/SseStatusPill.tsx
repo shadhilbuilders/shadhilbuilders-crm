@@ -26,7 +26,7 @@
 // churn for no functional gain.
 
 import { useEffect, useState } from 'react';
-import { LuCircleAlert, LuCircleCheck, LuCircleDot } from '@paalstack/react-icons/lu';
+import { LuCircleAlert, LuCircleCheckBig, LuCircleDot } from '@paalstack/react-icons/lu';
 
 export type SseConnectionState =
   | 'connecting'
@@ -120,7 +120,7 @@ export function SseStatusPill({
       aria-live="polite"
       aria-label={STATE_ARIA[state]}
       data-state={state}
-      className={className ?? 'inline-flex items-center gap-1.5 text-xs'}
+      className={className ?? 'inline-flex items-center gap-1.5 text-sm'}
     >
       <SseStateIcon state={state} />
       <span className="sr-only sm:not-sr-only">{STATE_LABELS[state]}</span>
@@ -129,10 +129,10 @@ export function SseStatusPill({
 }
 
 function SseStateIcon({ state }: { state: SseConnectionState }) {
-  const className = 'h-2.5 w-2.5 shrink-0';
+  const className = 'size-4 shrink-0';
   switch (state) {
     case 'open':
-      return <LuCircleCheck className={`${className} text-emerald-500`} aria-hidden />;
+      return <LuCircleCheckBig className={`${className} text-emerald-500`} aria-hidden />;
     case 'connecting':
     case 'reconnecting':
       return <LuCircleDot className={`${className} animate-pulse text-amber-500`} aria-hidden />;

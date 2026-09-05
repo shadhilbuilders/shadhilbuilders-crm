@@ -6,16 +6,19 @@
 // user menu) here. The Phase-2 shell (plan §3.1) moves module nav
 // into the sidebar; this topbar becomes:
 //   - SidebarTrigger (mobile-only hamburger that opens the Sheet)
-//   - page title slot (left blank - T10 wires per-page titles)
+//   - welcome greeting (large, colored - the visual focus of the topbar)
 //   - OfflineQueueBadge (D6: revalidation signal sits next to the user
 //     surface that queues work, not in a global <main>)
-//   - UserMenu popover (avatar + sign out)
+//   - UserMenu popover (avatar + sign out + Settings)
 //
 // Plan §3.2 / §11 T8. Note: the notification bell is rendered
 // explicitly with `useNotifications({unreadOnly:true})` so the count
 // is honest - it reads from the live query, never a hard-coded value.
 // Until the notifications module ships, the count stays at 0 (which
 // matches the badge contract in ModulePending: no fake numbers).
+//
+// T-D3 SSE pill: hidden by default; rendered when the URL has
+// `?debug=1`. The pill is a dev/ops signal, not user-facing chrome.
 
 import {
   Button,
@@ -24,8 +27,10 @@ import {
   PopoverTrigger,
   Separator,
 } from '@paalstack/react-ui';
-import { LuBell, LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
+import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import { SidebarTrigger } from '@paalstack/react-ui';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
@@ -39,21 +44,47 @@ import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 export function AppHeader() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
+  const searchParams = useSearchParams();
+  // T-D3: SSE pill only renders when the URL has ?debug=1. Read on
+  // every render so URL changes (e.g. devtools typing the query) take
+  // effect immediately. searchParams is stable per render from
+  // next/navigation.
+  const showDebugPill = searchParams.get('debug') === '1';
 
   return (
     <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         <SidebarTrigger className="-ml-1 md:hidden" />
+        {isPending ? (
+          <span
+            aria-hidden
+            className="text-muted-foreground hidden truncate text-base font-semibold sm:inline"
+            data-qa="topbar-greeting"
+          >
+            {'\u00a0'}
+          </span>
+        ) : user !== null ? (
+          <span
+            className="text-foreground hidden min-w-0 truncate text-base font-semibold sm:inline"
+            data-qa="topbar-greeting"
+          >
+            Welcome, {user.name || user.email}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
         <OfflineQueueBadge />
-        {/* T-D3: SSE connection-state pill - sits next to the bell so
-            the user sees the realtime channel status at a glance.
-            Connects to /api/sse/ping (the existing heartbeat endpoint)
-            and reports Connected / Reconnecting / Offline with a
-            colored dot + screen-reader label. */}
-        <SseStatusPill className="text-muted-foreground px-2" />
+        {showDebugPill ? (
+          <>
+            <SseStatusPill />
+            <span
+              aria-hidden="true"
+              data-qa="topbar-debug-separator"
+              className="bg-border mx-1 block h-4 w-px shrink-0 self-center"
+            />
+          </>
+        ) : null}
         <ThemeToggle />
         <NotificationBell />
         {/* T23 (PR3): render a UserSkeleton placeholder in the slot
@@ -96,7 +127,7 @@ function NotificationBell() {
         count === 0 ? 'Notifications' : `${count} unread notifications`
       }
     >
-      <LuBell className="h-4 w-4" />
+      <LuBell className="size-5" />
       {count > 0 ? (
         <span
           className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
@@ -123,7 +154,7 @@ function UserMenu({
       <PopoverTrigger
         render={
           <Button variant="ghost" size="sm" className="min-h-11 gap-2 px-3">
-            <LuUserRound className="h-4 w-4" />
+            <LuUserRound className="size-5" />
             <span className="hidden max-w-[10rem] truncate sm:inline">
               {name}
             </span>
@@ -136,6 +167,13 @@ function UserMenu({
           <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
         </div>
         <Separator />
+        <Link
+          href="/settings"
+          className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
+        >
+          <LuSettings className="size-4 shrink-0" />
+          Settings
+        </Link>
         <Button
           variant="ghost"
           size="sm"

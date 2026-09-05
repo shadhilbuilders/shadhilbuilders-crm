@@ -58,6 +58,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
 } from '@paalstack/react-ui';
@@ -86,15 +87,18 @@ export function AppShell() {
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <div className="flex items-center gap-2">
           {/* Full brand lockup on its native white tile - rendered as a
               rounded chip so the opaque white canvas reads as intentional
               in both themes instead of a floating white box. The tagline
               is part of the asset; h-8 keeps it legible. In the collapsed
-              (icon) rail the wordmark truncates to a compact strip. */}
+              (icon) rail the wordmark truncates to a compact strip.
+              No px-* here: the SidebarHeader already adds p-2, and the
+              nav items below also use p-2, so the brand and nav share
+              the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
             href="/"
-            className="border-border inline-flex h-10 shrink-0 items-center overflow-hidden rounded-md border bg-white px-2.5 dark:bg-white"
+            className="inline-flex h-15 shrink-0 items-center overflow-hidden rounded-md bg-white px-2.5 dark:bg-white"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
@@ -103,7 +107,7 @@ export function AppShell() {
               alt="Shadhil Builders"
               width={112}
               height={34}
-              className="h-9 w-auto object-contain"
+              className="h-11/12 w-auto object-contain"
             />
           </Link>
           {/* The chip carries the full brand lockup (wordmark + tagline);
@@ -121,6 +125,12 @@ export function AppShell() {
         <Separator />
         <UserMenuFooter />
       </SidebarFooter>
+      {/* Right-edge rail: desktop toggle for expand/collapse. Renders a
+          thin clickable strip with the chevron icon, sits on the right
+          edge of the sidebar, hidden on mobile (the SidebarTrigger above
+          handles the mobile Sheet open/close). The library renders the
+          chevron automatically and rotates it on state. */}
+      <SidebarRail data-qa="sidebar-rail" />
     </Sidebar>
   );
 }
@@ -219,11 +229,11 @@ function NavMenuItem({
           href={item.href}
           aria-current={active ? 'page' : undefined}
         >
-          <Icon className="size-5 shrink-0" />
+          <Icon className="size-4 shrink-0" />
           <span className="min-w-0 truncate">{item.label}</span>
         </Link>
       </SidebarMenuButton>
-      {item.badgeKey !== undefined ? (
+      {item.badgeKey !== undefined && badge > 0 ? (
         <SidebarMenuBadge>{badge}</SidebarMenuBadge>
       ) : null}
     </SidebarMenuItem>
@@ -276,7 +286,7 @@ function UserIdentity({ name, role }: { name: string; role: string }) {
       title={`${name} - ${role.replace(/_/g, ' ')}`}
       data-qa="sidebar-user-identity"
     >
-      <LuUserRound className="size-5 shrink-0" />
+      <LuUserRound className="size-4 shrink-0" />
       <span className="hidden min-w-0 flex-1 truncate text-left text-sm sm:inline">
         {name}
       </span>
