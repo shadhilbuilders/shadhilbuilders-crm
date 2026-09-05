@@ -10,12 +10,17 @@
 // Left: logo-with-bg.png inside a fixed-height row — the asset is a
 // full horizontal lockup (wordmark + tagline on a white tile), so it
 // renders as a rounded, bordered chip whose height drives the scale;
-// the tagline stays legible because the row is 48px tall, unlike the
+// the tagline stays legible because the chip is 40px tall, unlike the
 // 28px sidebar mark where the tagline smudges.
 // Right: the ThemeToggle icon button (the same one the authenticated
 // topbar uses) — theme is switchable BEFORE sign-in too, since the
 // OS default can be wrong and the user shouldn't have to authenticate
 // to fix eye-gouging contrast.
+//
+// Layout: the inner row uses the app's standard container pattern
+// (`container mx-auto w-full max-w-7xl px-4`, same as
+// (app)/layout.tsx) so the bar's content aligns with the app content
+// column on wide screens instead of hugging the viewport edge.
 //
 // The bar is deliberately minimal: no nav links (an unauthenticated
 // visitor has nowhere else to go), no user menu. Layout wrapper
@@ -31,7 +36,7 @@ export function AuthTopBar() {
       data-qa="auth-topbar"
       className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
     >
-      <div className="mx-auto flex h-14 w-full max-w-md items-center justify-between gap-3 px-4">
+      <div className="container mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 items-center gap-2" data-qa="auth-brand">
           {/* Full lockup on a white chip: the asset has an opaque white
               canvas, so it must NOT blend into a themed surface — give
