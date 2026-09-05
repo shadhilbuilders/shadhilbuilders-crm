@@ -177,10 +177,24 @@ export class OutboundService {
       if (row.sendType === 'TEMPLATE') {
         const templateName = this.resolveTemplateName(row);
         const vars = (row.templateVars as Record<string, string> | null) ?? {};
-        const parameters = Object.values(vars).map((text) => ({
-          type: 'text' as const,
-          text,
-        }));
+        // Map the row's `templateVars` (the chat service populates
+        // this with the right keys for the template) into the
+        // ordered Meta `parameters` array. The order of values
+        // MUST match the {{1}}, {{2}}, … placeholder order in the
+        // template body — Meta rejects out-of-order parameters.
+        // See apps/backend/src/whatsapp/whatsapp.client.ts for
+        // the full template specs (3 templates: shadhil_chat_reply,
+        // shadhil_visit_followup, shadhil_visit_reminder).
+        //
+        // We sort the values alphabetically by key for a stable
+        // order. The chat service writes the keys in a specific
+        // order ('1', '2', '3', '4') so alphabetical sort == the
+        // intended Meta order. If you add a template with 3+ vars,
+        // keep the keys as zero-padded strings to preserve the
+        // alphabetical == numeric ordering.
+        const parameters = Object.entries(vars)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, text]) => ({ type: 'text' as const, text }));
         const delivery = await this.whatsapp.sendTemplateMessage(
           await this.leadPhone(row.leadId),
           templateName,

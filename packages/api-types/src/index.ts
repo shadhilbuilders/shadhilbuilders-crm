@@ -19,5 +19,6 @@ export * from './reminders';
 export * from './notifications';
 export * from './audit';
 export * from './webhooks';
+export * from './whatsapp-unknown-contacts';
 export * from './common';
 export * from './realtime';

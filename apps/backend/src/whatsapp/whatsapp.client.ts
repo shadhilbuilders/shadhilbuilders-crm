@@ -19,6 +19,80 @@
 //
 // Server-side only. All credentials come from env vars; nothing is
 // hardcoded and nothing is exposed to the client.
+//
+// ────────────────────────────────────────────────────────────────────
+// Meta template submissions (paste into Meta Business Suite
+// → WhatsApp Manager → Message Templates → Create template)
+// ────────────────────────────────────────────────────────────────────
+// The cron (outbound.cron.ts) calls sendTemplateMessage for every
+// PENDING OutboundMessage. Meta requires each template to be
+// submitted and approved before any business can send it. The
+// three templates below cover T-E2b's outbound paths:
+//
+// 1. shadhil_chat_reply  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_CHAT_REPLY
+//    Category:  Utility (customer-initiated reply window — must be sent
+//                within 24h of the lead's last inbound message)
+//    Header:    none
+//    Body:      "Hi {{1}}, {{2}}"
+//    Buttons:   none
+//    Sample:
+//                Hi Aarav, thanks for the enquiry about the 3BHK
+//                in Shadhil Meadows — let me know if you have any
+//                questions.
+//    Variables: {{1}} = lead first name (max 60 chars)
+//                {{2}} = message body (max 1024 chars; chat service
+//                         truncates to 1000)
+//    When sent: chat service → outbound.send() with
+//               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
+//
+// 2. shadhil_visit_followup  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_VISIT_FOLLOWUP
+//    Category:  Utility (proactive — must respect 24h+ window after
+//                last inbound; this is for follow-ups to leads whose
+//                last inbound was > 24h ago)
+//    Header:    none
+//    Body:      "Hi {{1}}, just following up on your site visit for {{2}}.
+//                Are you still interested? Reply YES to chat."
+//    Buttons:   none
+//    Sample:
+//                Hi Priya, just following up on your site visit for
+//                Shadhil Meadows. Are you still interested? Reply YES
+//                to chat.
+//    Variables: {{1}} = lead first name (max 60 chars)
+//                {{2}} = project name (max 60 chars)
+//    When sent: visit → site-visit service → outbound.send() with
+//               templateName: 'shadhil_visit_followup', sendType: TEMPLATE
+//               (scheduled 24-48h after the site visit)
+//
+// 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_VISIT_REMINDER
+//    Category:  Utility (proactive reminder for upcoming visit)
+//    Header:    none
+//    Body:      "Your site visit for {{1}} is on {{2}}. Reply YES
+//                to confirm or RESCHEDULE."
+//    Buttons:   none
+//    Sample:
+//                Your site visit for Shadhil Meadows is on
+//                Friday, 12 Sept at 10:00 AM. Reply YES to confirm
+//                or RESCHEDULE.
+//    Variables: {{1}} = project name (max 60 chars)
+//                {{2}} = datetime (formatted, max 60 chars — e.g.
+//                         "Friday, 12 Sept at 10:00 AM")
+//    When sent: reminder cron (T-E2b follow-up) → outbound.send() with
+//               templateName: 'shadhil_visit_reminder', sendType: TEMPLATE
+//               (scheduled 1-2h before the visit)
+//
+// Env-var name mapping (defaults to the template name itself):
+//   WHATSAPP_TEMPLATE_CHAT_REPLY       default 'shadhil_chat_reply'
+//   WHATSAPP_TEMPLATE_VISIT_FOLLOWUP   default 'shadhil_visit_followup'
+//   WHATSAPP_TEMPLATE_VISIT_REMINDER   default 'shadhil_visit_reminder'
+//   WHATSAPP_TEMPLATE_LANGUAGE         default 'en'
+//
+// Test-mode override: Meta allows you to send any approved template
+// to numbers on the test allowlist (your own + the test numbers
+// added in App Dashboard → WhatsApp → API Setup). Until a real
+// business is approved and onboarded, add your test phone there
+// and use the env var overrides to point at the test-template-name
+// you have approved.
+// ────────────────────────────────────────────────────────────────────
 
 import { Injectable, Logger } from '@nestjs/common';
 

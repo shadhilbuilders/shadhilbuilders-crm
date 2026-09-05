@@ -152,6 +152,25 @@ export type ConsentType = z.infer<typeof ConsentTypeSchema>;
 export const WebhookSourceSchema = z.enum(['WHATSAPP', 'FREJUN']);
 export type WebhookSource = z.infer<typeof WebhookSourceSchema>;
 
+// ────────────────────────────────────────────────────────────────────
+// T-E2b follow-up queue (Week 7 admin UI)
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle of a WhatsappUnknownContact. PENDING is the active
+ * follow-up queue (telecaller/admin calls the person, then picks
+ * CONVERT or SPAM). CONVERTED links to a Lead via convertedToLeadId.
+ * SPAM is a soft-delete (wrong number / bot / not interested).
+ */
+export const WhatsappUnknownContactStatusSchema = z.enum([
+  'PENDING',
+  'CONVERTED',
+  'SPAM',
+]);
+export type WhatsappUnknownContactStatus = z.infer<
+  typeof WhatsappUnknownContactStatusSchema
+>;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Convenience union — every enum schema, exported for runtime validation.
 // ────────────────────────────────────────────────────────────────────────────
@@ -172,4 +191,5 @@ export const ALL_ENUM_SCHEMAS = {
   PushStatus: PushStatusSchema,
   ConsentType: ConsentTypeSchema,
   WebhookSource: WebhookSourceSchema,
+  WhatsappUnknownContactStatus: WhatsappUnknownContactStatusSchema,
 };

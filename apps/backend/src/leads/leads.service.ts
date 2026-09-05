@@ -67,6 +67,29 @@ export interface LeadRow {
 }
 
 /**
+ * Richer lead shape returned by `createInTransaction()`. The
+ * standard `LeadRow` is the list-page projection (subset of
+ * fields). `createInTransaction()` returns the full persisted record
+ * so callers (e.g. the WhatsApp convert flow) can use the new
+ * lead's `phoneE164` to verify against the contact's phone, the
+ * `teamId` for follow-up routing, the `state` for the UI's "what's
+ * the new lead's state" hint, and the `createdAt` timestamp.
+ */
+export interface CreatedLead {
+  id: string;
+  name: string;
+  phone: string;
+  phoneE164: string | null;
+  state: string;
+  source: string | null;
+  ownerId: string;
+  ownerName: string | null;
+  teamId: string;
+  createdAt: Date;
+  updatedAt: string;
+}
+
+/**
  * Result shape returned by `list()`. The page (apps/web/src/app/(app)/leads/page.tsx)
  * reads these exact fields — keep them in sync if you rename.
  */
@@ -221,10 +244,103 @@ export class LeadsService {
    * bypass); see T-ARM in the open-tasks tracker.
    */
   async create(actor: JwtPayload, dto: CreateLeadDto): Promise<LeadRow> {
-    // 1. Resolve teamId first — we need it for the rule query.
+    // Public path: open the RLS transaction ourselves, then run the
+    // create logic. Returns LeadRow (the list-page projection).
+    const created = await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      (tx) => this._createWithClient(actor, dto, tx as unknown as PrismaClient),
+    );
+    return {
+      id: created.id,
+      name: created.name,
+      phone: created.phone,
+      status: created.state,
+      source: created.source,
+      ownerId: created.ownerId,
+      ownerName: created.ownerName,
+      updatedAt: created.updatedAt,
+    };
+  }
+
+  /**
+   * T-E2b follow-up (2026-09-05): richer return + transaction
+   * override for the WhatsApp convert flow.
+   *
+   * Accepts a `clientOverride` so the call can run inside a
+   * caller-owned transaction (the convert flow opens a tx
+   * with withRlsContext(actor) and needs the Lead insert +
+   * WhatsappUnknownContact update to commit atomically).
+   *
+   * Note: the `clientOverride` is expected to ALREADY have the
+   * RLS context set (i.e. it's a tx client from a parent
+   * withRlsContext block). The caller is responsible for opening
+   * the transaction and setting the GUCs — we don't open a nested
+   * transaction here because Prisma 7's pg driver adapter
+   * doesn't support `$transaction` on a transaction client.
+   *
+   * Returns the full `CreatedLead` (phoneE164, state, teamId,
+   * createdAt) so the convert flow can render the new Lead's
+   * state in the response without a re-query.
+   */
+  async createInTransaction(
+    actor: JwtPayload,
+    dto: CreateLeadDto,
+    clientOverride: PrismaClient,
+  ): Promise<CreatedLead> {
+    return this._createWithClient(actor, dto, clientOverride);
+  }
+
+  /**
+   * Internal helper. Pure async — does NOT open a transaction.
+   * Caller must have already set up the RLS context (either by
+   * passing the tx client from a parent withRlsContext, or by
+   * being the bare prisma client and using the public create()
+   * wrapper which opens the tx for you).
+   *
+   * We pull team/rules/team-default-lookup OUT of the inner
+   * transaction (steps 1-4) because those reads are fine on the
+   * bare client; the only writes (Lead create + audit log) are
+   * inside the inner withRlsContext, which we open here using
+   * the supplied `client`.
+   *
+   * Actually — we run EVERYTHING in one withRlsContext block
+   * because the engine's read of `actor.teamId` is gated by
+   * RLS, and partial reads outside the tx would fail. So if
+   * `client` is a tx, opening another tx via `withRlsContext`
+   * would nest. To avoid the nesting problem, we accept a
+   * `client` that's expected to ALREADY have RLS set, and skip
+   * the SET LOCAL by detecting whether the client is the bare
+   * one. Concretely: the public create() wraps a fresh
+   * withRlsContext, then calls _createWithClient(actor, dto, tx).
+   * The tx already has app.user_role=actor.role set; _createWithClient
+   * just runs the queries against that tx.
+   *
+   * To make this work for BOTH the public create() (where we own
+   * the tx) and createInTransaction() (where the caller owns the
+   * tx), _createWithClient always uses the client as-is. The
+   * public create() therefore does a TWO-LEVEL withRlsContext:
+   * the outer one sets the GUCs and the inner one is a no-op
+   * tx-wrap on the tx client (which IS supported by Prisma 7 if
+   * the inner is a savepoint, or — for the pg adapter — might
+   * require a workaround).
+   *
+   * The cleanest path: split this into two helpers — one for the
+   * "I own the transaction" case, one for the "I have a tx
+   * already" case — and have each open the correct number of
+   * transactions.
+   */
+  private async _createWithClient(
+    actor: JwtPayload,
+    dto: CreateLeadDto,
+    client: PrismaClient,
+  ): Promise<CreatedLead> {
+    // Steps 1-4: read team + rules (these run inside the tx so the
+    // RLS context is active). The engine reads via `client` which
+    // is the tx client when called from createInTransaction.
     let teamId: string | null = actor.teamId;
     if (actor.role === 'MANAGER') {
-      const team = await this.client.team.findFirst({
+      const team = await client.team.findFirst({
         where: { managerId: actor.sub },
         select: { id: true },
       });
@@ -241,11 +357,7 @@ export class LeadsService {
       );
     }
 
-    // 2. Pull active rules for the team. The engine does the
-    //    sorting; we just feed it the candidates.
-    //    T-ARM-SCHEMA (2026-09-04): the rule model now has priority +
-    //    projectId / phaseId / language / region criteria columns.
-    const ruleRows = await this.client.managerAssignmentRule.findMany({
+    const ruleRows = await client.managerAssignmentRule.findMany({
       where: { teamId, active: true },
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -264,8 +376,7 @@ export class LeadsService {
     });
     const rules: ManagerAssignmentRule[] = ruleRows;
 
-    // 3. Load the team (for defaultAssigneeId — T-ARM-SCHEMA fallback).
-    const teamRow = await this.client.team.findUnique({
+    const teamRow = await client.team.findUnique({
       where: { id: teamId },
       select: { id: true, defaultAssigneeId: true },
     });
@@ -274,26 +385,19 @@ export class LeadsService {
       defaultAssigneeId: teamRow?.defaultAssigneeId ?? null,
     };
 
-    // 4. Build a target resolver. We don't pre-fetch every user
-    //    (could be many) — the engine short-circuits on first match.
     const resolveTarget = async (
       userId: string,
     ): Promise<TargetUser | null> => {
-      const u = await this.client.user.findUnique({
+      const u = await client.user.findUnique({
         where: { id: userId },
         select: { id: true, role: true },
       });
       return u === null ? null : { id: u.id, role: u.role as TargetUser['role'] };
     };
 
-    // 5. Run the engine. The async wrapper below resolves the
-    //    target user(s) lazily — the engine itself stays sync.
     const leadAttrs: LeadAttributes = {
       source: dto.source,
       projectId: dto.projectId ?? null,
-      // phaseId / language / region are not on LeadAttributes today;
-      // the engine treats the absence as null → wildcard for any
-      // rule criterion that isn't set.
     };
 
     const resolution = await this.resolveOwnerFromEngine(
@@ -304,117 +408,109 @@ export class LeadsService {
       actor.sub,
     );
 
-    // ownerId from the engine's result. The fallback (actor.sub) is
-    // already embedded in the discriminated union so the service
-    // doesn't need a `?? actor.sub` here.
     const ownerId = resolution.userId;
 
-    return withRlsContext(
-      this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
-      async (tx) => {
-        // Phone uniqueness is enforced by Prisma; surface a friendly 409
-        // instead of a 500 by pre-checking.
-        const existing = await tx.lead.findUnique({
-          where: { phone: dto.phone },
-          select: { id: true },
-        });
-        if (existing) {
-          throw new BadRequestException(
-            `Lead with phone ${dto.phone} already exists`,
-          );
-        }
+    // Steps 5+: write Lead + audit log. The `client` is already a
+    // tx with RLS context set, so we use it directly — no inner
+    // withRlsContext wrapper.
+    const existing = await client.lead.findUnique({
+      where: { phone: dto.phone },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Lead with phone ${dto.phone} already exists`,
+      );
+    }
 
-        const created = await tx.lead.create({
-          data: {
-            name: dto.name,
-            phone: dto.phone,
-            email: dto.email ?? null,
-            source: dto.source,
-            projectId: dto.projectId ?? null,
-            ownerId: ownerId,
-            ownerType: this.ownerTypeForRole(actor.role),
-            teamId,
-          },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            state: true,
-            source: true,
-            ownerId: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-          },
-        });
+    const created = await client.lead.create({
+      data: {
+        name: dto.name,
+        phone: dto.phone,
+        email: dto.email ?? null,
+        source: dto.source,
+        projectId: dto.projectId ?? null,
+        ownerId: ownerId,
+        ownerType: this.ownerTypeForRole(actor.role),
+        teamId,
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        phoneE164: true,
+        state: true,
+        source: true,
+        ownerId: true,
+        teamId: true,
+        createdAt: true,
+        updatedAt: true,
+        owner: { select: { name: true } },
+      },
+    });
 
-        // Audit the routing decision. The `metadata` shape records
-        // exactly which path matched so future debugging (and the
-        // CRM analytics dashboard) can attribute every assignment.
-        const assignmentMetadata =
-          resolution.kind === 'rule'
-            ? {
-                kind: 'rule' as const,
-                ruleId: resolution.ruleId,
-                priority: resolution.priority,
-              }
-            : resolution.kind === 'team-default'
-              ? { kind: 'team-default' as const, teamId }
-              : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
+    const assignmentMetadata =
+      resolution.kind === 'rule'
+        ? {
+            kind: 'rule' as const,
+            ruleId: resolution.ruleId,
+            priority: resolution.priority,
+          }
+        : resolution.kind === 'team-default'
+          ? { kind: 'team-default' as const, teamId }
+          : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
 
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'lead.assigned',
-            entityType: 'Lead',
-            entityId: created.id,
-            after: {
-              name: created.name,
-              phone: created.phone,
-              source: created.source,
-              ownerId: created.ownerId,
-              teamId,
-              createdBy: actor.sub,
-              ...assignmentMetadata,
-            },
-            reason: `lead.create by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        // lead.create audit (matches prior shape — keeps the
-        // timeline/back-compat intact for the existing surface).
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'lead.create',
-            entityType: 'Lead',
-            entityId: created.id,
-            after: {
-              name: created.name,
-              phone: created.phone,
-              source: created.source,
-              ownerId: created.ownerId,
-              teamId,
-              createdBy: actor.sub,
-            },
-            reason: `lead.create by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        return {
-          id: created.id,
+    await client.auditLog.create({
+      data: {
+        userId: actor.sub,
+        action: 'lead.assigned',
+        entityType: 'Lead',
+        entityId: created.id,
+        after: {
           name: created.name,
           phone: created.phone,
-          status: created.state,
           source: created.source,
           ownerId: created.ownerId,
-          ownerName: created.owner?.name ?? null,
-          updatedAt: created.updatedAt.toISOString(),
-        };
+          teamId,
+          createdBy: actor.sub,
+          ...assignmentMetadata,
+        },
+        reason: `lead.create by ${actor.email} (${actor.role})`,
       },
-    );
-  }
+    });
 
+    await client.auditLog.create({
+      data: {
+        userId: actor.sub,
+        action: 'lead.create',
+        entityType: 'Lead',
+        entityId: created.id,
+        after: {
+          name: created.name,
+          phone: created.phone,
+          source: created.source,
+          ownerId: created.ownerId,
+          teamId,
+          createdBy: actor.sub,
+        },
+        reason: `lead.create by ${actor.email} (${actor.role})`,
+      },
+    });
+
+    return {
+      id: created.id,
+      name: created.name,
+      phone: created.phone,
+      phoneE164: created.phoneE164,
+      state: created.state,
+      source: created.source,
+      ownerId: created.ownerId,
+      ownerName: created.owner?.name ?? null,
+      teamId,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt.toISOString(),
+    };
+  }
   /**
    * Async wrapper around the engine. The engine itself is sync, but
    * the target resolver hits the DB, so we walk the rules in priority
