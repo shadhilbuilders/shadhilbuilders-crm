@@ -40,6 +40,7 @@ import {
 import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
 import { AuthTopBar } from '@/components/auth-top-bar';
+import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { api } from '@/apis/client';
 import { useSessionUser } from '@/lib/session';
@@ -150,43 +151,52 @@ export default function ChangePasswordPage() {
             }}
             fields={[
               {
-                type: 'input',
+                type: 'custom',
                 name: 'oldPassword',
                 label: 'Current password',
-                placeholder: 'Enter your current password',
                 required: true,
-                inputProps: {
-                  type: 'password',
-                  autoComplete: 'current-password',
-                  'data-qa': 'change-password-old',
-                  maxLength: 200,
-                },
+                render: ({ field }) => (
+                  <PasswordInput
+                    {...field}
+                    autoComplete="current-password"
+                    placeholder="Enter your current password"
+                    maxLength={200}
+                    className="min-h-11 w-full text-sm"
+                    data-qa="change-password-old"
+                  />
+                ),
               },
               {
-                type: 'input',
+                type: 'custom',
                 name: 'newPassword',
                 label: 'New password',
-                placeholder: 'At least 8 characters',
                 required: true,
-                inputProps: {
-                  type: 'password',
-                  autoComplete: 'new-password',
-                  'data-qa': 'change-password-new',
-                  maxLength: 200,
-                },
+                render: ({ field }) => (
+                  <PasswordInput
+                    {...field}
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    maxLength={200}
+                    className="min-h-11 w-full text-sm"
+                    data-qa="change-password-new"
+                  />
+                ),
               },
               {
-                type: 'input',
+                type: 'custom',
                 name: 'confirmPassword',
                 label: 'Confirm new password',
-                placeholder: 'Re-enter the new password',
                 required: true,
-                inputProps: {
-                  type: 'password',
-                  autoComplete: 'new-password',
-                  'data-qa': 'change-password-confirm',
-                  maxLength: 200,
-                },
+                render: ({ field }) => (
+                  <PasswordInput
+                    {...field}
+                    autoComplete="new-password"
+                    placeholder="Re-enter the new password"
+                    maxLength={200}
+                    className="min-h-11 w-full text-sm"
+                    data-qa="change-password-confirm"
+                  />
+                ),
               },
             ]}
           />
