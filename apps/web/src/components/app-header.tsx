@@ -29,6 +29,7 @@ import { SidebarTrigger } from '@paalstack/react-ui';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useSignOut } from '@/lib/auth-actions';
 import { useSessionUser } from '@/lib/session';
 import { useNotifications } from '@/hooks/queries/crm';
@@ -53,6 +54,7 @@ export function AppHeader() {
             and reports Connected / Reconnecting / Offline with a
             colored dot + screen-reader label. */}
         <SseStatusPill className="text-muted-foreground px-2" />
+        <ThemeToggle />
         <NotificationBell />
         {/* T23 (PR3): render a UserSkeleton placeholder in the slot
             where the UserMenu will mount once the session resolves.
