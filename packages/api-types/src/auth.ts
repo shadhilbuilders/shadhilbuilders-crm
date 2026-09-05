@@ -146,3 +146,23 @@ export const ChangePasswordDtoSchema = z.object({
     .max(200, 'Password is too long'),
 });
 export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;
+
+/**
+ * Client-side form contract for the /change-password page (T-S page +
+ * zod validation, 2026-09-05). Extends the server's
+ * ChangePasswordDtoSchema (wire contract, users.controller.ts) with
+ * the `confirmPassword` field — a pure client concern, deliberately
+ * NOT part of the wire DTO. The cross-field "passwords match" rule
+ * lives in `.refine` so the error attaches to `confirmPassword` and
+ * renders under the confirm input via the library Form's FieldError.
+ *
+ * Import zodResolver against THIS schema so client validation and
+ * server validation can't drift: both fail on the same rules.
+ */
+export const ChangePasswordFormSchema = ChangePasswordDtoSchema.extend({
+  confirmPassword: z.string().min(1, 'Please confirm the new password'),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'New password and confirmation do not match',
+  path: ['confirmPassword'],
+});
+export type ChangePasswordFormValues = z.infer<typeof ChangePasswordFormSchema>;

@@ -21,31 +21,34 @@
 // the auth guard normally.
 //
 // Form uses the props-API <Form> from @paalstack/react-ui. Validation
-// lives in onSubmit (the Form component doesn't accept react-hook-form
-// `rules`; client-side checks happen in JS). NOTE: the library's Form
-// spreads resetButtonProps BEFORE `children: resetText`, so a
-// `children` override in resetButtonProps is silently clobbered —
-// button text goes through `resetText` (verified in dist source).
+// is declarative zod via zodResolver — the schema is
+// ChangePasswordFormSchema from @shadhil/api-types, which EXTENDS the
+// server's ChangePasswordDtoSchema, so client and server rules can't
+// drift. The Form's FieldError renders each field's message inline.
+// NOTE: the library's Form spreads resetButtonProps BEFORE
+// `children: resetText`, so a `children` override in resetButtonProps
+// is silently clobbered — button text goes through `resetText`
+// (verified in dist source).
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
+import {
+  ChangePasswordFormSchema,
+  type ChangePasswordFormValues,
+} from '@shadhil/api-types';
 import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
 import { api } from '@/apis/client';
 import { useSessionUser } from '@/lib/session';
-
-type FormValues = {
-  oldPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-};
 
 type ChangePasswordResponse = { ok: true; mustChangePassword: false };
 
 export default function ChangePasswordPage() {
   const router = useRouter();
   const { user, isPending: sessionPending } = useSessionUser();
-  const form = useForm<FormValues>({
+  const form = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(ChangePasswordFormSchema),
     defaultValues: { oldPassword: '', newPassword: '', confirmPassword: '' },
     mode: 'onSubmit',
   });
@@ -64,15 +67,12 @@ export default function ChangePasswordPage() {
     return null;
   }
 
-  function onSubmit(values: FormValues) {
-    if (values.newPassword !== values.confirmPassword) {
-      toast.error('New password and confirmation do not match');
-      return;
-    }
-    if (values.newPassword.length < 8) {
-      toast.error('New password must be at least 8 characters');
-      return;
-    }
+  function onSubmit(values: ChangePasswordFormValues) {
+    // Validation is zod (zodResolver): required fields, min lengths,
+    // and the cross-field match rule are all enforced BEFORE onSubmit
+    // runs — the inline FieldError messages render under each input.
+    // Keep the length guard as defense-in-depth; the API call body is
+    // ChangePasswordDto-shaped (confirmPassword is client-only).
     void api<ChangePasswordResponse>(
       `/users/${user!.id}/change-password`,
       {
