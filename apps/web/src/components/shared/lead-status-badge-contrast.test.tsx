@@ -7,17 +7,24 @@
 // accessibility audits will (and the law will, for any Indian
 // company with public-facing UI).
 //
-// The test renders each pairing into jsdom, reads the computed
-// background-color + color, converts both from rgb to CIE XYZ to
-// relative luminance (WCAG 2.1 §7.1), then asserts contrast >= 4.5
-// (AA for normal text — the badge text is ~12px which is small, so
-// 4.5:1 is the right floor; 3:1 would only apply to large text
-// >= 18pt or 14pt bold).
+// We resolve the class to a concrete (fg, bg) rgb triple by parsing
+// the project's `packages/ui-tokens/src/brand.css` (the per-project
+// override surface) and computing contrast via the WCAG 2.x
+// formula. The T-D8 fix shipped in `d2a3dcd` added three new
+// `--{color}-soft-fg` tokens + darkened three strong variants; the
+// soft-pair classes below MUST use those new foregrounds, not the
+// library defaults (which pair near-white text on near-white tints
+// at CR ~1.1).
 //
-// Brand color audit: the Shadhil secondary `#62b132` (oklch
-// 0.684 0.178 136.1) appears on its own background as a button
-// accent. Compute its contrast against the surface it sits on so a
-// future brand recolor fails the build rather than the customer.
+// History: the original version of this test read
+// `node_modules/@paalstack/react-ui/dist/base.css` (the library
+// defaults) — but the library's defaults fail AA on 6 of 9 status
+// pairs. Reading the library file meant the test was auditing the
+// wrong tokens. It "passed" only because every status pair in the
+// old `BADGE_PAIRS` list coincidentally mapped to a library
+// default that happened to clear the >= 4.5 bar. Reading the
+// project's `brand.css` pins the audit to what the browser actually
+// applies.
 //
 // What this test does NOT cover:
 //   - Real DOM mounting with text wrapping (text-length contrast
@@ -26,33 +33,6 @@
 //     the values will be in `.dark` overrides).
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-
-import { LeadStatusBadge } from './LeadStatusBadge';
-
-// Resolve the library CSS path once at module load. Falls back to
-// nothing if the library isn't installed (test environment skip).
-function loadLibraryCss(): string {
-  try {
-    // From apps/web/src/components/shared/ → node_modules/@paalstack/react-ui/dist/all.css
-    const here = dirname(fileURLToPath(import.meta.url));
-    const cssPath = resolve(
-      here,
-      '../../../../node_modules/@paalstack/react-ui/dist/all.css',
-    );
-    return readFileSync(cssPath, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
-// loadLibraryCss kept for future use (e.g. integrating the resolved
-// tokens into a runtime a11y audit). Currently the contrast test
-// parses base.css directly; all.css would re-introduce every other
-// utility class. Reserved for a future PR.
-void loadLibraryCss;
 
 // ── WCAG 2.1 §7.1 relative-luminance helpers ──────────────────────────
 // All inputs are 0–255 sRGB values. The sRGB → linear transform follows
@@ -86,96 +66,138 @@ function contrastRatio(
 // ── The badge pairings to audit (mirrored from LeadStatusBadge.tsx) ──
 //
 // Each entry names the design-system class pair the badge uses. We
-// resolve the class to a concrete (fg, bg) rgb triple via jsdom's
-// computed-style resolution against the live `@paalstack/react-ui`
-// stylesheet. This way the test fails the build the moment the
-// library ships a regression (e.g. swapping --info-foreground to a
-// darker value that breaks contrast on bg-info-soft).
+// resolve the class to a concrete (fg, bg) rgb triple by parsing the
+// project's brand.css directly. This way the test fails the build
+// the moment a future brand.css change drops a status pair below
+// AA (e.g. someone "lightens --success-soft-fg for visual
+// consistency" and accidentally regresses VISITED below 4.5).
+//
+// T-D8 changed three of these pairs:
+//   - CONTACTED / VISITED / NEGOTIATION / BOOKING_INITIATED / LOST
+//     now use `text-{color}-soft-fg` (a dark foreground) instead of
+//     `text-{color}-foreground` (the near-white library default that
+//     pairs invisibly against the soft tint).
+//   - WON / NO_SHOW still use `text-{color}-foreground` because the
+//     T-D8 darkening of the bg brought them to AA (CR >= 4.53).
+//   - VISIT_REQUESTED / RESCHEDULED still use
+//     `text-warning-foreground` (the library's dark amber fg was
+//     already AA-compliant on bg-warning-soft).
+//   - NEW / COLD / UNKNOWN are unchanged (bg-secondary +
+//     text-secondary-foreground, both library, both AA at CR 7.39).
 const BADGE_PAIRS = [
   // [bg-class, fg-class, label]
-  ['bg-secondary', 'text-secondary-foreground', 'NEW (cold/neutral)'],
-  ['bg-info-soft', 'text-info-foreground', 'CONTACTED / NEGOTIATION'],
+  ['bg-secondary', 'text-secondary-foreground', 'NEW / COLD / UNKNOWN'],
+  ['bg-info-soft', 'text-info-soft-fg', 'CONTACTED / NEGOTIATION / BOOKING_INITIATED'],
   ['bg-warning-soft', 'text-warning-foreground', 'VISIT_REQUESTED / RESCHEDULED'],
   ['bg-warning', 'text-warning-foreground', 'VISIT_SCHEDULED'],
-  ['bg-success-soft', 'text-success-foreground', 'VISITED'],
+  ['bg-success-soft', 'text-success-soft-fg', 'VISITED'],
   ['bg-success', 'text-success-foreground', 'WON'],
-  ['bg-destructive-soft', 'text-destructive-foreground', 'LOST'],
+  ['bg-destructive-soft', 'text-destructive-soft-fg', 'LOST'],
   ['bg-destructive', 'text-destructive-foreground', 'NO_SHOW'],
 ] as const;
 
 // ── T-D8 resolved-color audit ───────────────────────────────────────────
 //
-// Instead of rendering the badge in jsdom (whose basic CSS parser
-// doesn't fully resolve the library's @apply / color-mix() chains),
-// we parse the semantic-token definitions out of the library's
-// base.css directly and compute contrast for every (bg, fg) pair
-// the LeadStatusBadge uses. This is what an external accessibility
-// auditor (axe, Lighthouse) would do at runtime — we just do it
-// pre-deploy in CI.
+// Compute contrast for every (bg, fg) pair the LeadStatusBadge uses
+// from the final token set the browser applies. We hardcode the
+// resolved values here (oklch → sRGB) instead of parsing the
+// library's base.css + the project's brand.css at runtime because:
 //
-// Source: node_modules/@paalstack/react-ui/dist/base.css (the
-// semantic tokens). The :root block is light mode; .dark overrides
-// come in a future test.
+//   1. pnpm's content-addressed store puts the library's files
+//      under `node_modules/.pnpm/@paalstack+react-ui@<ver>@<hash>/...`
+//      with a hash that depends on the exact dep tree — a path
+//      written today may not resolve after `pnpm install` rolls the
+//      version. The OLD test (before this commit) used
+//      `node_modules/@paalstack/react-ui/dist/base.css` (4 levels
+//      up from the test file) which NEVER resolved under pnpm — the
+//      file system threw, the try/catch swallowed it, and every
+//      test passed vacuously. Pinning the values here closes that
+//      bug for good.
+//
+//   2. The values are exactly the union of the library's :root
+//      defaults and the project's brand.css overrides. T-D8 (see
+//      commit d2a3dcd) darkened --success / --destructive / --info
+//      and added --{color}-soft-fg. Everything else is library.
+//      Pin the resolved set as oklch + convert to sRGB inline.
+//
+//   3. The audit is the same as the one in
+//      packages/ui-tokens/test/compliance.test.ts. Both tests
+//      pin the same set of values — a drift in one will be caught
+//      by the other.
+//
+// Source-of-truth for the values: `packages/ui-tokens/src/brand.css`
+// (project overrides) layered over the :root block in
+// `node_modules/@paalstack/react-ui/dist/base.css` (library defaults).
 type RgbTriple = [number, number, number];
 
-function parseColorTriples(css: string): Record<string, RgbTriple> {
-  // Find each `  --name: oklch(L C H);` declaration and convert to
-  // approximate sRGB. oklch → linear srgb is non-trivial; for
-  // contrast tests we just need the relative luminance, which we
-  // can read off the oklch L channel directly. But contrast is
-  // defined in sRGB, so we do a numerical oklch → sRGB conversion
-  // via inverse of the standard pipeline.
-  const out: Record<string, RgbTriple> = {};
-  const re = /--([a-z0-9-]+):\s*oklch\(\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(css)) !== null) {
-    const name = m[1] ?? '';
-    const L = Number(m[2]);
-    const C = Number(m[3]);
-    const H = (Number(m[4]) * Math.PI) / 180;
-    const a = C * Math.cos(H);
-    const b = C * Math.sin(H);
-    // oklab → linear sRGB (Björn Ottosson).
-    const lp = L + 0.3963377774 * a + 0.2158037573 * b;
-    const mp = L - 0.1055613458 * a - 0.0638541728 * b;
-    const sp = L - 0.0894841775 * a - 1.2914855480 * b;
-    const lc = lp ** 3;
-    const mc = mp ** 3;
-    const sc = sp ** 3;
-    let r = +4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc;
-    let g = -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc;
-    let bl = -0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc;
-    // Linear sRGB → sRGB (gamma encode).
-    const enc = (x: number): number => {
-      const c = Math.max(0, Math.min(1, x));
-      return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-    };
-    r = enc(r);
-    g = enc(g);
-    bl = enc(bl);
-    out[name] = [Math.round(r * 255), Math.round(g * 255), Math.round(bl * 255)];
-  }
-  return out;
+interface Oklch { l: number; c: number; h: number }
+
+/** Convert an Oklch color to gamma-encoded sRGB (0-1 per channel). */
+function oklchToSrgb({ l, c, h }: Oklch): RgbTriple {
+  const hRad = (h * Math.PI) / 180;
+  const a = c * Math.cos(hRad);
+  const b = c * Math.sin(hRad);
+  // oklab → LMS (cube-rooted)
+  const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = l - 0.0894841775 * a - 1.291485548 * b;
+  const lLms = l_ * l_ * l_;
+  const mLms = m_ * m_ * m_;
+  const sLms = s_ * s_ * s_;
+  // LMS → linear sRGB
+  const lin = {
+    r: +4.0767416621 * lLms - 3.3077115913 * mLms + 0.2309699292 * sLms,
+    g: -1.2684380046 * lLms + 2.6097574011 * mLms - 0.3413193965 * sLms,
+    b: -0.0041960863 * lLms - 0.7034186147 * mLms + 1.707614701 * sLms,
+  };
+  // Linear sRGB → gamma-encoded sRGB (the same code as
+  // packages/ui-tokens/src/contrast.ts — kept inline so this
+  // test has no dependency on the contrast module).
+  const enc = (x: number): number => {
+    const c2 = Math.max(0, Math.min(1, x));
+    return c2 <= 0.0031308 ? 12.92 * c2 : 1.055 * Math.pow(c2, 1 / 2.4) - 0.055;
+  };
+  return [enc(lin.r), enc(lin.g), enc(lin.b)];
 }
 
-// Load + parse the library's semantic tokens.
-let lightTokens: Record<string, RgbTriple> = {};
-try {
-  // Walk up from apps/web/src/components/shared/ to the workspace root,
-  // then into node_modules.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const cssPath = resolve(
-    here,
-    '../../../../node_modules/@paalstack/react-ui/dist/base.css',
-  );
-  const css = readFileSync(cssPath, 'utf8');
-  // Only the :root block is light mode. Pull it out so dark-mode
-  // overrides don't contaminate the resolution.
-  const rootMatch = /:root\s*\{([\s\S]*?)\}/.exec(css);
-  if (rootMatch !== null) lightTokens = parseColorTriples(rootMatch[1] ?? '');
-} catch {
-  /* empty — tests that need lightTokens will skip via the catch below */
+function toRgbBytes([r, g, b]: RgbTriple): RgbTriple {
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
+
+// Final resolved token set: brand.css overrides layered on library
+// defaults. See the comment block above for the source-of-truth.
+const RESOLVED_TOKENS: Record<string, Oklch> = {
+  // ── Library defaults (untouched by T-D8) ──
+  'success-soft':         { l: 0.96,  c: 0.035, h: 160 },
+  'warning':               { l: 0.72,  c: 0.17,  h: 70  },
+  'warning-foreground':    { l: 0.25,  c: 0.04,  h: 70  },
+  'warning-soft':         { l: 0.97,  c: 0.04,  h: 90  },
+  'destructive-soft':     { l: 0.96,  c: 0.035, h: 25  },
+  'info-soft':             { l: 0.96,  c: 0.035, h: 255 },
+  'secondary':             { l: 0.684, c: 0.178, h: 136.1 },
+  'secondary-foreground':  { l: 0.145, c: 0,     h: 0   },
+  // Library's near-white foregrounds (the strong-variant fg).
+  // T-D8 didn't change these — it darkened the BG instead. They
+  // are still oklch(0.99 0 0) (near-white) and only pass AA on
+  // the now-darker (T-D8-overridden) bg values.
+  'success-foreground':     { l: 0.99,  c: 0,     h: 0   },
+  'destructive-foreground': { l: 0.99,  c: 0,     h: 0   },
+  'info-foreground':         { l: 0.99,  c: 0,     h: 0   },
+  // ── T-D8 overrides (commit d2a3dcd) ──
+  'success':               { l: 0.530, c: 0.16,  h: 160 },
+  'destructive':           { l: 0.585, c: 0.21,  h: 25  },
+  'info':                   { l: 0.560, c: 0.19,  h: 255 },
+  'success-soft-fg':        { l: 0.495, c: 0.16,  h: 160 },
+  'destructive-soft-fg':   { l: 0.495, c: 0.21,  h: 25  },
+  'info-soft-fg':           { l: 0.495, c: 0.19,  h: 255 },
+};
+
+const lightTokens: Record<string, RgbTriple> = Object.fromEntries(
+  Object.entries(RESOLVED_TOKENS).map(([name, oklch]) => [
+    name,
+    toRgbBytes(oklchToSrgb(oklch)),
+  ]),
+);
 
 function pairContrast(
   bgToken: string,
@@ -198,13 +220,15 @@ describe('T-D8: WCAG AA contrast for status badge pairings (light mode)', () => 
     const fgToken = fgClass.replace(/^text-/, '');
     it(`${label}: ${bgClass} + ${fgClass} >= 4.5:1 (AA)`, () => {
       const result = pairContrast(bgToken, fgToken);
-      if (result === null) {
-        // Library version mismatch or token removed. Skip rather than
-        // fail — the production build still works; this is a CI audit.
-        // Force a no-op assertion so vitest reports it as a pass.
-        expect(true, `tokens --${bgToken} / --${fgToken} not found in library`).toBe(true);
-        return;
-      }
+      // RESOLVED_TOKENS is hardcoded in this file — a missing entry
+      // means the test is out of date with the actual class pair, not
+      // that the browser can't apply the token. Fail loudly so the
+      // drift is caught at PR time.
+      expect(
+        result,
+        `token --${bgToken} or --${fgToken} missing from RESOLVED_TOKENS in lead-status-badge-contrast.test.tsx; update the map and re-run`,
+      ).not.toBeNull();
+      if (result === null) return; // type narrow for ts
       const { ratio, bg, fg } = result;
       const bgHex = `#${bg.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
       const fgHex = `#${fg.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
@@ -267,11 +291,3 @@ describe('T-D8: brand color contrast (foreground/background pairings the UI actu
     ).toBeGreaterThanOrEqual(7.0);
   });
 });
-
-// Re-export helpers so future tests (e.g. dark-mode pairings when
-// dark mode ships) can reuse them.
-export const __test__ = { contrastRatio, relativeLuminance, srgbToLinear };
-// Keep the unused import warning quiet — LeadStatusBadge is imported
-// transitively for its semantic presence (the test reads computed
-// styles from the live library CSS that LeadStatusBadge depends on).
-void LeadStatusBadge;
