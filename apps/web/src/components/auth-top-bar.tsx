@@ -38,18 +38,20 @@ export function AuthTopBar() {
     >
       <div className="container mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 items-center gap-2" data-qa="auth-brand">
-          {/* Full lockup on a white chip: the asset has an opaque white
-              canvas, so it must NOT blend into a themed surface — give
-              it a card-like rounded tile that looks intentional in both
-              themes. height=9 (36px) keeps the wordmark crisp. */}
-          <span className="border-border bg-card inline-flex h-10 items-center overflow-hidden rounded-md border px-2.5">
+          {/* Transparent lockup (logo.png — tight 4% padding, wordmark +
+              tagline) on a FIXED LIGHT chip: the PNG's navy letters are
+              hard-coded, so the surface behind them must stay light in
+              both themes. bg-card is theme-dependent (near-black in dark
+              mode → navy-on-navy contrast failure, found in-browser);
+              bg-white + a subtle border reads as a brand plate instead. */}
+          <span className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 dark:bg-white">
             <Image
-              src="/brand/logo-with-bg.png"
+              src="/brand/logo.png"
               alt="Shadhil Builders"
-              width={110}
-              height={40}
+              width={140}
+              height={42}
               priority
-              className="h-8 w-auto object-contain"
+              className="h-12 w-auto object-contain"
               data-qa="auth-brand-logo"
             />
           </span>

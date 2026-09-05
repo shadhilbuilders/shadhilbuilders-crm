@@ -25,6 +25,7 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx --env-file=../../.env src/seed.ts",
+    "setup-demo-user": "tsx --env-file=../../.env scripts/setup-demo-user.ts",
     "format": "echo '(prisma format)' && prisma format",
     "docker:up": "cd ../../docker && docker compose --env-file ../.env up -d postgres pgbouncer redis"
   },

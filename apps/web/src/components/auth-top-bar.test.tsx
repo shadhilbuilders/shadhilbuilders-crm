@@ -29,9 +29,10 @@ describe('AuthTopBar (unauthenticated brand bar)', () => {
     expect(html).toContain('data-qa="auth-brand"');
     expect(html).toContain('data-qa="auth-brand-logo"');
     expect(html).toContain('data-qa="theme-toggle"');
-    // The full lockup asset is the source of truth (user instruction:
-    // use logo-with-bg.png everywhere).
-    expect(html).toContain('/brand/logo-with-bg.png');
+    // The transparent lockup asset is the source of truth (user
+    // instruction: use logo.png everywhere).
+    expect(html).toContain('/brand/logo.png');
+    expect(html).not.toContain('logo-with-bg');
   });
 
   it('the logo asset is public in the auth proxy (unauthenticated pages can load it)', () => {
@@ -46,7 +47,7 @@ describe('AuthTopBar (unauthenticated brand bar)', () => {
   it('the logo file exists in public/brand', () => {
     // If someone renames/moves the asset the auth pages lose their brand
     // silently — pin the path.
-    const stat = readFileSync('public/brand/logo-with-bg.png');
+    const stat = readFileSync('public/brand/logo.png');
     expect(stat.length).toBeGreaterThan(10_000); // real PNG, not a stub
   });
 });
