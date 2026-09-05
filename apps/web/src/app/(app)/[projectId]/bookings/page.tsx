@@ -15,11 +15,13 @@ import { useMemo, useState } from 'react';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
+import { useParams } from 'next/navigation';
+
 import { useBookings, useLeads } from '@/hooks/queries/crm';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { useSessionUser, canApproveBookings } from '@/lib/session';
 
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '../../PageHeader';
 
 type BookingRow = {
   id: string;
@@ -75,10 +77,14 @@ function formatMoney(value: string | undefined): string {
 export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'ALL'>('ALL');
   const { user } = useSessionUser();
+  // T-ProjectSwitch: scope bookings + the lead-name lookup to the URL project.
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
   const bookingsQuery = useBookings({
     ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
+    projectId,
   });
-  const leadsQuery = useLeads({ limit: 200 });
+  const leadsQuery = useLeads({ limit: 200, projectId });
   const isOnline = useOnlineStatus();
 
   const rows = bookingsQuery.data ?? [];
@@ -117,7 +123,7 @@ export default function BookingsPage() {
         action={
           canCreate ? (
             <Button asChild size="sm" className="min-h-11" data-qa="new-booking-button">
-              <Link href="/bookings/new">
+              <Link href={`/${projectId}/bookings/new`}>
                 <LuPlus className="mr-1 h-4 w-4" /> New booking
               </Link>
             </Button>

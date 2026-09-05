@@ -21,9 +21,11 @@ import { useForm } from 'react-hook-form';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
 
+import { useParams } from 'next/navigation';
+
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '../../../PageHeader';
 
 type CreateBookingFormValues = {
   leadId: string;
@@ -41,7 +43,10 @@ const CUID_RE = /^c[a-z0-9]{20,}$/i;
 export default function NewBookingPage() {
   const router = useRouter();
   const createBooking = useCreateBooking();
-  const leadsQuery = useLeads({ limit: 200 });
+  // T-ProjectSwitch: the booking form lives under the URL project.
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
+  const leadsQuery = useLeads({ limit: 200, projectId: projectId ?? undefined });
 
   const form = useForm<CreateBookingFormValues>({
     defaultValues: {
@@ -114,9 +119,9 @@ export default function NewBookingPage() {
         const leadId =
           (data as CreatedBooking | undefined)?.leadId ?? values.leadId;
         if (typeof id === 'string' && id.length > 0) {
-          void router.push(`/leads/${leadId}`);
+          void router.push(`/${projectId}/leads/${leadId}`);
         } else {
-          void router.push('/bookings');
+          void router.push(`/${projectId ?? ''}/bookings`);
         }
       },
       onError: (error) => {
@@ -147,7 +152,7 @@ export default function NewBookingPage() {
           children: 'Cancel',
           onClick: () => {
             form.reset();
-            void router.push('/bookings');
+            void router.push(`/${projectId ?? ''}/bookings`);
           },
         }}
         fields={[
@@ -210,7 +215,7 @@ export default function NewBookingPage() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => void router.push('/bookings')}
+          onClick={() => void router.push(`/${projectId ?? ''}/bookings`)}
         >
           ← Back to bookings
         </Button>

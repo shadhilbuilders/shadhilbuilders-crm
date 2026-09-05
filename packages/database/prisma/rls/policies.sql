@@ -611,3 +611,34 @@ CREATE POLICY lead_select_cron_service ON "Lead"
 -- WhatsappUnknownContact SELECT for the upsert: the existing
 -- cron_service_all policy already covers this (FOR ALL = all
 -- commands), so no extra policy needed.
+
+-- ── Project (registry - T-ProjectSwitch, 2026-09-05) ────────────────────────
+-- ENABLE + policies landed in migration 20260905203000 (previously the
+-- table had FORCE without ENABLE and zero policies - RLS was a no-op).
+-- SELECT is open to every authenticated role (the sidebar switcher needs
+-- the registry; RERA/CMDA are public-record fields). Writes are
+-- ADMIN-class; OWNER-only delete is enforced ABOVE this layer in
+-- ProjectsService (withRlsContext downcasts OWNER→ADMIN, so the GUC
+-- cannot distinguish them - the service's JWT role check is the precise
+-- wall, this policy is the second wall).
+ALTER TABLE "Project" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY project_select_any_authenticated ON "Project"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+  );
+
+CREATE POLICY project_insert_admin ON "Project"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
+CREATE POLICY project_update_admin ON "Project"
+  FOR UPDATE
+  USING (current_setting('app.user_role', true) = 'ADMIN')
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
+CREATE POLICY project_delete_admin ON "Project"
+  FOR DELETE
+  USING (current_setting('app.user_role', true) = 'ADMIN');

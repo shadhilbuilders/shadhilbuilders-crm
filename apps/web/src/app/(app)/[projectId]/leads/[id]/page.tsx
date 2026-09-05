@@ -20,11 +20,14 @@ import {
   useLeadActivities,
 } from '@/hooks/queries/crm';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '../../../PageHeader';
 
 export default function LeadDetailPage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams<{ id: string; projectId: string }>();
   const leadId = typeof params?.id === 'string' ? params.id : null;
+  // T-ProjectSwitch: back-navigation and breadcrumbs stay inside the
+  // active project (first URL segment).
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
 
   const leadQuery = useLead(leadId);
   const activitiesQuery = useLeadActivities(leadId);
@@ -37,12 +40,12 @@ export default function LeadDetailPage() {
         title="Lead"
         breadcrumb={[
           { label: 'Work' },
-          { label: 'Leads', href: '/leads' },
+          { label: 'Leads', href: `/${projectId ?? ''}/leads` },
           { label: typeof (leadQuery.data as { name?: string } | undefined)?.name === 'string' ? (leadQuery.data as { name: string }).name : 'Detail' },
         ]}
       />
 
-      <BackLink href="/leads" label="Back to inbox" />
+      <BackLink href={`/${projectId ?? ''}/leads`} label="Back to inbox" />
 
       {leadQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">

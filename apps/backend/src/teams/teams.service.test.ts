@@ -49,8 +49,7 @@ vi.mock('@shadhil/database', () => {
       async (
         _client: unknown,
         _ctx: unknown,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        callback: (t: any) => unknown,
+                callback: (t: any) => unknown,
       ) => {
         txCapture.current = tx;
         return callback(tx);
@@ -104,12 +103,10 @@ describe('TeamsService.list', () => {
   it('queries teams with the actor in the members relation and the right select shape', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     await svc.list(ownerActor);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tx = txCapture.current as any;
+        const tx = txCapture.current as any;
     expect(tx).toBeDefined();
     expect(tx.team.findMany).toHaveBeenCalledTimes(1);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const args = (tx.team.findMany.mock.calls[0]![0] as any);
+        const args = (tx.team.findMany.mock.calls[0]![0] as any);
     // OWNER is an overseer: no membership filter (sees every project).
     expect(args.where).toEqual({});
     expect(args.select).toMatchObject({
@@ -124,8 +121,7 @@ describe('TeamsService.list', () => {
   it('scopes non-overseer roles to their team memberships', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     await svc.list(telecallerActor);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tx = txCapture.current as any;
+        const tx = txCapture.current as any;
     const args = (tx.team.findMany.mock.calls[0]![0] as any);
     expect(args.where).toEqual({ members: { some: { id: 'tc-1' } } });
   });

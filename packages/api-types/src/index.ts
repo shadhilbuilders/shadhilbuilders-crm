@@ -12,6 +12,7 @@ export * from './enums';
 // Per-module DTOs
 export * from './auth';
 export * from './leads';
+export * from './projects';
 export * from './visits';
 export * from './chat';
 export * from './bookings';

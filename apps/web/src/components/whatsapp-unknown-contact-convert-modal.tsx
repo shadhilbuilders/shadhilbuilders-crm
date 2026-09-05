@@ -49,6 +49,10 @@ import type { FormFieldItemType } from '@paalstack/react-ui';
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 
 import { useConvertWaUnknownContact } from '@/hooks/queries/whatsapp-unknown-contacts';
+import {
+  pickDefaultProject,
+  useProjects,
+} from '@/hooks/queries';
 
 import type { ConvertUnknownContactDto, WhatsappUnknownContactRow } from '@shadhil/api-types';
 
@@ -106,11 +110,13 @@ export function prefillNotes(row: WhatsappUnknownContactRow | null): string {
 export function buildConvertBody(
   contact: WhatsappUnknownContactRow,
   values: ConvertFormValues,
+  projectId?: string,
 ): ConvertUnknownContactDto {
   const body: ConvertUnknownContactDto = {
     name: values.name.trim(),
     phone: contact.phoneE164,
     source: 'WHATSAPP',
+    ...(projectId !== undefined ? { projectId } : {}),
     ...(values.email.trim().length > 0
       ? { email: values.email.trim().toLowerCase() }
       : {}),
@@ -131,6 +137,8 @@ export type ConvertFormBodyProps = {
   contact: WhatsappUnknownContactRow;
   /** Override the form's submit handler (defaults to onSubmit-noop). */
   onSubmit?: (values: ConvertFormValues, body: ConvertUnknownContactDto) => void;
+  /** T-ProjectSwitch: stamp the converted lead into this project. */
+  projectId?: string;
 };
 
 /**
@@ -138,7 +146,11 @@ export type ConvertFormBodyProps = {
  * contact id so defaultValues (notably the pre-filled notes) reflect
  * the currently-selected row without leaking the previous one.
  */
-export function ConvertFormBody({ contact, onSubmit }: ConvertFormBodyProps) {
+export function ConvertFormBody({
+  contact,
+  onSubmit,
+  projectId,
+}: ConvertFormBodyProps) {
   const handleSubmit = onSubmit ?? (() => undefined);
 
   const form = useForm<ConvertFormValues>({
@@ -151,7 +163,7 @@ export function ConvertFormBody({ contact, onSubmit }: ConvertFormBodyProps) {
   });
 
   function innerSubmit(values: ConvertFormValues) {
-    handleSubmit(values, buildConvertBody(contact, values));
+    handleSubmit(values, buildConvertBody(contact, values, projectId));
   }
 
   const fields: FormFieldItemType<ConvertFormValues>[] = [
@@ -224,6 +236,12 @@ export function WhatsappUnknownContactConvertModal({
 }: WhatsappUnknownContactConvertModalProps) {
   const router = useRouter();
   const convert = useConvertWaUnknownContact();
+  // T-ProjectSwitch: converted leads land in the DEFAULT project
+  // (Metro Heights) since the WA-unknown queue is a global admin surface
+  // with no project segment in its URL. The post-convert navigation goes
+  // to that project's lead detail.
+  const { data: projects } = useProjects();
+  const defaultProject = pickDefaultProject(projects ?? []);
 
   function handleSubmit(
     values: ConvertFormValues,
@@ -243,7 +261,12 @@ export function WhatsappUnknownContactConvertModal({
           toast.success(`Lead "${name}" created from WhatsApp contact`);
           onOpenChange(false);
           if (typeof newLeadId === 'string' && newLeadId.length > 0) {
-            void router.push(`/leads/${newLeadId}`);
+            const projectId = defaultProject?.id;
+            void router.push(
+              projectId === undefined
+                ? `/leads/${newLeadId}`
+                : `/${projectId}/leads/${newLeadId}`,
+            );
           }
         },
         onError: (error) => {
@@ -290,7 +313,11 @@ export function WhatsappUnknownContactConvertModal({
       }
     >
       {contact !== null ? (
-        <ConvertFormBody contact={contact} onSubmit={handleSubmit} />
+        <ConvertFormBody
+          contact={contact}
+          onSubmit={handleSubmit}
+          projectId={defaultProject?.id}
+        />
       ) : null}
     </Dialog>
   );

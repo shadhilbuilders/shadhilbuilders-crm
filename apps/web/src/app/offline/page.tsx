@@ -10,6 +10,39 @@ import { get, keys } from 'idb-keyval';
 import { AuthTopBar } from '@/components/auth-top-bar';
 import { rqCacheStore, RQ_CACHE_KEY } from '@shadhil/offline-store';
 
+// T-ProjectSwitch: work-surface links on the offline page point at the
+// DEFAULT project (Metro Heights). The registry is read from the offline
+// RQ cache; if absent the link keeps the template path (the proxy bounces
+// unauthenticated users to /login anyway once online).
+const DEFAULT_PROJECT_SLUG = 'shadhil-metro-heights';
+
+function projectLeadHrefFromCache(cache: unknown): string {
+  try {
+    // PersistedShape: { timestamp, buster, cacheState: dehydrated }
+    const dehydrated = (cache as { cacheState?: { queries?: unknown[] } })
+      .cacheState;
+    for (const q of dehydrated?.queries ?? []) {
+      const qk = (q as { queryKey?: unknown[] }).queryKey;
+      if (!Array.isArray(qk) || qk[0] !== 'projects') continue;
+      // useProjects stores ProjectListItem[] directly as state.data.
+      const list = (q as { state?: { data?: unknown } }).state?.data;
+      if (!Array.isArray(list)) continue;
+      const hit =
+        list.find(
+          (p) =>
+            p !== null &&
+            typeof p === 'object' &&
+            (p as { slug?: unknown }).slug === DEFAULT_PROJECT_SLUG,
+        ) ?? list[0];
+      const id = (hit as { id?: unknown } | null)?.id;
+      return typeof id === 'string' ? `/${id}/leads` : '/leads';
+    }
+  } catch {
+    // cache shape drift - template link is the safe fallback
+  }
+  return '/leads';
+}
+
 /**
  * Three-state offline fallback page (D2):
  *   A. No cache yet - first-ever offline visit (private mode, cleared
@@ -19,7 +52,12 @@ import { rqCacheStore, RQ_CACHE_KEY } from '@shadhil/offline-store';
  *
  * Per eng review 3C, this component is unit-tested for both states.
  */
-type CachedState = { hasCache: boolean; lastSyncedAt: number | null };
+type CachedState = {
+  hasCache: boolean;
+  lastSyncedAt: number | null;
+  /** T-ProjectSwitch: project-scoped leads link from the cached registry. */
+  leadHref: string;
+};
 
 const OfflinePage = () => {
   const [state, setState] = useState<CachedState | null>(null);
@@ -35,9 +73,15 @@ const OfflinePage = () => {
           rqCache && typeof rqCache === 'object' && 'timestamp' in rqCache
             ? (rqCache as { timestamp: number }).timestamp
             : null;
-        setState({ hasCache: Boolean(lastSyncedAt), lastSyncedAt });
+        setState({
+          hasCache: Boolean(lastSyncedAt),
+          lastSyncedAt,
+          leadHref: projectLeadHrefFromCache(rqCache),
+        });
       })
-      .catch(() => setState({ hasCache: false, lastSyncedAt: null }));
+      .catch(() =>
+        setState({ hasCache: false, lastSyncedAt: null, leadHref: '/leads' }),
+      );
   }, []);
 
   if (state === null) {
@@ -64,6 +108,7 @@ const OfflinePage = () => {
   }
 
   // State B: cached view available
+  const leadHref = state.leadHref;
   const lastSynced = state.lastSyncedAt
     ? new Date(state.lastSyncedAt).toLocaleString('en-IN', {
         dateStyle: 'medium',
@@ -82,7 +127,7 @@ const OfflinePage = () => {
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Link
-            href="/leads"
+            href={leadHref}
             className="bg-primary text-primary-foreground inline-flex min-h-11 items-center justify-center rounded-md px-6 font-medium"
           >
             View cached leads

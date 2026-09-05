@@ -20,9 +20,11 @@ import { useForm } from 'react-hook-form';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
 
+import { useParams } from 'next/navigation';
+
 import { useCreateLead } from '@/hooks/queries/crm';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '../../../PageHeader';
 
 type CreateLeadFormValues = {
   name: string;
@@ -37,6 +39,9 @@ type CreatedLead = { id: string };
 export default function NewLeadPage() {
   const router = useRouter();
   const createLead = useCreateLead();
+  // T-ProjectSwitch: new leads belong to the project in the URL.
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
   const form = useForm<CreateLeadFormValues>({
     defaultValues: {
       name: '',
@@ -58,6 +63,7 @@ export default function NewLeadPage() {
     const payload = {
       name: values.name.trim().replace(/\s+/g, ' '),
       phone,
+      ...(projectId !== null ? { projectId } : {}),
       ...(values.email.trim().length > 0
         ? { email: values.email.trim().toLowerCase() }
         : {}),
@@ -70,9 +76,9 @@ export default function NewLeadPage() {
         toast.success(`Lead ${payload.name} created`);
         const leadId = (data as CreatedLead | undefined)?.id;
         if (typeof leadId === 'string' && leadId.length > 0) {
-          void router.push(`/leads/${leadId}`);
+          void router.push(`/${projectId}/leads/${leadId}`);
         } else {
-          void router.push('/leads');
+          void router.push(`/${projectId ?? ''}/leads`);
         }
       },
       onError: (error) => {
@@ -105,7 +111,7 @@ export default function NewLeadPage() {
           children: 'Cancel',
           onClick: () => {
             form.reset();
-            void router.push('/leads');
+            void router.push(`/${projectId ?? ''}/leads`);
           },
         }}
         fields={[
@@ -191,7 +197,7 @@ export default function NewLeadPage() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => void router.push('/leads')}
+          onClick={() => void router.push(`/${projectId ?? ''}/leads`)}
         >
           ← Back to Lead Inbox
         </Button>

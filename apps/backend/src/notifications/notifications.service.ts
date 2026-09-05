@@ -84,6 +84,20 @@ export class NotificationsService {
         const where: Record<string, unknown> = {};
         if (dto.unreadOnly) where['read'] = false;
         if (dto.type !== undefined) where['type'] = dto.type;
+        // T-ProjectSwitch: scope the inbox to the active project via the
+        // related lead. Notification has NO `lead` relation field (only
+        // leadId), so resolve the project's lead ids first (RLS-filtered)
+        // and narrow with leadId IN. Notifications without a lead (system
+        // events) are hidden under a project filter - not project work.
+        if (dto.projectId !== undefined) {
+          const projectLeads = await (tx as unknown as PrismaClient).lead.findMany({
+            where: { projectId: dto.projectId },
+            select: { id: true },
+          });
+          where['leadId'] = {
+            in: projectLeads.map((l: { id: string }) => l.id),
+          };
+        }
 
         const [rows, total, unread] = await Promise.all([
           (tx as unknown as PrismaClient).notification.findMany({

@@ -249,6 +249,79 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Project-scoped route helpers (T-ProjectSwitch, 2026-09-05)
+// ---------------------------------------------------------------------------
+// Work surfaces live under the active project: /{projectId}/leads,
+// /{projectId}/visits, ... The first URL path segment is the project id.
+// NAV_ITEMS hrefs stay TEMPLATE paths ('/leads'); consumers call
+// `projectHref(activeProjectId, item.href)` to resolve the real URL.
+
+/** Nav hrefs whose pages are scoped to the active project (URL segment 1). */
+const PROJECT_SCOPED_PATHS = new Set([
+  '/leads',
+  '/visits',
+  '/inventory',
+  '/bookings',
+  '/notifications',
+]);
+
+export function isProjectScopedNavPath(href: string): boolean {
+  return PROJECT_SCOPED_PATHS.has(href);
+}
+
+/**
+ * Resolve a nav template path against the active project.
+ * `/leads` + `proj-1` → `/proj-1/leads`; unscoped paths (`/`, `/users`)
+ * pass through unchanged. `activeProjectId === null` keeps the template
+ * (caller decides whether to render a disabled state).
+ */
+export function projectHref(
+  activeProjectId: string | null,
+  templateHref: string,
+): string {
+  if (activeProjectId === null || !isProjectScopedNavPath(templateHref)) {
+    return templateHref;
+  }
+  return `/${activeProjectId}${templateHref}`;
+}
+
+/**
+ * Extract the active project id from a work-surface pathname (first
+ * segment when it is NOT a top-level template path). Returns null on
+ * `/`, `/users`, `/audit`, `/login`, etc.
+ */
+export function activeProjectIdFromPathname(
+  pathname: string,
+  navTemplates: readonly string[] = [...PROJECT_SCOPED_PATHS],
+): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  const first = `/${segments[0]}`;
+  // Known top-level app routes never carry a project segment. Anything
+  // else that is not a work-surface template IS treated as a project id
+  // (the [projectId] dynamic segment is the fallback matcher).
+  const TOP_LEVEL_ROUTES = [
+    ...navTemplates,
+    '/',
+    '/login',
+    '/change-password',
+    '/users',
+    '/audit',
+    '/projects',
+    '/whatsapp-unknown-contacts',
+  ];
+  if (TOP_LEVEL_ROUTES.includes(first)) return null;
+  return segments[0] ?? null;
+}
+
+/** Strip the project segment: /proj-1/leads/abc → /leads/abc. */
+export function stripProjectSegment(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length <= 1) return '/';
+  return `/${segments.slice(1).join('/')}`;
+}
+
+// ---------------------------------------------------------------------------
 // Mobile nav sync (T37 - closes the sidebar Sheet on route change)
 // ---------------------------------------------------------------------------
 

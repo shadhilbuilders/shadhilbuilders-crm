@@ -112,7 +112,10 @@ export const LeadFilterDtoSchema = z.object({
     .union([LeadStateSchema, z.array(LeadStateSchema)])
     .optional(),
   ownerId: z.string().cuid().optional(),
-  teamId: z.string().cuid().optional(),
+  teamId: z.string().trim().min(1).max(64).optional(),
+  // Seed project ids are readable (`seed-project-metro-heights`), not
+  // cuids - same convention as auth.ts teamId (min(1).max(64)).
+  projectId: z.string().trim().min(1).max(64).optional(),
   search: z.string().trim().min(1).max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),

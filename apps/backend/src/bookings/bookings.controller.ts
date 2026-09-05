@@ -87,6 +87,8 @@ export class BookingsController {
     const candidate = {
       ...query,
       status,
+      projectId:
+        typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
       limit:
         typeof query['limit'] === 'string'
           ? Number.parseInt(query['limit'], 10)

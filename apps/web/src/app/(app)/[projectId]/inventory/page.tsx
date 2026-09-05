@@ -10,7 +10,7 @@
 import { TypographyP } from '@paalstack/react-ui';
 
 import { ModulePending } from '@/components/shared/ModulePending';
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '../../PageHeader';
 
 const INVENTORY_COLUMNS = [
   'Villa #',
