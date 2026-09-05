@@ -44,10 +44,6 @@ import { usePathname } from 'next/navigation';
 
 import {
   Button,
-  PopoverContent,
-  PopoverRoot,
-  PopoverTrigger,
-  Separator,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -60,10 +56,13 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
-  SidebarTrigger,
+  useSidebar,
 } from '@paalstack/react-ui';
-import { LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
+import { LuPanelLeft } from '@paalstack/react-icons/lu';
 
+import { NavUser } from '@/components/sidebar/nav-user';
+import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
+import { useTeams } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import {
   getVisibleNav,
@@ -83,16 +82,19 @@ import {
 export function AppShell() {
   // T37: close the mobile Sheet whenever the route changes.
   useNavSync();
+  // T-Sidebar07: collapsed state drives the logo swap (wide lockup ↔
+  // square brand icon). Read from the sidebar context.
+  const { state: sidebarState } = useSidebar();
+  const isCollapsed = sidebarState === 'collapsed';
 
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <div className="flex items-center gap-2">
-          {/* Full brand lockup on its native white tile - rendered as a
-              rounded chip so the opaque white canvas reads as intentional
-              in both themes instead of a floating white box. The tagline
-              is part of the asset; h-8 keeps it legible. In the collapsed
-              (icon) rail the wordmark truncates to a compact strip.
+          {/* Brand chip: the wide logo lockup when the sidebar is expanded,
+              the square brand icon when collapsed (the 64px icon rail is
+              too narrow for the wordmark). Same white tile in both states
+              so the shape doesn't shift, only the image inside swaps.
               No px-* here: the SidebarHeader already adds p-2, and the
               nav items below also use p-2, so the brand and nav share
               the same left edge. (Was 8px misaligned before this fix.) */}
@@ -102,27 +104,42 @@ export function AppShell() {
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
-            <Image
-              src="/brand/logo.png"
-              alt="Shadhil Builders"
-              width={112}
-              height={34}
-              className="h-11/12 w-auto object-contain"
-            />
+            {isCollapsed ? (
+              <Image
+                src="/icons/brand-icon.png"
+                alt="Shadhil Builders"
+                width={28}
+                height={28}
+                className="size-7 object-contain"
+                data-qa="sidebar-brand-icon-collapsed"
+              />
+            ) : (
+              <Image
+                src="/brand/logo.png"
+                alt="Shadhil Builders"
+                width={112}
+                height={34}
+                className="h-11/12 w-auto object-contain"
+                data-qa="sidebar-brand-logo-expanded"
+              />
+            )}
           </Link>
           {/* The chip carries the full brand lockup (wordmark + tagline);
               the duplicate "Shadhil CRM" text label is redundant at this
               size and truncates awkwardly next to a 143px chip. Hidden
               entirely - the chip IS the brand. */}
         </div>
-        <SidebarTrigger className="md:hidden" />
+        {/* sidebar-07 pattern: below the brand, the project switcher
+            dropdown (display-only for now - see project-switcher.tsx).
+            Hidden until the session resolves so the collapsed rail
+            doesn't flash an empty switcher. */}
+        <SidebarSwitcherSlot />
       </SidebarHeader>
       <SidebarContent className="min-w-0 overflow-x-hidden">
         <WorkNavGroup />
         <AdminNavGroup />
       </SidebarContent>
       <SidebarFooter className="min-w-0 overflow-x-hidden">
-        <Separator />
         <UserMenuFooter />
       </SidebarFooter>
       {/* Right-edge rail: desktop toggle for expand/collapse. Renders a
@@ -132,6 +149,55 @@ export function AppShell() {
           chevron automatically and rotates it on state. */}
       <SidebarRail data-qa="sidebar-rail" />
     </Sidebar>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Project switcher slot (sidebar-07 pattern): sits directly below the
+// brand chip in the header. Reads the teams list via useTeams() and the
+// active project from the session user's teamId. While the session is
+// pending or unauthenticated it renders nothing (no skeleton - the
+// header already shows the brand chip, which keeps the shape stable).
+// ---------------------------------------------------------------------------
+
+function SidebarSwitcherSlot() {
+  const { user } = useSessionUser();
+  const { data: projects } = useTeams();
+
+  // No session yet - render nothing (the nav groups below do the same).
+  if (user === null) return null;
+
+  return (
+    <ProjectSwitcher
+      projects={projects ?? []}
+      activeProjectId={user.teamId}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SidebarToggleButton - THE expand/collapse affordance, visible on mobile
+// AND desktop. The library's SidebarTrigger is md:hidden and SidebarRail
+// renders no icon, so we own the button: LuPanelLeft + toggleSidebar.
+// Rendered in the TOPBAR beside the welcome message (canonical sidebar-07
+// position) and exported for that use; the sidebar header does NOT render
+// a second one (one toggle, one place).
+// ---------------------------------------------------------------------------
+
+export function SidebarToggleButton({ className }: { className?: string }) {
+  const { toggleSidebar, isMobile } = useSidebar();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle sidebar"
+      title={isMobile ? 'Open menu' : 'Expand / collapse sidebar'}
+      data-qa="sidebar-toggle"
+      className={`cursor-pointer size-8 shrink-0 ${className ?? ''}`}
+      onClick={() => toggleSidebar()}
+    >
+      <LuPanelLeft className="size-4.5" />
+    </Button>
   );
 }
 
@@ -241,9 +307,10 @@ function NavMenuItem({
 }
 
 // ---------------------------------------------------------------------------
-// Footer: UserMenu (avatar + name + role) + sign out. The popover
-// mirrors the original topbar `UserMenu` (T3 + T6 - both consume
-// `useSignOut`).
+// Footer: NavUser (sidebar-07 pattern) - avatar + name/email trigger with
+// a menu holding only real actions (Settings, Sign out). Replaces the
+// earlier read-only identity + cog-popover pair (both deleted with this
+// change - the dropdown is the single discoverable surface now).
 // ---------------------------------------------------------------------------
 
 function UserMenuFooter() {
@@ -262,80 +329,12 @@ function UserMenuFooter() {
   }
 
   return (
-    <div className="flex w-full min-w-0 items-center gap-1 px-2">
-      <UserIdentity
-        name={user.name || user.email}
-        role={user.role}
-      />
-      <SettingsMenu onSignOut={() => void signOut()} />
-    </div>
-  );
-}
-
-// Read-only identity block (avatar + name + role). Not a button — the
-// footer has a SettingsMenu (cog icon) for app-level actions, and there
-// is no user-level action worth a popover today. If a /profile page or
-// "Switch team" lands later, wire those into the SettingsMenu (or a
-// dedicated UserMenu popover) at that point — until then, the clickable
-// affordance was misleading (the popover only re-displayed the same
-// identity info).
-function UserIdentity({ name, role }: { name: string; role: string }) {
-  return (
-    <div
-      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2"
-      title={`${name} - ${role.replace(/_/g, ' ')}`}
-      data-qa="sidebar-user-identity"
-    >
-      <LuUserRound className="size-4 shrink-0" />
-      <span className="hidden min-w-0 flex-1 truncate text-left text-sm sm:inline">
-        {name}
-      </span>
-    </div>
-  );
-}
-
-// App-level actions menu. The user popover (UserMenu) handles identity
-// (avatar + name + role); this one handles app-level actions like
-// Settings and Sign out. A cog icon is the conventional affordance for
-// settings; the popover keeps the footer compact while staying
-// discoverable.
-function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
-  return (
-    <PopoverRoot>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-11 shrink-0"
-            aria-label="Settings"
-            title="Settings"
-          >
-            <LuSettings className="size-4" />
-          </Button>
-        }
-      />
-      <PopoverContent className="w-44" align="end">
-        <div className="flex flex-col">
-          <Link
-            href="/settings"
-            className="hover:bg-accent flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-          >
-            <LuSettings className="size-4 shrink-0" />
-            <span>Settings</span>
-          </Link>
-          <Separator className="my-1" />
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="hover:bg-accent flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-          >
-            <LuLogOut className="size-4 shrink-0" />
-            <span>Sign out</span>
-          </button>
-        </div>
-      </PopoverContent>
-    </PopoverRoot>
+    <NavUser
+      name={user.name || user.email}
+      email={user.email}
+      role={user.role}
+      onSignOut={() => void signOut()}
+    />
   );
 }
 

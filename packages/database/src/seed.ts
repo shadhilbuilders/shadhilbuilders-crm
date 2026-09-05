@@ -180,7 +180,44 @@ async function main() {
   await upsertUser(owner, 'OWNER');
   await upsertUser(admin, 'ADMIN');
   const telecallerUser = await upsertUser(telecaller, 'TELECALLER', team.id);
-  await upsertUser(salesExec, 'SALES_EXEC', team.id);
+  const salesExecUser = await upsertUser(salesExec, 'SALES_EXEC', team.id);
+
+  // ── Demo projects for the sidebar-07 ProjectSwitcher (T-Sidebar07) ──────
+  // Shadhil Builders runs one construction project at a time; the Team
+  // table is the project registry. The live project (above) carries the
+  // demo leads; the two below are upcoming projects so the switcher
+  // dropdown shows a realistic 3-row list. Staff are members of all
+  // three (implicit M2M via Team.members).
+  const staffIds = [
+    { id: managerUser.id },
+    { id: telecallerUser.id },
+    { id: salesExecUser.id },
+  ];
+  const upcomingProjects = [
+    { id: 'seed-project-skyline', name: 'Shadhil Skyline Towers' },
+    { id: 'seed-project-lakeview', name: 'Shadhil Lakeview Residences' },
+  ];
+  for (const p of upcomingProjects) {
+    await prisma.team.upsert({
+      where: { id: p.id },
+      update: { name: p.name },
+      create: {
+        id: p.id,
+        name: p.name,
+        managerId: managerUser.id,
+        members: { connect: staffIds },
+      },
+    });
+  }
+  // The live team also gets its members connected (the upsert create
+  // above didn't include telecaller/sales exec on first run; on later
+  // runs the connect is idempotent).
+  await prisma.team.update({
+    where: { id: team.id },
+    data: { members: { connect: staffIds } },
+  });
+  // eslint-disable-next-line no-console
+  console.log('[seed] ✓ 2 upcoming projects created for the project switcher');
 
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec created/updated');

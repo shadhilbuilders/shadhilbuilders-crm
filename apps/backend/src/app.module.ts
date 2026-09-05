@@ -9,6 +9,7 @@ import { BetterAuthMiddlewareModule } from './auth/better-auth.middleware';
 import { PlaceholderGateModule } from './auth/placeholder-gate.middleware';
 import { UsersModule } from './users/users.module';
 import { LeadsModule } from './leads/leads.module';
+import { TeamsModule } from './teams/teams.module';
 import { VisitsModule } from './visits/visits.module';
 import { ChatModule } from './chat/chat.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -46,6 +47,7 @@ import { AlertsModule } from './alerts/alerts.module';
     PlaceholderGateModule,
     BetterAuthMiddlewareModule,
     LeadsModule,
+    TeamsModule,
     VisitsModule,
     ChatModule,
     BookingsModule,
