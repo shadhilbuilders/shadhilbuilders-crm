@@ -100,7 +100,14 @@ export function withOffline<TData = unknown, TVar = unknown, TError = Error>(
           body = JSON.stringify(arg.variables);
         }
 
-        const res = await fetch(`/api/backend${arg.endpoint}`, {
+        // Replay target is the BFF (`/api/bff/*`), NOT the bare
+        // `/api/backend` rewrite. Two reasons (T-D4 finding):
+        //   1. Auth — the JWT guard requires `Authorization: Bearer`;
+        //      the BFF route handler mints it from the session cookie.
+        //   2. Path shape — the backend mounts under global prefix
+        //      `api`, which the BFF proxy adds; the raw rewrite
+        //      dropped it (every replay would 404).
+        const res = await fetch(`/api/bff${arg.endpoint}`, {
           method: arg.method,
           headers,
           body,

@@ -23,11 +23,36 @@ import {
   useVisits,
 } from '@/hooks/queries/crm';
 import { canScheduleVisits, useSessionUser } from '@/lib/session';
+import { queue } from '@/lib/offline-store/queue-store';
 
 type LeadData = {
   id: string;
   status?: string;
 };
+
+/**
+ * T-D4 — is this failure the "we're offline" case (queue it for later
+ * replay) or a real server rejection (surface to the user)?
+ *
+ * Offline queueing is for TRANSPORT failures only:
+ *   - TypeError: Failed to fetch (the browser can't reach the server —
+ *     classic offline signal)
+ *   - 5xx ApiError (server-side problem; the SW replays later)
+ *
+ * A 4xx is a REAL rejection (validation, state-machine guard,
+ * permissions) — queueing it would poison the offline queue with an
+ * entry that can never succeed, so it surfaces as a toast instead.
+ */
+export function isOfflineError(err: unknown): boolean {
+  if (err instanceof TypeError) {
+    return /Failed to fetch|NetworkError|fetch failed|Load failed/i.test(err.message);
+  }
+  if (err instanceof Error && 'status' in err) {
+    const status = (err as { status?: unknown }).status;
+    return typeof status === 'number' && status >= 500;
+  }
+  return false;
+}
 
 export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   const { user } = useSessionUser();
@@ -53,15 +78,35 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
 
   function recordOutcome(outcome: 'COMPLETED' | 'NO_SHOW' | 'CANCELLED') {
     if (openVisit === undefined) return;
+    const body = { visitId: openVisit.id, outcome, notes: '' };
     updateOutcome.mutate(
       // visitId is in the URL path; the hook's mutationFn ignores the
       // body value (the controller adds it from :id). Pass it anyway
       // to satisfy the DTO type.
-      { visitId: openVisit.id, outcome, notes: '' },
+      body,
       {
         onSuccess: () => toast.success(`Visit ${outcome.toLowerCase()}`),
-        onError: (e) =>
-          toast.error(e instanceof Error ? e.message : 'Outcome failed'),
+        onError: (e) => {
+          // T-D4: transport failure (offline / 5xx) → save locally and
+          // let the offline queue replay it on reconnect. The backend's
+          // idempotent-replay rule makes a replayed outcome a no-op if
+          // it already landed, so retries converge. 4xx stays a real
+          // error (queueing it would poison the queue).
+          if (!isOfflineError(e)) {
+            toast.error(e instanceof Error ? e.message : 'Outcome failed');
+            return;
+          }
+          void queue
+            .enqueueUnique({
+              // Dedupe on the logical operation: a re-tap replaces the
+              // queued payload instead of stacking duplicates.
+              dedupeKey: `outcome:${openVisit.id}:${outcome}`,
+              endpoint: `/visits/${openVisit.id}/outcome`,
+              method: 'PATCH',
+              body,
+            })
+            .then(() => toast.success('Saved locally — will sync when online'));
+        },
       },
     );
   }

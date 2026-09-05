@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { LuCloudOff, LuClock, LuCircleAlert, LuSettings } from '@paalstack/react-icons/lu';
 import { Badge, Button, PopoverContent, PopoverRoot, PopoverTrigger } from '@paalstack/react-ui';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useQueueStore } from '@/lib/offline-store/queue-store';
 import { subscribeQueueToStore } from '@/lib/offline-store/queue-store';
@@ -19,6 +20,11 @@ const formatRelative = (ms: number): string => {
 export const OfflineQueueBadge = () => {
   const items = useQueueStore((s) => s.items);
   const replay = useQueueStore((s) => s.replay);
+  // T-D4: replayed writes change server state (a queued outcome can
+  // flip the parent lead to VISITED). After a successful replay, the
+  // affected queries are invalidated so the UI reflects reality
+  // without a full reload.
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
   // Subscribe to the queue's pub-sub events once on mount. The store
@@ -39,7 +45,7 @@ export const OfflineQueueBadge = () => {
 
   const handleRetry = async () => {
     try {
-      await replay(async (m) => {
+      const result = await replay(async (m) => {
         const headers: Record<string, string> = {};
         let body: BodyInit;
         if (m.contentType === 'multipart/form-data' && m.blobKey) {
@@ -54,7 +60,14 @@ export const OfflineQueueBadge = () => {
           headers['Content-Type'] = 'application/json';
           body = JSON.stringify(m.body);
         }
-        const res = await fetch(`/api/backend${m.endpoint}`, {
+        // Replay through the BFF (`/api/bff/*`): the route handler reads
+        // the better-auth session cookie, mints the HS256 JWT, and
+        // proxies to the backend with `Authorization: Bearer …`. The
+        // old `/api/backend` rewrite target had two defects (found
+        // during T-D4): it dropped the global `api` prefix (404) and
+        // carried no auth (the JWT guard requires Bearer). Page-side
+        // replays now converge with the normal BFF fetch path.
+        const res = await fetch(`/api/bff${m.endpoint}`, {
           method: m.method,
           headers,
           body,
@@ -62,6 +75,14 @@ export const OfflineQueueBadge = () => {
         });
         return { status: res.status };
       });
+
+      // T-D4: after a successful replay, invalidate the affected
+      // queries so the UI reflects the synced server state without a
+      // full reload.
+      if (result.succeeded > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['visits'] });
+        void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      }
     } catch {
       // Replay is best-effort; the SW will retry on the next Background
       // Sync or page-side online event.

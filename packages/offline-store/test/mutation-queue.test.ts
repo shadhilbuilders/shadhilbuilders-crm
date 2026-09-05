@@ -100,3 +100,99 @@ describe('mutation-queue', () => {
     expect(remaining[0]?.endpoint).toBe('/to-keep');
   });
 });
+
+// T-D4 — enqueueUnique: dedupe-aware enqueue for offline outcome writes.
+describe('mutation-queue.enqueueUnique (T-D4 dedupe)', () => {
+  beforeEach(async () => {
+    await clear(mutationStore);
+  });
+
+  it('first call enqueues a fresh entry with a dedupeKey', async () => {
+    const q = createMutationQueue();
+    const m = await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: { visitId: 'v1', outcome: 'COMPLETED' },
+    });
+    expect(m.dedupeKey).toBe('outcome:v1:COMPLETED');
+    expect(m.retries).toBe(0);
+    const all = await q.all();
+    expect(all).toHaveLength(1);
+  });
+
+  it('same dedupeKey replaces the payload, keeps id/createdAt (last-write-wins)', async () => {
+    const q = createMutationQueue();
+    const first = await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: { visitId: 'v1', outcome: 'COMPLETED', notes: 'tap 1' },
+    });
+    const second = await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: { visitId: 'v1', outcome: 'COMPLETED', notes: 'tap 3' },
+    });
+    // Same logical entry — id and createdAt are stable.
+    expect(second.id).toBe(first.id);
+    expect(second.createdAt).toBe(first.createdAt);
+    // Payload is the LATEST tap.
+    expect((second.body as { notes: string }).notes).toBe('tap 3');
+    // Still exactly one entry in the queue.
+    const all = await q.all();
+    expect(all).toHaveLength(1);
+  });
+
+  it('different dedupeKeys stack as separate entries', async () => {
+    const q = createMutationQueue();
+    await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: {},
+    });
+    await q.enqueueUnique({
+      dedupeKey: 'outcome:v2:COMPLETED',
+      endpoint: '/visits/v2/outcome',
+      method: 'PATCH',
+      body: {},
+    });
+    const all = await q.all();
+    expect(all).toHaveLength(2);
+  });
+
+  it('different outcome values for the same visit are separate entries', async () => {
+    const q = createMutationQueue();
+    await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:NO_SHOW',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: { outcome: 'NO_SHOW' },
+    });
+    await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/visits/v1/outcome',
+      method: 'PATCH',
+      body: { outcome: 'COMPLETED' },
+    });
+    const all = await q.all();
+    expect(all).toHaveLength(2);
+  });
+
+  it('enqueueUnique entries replay normally through the same fetcher path', async () => {
+    const q = createMutationQueue();
+    await q.enqueueUnique({
+      dedupeKey: 'outcome:v1:COMPLETED',
+      endpoint: '/ok',
+      method: 'PATCH',
+      body: {},
+    });
+    const fetcher = vi.fn(async () => ({ status: 200 }));
+    const result = await q.replay(fetcher);
+    expect(result.succeeded).toBe(1);
+    const all = await q.all();
+    expect(all).toHaveLength(0);
+  });
+});

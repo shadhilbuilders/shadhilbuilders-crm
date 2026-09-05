@@ -17,6 +17,7 @@
 //     one (SCHEDULED).
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -325,12 +326,91 @@ export class VisitsService {
             id: true,
             leadId: true,
             status: true,
+            outcome: true,
             lead: { select: { name: true, state: true } },
             user: { select: { name: true } },
           },
         });
         if (existing === null) {
           throw new NotFoundException(`Visit ${visitId} not found`);
+        }
+
+        // ── Conflict rule (T-D4): idempotent replay ──────────────────
+        // Offline clients (PWA / future mobile) queue outcome writes and
+        // replay them on reconnect. Two rules, checked in this order:
+        //
+        // 1. EXACT replay (visit already has status+outcome equal to the
+        //    replayed outcome, i.e. the write already landed): no-op —
+        //    return the current row untouched and audit the replay
+        //    ATTEMPT (reason says "Idempotent replay … — no state
+        //    change"). The response is indistinguishable from the first
+        //    write, so the caller's replay classification (2xx → prune
+        //    from queue) converges. Without this the replay re-runs the
+        //    full write path (duplicate audit row, redundant update,
+        //    possible lead-state re-entry).
+        //
+        // 2. DIFFERENT outcome on an already-advanced visit (e.g. queued
+        //    NO_SHOW but a manager marked COMPLETED first): reject with
+        //    409 — server-wins per the offline-store LWW policy
+        //    (conflict-resolver.ts), never a silent overwrite. The
+        //    visit's state machine rejects this for non-admin actors
+        //    anyway; for ADMIN/OWNER the re-open edges would otherwise
+        //    let a stale replay silently flip a terminal visit. The
+        //    queue surfaces the 409 as a failed entry for the user to
+        //    resolve manually.
+        if (
+          existing.status === dto.outcome &&
+          existing.outcome === dto.outcome
+        ) {
+          const current = await tx.siteVisit.findUniqueOrThrow({
+            where: { id: visitId },
+            select: {
+              id: true,
+              leadId: true,
+              scheduledFor: true,
+              userId: true,
+              status: true,
+              outcome: true,
+              notes: true,
+              updatedAt: true,
+              lead: { select: { name: true } },
+              user: { select: { name: true } },
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              userId: actor.sub,
+              action: 'visit.outcome',
+              entityType: 'SiteVisit',
+              entityId: current.id,
+              before: { status: current.status },
+              after: { status: current.status, outcome: current.outcome },
+              reason: `Idempotent replay of visit outcome ${current.status} by ${actor.email} (${actor.role}) — no state change`,
+            },
+          });
+          return {
+            id: current.id,
+            leadId: current.leadId,
+            leadName: current.lead.name,
+            scheduledFor: current.scheduledFor.toISOString(),
+            userId: current.userId,
+            userName: current.user.name,
+            status: current.status,
+            outcome: current.outcome,
+            notes: current.notes,
+            updatedAt: current.updatedAt.toISOString(),
+          };
+        }
+
+        // Stale-write conflict (rule 2 above): the visit has already
+        // advanced past SCHEDULED and the replayed/attempted outcome
+        // differs from what landed. Server-wins — reject, never
+        // overwrite. (Also catches genuine admin mistakes on the
+        // online path; the UI surfaces the 409 as an error toast.)
+        if (existing.status !== 'SCHEDULED') {
+          throw new ConflictException(
+            `Visit is already ${existing.status} — refusing outcome write ${dto.outcome}`,
+          );
         }
 
         // State-machine guard.
