@@ -62,11 +62,14 @@ async function login(page: Page): Promise<void> {
 }
 
 /**
- * KNOWN GAP — `(app)/layout.tsx` calls `useNavSync()` from `src/lib/nav.ts`
- * which invokes `useSidebar()` inside `useEffect`, violating the Rules of
- * Hooks. In dev mode this throws an "Invalid hook call" runtime error
- * after login, and Next.js renders the "This page couldn't load" error
- * overlay instead of any (app)/* page.
+ * REGRESSION GUARD — `(app)/layout.tsx` mounts `useNavSync()` from
+ * `src/lib/nav.ts`. An earlier implementation invoked `useSidebar()`
+ * INSIDE its `useEffect` callback, violating the Rules of Hooks: in dev
+ * mode this threw an "Invalid hook call" runtime error after login and
+ * Next.js rendered the "This page couldn't load" error overlay instead
+ * of any (app)/* page. Fixed 2026-09: the hook now calls `useSidebar()`
+ * in the hook body (see `src/lib/use-nav-sync.test.tsx` for the unit
+ * level guard).
  *
  * Every post-login step must first check whether the page rendered
  * (i.e. we did NOT land on the error overlay). If we did, the step
@@ -95,7 +98,7 @@ async function probeForLayoutError(
       : '';
     return {
       broken: true,
-      reason: `${stepName}: (app) layout crashed with Runtime Error — "${dialogText.split('\n').slice(0, 2).join(' | ').slice(0, 200)}". Source: src/lib/nav.ts:258 useSidebar() called inside useEffect.`,
+      reason: `${stepName}: (app) layout crashed with Runtime Error — "${dialogText.split('\n').slice(0, 2).join(' | ').slice(0, 200)}". Source: (app)/layout.tsx crash (useNavSync Rules-of-Hooks regression? see src/lib/use-nav-sync.test.tsx).`,
     };
   }
   return { broken: false, reason: '' };
