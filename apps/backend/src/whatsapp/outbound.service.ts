@@ -12,7 +12,7 @@
 // these functions and runs them on a schedule. Testable in
 // isolation with a mock WhatsAppClient.
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type OutboundMessage,
   type OutboundStatus,
@@ -41,16 +41,20 @@ export class OutboundService {
   private readonly logger = new Logger(OutboundService.name);
 
   constructor(
-    private readonly prismaService: PrismaService,
-    private readonly whatsapp: WhatsAppClient,
+    // @Inject is REQUIRED on every dep (not style): tsx/esbuild doesn't
+    // emit design:paramtypes for bare params, so Nest injects undefined
+    // and every cron tick crashes with "Cannot read properties of
+    // undefined (reading '$client')".
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
+    @Inject(WhatsAppClient) private readonly whatsapp: WhatsAppClient,
     private readonly templateNames: {
       chatReply: string;
       visitFollowup: string;
       visitReminder: string;
     } = {
-      chatReply: process.env.WHATSAPP_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply',
-      visitFollowup: process.env.WHATSAPP_TEMPLATE_VISIT_FOLLOWUP ?? 'shadhil_visit_followup',
-      visitReminder: process.env.WHATSAPP_TEMPLATE_VISIT_REMINDER ?? 'shadhil_visit_reminder',
+      chatReply: process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply',
+      visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP ?? 'shadhil_visit_followup',
+      visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER ?? 'shadhil_visit_reminder',
     },
   ) {}
 

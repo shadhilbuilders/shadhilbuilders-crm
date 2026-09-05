@@ -171,10 +171,10 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
   API_PORT=8080
   DIRECT_DATABASE_URL=<from your .env, Supabase pooler>
   BETTER_AUTH_SECRET=<from your .env>
-  WHATSAPP_TOKEN=<Meta WhatsApp Cloud API token>
-  WHATSAPP_PHONE_NUMBER_ID=1344555108732643
-  WHATSAPP_BUSINESS_ACCOUNT_ID=<from your .env>
-  WHATSAPP_WEBHOOK_VERIFY_TOKEN=<from your .env>
+  WA_ACCESS_TOKEN=<Meta WhatsApp Cloud API token>
+  WA_PHONE_NUMBER_ID=1344555108732643
+  WA_BUSINESS_ACCOUNT_ID=<from your .env>
+  WA_WEBHOOK_VERIFY_TOKEN=<from your .env>
   SUPABASE_URL=<from your .env>
   SUPABASE_SECRET_KEY=<from your .env, sb_secret_*>
   CLOUDflare_R2_* (account id, access key, secret, bucket, public URL)
@@ -240,7 +240,7 @@ curl https://api.yourdomain.com/api/users/me -H "Cookie: <test-session>"
 # 5. WhatsApp webhook
 # In Meta Business Suite → WhatsApp → Configuration → Webhook:
 #   URL: https://api.yourdomain.com/api/webhook/whatsapp
-#   Verify token: <WHATSAPP_WEBHOOK_VERIFY_TOKEN>
+#   Verify token: <WA_WEBHOOK_VERIFY_TOKEN>
 # Send a test message to your test number; check the Delivery status column
 # in the shadhil-web UI — should transition sent → delivered → read.
 ```

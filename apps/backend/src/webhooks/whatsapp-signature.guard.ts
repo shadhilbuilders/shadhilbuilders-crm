@@ -14,7 +14,7 @@
 //      let the request through. This lets the local dev / smoke-test
 //      environment receive webhooks without real Meta creds wired up
 //      yet — the user explicitly chose to test against a
-//      WHATSAPP_PHONE_NUMBER_ID test number.
+//      WA_PHONE_NUMBER_ID test number.
 //   2. **Prod verification (WA_APP_SECRET set):** compare the
 //      signature using `crypto.timingSafeEqual` (NOT `===` — the
 //      constant-time compare is the standard defense against timing

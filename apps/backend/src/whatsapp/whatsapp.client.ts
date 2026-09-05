@@ -29,7 +29,7 @@
 // submitted and approved before any business can send it. The
 // three templates below cover T-E2b's outbound paths:
 //
-// 1. shadhil_chat_reply  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_CHAT_REPLY
+// 1. shadhil_chat_reply  (UTILITY, en)  ← env: WA_TEMPLATE_CHAT_REPLY
 //    Category:  Utility (customer-initiated reply window — must be sent
 //                within 24h of the lead's last inbound message)
 //    Header:    none
@@ -45,7 +45,7 @@
 //    When sent: chat service → outbound.send() with
 //               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
 //
-// 2. shadhil_visit_followup  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_VISIT_FOLLOWUP
+// 2. shadhil_visit_followup  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
 //    Category:  Utility (proactive — must respect 24h+ window after
 //                last inbound; this is for follow-ups to leads whose
 //                last inbound was > 24h ago)
@@ -63,7 +63,7 @@
 //               templateName: 'shadhil_visit_followup', sendType: TEMPLATE
 //               (scheduled 24-48h after the site visit)
 //
-// 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WHATSAPP_TEMPLATE_VISIT_REMINDER
+// 3. shadhil_visit_reminder  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_REMINDER
 //    Category:  Utility (proactive reminder for upcoming visit)
 //    Header:    none
 //    Body:      "Your site visit for {{1}} is on {{2}}. Reply YES
@@ -81,10 +81,10 @@
 //               (scheduled 1-2h before the visit)
 //
 // Env-var name mapping (defaults to the template name itself):
-//   WHATSAPP_TEMPLATE_CHAT_REPLY       default 'shadhil_chat_reply'
-//   WHATSAPP_TEMPLATE_VISIT_FOLLOWUP   default 'shadhil_visit_followup'
-//   WHATSAPP_TEMPLATE_VISIT_REMINDER   default 'shadhil_visit_reminder'
-//   WHATSAPP_TEMPLATE_LANGUAGE         default 'en'
+//   WA_TEMPLATE_CHAT_REPLY            default 'shadhil_chat_reply'
+//   WA_TEMPLATE_VISIT_FOLLOWUP        default 'shadhil_visit_followup'
+//   WA_TEMPLATE_VISIT_REMINDER        default 'shadhil_visit_reminder'
+//   WA_TEMPLATE_LANGUAGE              default 'en'
 //
 // Test-mode override: Meta allows you to send any approved template
 // to numbers on the test allowlist (your own + the test numbers
@@ -157,14 +157,14 @@ export class WhatsAppClient {
   /** Factory from env vars. Throws if any required var is missing —
    *  we want the failure to be loud at module init, not on first send. */
   static fromEnv(env: NodeJS.ProcessEnv = process.env): WhatsAppClient {
-    const accessToken = env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = env.WHATSAPP_PHONE_NUMBER_ID;
-    const templateLanguage = env.WHATSAPP_TEMPLATE_LANGUAGE ?? 'en';
+    const accessToken = env.WA_ACCESS_TOKEN;
+    const phoneNumberId = env.WA_PHONE_NUMBER_ID;
+    const templateLanguage = env.WA_TEMPLATE_LANGUAGE ?? 'en';
     if (!accessToken) {
-      throw new Error('WHATSAPP_ACCESS_TOKEN not configured');
+      throw new Error('WA_ACCESS_TOKEN not configured');
     }
     if (!phoneNumberId) {
-      throw new Error('WHATSAPP_PHONE_NUMBER_ID not configured');
+      throw new Error('WA_PHONE_NUMBER_ID not configured');
     }
     return new WhatsAppClient(accessToken, phoneNumberId, templateLanguage);
   }
