@@ -94,21 +94,22 @@ export function AppShell() {
               (icon) rail the wordmark truncates to a compact strip. */}
           <Link
             href="/"
-            className="border-border bg-card inline-flex h-9 shrink-0 items-center overflow-hidden rounded-md border px-2"
+            className="border-border inline-flex h-10 shrink-0 items-center overflow-hidden rounded-md border bg-white px-2.5 dark:bg-white"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
             <Image
-              src="/brand/logo-with-bg.png"
+              src="/brand/logo.png"
               alt="Shadhil Builders"
-              width={96}
-              height={36}
-              className="h-7 w-auto object-contain"
+              width={112}
+              height={34}
+              className="h-9 w-auto object-contain"
             />
           </Link>
-          <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
-            Shadhil CRM
-          </span>
+          {/* The chip carries the full brand lockup (wordmark + tagline);
+              the duplicate "Shadhil CRM" text label is redundant at this
+              size and truncates awkwardly next to a 143px chip. Hidden
+              entirely — the chip IS the brand. */}
         </div>
         <SidebarTrigger className="md:hidden" />
       </SidebarHeader>
