@@ -1,4 +1,4 @@
-// Credentials service — writes the better-auth 1.7 credential Account row.
+// Credentials service - writes the better-auth 1.7 credential Account row.
 //
 // Contract (from packages/database/src/seed.ts, mirroring better-auth
 // dist/api/routes/sign-in.mjs:320): sign-in requires
@@ -8,7 +8,7 @@
 //
 // User/Account tables have NO RLS policies (policies.sql grants them to
 // shadhil_app but never FORCEs them), so these writes run on the bare client
-// — exactly the seed's path. Auth tables are pre-RLS by design: better-auth's
+// - exactly the seed's path. Auth tables are pre-RLS by design: better-auth's
 // own HTTP handlers write them session-agnostically.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 

@@ -1,4 +1,4 @@
-// Site visit state machine — pure module, no Nest/Prisma/DB imports
+// Site visit state machine - pure module, no Nest/Prisma/DB imports
 // beyond the VisitStatus enum type.
 //
 // Modeled after apps/backend/src/leads/leads.state-machine.ts:
@@ -24,7 +24,7 @@ export const VISIT_STATES = [
 const TRANSITIONS: Readonly<Record<VisitStatus, readonly VisitStatus[]>> = {
   SCHEDULED: ['COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED'],
   RESCHEDULED: ['COMPLETED', 'NO_SHOW', 'CANCELLED'],
-  // Terminal trio — ADMIN/OWNER can re-open.
+  // Terminal trio - ADMIN/OWNER can re-open.
   COMPLETED: [],
   NO_SHOW: ['RESCHEDULED'],
   CANCELLED: [],
@@ -37,7 +37,7 @@ const TRANSITIONS: Readonly<Record<VisitStatus, readonly VisitStatus[]>> = {
  * drive the next outreach) and sales exec (they follow up).
  *
  * Returned in a CANONICAL order so `allowedNextStates` and the UI
- * agree on the sequence — order matters because the dropdown renders
+ * agree on the sequence - order matters because the dropdown renders
  * left-to-right. The order is documented per role below; the
  * TRANSITIONS table is the graph only (no UI ordering implication).
  */
@@ -117,14 +117,14 @@ export function canTransition(req: TransitionRequest): TransitionResult {
   }
 
   // Admin/OWNER override: skip both the role lane AND the graph check.
-  // They can re-open terminals and transition to any VisitStatus — the
+  // They can re-open terminals and transition to any VisitStatus - the
   // schema enum IS their reach. The role gate below returns true for
   // them; the graph check is skipped.
   if (role === 'ADMIN' || role === 'OWNER') {
     return { ok: true, reason: 'ALLOWED' };
   }
 
-  // For non-admins: role gate first, then graph. Order matters — see
+  // For non-admins: role gate first, then graph. Order matters - see
   // the test pinning `ROLE_FORBIDDEN` vs `INVALID_TRANSITION`.
   if (!canRoleTransition(from, to, role)) {
     return { ok: false, code: 'ROLE_FORBIDDEN', from, to, role };

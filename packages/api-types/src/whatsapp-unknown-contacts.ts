@@ -1,20 +1,20 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — WhatsappUnknownContact (T-E2b follow-up queue) DTOs
+// Shadhil CRM - WhatsappUnknownContact (T-E2b follow-up queue) DTOs
 // ────────────────────────────────────────────────────────────────────────────
 // Endpoints served by apps/backend/src/whatsapp-unknown-contacts/:
 //
 //   GET    /api/whatsapp-unknown-contacts?status=...&limit=...&cursor=...
-//     — list contacts in the follow-up queue, paginated
+//     - list contacts in the follow-up queue, paginated
 //   POST   /api/whatsapp-unknown-contacts/:id/convert
 //     body: CreateLeadDto (name, phone, email?, source='WHATSAPP', projectId?, notes?)
-//     — creates a Lead, links the contact via convertedToLeadId,
+//     - creates a Lead, links the contact via convertedToLeadId,
 //       flips status to CONVERTED, all in one transaction
 //   POST   /api/whatsapp-unknown-contacts/:id/spam
-//     — flips status to SPAM (no Lead required)
+//     - flips status to SPAM (no Lead required)
 //
 // The convert flow reuses CreateLeadDtoSchema from ./leads so the
 // lead-create contract stays in one place (manager assignment,
-// RLS checks, audit log — all driven by LeadsService.create).
+// RLS checks, audit log - all driven by LeadsService.create).
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
@@ -31,8 +31,8 @@ export { WhatsappUnknownContactStatusSchema } from './enums';
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/whatsapp-unknown-contacts — filter DTO. Status is optional
- * (defaults to "PENDING" — the queue the admin UI defaults to). Limit
+ * GET /api/whatsapp-unknown-contacts - filter DTO. Status is optional
+ * (defaults to "PENDING" - the queue the admin UI defaults to). Limit
  * caps page size; cursor is opaque (base64 of last-seen
  * `${createdAt.toISOString()}_${id}`), passed back by the previous
  * response's `nextCursor` field.
@@ -74,16 +74,16 @@ export interface WhatsappUnknownContactListResult {
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * POST /api/whatsapp-unknown-contacts/:id/convert — the body is
+ * POST /api/whatsapp-unknown-contacts/:id/convert - the body is
  * the same CreateLeadDto that POST /api/leads accepts, with the
  * source field pre-populated to 'WHATSAPP' by the UI modal. We
- * re-use the schema verbatim — same field validation, same manager
+ * re-use the schema verbatim - same field validation, same manager
  * assignment engine, same audit log.
  */
 export const ConvertUnknownContactDtoSchema = CreateLeadDtoSchema;
 export type ConvertUnknownContactDto = z.infer<typeof ConvertUnknownContactDtoSchema>;
 
-/** Shape of the convert response — returns the new Lead + the
+/** Shape of the convert response - returns the new Lead + the
  *  updated contact row, so the UI can navigate to the Lead
  *  detail page after a successful convert. */
 export interface ConvertUnknownContactResult {
@@ -104,7 +104,7 @@ export interface ConvertUnknownContactResult {
 // Spam endpoint
 // ────────────────────────────────────────────────────────────────────
 
-/** POST /api/whatsapp-unknown-contacts/:id/spam — no body needed. */
+/** POST /api/whatsapp-unknown-contacts/:id/spam - no body needed. */
 export interface SpamUnknownContactResult {
   contact: WhatsappUnknownContactRow;
 }

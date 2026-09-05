@@ -1,4 +1,4 @@
-# Shadhil CRM — Manual Lead Assignment Model (Design Decision)
+# Shadhil CRM - Manual Lead Assignment Model (Design Decision)
 
 **Source:** User request 2026-08-30: "admin/manager assign the lead to sales or telecaller; admin can access all the resources"
 **Status:** Locked decisions (4)
@@ -32,7 +32,7 @@
 
 | Role | Can do | Cannot do |
 |---|---|---|
-| **Admin** | **Reassign any lead to any Telecaller or any Sales Exec** (system-wide); **read every lead across all teams**; override RLS for support | Cannot self-claim ownership (Admin stays Admin — to act on a lead, Admin must also have a Telecaller or Sales Exec role, OR use the system action of assigning to self) |
+| **Admin** | **Reassign any lead to any Telecaller or any Sales Exec** (system-wide); **read every lead across all teams**; override RLS for support | Cannot self-claim ownership (Admin stays Admin - to act on a lead, Admin must also have a Telecaller or Sales Exec role, OR use the system action of assigning to self) |
 | **Manager** | **Reassign any lead in their team** to any Telecaller or any Sales Exec in their team; manually reassign between telecaller ↔ exec within team | Cannot reassign leads across teams; cannot see other managers' teams |
 | **Telecaller** | (unchanged) | Cannot reassign leads |
 | **Sales Executive** | (unchanged) | Cannot reassign leads |
@@ -62,9 +62,9 @@
 - `lead_select_manager`: `team_id = current_user_team_id() AND role = 'manager'`
 
 **Add (v3.2):**
-- `lead_select_admin`: `current_user_role() = 'admin'` — bypasses team/owner checks
-- `lead_update_admin`: `current_user_role() = 'admin'` — can update owner_id on any lead
-- `lead_update_manager`: `team_id = current_user_team_id() AND current_user_role() = 'manager'` — can update owner_id within team only
+- `lead_select_admin`: `current_user_role() = 'admin'` - bypasses team/owner checks
+- `lead_update_admin`: `current_user_role() = 'admin'` - can update owner_id on any lead
+- `lead_update_manager`: `team_id = current_user_team_id() AND current_user_role() = 'manager'` - can update owner_id within team only
 
 **Validation layer (NestJS, not just RLS):**
 - Reassign action requires: `target_user.team_id = current_user.team_id` (Manager) OR `current_user.role = 'admin'`
@@ -96,10 +96,10 @@ async reassign(
 ```
 
 **Permission response codes:**
-- `200` — success
-- `403` — permission denied (Manager trying to reassign across teams, or non-Admin/Manager attempting)
-- `404` — lead or target user not found
-- `422` — invalid state transition (e.g. reassigning a WON lead back to telecaller)
+- `200` - success
+- `403` - permission denied (Manager trying to reassign across teams, or non-Admin/Manager attempting)
+- `404` - lead or target user not found
+- `422` - invalid state transition (e.g. reassigning a WON lead back to telecaller)
 
 ---
 
@@ -107,7 +107,7 @@ async reassign(
 
 ### Lead Inbox (web + mobile)
 
-**For Admin/Manager only — new "Reassign" bulk action + per-row action:**
+**For Admin/Manager only - new "Reassign" bulk action + per-row action:**
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -149,7 +149,7 @@ async reassign(
 ### Mobile (Lead Detail)
 
 **Native context menu on long-press lead row (per Vercel RN skill §15):**
-- "Reassign..." (Admin/Manager only — hidden for Telecaller/Sales Exec)
+- "Reassign..." (Admin/Manager only - hidden for Telecaller/Sales Exec)
 - Opens native modal with same fields as web
 
 ### Admin Dashboard (new)
@@ -174,7 +174,7 @@ async reassign(
 
 ## Notification triggers (new)
 
-**Trigger #13 — Lead manually reassigned** (Admin/Manager assignment actions):
+**Trigger #13 - Lead manually reassigned** (Admin/Manager assignment actions):
 
 | Recipient | Title | Body |
 |---|---|---|
@@ -182,7 +182,7 @@ async reassign(
 | Old owner | "Lead reassigned" | "{{lead.name}} was reassigned from you to {{newOwner.name}}" |
 | Manager (if reassigner is Admin) | "Lead reassigned by Admin" | "Admin {{name}} reassigned {{lead.name}} to {{newOwner.name}}" |
 
-**Trigger #14 — Cross-team reassign attempted + denied** (security audit):
+**Trigger #14 - Cross-team reassign attempted + denied** (security audit):
 - Admin gets notification if a Manager tries to reassign across teams and is blocked
 - Audit log entry is mandatory
 
@@ -207,7 +207,7 @@ Every reassign writes a `LeadReassigned` audit entry:
 }
 ```
 
-Retention: 7 years (RERA upper bound — matches existing audit retention).
+Retention: 7 years (RERA upper bound - matches existing audit retention).
 
 ---
 
@@ -220,7 +220,7 @@ Retention: 7 years (RERA upper bound — matches existing audit retention).
 | **Model C handoff** (auto) | Visit outcome logged | Ownership transfers per §3 state machine; coOwnerId may set; handoff toast fires |
 | **Manual reassign** (Admin/Manager) | User clicks "Reassign..." | Ownership transfers immediately; bypasses ManagerAssignmentRule; reassign toast fires |
 
-These are independent flows. A manual reassign does NOT log a "visit outcome", so Model C handoff still fires when the visit happens later. A lead that was manually reassigned to a sales exec while in NEW state will still get Model C handoff toasts at visit time (because the state machine doesn't care who set the owner — it cares about state transitions).
+These are independent flows. A manual reassign does NOT log a "visit outcome", so Model C handoff still fires when the visit happens later. A lead that was manually reassigned to a sales exec while in NEW state will still get Model C handoff toasts at visit time (because the state machine doesn't care who set the owner - it cares about state transitions).
 
 **Edge case:** Lead in WON state. Reassigning a WON lead to a new owner is unusual but allowed (Admin only). Use case: post-booking customer satisfaction calls get moved to a customer-success exec.
 
@@ -258,10 +258,10 @@ These are independent flows. A manual reassign does NOT log a "visit outcome", s
 
 ## Out of scope for this change (still deferred)
 
-- **Bulk reassign with auto-rule application** (e.g. "reassign all NEW leads in Team A per round-robin") — defer to v1.1
-- **Auto-rebalance** when a Telecaller is overloaded — defer to v1.1
-- **Lead sharing** (multiple owners on one lead simultaneously outside Model C) — defer to v1.1
-- **Manager override of Admin reassign** — N/A, Admin is the top of the chain
+- **Bulk reassign with auto-rule application** (e.g. "reassign all NEW leads in Team A per round-robin") - defer to v1.1
+- **Auto-rebalance** when a Telecaller is overloaded - defer to v1.1
+- **Lead sharing** (multiple owners on one lead simultaneously outside Model C) - defer to v1.1
+- **Manager override of Admin reassign** - N/A, Admin is the top of the chain
 
 ---
 

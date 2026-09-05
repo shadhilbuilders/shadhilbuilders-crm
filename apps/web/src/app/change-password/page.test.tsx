@@ -1,9 +1,9 @@
-// Change-password page — skeleton loading branch (T-brand follow-up).
+// Change-password page - skeleton loading branch (T-brand follow-up).
 //
 // The page has three render branches; this test pins the
 // sessionPending one (Skeleton card mirroring the real form) plus the
 // loading.tsx-style contract that the skeleton announces itself to
-// assistive tech. The authenticated form branch needs a live session —
+// assistive tech. The authenticated form branch needs a live session -
 // covered by the in-browser verification + the users page test pattern.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,7 +20,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
 }));
 
-// The zod hook imports — safe to import for real (no browser APIs needed
+// The zod hook imports - safe to import for real (no browser APIs needed
 // at module top).
 vi.mock('@hookform/resolvers/zod', () => ({
   zodResolver: () => () => Promise.resolve({ values: {}, errors: {} }),
@@ -28,14 +28,14 @@ vi.mock('@hookform/resolvers/zod', () => ({
 
 import ChangePasswordPage from './page';
 
-describe('ChangePasswordPage — session-pending skeleton', () => {
+describe('ChangePasswordPage - session-pending skeleton', () => {
   it('renders the AuthTopBar + card-shaped Skeleton while the session query is pending', () => {
     mocks.useSessionUser.mockReturnValue({ user: null, isPending: true });
 
     const html = renderToStaticMarkup(<ChangePasswordPage />);
     // Bar renders (brand stays visible during load).
     expect(html).toContain('data-qa="auth-topbar"');
-    // The skeleton branch renders — with the accessible loading status.
+    // The skeleton branch renders - with the accessible loading status.
     expect(html).toContain('data-qa="change-password-skeleton"');
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('Loading change password');

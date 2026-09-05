@@ -1,4 +1,4 @@
-// Visits service — REST surface for site visits + lead state handoff.
+// Visits service - REST surface for site visits + lead state handoff.
 //
 // Scoping (per JWT):
 //   - OWNER/ADMIN: all visits (RLS policies allow cross-tenant reads).
@@ -12,7 +12,7 @@
 // in the actor's context):
 //   - create: ownerId defaults to the actor (telecaller schedules).
 //   - update outcome: drives the parent lead state via
-//     LeadsService.transition() — visits.state-machine guard runs first.
+//     LeadsService.transition() - visits.state-machine guard runs first.
 //   - reschedule: closes the old visit (RESCHEDULED) and creates a new
 //     one (SCHEDULED).
 import {
@@ -99,7 +99,7 @@ export class VisitsService {
   }
 
   /**
-   * GET /api/visits — role-scoped list with optional filters.
+   * GET /api/visits - role-scoped list with optional filters.
    */
   async list(actor: JwtPayload, dto: VisitFilterDto): Promise<VisitListResult> {
     return withRlsContext(
@@ -177,11 +177,11 @@ export class VisitsService {
   }
 
   /**
-   * POST /api/visits — schedule a new visit. The lead must exist;
+   * POST /api/visits - schedule a new visit. The lead must exist;
    * RLS policies on SiteVisit gate the write by parent Lead team.
    *
    * The DTO's `scheduledFor` is in the future (CreateSiteVisitDtoSchema
-   * enforces this). `salesExecId` is optional — if omitted, the actor
+   * enforces this). `salesExecId` is optional - if omitted, the actor
    * is the assigned exec (typical telecaller-schedules flow).
    */
   async create(actor: JwtPayload, dto: CreateSiteVisitDto): Promise<VisitRow> {
@@ -199,7 +199,7 @@ export class VisitsService {
         }
         // Per Plan §3: visit scheduling requires the lead to be in
         // VISIT_REQUESTED or VISIT_SCHEDULED. RESCHEDULED is allowed
-        // too — a manager re-opening a no-show can re-schedule.
+        // too - a manager re-opening a no-show can re-schedule.
         const eligibleStates: ReadonlyArray<string> = [
           'VISIT_REQUESTED',
           'VISIT_SCHEDULED',
@@ -255,7 +255,7 @@ export class VisitsService {
         });
 
         // If the lead is in VISIT_REQUESTED, auto-advance to
-        // VISIT_SCHEDULED — scheduling the visit is the action that
+        // VISIT_SCHEDULED - scheduling the visit is the action that
         // completes the request.
         if (lead.state === 'VISIT_REQUESTED') {
           await this.leadsService.transition(actor, {
@@ -299,16 +299,16 @@ export class VisitsService {
   }
 
   /**
-   * PATCH /api/visits/:id — update visit outcome. Drives the parent
+   * PATCH /api/visits/:id - update visit outcome. Drives the parent
    * lead state machine via the VisitsService → LeadsService call:
    *
    *   COMPLETED → Lead.VISITED
    *   NO_SHOW   → Lead stays (visit outcome is informational; the
-   *               parent lead doesn't auto-flip on no-show — sales
+   *               parent lead doesn't auto-flip on no-show - sales
    *               follow-up decides)
    *   RESCHEDULED → creates a new SiteVisit row (via reschedule())
    *   CANCELLED → Lead.VISIT_SCHEDULED stays (cancel is a state on
-   *               the visit, not the lead — lead stays VISIT_REQUESTED
+   *               the visit, not the lead - lead stays VISIT_REQUESTED
    *               for a re-schedule)
    */
   async updateOutcome(
@@ -340,9 +340,9 @@ export class VisitsService {
         // replay them on reconnect. Two rules, checked in this order:
         //
         // 1. EXACT replay (visit already has status+outcome equal to the
-        //    replayed outcome, i.e. the write already landed): no-op —
+        //    replayed outcome, i.e. the write already landed): no-op -
         //    return the current row untouched and audit the replay
-        //    ATTEMPT (reason says "Idempotent replay … — no state
+        //    ATTEMPT (reason says "Idempotent replay … - no state
         //    change"). The response is indistinguishable from the first
         //    write, so the caller's replay classification (2xx → prune
         //    from queue) converges. Without this the replay re-runs the
@@ -351,7 +351,7 @@ export class VisitsService {
         //
         // 2. DIFFERENT outcome on an already-advanced visit (e.g. queued
         //    NO_SHOW but a manager marked COMPLETED first): reject with
-        //    409 — server-wins per the offline-store LWW policy
+        //    409 - server-wins per the offline-store LWW policy
         //    (conflict-resolver.ts), never a silent overwrite. The
         //    visit's state machine rejects this for non-admin actors
         //    anyway; for ADMIN/OWNER the re-open edges would otherwise
@@ -385,7 +385,7 @@ export class VisitsService {
               entityId: current.id,
               before: { status: current.status },
               after: { status: current.status, outcome: current.outcome },
-              reason: `Idempotent replay of visit outcome ${current.status} by ${actor.email} (${actor.role}) — no state change`,
+              reason: `Idempotent replay of visit outcome ${current.status} by ${actor.email} (${actor.role}) - no state change`,
             },
           });
           return {
@@ -404,12 +404,12 @@ export class VisitsService {
 
         // Stale-write conflict (rule 2 above): the visit has already
         // advanced past SCHEDULED and the replayed/attempted outcome
-        // differs from what landed. Server-wins — reject, never
+        // differs from what landed. Server-wins - reject, never
         // overwrite. (Also catches genuine admin mistakes on the
         // online path; the UI surfaces the 409 as an error toast.)
         if (existing.status !== 'SCHEDULED') {
           throw new ConflictException(
-            `Visit is already ${existing.status} — refusing outcome write ${dto.outcome}`,
+            `Visit is already ${existing.status} - refusing outcome write ${dto.outcome}`,
           );
         }
 
@@ -489,7 +489,7 @@ export class VisitsService {
   }
 
   /**
-   * POST /api/visits/:id/reschedule — close the old visit (RESCHEDULED)
+   * POST /api/visits/:id/reschedule - close the old visit (RESCHEDULED)
    * and create a new one (SCHEDULED). Old visit keeps its outcome
    * history; new visit links back via `notes` (no FK column today).
    */

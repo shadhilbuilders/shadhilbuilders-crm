@@ -6,7 +6,7 @@ node_modules
 .next
 out
 
-# Environment files — never bake secrets into the image
+# Environment files - never bake secrets into the image
 .env
 .env.*
 !.env.example

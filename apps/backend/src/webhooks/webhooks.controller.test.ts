@@ -1,4 +1,4 @@
-// Webhooks controller test — T-E2b (2026-09-04).
+// Webhooks controller test - T-E2b (2026-09-04).
 //
 // Verifies the WhatsApp inbound handler against the real Meta
 // envelope shape:
@@ -11,7 +11,7 @@
 //
 // Tests use a real Prisma client + real Postgres (the same shape as
 // chat.service.send.test.ts). This is slower than mock-based
-// testing but proves the RLS + migration actually work — a mock
+// testing but proves the RLS + migration actually work - a mock
 // would let us skip the schema and the policies.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
@@ -35,7 +35,7 @@ beforeAll(async () => {
   // WhatsappUnknownContact / WebhookEvent / OutboundMessage rows
   // we create here are owned by CRON_SERVICE (no real actor), so
   // the user+team is only needed for the known Lead. Team is
-  // upserted FIRST — User.teamId is an FK to Team (User_teamId_fkey).
+  // upserted FIRST - User.teamId is an FK to Team (User_teamId_fkey).
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,
@@ -155,7 +155,7 @@ afterAll(async () => {
 
 // ── The tests ──────────────────────────────────────────────────────
 
-describe('WhatsApp inbound webhook — T-E2b', () => {
+describe('WhatsApp inbound webhook - T-E2b', () => {
   const controller = new WebhooksController();
 
   it('writes a Message row when an inbound text comes from a known lead', async () => {
@@ -356,7 +356,7 @@ describe('WhatsApp inbound webhook — T-E2b', () => {
     });
     expect(first.messagesCreated).toBe(1);
 
-    // Second call with the SAME externalId — should be a no-op
+    // Second call with the SAME externalId - should be a no-op
     // for Message creation (still records the WebhookEvent
     // attempt, but the unique constraint fails and we return
     // 'deduped').
@@ -374,7 +374,7 @@ describe('WhatsApp inbound webhook — T-E2b', () => {
                     id: externalId,
                     timestamp: '1700000000',
                     type: 'text',
-                    text: { body: 'duplicate — should be ignored' },
+                    text: { body: 'duplicate - should be ignored' },
                   },
                 ],
               },

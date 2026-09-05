@@ -101,7 +101,7 @@ describe('mutation-queue', () => {
   });
 });
 
-// T-D4 — enqueueUnique: dedupe-aware enqueue for offline outcome writes.
+// T-D4 - enqueueUnique: dedupe-aware enqueue for offline outcome writes.
 describe('mutation-queue.enqueueUnique (T-D4 dedupe)', () => {
   beforeEach(async () => {
     await clear(mutationStore);
@@ -135,7 +135,7 @@ describe('mutation-queue.enqueueUnique (T-D4 dedupe)', () => {
       method: 'PATCH',
       body: { visitId: 'v1', outcome: 'COMPLETED', notes: 'tap 3' },
     });
-    // Same logical entry — id and createdAt are stable.
+    // Same logical entry - id and createdAt are stable.
     expect(second.id).toBe(first.id);
     expect(second.createdAt).toBe(first.createdAt);
     // Payload is the LATEST tap.

@@ -1,10 +1,10 @@
 <!-- /autoplan restore point: /home/paalstack/.gstack/projects/shadhil-crm-plans/main-autoplan-restore-20260831-002701.md -->
-# Shadhil Builders CRM — Full Implementation Plan (v1)
+# Shadhil Builders CRM - Full Implementation Plan (v1)
 
 **Source design:** `DESIGN.md` v3.1 (1,038 lines, 28 locked decisions)
 **Sign-off:** `SIGN-OFF-SUMMARY-v3.1.md` (6 client inputs required before Week 1)
 **Plan-mode review:** `.gops/skills/gstack-plan-design-review` skill output (this directory's audit)
-**Stack lock:** Monorepo (pnpm + Turborepo), Next.js 16 (BFF + web UI), NestJS 12 (REST backend — locked by user 2026-08-30, supersedes DESIGN.md §7 NestJS 10 reference), Expo (mobile), Prisma (DB), better-auth (auth), @paalstack/react-ui (component lib)
+**Stack lock:** Monorepo (pnpm + Turborepo), Next.js 16 (BFF + web UI), NestJS 12 (REST backend - locked by user 2026-08-30, supersedes DESIGN.md §7 NestJS 10 reference), Expo (mobile), Prisma (DB), better-auth (auth), @paalstack/react-ui (component lib)
 **Target:** Week 13 → v1 live on Hostinger VPS via Coolify
 **Status:** Plan ready, awaiting client sign-off + the 6 inputs from SIGN-OFF doc
 
@@ -41,10 +41,10 @@ shadhil-crm/
 │   ├── mobile/           # Expo (React Native)
 │   └── backend/          # NestJS 12 (REST API)
 ├── packages/
-│   ├── database/         # @shadhil/database — Prisma schema + generated client
-│   ├── api-types/        # @shadhil/api-types — Re-exports Prisma types + manual request/response types
-│   ├── auth-client/      # @shadhil/auth — Shared better-auth server instance + helpers (web + mobile)
-│   └── ui-tokens/        # @shadhil/ui-tokens — Brand tokens (#001a4c, #62b132, #f8f5ef)
+│   ├── database/         # @shadhil/database - Prisma schema + generated client
+│   ├── api-types/        # @shadhil/api-types - Re-exports Prisma types + manual request/response types
+│   ├── auth-client/      # @shadhil/auth - Shared better-auth server instance + helpers (web + mobile)
+│   └── ui-tokens/        # @shadhil/ui-tokens - Brand tokens (#001a4c, #62b132, #f8f5ef)
 ├── pnpm-workspace.yaml
 ├── turbo.json
 ├── tsconfig.base.json
@@ -69,7 +69,7 @@ shadhil-crm/
 - **Server components** call NestJS REST, do not query business tables directly (exception: read User for profile)
 - Migrations run from `apps/backend` (`pnpm prisma migrate dev`)
 - PgBouncer in **session pooling mode for v1** (RLS works with per-request session vars). Switch to transaction pooling in v2 when concurrent users exceed ~50.
-- **Guard rail (eng review 2026-08-30, A5):** `POOL_MODE=session` is REQUIRED. Transaction pooling silently breaks RLS — users see each other's data. Add a Coolify env-validation check at NestJS boot that fails startup if `POOL_MODE != session`.
+- **Guard rail (eng review 2026-08-30, A5):** `POOL_MODE=session` is REQUIRED. Transaction pooling silently breaks RLS - users see each other's data. Add a Coolify env-validation check at NestJS boot that fails startup if `POOL_MODE != session`.
 - **Connection budget (eng review 2026-08-30, P1):** Postgres `max_connections = 300`. With 2 SSE streams/user × 150 users = 300 concurrent backend sessions. Above that, scale Postgres vertically or move to active-screen SSE pattern.
 
 ### Initial scaffold (Week 1)
@@ -100,7 +100,7 @@ pnpm dlx @nestjs/cli new apps/backend --package-manager pnpm --skip-git
 
 Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
-### Phase 1 — Infrastructure & Schema (Weeks 1–2)
+### Phase 1 - Infrastructure & Schema (Weeks 1–2)
 
 **Week 1: Monorepo skeleton + VPS provisioning**
 
@@ -122,7 +122,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 **Week 2: Prisma schema + RLS + NestJS basics**
 
-- [ ] Define `packages/database/prisma/schema.prisma` — 18 models (User, Team, Project, Phase, Unit, Lead, Activity, SiteVisit, Message, Booking, Reminder, Notification, PushSubscription, PushNotification, AuditLog, Consent, WebhookEvent, ManagerAssignmentRule). See §7 for the full list. `InAppNotification` was DROPPED in eng review C2.
+- [ ] Define `packages/database/prisma/schema.prisma` - 18 models (User, Team, Project, Phase, Unit, Lead, Activity, SiteVisit, Message, Booking, Reminder, Notification, PushSubscription, PushNotification, AuditLog, Consent, WebhookEvent, ManagerAssignmentRule). See §7 for the full list. `InAppNotification` was DROPPED in eng review C2.
 - [ ] RLS policies written per row (DESIGN.md §8: per-request session vars)
 - [ ] First Prisma migration applied
 - [ ] NestJS modules scaffolded: `AuthModule`, `LeadsModule`, `VisitsModule`, `ChatModule`, `BookingsModule`, `RemindersModule`, `NotificationsModule`, `AuditModule`, `WebhooksModule` (WhatsApp, FreJun)
@@ -136,7 +136,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 **Verification:** Auth login works locally; RLS test suite proves row-level isolation; OpenAPI docs render.
 
-### Phase 2 — Auth & Lead Foundation (Weeks 3–4)
+### Phase 2 - Auth & Lead Foundation (Weeks 3–4)
 
 **Week 3: better-auth + JWT bridge**
 
@@ -146,7 +146,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] JWT issuance + verification (HS256 per DESIGN.md §8)
 - [ ] NestJS `JwtStrategy` (`@nestjs/passport`) verifies with shared secret using `jose`
 - [ ] Postgres session vars set per request (for RLS)
-- [ ] Three users provisioned for testing (1 admin + 1 manager + 1 telecaller — required by end of Week 3 per SIGN-OFF input #5)
+- [ ] Three users provisioned for testing (1 admin + 1 manager + 1 telecaller - required by end of Week 3 per SIGN-OFF input #5)
 - [ ] **Deliverable:** Auth works on both surfaces
 
 **Verification:** Sign in on web → JWT issued → REST call to NestJS with Bearer → RLS filters correctly. Repeat on mobile.
@@ -154,7 +154,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 **Week 4: Lead CRUD + Lead Inbox + state machine**
 
 - [ ] Lead CRUD via REST (`GET/POST/PATCH/DELETE /leads`)
-- [ ] Lead state machine implementation (Model C — see §3)
+- [ ] Lead state machine implementation (Model C - see §3)
 - [ ] RLS enforcement tested per role
 - [ ] Site Visit basic CRUD (`GET/POST/PATCH /visits`)
 - [ ] TanStack Query hooks (`useLeads`, `useLead`, `useUpdateLeadStatus`)
@@ -164,8 +164,8 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
   - Filter chips: Status, Source, Owner, "Shared with me"
   - Bulk actions: Reassign, Mark contacted, Add to reminder
   - Empty state: "No leads match these filters. [Clear filters]"
-  - Empty state (no data at all): "No leads yet — they'll appear here as soon as the landing-site webhook fires."
-- [ ] **Lead Detail page** on web — desktop layout:
+  - Empty state (no data at all): "No leads yet - they'll appear here as soon as the landing-site webhook fires."
+- [ ] **Lead Detail page** on web - desktop layout:
   - Top: Status banner (with next-action CTA), lead name, phone, source, co-owner chip
   - Tabs: Overview / Timeline / Notes / Chat / Visits / Bookings
   - Overview: contact info, next action, recent activity snippet, key dates
@@ -175,12 +175,12 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
   - Visits: scheduled + past visits with outcomes
   - Bookings: thin-slice booking pipeline
 - [ ] Mobile Lead Inbox: card list (1 lead per card)
-- [ ] Mobile Lead Detail: 5-tab bottom nav (Overview, Chat, Visits, Bookings, Notes — Decision 0.1)
+- [ ] Mobile Lead Detail: 5-tab bottom nav (Overview, Chat, Visits, Bookings, Notes - Decision 0.1)
 - [ ] **Deliverable:** Lead Inbox functional
 
 **Verification:** Create lead → appears in inbox → status transitions work → Lead Detail renders all tabs → RLS prevents cross-team reads.
 
-### Phase 3 — Realtime & Messaging (Week 5)
+### Phase 3 - Realtime & Messaging (Week 5)
 
 **Week 5: Chat pane + SSE + WhatsApp + Lead Detail polish**
 
@@ -190,13 +190,13 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] Redis pub/sub channels: `lead:{id}:messages`, `user:{id}:notifications`, etc. (DESIGN.md §9)
 - [ ] ChatPane component (web): bubbles, optimistic local save, "Delivered ✓" → "Read ✓" status
 - [ ] ChatPane component (mobile): dedicated route, virtualized message list
-- [ ] WhatsApp webhook handler in NestJS — receives → creates message → broadcasts via SSE → archives
+- [ ] WhatsApp webhook handler in NestJS - receives → creates message → broadcasts via SSE → archives
 - [ ] "Send WhatsApp" button in Lead Detail → calls WhatsApp Cloud API → publishes to SSE → user sees message
 - [ ] **Deliverable:** Chat works, WA inbound flows
 
 **Verification:** Send WhatsApp from external phone → appears in Lead Detail chat within 2s. Send from CRM → arrives on customer's phone.
 
-### Phase 4 — Visits, Handoffs, Notifications (Week 6)
+### Phase 4 - Visits, Handoffs, Notifications (Week 6)
 
 **Week 6: Site Visit scheduler + Model C handoff**
 
@@ -207,18 +207,18 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
   - On outcome=VISITED → transfer ownership to assigned exec, log handoff event, toast both screens (Decision 0.8)
   - On outcome=NO_SHOW → revert ownership to telecaller, fire no-show reminder
   - On outcome=RESCHEDULED → cancel old visit reminders, schedule new ones
-- [ ] FreJun webhook handler (stub for v1 — full telephony in Week 11)
+- [ ] FreJun webhook handler (stub for v1 - full telephony in Week 11)
 - [ ] Notification triggers 1–4 + 8–10 wired (DESIGN.md §10)
 - [ ] Push token storage (PushSubscription table)
 - [ ] **Deliverable:** Site visits + handoffs work
 
 **Verification:** Visit marked VISITED → toast on both screens → exec now owns → audit log entry. Visit marked NO_SHOW → reverts to telecaller → no-show reminder fires.
 
-### Phase 5 — Reminders, Booking, Inbox, Audit (Week 7)
+### Phase 5 - Reminders, Booking, Inbox, Audit (Week 7)
 
 **Week 7: Reminders + Notification Center + Inventory + Booking + Audit**
 
-- [ ] Reminders module: schema, cron, 4 types (pre-visit staff/customer, reschedule, no-show — DESIGN.md §12)
+- [ ] Reminders module: schema, cron, 4 types (pre-visit staff/customer, reschedule, no-show - DESIGN.md §12)
 - [ ] Reminder processor (NestJS `@Cron('* * * * *')`)
 - [ ] Notification Center UI on web:
   - Bell icon in top nav, badge capped at "9+"
@@ -239,7 +239,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 **Verification:** Schedule visit → T-2h push fires to exec → reminder banner shows on Lead Detail (Decision 0.10). Create booking → manager receives notification → approves → audit log entry.
 
-### Phase 6 — Mobile Push + Notifications + Manager Dashboard (Weeks 8–9)
+### Phase 6 - Mobile Push + Notifications + Manager Dashboard (Weeks 8–9)
 
 **Week 8: Mobile notifications + Manager handoff E2E**
 
@@ -250,8 +250,8 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
   - Tap item → deep-link to lead/visit/booking
 - [ ] Push notification setup (Expo Push + VAPID keys)
 - [ ] All 12 push triggers wired (DESIGN.md §10)
-- [ ] Push receipt polling (every 5 min) — update `DELIVERED` / `FAILED` status
-- [ ] Quiet hours logic (22:00–07:00 local) — reminder triggers defer, state-transition triggers fire anyway
+- [ ] Push receipt polling (every 5 min) - update `DELIVERED` / `FAILED` status
+- [ ] Quiet hours logic (22:00–07:00 local) - reminder triggers defer, state-transition triggers fire anyway
 - [ ] Manager handoff flow E2E (manager reviews team pipeline, reassigns, approves)
 - [ ] **Deliverable:** Push + Inbox work on mobile
 
@@ -274,10 +274,10 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 **Verification:** Manager sees dashboard at 9 AM, identifies stalled lead in <30s. RERA export produces JSON within 30s for 100k-row dataset.
 
-### Phase 7 — Mobile App Build (Week 10)
+### Phase 7 - Mobile App Build (Week 10)
 
 **Week 7 store-review gate (ratified at /autoplan gate 2026-08-31, decision A):**
-- [ ] Submit a TestFlight (iOS) + internal-testing-track (Android) build by EOD Week 7 — bare login + Lead Inbox is enough. Purpose: start Apple/Google review latency outside the critical path.
+- [ ] Submit a TestFlight (iOS) + internal-testing-track (Android) build by EOD Week 7 - bare login + Lead Inbox is enough. Purpose: start Apple/Google review latency outside the critical path.
 - [ ] Hold a 2-week review buffer: Week 11-13 can absorb one rejection cycle without slipping v1 live.
 - [ ] If store review threatens Week 13: PWA install flow (already Phase 10) is the documented fallback for field web-as-mobile use.
 
@@ -290,24 +290,24 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] **`metro.config.js`** with `withNativewind({ inlineVariables: false, globalClassNamePolyfill: false })`
 - [ ] **`postcss.config.mjs`** with `@tailwindcss/postcss` plugin
 - [ ] **`apps/mobile/src/global.css`** with `@import "tailwindcss/theme.css" layer(theme)` / `preflight.css` layer(base)` / `utilities.css`
-- [ ] **NO `babel.config.js`** for Tailwind (per skill — delete if present)
-- [ ] **`apps/mobile/src/tw/index.tsx`** — wrap View, Text, ScrollView, Pressable, TextInput, Link via `useCssElement`
+- [ ] **NO `babel.config.js`** for Tailwind (per skill - delete if present)
+- [ ] **`apps/mobile/src/tw/index.tsx`** - wrap View, Text, ScrollView, Pressable, TextInput, Link via `useCssElement`
 - [ ] Brand tokens: `@theme { --color-brand-primary: #001a4c; ... }` in global.css (sharing with web via `packages/ui-tokens`)
 - [ ] Apple semantic colors via `platformColor()` in `@media ios` blocks + `light-dark()` fallback
 
 **Architecture (per `expo-native-ui` + `vercel-react-native-skills` skills):**
-- [ ] Expo Router setup — use `expo-router/react-navigation` (NOT direct `@react-navigation/*` imports)
-- [ ] **Native stack + native tabs only** (`@react-navigation/native-stack` or expo-router's default stack — NOT `@react-navigation/stack` or `/bottom-tabs`)
+- [ ] Expo Router setup - use `expo-router/react-navigation` (NOT direct `@react-navigation/*` imports)
+- [ ] **Native stack + native tabs only** (`@react-navigation/native-stack` or expo-router's default stack - NOT `@react-navigation/stack` or `/bottom-tabs`)
 - [ ] **`Color` from `expo-router`** for semantic colors in `apps/mobile/theme/colors.ts` with `Platform.select` wrappers
 - [ ] **SF Symbols via `expo-image` with `source="sf:name"`** (NOT `expo-symbols` or vector-icons)
-- [ ] **`@expo/ui`** for Switch, Slider, DateTimePicker, Menu, SegmentedControl, BottomSheet — renders as native SwiftUI/Compose
-- [ ] **Reanimated v4** for animations (NOT built-in Animated API) — animate only `transform` and `opacity` (GPU-accelerated)
+- [ ] **`@expo/ui`** for Switch, Slider, DateTimePicker, Menu, SegmentedControl, BottomSheet - renders as native SwiftUI/Compose
+- [ ] **Reanimated v4** for animations (NOT built-in Animated API) - animate only `transform` and `opacity` (GPU-accelerated)
 - [ ] **`useWindowDimensions()`** over `Dimensions.get()` for responsive layout
 - [ ] **`onLayout`** over `measure()` for view measurements
 - [ ] **`Pressable`** over `TouchableOpacity` everywhere
 
-**Critical list rules (Vercel RN — applies to Lead Inbox, Notification Center, Chat pane, Site Visit list):**
-- [ ] **FlashList** for ALL lists (NOT ScrollView-mapped, NOT FlatList) — `import { FlashList } from '@shopify/flash-list'`
+**Critical list rules (Vercel RN - applies to Lead Inbox, Notification Center, Chat pane, Site Visit list):**
+- [ ] **FlashList** for ALL lists (NOT ScrollView-mapped, NOT FlatList) - `import { FlashList } from '@shopify/flash-list'`
 - [ ] **`estimatedItemSize`** set per list (e.g., 80 for Lead row, 120 for Notification, 88 for chat bubble)
 - [ ] Memoize list item components (`React.memo`)
 - [ ] Stabilize callback references (`useCallback` for `renderItem`, `keyExtractor`)
@@ -324,7 +324,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] Notification Center (FlashList, badge on tab bar)
 
 **Conditional rendering rules (Vercel RN):**
-- [ ] **Never** use `falsy &&` for conditional rendering — use ternaries that always return valid React nodes (`cond ? <Component /> : null`)
+- [ ] **Never** use `falsy &&` for conditional rendering - use ternaries that always return valid React nodes (`cond ? <Component /> : null`)
 - [ ] **Always** wrap text in `<Text>` (NOT `<View>{string}</View>`)
 - [ ] Use native context menus for row actions (long-press)
 - [ ] Use native modals where possible (NOT custom JS modals)
@@ -339,22 +339,22 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - Trigger push → arrives within 30s on iOS + Android
 - All animations 60fps (transform/opacity only)
 
-### Phase 8 — Production Integrations (Week 11)
+### Phase 8 - Production Integrations (Week 11)
 
 **Week 11: Real WhatsApp + FreJun testing**
 
-- [ ] WhatsApp production number activated (depends on Meta approval — may need to wait)
+- [ ] WhatsApp production number activated (depends on Meta approval - may need to wait)
 - [ ] 4 templates approved and active (submitted Week 1)
 - [ ] FreJun sign-off complete (SIGN-OFF input #4)
 - [ ] Real phone numbers provisioned for staff (SIGN-OFF input #6)
-- [ ] FreJun webhook live — incoming calls logged, recordings archived to Cloudflare R2
+- [ ] FreJun webhook live - incoming calls logged, recordings archived to Cloudflare R2
 - [ ] AI transcription enabled (FreJun built-in)
 - [ ] E2E tests: customer calls → lands in lead timeline → recording plays in chat pane
 - [ ] **Deliverable:** Real integrations working
 
 **Verification:** Real customer calls come in → recordings appear in CRM within 60s.
 
-### Phase 9 — Production Deploy (Week 12)
+### Phase 9 - Production Deploy (Week 12)
 
 **Week 12: Deploy to Hostinger via Coolify**
 
@@ -380,7 +380,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 **Verification:** All 9 modules respond. SSE streams work. Push fires end-to-end. Backup verified.
 
-### Phase 10 — Bug Fixes + Polish (Week 13)
+### Phase 10 - Bug Fixes + Polish (Week 13)
 
 **Week 13: Production bug fixes + PWA + Final QA**
 
@@ -394,7 +394,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 
 ---
 
-## 3. Model C State Machine — Implementation Detail
+## 3. Model C State Machine - Implementation Detail
 
 From DESIGN.md §3. The state machine that the entire lead flow orbits around.
 
@@ -467,7 +467,7 @@ model Lead {
 
 ---
 
-## 4. UI Component Vocabulary (locked — Decision from §0.3)
+## 4. UI Component Vocabulary (locked - Decision from §0.3)
 
 From `~/.hermes/skills/devops/paalstack-react-ui/SKILL.md` (the consumer-side PaalStack design system). Every module uses components from this list. No custom rebuilds.
 
@@ -545,7 +545,7 @@ visibility, with ADMIN/OWNER see-all as in the REST list).
 1. **Cookie isolation.** The ticket in the SSE URL is the auth credential. If
    `sse.*` and `api.*` were siblings under `crm.shadhilbuilders.in`, the
    browser would send the `better-auth.session_token` cookie on every SSE
-   request — expanding the cookie's attack surface (XSS in one site
+   request - expanding the cookie's attack surface (XSS in one site
    exfiltrates the other). A separate subdomain scopes the cookie to the
    API only; the SSE connection authenticates purely via the
    unguessable 5-min single-use cuid.
@@ -577,7 +577,7 @@ Browser
       └─ /api/sse/chat/:leadId?ticket=<cuid>
 ```
 
-**Reverse proxy — single Traefik (Coolify default).** All three
+**Reverse proxy - single Traefik (Coolify default).** All three
 subdomains route through Coolify's built-in Traefik. The SSE
 service uses Docker labels for per-route config (compress
 exclusion). No dedicated reverse-proxy container needed; no
@@ -611,7 +611,7 @@ so the right `Content-Type` is enough.
 
 **Why this beats the Caddy split I considered earlier (decision
 audit #35 superseded 2026-09-04):** Coolify is built around
-Traefik — every tutorial, every issue thread, every GH discussion
+Traefik - every tutorial, every issue thread, every GH discussion
 in coollabsio/coolify assumes Traefik. Caddy has known override
 bugs in Coolify's label system (Issues #3083, #2069) that the
 Traefik path doesn't have. The dedicated-Caddy split I previously
@@ -622,7 +622,7 @@ vanishes when you use the platform's first-class citizen.
 cleartext too. For local dev with multiple browser tabs and 3 SSE
 channels each, the limit becomes noticeable. The fix: the existing
 `docker/docker-compose.yml` already runs a Caddy container for
-local dev — leave it in place for the `crm.local` and `api.crm.local`
+local dev - leave it in place for the `crm.local` and `api.crm.local`
 hosts (with mkcert certs), and add a small Traefik container
 (`traefik:v3` with Docker provider enabled) for the SSE host.
 The `apps/realtime-sse` source code is unchanged; only the local
@@ -631,7 +631,7 @@ dev proxy story shifts.
 ### 5.2 Why a separate service (T-E2 implementation note, 2026-09-04)
 
 `@nestjs/core@12.0.1`'s `@Sse()` decorator is broken for any
-subscription chain that requires an `await` inside its factory — the
+subscription chain that requires an `await` inside its factory - the
 async-handler, sync-handler+defer, and raw-`@Res()` shapes all commit
 the SSE headers and run the DB queries, but zero `data:` frames reach
 the socket. `@fastify/sse@0.6.0` has the same shape of bug (verified
@@ -645,7 +645,7 @@ silently swallowed frames in both. See skill
 Pitfall 9 for the full diagnostic record (13+ runs).
 
 The standalone service:
-- uses bare `node:http` (no framework SSE plugin) — zero new runtime deps
+- uses bare `node:http` (no framework SSE plugin) - zero new runtime deps
 - implements the exact pattern the canary proved works: `res.writeHead(200, ...)` +
   `res.write(': stream-open\n\n')` synchronously, then `setInterval` drives writes
 - shares `@shadhil/database` and `@shadhil/api-types` workspace packages
@@ -658,17 +658,17 @@ The browser's `EventSource` cannot set `Authorization` headers (spec
 limitation). The StreamTicket is the workaround: an unguessable cuid
 that lives in the URL query string, bound to (user, channel),
 single-use, expires in 5 minutes. Leaked tickets are worthless after
-the 5-min TTL or the first connect — whichever comes first.
+the 5-min TTL or the first connect - whichever comes first.
 
 **Mint (Nest, JWT-auth):** `POST /api/realtime/ticket` with body
 `{ channel: "notifications" | "audit" | "chat:<leadId>" }`. For
 `chat:<leadId>`, the Nest service performs a lead-visibility check
-inside `withRlsContext` — the same check the REST list uses
+inside `withRlsContext` - the same check the REST list uses
 (owner / same-team / admin-or-owner). Returns `{ ticket, channel,
 expiresAt }`.
 
 **Consume (SSE service, ticket-only):** `GET /api/sse/<channel>?ticket=<cuid>`.
-The SSE service authenticates the ticket (no JWT — the ticket IS the
+The SSE service authenticates the ticket (no JWT - the ticket IS the
 auth), deletes the row, and opens the stream. Channel-mismatch
 rejection (defends against a leaked notification ticket being replayed
 on the audit channel).
@@ -772,31 +772,31 @@ export const authClient = createAuthClient({
 Per DESIGN.md §7 and §8. Single `schema.prisma` in `packages/database/`, generated client shared.
 
 **Models:**
-1. `User` — better-auth managed (User, Session, Account, Verification under hood)
-2. `Team` — group of telecallers + execs under a manager
-3. `ManagerAssignmentRule` — auto-routing rule for new leads
-4. `Project` — Shadhil Metro Heights + future projects
-5. `Phase` — within a project (e.g. Phase 1, Phase 2)
-6. `Unit` — villa/unit (BHK, facing, sqft, price, status)
-7. `Lead` — the central entity, with state machine
-8. `Activity` — timeline entry (call, note, status change)
-9. `SiteVisit` — visit instance with outcomes
-10. `Message` — chat message (inbound/outbound, WhatsApp/in-app)
-11. `Booking` — unit hold → token → approval
-12. `Reminder` — scheduled reminders (4 types)
-13. `Notification` — in-app inbox
-14. `PushSubscription` — push tokens per device
-15. `PushNotification` — push delivery audit (status: PENDING / DELIVERED / FAILED)
-16. `AuditLog` — every login, view, state transition
-17. `Consent` — DPDP consent capture
-18. `WebhookEvent` — incoming webhook dedupe
-19. `ManagerAssignmentRule` — auto-routing rule for new leads
+1. `User` - better-auth managed (User, Session, Account, Verification under hood)
+2. `Team` - group of telecallers + execs under a manager
+3. `ManagerAssignmentRule` - auto-routing rule for new leads
+4. `Project` - Shadhil Metro Heights + future projects
+5. `Phase` - within a project (e.g. Phase 1, Phase 2)
+6. `Unit` - villa/unit (BHK, facing, sqft, price, status)
+7. `Lead` - the central entity, with state machine
+8. `Activity` - timeline entry (call, note, status change)
+9. `SiteVisit` - visit instance with outcomes
+10. `Message` - chat message (inbound/outbound, WhatsApp/in-app)
+11. `Booking` - unit hold → token → approval
+12. `Reminder` - scheduled reminders (4 types)
+13. `Notification` - in-app inbox
+14. `PushSubscription` - push tokens per device
+15. `PushNotification` - push delivery audit (status: PENDING / DELIVERED / FAILED)
+16. `AuditLog` - every login, view, state transition
+17. `Consent` - DPDP consent capture
+18. `WebhookEvent` - incoming webhook dedupe
+19. `ManagerAssignmentRule` - auto-routing rule for new leads
 
 **NOTE (eng review 2026-08-30, C2):** `InAppNotification` model DROPPED. The §1 v3.0 design listed 19 models; only 18 are in the final schema. The in-app inbox uses `Notification` directly; `PushNotification` is reserved for delivery audit only. Do not reintroduce `InAppNotification`.
 
-**Role model (A6 — single primary role per user, no v1 role switching):**
+**Role model (A6 - single primary role per user, no v1 role switching):**
 
-**RLS policies** (per DESIGN.md §8) — every business table has RLS keyed off `current_setting('app.user_id')` set by NestJS per request.
+**RLS policies** (per DESIGN.md §8) - every business table has RLS keyed off `current_setting('app.user_id')` set by NestJS per request.
 
 ---
 
@@ -822,12 +822,12 @@ Per DESIGN.md §10 + §12.
 | 12 | Daily summary 8 AM (opt-in) | Manager + admin |
 
 **4 reminder types:**
-- `PRE_VISIT_STAFF` — T-2h before visit → sales exec → push + in-app + email fallback
-- `PRE_VISIT_CUSTOMER` — T-24h + T-2h → customer → WhatsApp
-- `RESCHEDULE_FOLLOWUP` — T+1h after reschedule → sales exec → push + in-app
-- `NO_SHOW_STAFF` — T+2h after visit, no outcome logged → sales exec + manager → push + in-app; customer WhatsApp: `missed_visit_followup`
+- `PRE_VISIT_STAFF` - T-2h before visit → sales exec → push + in-app + email fallback
+- `PRE_VISIT_CUSTOMER` - T-24h + T-2h → customer → WhatsApp
+- `RESCHEDULE_FOLLOWUP` - T+1h after reschedule → sales exec → push + in-app
+- `NO_SHOW_STAFF` - T+2h after visit, no outcome logged → sales exec + manager → push + in-app; customer WhatsApp: `missed_visit_followup`
 
-**Cron processor (eng review A3 — Redis-locked):**
+**Cron processor (eng review A3 - Redis-locked):**
 
 ```typescript
 @Cron('* * * * *')
@@ -860,16 +860,16 @@ async processDueReminders() {
 Per DESIGN.md §11 + §18.
 
 **RERA TN Rules 2017:**
-- RERA registration number on every customer-facing surface (WhatsApp templates, landing site, push titles) — mandatory, input from client (SIGN-OFF #1)
-- Project-level data export on inspector demand — `GET /compliance/rera-export?projectId=...` → JSON dump
+- RERA registration number on every customer-facing surface (WhatsApp templates, landing site, push titles) - mandatory, input from client (SIGN-OFF #1)
+- Project-level data export on inspector demand - `GET /compliance/rera-export?projectId=...` → JSON dump
 - Audit retention 7 years (RERA upper bound)
 
 **DPDP Act 2023:**
-- Consent capture on lead creation — `Consent` table with `consentType` (marketing, data_processing, communication), `grantedAt`, `ipAddress`
-- Right-to-erasure workflow — Admin only, cascades all related data
+- Consent capture on lead creation - `Consent` table with `consentType` (marketing, data_processing, communication), `grantedAt`, `ipAddress`
+- Right-to-erasure workflow - Admin only, cascades all related data
 - 30-day response window
 
-**Audit log writer (every action — transactional, eng review A2):**
+**Audit log writer (every action - transactional, eng review A2):**
 
 ```typescript
 // AuditInterceptor on every controller
@@ -916,9 +916,9 @@ Per DESIGN.md §6.
 - **Coolify** handles SSL (Let's Encrypt), backups (daily Postgres dump to Backblaze B2), deploys from Git
 - **Docker Compose on VPS:** Next.js, NestJS, Postgres 16, PgBouncer, Redis 7, standalone SSE service (apps/realtime-sse)
 - **Subdomains** (see §5.0 for the full rationale):
-  - `crm.shadhilbuilders.in` — Next.js (apps/web) on port 3000
-  - `api.crm.shadhilbuilders.in` — NestJS (apps/backend) on port 8080
-  - `sse.crm.shadhilbuilders.in` — standalone SSE (apps/realtime-sse) on port 8090
+  - `crm.shadhilbuilders.in` - Next.js (apps/web) on port 3000
+  - `api.crm.shadhilbuilders.in` - NestJS (apps/backend) on port 8080
+  - `sse.crm.shadhilbuilders.in` - standalone SSE (apps/realtime-sse) on port 8090
 - **Reverse proxy:** **Traefik** (Coolify's default; we don't change
   it). All three subdomains route through Coolify's built-in
   Traefik. The SSE service uses Docker labels to opt out of
@@ -937,7 +937,7 @@ Per DESIGN.md §6.
 **Observability baseline (Week 13+):**
 - Caddy JSON access logs piped to a rotating file (or Loki if you set
   it up)
-- Alert on `5xx` for any path under `/api/sse/` — real incident
+- Alert on `5xx` for any path under `/api/sse/` - real incident
   because it means a client connection is dead
 - Don't add Prometheus + Grafana until >500 concurrent SSE
   connections (the SSE service's own `/metrics` endpoint is a
@@ -1043,11 +1043,11 @@ The business KPIs in §13 measure outcomes. These are the technical budgets that
 | Cron reminder pickup latency (scheduledFor → reminder fired) | <30s | <90s | <180s | Cron runs every minute; lock acquisition + worker time |
 
 **Load test gates (eng review T1, P4):**
-- `apps/backend/test/load/leads-inbox.k6.ts` — 50 concurrent users, Lead Inbox load. p95 < 500ms required.
-- `apps/backend/test/load/sse-fanout.k6.ts` — 100 concurrent SSE connections on /notifications/stream. EventSource stability for 10 minutes required.
-- `apps/backend/test/load/rera-export.k6.ts` — 100k-row export under 30s.
+- `apps/backend/test/load/leads-inbox.k6.ts` - 50 concurrent users, Lead Inbox load. p95 < 500ms required.
+- `apps/backend/test/load/sse-fanout.k6.ts` - 100 concurrent SSE connections on /notifications/stream. EventSource stability for 10 minutes required.
+- `apps/backend/test/load/rera-export.k6.ts` - 100k-row export under 30s.
 
-**k6 setup:** Install `k6` separately. Each test is a `*.k6.ts` file with a default export `options` and a `default function()`. Run via `k6 run apps/backend/test/load/leads-inbox.k6.ts`. Add to CI as a nightly job (not on every PR — too slow).
+**k6 setup:** Install `k6` separately. Each test is a `*.k6.ts` file with a default export `options` and a `default function()`. Run via `k6 run apps/backend/test/load/leads-inbox.k6.ts`. Add to CI as a nightly job (not on every PR - too slow).
 
 ---
 
@@ -1065,7 +1065,7 @@ Installed via `find-skills` methodology (verified install counts + source reputa
 | `shadcn` (sickn33) | 166 | General shadcn/ui knowledge (component-lib underpinning) |
 | `shadcn-component-discovery` (mattbx) | 582 | Find the right shadcn primitive quickly |
 
-Inline-loaded via `npx skills use` (not installed — applied per request):
+Inline-loaded via `npx skills use` (not installed - applied per request):
 
 | Skill | Source | Use case |
 |---|---|---|
@@ -1077,7 +1077,7 @@ Plus existing PaalStack skills (paalstack-react-ui, saas-mvp-architecture, etc.)
 
 ---
 
-## 15. Mobile Performance Rules (Vercel RN — enforced per rule)
+## 15. Mobile Performance Rules (Vercel RN - enforced per rule)
 
 From `vercel-react-native-skills` (Vercel official). Every rule applies to Shadhil CRM mobile. Failure mode if ignored: jank, dropped frames, battery drain on field sales visits.
 
@@ -1085,10 +1085,10 @@ From `vercel-react-native-skills` (Vercel official). Every rule applies to Shadh
 |---|---|---|
 | **CRITICAL** | List Performance | FlashList for Lead Inbox (estimatedItemSize: 80), Notification Center (120), Chat pane (88), Site Visit list (96), Manager's Team Pipeline (100). Memoize row components. Stable `useCallback` for renderItem/keyExtractor. No inline style objects. Functions extracted outside render. `expo-image` for any avatar/photo with `cachePolicy="memory-disk"`. |
 | **HIGH** | Animation | Reanimated v4. Animate ONLY `transform` (translateX/Y/scale/rotate) and `opacity`. Never animate layout properties (width, height, top, left). Use `useDerivedValue` for computed animations. `Gesture.Tap` (not Pressable) for the new-visit-banner "On my way" toggle and chat message swipe-reply. |
-| **HIGH** | Navigation | Native stack (`@react-navigation/native-stack` via expo-router default — NOT `@react-navigation/stack`). Native tabs (expo-router native tabs — NOT `@react-navigation/bottom-tabs`). |
-| **HIGH** | UI Patterns | `expo-image` for ALL images (avatars, project photos, unit photos). `Pressable` for all touchable (NOT `TouchableOpacity`). Safe areas in ScrollViews via `contentInsetAdjustmentBehavior="automatic"`. `contentInset` for header offsets. Native context menus (long-press on lead row → Reassign/Mark contacted/etc). Native modals (manager booking approval). `onLayout` for measuring Lead Detail tabs (NOT `measure()`). StyleSheet.create or NativeWind — inline styles discouraged. |
+| **HIGH** | Navigation | Native stack (`@react-navigation/native-stack` via expo-router default - NOT `@react-navigation/stack`). Native tabs (expo-router native tabs - NOT `@react-navigation/bottom-tabs`). |
+| **HIGH** | UI Patterns | `expo-image` for ALL images (avatars, project photos, unit photos). `Pressable` for all touchable (NOT `TouchableOpacity`). Safe areas in ScrollViews via `contentInsetAdjustmentBehavior="automatic"`. `contentInset` for header offsets. Native context menus (long-press on lead row → Reassign/Mark contacted/etc). Native modals (manager booking approval). `onLayout` for measuring Lead Detail tabs (NOT `measure()`). StyleSheet.create or NativeWind - inline styles discouraged. |
 | **MEDIUM** | State | Minimize state subscriptions (selector slices per screen). Dispatcher pattern for callbacks (avoid re-render cascade). Show fallback on first render (skeleton, not blank). Destructure functions for React Compiler. |
-| **MEDIUM** | Rendering | Wrap text in `<Text>` always (NOT `<View>{name}</View>`). Never `cond && <X/>` — use `cond ? <X/> : null`. |
+| **MEDIUM** | Rendering | Wrap text in `<Text>` always (NOT `<View>{name}</View>`). Never `cond && <X/>` - use `cond ? <X/> : null`. |
 | **MEDIUM** | Monorepo | Native deps stay in app package (`apps/mobile/node_modules/...`), not hoisted to root. Single dependency versions across workspace (Turborepo `transit` task enforces). |
 | **LOW** | Configuration | Custom fonts via Expo config plugin. Design system imports organized (`@/tw` for wrapped primitives). Hoist `Intl.DateTimeFormat` outside render for chat timestamps. |
 
@@ -1100,8 +1100,8 @@ From `vercel-react-native-skills` (Vercel official). Every rule applies to Shadh
 |---|---|
 | `DESIGN.md` | Source design brief (1,038 lines, scope, architecture, lifecycle) |
 | `SIGN-OFF-SUMMARY-v3.1.md` | 1-page executive summary for client sign-off |
-| `IMPLEMENTATION-PLAN-v1.md` | **THIS FILE** — full build plan |
-| `6-INPUTS-REQUEST-TO-CLIENT.md` | **NEW** — tracker for the 6 client inputs (status + placeholders + escalation) |
+| `IMPLEMENTATION-PLAN-v1.md` | **THIS FILE** - full build plan |
+| `6-INPUTS-REQUEST-TO-CLIENT.md` | **NEW** - tracker for the 6 client inputs (status + placeholders + escalation) |
 | `WORKFLOW-DIAGRAMS.md` | 6 ELI10 diagrams (system, web auth, mobile auth, lifecycle, handoff) |
 | `CLIENT-DECISIONS.md` | 16 resolved client questions + reliability design |
 | `DECISION-CHANGELOG.md` | Every decision round in order |
@@ -1113,7 +1113,7 @@ From `vercel-react-native-skills` (Vercel official). Every rule applies to Shadh
 
 This section locks the **integration code structure** for each of the 6 client inputs. Code is built and unit-tested with placeholders; real values are swapped in when client delivers them (no rebuild needed). Tracker doc: `6-INPUTS-REQUEST-TO-CLIENT.md`.
 
-### Input #1 — RERA + CMDA registration
+### Input #1 - RERA + CMDA registration
 
 **Single source of truth:** `packages/ui-tokens/compliance.ts`
 
@@ -1148,21 +1148,21 @@ export function whatsappTemplateHeader(): string {
 ```
 
 **Surfaces (auto-updates when env vars change):**
-- WhatsApp template headers (4 templates) — `apps/backend/src/whatsapp/templates.ts` calls `whatsappTemplateHeader()`
-- Landing site footer — `~/workspace/shadhil-projects/landing-page/` (verify, may already exist)
-- Push notification titles — `apps/backend/src/notifications/triggers.ts` prepends RERA#
-- RERA compliance export — `apps/backend/src/compliance/rera-export.controller.ts` includes RERA# per record
-- Login page footer — `apps/web/src/app/(auth)/login/page.tsx`
+- WhatsApp template headers (4 templates) - `apps/backend/src/whatsapp/templates.ts` calls `whatsappTemplateHeader()`
+- Landing site footer - `~/workspace/shadhil-projects/landing-page/` (verify, may already exist)
+- Push notification titles - `apps/backend/src/notifications/triggers.ts` prepends RERA#
+- RERA compliance export - `apps/backend/src/compliance/rera-export.controller.ts` includes RERA# per record
+- Login page footer - `apps/web/src/app/(auth)/login/page.tsx`
 
 **Verification (with placeholder):**
-- `pnpm test compliance` — assertion that all 4 surfaces show the placeholder RERA#
+- `pnpm test compliance` - assertion that all 4 surfaces show the placeholder RERA#
 - When client sends real value: set `NEXT_PUBLIC_RERA_NUMBER` env in Coolify, redeploy, no code change
 
 **Escalation:** PaalStack flags in weekly Friday status if Input #1 is missing by EOD Wednesday of Week 1.
 
 ---
 
-### Input #2 — Signed Model C process adoption
+### Input #2 - Signed Model C process adoption
 
 **Feature flag:** `MODEL_C_ENABLED` env var (default `false` until signature lands)
 
@@ -1195,7 +1195,7 @@ export function transitionLead(ctx: TransitionContext): LeadState {
 
 ---
 
-### Input #3 — WhatsApp Business number
+### Input #3 - WhatsApp Business number
 
 **Env vars:** `WA_PHONE_NUMBER_ID`, `WA_BUSINESS_ACCOUNT_ID`, `WA_ACCESS_TOKEN`, `WA_WEBHOOK_VERIFY_TOKEN`
 
@@ -1225,10 +1225,10 @@ export function assertWhatsAppConfigured(): void {
 - `apps/backend/src/webhooks/webhook-event.processor.ts` queues inbound messages in Redis even if number is not provisioned; processes when configured
 
 **4 WhatsApp templates (Meta submission Week 1):**
-- `visit_reminder_24h` — pre-visit customer reminder
-- `visit_reminder_2h` — pre-visit customer reminder
-- `missed_visit_followup` — no-show follow-up
-- `customer_enquiry_confirmation` — initial lead response
+- `visit_reminder_24h` - pre-visit customer reminder
+- `visit_reminder_2h` - pre-visit customer reminder
+- `missed_visit_followup` - no-show follow-up
+- `customer_enquiry_confirmation` - initial lead response
 
 **Verification:**
 - Without config: send returns graceful error, message queued, retry on next send attempt
@@ -1238,7 +1238,7 @@ export function assertWhatsAppConfigured(): void {
 
 ---
 
-### Input #4 — FreJun vendor sign-off
+### Input #4 - FreJun vendor sign-off
 
 **Env vars:** `FREJUN_API_KEY`, `FREJUN_WEBHOOK_SECRET`, `FREJUN_AGENT_NUMBER`
 
@@ -1261,9 +1261,9 @@ export function assertFrejunConfigured(): void {
 ```
 
 **Code paths:**
-- `apps/backend/src/telephony/incoming-call.webhook.ts` — handles FreJun webhooks for incoming calls
-- `apps/backend/src/telephony/call-recording.archiver.ts` — uploads recordings to Cloudflare R2
-- `apps/backend/src/telephony/agent-provisioning.script.ts` — runs once FreJun is configured to provision the 10 agents
+- `apps/backend/src/telephony/incoming-call.webhook.ts` - handles FreJun webhooks for incoming calls
+- `apps/backend/src/telephony/call-recording.archiver.ts` - uploads recordings to Cloudflare R2
+- `apps/backend/src/telephony/agent-provisioning.script.ts` - runs once FreJun is configured to provision the 10 agents
 
 **Verification:**
 - Without config: incoming webhook returns 503, no calls logged
@@ -1273,7 +1273,7 @@ export function assertFrejunConfigured(): void {
 
 ---
 
-### Input #5 — First roster
+### Input #5 - First roster
 
 **Bootstrap mechanism:** Better-auth admin plugin + seed script
 
@@ -1327,7 +1327,7 @@ async function seedFirstUsers() {
 
 ---
 
-### Input #6 — Sales exec + telecaller phone numbers for FreJun KYC
+### Input #6 - Sales exec + telecaller phone numbers for FreJun KYC
 
 **Linked to Input #5:** Phone numbers are part of the user record (User table has `phone` column for SMS + telephony).
 
@@ -1354,7 +1354,7 @@ export async function provisionFrejunAgents() {
     );
   }
 
-  // Per-agent try/catch (eng review A7) — one failure must not block the rest.
+  // Per-agent try/catch (eng review A7) - one failure must not block the rest.
   const results: { userId: string; status: 'created' | 'failed'; error?: string }[] = [];
   for (const user of staff) {
     try {
@@ -1399,7 +1399,7 @@ export async function provisionFrejunAgents() {
 | #5 Roster | `SEED_*_EMAIL`, `SEED_*_NAME`, `SEED_*_PASSWORD` | `apps/backend/prisma/seed.ts` (1 script) | ✅ 3 placeholder users | ✅ Set env + re-run seed |
 | #6 Phone numbers | (No env; comes from User.phone column) | `apps/backend/src/telephony/frejun-kyc.script.ts` (1 script) | ✅ Admin UI shows "phone required" badge | ✅ Run script after users have phone |
 
-**Total: 6 small env-var additions, no schema changes, no migrations. Code is built and unit-tested in Week 1–2 with placeholders. Real values drop in via Coolify env config — no rebuild.**
+**Total: 6 small env-var additions, no schema changes, no migrations. Code is built and unit-tested in Week 1–2 with placeholders. Real values drop in via Coolify env config - no rebuild.**
 
 ---
 
@@ -1449,7 +1449,7 @@ Validation layer in NestJS (in addition to RLS):
 async canReassign(actor: JwtPayload, lead: Lead, target: User): Promise<boolean> {
   if (actor.role === 'admin') return true; // Admin can do anything
   if (actor.role === 'manager' && actor.teamId === target.teamId) return true;
-  return false; // Telecaller, Sales Exec, cross-team Manager — all denied
+  return false; // Telecaller, Sales Exec, cross-team Manager - all denied
 }
 ```
 
@@ -1510,7 +1510,7 @@ async reassign(
 
 ### Notification triggers added
 
-**Trigger #13 — Lead manually reassigned:**
+**Trigger #13 - Lead manually reassigned:**
 
 | Recipient | Title | Body |
 |---|---|---|
@@ -1518,15 +1518,15 @@ async reassign(
 | Old owner | "Lead reassigned" | "{{lead.name}} was reassigned from you to {{newOwner.name}}" |
 | Manager (if reassigner is Admin) | "Lead reassigned by Admin" | "Admin {{name}} reassigned {{lead.name}} to {{newOwner.name}}" |
 
-**Trigger #14 — Cross-team reassign attempted + denied (security audit):**
+**Trigger #14 - Cross-team reassign attempted + denied (security audit):**
 
 | Recipient | Title | Body |
 |---|---|---|
 | Admin | "Reassign denied" | "Manager {{name}} tried to reassign {{lead.name}} across teams (target: {{newOwner.teamName}}). Blocked." |
 
-### UI — Lead Inbox (web)
+### UI - Lead Inbox (web)
 
-For Admin/Manager only — new "Reassign" bulk action + per-row action. UI sketch:
+For Admin/Manager only - new "Reassign" bulk action + per-row action. UI sketch:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -1540,7 +1540,7 @@ For Admin/Manager only — new "Reassign" bulk action + per-row action. UI sketc
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Reassign dialog** (web — uses Sheet from `@paalstack/react-ui`):
+**Reassign dialog** (web - uses Sheet from `@paalstack/react-ui`):
 
 ```
 ┌─────────────────────────────────────────┐
@@ -1564,15 +1564,15 @@ For Admin/Manager only — new "Reassign" bulk action + per-row action. UI sketc
 └─────────────────────────────────────────┘
 ```
 
-### UI — Mobile (Lead Detail)
+### UI - Mobile (Lead Detail)
 
 Native context menu on long-press (per Vercel RN skill §15):
 
-- "Reassign..." (Admin/Manager only — hidden for Telecaller/Sales Exec)
+- "Reassign..." (Admin/Manager only - hidden for Telecaller/Sales Exec)
 - Opens native modal with same fields as web
 - Uses `useFunctionalVariable` for color theming per `expo-native-ui` skill
 
-### UI — Admin Dashboard (new)
+### UI - Admin Dashboard (new)
 
 Cross-team view for Admin:
 
@@ -1603,19 +1603,19 @@ Manual reassign is **independent** of Model C handoff:
 
 If a lead is manually reassigned to a Sales Exec while in NEW state, Model C handoff still fires when the visit happens (state machine doesn't care who set the owner).
 
-**Model C exception (ratified at /autoplan gate 2026-08-31, decision A):** Manual reassign of a NEW lead to a Sales Exec is an **explicit, intentional exception** to the §3 ownership invariant (NEW...VISIT_SCHEDULED = Telecaller owns). It is allowed because Admin/Manager judgment overrides the default routing; the invariant is respected everywhere else. Requirements: (1) the reassign audit event carries `exception: 'NEW_TO_EXEC'` when `fromState === 'NEW'` and target is SALES_EXEC; (2) `canTransition` is NOT widened — only the reassign path may set this ownership; (3) `lead-state-machine.test.ts` gets a case asserting manual NEW→SALES_EXEC succeeds via the endpoint and fails via a direct state transition attempt.
+**Model C exception (ratified at /autoplan gate 2026-08-31, decision A):** Manual reassign of a NEW lead to a Sales Exec is an **explicit, intentional exception** to the §3 ownership invariant (NEW...VISIT_SCHEDULED = Telecaller owns). It is allowed because Admin/Manager judgment overrides the default routing; the invariant is respected everywhere else. Requirements: (1) the reassign audit event carries `exception: 'NEW_TO_EXEC'` when `fromState === 'NEW'` and target is SALES_EXEC; (2) `canTransition` is NOT widened - only the reassign path may set this ownership; (3) `lead-state-machine.test.ts` gets a case asserting manual NEW→SALES_EXEC succeeds via the endpoint and fails via a direct state transition attempt.
 
 ### `ManagerAssignmentRule` interaction
 
-**Assignment model — BOTH modes coexist (user direction 2026-08-31, ratified):**
+**Assignment model - BOTH modes coexist (user direction 2026-08-31, ratified):**
 
-1. **Automatic assignment ("based on situation")** — every NEW lead is routed by the `ManagerAssignmentRule` engine at creation. Rules evaluate in priority order (lowest `rule.priority` value first); first match wins.
-   - **Match criteria (any combination):** lead `source` (exact), `projectId`/`phaseId`, `language`, `region` — a rule with no criteria is a catch-all.
+1. **Automatic assignment ("based on situation")** - every NEW lead is routed by the `ManagerAssignmentRule` engine at creation. Rules evaluate in priority order (lowest `rule.priority` value first); first match wins.
+   - **Match criteria (any combination):** lead `source` (exact), `projectId`/`phaseId`, `language`, `region` - a rule with no criteria is a catch-all.
    - **Action:** assign to the rule's target user (must be TELECALLER or SALES_EXEC; ADMIN/MANAGER are rejected as targets).
    - **No-match fallback:** team's `defaultAssigneeId` (set by manager in Admin UI). If that's also unset, the lead stays NEW with `ownerId=null` and notification trigger #1 goes to the team manager for manual pickup.
-   - **Where it runs:** synchronously inside lead-create in `apps/backend/src/leads/leads.service.ts` (Week 4 build window, +3h human / +30min CC — inside the existing phase).
+   - **Where it runs:** synchronously inside lead-create in `apps/backend/src/leads/leads.service.ts` (Week 4 build window, +3h human / +30min CC - inside the existing phase).
    - **Ownership after creation:** the engine never re-runs on the same lead. Later ownership changes come only from Model C handoff (auto) or manual reassign (admin/manager).
-2. **Manual reassign** — Admin/Manager actions per §18 above; overrides any rule's prior result. Manual reassign bypasses the rule engine entirely.
+2. **Manual reassign** - Admin/Manager actions per §18 above; overrides any rule's prior result. Manual reassign bypasses the rule engine entirely.
 
 **Tests required (Week 4):** rule priority order; criteria combinations; catch-all; no-match → fallback → unassigned+manager-notified chain; ADMIN-target rejection; manual reassign after auto-assign.
 
@@ -1631,14 +1631,14 @@ Per D3: manual reassign bypasses the rule. Rule fires only on NEW leads. Rationa
   entityId: leadId,
   before: { ownerId: oldOwnerId, ownerType: oldOwnerType },
   after: { ownerId: newOwnerId, ownerType: newOwnerType },
-  reason: string, // REQUIRED — UI enforces non-empty
+  reason: string, // REQUIRED - UI enforces non-empty
   ipAddress: string,
   userAgent: string,
   timestamp: Date,
 }
 ```
 
-Retention: 7 years (RERA upper bound — matches existing audit retention from §9).
+Retention: 7 years (RERA upper bound - matches existing audit retention from §9).
 
 ### Build impact (timeline)
 
@@ -1648,8 +1648,8 @@ Retention: 7 years (RERA upper bound — matches existing audit retention from �
 | Add `POST /leads/:id/reassign` endpoint + guard | 3h / 30min | Week 4 |
 | Add audit log entry type `LEAD_REASSIGNED` | 30min / 5min | Week 4 |
 | Add notification triggers #13 + #14 | 1h / 15min | Week 7 |
-| Add "Reassign" UI in Lead Inbox (web — Sheet + form) | 4h / 1h | Week 4 |
-| Add "Reassign" context menu in Lead Detail (web — DropdownMenu) | 2h / 30min | Week 4 |
+| Add "Reassign" UI in Lead Inbox (web - Sheet + form) | 4h / 1h | Week 4 |
+| Add "Reassign" context menu in Lead Detail (web - DropdownMenu) | 2h / 30min | Week 4 |
 | Add "Reassign" native modal in mobile (per `expo-native-ui` skill) | 3h / 1h | Week 10 |
 | Admin Dashboard (cross-team view, 4 KPIs) | 6h / 2h | Week 9 |
 | Permission tests (Manager cannot cross teams, Telecaller cannot reassign, etc.) | 2h / 30min | Week 4 |
@@ -1659,18 +1659,18 @@ Retention: 7 years (RERA upper bound — matches existing audit retention from �
 
 ### Out of scope (still deferred)
 
-- **Bulk reassign with auto-rule application** — defer to v1.1
-- **Auto-rebalance** when Telecaller is overloaded — defer to v1.1
-- **Lead sharing** (multiple owners outside Model C) — defer to v1.1
-- **Manager override of Admin reassign** — N/A (Admin is top of chain)
+- **Bulk reassign with auto-rule application** - defer to v1.1
+- **Auto-rebalance** when Telecaller is overloaded - defer to v1.1
+- **Lead sharing** (multiple owners outside Model C) - defer to v1.1
+- **Manager override of Admin reassign** - N/A (Admin is top of chain)
 
 ---
 
-## 19. Test Plan (eng review T1+T2, 2026-08-30 — complete test pyramid)
+## 19. Test Plan (eng review T1+T2, 2026-08-30 - complete test pyramid)
 
 Test framework: **Vitest** for unit + integration, **Playwright** for web E2E, **Maestro** for mobile E2E. `paalstack-nextjs-starter` ships Vitest + Playwright configs; reuse them.
 
-### 19.1 Unit tests (Vitest) — per-module
+### 19.1 Unit tests (Vitest) - per-module
 
 Per AGENTS.md, every module has `implementation.ts` + `index.ts` + matching `*.test.ts` co-located. Mandatory test files:
 
@@ -1697,7 +1697,7 @@ Per AGENTS.md, every module has `implementation.ts` + `index.ts` + matching `*.t
 
 ### 19.2 RLS isolation test matrix (security-critical, must pass)
 
-`apps/backend/test/integration/rls-isolation.test.ts` — runs every (role × table × action) tuple. PostgreSQL session vars set per test via `SET LOCAL app.user_id = ...; SET LOCAL app.user_role = ...; SET LOCAL app.user_team_id = ...;`.
+`apps/backend/test/integration/rls-isolation.test.ts` - runs every (role × table × action) tuple. PostgreSQL session vars set per test via `SET LOCAL app.user_id = ...; SET LOCAL app.user_role = ...; SET LOCAL app.user_team_id = ...;`.
 
 For each business table (Lead, SiteVisit, Booking, Message, Reminder, Notification, AuditLog):
 - 4 roles × SELECT/INSERT/UPDATE/DELETE = 16 cases per table
@@ -1740,9 +1740,9 @@ For each business table (Lead, SiteVisit, Booking, Message, Reminder, Notificati
 
 3 critical mobile flows:
 
-- `apps/mobile/.maestro/leads-inbox.yaml` — Login → Lead Inbox renders → FlashList scrolls 1000 leads smoothly → open lead
-- `apps/mobile/.maestro/lead-detail.yaml` — Open lead → 5 tabs render → switch tabs → chat tab loads → send message
-- `apps/mobile/.maestro/notification-center.yaml` — Background app → push arrives → foreground app → notification appears in Center
+- `apps/mobile/.maestro/leads-inbox.yaml` - Login → Lead Inbox renders → FlashList scrolls 1000 leads smoothly → open lead
+- `apps/mobile/.maestro/lead-detail.yaml` - Open lead → 5 tabs render → switch tabs → chat tab loads → send message
+- `apps/mobile/.maestro/notification-center.yaml` - Background app → push arrives → foreground app → notification appears in Center
 
 Each Maestro flow is ~50 lines of YAML. Run via `maestro test apps/mobile/.maestro/leads-inbox.yaml` on EAS build or via Expo dev client.
 
@@ -1758,21 +1758,21 @@ Every new feature must ship with tests in the same PR. The PR description must i
 
 ---
 
-## AUTOMATED REVIEW PIPELINE — 2026-08-31 (/autoplan)
+## AUTOMATED REVIEW PIPELINE - 2026-08-31 (/autoplan)
 
 Ran by Hermes (autoplan skill). Voices: Codex CLI 0.151.0 via local OmniRoute gateway
-(model `ollamacloud/glm-5.3-flash`) — Codex was not installed; installed for this review.
+(model `ollamacloud/glm-5.3-flash`) - Codex was not installed; installed for this review.
 Three earlier Agency-specialist subagent passes died to upstream 503s; the four voices
 below were re-run through Codex and their file-level claims were verified against the
 repo before acceptance. Claude primary analysis ran in parallel at full depth.
 
 ---
 
-# PHASE 1 — CEO REVIEW (Strategy & Scope)
+# PHASE 1 - CEO REVIEW (Strategy & Scope)
 
 Mode: SELECTIVE EXPANSION (auto-selected). Restore point captured before any edit.
 
-## Step 0A — Premise Challenge
+## Step 0A - Premise Challenge
 
 | # | Premise | Status | Evidence |
 |---|---------|--------|----------|
@@ -1783,18 +1783,18 @@ Mode: SELECTIVE EXPANSION (auto-selected). Restore point captured before any edi
 | P-5 | Client staff will adopt Model C process | RISK ACKNOWLEDGED | Plan says it requires "enforcement" (§11.4) but ships no adoption tracking beyond KPI dashboard. Accepted as-is; measurement exists. |
 | P-6 | Custom build beats buying | DEFENSIBLE | 4-5 staff workflows (Model C ownership transfer, FreJun call logging) are not served by off-the-shelf CRMs at ₹18,300/mo total cost. Accepted (P6). |
 
-## Step 0B — Existing Code Leverage (What already exists)
+## Step 0B - Existing Code Leverage (What already exists)
 
 | Sub-problem | Existing code | Plan reuses it? |
 |---|---|---|
 | Monorepo + tooling | scaffold: turbo.json, 4 packages, pnpm workspace | Yes (Week 1 tasks mostly done already) |
 | Schema | 21 models in packages/database/prisma/schema.prisma | Yes |
 | RLS | 25 policies in packages/database/prisma/rls/policies.sql + withRlsContext | Yes, but see Eng gaps (G-1, G-2) |
-| Auth server | packages/auth-client/src/auth.ts (better-auth: jwt + admin, env assert) | Yes; plan §6 drifts (shows `apiKey()` plugin and file under apps/web — actual shared instance is in packages/auth-client) |
-| Boot validation | verifyPoolMode() in apps/backend/src/main.ts:19 + assertAuthEnv() | Partially — see DX (X-3) |
-| Seed | packages/database/src/seed.ts with UPPERCASE roles | Yes; plan §17 Input #5 sketch shows lowercase roles — drift |
+| Auth server | packages/auth-client/src/auth.ts (better-auth: jwt + admin, env assert) | Yes; plan §6 drifts (shows `apiKey()` plugin and file under apps/web - actual shared instance is in packages/auth-client) |
+| Boot validation | verifyPoolMode() in apps/backend/src/main.ts:19 + assertAuthEnv() | Partially - see DX (X-3) |
+| Seed | packages/database/src/seed.ts with UPPERCASE roles | Yes; plan §17 Input #5 sketch shows lowercase roles - drift |
 
-## Step 0C — Dream State Mapping
+## Step 0C - Dream State Mapping
 
 ```
 CURRENT                       THIS PLAN                         12-MONTH IDEAL
@@ -1808,7 +1808,7 @@ Delta: plan closes ~80% of the gap to the 12-month ideal. The remaining 20% = ad
 mechanics (Model C enforcement, training cadence) and vendor operational sustainability,
 both named in §11 risks. Dream state is served.
 
-## Step 0C-bis — Implementation Alternatives
+## Step 0C-bis - Implementation Alternatives
 
 ```
 APPROACH A: Build v1 as planned (13-week, self-hosted, all 4 surfaces)
@@ -1817,7 +1817,7 @@ APPROACH A: Build v1 as planned (13-week, self-hosted, all 4 surfaces)
   Cons: timeline pressure; vendor on-call load; FreJun lock-in
   Reuses: existing scaffold heavily
 
-APPROACH B: Phased MVP — web-only + WhatsApp first 8 weeks, mobile in v1.1
+APPROACH B: Phased MVP - web-only + WhatsApp first 8 weeks, mobile in v1.1
   Effort: M   Risk: Low
   Pros: kills Apple/Google risk entirely in 2026; faster to value; mobile PWA covers field use
   Cons: deviates from signed design (mobile is a locked client decision)
@@ -1831,45 +1831,45 @@ APPROACH C: Buy (Zoho/LeadSquared) + WhatsApp automation glue
 RECOMMENDATION: Choose A (P1 completeness + client sign-off already locks mobile).
 B is viable if the client approves a mobile slip at Week 9 check-gate. C rejected (P3).
 
-## Step 0D — SELECTIVE EXPANSION Analysis (expansion candidates auto-decided)
+## Step 0D - SELECTIVE EXPANSION Analysis (expansion candidates auto-decided)
 
 | # | Expansion | Blast radius | CC effort | Decision |
 |---|-----------|--------------|-----------|----------|
-| E1 | Offline visit-outcome queue (Design voice, critical) | mobile + visits module | <1d | APPROVE (P1, P2 — field use is the product) |
+| E1 | Offline visit-outcome queue (Design voice, critical) | mobile + visits module | <1d | APPROVE (P1, P2 - field use is the product) |
 | E2 | SSE stream tickets replacing raw JWT in query param (Eng, critical) | backend realtime | <1d | APPROVE (P1 security) |
-| E3 | Telemetría de adopción semanal | — | — | DEFER → TODOS.md (outside radius) |
-| E4 | Alternate telephony pilot | — | — | DEFER → TODOS.md (client decision) |
+| E3 | Telemetría de adopción semanal | - | - | DEFER → TODOS.md (outside radius) |
+| E4 | Alternate telephony pilot | - | - | DEFER → TODOS.md (client decision) |
 
-## Step 0E — Temporal Interrogation
+## Step 0E - Temporal Interrogation
 
 - HOUR 1: migrations don't exist yet; policies.sql has no apply path (see Eng G-5). First implementer hits this within the hour.
 - HOUR 2-3: role casing drift (schema UPPERCASE vs plan sketches lowercase) will bite in RLS tests.
 - HOUR 4-5: reassign flow needs withRlsContext wiring that the plan's snippet omits.
-- HOUR 6+: reminder cron idempotency under lock expiry — nobody plans for the 61st second.
+- HOUR 6+: reminder cron idempotency under lock expiry - nobody plans for the 61st second.
 
 ## CEO Consensus Table
 
 ```
-CEO DUAL VOICES — CONSENSUS TABLE:
+CEO DUAL VOICES - CONSENSUS TABLE:
 ═══════════════════════════════════════════════════════════════
   Dimension                            Claude  Codex  Consensus
   ──────────────────────────────────── ─────── ─────── ─────────
-  1. Premises valid?                   mixed  mixed   PARTIAL — app-store & on-call premises challenged (CONFIRMED concern)
+  1. Premises valid?                   mixed  mixed   PARTIAL - app-store & on-call premises challenged (CONFIRMED concern)
   2. Right problem to solve?             yes    yes   CONFIRMED
   3. Scope calibration correct?          yes    yes   CONFIRMED
-  4. Alternatives sufficiently explored?  no     no   CONFIRMED GAP — alternatives table shallow (buy/no-code dismissed by assertion)
-  5. Competitive/market risks covered?    no     no   CONFIRMED GAP — no market-scan or pivot gate
-  6. 6-month trajectory sound?           mixed  mixed  PARTIAL — lock-in/handover terms undocumented
+  4. Alternatives sufficiently explored?  no     no   CONFIRMED GAP - alternatives table shallow (buy/no-code dismissed by assertion)
+  5. Competitive/market risks covered?    no     no   CONFIRMED GAP - no market-scan or pivot gate
+  6. 6-month trajectory sound?           mixed  mixed  PARTIAL - lock-in/handover terms undocumented
 ═══════════════════════════════════════════════════════════════
 ```
 
-**CODEX SAYS (CEO — strategy challenge).** 7 findings, all verified as grounded in plan text:
+**CODEX SAYS (CEO - strategy challenge).** 7 findings, all verified as grounded in plan text:
 app-store review buffer (High), FreJun single-vendor validation + pilot (High), on-call underestimate (High),
 WhatsApp default-on volume (Medium), month-6 lock-in + handover contract terms (High),
 alternatives scoring (Medium), client market-scan gate (High).
 
 **Primary (Claude) CEO analysis.** 6 premises assessed (table above). Sections 1-10 findings:
-- §1 Premise: P-1/P-2/P-3 as above. Nothing flagged on problem framing — Model C time-to-first-touch is the
+- §1 Premise: P-1/P-2/P-3 as above. Nothing flagged on problem framing - Model C time-to-first-touch is the
   right KPI and the plan measures it (§13).
 - §2 Error & Rescue: WhatsApp send failure path (graceful queue) specified; FreJun webhook 503 path specified;
   Meta webhook dedupe exists (WebhookEvent). GAP: push receipt polling failure has no alert path (P1 perf
@@ -1883,7 +1883,7 @@ alternatives scoring (Medium), client market-scan gate (High).
 - §8 Observability: monitoring free tier listed; add SLO-breach alerts to Telegram channel (same alerting
   as uptime).
 - §9 Deploy: staging soak + restore test present. Deploy-time risk window: Coolify auto-deploy from main with
-  manual approval — fine.
+  manual approval - fine.
 - §10 Trajectory: reversibility 3/5 (DB + RLS are sticky; otherwise standard). Debt: none material.
 
 **Failure Modes Registry (CEO phase):**
@@ -1903,7 +1903,7 @@ adoption telemetry (TODOS.md), alternate-telephony pilot (TODOS.md).
 
 ```
 +====================================================================+
-|            MEGA PLAN REVIEW — COMPLETION SUMMARY (CEO PHASE)       |
+|            MEGA PLAN REVIEW - COMPLETION SUMMARY (CEO PHASE)       |
 +====================================================================+
 | Mode selected        | SELECTIVE EXPANSION (auto)                  |
 | Step 0 premises      | 6 assessed, 3 challenged → surfaced at gate |
@@ -1926,35 +1926,35 @@ Consensus: 3/6 confirmed, 1 partial, 2 disagreements → surfaced at gate.
 
 ---
 
-# PHASE 2 — DESIGN REVIEW (UI scope detected: 11 locked UI decisions + wireframes)
+# PHASE 2 - DESIGN REVIEW (UI scope detected: 11 locked UI decisions + wireframes)
 
 Codex design voice ran with access to plan + WIREFRAMES.md; it computed contrast ratios itself
 (matching values shown below). Primary verified the wireframes exist and lock the layouts.
 
-**CODEX SAYS (design — UX challenge):** 8 findings:
+**CODEX SAYS (design - UX challenge):** 8 findings:
 1. Telecaller first screen = dense table; should be an action-ranked call queue (High).
-2. Mobile 5 equal tabs; Overview/Chat dominate — group rest under More (Medium).
+2. Mobile 5 equal tabs; Overview/Chat dominate - group rest under More (Medium).
 3. Specified states: only empty states; loading/error/partial/retry unspecified per surface (High).
-4. Offline visit-outcome logging absent — Critical for field use in poor connectivity.
+4. Offline visit-outcome logging absent - Critical for field use in poor connectivity.
 5. SSE reconnect UX: "Reconnecting..." pill exists but placement/visibility/recovery undefined (High).
 6. Model C handoff UX reads as neutral transfer; feels punitive to the telecaller losing the lead (High).
 7. Unspecified implementations: Calendar, Toast, Sheet-vs-Modal, upload, optimistic chat, table density (High).
-8. Accessibility: contrast computed against #f8f5ef surface — amber #f59e0b 1.97:1, green #16a34a 3.03:1,
+8. Accessibility: contrast computed against #f8f5ef surface - amber #f59e0b 1.97:1, green #16a34a 3.03:1,
    red #dc2626 4.44:1. Text-on-chip for amber/green FAILS WCAG AA. Fix: darker text tokens
    (#92400e / #166534 / #991b1b-class) or fill chips with tinted bg + dark text; ≥44px targets (Critical).
 
 Primary pass verdicts (auto-decided):
-- D1 (telecaller queue): TASTE — auto-decided per Decision 0.2 (inbox sort already serves this; a
+- D1 (telecaller queue): TASTE - auto-decided per Decision 0.2 (inbox sort already serves this; a
   separate queue = duplicate surface, P4). Surfaced at gate as a taste choice.
 - D2 (tab grouping): conflicts with locked Decision 0.1 (user-locked). KEEP 0.1; noted.
-- D3 (missing states): structural — auto-FIX into scope (P1, P5). Added as Eng task T-D3.
-- D4 (offline outcomes): APPROVE as scope (P1). Added as task T-D4 (blast radius: mobile, backend — <1d CC).
+- D3 (missing states): structural - auto-FIX into scope (P1, P5). Added as Eng task T-D3.
+- D4 (offline outcomes): APPROVE as scope (P1). Added as task T-D4 (blast radius: mobile, backend - <1d CC).
 - D5 (SSE status pill): APPROVE (P5 explicit). Added to T-D3 spec.
-- D6 (handoff emotion): TASTE — decision 0.8 is client-locked; the fix (credit-preserving full-screen
+- D6 (handoff emotion): TASTE - decision 0.8 is client-locked; the fix (credit-preserving full-screen
   acknowledgment) is a variant, not a defect. Surface at gate.
 - D7 (unspecified components): auto-FIX via WIREFRAMES.md being the reference (it locks these); verify
   before Week 5 builds. Logged.
-- D8 (contrast tokens): structural — AUTO-APPROVED (P1). Update ui-tokens token values + wireframes note.
+- D8 (contrast tokens): structural - AUTO-APPROVED (P1). Update ui-tokens token values + wireframes note.
 
 Design litmus: plan had 7/10 before this pass; contrast + states push to 8/10 after fixes above.
 
@@ -1962,9 +1962,9 @@ Design litmus: plan had 7/10 before this pass; contrast + states push to 8/10 af
 
 ---
 
-# PHASE 2.5 — DX REVIEW (developer-facing scope detected: env wiring, CI, agent conventions)
+# PHASE 2.5 - DX REVIEW (developer-facing scope detected: env wiring, CI, agent conventions)
 
-**CODEX SAYS (DX — developer experience challenge):** 6 findings (verified against repo by primary):
+**CODEX SAYS (DX - developer experience challenge):** 6 findings (verified against repo by primary):
 1. TTHW ≈ 20-30 min, 7 steps; `packages/database/test/rls-isolation.test.ts:14` references
    `pnpm docker:up` but root package.json has NO `docker:up`; `policies.sql` is not applied by any
    script or migration. High. Fix: root scripts `docker:up`, `db:migrate`, `db:policies`, `db:seed`, `setup` + README.
@@ -1981,7 +1981,7 @@ Design litmus: plan had 7/10 before this pass; contrast + states push to 8/10 af
 Developer journey map (9 stages): discover(absent) → clone(ok) → env(FAIL: no template) → deps(ok via pnpm) →
 db(FAIL: no docker:up/migrations/apply-path) → test(degraded: skeleton) → debug(weak: only POOL_MODE check)
 → docs(absent) → contribute(undocumented conventions).
-Empathy narrative: "I cloned the repo at 6pm. pnpm install works. Now what? No README, no .env.example —
+Empathy narrative: "I cloned the repo at 6pm. pnpm install works. Now what? No README, no .env.example -
 I read docker-compose and guess 5 vars, hit a POOL_MODE error that at least tells me what to fix, then
 discover tests reference scripts that don't exist. I stop."
 DX Score: initial 4/10 → 8/10 after T-X1..X4. TTHW: 20-30 min → target < 5 min.
@@ -1990,16 +1990,16 @@ DX Score: initial 4/10 → 8/10 after T-X1..X4. TTHW: 20-30 min → target < 5 m
 
 ---
 
-# PHASE 3 — ENG REVIEW (final gate)
+# PHASE 3 - ENG REVIEW (final gate)
 
-## Step 0 — Scope challenge: actual code read
-Read: policies.sql (25 policies, verified), rls.ts (verified transactional SET LOCAL pattern — good),
-auth.ts (better-auth: jwt+admin only — plan §6 shows `apiKey()` and organization() comment matches),
-redis.module.ts (silent localhost default — verified), main.ts (verifyPoolMode only — verified),
-seed.ts (UPPERCASE roles — plan sketches lowercase — drift confirmed), docker-compose (POOL_MODE=session,
-max_connections=300, pg+redis healthchecks present, pgbouncer healthcheck absent — verified).
+## Step 0 - Scope challenge: actual code read
+Read: policies.sql (25 policies, verified), rls.ts (verified transactional SET LOCAL pattern - good),
+auth.ts (better-auth: jwt+admin only - plan §6 shows `apiKey()` and organization() comment matches),
+redis.module.ts (silent localhost default - verified), main.ts (verifyPoolMode only - verified),
+seed.ts (UPPERCASE roles - plan sketches lowercase - drift confirmed), docker-compose (POOL_MODE=session,
+max_connections=300, pg+redis healthchecks present, pgbouncer healthcheck absent - verified).
 
-## Architecture (Section 1) — dependency graph
+## Architecture (Section 1) - dependency graph
 
 ```
                     ┌──────────────────────────────┐
@@ -2021,17 +2021,17 @@ max_connections=300, pg+redis healthchecks present, pgbouncer healthcheck absent
 
 Coupling: business writes MUST flow through withRlsContext; bare prisma is correct only for
 (migrations, seed, better-auth session tables, webhook ingest, system crons). The plan's own §18
-controller sketch violates this (calls this.prisma directly) — with a DB owner role, RLS silently
+controller sketch violates this (calls this.prisma directly) - with a DB owner role, RLS silently
 does not apply. This is the single most important architectural gap. Scaling: first breaker at 10x
 is SSE connection budget (documented, capped at ~150 users); second is Postgres single instance (no
-hot standby — acceptable for v1, name it in the runbook).
+hot standby - acceptable for v1, name it in the runbook).
 
-## Section 2 — Code Quality findings (auto-decided)
+## Section 2 - Code Quality findings (auto-decided)
 
 | # | Finding | Sev | Principle | Decision |
 |---|---------|-----|-----------|----------|
-| G-1 | Bare `prisma` used in request-path code + plan §18 controller sketch bypasses RLS by design (owner role) | critical | P1 | Auto-fix: plan amended (see "Plan amendments" below) — reassign + all request-scoped business writes go through withRlsContext; bare client reserved for named system paths |
-| G-2 | `reminder_select_manager` policy grants ALL team reminders to any MANAGER without teamId check (policies.sql:241) — cross-team leak if >1 manager team | critical | P1 | Auto-fix: add `AND "leadId" IN (SELECT id FROM "Lead" WHERE "teamId" = ...)`, or scope Reminder to teamId column; add to 128-case matrix |
+| G-1 | Bare `prisma` used in request-path code + plan §18 controller sketch bypasses RLS by design (owner role) | critical | P1 | Auto-fix: plan amended (see "Plan amendments" below) - reassign + all request-scoped business writes go through withRlsContext; bare client reserved for named system paths |
+| G-2 | `reminder_select_manager` policy grants ALL team reminders to any MANAGER without teamId check (policies.sql:241) - cross-team leak if >1 manager team | critical | P1 | Auto-fix: add `AND "leadId" IN (SELECT id FROM "Lead" WHERE "teamId" = ...)`, or scope Reminder to teamId column; add to 128-case matrix |
 | G-3 | Unset session vars fail OPEN for some paths: `reminder_select_owner` ORs role checks without team scope; `auditlog_insert_any_authenticated` needs only user_id (spoofable user_id within RLS role context is possible via SET LOCAL) | critical | P5 | Auto-fix: every policy gets all three var checks (user_id + role + team where relevant); deny-when-unset tests added to matrix |
 | G-4 | Cron lock TTL 50s vs batch >60s → duplicate reminder fires; lock blind-deleted in finally | high | P1 | Auto-fix: lease renewal (EXPIRE bump inside loop) + idempotency claim (`status SCHEDULED→PROCESSING` conditional updateMany) + owned-token release |
 | G-5 | No CI, no migrations dir, no policy-apply path (policies.sql never run by pnpm db:migrate) | high | P1/P6 | Auto-fix: Prisma migration applying policies; GitHub Actions CI (lint+typecheck+test) Week 1; flagged "see something" |
@@ -2039,7 +2039,7 @@ hot standby — acceptable for v1, name it in the runbook).
 | G-7 | Role casing: plan sketches lowercase ('admin','manager'); schema/policies/seed use UPPERCASE | low | P5 | Auto-fix: plan §18 guard + §17 inputs updated to enum casing |
 | G-8 | Redis silent `localhost:6379` default masks missing REDIS_URL | high | P1 | Auto-fix: fail-fast boot check for REDIS_URL/JWT_SECRET/BETTER_AUTH_URL + PgBouncer reachability (DX X-3) |
 
-## Section 3 — Test review (NEVER compressed)
+## Section 3 - Test review (NEVER compressed)
 
 New flows → coverage map:
 
@@ -2061,7 +2061,7 @@ New flows → coverage map:
 Evals/LLM: none in v1 (no LLM in critical path). 2am-Friday test: `reassign.test.ts` + RLS matrix.
 Hostile-QA test: cross-team MANAGER reminder read (G-2) + reassign to ADMIN role (G-7).
 
-## Section 4 — Performance
+## Section 4 - Performance
 §13.1 SLO budgets + 3 k6 gates are in the plan and are the right shape. Additional: reminder cron
 take:100 loop must batch with skip/limit paging when backlog > 100 (edge case); SSE replay take:100
 matches §5 fine. Connection budget documented (150-user cap).
@@ -2093,7 +2093,7 @@ Written to: `~/.gstack/projects/shadhil-crm-plans/2026-08-31-main-test-plan.md`
 
 ```
 +====================================================================+
-|        MEGA PLAN REVIEW — COMPLETION SUMMARY (ENG PHASE)           |
+|        MEGA PLAN REVIEW - COMPLETION SUMMARY (ENG PHASE)           |
 +====================================================================+
 | Mode                | FULL_REVIEW (required gate)                  |
 | Section 1 (Arch)    | 2 findings (G-1 wiring, SSE conn cap OK)     |
@@ -2110,7 +2110,7 @@ Written to: `~/.gstack/projects/shadhil-crm-plans/2026-08-31-main-test-plan.md`
 +====================================================================+
 ```
 
-**CODEX SAYS (eng — architecture challenge):** 10 findings — transactional audits, SSE tokens,
+**CODEX SAYS (eng - architecture challenge):** 10 findings - transactional audits, SSE tokens,
 prisma bypass (critical), policy fail-open (critical), reassign atomicity (critical), owner
 invariants, state-handoff mismatch, cron dup-fire, CI/migration gap, "test coverage is fake"
 (critical, refers to skeleton state). Primary verified every code-referenced claim against the
@@ -2118,7 +2118,7 @@ repo before accepting (all check out, G-2 wording refined: the Reminder manager 
 concrete leak).
 
 **PHASE 3 COMPLETE.** Codex: 10 concerns. Consensus: 5/6 confirmed (deployment risk = N/A missing
-voice→CONFIRMED by primary), 1 disagreement (scope: codex would cut mobile; P2 override — plan is
+voice→CONFIRMED by primary), 1 disagreement (scope: codex would cut mobile; P2 override - plan is
 client-locked) → surfaced at gate.
 
 ---
@@ -2129,7 +2129,7 @@ client-locked) → surfaced at gate.
    allowed ("state machine doesn't care who set the owner"). Both voices flag: either forbid exec
    targets while state < VISIT_SCHEDULED, or define the state machine exception explicitly.
 2. **Contrast tokens fail WCAG AA.** Amber/green/red status colors as given fail contrast on the
-   locked surface. This changes §4 tokens — a locked decision area — so it is surfaced, not auto-applied.
+   locked surface. This changes §4 tokens - a locked decision area - so it is surfaced, not auto-applied.
 3. **Mobile in 13 weeks.** Store review risk (P-1). Options: keep plan as-is (default), or add the
    Week 7 TestFlight/internal-track submission gate + 2-week buffer.
 
@@ -2137,102 +2137,102 @@ client-locked) → surfaced at gate.
 
 | # | Phase | Decision | Classification | Principle | Rationale | Rejected |
 |---|-------|----------|----------------|-----------|-----------|----------|
-| 1 | CEO | Mode = SELECTIVE EXPANSION | mechanical | — | skill default for feature iteration | — |
+| 1 | CEO | Mode = SELECTIVE EXPANSION | mechanical | - | skill default for feature iteration | - |
 | 2 | CEO | Approach A (build as planned) | mechanical | P1,P6 | client sign-off locks mobile+stack | B,C |
 | 3 | CEO | Expansion E1 offline queue → in scope | mechanical | P2 | in blast radius, <1d | defer |
-| 4 | CEO | Expansion E2 SSE tickets → in scope | mechanical | P1 | security fix, small | — |
+| 4 | CEO | Expansion E2 SSE tickets → in scope | mechanical | P1 | security fix, small | - |
 | 5 | CEO | E3 telemetry, E4 telephony pilot → TODOS | mechanical | P3 | outside radius | include |
-| 6 | Design | D3/D5 missing states + reconnect spec → in scope | mechanical | P1,P5 | structural, cheap | — |
+| 6 | Design | D3/D5 missing states + reconnect spec → in scope | mechanical | P1,P5 | structural, cheap | - |
 | 7 | Design | D8 contrast tokens → in scope | mechanical | P1 | WCAG AA is a floor | keep colors |
-| 8 | Design | D1 telecaller queue | taste | P3 | surfaced at gate | — |
-| 9 | Design | D6 handoff emotion variant | taste | — | surfaced at gate | — |
-| 10 | Eng | G-1 RLS wiring mandatory via withRlsContext | mechanical | P1 | security | — |
-| 11 | Eng | G-2 Reminder manager policy scope fix | mechanical | P1 | cross-team leak | — |
-| 12 | Eng | G-3 deny-when-unset policy hardening | mechanical | P5 | fail-closed | — |
-| 13 | Eng | G-4 cron lease+idempotency | mechanical | P1 | dup-fire | — |
-| 14 | Eng | G-5 CI + migrations + policy apply | mechanical | P1,P6 | shipping gate | — |
-| 15 | Eng | G-6/G-7 drift fixes (auth sketch, role casing) | mechanical | P5 | docs match code | — |
-| 16 | Eng | G-8 boot env fail-fast | mechanical | P1 | DX gap | — |
+| 8 | Design | D1 telecaller queue | taste | P3 | surfaced at gate | - |
+| 9 | Design | D6 handoff emotion variant | taste | - | surfaced at gate | - |
+| 10 | Eng | G-1 RLS wiring mandatory via withRlsContext | mechanical | P1 | security | - |
+| 11 | Eng | G-2 Reminder manager policy scope fix | mechanical | P1 | cross-team leak | - |
+| 12 | Eng | G-3 deny-when-unset policy hardening | mechanical | P5 | fail-closed | - |
+| 13 | Eng | G-4 cron lease+idempotency | mechanical | P1 | dup-fire | - |
+| 14 | Eng | G-5 CI + migrations + policy apply | mechanical | P1,P6 | shipping gate | - |
+| 15 | Eng | G-6/G-7 drift fixes (auth sketch, role casing) | mechanical | P5 | docs match code | - |
+| 16 | Eng | G-8 boot env fail-fast | mechanical | P1 | DX gap | - |
 | 17 | Eng | Codex scope-cut (drop mobile) | REJECTED | P2 | client-locked decision | cut mobile |
 | 18 | Gate D2 | Auto + manual assignment BOTH in scope; rule engine semantics defined (priority/criteria/catch-all/fallback); T-ARM added | mechanical | P1 | user direction 2026-08-31 "both leads manually reassign + auto assign based on situation" | B (load/SLA re-routing) |
 | 19 | Design | App-shell redesign approved: sidebar + role-tuned charts + mobile Sheet + friendly labels in one PR (user picked option B from D1) | mechanical | P1,P2,P3 | one shipping surface vs. two PRs of partial work | (A) topbar-only, (C) split across 3 PRs of half-features |
-| 20 | Design | D2: friendly labels in UI, enums in DB — server keeps `Lead.status` etc. raw; UI maps via `lib/labels.ts` with source-of-truth test | taste | P2,P6 | non-technical staff read "Talked" not "CONTACTED" | (A) raw enums everywhere |
-| 21 | Design | D3: role-tuned chart defaults — Telecaller 1, Manager 3, Admin 4. Charts gated on backend module landing (ModulePending until then) | taste | P2,P3 | each role sees work relevant to them, not the same dashboard for everyone | (B) one chart set for all |
+| 20 | Design | D2: friendly labels in UI, enums in DB - server keeps `Lead.status` etc. raw; UI maps via `lib/labels.ts` with source-of-truth test | taste | P2,P6 | non-technical staff read "Talked" not "CONTACTED" | (A) raw enums everywhere |
+| 21 | Design | D3: role-tuned chart defaults - Telecaller 1, Manager 3, Admin 4. Charts gated on backend module landing (ModulePending until then) | taste | P2,P3 | each role sees work relevant to them, not the same dashboard for everyone | (B) one chart set for all |
 | 22 | Design | D4: floating "+ Add lead" FAB, mobile-only (`md:hidden`), role-gated (telecaller/exec/manager+), hides when offline (silent-offline gap from eng §4) | mechanical | P1,P3 | first-touch latency matters; FAB is the mobile-first pattern | (A) header button only, (B) page-level button only |
 | 23 | Eng | Single source of truth for nav: `lib/nav.ts` exports `NAV_ITEMS` + `getVisibleNav` + `isNavItemActive` + `useNavSync`; sidebar + topbar both read it (DRY §2 P1) | mechanical | P6 | parallel arrays in two files always drift | inline arrays in each shell |
 | 24 | Eng | ChartCard = thin glue around `ModulePending`, not an independent state machine (eng §1 P1); reuses loading/error/empty contract | mechanical | P1,P5 | one state machine, one place to update when T19 lands shape-matched skeletons | (A) ChartCard owns its own pending copy |
-| 25 | Eng | `lib/labels.ts` source-of-truth test (`labels.test.ts`) asserts every §9.1 enum value has a friendly entry — fails the build if a Prisma enum gains a value but the UI table doesn't | mechanical | P5,P6 | the raw-enum-leak bug can only happen once | manual review |
-| 26 | Eng | `SidebarProvider` is `'use client'` — `(app)/layout.tsx` is a client component on purpose. Proxy redirects cookieless visitors to `/login` before this layout ever renders, so SSR is unnecessary here (eng §1 P1 documented as deliberate) | mechanical | P5,P6 | avoid "shell appears before session" flash | (A) split server/client, (B) try to make sidebar SSR-safe |
-| 27 | Eng | recharts primitives (`Bar`, `BarChart`, `XAxis`, `YAxis`) imported from `recharts` directly; library v1.4.1 only re-exports the wrapper (`Chart`/`ChartContainer`/`ChartTooltip`). Per shadcn charts convention: wrappers from the lib, primitives from the engine. | mechanical | P1,P5 | skill docs and library v1.4.1 barrel disagree — re-export doesn't exist; adding `recharts: ^3.8.1` to consumer package.json is the canonical shadcn split | (A) inline reimplementation, (B) vendor a `Chart` shim |
-| 28 | Design | Sidebar brand color via `--sidebar*` tokens in `packages/ui-tokens/src/brand.css` (NOT `all.css` — library-owned). Brand = navy + green (decided in commit c1118a7); plan §12's "orange/amber" was the planner's assumption, the actual brand is on disk | taste | P2 | brand.css is documented as the only file you edit per project; the sidebar tokens live with the brand | (A) override in `globals.css` per app, (B) hardcode colors in app-shell.tsx |
+| 25 | Eng | `lib/labels.ts` source-of-truth test (`labels.test.ts`) asserts every §9.1 enum value has a friendly entry - fails the build if a Prisma enum gains a value but the UI table doesn't | mechanical | P5,P6 | the raw-enum-leak bug can only happen once | manual review |
+| 26 | Eng | `SidebarProvider` is `'use client'` - `(app)/layout.tsx` is a client component on purpose. Proxy redirects cookieless visitors to `/login` before this layout ever renders, so SSR is unnecessary here (eng §1 P1 documented as deliberate) | mechanical | P5,P6 | avoid "shell appears before session" flash | (A) split server/client, (B) try to make sidebar SSR-safe |
+| 27 | Eng | recharts primitives (`Bar`, `BarChart`, `XAxis`, `YAxis`) imported from `recharts` directly; library v1.4.1 only re-exports the wrapper (`Chart`/`ChartContainer`/`ChartTooltip`). Per shadcn charts convention: wrappers from the lib, primitives from the engine. | mechanical | P1,P5 | skill docs and library v1.4.1 barrel disagree - re-export doesn't exist; adding `recharts: ^3.8.1` to consumer package.json is the canonical shadcn split | (A) inline reimplementation, (B) vendor a `Chart` shim |
+| 28 | Design | Sidebar brand color via `--sidebar*` tokens in `packages/ui-tokens/src/brand.css` (NOT `all.css` - library-owned). Brand = navy + green (decided in commit c1118a7); plan §12's "orange/amber" was the planner's assumption, the actual brand is on disk | taste | P2 | brand.css is documented as the only file you edit per project; the sidebar tokens live with the brand | (A) override in `globals.css` per app, (B) hardcode colors in app-shell.tsx |
 | 29 | Eng | PR split: PR1 (T1–T15 shell+labels+signOut+nav test), PR2 (T16–T19, T26, T27 skeleton layer), PR3 (T20–T25, T28–T38 polish+safety+bring-backs). Locked in re-review §9; each PR is independently revertable. | mechanical | P1,P6 | smaller PRs review faster; each layer is mechanically separable | (A) one giant PR, (B) split by file ownership |
 | 30 | Design | `useNavSync()` hook in `lib/nav.ts` closes the mobile Sheet on `usePathname()` change. Encapsulates the library-drift risk so future library updates don't silently reintroduce the "stuck open Sheet" bug. | mechanical | P1,P6 | without this hook, the mobile Sheet would block the route change; library doesn't auto-close | (A) close-on-click handler per link, (B) library's default behavior (assumed but not guaranteed) |
 | 31 | Eng | Skeleton is one generic component with variants (`text`/`card`/`chart`/`table`/`kpi`/`user`), not 4 dedicated files (CEO §5 1D). `SkeletonContainer` cross-fade = CSS-only (`opacity-0/100 duration-200` + `motion-reduce:transition-none`). T32 (shape-count tests) + T33 (computed-style assertion) replace fragile `vi.useFakeTimers` for animations. | mechanical | P1,P6 | DRY; CSS animations are not pauseable by fake timers (known pitfall) | (A) 4 dedicated files, (B) fake-timer-based tests |
 | 32 | Design | ErrorBoundary fallback = `Empty`, not `Skeleton` (CEO §1 1B). A skeleton hides the failure; `Empty` makes the failure visible so the user can report it. Applied at the chart layer in T31. | taste | P1,P5 | honest error surface | (A) generic error.tsx, (B) skeleton as fallback |
-| 33 | Eng | Standalone bare-`node:http` SSE service (`apps/realtime-sse`, port 8090) instead of `@Sse()` in Nest or `@fastify/sse` plugin. Both framework SSE layers are broken for any subscription that needs `await` inside its factory (verified 2026-09-04: Nest 12.0.1 + fastify-sse 0.6.0 both swallow frames silently). Bare-Node is the only path with empirical evidence. | mechanical | P1,P5,P6 | Nest has only 1 published 12.x version (12.0.1) — no upstream patch; downgrading is 6-module blast radius; fastify is the same shape of bug. Standalone service is ~260 lines, zero new runtime deps, and uses the exact pattern the canary proved works. | (A) keep Nest `@Sse` and pray for 12.0.2, (B) downgrade to 11.2.3, (C) use `@fastify/sse` |
+| 33 | Eng | Standalone bare-`node:http` SSE service (`apps/realtime-sse`, port 8090) instead of `@Sse()` in Nest or `@fastify/sse` plugin. Both framework SSE layers are broken for any subscription that needs `await` inside its factory (verified 2026-09-04: Nest 12.0.1 + fastify-sse 0.6.0 both swallow frames silently). Bare-Node is the only path with empirical evidence. | mechanical | P1,P5,P6 | Nest has only 1 published 12.x version (12.0.1) - no upstream patch; downgrading is 6-module blast radius; fastify is the same shape of bug. Standalone service is ~260 lines, zero new runtime deps, and uses the exact pattern the canary proved works. | (A) keep Nest `@Sse` and pray for 12.0.2, (B) downgrade to 11.2.3, (C) use `@fastify/sse` |
 | 34 | Eng | SSE consumer gets a distinct subdomain `sse.crm.shadhilbuilders.in` (not a path on `api.crm.shadhilbuilders.in`). Three subdomains total: `crm.shadhilbuilders.in` (web, user-facing apex), `api.crm.shadhilbuilders.in` (Nest + ticket mint, child of the app's parent), and `sse.crm.shadhilbuilders.in` (SSE, sibling of the app). The h2 connection-pool isolation and operational visibility are the two reasons (cookie isolation handled separately by Decision #37, and is now a hard requirement because the API is a child of the app's parent domain). | mechanical | P1,P5 | h2 multiplexing pool is per-origin in browsers, so isolating SSE prevents it from starving the API's h2 stream IDs. Long-lived connections have a different ops shape (timeouts, buffering, dashboards). The API and SSE subdomains are both children of the user-facing app's parent (`crm.shadhilbuilders.in`), so each is its own origin for h2/cookie/CSP purposes. | (A) `api.crm.shadhilbuilders.in/api/sse/*` (same origin as API = pool coupling), (B) `crm.shadhilbuilders.in/api/sse/*` (web origin = better-auth cookie in URL) |
-| 35 | Eng | (SUPERSEDED 2026-09-04 by #36) Originally: Caddy terminates TLS + serves h2 to the browser for the SSE host; standalone service stays plain HTTP/1.1 on `localhost:8090`. | mechanical | P1,P5 | — | — |
-| 36 | Eng | **Use Traefik (Coolify's default) for all three subdomains**, not Caddy. Coolify is built around Traefik — every tutorial, every issue thread, every GH discussion in coollabsio/coolify assumes Traefik. Caddy has known override bugs in Coolify's label system (Issues #3083, #2069) that the Traefik path doesn't have. SSE works out of the box on Traefik because it auto-detects streaming on `Content-Type: text/event-stream` (no explicit `flushInterval` config needed per official Traefik v3 docs). The only required SSE-specific override is excluding `text/event-stream` from the compression middleware. | mechanical | P1,P5 | Traefik is the default and most-tested Coolify proxy; choosing anything else means fighting the platform on every non-default config. The dedicated-Caddy split I considered (in the same turn) was the right shape of solution to a problem that vanishes when you use the platform's first-class citizen. | (A) Caddy with the dedicated-container split (operationally heavier, no upside), (B) nginx (same as Caddy — non-default in Coolify) |
-| 37 | Eng | **Better-auth session cookie is explicitly scoped to `crm.shadhilbuilders.in`** (not `.crm.shadhilbuilders.in` and not `.shadhilbuilders.in`). Set via the `Domain` attribute on the session cookie in `packages/auth-client/src/auth.ts` (the `useCookies` config of the better-auth instance). The three subdomains are `crm.shadhilbuilders.in` (app), `api.crm.shadhilbuilders.in` (API), and `sse.crm.shadhilbuilders.in` (SSE). The API is intentionally a *child* of the user-facing app's parent (`api.crm.shadhilbuilders.in` shares the `crm.shadhilbuilders.in` parent with the app), so without explicit scope the browser would auto-send the session cookie to the API by RFC 6265. The BFF mints a fresh JWT before calling the API, so the API never needs the better-auth cookie in the current architecture — but the explicit scope is now a hard requirement (not just defense-in-depth), because the parent domain is shared. | mechanical | P1,P5 | RFC 6265 cookie scoping: when `Domain` is unset, the cookie is host-only; when `Domain: crm.shadhilbuilders.in` is set, the cookie is sent to that host AND all subdomains (`api.crm.shadhilbuilders.in` and `sse.crm.shadhilbuilders.in` are both subdomains of `crm.shadhilbuilders.in`). To prevent the auto-send to `api.*`, the `Domain` attribute must EITHER be unset (host-only) OR set to a value that doesn't include the API's parent. Setting it explicitly to `crm.shadhilbuilders.in` (no leading dot, no parent match) is the documented better-auth way. | (A) Leave default (host-only, no explicit Domain attribute) — works today but breaks the moment anyone adds a cookie reader to the API, (B) Scope to `.shadhilbuilders.in` — wrong direction, sends cookie to all three subdomains including the SSE service, (C) Scope to `.crm.shadhilbuilders.in` — wrong direction, sends cookie to BOTH the app and the API |
+| 35 | Eng | (SUPERSEDED 2026-09-04 by #36) Originally: Caddy terminates TLS + serves h2 to the browser for the SSE host; standalone service stays plain HTTP/1.1 on `localhost:8090`. | mechanical | P1,P5 | - | - |
+| 36 | Eng | **Use Traefik (Coolify's default) for all three subdomains**, not Caddy. Coolify is built around Traefik - every tutorial, every issue thread, every GH discussion in coollabsio/coolify assumes Traefik. Caddy has known override bugs in Coolify's label system (Issues #3083, #2069) that the Traefik path doesn't have. SSE works out of the box on Traefik because it auto-detects streaming on `Content-Type: text/event-stream` (no explicit `flushInterval` config needed per official Traefik v3 docs). The only required SSE-specific override is excluding `text/event-stream` from the compression middleware. | mechanical | P1,P5 | Traefik is the default and most-tested Coolify proxy; choosing anything else means fighting the platform on every non-default config. The dedicated-Caddy split I considered (in the same turn) was the right shape of solution to a problem that vanishes when you use the platform's first-class citizen. | (A) Caddy with the dedicated-container split (operationally heavier, no upside), (B) nginx (same as Caddy - non-default in Coolify) |
+| 37 | Eng | **Better-auth session cookie is explicitly scoped to `crm.shadhilbuilders.in`** (not `.crm.shadhilbuilders.in` and not `.shadhilbuilders.in`). Set via the `Domain` attribute on the session cookie in `packages/auth-client/src/auth.ts` (the `useCookies` config of the better-auth instance). The three subdomains are `crm.shadhilbuilders.in` (app), `api.crm.shadhilbuilders.in` (API), and `sse.crm.shadhilbuilders.in` (SSE). The API is intentionally a *child* of the user-facing app's parent (`api.crm.shadhilbuilders.in` shares the `crm.shadhilbuilders.in` parent with the app), so without explicit scope the browser would auto-send the session cookie to the API by RFC 6265. The BFF mints a fresh JWT before calling the API, so the API never needs the better-auth cookie in the current architecture - but the explicit scope is now a hard requirement (not just defense-in-depth), because the parent domain is shared. | mechanical | P1,P5 | RFC 6265 cookie scoping: when `Domain` is unset, the cookie is host-only; when `Domain: crm.shadhilbuilders.in` is set, the cookie is sent to that host AND all subdomains (`api.crm.shadhilbuilders.in` and `sse.crm.shadhilbuilders.in` are both subdomains of `crm.shadhilbuilders.in`). To prevent the auto-send to `api.*`, the `Domain` attribute must EITHER be unset (host-only) OR set to a value that doesn't include the API's parent. Setting it explicitly to `crm.shadhilbuilders.in` (no leading dot, no parent match) is the documented better-auth way. | (A) Leave default (host-only, no explicit Domain attribute) - works today but breaks the moment anyone adds a cookie reader to the API, (B) Scope to `.shadhilbuilders.in` - wrong direction, sends cookie to all three subdomains including the SSE service, (C) Scope to `.crm.shadhilbuilders.in` - wrong direction, sends cookie to BOTH the app and the API |
 
 ## Cross-Phase Themes
 
-- **Theme: silent security gaps** — flagged in CEO (§2/§3), Design (offline states), Eng (G-1/G-2/G-3/G-5).
+- **Theme: silent security gaps** - flagged in CEO (§2/§3), Design (offline states), Eng (G-1/G-2/G-3/G-5).
   High-confidence signal: the scaffold's RLS layer is the crown jewel AND the most fragile part
   (never-applied policies, fail-open edges, bypass paths).
-- **Theme: timeline optimism** — CEO (P-1) and DX docs cadence both push early hardening of
+- **Theme: timeline optimism** - CEO (P-1) and DX docs cadence both push early hardening of
   ship-blocking items (CI in Week 1, docs weekly).
 
 ## Implementation Tasks (aggregated)
 
-- [x] **T-D4 (P1, human ~6h / CC ~45min)** — mobile+backend — Offline visit-outcome queue (save-local, retry, dedupe, conflict rule)
-  - Surfaced by: design D4 + eng #11 — Files: apps/mobile visit module, apps/backend visits controller
+- [x] **T-D4 (P1, human ~6h / CC ~45min)** - mobile+backend - Offline visit-outcome queue (save-local, retry, dedupe, conflict rule)
+  - Surfaced by: design D4 + eng #11 - Files: apps/mobile visit module, apps/backend visits controller
   - Verify: Maestro flow offline-outcome.yaml + unit test for conflict resolution
-  - DONE 2026-09-05 (commit d72819e): web+backend slice — idempotent-replay + stale-write 409 conflict rule (visits.service), enqueueUnique dedupe (offline-store), LeadVisitPanel offline fallback + isOfflineError, replay auth fix (/api/bff — old /api/backend rewrite dropped the `api` prefix AND had no Bearer token → every replay 401/404), badge replay query invalidation. Gates: backend 646, RLS 135, web 219, offline-store 26. DEFERRED with mobile (Weeks 8-10): Maestro offline-outcome.yaml, SW Background Sync replay handler, apps/mobile visit module.
-- [x] **T-D3 (P1, human ~4h / CC ~30min)** — all UI — State matrix: loading/empty/error/partial per surface + SSE Connected/Reconnecting/Offline pill spec
-  - Surfaced by: design D3+D5 — Files: apps/web features, apps/mobile screens, WIREFRAMES.md
+  - DONE 2026-09-05 (commit d72819e): web+backend slice - idempotent-replay + stale-write 409 conflict rule (visits.service), enqueueUnique dedupe (offline-store), LeadVisitPanel offline fallback + isOfflineError, replay auth fix (/api/bff - old /api/backend rewrite dropped the `api` prefix AND had no Bearer token → every replay 401/404), badge replay query invalidation. Gates: backend 646, RLS 135, web 219, offline-store 26. DEFERRED with mobile (Weeks 8-10): Maestro offline-outcome.yaml, SW Background Sync replay handler, apps/mobile visit module.
+- [x] **T-D3 (P1, human ~4h / CC ~30min)** - all UI - State matrix: loading/empty/error/partial per surface + SSE Connected/Reconnecting/Offline pill spec
+  - Surfaced by: design D3+D5 - Files: apps/web features, apps/mobile screens, WIREFRAMES.md
   - Verify: Playwright per-surface state tests
-  - DONE 2026-09-05 (commit 0bdcf67): docs/planning/STATE-MATRIX.md (single source of truth for the loading/empty/error/partial contract + SSE pill states) + vitest state-matrix tests for the 3 largest untested surfaces (leads list 4 cases, leads/[id] detail 3, users 5 — pins the users page's inline-error-by-design choice). Remaining smaller surfaces (visits calendar, inventory, bookings/new, root dashboard) are listed as gaps in STATE-MATRIX.md; Playwright e2e variant deferred with apps/mobile (vitest chosen per repo convention — no @testing-library/react).
-- [ ] **T-D8 (P1, human ~1h / CC ~10min)** — ui-tokens — WCAG AA status token set + chip styles
-  - Surfaced by: design D8 — Files: packages/ui-tokens, WIREFRAMES.md legend
+  - DONE 2026-09-05 (commit 0bdcf67): docs/planning/STATE-MATRIX.md (single source of truth for the loading/empty/error/partial contract + SSE pill states) + vitest state-matrix tests for the 3 largest untested surfaces (leads list 4 cases, leads/[id] detail 3, users 5 - pins the users page's inline-error-by-design choice). Remaining smaller surfaces (visits calendar, inventory, bookings/new, root dashboard) are listed as gaps in STATE-MATRIX.md; Playwright e2e variant deferred with apps/mobile (vitest chosen per repo convention - no @testing-library/react).
+- [ ] **T-D8 (P1, human ~1h / CC ~10min)** - ui-tokens - WCAG AA status token set + chip styles
+  - Surfaced by: design D8 - Files: packages/ui-tokens, WIREFRAMES.md legend
   - Verify: contrast check script in compliance.test.ts
-- [ ] **T-E2 (P1, human ~3h / CC ~25min)** — backend — SSE one-time stream tickets (?ticket=, short TTL, bind userId+leadId, no token in logs)
-  - Surfaced by: eng voice #2 — Files: apps/backend/src/realtime, new tickets service
+- [ ] **T-E2 (P1, human ~3h / CC ~25min)** - backend - SSE one-time stream tickets (?ticket=, short TTL, bind userId+leadId, no token in logs)
+  - Surfaced by: eng voice #2 - Files: apps/backend/src/realtime, new tickets service
   - Verify: integration test: expired/replayed ticket rejected
-- [x] **T-G1 (P1, human ~4h / CC ~30min)** — backend — Route ALL request-scoped business writes through withRlsContext; §18 reassign rewritten in-transaction (fetch+update+reminders+audit+SSE), owner/ADMIN guard, coOwnerId cleanup
-  - Surfaced by: eng G-1/G-5-critical — Files: apps/backend/src/leads/*, packages/database/src/rls.ts
+- [x] **T-G1 (P1, human ~4h / CC ~30min)** - backend - Route ALL request-scoped business writes through withRlsContext; §18 reassign rewritten in-transaction (fetch+update+reminders+audit+SSE), owner/ADMIN guard, coOwnerId cleanup
+  - Surfaced by: eng G-1/G-5-critical - Files: apps/backend/src/leads/*, packages/database/src/rls.ts
   - Verify: reassign integration test + lint rule/grep CI check banning bare prisma in controllers
-  - DONE 2026-09-05 (commits f49eae2 + this one): reassign endpoint (POST /api/leads/:id/reassign) fully inside withRlsContext — owner/ADMIN guard, team-scoped MANAGER guard, canRoleOwnState target-role check, same-owner no-op, coOwnerId preserved (dedicated coOwner endpoint is the follow-up), teamless-target teamId preservation; leads.reassign.test.ts 11 real-DB tests (ADMIN cross-team, MANAGER same/cross-team 403, TELECALLER/SALES_EXEC 403 incl. RLS-404 caveat, target-role-in-state 400, VISITED-lane happy path, audit before/after, no-op no-audit); bare-prisma CI guardrail (scripts/check-bare-prisma.mjs + guardrails job — tamper-verified exit 1 on planted violation; ALLOWLIST documents the 5 sanctioned bare-client paths). Gates: backend 646, RLS 135, type-check clean.
-- [ ] **T-G2 (P1, human ~2h / CC ~15min)** — database — Fix reminder_select_manager team leak + unset-var deny-all hardening across policies
-  - Surfaced by: eng G-2/G-3 — Files: packages/database/prisma/rls/policies.sql
+  - DONE 2026-09-05 (commits f49eae2 + this one): reassign endpoint (POST /api/leads/:id/reassign) fully inside withRlsContext - owner/ADMIN guard, team-scoped MANAGER guard, canRoleOwnState target-role check, same-owner no-op, coOwnerId preserved (dedicated coOwner endpoint is the follow-up), teamless-target teamId preservation; leads.reassign.test.ts 11 real-DB tests (ADMIN cross-team, MANAGER same/cross-team 403, TELECALLER/SALES_EXEC 403 incl. RLS-404 caveat, target-role-in-state 400, VISITED-lane happy path, audit before/after, no-op no-audit); bare-prisma CI guardrail (scripts/check-bare-prisma.mjs + guardrails job - tamper-verified exit 1 on planted violation; ALLOWLIST documents the 5 sanctioned bare-client paths). Gates: backend 646, RLS 135, type-check clean.
+- [ ] **T-G2 (P1, human ~2h / CC ~15min)** - database - Fix reminder_select_manager team leak + unset-var deny-all hardening across policies
+  - Surfaced by: eng G-2/G-3 - Files: packages/database/prisma/rls/policies.sql
   - Verify: RLS matrix negative cases
-- [ ] **T-G4 (P1, human ~2h / CC ~20min)** — backend — Cron lease renewal + status-claim idempotency + owned-token release
-  - Surfaced by: eng G-4 — Files: apps/backend/src/reminders/processor
+- [ ] **T-G4 (P1, human ~2h / CC ~20min)** - backend - Cron lease renewal + status-claim idempotency + owned-token release
+  - Surfaced by: eng G-4 - Files: apps/backend/src/reminders/processor
   - Verify: processor test: tick > 60s does not double-fire
-- [ ] **T-G5 (P1, human ~4h / CC ~30min)** — repo — CI workflow (lint+typecheck+test) + first Prisma migration that applies policies.sql + root scripts docker:up/db:policies/setup
-  - Surfaced by: eng G-5 + DX X-1/X-6 — Files: .github/workflows/ci.yml, packages/database/prisma/migrations, package.json scripts
+- [ ] **T-G5 (P1, human ~4h / CC ~30min)** - repo - CI workflow (lint+typecheck+test) + first Prisma migration that applies policies.sql + root scripts docker:up/db:policies/setup
+  - Surfaced by: eng G-5 + DX X-1/X-6 - Files: .github/workflows/ci.yml, packages/database/prisma/migrations, package.json scripts
   - Verify: green CI on scaffold push
-- [ ] **T-X1 (P2, human ~3h / CC ~30min)** — repo — Root README.md + complete .env.example + root AGENTS.md (real conventions)
-  - Surfaced by: DX X-1/X-2/X-6 — Files: README.md, .env.example, AGENTS.md
+- [ ] **T-X1 (P2, human ~3h / CC ~30min)** - repo - Root README.md + complete .env.example + root AGENTS.md (real conventions)
+  - Surfaced by: DX X-1/X-2/X-6 - Files: README.md, .env.example, AGENTS.md
   - Verify: fresh-clone walkthrough hits zero surprises
-- [ ] **T-X3 (P2, human ~2h / CC ~15min)** — backend — Boot fail-fast: REDIS_URL, JWT_SECRET, BETTER_AUTH_URL, PgBouncer reachability; compose healthcheck for pgbouncer
-  - Surfaced by: DX X-3 + eng G-8 — Files: apps/backend/src/main.ts, boot-check.ts, docker-compose.yml
+- [ ] **T-X3 (P2, human ~2h / CC ~15min)** - backend - Boot fail-fast: REDIS_URL, JWT_SECRET, BETTER_AUTH_URL, PgBouncer reachability; compose healthcheck for pgbouncer
+  - Surfaced by: DX X-3 + eng G-8 - Files: apps/backend/src/main.ts, boot-check.ts, docker-compose.yml
   - Verify: kill Redis in compose → boot fails with named fix
-- [ ] **T-E2b (P2, human ~1h / CC ~10min)** — backend — Push receipt systematic-FAILED alert to Telegram + unit test
-  - Surfaced by: CEO §2 registry — Files: apps/backend/src/notifications
+- [ ] **T-E2b (P2, human ~1h / CC ~10min)** - backend - Push receipt systematic-FAILED alert to Telegram + unit test
+  - Surfaced by: CEO §2 registry - Files: apps/backend/src/notifications
   - Verify: threshold test fires alert
-- [ ] **T-S (P2, human ~1h / CC ~15min)** — database+backend — Seed hardening: mustChangePassword + no default login until rotated
-  - Surfaced by: CEO §3 — Files: packages/database/src/seed.ts, auth flows
+- [ ] **T-S (P2, human ~1h / CC ~15min)** - database+backend - Seed hardening: mustChangePassword + no default login until rotated
+  - Surfaced by: CEO §3 - Files: packages/database/src/seed.ts, auth flows
   - Verify: seed integration test
-- [ ] **T-RLSREAL (P2, human ~6h / CC ~45min)** — database — Make the 128-case RLS matrix real (PG test service, procedure-generated cases, unset-var negatives)
-  - Surfaced by: DX X-5 + eng #10 — Files: packages/database/test/rls-isolation.test.ts, docker-compose.yml
+- [ ] **T-RLSREAL (P2, human ~6h / CC ~45min)** - database - Make the 128-case RLS matrix real (PG test service, procedure-generated cases, unset-var negatives)
+  - Surfaced by: DX X-5 + eng #10 - Files: packages/database/test/rls-isolation.test.ts, docker-compose.yml
   - Verify: pnpm test runs 128 cases
-- [ ] **T-DOC (P2, human ~4h / CC ~30min)** — docs — ARCHITECTURE.md W2, RUNBOOK.md W3, DEPLOY.md W4 (per DX cadence)
-  - Surfaced by: DX X-4 — Files: 4 root docs
+- [ ] **T-DOC (P2, human ~4h / CC ~30min)** - docs - ARCHITECTURE.md W2, RUNBOOK.md W3, DEPLOY.md W4 (per DX cadence)
+  - Surfaced by: DX X-4 - Files: 4 root docs
   - Verify: doc review in weekly ship
-- [ ] **T-G6G7 (P3, human ~1h / CC ~5min)** — plan — Sync §6 auth sketch (drop apiKey()) + role casing to UPPERCASE enum values
-- [ ] **T-ARM (P1, human ~5h / CC ~40min)** — backend+schema — ManagerAssignmentRule engine per §18: priority-ordered evaluation (source/project/phase/language/region), catch-all, team defaultAssigneeId fallback, unassigned+manager-notified end state; +schema migration dropping @@unique([teamId, source]); +6 tests named in §18
-  - Surfaced by: user direction 2026-08-31 (both manual + situational auto-assign) — Files: packages/database/prisma/schema.prisma, apps/backend/src/leads/leads.service.ts, Admin UI rules page
+- [ ] **T-G6G7 (P3, human ~1h / CC ~5min)** - plan - Sync §6 auth sketch (drop apiKey()) + role casing to UPPERCASE enum values
+- [ ] **T-ARM (P1, human ~5h / CC ~40min)** - backend+schema - ManagerAssignmentRule engine per §18: priority-ordered evaluation (source/project/phase/language/region), catch-all, team defaultAssigneeId fallback, unassigned+manager-notified end state; +schema migration dropping @@unique([teamId, source]); +6 tests named in §18
+  - Surfaced by: user direction 2026-08-31 (both manual + situational auto-assign) - Files: packages/database/prisma/schema.prisma, apps/backend/src/leads/leads.service.ts, Admin UI rules page
   - Verify: unit tests for priority/catch-all/fallback chain + integration test of lead-create routing
 
 
@@ -2265,16 +2265,16 @@ model Team {
 }
 ```
 
-Breaking change from scaffold's `@@unique([teamId, source])` — drop it (multiple rules per source at different priorities are now legitimate). `source` becomes nullable for catch-all rules.
+Breaking change from scaffold's `@@unique([teamId, source])` - drop it (multiple rules per source at different priorities are now legitimate). `source` becomes nullable for catch-all rules.
 
 ---
 
 
-## SECOND-ROUND AUDIT — 2026-08-31 (Agency specialists: code-reviewer, test-automation-engineer, codebase-archaeologist)
+## SECOND-ROUND AUDIT - 2026-08-31 (Agency specialists: code-reviewer, test-automation-engineer, codebase-archaeologist)
 
 Post-gate sweep of the scaffold at commit f1d77f7. All claims verified line-by-line by the primary
 before acceptance. One specialist finding (compose DB URLs "***" = broken URI) was REJECTED after
-raw-byte verification — it was an artifact of secret masking in tool display, the file is valid.
+raw-byte verification - it was an artifact of secret masking in tool display, the file is valid.
 
 ### New critical/high findings (folded into plan tasks)
 
@@ -2282,20 +2282,20 @@ raw-byte verification — it was an artifact of secret masking in tool display, 
 |---|---------|----------|-----|------|
 | AR-1 | **Owner-role RLS bypass**: app connects as Postgres table owner (`POSTGRES_USER: shadhil`), which bypasses RLS entirely; no `FORCE ROW LEVEL SECURITY`, no non-owner app role in `docker/postgres-init/00-init.sql` | policies.sql grep; 00-init.sql is a 10-line no-op | critical | T-G2 (amend: FORCE RLS + app role + GRANTs, not just policy edits) |
 | AR-2 | **JWT role-casing breaks RLS end-to-end**: `packages/auth-client/src/jwt.ts:12` types roles lowercase (`'sales_executive'`), schema/policies/seed are UPPERCASE (`SALES_EXEC`); verified md5-vs-SCRAM mismatch also exists in pgbouncer userlist vs `auth_type = scram-sha-256` (userlist has stale md5 hash of wrong password) | jwt.ts:12 vs schema.prisma:35-40, policies.sql:25 | critical | T-G7 (upgrade to: normalize role casing at issuance + in withRlsContext; regenerate SCRAM verifier) |
-| AR-3 | **CI in wrong directory**: 3 workflows live in `apps/web/.github/workflows/` — GitHub only reads root `.github/` in a monorepo; nothing gates PRs | ls .github (root) = absent | high | T-G5 (move + fix paths) |
-| AR-4 | **Turbo caches stale test passes**: `tasks.test.inputs` excludes `**/*.test.ts(x)` — editing tests doesn't invalidate cache | turbo.json test task | critical | T-G5b (drop the two `!` exclude lines) |
-| AR-5 | **Backend tests vacuously green**: `passWithNoTests: true` + zero test files — verified live ("No test files found, exiting with code 0") | apps/backend/vitest.config.ts | critical | T-RLSREAL + set passWithNoTests:false once first real test lands |
-| AR-6 | **withRlsContext is wired nowhere in apps**: jwt-guard comment references a nonexistent `rls.interceptor.ts`; no instrumentation.ts for web boot-check | grep apps/backend/src | high | T-G1 (confirmed — interceptor must be built, not just documented) |
-| AR-7 | **Audit read endpoint is @Public()** with decorative ApiBearerAuth; all stub controllers are @Public "temporarily" — trivial to ship real handlers still public | audit.module.ts, leads.module.ts:12 | high | T-SEC (new: strip @Public from stubs, lint rule banning it outside auth/webhooks) |
+| AR-3 | **CI in wrong directory**: 3 workflows live in `apps/web/.github/workflows/` - GitHub only reads root `.github/` in a monorepo; nothing gates PRs | ls .github (root) = absent | high | T-G5 (move + fix paths) |
+| AR-4 | **Turbo caches stale test passes**: `tasks.test.inputs` excludes `**/*.test.ts(x)` - editing tests doesn't invalidate cache | turbo.json test task | critical | T-G5b (drop the two `!` exclude lines) |
+| AR-5 | **Backend tests vacuously green**: `passWithNoTests: true` + zero test files - verified live ("No test files found, exiting with code 0") | apps/backend/vitest.config.ts | critical | T-RLSREAL + set passWithNoTests:false once first real test lands |
+| AR-6 | **withRlsContext is wired nowhere in apps**: jwt-guard comment references a nonexistent `rls.interceptor.ts`; no instrumentation.ts for web boot-check | grep apps/backend/src | high | T-G1 (confirmed - interceptor must be built, not just documented) |
+| AR-7 | **Audit read endpoint is @Public()** with decorative ApiBearerAuth; all stub controllers are @Public "temporarily" - trivial to ship real handlers still public | audit.module.ts, leads.module.ts:12 | high | T-SEC (new: strip @Public from stubs, lint rule banning it outside auth/webhooks) |
 | AR-8 | **Dead/duplicate auth wiring**: `makeAuth()` in backend auth.module duplicates @shadhil/auth skipping assertAuthEnv; WhatsApp webhook GET doesn't echo hub.challenge; orphan JWT_SECRET (env requires, nothing consumes) | auth.module.ts, webhooks.module.ts | medium | T-G8 (consolidate single better-auth instance; webhook verify-token; drop or use JWT_SECRET) |
-| AR-9 | **Playwright testDir missing** (`apps/web/src/test/e2e` doesn't exist) — config has webServer but nothing to run; E2E bed not stood up | playwright.config.ts:8 | high | T-G5 scope (add smoke spec + testcontainers PG helper) |
+| AR-9 | **Playwright testDir missing** (`apps/web/src/test/e2e` doesn't exist) - config has webServer but nothing to run; E2E bed not stood up | playwright.config.ts:8 | high | T-G5 scope (add smoke spec + testcontainers PG helper) |
 | AR-10 | **Starter boilerplate left behind**: `apps/web/docker-compose.yml` (Supabase/Sentry/PostHog), empty untracked `infra/`, seed.ts writes scrypt `password` column better-auth doesn't read | file inspection | low/medium | T-CLEAN (delete/fix; seed via better-auth API) |
 
 ### Verification notes
 - CONFIRMED: FORCE RLS absent; jwt role lowercase; userlist md5 ≠ scram requirement (computed md5 differs);
   CI in wrong root; turbo test-input excludes; passWithNoTests vacuous pass; @Public stubs; testDir missing.
-- REJECTED: compose DATABASE_URL "invalid URI" (mask artifact — raw bytes show shadhil:shadhil@, valid).
-- CORRECTED from first review: "no CI" was wrong in kind — CI exists in the wrong directory (same net effect: never runs).
+- REJECTED: compose DATABASE_URL "invalid URI" (mask artifact - raw bytes show shadhil:shadhil@, valid).
+- CORRECTED from first review: "no CI" was wrong in kind - CI exists in the wrong directory (same net effect: never runs).
 
 ## GSTACK REVIEW REPORT
 
@@ -2310,16 +2310,16 @@ raw-byte verification — it was an artifact of secret masking in tool display, 
 - **CODEX:** 4 voice passes ran (all model `ollamacloud/glm-5.3-flash` via local OmniRoute gateway). All
   code-level claims verified against the repo before acceptance.
 - **CROSS-MODEL:** Agreement on: app-store risk, RLS policy hardening, CI/migration gap, contrast failure,
-  offline-outcome gap, docs. Disagreement: Codex eng voice leaned toward cutting mobile scope — rejected
+  offline-outcome gap, docs. Disagreement: Codex eng voice leaned toward cutting mobile scope - rejected
   (user-locked decision, P2 conflict-resolution).
-- **VERDICT:** Eng review (the required shipping gate) = **issues_open — 3 critical architecture/data
+- **VERDICT:** Eng review (the required shipping gate) = **issues_open - 3 critical architecture/data
   findings, all with auto-approved fixes wired into the task list.** Plan is NOT yet implement-start
   clean; fix T-G2/T-G5/T-RLSREAL (a day of CC work) before Week 1 RLS verification gate.
 
 **UNRESOLVED DECISIONS:**
 
 **RESOLVED at Final Approval Gate (2026-08-31, user approved as-is with recommendations):**
-1. ~~USER CHALLENGE 1~~ RESOLVED: NEW→Sales-Exec reassign = explicit Model C exception (audit `exception: 'NEW_TO_EXEC'`, canTransition unchanged, dedicated test) — amendment written into §18.
+1. ~~USER CHALLENGE 1~~ RESOLVED: NEW→Sales-Exec reassign = explicit Model C exception (audit `exception: 'NEW_TO_EXEC'`, canTransition unchanged, dedicated test) - amendment written into §18.
 2. ~~USER CHALLENGE 2~~ RESOLVED: Apply WCAG AA token fixes (T-D8 in scope). D8 contrast computation triple-confirmed (2 subagent passes + codex design voice: amber 1.97:1, green 3.03:1, red 4.44:1 vs #f8f5ef).
-3. ~~USER CHALLENGE 3~~ RESOLVED: Week 7 store-review gate + 2-week buffer adopted — amendment written into Phase 7.
-4. ~~TASTE 1~~ RESOLVED: Keep Lead Inbox with Decision 0.2 sort — dedicated telecaller call-queue surface NOT added.
+3. ~~USER CHALLENGE 3~~ RESOLVED: Week 7 store-review gate + 2-week buffer adopted - amendment written into Phase 7.
+4. ~~TASTE 1~~ RESOLVED: Keep Lead Inbox with Decision 0.2 sort - dedicated telecaller call-queue surface NOT added.

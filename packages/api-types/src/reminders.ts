@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Reminders module DTOs (Zod)
+// Shadhil CRM - Reminders module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // The cron processor (eng review A3) is Redis-locked: only one NestJS replica
 // processes the per-minute tick. Reminders are SCHEDULED rows picked up by
@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { ReminderTypeSchema, ReminderStatusSchema } from './enums';
 
 /**
- * POST /api/reminders — schedule a new reminder.
+ * POST /api/reminders - schedule a new reminder.
  * Most reminders are created automatically by the Lead/Visit/Booking
  * services; this endpoint exists for manual override.
  */
@@ -29,7 +29,7 @@ export const CreateReminderDtoSchema = z.object({
 export type CreateReminderDto = z.infer<typeof CreateReminderDtoSchema>;
 
 /**
- * PATCH /api/reminders/:id/cancel — cancel a scheduled reminder.
+ * PATCH /api/reminders/:id/cancel - cancel a scheduled reminder.
  * Used when the underlying entity changes (visit rescheduled, lead reassigned).
  */
 export const CancelReminderDtoSchema = z.object({

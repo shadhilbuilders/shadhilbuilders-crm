@@ -1,7 +1,7 @@
 {
   "name": "@shadhil/web",
   "version": "0.1.0",
-  "description": "Shadhil CRM — Web app for managing your business.",
+  "description": "Shadhil CRM - Web app for managing your business.",
   "private": true,
   "type": "module",
   "scripts": {

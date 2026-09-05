@@ -68,7 +68,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
           <h1 className="text-3xl font-bold tracking-tight">Component dev playground</h1>
           <p className="text-muted-foreground">
             One example per component. If styles are missing, the Tailwind v4 <code>@source</code>
-            {' '}scan is not picking the library up — most likely a missing import in
+            {' '}scan is not picking the library up - most likely a missing import in
             <code> globals.css</code> or a class that <code>styles.css</code> would have provided.
           </p>
         </header>
@@ -78,7 +78,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
           <h2 className="text-xl font-semibold">Card</h2>
           <Card className="max-w-md">
             <CardHeader>
-              <CardTitle>Lead #1234 — Priya Sharma</CardTitle>
+              <CardTitle>Lead #1234 - Priya Sharma</CardTitle>
               <CardDescription>2BHK inquiry · Chennai</CardDescription>
             </CardHeader>
             <CardContent>
@@ -134,7 +134,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
               side="right"
               trigger={<Button variant="ghost">Right-side trigger</Button>}
               content={
-                <p>Right-side variant — useful for action hints in a dense toolbar.</p>
+                <p>Right-side variant - useful for action hints in a dense toolbar.</p>
               }
             />
           </div>
@@ -184,7 +184,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="default"
-              onClick={() => toast.success('Lead created — Priya Sharma assigned to you.')}
+              onClick={() => toast.success('Lead created - Priya Sharma assigned to you.')}
             >
               Success
             </Button>
@@ -242,7 +242,7 @@ export default function ComponentsDevPage(): React.JSX.Element {
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>Contact lead</CardTitle>
-              <CardDescription>One example per field type — input, textarea.</CardDescription>
+              <CardDescription>One example per field type - input, textarea.</CardDescription>
             </CardHeader>
             <CardContent>
               <Form

@@ -1,9 +1,9 @@
-// AuthTopBar — wire-shape contract test (T-brand).
+// AuthTopBar - wire-shape contract test (T-brand).
 //
-// renderToStaticMarkup-based (repo convention — no @testing-library).
+// renderToStaticMarkup-based (repo convention - no @testing-library).
 // Covers: bar renders, brand chip + logo present, theme toggle mounted
 // inside the bar, and the proxy PUBLIC_PATHS entry that lets the logo
-// load unauthenticated (string-level check on proxy.ts — the proxy is
+// load unauthenticated (string-level check on proxy.ts - the proxy is
 // an edge module; importing it in jsdom pulls next/server, so we assert
 // the source-level contract instead).
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -36,7 +36,7 @@ describe('AuthTopBar (unauthenticated brand bar)', () => {
   });
 
   it('the logo asset is public in the auth proxy (unauthenticated pages can load it)', () => {
-    // proxy.ts is an edge module (next/server imports) — assert the
+    // proxy.ts is an edge module (next/server imports) - assert the
     // source-level contract instead of importing it into jsdom.
     const src = readFileSync('src/proxy.ts', 'utf8');
     expect(src).toContain("'/brand'");
@@ -46,7 +46,7 @@ describe('AuthTopBar (unauthenticated brand bar)', () => {
 
   it('the logo file exists in public/brand', () => {
     // If someone renames/moves the asset the auth pages lose their brand
-    // silently — pin the path.
+    // silently - pin the path.
     const stat = readFileSync('public/brand/logo.png');
     expect(stat.length).toBeGreaterThan(10_000); // real PNG, not a stub
   });

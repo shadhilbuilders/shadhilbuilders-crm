@@ -1,4 +1,4 @@
-// T-D3 — Lead Inbox (state matrix).
+// T-D3 - Lead Inbox (state matrix).
 //
 // Pins the three render branches in apps/web/src/app/(app)/leads/page.tsx:
 //
@@ -9,7 +9,7 @@
 //                                                when rows.length === 0)
 //   3. data is undefined + error   → <ModulePending error={...} />
 //
-// The page does NOT distinguish "error" from "module not shipped" —
+// The page does NOT distinguish "error" from "module not shipped" -
 // both fall to ModulePending. That matches the project-wide convention
 // in components/shared/ModulePending.tsx (the title is "Lead Inbox"
 // either way). The wire-shape contract pins the three branches so a
@@ -46,7 +46,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('LeadInboxPage — T-D3 state matrix', () => {
+describe('LeadInboxPage - T-D3 state matrix', () => {
   it('loading: isLoading === true renders <Skeleton> and not the table', () => {
     mockedUseLeads.mockReturnValue({
       data: undefined,
@@ -85,7 +85,7 @@ describe('LeadInboxPage — T-D3 state matrix', () => {
     expect(html).toContain('Lead Inbox');
     expect(html).toContain('Priya Sharma');
     // The status badge renders the friendly label ("New") via
-    // lib/labels.ts, NOT the raw enum — same wire-shape as
+    // lib/labels.ts, NOT the raw enum - same wire-shape as
     // LeadStatusBadge. assert the friendly form.
     expect(html).toContain('New');
     // The link wraps the name and points to /leads/{id}.
@@ -104,7 +104,7 @@ describe('LeadInboxPage — T-D3 state matrix', () => {
 
     const html = renderToStaticMarkup(<LeadInboxPage />);
     // The page still has the header; the empty state is inside
-    // the table — a 1-cell panel — and the ModulePending
+    // the table - a 1-cell panel - and the ModulePending
     // ("failed to load") surface is NOT shown (because data
     // resolved cleanly, just to []).
     expect(html).toContain('Lead Inbox');

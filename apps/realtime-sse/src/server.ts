@@ -1,4 +1,4 @@
-// Bare Node http SSE server — T-E2 fix (Week 6, 2026-09-04).
+// Bare Node http SSE server - T-E2 fix (Week 6, 2026-09-04).
 //
 // Why a separate service: @nestjs/core 12.0.1's @Sse() handler is
 // broken for any subscription chain that requires an await inside
@@ -9,7 +9,7 @@
 // only path that has demonstrated working SSE in this codebase is the
 // bare-Node pattern proven by the canary `/api/sse/ping` (plain
 // setInterval that writes to res directly). So this service uses
-// bare node:http with manual SSE framing — no framework between the
+// bare node:http with manual SSE framing - no framework between the
 // code and the socket.
 //
 // The main Nest backend still owns the StreamTicket model + mint flow
@@ -102,11 +102,11 @@ async function handleStream(
   // open SSE streams at scrape time.
   bumpActive(1);
   // Derive a low-cardinality channel label (notifications, audit, chat)
-  // for the metrics — the full channel string includes the leadId for
+  // for the metrics - the full channel string includes the leadId for
   // chat, which would explode label cardinality.
   const channelLabel = opts.channel.startsWith('chat:') ? 'chat' : opts.channel;
 
-  // Open the stream first — this commits the SSE headers synchronously.
+  // Open the stream first - this commits the SSE headers synchronously.
   openSse(res);
 
   // Backlog flush.
@@ -121,7 +121,7 @@ async function handleStream(
   // Live poll loop. Drives a setInterval that calls the fetcher and
   // writes frames; the heartbeat interval writes keep-alive comments.
   // When the client disconnects, both timers are cleared and the
-  // response is ended — this is the same shape that the
+  // response is ended - this is the same shape that the
   // /api/sse/ping canary proved works.
   let lastSeenAt = anchor;
   let stopped = false;
@@ -211,7 +211,7 @@ const server = createServer(async (req, res) => {
 
   // T-PERF-2 #4: Prometheus metrics endpoint. No auth (intended for
   // an internal scraper; expose only on localhost in prod via the
-  // reverse proxy — see plan §10 / references/prod-deployment.md).
+  // reverse proxy - see plan §10 / references/prod-deployment.md).
   if (req.method === 'GET' && path === '/api/sse/metrics') {
     res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' });
     res.end(metrics.render());

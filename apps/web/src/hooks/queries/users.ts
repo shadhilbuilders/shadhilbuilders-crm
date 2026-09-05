@@ -1,4 +1,4 @@
-// Users module — the one LIVE backend surface (apps/backend/src/users).
+// Users module - the one LIVE backend surface (apps/backend/src/users).
 // Endpoints mirror apps/backend/src/users/users.controller.ts:
 //   POST   /api/users         → CreatedUser   (role hierarchy enforced server-side)
 //   GET    /api/users         → CreatedUser[] (scope filtered per role)

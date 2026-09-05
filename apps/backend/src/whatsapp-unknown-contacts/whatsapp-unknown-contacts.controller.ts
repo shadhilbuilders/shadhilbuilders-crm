@@ -1,6 +1,6 @@
-// T-E2b follow-up queue — controller.
+// T-E2b follow-up queue - controller.
 //
-// Endpoints (all require ADMIN/OWNER/MANAGER via the JWT guard —
+// Endpoints (all require ADMIN/OWNER/MANAGER via the JWT guard -
 // the role gate is on the page nav, not here, so we can re-use
 // the standard JwtAuthGuard which just checks for a valid JWT).
 //
@@ -62,7 +62,7 @@ function parseQuery<T>(
 ): T {
   // Express/Nest's query is `string | string[] | undefined`. Coerce
   // array values to their first element (matches the chat/audit
-  // controller patterns — most query params are single-valued).
+  // controller patterns - most query params are single-valued).
   const normalized: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(query)) {
     if (Array.isArray(v)) normalized[k] = v[0];
@@ -128,7 +128,7 @@ export class WhatsappUnknownContactsController {
     summary:
       'Mark a contact as SPAM (wrong number / bot / not interested). ' +
       'Idempotent on already-SPAM rows. Refuses CONVERTED rows (use ' +
-      'notes instead — a SPAM would orphan the linked Lead).',
+      'notes instead - a SPAM would orphan the linked Lead).',
   })
   async spam(
     @Req() req: AuthedRequest,

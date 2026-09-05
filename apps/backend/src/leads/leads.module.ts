@@ -1,7 +1,7 @@
-// Leads module — Lead Inbox + state machine + creation flow.
+// Leads module - Lead Inbox + state machine + creation flow.
 // Wires the controller + service. LeadsService is exported so other
 // modules (visits, chat, bookings) can call transition() on related
-// state changes — when those modules land, this is the central choke
+// state changes - when those modules land, this is the central choke
 // point for ownership handoffs (DESIGN.md §3 Model C handoff).
 import { Module } from '@nestjs/common';
 

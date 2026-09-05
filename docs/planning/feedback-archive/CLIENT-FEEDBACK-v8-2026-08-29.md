@@ -1,4 +1,4 @@
-# Client Feedback Round 9 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 9 - 2026-08-29 (Shadhil CRM)
 
 You asked two questions:
 1. "Can we use Prisma with NestJS + REST API?"
@@ -54,7 +54,7 @@ This is the harder question. There are three real models:
 - ONE `schema.prisma` file (lives in `packages/database`)
 - ONE Prisma Client (generated once, imported by both Next.js and NestJS)
 - Next.js (BFF) uses Prisma for: auth tables only
-  (User, Session, Account, Verification — owned by better-auth)
+  (User, Session, Account, Verification - owned by better-auth)
 - NestJS (backend) uses Prisma for: ALL business tables
   (Lead, Message, Activity, SiteVisit, Booking, etc.)
 - Mobile does NOT touch Prisma. Mobile calls NestJS REST. Mobile
@@ -202,7 +202,7 @@ await prisma.$transaction(async (tx) => {
 But for v1, just use session pooling mode and the simpler pattern:
 
 ```typescript
-// Session pooling mode — set once per request via middleware
+// Session pooling mode - set once per request via middleware
 // (set in NestJS request-scoped interceptor)
 prisma.$executeRaw`SET LOCAL app.current_user_id = ${userId}`;
 const leads = await prisma.lead.findMany();
@@ -216,7 +216,7 @@ simpler one.
 
 ## What this changes in DESIGN.md
 
-§7 Tech stack — add a paragraph on Prisma + database architecture:
+§7 Tech stack - add a paragraph on Prisma + database architecture:
 
 ```
 **Database architecture (the multi-app Prisma pattern):**
@@ -260,7 +260,7 @@ that are applied to Postgres via PgBouncer. After migrating, run
 Prisma Client.
 ```
 
-§7 Monorepo structure — update the `packages/` list:
+§7 Monorepo structure - update the `packages/` list:
 
 ```
 ├── packages/
@@ -281,7 +281,7 @@ A few real-world implications worth flagging:
 **1. The "second write path" trap is the #1 source of bugs in
 multi-app architectures.** If Next.js and NestJS both write to
 the Lead table, you have two sources of truth for state changes.
-State machine bugs, audit log gaps, RLS bypasses — all common
+State machine bugs, audit log gaps, RLS bypasses - all common
 when this happens. The "Next.js only writes auth tables, NestJS
 writes everything else" rule prevents this entirely.
 
@@ -344,7 +344,7 @@ build:
    and Verification are missing).
 2. `Account` model needs specific fields for OAuth provider
    data (provider, providerAccountId, etc.) if you ever want
-   "Sign in with Google" — even if you don't, better-auth
+   "Sign in with Google" - even if you don't, better-auth
    expects the table to exist.
 
 These are 30 lines of schema additions. I'll include them when

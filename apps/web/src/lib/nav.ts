@@ -5,7 +5,7 @@
 // text links. The redesigned sidebar needs icons + group + per-item
 // visibility + (later) live counts from `useLeads` / `useNotifications`.
 // Keeping two parallel arrays in two files guarantees a DRY regression the
-// next time a route is added — so the source of truth moves here, and both
+// next time a route is added - so the source of truth moves here, and both
 // the sidebar (`app-shell.tsx`) and the slim topbar (`app-header.tsx`) read
 // from the same shape.
 //
@@ -14,7 +14,7 @@
 //     (admin-class + manager) and `canViewAudit` (admin-class only).
 //   - Friendly labels (D2) are handled separately in `lib/labels.ts`; this
 //     file only owns the nav structure, not display copy for enums.
-//   - Role helpers in `lib/session.ts` are the canonical permission source —
+//   - Role helpers in `lib/session.ts` are the canonical permission source -
 //     do not hand-roll role checks here. Drift would re-open the RBAC holes
 //     the helpers were extracted to close.
 //   - The mobile `<Sheet>` sidebar should close on route change so users
@@ -33,7 +33,7 @@
 //   │   │   │   ├── Leads            (badge: lead count)
 //   │   │   │   ├── Visits           (no badge)
 //   │   │   │   ├── Inventory        (no badge)
-//   │   │   │   ├── Bookings         (no badge — T-F5, T-BOOK backend)
+//   │   │   │   ├── Bookings         (no badge - T-F5, T-BOOK backend)
 //   │   │   │   └── Notifications    (badge: unread count)
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
@@ -107,7 +107,7 @@ export type NavItem = {
 export type NavBadgeKey = 'leadCount' | 'unreadNotifications';
 
 // ---------------------------------------------------------------------------
-// Authoritative nav tree (T1 — single source of truth)
+// Authoritative nav tree (T1 - single source of truth)
 // ---------------------------------------------------------------------------
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -128,7 +128,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   // T-F5 (T-BOOK backend). Bookings are visible to every authenticated
   // user (the bookings controller has no role guard for the list path;
-  // transition is MANAGER+ via PATCH /bookings/:id — a per-row gate
+  // transition is MANAGER+ via PATCH /bookings/:id - a per-row gate
   // handled on the page, not by hiding the route).
   {
     href: '/bookings',
@@ -151,9 +151,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LuShieldCheck,
     group: 'admin',
   },
-  // T-E2b follow-up queue — admin + manager only (DESIGN.md §4 + plan
+  // T-E2b follow-up queue - admin + manager only (DESIGN.md §4 + plan
   // §11 T-E2b). Telecaller / SalesExec never triage raw inbound from
-  // unknown numbers — they only see the result (a converted Lead)
+  // unknown numbers - they only see the result (a converted Lead)
   // in the regular Lead Inbox.
   {
     href: '/whatsapp-unknown-contacts',
@@ -249,7 +249,7 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Mobile nav sync (T37 — closes the sidebar Sheet on route change)
+// Mobile nav sync (T37 - closes the sidebar Sheet on route change)
 // ---------------------------------------------------------------------------
 
 /**
@@ -257,7 +257,7 @@ export function isNavItemActive(href: string, pathname: string): boolean {
  * auto-close it on `usePathname()` change (T37 finding). Closing the
  * sheet manually via `useSidebar().setOpenMobile(false)` is a one-liner,
  * but extracting it into a hook:
- *   1. Encapsulates the library-drift risk — if the library later adds its
+ *   1. Encapsulates the library-drift risk - if the library later adds its
  *      own path-change listener, the hook is the one place to remove ours.
  *   2. Lets the same hook power future nav surfaces (e.g. command-palette
  *      results) without re-implementing the close-on-route-change dance.
@@ -268,13 +268,13 @@ export function useNavSync(): void {
   const pathname = usePathname();
   //
   // Rules of Hooks: `useSidebar()` MUST run in the hook body (during
-  // render), never inside the `useEffect` callback — calling it inside
+  // render), never inside the `useEffect` callback - calling it inside
   // the effect threw "Invalid hook call" in dev and crashed the (app)
   // layout after login.
   //
   // Module identity: imported statically (top of file), NOT via lazy
   // `require()`. A CJS require() resolves this dual-format package's
-  // `dist/index.cjs`, while client components resolve `dist/index.js` —
+  // `dist/index.cjs`, while client components resolve `dist/index.js` -
   // two module instances = two `SidebarContext` objects, so a hook from
   // the CJS copy would never see the ESM `SidebarProvider` and would
   // throw "useSidebar must be used within a SidebarProvider" at runtime.

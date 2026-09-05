@@ -1,4 +1,4 @@
-// Stream pipeline — the working SSE pattern.
+// Stream pipeline - the working SSE pattern.
 //
 // T-E2 fix (2026-09-04). The exact shape that the diagnostic evidence
 // in /tmp/backend-diag*.log (2026-09-04) and the working
@@ -30,7 +30,7 @@ export interface SseFrame {
  *  all frames newer than that timestamp. Called every DB_TICK_MS. */
 export type Fetcher = (lastSeenAt: Date) => Promise<SseFrame[]>;
 
-/** SSE response framing helpers — kept tiny and pure. */
+/** SSE response framing helpers - kept tiny and pure. */
 export function writeFrame(res: ServerResponse, frame: SseFrame): void {
   if (frame.id !== undefined) res.write(`id: ${frame.id}\n`);
   if (frame.event !== undefined) res.write(`event: ${frame.event}\n`);
@@ -75,7 +75,7 @@ export function startLiveLoop(
           // which sorts lexicographically by creation time. We update
           // lastSeenAt separately on the fetcher side using createdAt
           // for correctness, but lastSeenAt is consumed by the fetcher
-          // so it has to be a Date — we keep it monotonic per fetch.
+          // so it has to be a Date - we keep it monotonic per fetch.
           state.lastSeenAt = new Date();
         }
       })
@@ -102,7 +102,7 @@ export function startLiveLoop(
   };
 }
 
-/** Ticket consume — port of apps/backend's RealtimeService.consumeTicket.
+/** Ticket consume - port of apps/backend's RealtimeService.consumeTicket.
  *  Single-use, returns the bound userId + channel. Throws on invalid /
  *  expired / channel-mismatch. */
 export async function consumeTicket(

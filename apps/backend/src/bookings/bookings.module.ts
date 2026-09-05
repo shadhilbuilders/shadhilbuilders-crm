@@ -1,4 +1,4 @@
-// Bookings module — booking lifecycle (HOLD → TOKEN → APPROVED/etc.).
+// Bookings module - booking lifecycle (HOLD → TOKEN → APPROVED/etc.).
 //
 // T-BOOK (2026-09-07): replaces the Phase-1 stub. BookingsService
 // doesn't depend on LeadsService today (booking creation/transition

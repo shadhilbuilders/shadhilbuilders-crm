@@ -1,4 +1,4 @@
-// T-E2b — Telegram systematic-failure alert tests (unit, no DB).
+// T-E2b - Telegram systematic-failure alert tests (unit, no DB).
 //
 // The cron's `recordTickResult` is best-effort and never throws. The
 // state machine is pure: rolling counter + cooldown clock + Telegram
@@ -101,10 +101,10 @@ function makeAlerts(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// TelegramService constructor behaviour — disabled when creds missing
+// TelegramService constructor behaviour - disabled when creds missing
 // ---------------------------------------------------------------------------
 
-describe('TelegramService — enabled gate', () => {
+describe('TelegramService - enabled gate', () => {
   it('is disabled when botToken is missing → sendChannelMessage is a no-op', async () => {
     const svc = new TelegramService({
       botToken: undefined,
@@ -185,10 +185,10 @@ describe('TelegramService — enabled gate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AlertsService — rolling counter + cooldown
+// AlertsService - rolling counter + cooldown
 // ---------------------------------------------------------------------------
 
-describe('AlertsService — systematic-failure detection (T-E2b)', () => {
+describe('AlertsService - systematic-failure detection (T-E2b)', () => {
   let nowTime: number;
   let advance: (ms: number) => void;
   let alerts: AlertsService;
@@ -237,7 +237,7 @@ describe('AlertsService — systematic-failure detection (T-E2b)', () => {
     const text = send.mock.calls[0]?.[0] as string;
     expect(text).toContain('systematic failure');
     // The counter is rendered as Markdown backticks (`3`), so the
-    // exact substring is `3\` consecutive` — assert the meaningful
+    // exact substring is `3\` consecutive` - assert the meaningful
     // portion without the formatting.
     expect(text).toContain('consecutive cron ticks');
   });
@@ -252,11 +252,11 @@ describe('AlertsService — systematic-failure detection (T-E2b)', () => {
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));
 
-    // 1 success tick — counter resets.
+    // 1 success tick - counter resets.
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 1, sent: 1, failed: 0 }));
 
-    // Now 2 more failed ticks (counter back at 2 — below threshold).
+    // Now 2 more failed ticks (counter back at 2 - below threshold).
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));
     advance(5_000);
@@ -283,7 +283,7 @@ describe('AlertsService — systematic-failure detection (T-E2b)', () => {
       await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));
     }
 
-    // Still exactly 1 alert — cooldown suppressed the rest.
+    // Still exactly 1 alert - cooldown suppressed the rest.
     expect(send).toHaveBeenCalledTimes(1);
   });
 
@@ -343,11 +343,11 @@ describe('AlertsService — systematic-failure detection (T-E2b)', () => {
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));
 
-    // 1 partial tick — some sent, some failed. Counter resets.
+    // 1 partial tick - some sent, some failed. Counter resets.
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 2, sent: 1, failed: 1 }));
 
-    // 2 more failed ticks — counter only at 2, below threshold.
+    // 2 more failed ticks - counter only at 2, below threshold.
     advance(5_000);
     await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));
     advance(5_000);
@@ -377,7 +377,7 @@ describe('AlertsService — systematic-failure detection (T-E2b)', () => {
     }
     expect(send).toHaveBeenCalledTimes(1);
 
-    // 10 more failed ticks during the cooldown — Telegram NOT called again.
+    // 10 more failed ticks during the cooldown - Telegram NOT called again.
     for (let i = 0; i < 10; i++) {
       advance(5_000);
       await alerts.recordTickResult(makeTick({ claimed: 1, sent: 0, failed: 1 }));

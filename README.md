@@ -21,7 +21,7 @@ pnpm --filter @shadhil/database seed      # owner + admin + manager + 2 staff
 
 The api is now live on http://localhost:8080/api (Swagger at `/api/docs`).
 For the web UI plus hot-reload dev loop, run `pnpm docker:down` first
-(frees port 8080) then `pnpm dev` — it fans out to web + api + workspace
+(frees port 8080) then `pnpm dev` - it fans out to web + api + workspace
 `tsc --watch` via turbo:
 
 ```bash
@@ -56,10 +56,10 @@ apps/
   mobile/    Expo (Weeks 8-10 of the plan)
 packages/
   database/  Prisma schema + RLS policies + migrations (single source of truth)
-  auth/      @shadhil/auth — shared better-auth instance + JWT helpers
+  auth/      @shadhil/auth - shared better-auth instance + JWT helpers
   api-types/ Zod schemas + inferred types shared across apps
   ui-tokens/ Brand tokens (#001a4c / #62b132 / #f8f5ef)
-docs/planning/   Plan of record — START HERE: docs/planning/IMPLEMENTATION-PLAN-v1.md
+docs/planning/   Plan of record - START HERE: docs/planning/IMPLEMENTATION-PLAN-v1.md
 PLANNING-MASTER.md  Index to every planning document
 ```
 
@@ -67,13 +67,13 @@ PLANNING-MASTER.md  Index to every planning document
 
 | Command | What it does |
 |---|---|
-| `pnpm docker:up` | Start postgres/pgbouncer/redis only (edoburu pgbouncer; ini is authoritative) — use when you want the data services without the api container |
-| `pnpm docker:stack` | Start the full stack: postgres + pgbouncer + redis + api (the compiled-CJS container). Runs on the same ports as `pnpm dev` (3000 / 8080) — convenient for verifying the production image locally |
+| `pnpm docker:up` | Start postgres/pgbouncer/redis only (edoburu pgbouncer; ini is authoritative) - use when you want the data services without the api container |
+| `pnpm docker:stack` | Start the full stack: postgres + pgbouncer + redis + api (the compiled-CJS container). Runs on the same ports as `pnpm dev` (3000 / 8080) - convenient for verifying the production image locally |
 | `pnpm docker:down` | Stop and remove containers (volumes preserved) |
 | `pnpm docker:logs` | Tail logs from all services (`-f` follow) |
-| `pnpm docker:restart` | Restart containers — useful after `.env` changes |
-| `pnpm dev` | `turbo run dev` — fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first |
-| `pnpm --filter @shadhil/database generate` | Generate the Prisma client (gitignored — required after install) |
+| `pnpm docker:restart` | Restart containers - useful after `.env` changes |
+| `pnpm dev` | `turbo run dev` - fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first |
+| `pnpm --filter @shadhil/database generate` | Generate the Prisma client (gitignored - required after install) |
 | `pnpm --filter @shadhil/database migrate` | Apply schema + RLS (prisma migrate) |
 | `pnpm --filter @shadhil/database seed` | Owner + admin + manager + team + staff (placeholders unless SEED_* set) |
 | `pnpm db:policies` | Re-apply policies.sql directly (idempotent) |
@@ -83,21 +83,21 @@ PLANNING-MASTER.md  Index to every planning document
 ### Dev vs Docker stack
 
 Both `pnpm dev` and `pnpm docker:stack` bind ports 3000 (web) and 8080
-(api). They can't run at the same time — pick one:
+(api). They can't run at the same time - pick one:
 
 - **For the dev loop (hot-reload, `tsc --watch`):** `pnpm docker:down` then
-  `pnpm dev` — runs the backend via `nest start --watch` and the web via
+  `pnpm dev` - runs the backend via `nest start --watch` and the web via
   `next dev`. Edit any workspace package and its `dist/` is rebuilt
   automatically; the backend picks it up.
 - **For verifying the production image locally (or running on a VPS):**
-  `pnpm docker:stack` — runs the multi-stage `nest build` image.
+  `pnpm docker:stack` - runs the multi-stage `nest build` image.
 
 Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
 
 ## Security model (read before touching data access)
 
 - Business tables are **FORCE ROW LEVEL SECURITY**. The API connects as
-  `shadhil_app` (non-owner) — owner role `shadhil` is migrations/seed only.
+  `shadhil_app` (non-owner) - owner role `shadhil` is migrations/seed only.
 - Every request-scoped query MUST run inside
   `withRlsContext(prisma, { userId, role, teamId }, tx => ...)` from
   `@shadhil/database`. Bare-prisma access bypasses RLS and is reserved for
@@ -107,7 +107,7 @@ Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
   adapter constructor connection-free.
 - Roles are the Prisma `Role` enum (UPPERCASE): `OWNER | ADMIN |
   MANAGER | SALES_EXEC | TELECALLER`. JWT claims are normalized/validated in
-  `packages/auth-client/src/jwt.ts` — a token without a valid role claim is
+  `packages/auth-client/src/jwt.ts` - a token without a valid role claim is
   rejected. Exactly one OWNER exists (partial unique index
   `one_owner`); it cannot be created or assigned through the API.
 - `@Public()` is for health, auth, and signature-verified webhooks only.
@@ -120,7 +120,7 @@ Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
   the package `test/` dir.
 - Every new feature ships with tests in the same PR (plan §19.7). Backend
   tests: Vitest + supertest; web E2E: Playwright (`apps/web/src/test/e2e`).
-- Turbo caches builds — test inputs include all `*.test.ts` files (see
+- Turbo caches builds - test inputs include all `*.test.ts` files (see
   `turbo.json`). Never exclude tests from cache inputs.
 - CI (`.github/workflows/ci.yml`): type-check, lint, unit tests, RLS matrix
   (fresh Postgres service + `prisma generate` per job), build. All jobs green
@@ -130,7 +130,7 @@ Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
 
 Schema changes flow ONLY through Prisma migrations
 (`packages/database/prisma/migrations/`). RLS policy changes belong in the
-same migration as the table change — keep `prisma/rls/policies.sql` as the
+same migration as the table change - keep `prisma/rls/policies.sql` as the
 canonical source and copy into the migration. Postgres-level constraints that
 Prisma can't express (e.g. the partial unique index `one_owner`) live
 in their own native-SQL migrations.

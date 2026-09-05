@@ -48,7 +48,7 @@ function normalizeRole(raw: unknown): Role {
 /**
  * Pull the current session user out of a better-auth session payload.
  * `role`/`teamId` ride as additional fields on the user object
- * (@shadhil/auth user.additionalFields) — default to TELECALLER if absent.
+ * (@shadhil/auth user.additionalFields) - default to TELECALLER if absent.
  */
 export function sessionUserFromSession(session: unknown): SessionUser | null {
   if (session === null || typeof session !== 'object') return null;
@@ -117,7 +117,7 @@ export async function api<T>(
     try {
       body = await response.json();
     } catch {
-      /* not JSON — fall through to the generic 403 handler below */
+      /* not JSON - fall through to the generic 403 handler below */
     }
     if (
       body !== null &&

@@ -1,4 +1,4 @@
-// Env validation — fail fast at module load if required vars are missing.
+// Env validation - fail fast at module load if required vars are missing.
 // Per `better-auth-best-practices` skill: BETTER_AUTH_SECRET min 32 chars.
 import { z } from 'zod';
 

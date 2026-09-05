@@ -12,9 +12,9 @@ import { rqCacheStore, RQ_CACHE_KEY } from '@shadhil/offline-store';
 
 /**
  * Three-state offline fallback page (D2):
- *   A. No cache yet — first-ever offline visit (private mode, cleared
+ *   A. No cache yet - first-ever offline visit (private mode, cleared
  *      storage, fresh install). Single Retry button.
- *   B. Cached view available — returning user. Two buttons: View cached
+ *   B. Cached view available - returning user. Two buttons: View cached
  *      leads (primary, → /leads) and Retry.
  *
  * Per eng review 3C, this component is unit-tested for both states.
@@ -27,7 +27,7 @@ const OfflinePage = () => {
   useEffect(() => {
     // Inspect the rqCache store. If `RQ_CACHE_KEY` is present, the user
     // has a persisted TanStack Query cache. The cached entries don't
-    // matter for THIS page — we just need to know "do we have anything
+    // matter for THIS page - we just need to know "do we have anything
     // to show the user or are we starting from zero?"
     Promise.all([keys(rqCacheStore), get(RQ_CACHE_KEY, rqCacheStore)])
       .then(([_allKeys, rqCache]) => {

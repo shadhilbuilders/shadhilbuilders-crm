@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * T-DEMOBOOK — End-to-end smoke of the Sunday client demo flow.
+ * T-DEMOBOOK - End-to-end smoke of the Sunday client demo flow.
  *
  * Exercises every step the handoff prompt lists as "MUST work end-to-end"
  * against a live backend (port 8080) + web (port 3000). Uses the
@@ -22,7 +22,7 @@ import { expect, test, type Page } from '@playwright/test';
  * Each step records a screenshot under __screenshots__/ and is followed
  * by an explicit `expect(knownGap).toBeNull()` assertion: if a step
  * cannot complete because the page is broken, the test FAILS honestly
- * with the reason in the title — never paper over it.
+ * with the reason in the title - never paper over it.
  *
  * Selectors lean on `data-qa` attributes that the components already
  * expose (LeadActionPanel, LeadVisitPanel, ScheduleVisitDialog,
@@ -62,7 +62,7 @@ async function login(page: Page): Promise<void> {
 }
 
 /**
- * REGRESSION GUARD — `(app)/layout.tsx` mounts `useNavSync()` from
+ * REGRESSION GUARD - `(app)/layout.tsx` mounts `useNavSync()` from
  * `src/lib/nav.ts`. An earlier implementation invoked `useSidebar()`
  * INSIDE its `useEffect` callback, violating the Rules of Hooks: in dev
  * mode this threw an "Invalid hook call" runtime error after login and
@@ -73,7 +73,7 @@ async function login(page: Page): Promise<void> {
  *
  * Every post-login step must first check whether the page rendered
  * (i.e. we did NOT land on the error overlay). If we did, the step
- * records a `layout-error` known-gap and skips its real assertions —
+ * records a `layout-error` known-gap and skips its real assertions -
  * but the TEST STILL FAILS with a clear reason, because a demo that
  * can't render any (app)/* page is not demo-ready.
  */
@@ -98,7 +98,7 @@ async function probeForLayoutError(
       : '';
     return {
       broken: true,
-      reason: `${stepName}: (app) layout crashed with Runtime Error — "${dialogText.split('\n').slice(0, 2).join(' | ').slice(0, 200)}". Source: (app)/layout.tsx crash (useNavSync Rules-of-Hooks regression? see src/lib/use-nav-sync.test.tsx).`,
+      reason: `${stepName}: (app) layout crashed with Runtime Error - "${dialogText.split('\n').slice(0, 2).join(' | ').slice(0, 200)}". Source: (app)/layout.tsx crash (useNavSync Rules-of-Hooks regression? see src/lib/use-nav-sync.test.tsx).`,
     };
   }
   return { broken: false, reason: '' };
@@ -122,7 +122,7 @@ async function writeCreatedLeadId(id: string): Promise<void> {
   await fs.writeFile(CREATED_LEAD_ID_FILE, id, 'utf8');
 }
 
-test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
+test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
   test.setTimeout(240_000);
 
   // Each step runs independently (no test.describe.serial) so we get a
@@ -131,16 +131,16 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
   // read it. If STEP 3 fails (e.g. the layout crash), the file stays
   // empty and the dependent steps `test.skip()` with a clear reason.
 
-  test('STEP 1 — login as demo user', async ({ page }) => {
+  test('STEP 1 - login as demo user', async ({ page }) => {
     await page.goto('/login');
     await shot(page, '01-login');
     await login(page);
-    // URL has changed away from /login — login API succeeded.
+    // URL has changed away from /login - login API succeeded.
     await expect(page).not.toHaveURL(/\/login/);
     await shot(page, '01b-after-login');
   });
 
-  test('STEP 2 — /leads lists demo leads', async ({ page }) => {
+  test('STEP 2 - /leads lists demo leads', async ({ page }) => {
     await login(page);
     await page.goto('/leads');
     await shot(page, '02-leads');
@@ -166,21 +166,21 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
       console.log(`[STEP 2] /leads table rendered with ${rowCount} row(s).`);
       expect(rowCount).toBeGreaterThanOrEqual(1);
     } else if (tableOrPending === 'pending') {
-      // KNOWN GAP — backend leads.service.list returns `{ rows, total }`
+      // KNOWN GAP - backend leads.service.list returns `{ rows, total }`
       // (page is paginated), but useLeads() in the frontend treats the
       // response as a bare array. Array.isArray(payload) is false on
       // `{rows, total}`, so the page renders ModulePending instead of
       // the leads table. Confirmed via curl: GET /api/bff/leads →
       // {"total":219,"rows":[...]}.
       throw new Error(
-        'STEP 2: /leads renders ModulePending — backend /api/leads returns {rows, total} but useLeads() expects a bare array. Contract gap between apps/backend/src/leads/leads.service.ts:182 and apps/web/src/hooks/queries/crm.ts:59.',
+        'STEP 2: /leads renders ModulePending - backend /api/leads returns {rows, total} but useLeads() expects a bare array. Contract gap between apps/backend/src/leads/leads.service.ts:182 and apps/web/src/hooks/queries/crm.ts:59.',
       );
     } else {
       throw new Error('STEP 2: neither table nor placeholder rendered.');
     }
   });
 
-  test('STEP 3 — create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
+  test('STEP 3 - create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
     await login(page);
     await page.goto('/leads/new');
     const probe = await probeForLayoutError(page, 'STEP 3');
@@ -188,7 +188,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
 
     const createdLeadName = `Demo Sprint Lead ${Date.now().toString().slice(-6)}`;
     await page.getByLabel(/Full name/i).fill(createdLeadName);
-    // Phone: 10 digits — the form rejects <10.
+    // Phone: 10 digits - the form rejects <10.
     await page.getByLabel(/^Phone$/i).fill('9876543210');
     await page.getByLabel(/^Email$/i).fill('demo-sprint@example.com');
     await page.getByLabel(/^Source$/i).fill('Demo Sprint E2E');
@@ -212,7 +212,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     await shot(page, '03b-lead-detail-new');
   });
 
-  test('STEP 4 — edit name and email on detail, save (toast)', async ({ page }) => {
+  test('STEP 4 - edit name and email on detail, save (toast)', async ({ page }) => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 4 depends on a lead created in STEP 3');
     await login(page);
@@ -242,7 +242,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     await shot(page, '04b-after-save');
   });
 
-  test('STEP 5 — transition NEW → CONTACTED (button label is "→ Talked")', async ({ page }) => {
+  test('STEP 5 - transition NEW → CONTACTED (button label is "→ Talked")', async ({ page }) => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 5 depends on a lead created in STEP 3');
     await login(page);
@@ -274,7 +274,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     await shot(page, '05b-after-transition');
   });
 
-  test('STEP 6 — drive to VISIT_REQUESTED, schedule visit, expect VISIT_SCHEDULED', async ({
+  test('STEP 6 - drive to VISIT_REQUESTED, schedule visit, expect VISIT_SCHEDULED', async ({
     page,
   }) => {
     const createdLeadId = await readCreatedLeadId();
@@ -327,7 +327,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     await shot(page, '06c-visit-scheduled');
   });
 
-  test('STEP 7 — mark visit completed → lead status flips to VISITED', async ({ page }) => {
+  test('STEP 7 - mark visit completed → lead status flips to VISITED', async ({ page }) => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 7 depends on a lead created in STEP 3');
     await login(page);
@@ -359,7 +359,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     await shot(page, '07b-after-completed');
   });
 
-  test('STEP 8 — /visits shows the scheduled visit in the weekly calendar', async ({
+  test('STEP 8 - /visits shows the scheduled visit in the weekly calendar', async ({
     page,
   }) => {
     await login(page);
@@ -375,7 +375,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     const hasGrid = (await grid.count()) > 0;
     if (!hasGrid) {
       throw new Error(
-        'STEP 8: /visits weekly grid did not render — page may have errored.',
+        'STEP 8: /visits weekly grid did not render - page may have errored.',
       );
     }
     // We created one new SCHEDULED visit in STEP 6; the demo seed also
@@ -386,7 +386,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     expect(pillCount).toBeGreaterThanOrEqual(1);
   });
 
-  test('BONUS — lead detail renders chat panel with seeded messages', async ({ page }) => {
+  test('BONUS - lead detail renders chat panel with seeded messages', async ({ page }) => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
     await login(page);
@@ -399,7 +399,7 @@ test.describe('T-DEMOBOOK — Sunday demo flow (live backend+web)', () => {
     });
 
     // This lead was created by the test (no seeded chat), so we only
-    // verify that LeadChatPane renders the empty state — the meaningful
+    // verify that LeadChatPane renders the empty state - the meaningful
     // contract for a freshly-created lead. (Seeded leads would have
     // ≥1 chat message per the T-DEMOSET commit.)
     const chat = page.locator('[data-qa="chat-messages"]');

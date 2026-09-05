@@ -15,7 +15,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DISMISS_KEY = 'shadhil:install-prompt-dismissed';
 // Bump this when the manifest's `id` changes (e.g. '/?source=pwa' →
-// '/?source=pwa-v2') to force the prompt to re-show — users who
+// '/?source=pwa-v2') to force the prompt to re-show - users who
 // declined the first time get a second chance when offline features land.
 const DATA_VERSION = 'pwa-v1';
 
@@ -35,7 +35,7 @@ const safeGetItem = (key: string): string | null => {
     return window.localStorage.getItem(key);
   } catch {
     // Safari private mode + some embedded webviews throw on localStorage
-    // access. Silent fail — treat as "not dismissed" and let the toast
+    // access. Silent fail - treat as "not dismissed" and let the toast
     // show; the user just won't have the dismiss state persisted.
     return null;
   }
@@ -53,7 +53,7 @@ const safeSetItem = (key: string, value: string): void => {
 /**
  * Bottom-attached install-prompt toast (D4).
  *
- * Listens for `beforeinstallprompt` (Chromium only — iOS Safari does
+ * Listens for `beforeinstallprompt` (Chromium only - iOS Safari does
  * NOT fire this event, see comment in install-prompt UI). When the
  * event fires, shows a sonner toast with [Install] / [Not now] buttons.
  *
@@ -99,7 +99,7 @@ export const InstallPrompt = () => {
                 await evt.prompt();
               } catch (err) {
                 // Surface the failure so it shows up in console when the
-                // user reports "install button doesn't work" — without
+                // user reports "install button doesn't work" - without
                 // this, a thrown prompt() is invisible.
                 console.error('[InstallPrompt] prompt() threw:', err);
               }
@@ -115,7 +115,7 @@ export const InstallPrompt = () => {
               // `beforeinstallprompt` (browsers re-emit on navigation)
               // does not resurrect the toast, then close the live
               // sonner toast via its id. Without toast.dismiss(toastId)
-              // the toast sits on screen until reload — the user can see
+              // the toast sits on screen until reload - the user can see
               // the X click "do nothing" even though localStorage is set.
               safeSetItem(DISMISS_KEY, currentVersion);
               toast.dismiss(toastId);

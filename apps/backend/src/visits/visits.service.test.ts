@@ -1,4 +1,4 @@
-// T-D4 — visit outcome conflict rule: idempotent replay + real conflict.
+// T-D4 - visit outcome conflict rule: idempotent replay + real conflict.
 //
 // Real-DB tests (no mocks). Fixture pattern mirrors the T-E2b
 // whatsapp-unknown-contacts service test: bare prisma (via
@@ -7,7 +7,7 @@
 //
 // Conflict rule (visits.service.ts, updateOutcome):
 //   - Exact replay (visit already has status+outcome === dto.outcome):
-//     no-op — returns the current row, writes ONE audit row marked
+//     no-op - returns the current row, writes ONE audit row marked
 //     "Idempotent replay … no state change".
 //   - Different outcome on an advanced visit: falls through to the
 //     state machine → rejected (server-wins per offline-store LWW).
@@ -111,7 +111,7 @@ async function cleanupAll(): Promise<void> {
   TEST_VISIT_IDS.length = 0;
 }
 
-describe.skipIf(!HAS_DB)('VisitsService.updateOutcome — T-D4 idempotent replay', () => {
+describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay', () => {
   let service: VisitsService;
   let prismaService: PrismaService;
 
@@ -220,7 +220,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome — T-D4 idempotent replay
       notes: 'first write',
     });
 
-    // Replay arrives (same payload — the offline queue re-sent it).
+    // Replay arrives (same payload - the offline queue re-sent it).
     const row = await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
       visitId,
       outcome: 'COMPLETED',

@@ -1,11 +1,11 @@
 'use client';
 
-// ScheduleVisitDialog — form for creating a site visit.
+// ScheduleVisitDialog - form for creating a site visit.
 //
 // Used inside the visits page (Schedule button) and inside the lead
 // detail page (when the lead is in VISIT_REQUESTED / VISIT_SCHEDULED).
 // Fields match the CreateSiteVisitDto Zod schema in
-// packages/api-types/src/visits.ts — the server validates the same
+// packages/api-types/src/visits.ts - the server validates the same
 // shape and surfaces errors verbatim via toast.
 //
 // scheduledFor is required (must be in the future per the Zod refine);
@@ -52,7 +52,7 @@ export function ScheduleVisitDialog({
   const { user } = useSessionUser();
   const leadsQuery = useLeads({ limit: 100 });
 
-  // Default to tomorrow at 10am — gives the user a sensible starting
+  // Default to tomorrow at 10am - gives the user a sensible starting
   // point while still requiring them to confirm the date.
   const defaultDate = useMemo(() => {
     const d = new Date();

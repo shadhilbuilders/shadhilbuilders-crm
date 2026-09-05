@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Chat module DTOs (Zod)
+// Shadhil CRM - Chat module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Used by the in-app chat pane and the WhatsApp inbound webhook handler.
 // SSE resume (eng review A9) replays from Message.id so clients can reconnect
@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { MessageChannelSchema, MessageDirectionSchema } from './enums';
 
 /**
- * POST /api/chat/send — staff sends a message to a lead.
+ * POST /api/chat/send - staff sends a message to a lead.
  * Channel defaults to IN_APP; the WhatsApp path is auto-routed by the message
  * service if the lead has consented and the channel is unset.
  */
@@ -23,7 +23,7 @@ export const SendMessageDtoSchema = z.object({
 export type SendMessageDto = z.infer<typeof SendMessageDtoSchema>;
 
 /**
- * GET /api/chat/:leadId query — load message history.
+ * GET /api/chat/:leadId query - load message history.
  * `since` is a cursor (createdAt ISO) for incremental load.
  */
 export const MessageFilterDtoSchema = z.object({
@@ -35,7 +35,7 @@ export type MessageFilterDto = z.infer<typeof MessageFilterDtoSchema>;
 
 /**
  * Internal shape of a Message row as serialized to the SSE client.
- * `id` is the SSE event-id (eng review A9 — Last-Event-ID resume).
+ * `id` is the SSE event-id (eng review A9 - Last-Event-ID resume).
  */
 export const MessageEventSchema = z.object({
   id: z.string().cuid(),

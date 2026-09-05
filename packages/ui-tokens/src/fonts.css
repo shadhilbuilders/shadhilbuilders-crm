@@ -1,7 +1,7 @@
 /**
- * @shadhil/ui-tokens — fonts.css
+ * @shadhil/ui-tokens - fonts.css
  *
- * DEPRECATED — kept as a placeholder so existing imports don't break.
+ * DEPRECATED - kept as a placeholder so existing imports don't break.
  *
  * The brand font (Inter) is now loaded per-app via `next/font/google` in
  * each consuming app's `layout.tsx` (e.g. apps/web/src/app/layout.tsx).

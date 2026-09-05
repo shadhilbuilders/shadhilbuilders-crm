@@ -1,4 +1,4 @@
-// T36 (PR3) — Per-route loading.tsx for /login.
+// T36 (PR3) - Per-route loading.tsx for /login.
 //
 // Next.js renders this file while the route segment's server data
 // is in flight. Hard-reload /login shows this skeleton immediately
@@ -6,7 +6,7 @@
 // <LoginForm> hydrates, it replaces this fallback.
 //
 // Skeleton, not spinner (2026-09-05): the app's loading contract is
-// the shared shape-varied Skeleton (T16/T32/T34) — a spinner on an
+// the shared shape-varied Skeleton (T16/T32/T34) - a spinner on an
 // otherwise empty page doesn't preview the layout. This fallback
 // mirrors the page's real geometry: AuthTopBar (user row) + a
 // max-w-sm card-shaped block where the login form will land, so the

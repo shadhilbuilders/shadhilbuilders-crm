@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Realtime module DTOs (Zod)
+// Shadhil CRM - Realtime module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // T-E2 (Week 6, 2026-09-04): the SSE realtime layer.
 //
@@ -20,12 +20,12 @@
 import { z } from 'zod';
 
 /**
- * POST /api/realtime/ticket — request body.
+ * POST /api/realtime/ticket - request body.
  *
  * `channel` is a freeform string with a small fixed vocabulary:
- *   - "notifications"             — current user's Notification inbox
- *   - "audit"                     — current user's AuditLog visibility
- *   - `chat:<cuid>`               — Message stream for a specific lead
+ *   - "notifications"             - current user's Notification inbox
+ *   - "audit"                     - current user's AuditLog visibility
+ *   - `chat:<cuid>`               - Message stream for a specific lead
  *
  * The MintTicketDto schema accepts the union shape; the controller
  * dispatches to the correct validator (leadId cuids for chat, role
@@ -37,9 +37,9 @@ export const MintTicketDtoSchema = z.object({
 export type MintTicketDto = z.infer<typeof MintTicketDtoSchema>;
 
 /**
- * POST /api/realtime/ticket — response shape.
+ * POST /api/realtime/ticket - response shape.
  *
- * `ticket` is the StreamTicket cuid — the browser passes it as the
+ * `ticket` is the StreamTicket cuid - the browser passes it as the
  * `?ticket=` query-string param to the SSE endpoint. `expiresAt` is
  * an ISO datetime so the client can refresh before expiry.
  */
@@ -54,7 +54,7 @@ export type MintTicketResponse = z.infer<typeof MintTicketResponseSchema>;
  * Canonical channel vocabulary. Helpers below parse a channel string
  * into a typed discriminator; the controller uses them to dispatch.
  *
- * `chat` channels carry the leadId — `parseChannel()` validates it as
+ * `chat` channels carry the leadId - `parseChannel()` validates it as
  * a cuid and rejects unknown channel shapes with a typed error.
  */
 export type RealtimeChannel =

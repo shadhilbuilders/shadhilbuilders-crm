@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Common DTOs (Zod)
+// Shadhil CRM - Common DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Shared pagination, error envelopes, ID param schemas. Used by every
 // NestJS controller and Next.js route handler.

@@ -1,15 +1,15 @@
-# Shadhil Builders CRM — Docker Compose for VPS deployment
+# Shadhil Builders CRM - Docker Compose for VPS deployment
 #
 # Per plan §10 (Coolify on Hostinger VPS 8GB India region). This file is the
-# Phase 1 reference config — the actual production deploy happens in Week 12
+# Phase 1 reference config - the actual production deploy happens in Week 12
 # via Coolify auto-deploy from GitHub.
 #
 # Services:
 #   postgres    Postgres 16 with max_connections=300 (eng review P1, 150-user cap)
-#   pgbouncer   PgBouncer in session pooling mode (eng review A5 — REQUIRED for RLS)
+#   pgbouncer   PgBouncer in session pooling mode (eng review A5 - REQUIRED for RLS)
 #   redis       Redis 7 (SSE pub/sub + cron locks + rate limiting)
 #   api         NestJS 12 backend (port 8080)
-#   web         Next.js 16 frontend (port 3000) — placeholder, not built in Phase 1
+#   web         Next.js 16 frontend (port 3000) - placeholder, not built in Phase 1
 #
 # Usage:
 #   docker compose -f docker/docker-compose.yml config   # validate
@@ -47,14 +47,14 @@ services:
       retries: 5
 
   pgbouncer:
-    # edoburu/pgbouncer — actively maintained, CVE-patched upstream images.
+    # edoburu/pgbouncer - actively maintained, CVE-patched upstream images.
     # Bitnami moved bitnami/* behind a paid subscription in Aug 2025; the
     # bitnamilegacy/* namespace is frozen at the version pinned and never
     # receives security updates.
     #
     # SWITCHED from bitnamilegacy 2026-08-31 (verified live before swap):
     # - bitnami IGNORES the mounted docker/pgbouncer.ini and generates its
-    #   own from env vars — the source of the missing [databases] alias
+    #   own from env vars - the source of the missing [databases] alias
     #   (PGBOUNCER_DATABASE defaulted to 'postgres'), which silently broke
     #   every shadhil_crm connection through the pool (see PGBOUNCER_DATABASE
     #   note below for the archaeology).
@@ -117,7 +117,7 @@ services:
     environment:
       NODE_ENV: production
       API_PORT: "8080"
-      # Direct (admin) URL — bypasses PgBouncer. Used by migrations + RLS
+      # Direct (admin) URL - bypasses PgBouncer. Used by migrations + RLS
       # session variable writes.
       # AR-2c: app connects as the NON-OWNER role (RLS-enforced). Owner role
       # `shadhil` is migrations/seed only (DIRECT_DATABASE_URL).
@@ -132,7 +132,7 @@ services:
       # Production deploys via Coolify override this command block entirely.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required in .env}
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL required in .env}
-      # eng review A5: MUST be 'session' — NestJS boot-time check fails otherwise.
+      # eng review A5: MUST be 'session' - NestJS boot-time check fails otherwise.
       POOL_MODE: session
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: https://crm.shadhilbuilders.in,http://localhost:3000,http://localhost:8081
@@ -140,7 +140,7 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm-api.shadhilbuilders.in}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (min 32 chars)}
       JWT_ISSUER: shadhil-crm
-      # 6 inputs from §17 — placeholders work; real values via Coolify env.
+      # 6 inputs from §17 - placeholders work; real values via Coolify env.
       WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-placeholder}
       WA_BUSINESS_ACCOUNT_ID: ${WA_BUSINESS_ACCOUNT_ID:-placeholder}
       WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-placeholder}
@@ -149,7 +149,7 @@ services:
       FREJUN_WEBHOOK_SECRET: ${FREJUN_WEBHOOK_SECRET:-placeholder}
     # Rewrite the localhost in DATABASE_URL/DIRECT_DATABASE_URL to the
     # docker-internal DNS names (pgbouncer, postgres), then exec the
-    # original NestJS start command. Idempotent — sed swaps only the host
+    # original NestJS start command. Idempotent - sed swaps only the host
     # segment between :// and the next :, leaving user/password/port/db/query
     # untouched. The DATABASE_URL/DIRECT_DATABASE_URL seen by the Node
     # process is the rewritten one. POSIX sed (no bash-only constructs) so
@@ -164,7 +164,7 @@ services:
       postgres:
         condition: service_healthy
       pgbouncer:
-        # Was 'service_started' — but pgbouncer can boot before authenticating
+        # Was 'service_started' - but pgbouncer can boot before authenticating
         # with postgres, and the api was racing into "no auth_user" errors.
         # Wait for the entrypoint to finish SCRAM negotiation (pgbouncer's
         # own /readyz equivalent). Falls back to 'service_started' silently

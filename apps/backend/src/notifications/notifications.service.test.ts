@@ -1,4 +1,4 @@
-// Notifications service tests — pure logic + DB-touching stubs.
+// Notifications service tests - pure logic + DB-touching stubs.
 //
 // Pattern: instantiate NotificationsService with a PrismaService
 // stub whose $client has the methods we exercise stubbed per-test.
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('list — current-user inbox', () => {
+describe('list - current-user inbox', () => {
   it('returns total, unread count, and rows', async () => {
     const { service, client } = makeService();
     client.notification.findMany.mockResolvedValue([
@@ -102,7 +102,7 @@ describe('list — current-user inbox', () => {
   });
 });
 
-describe('markRead — batch update + audit row', () => {
+describe('markRead - batch update + audit row', () => {
   it('updates the listed IDs and writes an audit row', async () => {
     const { service, client } = makeService();
     client.notification.updateMany.mockResolvedValue({ count: 2 });
@@ -145,14 +145,14 @@ describe('markRead — batch update + audit row', () => {
         }),
       }),
     );
-    // The `id` clause should NOT be present when array is empty —
+    // The `id` clause should NOT be present when array is empty -
     // updateMany hits every unread row.
     const call = client.notification.updateMany.mock.calls[0]?.[0];
     expect(call?.where).not.toHaveProperty('id');
   });
 });
 
-describe('emit — service hook for notification creation', () => {
+describe('emit - service hook for notification creation', () => {
   it('inserts a notification for the recipient and writes an audit row', async () => {
     const { service, client } = makeService();
     client.notification.create.mockResolvedValue({

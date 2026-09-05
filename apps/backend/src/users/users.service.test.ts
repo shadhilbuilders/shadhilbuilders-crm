@@ -1,13 +1,13 @@
-// Users service tests — T-S hardening (Week 5).
+// Users service tests - T-S hardening (Week 5).
 //
 // changePassword is the only piece we can exercise without a real DB
 // (the bare-client SELECT/UPDATE on User + Account needs a fixture,
 // and that's the role of the integration tests in apps/backend/test/).
-// The pure-function path — credential hash + verify — is in
+// The pure-function path - credential hash + verify - is in
 // credentials.ts and gets full coverage there.
 //
 // What we pin here:
-//   1. happy path — actor IS target (self), correct old password,
+//   1. happy path - actor IS target (self), correct old password,
 //      returns { ok: true, mustChangePassword: false }
 //   2. wrong old password → 400 BadRequestException
 //   3. actor is NOT self AND NOT admin/owner → 403 ForbiddenException
@@ -96,7 +96,7 @@ function makeService(opts: StubOptions = {}) {
   const accountUpdate = vi.fn().mockResolvedValue({});
   const userUpdate = vi.fn().mockResolvedValue({});
   const auditCreate = vi.fn().mockResolvedValue({});
-  // The audit row is created via withRlsContext's tx callback —
+  // The audit row is created via withRlsContext's tx callback -
   // withRlsContext first calls tx.$executeRawUnsafe('SET LOCAL ...')
   // for the actor claim, then invokes our callback with the same tx.
   // Both calls must land on the same mock surface.
@@ -133,10 +133,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('changePassword — happy path (self)', () => {
+describe('changePassword - happy path (self)', () => {
   it('returns { ok: true, mustChangePassword: false } and flips the flag', async () => {
     // Pre-hash the same password our verify expects (we don't go
-    // through real scrypt here — we just feed the stub the
+    // through real scrypt here - we just feed the stub the
     // plaintext-equals-stored check by giving it a "verified" value).
     // We stub the verify function via the account row returning
     // null → verifyPassword returns false; for a positive case we
@@ -174,7 +174,7 @@ describe('changePassword — happy path (self)', () => {
       where: { id: telecallerActor.sub },
       data: { mustChangePassword: false },
     });
-    // Audit row written — we use the wrapped $transaction stub so
+    // Audit row written - we use the wrapped $transaction stub so
     // the audit is asserted to exist.
     expect(mocks.auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -191,7 +191,7 @@ describe('changePassword — happy path (self)', () => {
   });
 });
 
-describe('changePassword — wrong old password', () => {
+describe('changePassword - wrong old password', () => {
   it('throws BadRequestException, no writes happen', async () => {
     const storedHash = hashPassword('OldPass123!');
     const { service, mocks } = makeService({
@@ -214,9 +214,9 @@ describe('changePassword — wrong old password', () => {
   });
 });
 
-describe('changePassword — actor is not self and not admin/owner', () => {
+describe('changePassword - actor is not self and not admin/owner', () => {
   it('throws ForbiddenException', async () => {
-    // Telecaller tries to change MANAGER's password — rejected.
+    // Telecaller tries to change MANAGER's password - rejected.
     const { service, mocks } = makeService({
       user: { id: managerActor.sub, email: managerActor.email, mustChangePassword: false },
     });
@@ -282,7 +282,7 @@ describe('changePassword — actor is not self and not admin/owner', () => {
   });
 });
 
-describe('changePassword — unknown target user', () => {
+describe('changePassword - unknown target user', () => {
   it('throws NotFoundException when user.findUnique returns null', async () => {
     const { service, mocks } = makeService({ user: null });
 
@@ -298,9 +298,9 @@ describe('changePassword — unknown target user', () => {
   });
 });
 
-describe('changePassword — missing Account row', () => {
+describe('changePassword - missing Account row', () => {
   it('throws BadRequestException ("Current password is incorrect") when no credential Account exists', async () => {
-    // User exists but no Account row (e.g. OAuth-only sign-in) — the
+    // User exists but no Account row (e.g. OAuth-only sign-in) - the
     // service treats this as a wrong-password case rather than 404 to
     // avoid leaking "this user has no password set" info.
     const { service, mocks } = makeService({

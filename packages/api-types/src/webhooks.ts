@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Webhooks module DTOs (Zod)
+// Shadhil CRM - Webhooks module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Inbound webhook handlers: WhatsApp (Meta) + FreJun (telephony).
 // Dedupe via WebhookEvent.externalId unique index.
@@ -8,7 +8,7 @@
 import { z } from 'zod';
 
 /**
- * WhatsApp Cloud API — inbound message webhook payload.
+ * WhatsApp Cloud API - inbound message webhook payload.
  * Shape: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks
  * We only validate the parts we care about; the rest stays as `unknown`.
  */
@@ -37,7 +37,7 @@ export const WhatsAppWebhookPayloadSchema = z.object({
               .array(
                 z.object({
                   from: z.string(),
-                  id: z.string(), // externalId — used for dedupe
+                  id: z.string(), // externalId - used for dedupe
                   timestamp: z.string(),
                   type: z.string(),
                   text: z.object({ body: z.string() }).optional(),

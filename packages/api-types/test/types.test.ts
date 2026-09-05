@@ -19,7 +19,7 @@ import {
   ChangePasswordFormSchema,
 } from '../src';
 
-describe('@shadhil/api-types — enums', () => {
+describe('@shadhil/api-types - enums', () => {
   it('Role accepts valid role', () => {
     expect(RoleSchema.parse('ADMIN')).toBe('ADMIN');
   });
@@ -46,7 +46,7 @@ describe('@shadhil/api-types — enums', () => {
   });
 });
 
-describe('@shadhil/api-types — auth DTOs', () => {
+describe('@shadhil/api-types - auth DTOs', () => {
   it('LoginDto accepts valid email+password', () => {
     const r = LoginDtoSchema.parse({ email: 'a@b.com', password: 'pw' });
     expect(r.email).toBe('a@b.com');
@@ -60,7 +60,7 @@ describe('@shadhil/api-types — auth DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — lead DTOs', () => {
+describe('@shadhil/api-types - lead DTOs', () => {
   it('CreateLeadDto accepts valid lead with 10-digit phone', () => {
     const r = CreateLeadDtoSchema.parse({
       name: 'Rajesh',
@@ -89,7 +89,7 @@ describe('@shadhil/api-types — lead DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — visit DTOs', () => {
+describe('@shadhil/api-types - visit DTOs', () => {
   it('CreateSiteVisitDto accepts future ISO datetime', () => {
     const r = CreateSiteVisitDtoSchema.parse({
       leadId: 'cl1234567890abcdefghij',
@@ -107,7 +107,7 @@ describe('@shadhil/api-types — visit DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — chat DTOs', () => {
+describe('@shadhil/api-types - chat DTOs', () => {
   it('SendMessageDto accepts valid message', () => {
     const r = SendMessageDtoSchema.parse({
       leadId: 'cl1234567890abcdefghij',
@@ -125,7 +125,7 @@ describe('@shadhil/api-types — chat DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — booking DTOs', () => {
+describe('@shadhil/api-types - booking DTOs', () => {
   it('CreateBookingDto accepts positive amount', () => {
     const r = CreateBookingDtoSchema.parse({
       leadId: 'cl1234567890abcdefghij',
@@ -145,7 +145,7 @@ describe('@shadhil/api-types — booking DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — reminder DTOs', () => {
+describe('@shadhil/api-types - reminder DTOs', () => {
   it('CreateReminderDto accepts valid future reminder', () => {
     const r = CreateReminderDtoSchema.parse({
       leadId: 'cl1234567890abcdefghij',
@@ -157,14 +157,14 @@ describe('@shadhil/api-types — reminder DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — notification DTOs', () => {
+describe('@shadhil/api-types - notification DTOs', () => {
   it('MarkReadDto accepts empty array (mark all)', () => {
     const r = MarkReadDtoSchema.parse({ notificationIds: [] });
     expect(r.notificationIds).toEqual([]);
   });
 });
 
-describe('@shadhil/api-types — audit DTOs', () => {
+describe('@shadhil/api-types - audit DTOs', () => {
   it('AuditLogQueryDto accepts userId + date range', () => {
     const r = AuditLogQueryDtoSchema.parse({
       userId: 'cl1234567890abcdefghij',
@@ -176,7 +176,7 @@ describe('@shadhil/api-types — audit DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — webhook DTOs', () => {
+describe('@shadhil/api-types - webhook DTOs', () => {
   it('WhatsAppWebhookPayloadSchema accepts minimal valid payload', () => {
     const r = WhatsAppWebhookPayloadSchema.parse({
       object: 'whatsapp_business_account',
@@ -210,7 +210,7 @@ describe('@shadhil/api-types — webhook DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — common DTOs', () => {
+describe('@shadhil/api-types - common DTOs', () => {
   it('PaginationDtoSchema applies defaults', () => {
     const r = PaginationDtoSchema.parse({});
     expect(r.limit).toBe(50);
@@ -221,7 +221,7 @@ describe('@shadhil/api-types — common DTOs', () => {
   });
 });
 
-describe('@shadhil/api-types — change-password (T-S page + zod validation)', () => {
+describe('@shadhil/api-types - change-password (T-S page + zod validation)', () => {
   const valid = { oldPassword: 'oldpass1', newPassword: 'newpass12', confirmPassword: 'newpass12' };
 
   it('ChangePasswordDtoSchema (server wire contract) parses old+new only', () => {

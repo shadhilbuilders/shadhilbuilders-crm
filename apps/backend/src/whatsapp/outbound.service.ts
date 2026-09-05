@@ -1,4 +1,4 @@
-// T-E2b: OutboundMessage service — outbox pattern for staff→lead
+// T-E2b: OutboundMessage service - outbox pattern for staff→lead
 // WhatsApp messages.
 //
 // Pattern: the chat service writes Message + OutboundMessage in one
@@ -7,7 +7,7 @@
 // `claimAndSend()` every 5s to claim PENDING rows via the
 // T-G4-style claim lease, call the Meta API, and update status.
 //
-// This file is the "library" — pure logic, no NestJS decorators,
+// This file is the "library" - pure logic, no NestJS decorators,
 // no cron wiring. The cron processor (separate file) imports
 // these functions and runs them on a schedule. Testable in
 // isolation with a mock WhatsAppClient.
@@ -99,7 +99,7 @@ export class OutboundService {
    * Wraps all DB operations in `withRlsContext(CRON_SERVICE)` so
    * the outbound_cron_service_all RLS policy matches (the bare
    * shadhil_app role has no RLS context set, so a direct call
-   * returns zero rows from findMany — see commit b2f94ca where
+   * returns zero rows from findMany - see commit b2f94ca where
    * the chat-service enqueue path was in-staff-RLS-context but
    * the cron path was missed).
    */
@@ -158,21 +158,21 @@ export class OutboundService {
    *  based on the response. Returns the updated row.
    *
    *  The Meta call is outside the RLS transaction (it's a network
-   *  call, not a DB call). The DB writes — both the success
+   *  call, not a DB call). The DB writes - both the success
    *  UPDATE (→ SENT) and the failure UPDATE (→ PENDING/FAILED with
-   *  lastError) — run inside withRlsContext(CRON_SERVICE) so the
+   *  lastError) - run inside withRlsContext(CRON_SERVICE) so the
    *  outbound_cron_service_all / outbound_update_cron_service
    *  RLS policies match. The lead phone lookup is also inside
    *  RLS context (uses Lead which has its own CRON_SERVICE bypass
    *  policy from the T-E2b inbound commit).
    *
    *  On success we also store the Meta wamid in the OutboundMessage
-   *  row — the inbound webhook (webhooks.controller.ts) uses this
+   *  row - the inbound webhook (webhooks.controller.ts) uses this
    *  to correlate delivery receipts back to the right outbox row. */
   async sendOne(row: OutboundMessage): Promise<OutboundMessage> {
     // First, do the network call OUTSIDE the RLS transaction.
     // (RLS transaction holds a connection; the Meta fetch is a
-    // blocking call to graph.facebook.com — we don't want to pin
+    // blocking call to graph.facebook.com - we don't want to pin
     // a pool connection for the duration of a 30s+ HTTP call.)
     let deliveryResult:
       | { ok: true; wamid: string | null }
@@ -185,7 +185,7 @@ export class OutboundService {
         // this with the right keys for the template) into the
         // ordered Meta `parameters` array. The order of values
         // MUST match the {{1}}, {{2}}, … placeholder order in the
-        // template body — Meta rejects out-of-order parameters.
+        // template body - Meta rejects out-of-order parameters.
         // See apps/backend/src/whatsapp/whatsapp.client.ts for
         // the full template specs (3 templates: shadhil_chat_reply,
         // shadhil_visit_followup, shadhil_visit_reminder).
@@ -205,7 +205,7 @@ export class OutboundService {
           parameters,
         );
         // Meta can return HTTP 200 with message_status: 'failed' in
-        // the body (the "soft failure" case — recipient not on the
+        // the body (the "soft failure" case - recipient not on the
         // test allowlist, undeliverable, etc.). Treat as a hard
         // failure so we go through the backoff path.
         if (!delivery.accepted) {
@@ -266,7 +266,7 @@ export class OutboundService {
    *  (the enqueue path validates this), so this is just a lookup.
    *  Wrapped in withRlsContext(CRON_SERVICE) so the
    *  lead_select_cron_service policy from the T-E2b inbound commit
-   *  matches — the bare shadhil_app role has no RLS context, so
+   *  matches - the bare shadhil_app role has no RLS context, so
    *  a direct findUnique would return null. */
   private async leadPhone(leadId: string): Promise<string> {
     const lead = await withRlsContext(

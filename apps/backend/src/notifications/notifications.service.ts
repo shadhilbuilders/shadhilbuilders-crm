@@ -1,4 +1,4 @@
-// Notifications service — REST surface for the in-app inbox.
+// Notifications service - REST surface for the in-app inbox.
 //
 // T-NOTIF (2026-09-07): replaces the Phase-1 stub. The web page
 // already wires to GET /api/notifications and PATCH
@@ -6,7 +6,7 @@
 // useMarkNotificationsRead; this module lights them up.
 //
 // RLS: owner-only SELECT/UPDATE/DELETE policies gate correctly
-// (see packages/database/prisma/rls/policies.sql — the
+// (see packages/database/prisma/rls/policies.sql - the
 // notification_select_owner / notification_update_owner /
 // notification_delete_owner trio). The notification_insert_owner
 // policy (added in commit a905d1c) lets a user write their own
@@ -19,7 +19,7 @@
 //     every unread row the actor owns).
 //
 // The notification emit (creating a new Notification row) happens
-// elsewhere — this module only READS + MARKS. The AuditLog row is
+// elsewhere - this module only READS + MARKS. The AuditLog row is
 // written on every markRead mutation for the demo trail.
 import {
   BadRequestException,
@@ -38,7 +38,7 @@ import { PrismaService } from '../prisma/prisma.module';
 /**
  * Wire shape returned by every endpoint. Matches the
  * NotificationEvent schema in packages/api-types/src/notifications.ts
- * — the web app reads these fields off `query.data` in
+ * - the web app reads these fields off `query.data` in
  * apps/web/src/app/(app)/notifications/page.tsx.
  */
 export interface NotificationRow {
@@ -68,7 +68,7 @@ export class NotificationsService {
   }
 
   /**
-   * GET /api/notifications?unreadOnly=true — current user's
+   * GET /api/notifications?unreadOnly=true - current user's
    * notifications, newest first. The notification_select_owner RLS
    * policy limits visibility to the actor's own rows; no extra
    * role-scoping needed.
@@ -125,7 +125,7 @@ export class NotificationsService {
   }
 
   /**
-   * PATCH /api/notifications/mark-read — mark a batch (or all, when
+   * PATCH /api/notifications/mark-read - mark a batch (or all, when
    * the IDs array is empty) of the actor's notifications as read.
    * Returns the number of rows updated.
    */
@@ -185,7 +185,7 @@ export class NotificationsService {
    * app.user_id. The caller passes the recipient's userId; the actor
    * here is the system, so we set app.user_id = recipient.sub. This
    * means the actor's identity in the audit row is the recipient, not
-   * the originator — a downstream module can pass originatorSub
+   * the originator - a downstream module can pass originatorSub
    * separately if it wants a different audit attribution. For Pass 1
    * we use the recipient (matches the "owner writes their own
    * notification" RLS intent).

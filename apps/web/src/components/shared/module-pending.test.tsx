@@ -1,4 +1,4 @@
-// T-D3 — ModulePending state matrix.
+// T-D3 - ModulePending state matrix.
 //
 // Pin the three contract states (loading / not-built / api-error) for
 // every page surface that calls a TanStack query hook, so a future
@@ -15,7 +15,7 @@
 //   ├──────────────┤
 //   │  api error   │  →  ModulePending "failed to load" + error message
 //   ├──────────────┤
-//   │  has data    │  →  page renders real UI (skipped here — covered by
+//   │  has data    │  →  page renders real UI (skipped here - covered by
 //   │              │     the page's own component tests when shipped)
 //   └──────────────┘
 //
@@ -23,7 +23,7 @@
 //   - Real data rendering: each page has its own tests when shipped.
 //   - SSE/connection state: lives in SseStatusPill.test.tsx.
 //   - Empty-but-valid responses: a 200 with rows=[] is the "no leads
-//     match these filters" state — page-specific tests own that.
+//     match these filters" state - page-specific tests own that.
 //
 // Pattern: renderToStaticMarkup from react-dom/server (no DOM,
 // no @testing-library) per the project's standing rule
@@ -38,7 +38,7 @@ import { ModulePending } from '@/components/shared/ModulePending';
 
 // Each "surface" is a (title, skeletonVariant) pair. Real pages wire
 // this with their own query data, so the matrix lives here as the
-// single source of truth — when a new page lands, add a row.
+// single source of truth - when a new page lands, add a row.
 const SURFACES = [
   { name: 'Lead Inbox', variant: 'table' as const },
   { name: 'Visit Scheduler', variant: 'list' as const },
@@ -50,7 +50,7 @@ const SURFACES = [
   { name: 'Inventory', variant: 'table' as const },
 ] as const;
 
-describe('ModulePending — loading state', () => {
+describe('ModulePending - loading state', () => {
   for (const { name, variant } of SURFACES) {
     it(`${name}: isLoading renders the matching skeleton variant, not text`, () => {
       const html = renderToStaticMarkup(
@@ -72,7 +72,7 @@ describe('ModulePending — loading state', () => {
   }
 });
 
-describe('ModulePending — not-built state (module genuinely not shipped)', () => {
+describe('ModulePending - not-built state (module genuinely not shipped)', () => {
   for (const { name, variant } of SURFACES) {
     it(`${name}: 404 → "backend module pending"`, () => {
       const html = renderToStaticMarkup(
@@ -84,9 +84,9 @@ describe('ModulePending — not-built state (module genuinely not shipped)', () 
           skeletonVariant={variant}
         />,
       );
-      expect(html).toContain(`${name} — backend module pending`);
+      expect(html).toContain(`${name} - backend module pending`);
       expect(html).toContain('Not built yet');
-      // No aria-busy in the settled empty state — the loading
+      // No aria-busy in the settled empty state - the loading
       // announcement would be misleading.
       expect(html).not.toMatch(/aria-busy="true"/);
     });
@@ -101,13 +101,13 @@ describe('ModulePending — not-built state (module genuinely not shipped)', () 
           skeletonVariant={variant}
         />,
       );
-      expect(html).toContain(`${name} — backend module pending`);
+      expect(html).toContain(`${name} - backend module pending`);
       expect(html).toContain('Not built yet');
     });
   }
 });
 
-describe('ModulePending — api error state (real failure)', () => {
+describe('ModulePending - api error state (real failure)', () => {
   for (const { name, variant } of SURFACES) {
     it(`${name}: 500 → "failed to load" with the error message`, () => {
       const html = renderToStaticMarkup(
@@ -121,7 +121,7 @@ describe('ModulePending — api error state (real failure)', () => {
       );
       expect(html).toContain(`${name} failed to load`);
       expect(html).toContain('Internal Server Error');
-      // Must NOT say "Not built yet" — that's the wrong signal.
+      // Must NOT say "Not built yet" - that's the wrong signal.
       expect(html).not.toContain('Not built yet');
     });
 
@@ -140,7 +140,7 @@ describe('ModulePending — api error state (real failure)', () => {
   }
 });
 
-describe('ModulePending — error precedence (loading wins over error)', () => {
+describe('ModulePending - error precedence (loading wins over error)', () => {
   it('isLoading + error: renders the skeleton, NOT the error message', () => {
     const html = renderToStaticMarkup(
       <ModulePending

@@ -1,4 +1,4 @@
-// T-D3 — Users management (state matrix).
+// T-D3 - Users management (state matrix).
 //
 // Pins the render branches in apps/web/src/app/(app)/users/page.tsx:
 //   1. session pending             → <Skeleton variant="user" />
@@ -7,7 +7,7 @@
 //   4. useUsers data is set        → user rows (id, name, email, role, team)
 //   5. useUsers error             → error message rendered as plain text
 //      (the page does NOT use ModulePending; the surface is "row
-//      gone, but the page itself is still up" — better than a
+//      gone, but the page itself is still up" - better than a
 //      full-page error because the user might still be able to create
 //      a new user or sign out)
 //
@@ -46,7 +46,7 @@ afterEach(() => {
   mocks.useUsers.mockReset();
 });
 
-describe('UsersPage — T-D3 state matrix', () => {
+describe('UsersPage - T-D3 state matrix', () => {
   it('session pending: useSessionUser.isPending renders <Skeleton>', () => {
     mocks.useSessionUser.mockReturnValue({
       user: null,
@@ -142,7 +142,7 @@ describe('UsersPage — T-D3 state matrix', () => {
     expect(html).not.toContain('Not authorized');
   });
 
-  it('error: useUsers error surfaces inline (not ModulePending — design choice)', () => {
+  it('error: useUsers error surfaces inline (not ModulePending - design choice)', () => {
     // The users page does NOT route errors through ModulePending;
     // it surfaces the error inline at the top of the body so the
     // user can still use the page (e.g. create a user) when the

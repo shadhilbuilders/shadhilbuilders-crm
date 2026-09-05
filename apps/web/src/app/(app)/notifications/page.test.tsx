@@ -1,4 +1,4 @@
-// T-F2 — NotificationsPage wire-shape contract.
+// T-F2 - NotificationsPage wire-shape contract.
 //
 // Pins the three required behaviors: rows render when useNotifications
 // resolves with { rows, unread, total }; ModulePending shows on error;
@@ -38,7 +38,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('NotificationsPage — wire-shape contract (T-F2)', () => {
+describe('NotificationsPage - wire-shape contract (T-F2)', () => {
   it('renders rows when useNotifications resolves with {rows, unread, total}', () => {
     mockedUseNotifications.mockReturnValue({
       data: {
@@ -46,7 +46,7 @@ describe('NotificationsPage — wire-shape contract (T-F2)', () => {
           {
             id: 'n-1',
             title: 'New lead assigned',
-            body: 'Rajesh Kumar — VISIT_REQUESTED',
+            body: 'Rajesh Kumar - VISIT_REQUESTED',
             read: false,
             createdAt: '2026-09-04T08:30:00Z',
             type: 'lead.assigned',
@@ -70,7 +70,7 @@ describe('NotificationsPage — wire-shape contract (T-F2)', () => {
     const html = renderToStaticMarkup(<NotificationsPage />);
     // Row content
     expect(html).toContain('New lead assigned');
-    expect(html).toContain('Rajesh Kumar — VISIT_REQUESTED');
+    expect(html).toContain('Rajesh Kumar - VISIT_REQUESTED');
     expect(html).toContain('Visit confirmed');
     expect(html).toContain('Priya Sharma booked a visit for Saturday');
     // Unread count surfaced on the "Mark all as read" CTA
@@ -93,7 +93,7 @@ describe('NotificationsPage — wire-shape contract (T-F2)', () => {
 
     const html = renderToStaticMarkup(<NotificationsPage />);
     // ModulePending surfaces the error message via its "failed to load"
-    // branch. The page title is "Notification Center" — the empty-state
+    // branch. The page title is "Notification Center" - the empty-state
     // shell we control does NOT appear because the error path owns it.
     expect(html).toContain('failed to load');
     expect(html).toContain('API 500: Internal Server Error');

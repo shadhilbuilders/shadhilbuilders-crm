@@ -28,7 +28,7 @@
 //   3. Asserts that auth-client/dist/ contains all 6 .js files.
 //
 // The package's own `clean` script (`rm -rf dist tsconfig.build.tsbuildinfo`)
-// is correct on its own — the test verifies the END-TO-END behaviour
+// is correct on its own - the test verifies the END-TO-END behaviour
 // through the prebuild chain.
 //
 // Reference: discovered while integrating landing-page brand assets
@@ -75,7 +75,7 @@ function countZombieWatchProcesses(): string[] {
   }
 }
 
-describe('@shadhil/auth — prebuild chain emits all source files', () => {
+describe('@shadhil/auth - prebuild chain emits all source files', () => {
   let zombies: string[];
 
   beforeAll(() => {
@@ -94,7 +94,7 @@ describe('@shadhil/auth — prebuild chain emits all source files', () => {
 
   it('emits all 6 source .js files to dist/ after the prebuild chain', () => {
     if (zombies.length > 0) {
-      // Don't fail the test — fail the OPERATOR. The build is correctly
+      // Don't fail the test - fail the OPERATOR. The build is correctly
       // expected to fail in this state. Surface the issue clearly.
       throw new Error(
         `Zombie tsc --watch process(es) detected (${zombies.length}).\n` +

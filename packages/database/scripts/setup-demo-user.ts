@@ -11,7 +11,7 @@
 //   3. Reassigns all seeded leads' ownerId to the demo user, keeps teamId
 //   4. Leaves the 5 seed users untouched (they stay in placeholder-users.json)
 //
-// Idempotent — re-running just resets the password and re-reassigns leads.
+// Idempotent - re-running just resets the password and re-reassigns leads.
 //
 // DO NOT commit the demo user to prod: this is a local demo helper.
 // Delete the script after Sunday's demo.
@@ -44,7 +44,7 @@ function hash(pw: string): string {
 }
 
 async function main() {
-  // 1. Upsert demo user (no team yet — the team needs demoUser.id).
+  // 1. Upsert demo user (no team yet - the team needs demoUser.id).
   const demoUser = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
     update: {
@@ -68,7 +68,7 @@ async function main() {
   // Create a fresh team for the demo user so RLS team-scoped queries
   // return rows. The seed's MANAGER team is also available (after the
   // Day 3 ordering-bug fix), but using a separate team keeps demo data
-  // clearly partitioned — anyone touching demo@shadhilbuilders.in can't
+  // clearly partitioned - anyone touching demo@shadhilbuilders.in can't
   // accidentally read other users' rows.
   //
   // managerId MUST be set: leads.service.ts:managerTeamId() resolves the
@@ -111,7 +111,7 @@ async function main() {
   });
 
   // 3. Reassign all leads to the demo user + demo team.
-  // EXCLUDE test-fixture rows (ids prefixed `test-`) — backend tests
+  // EXCLUDE test-fixture rows (ids prefixed `test-`) - backend tests
   // (outbound.cron.test.ts et al.) create fixtures with fixed ids and
   // fixed owner/team; stealing them breaks RLS scoping in those tests
   // (42501 on message.create) for any run AFTER this script executes.
@@ -128,7 +128,7 @@ async function main() {
   // JWT-scoped reads at runtime.
   //
   // Idempotency: re-running this script must not append duplicate rows.
-  // Strategy — clear the previous demo-seeded rows for this user/team
+  // Strategy - clear the previous demo-seeded rows for this user/team
   // first, then re-insert. We scope by userId (Notification) and by the
   // demo-team lead set (Message, Booking) so any unrelated rows
   // (e.g. matrix-test fixtures) are untouched.

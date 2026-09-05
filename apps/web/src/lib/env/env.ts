@@ -19,7 +19,7 @@ export const env = createEnv({
     // ── NestJS BFF proxy target ──────────────────────────────────────────
     BACKEND_API_URL: z.url().default('http://localhost:8080'),
 
-    // ── Error monitoring (Sentry — optional) ─────────────────────────────
+    // ── Error monitoring (Sentry - optional) ─────────────────────────────
     SENTRY_DSN: z.url().optional(),
     SENTRY_ORG: z.string().min(1).optional(),
     SENTRY_PROJECT: z.string().min(1).optional(),
@@ -35,7 +35,7 @@ export const env = createEnv({
       .transform((val) => val === 'true')
       .default(false),
 
-    // ── 6 Inputs (§17) — placeholders work, real values via Coolify ──────
+    // ── 6 Inputs (§17) - placeholders work, real values via Coolify ──────
     NEXT_PUBLIC_RERA_NUMBER: z.string().min(1).default('TN/PENDING/RERA'),
     NEXT_PUBLIC_CMDA_NUMBER: z.string().min(1).default('CMDA/PENDING'),
     NEXT_PUBLIC_RERA_VALID_FROM: z.string().default('2026-01-01'),

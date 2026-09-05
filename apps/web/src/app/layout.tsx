@@ -10,7 +10,7 @@ import { Providers } from '@/providers';
 
 import '@/styles/globals.css';
 
-// Inter — brand font. Loaded via next/font (self-hosted, preloaded,
+// Inter - brand font. Loaded via next/font (self-hosted, preloaded,
 // no external Google Fonts CDN requests). The `--font-inter` CSS
 // variable that next/font sets on <body> is wired to Tailwind's
 // `font-sans` utility via `--font-sans` in apps/web/src/styles/globals.css.
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     default: 'Shadhil Builders CRM',
   },
   description:
-    'Real-estate CRM for Shadhil Builders — Lead Inbox, Site Visits, Bookings, Chat, Reminders.',
+    'Real-estate CRM for Shadhil Builders - Lead Inbox, Site Visits, Bookings, Chat, Reminders.',
   keywords: ['CRM', 'Real Estate', 'Shadhil Builders', 'Lead Management'],
   authors: [{ name: 'PaalStack' }],
   creator: 'Shadhil Builders',
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     description: 'Real-estate CRM for Shadhil Builders',
   },
   robots: {
-    index: false, // Internal CRM — not indexed
+    index: false, // Internal CRM - not indexed
     follow: false,
   },
   // PWA manifest. Next.js file convention `app/manifest.ts` is auto-served
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     capable: true,
     title: 'Shadhil CRM',
     // `black-translucent` lets the WebView's status bar float over the
-    // app's surface — required for iOS "Add to Home Screen" to render
+    // app's surface - required for iOS "Add to Home Screen" to render
     // a real splash instead of a screenshot.
     statusBarStyle: 'black-translucent',
   },
@@ -63,7 +63,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  // Do NOT pin maximumScale — pinch-zoom is a WCAG 1.4.4 accessibility
+  // Do NOT pin maximumScale - pinch-zoom is a WCAG 1.4.4 accessibility
   // requirement (and Android Chrome honors the pin, locking out low-vision
   // users). iOS ignores it anyway.
   viewportFit: 'cover', // let content extend under notches; safe-area padding below

@@ -1,5 +1,5 @@
 // Minimal ESLint flat config for Phase 1.
-// React, Next.js, and TypeScript linting are deferred to Phase 2 — the goal
+// React, Next.js, and TypeScript linting are deferred to Phase 2 - the goal
 // here is to get the toolchain green so CI can run. The full set of plugins
 // (eslint-plugin-react, react-hooks, jsx-a11y, prettier) was dropped with
 // the starter boilerplate; add them back when the app starts growing UI.

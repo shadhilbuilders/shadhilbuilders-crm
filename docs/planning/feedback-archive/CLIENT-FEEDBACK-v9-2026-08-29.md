@@ -1,4 +1,4 @@
-# Client Feedback Round 10 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 10 - 2026-08-29 (Shadhil CRM)
 
 You asked: "I need reminder for telecaller and sale executive for
 follow up, if customer reschedule the visit with specific time,
@@ -13,12 +13,12 @@ Real feature, not a clarification. Adding it to the brief now.
 
 Adding a new **Reminders** module to v1. Three reminder types:
 
-  1. **Pre-visit staff reminder** — sales exec gets a nudge
+  1. **Pre-visit staff reminder** - sales exec gets a nudge
      before the scheduled visit (default: 2 hours before).
-  2. **Pre-visit customer reminder** — customer gets a
+  2. **Pre-visit customer reminder** - customer gets a
      WhatsApp message before the visit (default: 24 hours
      before + 2 hours before).
-  3. **Reschedule follow-up reminder** — sales exec gets a
+  3. **Reschedule follow-up reminder** - sales exec gets a
      nudge AFTER the reschedule, prompting them to confirm
      with the customer. (This is what you specifically
      asked for.)
@@ -59,14 +59,14 @@ the staff, etc.).
 
 **When:** T-X hours before scheduled visit time.
 **Who:** Sales Exec (post-handoff owner) or Telecaller
-(if lead is still in pre-handoff — should not happen in
+(if lead is still in pre-handoff - should not happen in
 normal flow but possible for early scheduled visits).
 **Channel (in priority order):**
   1. **In-app banner** if the staff member's app is open
   2. **Push notification** if app is closed (Expo
      Notifications on mobile, Web Push on web)
   3. **Email** as last fallback (but email is dropped
-     from v1 per Q3 resolution — actually keep email
+     from v1 per Q3 resolution - actually keep email
      as the fallback for reminders specifically, since
      email is good for "low-urgency, time-flexible"
      notifications; surface to client)
@@ -364,7 +364,7 @@ are cancelled. No new reminders fire.
 
 When a lead reaches `BOOKING_INITIATED`, the system
 schedules post-booking reminders (token follow-up, agreement
-status, etc.) — deferred to v1.1 per Q2.
+status, etc.) - deferred to v1.1 per Q2.
 
 ---
 
@@ -437,7 +437,7 @@ the value is large (potentially halves no-show rate).
 
 I dropped email from v1 entirely in the v6 telephony
 delta. But for reminders specifically, email is the
-right fallback channel — "we couldn't reach you via push,
+right fallback channel - "we couldn't reach you via push,
 here's an email instead." It's not a marketing email,
 it's a one-time transactional alert.
 
@@ -513,7 +513,7 @@ estate CRMs.** The system must catch it.
 I'm recommending 3 reminder types in v1 (pre-visit staff,
 pre-visit customer, reschedule follow-up) plus the
 already-designed no-show reminder. That's 4 types total.
-Don't add more for v1 — every reminder type is a template
+Don't add more for v1 - every reminder type is a template
 approval, a cron entry, a UI element, and a test case.
 
 If Shadhil asks for "what about reminders for X?" during

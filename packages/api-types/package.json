@@ -2,7 +2,7 @@
   "name": "@shadhil/api-types",
   "version": "0.1.0",
   "private": true,
-  "description": "Shadhil CRM — Shared TypeScript types and Zod schemas for the 9 NestJS modules. Re-exports Prisma-generated model types from @shadhil/database and provides request/response DTOs as Zod schemas (inferred TypeScript types via z.infer). One source of truth for validation in NestJS pipes AND Next.js route handlers.",
+  "description": "Shadhil CRM - Shared TypeScript types and Zod schemas for the 9 NestJS modules. Re-exports Prisma-generated model types from @shadhil/database and provides request/response DTOs as Zod schemas (inferred TypeScript types via z.infer). One source of truth for validation in NestJS pipes AND Next.js route handlers.",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

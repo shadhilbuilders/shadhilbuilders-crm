@@ -25,7 +25,7 @@ if [ -L "$TARGET" ]; then
     # Already correct.
     exit 0
   fi
-  # Wrong target — replace it.
+  # Wrong target - replace it.
   rm "$TARGET"
 elif [ -e "$TARGET" ]; then
   # Real file exists at this path. Don't clobber user-created config.

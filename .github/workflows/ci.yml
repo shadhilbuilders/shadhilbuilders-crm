@@ -15,13 +15,13 @@ concurrency:
 #   - format:check / test:coverage referenced scripts that didn't exist
 #   - RLS matrix: CI provisions Postgres + applies the init migration, and the
 #     never-skip guard makes a missing DB a FAILURE, not a silent skip
-# CI never talks to a real provider — placeholder-shaped vars only.
+# CI never talks to a real provider - placeholder-shaped vars only.
 #
 # 2026-08-31 (first green effort): the generated Prisma client is gitignored
 # by design, so every job that compiles/imports @shadhil/database sources
 # must run `prisma generate` first. The RLS matrix also bootstraps the
 # non-owner role `shadhil_app` (normally created by docker/postgres-init/
-# 00-init.sql on volume init — CI's service container has no entrypoint
+# 00-init.sql on volume init - CI's service container has no entrypoint
 # hook) BEFORE prisma migrate deploy, because migration 1 GRANTs to it.
 env:
   SKIP_ENV_VALIDATION: 'true'
@@ -51,7 +51,7 @@ jobs:
       # use for their second argument. Without this step a fresh checkout
       # has no generated types, and tsc fails with
       # "Cannot find name 'RouteContext'" (the type is only created by
-      # next dev / next build / next typegen — not by pnpm install).
+      # next dev / next build / next typegen - not by pnpm install).
       - run: pnpm --filter @shadhil/web typegen
       - run: pnpm type-check
 
@@ -72,7 +72,7 @@ jobs:
       - run: pnpm lint
 
   # T-G1 verify item: "lint rule/grep CI check banning bare prisma in
-  # controllers". Node script (no DB, ~1s) — scans apps/backend/src for
+  # controllers". Node script (no DB, ~1s) - scans apps/backend/src for
   # bare prisma-client imports that never pass the client into
   # withRlsContext. Sanctioned paths (webhook ingest, system cron,
   # better-auth session lookup) live in the script's ALLOWLIST with a
@@ -111,7 +111,7 @@ jobs:
       #       (`--concurrency=1`) so the dep chain is always honored.
       - run: pnpm --filter @shadhil/database build
       - run: pnpm exec turbo run build --concurrency=1
-      # Backend has ZERO tests until T-RLSREAL lands — keep passWithNoTests
+      # Backend has ZERO tests until T-RLSREAL lands - keep passWithNoTests
       # true for now so bundle-1 fixes can ship; the plan flips it to false
       # in the same PR as the first real backend test (AR-5).
       - run: pnpm test
@@ -152,7 +152,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # 00-init.sql equivalent: CI's bare postgres container has no
       # docker-entrypoint hook, so create the non-owner app role here
-      # (AR-1) BEFORE migrations — migration 1's policy block GRANTs to it.
+      # (AR-1) BEFORE migrations - migration 1's policy block GRANTs to it.
       # Use 'psql' directly against localhost:5432 (the service's exposed
       # port). Heredoc-quoting on purpose: $$ in YAML run-blocks gets
       # shell-expanded ($\$$ landed as the runner PID last run ->
@@ -167,17 +167,17 @@ jobs:
       - run: cd packages/database && npx prisma migrate deploy
         env:
           # NOTE: GH Actions does NOT shell-expand ${VAR} inside env: map
-          # values — that's bash syntax. Use the ${{ }} expression form or
+          # values - that's bash syntax. Use the ${{ }} expression form or
           # Prisma gets the literal '${...}' as the password (P1000).
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
-      # AR-4 companion: the matrix FAILS if the DB is unreachable — a missing
+      # AR-4 companion: the matrix FAILS if the DB is unreachable - a missing
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
         env:
           # DIRECT for migrate/seed (owner role has BYPASSRLS for DDL);
           # DATABASE for the runtime adapter (the @shadhil/database client
           # is RLS-enforced and must connect as the non-owner shadhil_app
-          # role — using shadhil here bypasses RLS and the matrix flips
+          # role - using shadhil here bypasses RLS and the matrix flips
           # green for the wrong reason).
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
           DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
@@ -198,7 +198,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate
-      # (build) — Run turbo with --concurrency=1 so workspace package
+      # (build) - Run turbo with --concurrency=1 so workspace package
       # builds (@shadhil/database, @shadhil/auth, @shadhil/offline-store,
       # @shadhil/api-types) complete fully before the consuming apps
       # (@shadhil/backend, @shadhil/web) start their tsc.

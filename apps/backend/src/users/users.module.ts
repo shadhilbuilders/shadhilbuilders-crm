@@ -1,4 +1,4 @@
-// Users module — user-creation hierarchy (DECISION-CHANGELOG Round 17).
+// Users module - user-creation hierarchy (DECISION-CHANGELOG Round 17).
 // POST /api/users  ADMIN → any role; MANAGER → staff in own team
 // GET  /api/users  ADMIN → all; MANAGER → own team; staff → self
 import { Module } from '@nestjs/common';

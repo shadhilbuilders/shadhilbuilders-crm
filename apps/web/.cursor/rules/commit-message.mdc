@@ -26,8 +26,8 @@ Always follow these rules (enforced by `commitlint.config.js`) when generating c
 - **type**: required, lowercase only
 - **scope**: optional, lowercase or UPPERCASE, in parentheses
 - **subject**: required, max 120 chars, no trailing `.`, no `StartCase`/`PascalCase`/`UPPER_CASE`
-- **body**: optional — blank line before it, max 120 chars per line
-- **footer**: optional — blank line before it, max 100 chars per line, use for `Closes #N`, `BREAKING CHANGE:`
+- **body**: optional - blank line before it, max 120 chars per line
+- **footer**: optional - blank line before it, max 100 chars per line, use for `Closes #N`, `BREAKING CHANGE:`
 
 ## Examples
 

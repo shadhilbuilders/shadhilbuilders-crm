@@ -1,12 +1,12 @@
-// T-D4 — LeadVisitPanel offline fallback.
+// T-D4 - LeadVisitPanel offline fallback.
 //
 // Two units under test:
 //
-//   1. isOfflineError() — the transport-failure classifier. Offline
+//   1. isOfflineError() - the transport-failure classifier. Offline
 //      queueing is for transport failures ONLY (fetch TypeError, 5xx);
 //      a 4xx is a real rejection that must NOT poison the queue.
 //
-//   2. The offline enqueue path in recordOutcome() — when the online
+//   2. The offline enqueue path in recordOutcome() - when the online
 //      mutation fails with a transport error, the outcome is queued
 //      via enqueueUnique with a dedupeKey (`outcome:{visitId}:{outcome}`)
 //      so re-taps replace instead of stack. The test mounts the panel
@@ -38,11 +38,11 @@ describe('isOfflineError (T-D4 transport classifier)', () => {
     expect(isOfflineError(new TypeError('Load failed'))).toBe(true);
   });
 
-  it('5xx ApiError → true (transport — server down)', () => {
+  it('5xx ApiError → true (transport - server down)', () => {
     expect(isOfflineError(new FakeApiError('API 503', 503))).toBe(true);
   });
 
-  it('4xx ApiError → false (real rejection — do NOT queue)', () => {
+  it('4xx ApiError → false (real rejection - do NOT queue)', () => {
     expect(isOfflineError(new FakeApiError('API 409', 409))).toBe(false);
     expect(isOfflineError(new FakeApiError('API 400', 400))).toBe(false);
   });
@@ -171,7 +171,7 @@ describe('LeadVisitPanel offline fallback (T-D4)', () => {
     expect(arg.method).toBe('PATCH');
     expect(arg.body.outcome).toBe('COMPLETED');
     // "Saved locally" toast, NOT the error toast.
-    expect(toast.success).toHaveBeenCalledWith('Saved locally — will sync when online');
+    expect(toast.success).toHaveBeenCalledWith('Saved locally - will sync when online');
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -185,7 +185,7 @@ describe('LeadVisitPanel offline fallback (T-D4)', () => {
 
     expect(mocks.enqueueUnique).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalled();
-    expect(toast.success).not.toHaveBeenCalledWith('Saved locally — will sync when online');
+    expect(toast.success).not.toHaveBeenCalledWith('Saved locally - will sync when online');
   });
 
   it('online success → success toast, NO enqueue', async () => {

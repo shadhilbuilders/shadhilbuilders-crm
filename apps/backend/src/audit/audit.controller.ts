@@ -1,4 +1,4 @@
-// Audit controller — filterable audit log list.
+// Audit controller - filterable audit log list.
 //
 // Mirrors apps/backend/src/leads/leads.controller.ts and
 // apps/backend/src/visits/visits.controller.ts patterns:

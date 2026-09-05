@@ -12,13 +12,13 @@ at a different 512x512 RGBA PNG (e.g. an updated brand mark).
 Output: apps/web/public/icons/{icon-192,icon-512,maskable-512,apple-touch-180}.png
 
 Output sizes and constraints:
-  - icon-192.png        192x192 RGBA   "any"      — full-bleed wordmark
-  - icon-512.png        512x512 RGBA   "any"      — full-bleed wordmark
-  - maskable-512.png    512x512 RGBA   "maskable" — navy frame + white
+  - icon-192.png        192x192 RGBA   "any"      - full-bleed wordmark
+  - icon-512.png        512x512 RGBA   "any"      - full-bleed wordmark
+  - maskable-512.png    512x512 RGBA   "maskable" - navy frame + white
                                               inner square + wordmark inset
                                               to the 80% safe zone per
                                               https://maskable.app/editor
-  - apple-touch-180.png 180x180 RGBA   "any"      — iOS home-screen icon
+  - apple-touch-180.png 180x180 RGBA   "any"      - iOS home-screen icon
                                               (Apple applies its own mask,
                                               so we ship a flat square)
 
@@ -68,7 +68,7 @@ DEFAULT_SOURCE = (
 ICONS_DIR = REPO_ROOT / "apps" / "web" / "public" / "icons"
 
 # Maskable canvas colors.
-NAVY = (15, 23, 42, 255)        # #0f172a — matches the CRM app theme
+NAVY = (15, 23, 42, 255)        # #0f172a - matches the CRM app theme
 WHITE = (255, 255, 255, 255)    # inner field background
 
 # Required output (size_pixels, filename). Order = write order.
@@ -93,11 +93,11 @@ def make_maskable(source: Image.Image, size: int = 512) -> Image.Image:
     """Compose the maskable icon.
 
     Structure (outside-in):
-      1. Navy frame — fills the full square. Visible under any launcher
+      1. Navy frame - fills the full square. Visible under any launcher
          mask shape (circle, squircle, rounded-rect, teardrop).
-      2. White inner square — 410x410 (the 80% safe zone per maskable.app).
+      2. White inner square - 410x410 (the 80% safe zone per maskable.app).
          Provides contrast for the wordmark and a visual breathing area.
-      3. Brand mark — the wordmark, scaled to fit inside the white square
+      3. Brand mark - the wordmark, scaled to fit inside the white square
          with a small inner margin, centered.
 
     Why the white inner square: the wordmark itself uses white as its
@@ -129,7 +129,7 @@ def validate(path: Path, expected_size: int) -> None:
     """Confirm the written file is a valid PNG of the expected size.
 
     Re-running the script after someone manually edits a PNG with the
-    wrong dimensions has been a footgun before — this catches it.
+    wrong dimensions has been a footgun before - this catches it.
     """
     with Image.open(path) as img:
         if img.size != (expected_size, expected_size):

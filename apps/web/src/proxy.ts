@@ -1,4 +1,4 @@
-// Auth gate — Next 16 "proxy" (the renamed middleware).
+// Auth gate - Next 16 "proxy" (the renamed middleware).
 //
 // Behavior:
 //   - No session cookie + protected path  → redirect to /login?next=<path>
@@ -22,7 +22,7 @@ const PUBLIC_PATHS = [
   '/api/auth',
   '/api/health',
   '/icons',         // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
-  '/brand',         // brand logo assets — rendered on the unauthenticated auth top bar (/login etc.)
+  '/brand',         // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)
   '/manifest.webmanifest',
   '/manifest.json',
   '/offline',
@@ -53,7 +53,7 @@ export default function proxy(request: NextRequest): NextResponse {
 export const config = {
   // Match all app routes except Next internals + public PWA assets. PWA
   // paths (manifest, sw.js, /offline, /icons/*) are also handled by the
-  // explicit PUBLIC_PATHS check in the function body — both layers exist
+  // explicit PUBLIC_PATHS check in the function body - both layers exist
   // for defense-in-depth: the matcher is the cheap edge-runtime gate, the
   // function body is the explicit allowlist that survives any future
   // matcher-regex refactor.

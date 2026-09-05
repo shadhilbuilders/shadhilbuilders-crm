@@ -1,5 +1,5 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Shadhil Builders CRM — first-boot SQL (postgres:16-alpine entrypoint).
+-- Shadhil Builders CRM - first-boot SQL (postgres:16-alpine entrypoint).
 -- Applied automatically on volume init (docker/postgres-init is mounted
 -- at /docker-entrypoint-initdb.d).
 --
@@ -33,14 +33,14 @@ BEGIN
 END
 $$;
 
-COMMENT ON ROLE shadhil_app IS 'Shadhil CRM app role — non-owner, RLS-enforced. NEVER use for migrations.';
+COMMENT ON ROLE shadhil_app IS 'Shadhil CRM app role - non-owner, RLS-enforced. NEVER use for migrations.';
 
 -- Schema-level USAGE + CREATE grants. Without USAGE on `public`,
 -- the table-level GRANTs in policies.sql are invisible to shadhil_app
 -- and Postgres returns `42501 permission denied for schema public` (or
 -- `42P01 relation does not exist` depending on the access path). CREATE
 -- is needed for Prisma's $executeRawUnsafe during bootstrap migrations.
--- Round 25 (2026-09-03): explicit grants added — the schema's default
+-- Round 25 (2026-09-03): explicit grants added - the schema's default
 -- PUBLIC ACL was empty in this setup, so the implicit pseudo-role grant
 -- did not apply.
 GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;
@@ -49,7 +49,7 @@ GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;
 -- docker-compose for local dev (dev-only throwaway, same as the owner role).
 -- Production MUST override both via Coolify env vars; compose passes
 -- POSTGRES_PASSWORD through. A rotation here means regenerating the PgBouncer
--- SCRAM userlist (docker/userlist.txt) — see docker/userlist.txt header.
+-- SCRAM userlist (docker/userlist.txt) - see docker/userlist.txt header.
 
 -- 3. Future-proofing note ------------------------------------------------------
 -- When Postgres 16 creates the initdb superuser (the `shadhil` owner), it

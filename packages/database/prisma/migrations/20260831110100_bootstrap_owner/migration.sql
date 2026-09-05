@@ -1,5 +1,5 @@
 -- Bootstrap: the seeded owner account becomes the OWNER (one bootstrap
--- per Round 20/21/23 — OWNER is the org-owner role; there is exactly
+-- per Round 20/21/23 - OWNER is the org-owner role; there is exactly
 -- one). Separate transaction: ALTER TYPE ... ADD VALUE cannot run in
 -- the same tx as statements using the new enum value.
 --

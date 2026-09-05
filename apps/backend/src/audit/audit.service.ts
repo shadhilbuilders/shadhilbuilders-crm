@@ -1,13 +1,13 @@
-// Audit service — REST surface for the audit log (READ ONLY).
+// Audit service - REST surface for the audit log (READ ONLY).
 //
 // T-AUDIT (2026-09-07): replaces the Phase-1 stub. Audit rows are
 // written by every other module as a side effect of their mutations
 // (per eng-review A2: audit writes MUST be transactional with the
-// triggering action). This module ONLY READS — no creation endpoint.
+// triggering action). This module ONLY READS - no creation endpoint.
 //
 // RLS: the auditlog_select_admin_or_owner policy gates visibility:
 // ADMIN sees all, others see only their own (userId = app.user_id).
-// No role-scoping needed beyond the actor's JWT identity — the
+// No role-scoping needed beyond the actor's JWT identity - the
 // RLS policy is the source of truth.
 //
 // Filter DTO: AuditLogQueryDtoSchema supports userId / entityType /
@@ -61,7 +61,7 @@ export class AuditService {
 
   /**
    * GET /api/audit?entityType=&entityId=&userId=&from=&to=&action=
-   * — filterable audit log. The auditlog_select_admin_or_owner RLS
+   * - filterable audit log. The auditlog_select_admin_or_owner RLS
    * policy applies visibility on top.
    */
   async list(

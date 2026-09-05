@@ -1,11 +1,11 @@
 'use client';
 
-// AppShell — the Sidebar content (logo, nav groups, UserMenu, sign-out).
+// AppShell - the Sidebar content (logo, nav groups, UserMenu, sign-out).
 //
 // Plan §3.1 / §11 T6. Lives inside the (app)/layout.tsx `SidebarProvider`
 // from PR1/T7. The same JSX is reused on mobile (the library's internal
 // Sheet swap) and on desktop (the persistent rail), so there is NO
-// conditional rendering for breakpoint here — the provider handles it.
+// conditional rendering for breakpoint here - the provider handles it.
 //
 // The role-gated admin group uses the canonical helpers from
 // `lib/session.ts` (`canManageUsers`, `canViewAudit`). Do NOT hand-roll
@@ -18,7 +18,7 @@
 //   <Sidebar collapsible="icon" variant="inset">
 //   ├── <SidebarHeader>
 //   │   ├── <Image src="/brand/logo.png" /> + "Shadhil CRM" wordmark
-//   │   └── <SidebarTrigger />          (mobile only — hidden md+)
+//   │   └── <SidebarTrigger />          (mobile only - hidden md+)
 //   ├── <SidebarContent>
 //   │   ├── Group "Work"
 //   │   │   ├── Dashboard   (active-state via isNavItemActive)
@@ -87,7 +87,7 @@ export function AppShell() {
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
-          {/* Full brand lockup on its native white tile — rendered as a
+          {/* Full brand lockup on its native white tile - rendered as a
               rounded chip so the opaque white canvas reads as intentional
               in both themes instead of a floating white box. The tagline
               is part of the asset; h-8 keeps it legible. In the collapsed
@@ -109,7 +109,7 @@ export function AppShell() {
           {/* The chip carries the full brand lockup (wordmark + tagline);
               the duplicate "Shadhil CRM" text label is redundant at this
               size and truncates awkwardly next to a 143px chip. Hidden
-              entirely — the chip IS the brand. */}
+              entirely - the chip IS the brand. */}
         </div>
         <SidebarTrigger className="md:hidden" />
       </SidebarHeader>
@@ -126,7 +126,7 @@ export function AppShell() {
 }
 
 // ---------------------------------------------------------------------------
-// Work group — visible to every signed-in user. Source: NAV_ITEMS, so a
+// Work group - visible to every signed-in user. Source: NAV_ITEMS, so a
 // new route added to `lib/nav.ts` lights up here automatically.
 // ---------------------------------------------------------------------------
 
@@ -154,7 +154,7 @@ function WorkNavGroup() {
 }
 
 // ---------------------------------------------------------------------------
-// Admin group — only rendered when at least one admin item is visible.
+// Admin group - only rendered when at least one admin item is visible.
 // We compute visibility from `getVisibleNav` so a future addition like
 // `/teams` slots in without changing this file.
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ function AdminNavGroup() {
 }
 
 // ---------------------------------------------------------------------------
-// NavMenuItem — one sidebar entry. Pulls the live badge count via
+// NavMenuItem - one sidebar entry. Pulls the live badge count via
 // `useNavBadge` when the item has a `badgeKey`.
 // ---------------------------------------------------------------------------
 
@@ -232,7 +232,7 @@ function NavMenuItem({
 
 // ---------------------------------------------------------------------------
 // Footer: UserMenu (avatar + name + role) + sign out. The popover
-// mirrors the original topbar `UserMenu` (T3 + T6 — both consume
+// mirrors the original topbar `UserMenu` (T3 + T6 - both consume
 // `useSignOut`).
 // ---------------------------------------------------------------------------
 
@@ -242,7 +242,7 @@ function UserMenuFooter() {
 
   if (isPending || user === null) {
     // T23 (PR3): render a UserSkeleton placeholder while the session
-    // resolves — no "Loading…" text, the avatar+lines shape matches
+    // resolves - no "Loading…" text, the avatar+lines shape matches
     // the resolved footer so the layout doesn't shift on hydration.
     return (
       <div className="px-2 py-1.5" data-qa="user-skeleton-footer">

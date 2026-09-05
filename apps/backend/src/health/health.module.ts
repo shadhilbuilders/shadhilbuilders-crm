@@ -1,4 +1,4 @@
-// Health check module — used by Coolify / Better Stack uptime monitoring.
+// Health check module - used by Coolify / Better Stack uptime monitoring.
 import { Controller, Get, Module } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
 

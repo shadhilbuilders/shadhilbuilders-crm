@@ -1,4 +1,4 @@
-// Inferred types from better-auth — single source of truth for session shape.
+// Inferred types from better-auth - single source of truth for session shape.
 import type { auth } from './auth';
 
 export type Auth = typeof auth;

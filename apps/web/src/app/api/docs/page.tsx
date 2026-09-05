@@ -1,4 +1,4 @@
-// OpenAPI docs — proxy to NestJS Swagger UI at /api/docs.
+// OpenAPI docs - proxy to NestJS Swagger UI at /api/docs.
 // This is the BFF rewrite target (see next.config.ts).
 import { env } from '@/lib/env/env';
 import { Button, Heading, TypographyP } from '@paalstack/react-ui';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'API Docs',
-  description: 'Shadhil Builders CRM — REST API + SSE streams (OpenAPI 3.0)',
+  description: 'Shadhil Builders CRM - REST API + SSE streams (OpenAPI 3.0)',
 };
 
 export default function ApiDocsPage(): React.JSX.Element {

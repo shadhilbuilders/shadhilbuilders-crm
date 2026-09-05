@@ -13,14 +13,14 @@
 //   (amber)      (green)           (red) → auto-reconnect
 //
 // Why a dedicated component (not just a useEffect in app-header):
-//   - Self-contained retry/backoff logic — one place to tune.
+//   - Self-contained retry/backoff logic - one place to tune.
 //   - Testable in isolation (no app-header boilerplate).
 //   - When real chat/notifications SSE streams ship, this pill stays
-//     authoritative for "is realtime working" — consumers swap the
+//     authoritative for "is realtime working" - consumers swap the
 //     URL, the connection state machine is identical.
 //
 // The `SseStatusPill` deliberately does NOT consume library SSE
-// primitives — there isn't one in @paalstack/react-ui v1.4.1, and a
+// primitives - there isn't one in @paalstack/react-ui v1.4.1, and a
 // thin wrapper around EventSource is the honest primitive here.
 // Connectivity is the source of truth; a library abstraction would add
 // churn for no functional gain.
@@ -37,7 +37,7 @@ export type SseConnectionState =
 type PillProps = {
   /** API path for the SSE heartbeat. Default: `/api/sse/ping`. */
   endpoint?: string;
-  /** Disabled state — pill renders greyed-out, no connection. */
+  /** Disabled state - pill renders greyed-out, no connection. */
   disabled?: boolean;
   /** Class for the outer wrapper (size/positioning). */
   className?: string;

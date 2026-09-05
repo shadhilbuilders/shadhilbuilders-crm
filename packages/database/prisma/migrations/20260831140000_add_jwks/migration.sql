@@ -1,4 +1,4 @@
--- Jwks — required by better-auth's jwt() plugin. Its absence made every
+-- Jwks - required by better-auth's jwt() plugin. Its absence made every
 -- GET /api/auth/get-session throw "Model jwks does not exist" (500), which
 -- broke authClient.useSession() across the web UI. Column set follows
 -- better-auth 1.7's jwt() plugin schema: publicKey/privateKey/createdAt

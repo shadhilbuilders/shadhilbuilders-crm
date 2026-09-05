@@ -1,4 +1,4 @@
-// Visits module — site-visit scheduling, outcomes, and reschedule.
+// Visits module - site-visit scheduling, outcomes, and reschedule.
 //
 // VisitsService depends on LeadsService for the lead state handoff
 // (e.g. scheduling a visit auto-advances Lead VISIT_REQUESTED →

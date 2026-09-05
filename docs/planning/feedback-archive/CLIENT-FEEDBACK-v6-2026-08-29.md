@@ -1,4 +1,4 @@
-# Client Feedback Round 6 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 6 - 2026-08-29 (Shadhil CRM)
 
 You asked: "For Telephony, can we have cheap and best for India?"
 
@@ -20,7 +20,7 @@ no IVR/auto-dialer needed): pick FreJun at ~₹1,149/user/month.**
 Why FreJun over the alternatives (full comparison below):
 - Best balance of cost vs features for THIS use case
 - AI transcription INCLUDED (manager can read what execs actually
-  said to customers — the original "monitor by application" requirement)
+  said to customers - the original "monitor by application" requirement)
 - 23+ pre-built CRM integrations (might save you dev time)
 - India-native, virtual numbers with India DIDs, GST-compliant
 - Active support (4.9/5 on G2)
@@ -36,7 +36,7 @@ Why FreJun over the alternatives (full comparison below):
 | **TeleCMI** | ₹587/user/mo | ₹2,935-8,805/mo | Virtual number, click-to-call, recording, basic routing, webhooks | Limited AI/transcription; add-ons for analytics |
 | **MyOperator** | ₹2,499/mo (annual) or ₹2,500/mo (3 users) | ₹2,500-7,500/mo | Virtual number, click-to-call, recording, **WhatsApp included** in bundle | Per-minute outbound; limited to 3-5 users on base plan |
 | **Knowlarity** | ₹1,999/agent (unlimited inbound) | ₹9,995-29,985/mo | Unlimited inbound, click-to-call, recording, analytics | Per-minute outbound charged separately |
-| **Exotel (Dabbler)** | $200/6mo = ~₹2,800/mo | ₹2,800-8,400/mo base + usage | Virtual number, click-to-call, recording, IVR, SMS, webhooks | **Credit pool for usage** (per-minute voice + SMS) — your real cost is plan + usage, not plan alone |
+| **Exotel (Dabbler)** | $200/6mo = ~₹2,800/mo | ₹2,800-8,400/mo base + usage | Virtual number, click-to-call, recording, IVR, SMS, webhooks | **Credit pool for usage** (per-minute voice + SMS) - your real cost is plan + usage, not plan alone |
 | **Exotel (Believer)** | $500/yr = ~₹3,500/mo | ₹3,500-10,500/mo base + usage | Same as Dabbler + more features | Same credit pool |
 | **WhatsApp Business Calling API** | 2-3 cents/min inside the 1,000 min/mo free tier | Free up to 1,000 min/mo, then usage-based | Voice calls IN WhatsApp, recorded by Meta, no separate provider | **Only works if customer calls from inside WhatsApp**; Meta approval required; currently in limited rollout in India |
 
@@ -53,26 +53,26 @@ Why FreJun over the alternatives (full comparison below):
 
 Looking at the spec from the previous deltas, the CRM needs:
 
-1. ✅ **Click-to-call** — agent taps a phone number, it dials through
+1. ✅ **Click-to-call** - agent taps a phone number, it dials through
    the virtual number. (All 5 providers do this.)
-2. ✅ **One virtual number** — customers see the company number, not
+2. ✅ **One virtual number** - customers see the company number, not
    the agent's personal mobile. (All 5 providers do this.)
-3. ✅ **Auto-recording** — every call recorded for manager audit.
+3. ✅ **Auto-recording** - every call recorded for manager audit.
    (All 5 do this; AI transcription varies.)
-4. ✅ **Webhooks** — call events (started, ended, recording ready)
+4. ✅ **Webhooks** - call events (started, ended, recording ready)
    fire to NestJS for the activity timeline. (All 5 do this.)
-5. ✅ **Per-call metadata** — who, when, duration, recording URL.
+5. ✅ **Per-call metadata** - who, when, duration, recording URL.
    (All 5 do this.)
 
 The CRM does NOT need (and shouldn't pay for):
 
-- ❌ IVR ("press 1 for sales") — sales team answers directly
-- ❌ Predictive auto-dialer — 5-15 user team, low call volume
-- ❌ Skill-based routing — flat team structure
-- ❌ Multi-level call queues — 5-15 users
-- ❌ Contact-center analytics (talk time, occupancy, etc.) — overkill
+- ❌ IVR ("press 1 for sales") - sales team answers directly
+- ❌ Predictive auto-dialer - 5-15 user team, low call volume
+- ❌ Skill-based routing - flat team structure
+- ❌ Multi-level call queues - 5-15 users
+- ❌ Contact-center analytics (talk time, occupancy, etc.) - overkill
   for v1
-- ❌ Omnichannel routing (voice + email + chat in one queue) —
+- ❌ Omnichannel routing (voice + email + chat in one queue) -
   WhatsApp is handled separately, no email
 
 This narrows the real choice significantly. **The full contact-center
@@ -151,7 +151,7 @@ platform that scales to that."
   inside WhatsApp. A regular phone calling the company's number
   doesn't work.
 - **Catch #2**: Meta approval of WhatsApp Business Calling is
-  required. Currently in limited rollout in India — not every
+  required. Currently in limited rollout in India - not every
   business gets approved.
 - **Catch #3**: Recording is on Meta's side. You'd get a recording
   URL via the WhatsApp webhook, but the storage and retention are
@@ -188,17 +188,17 @@ transcription. ₹3,000-9,000/month. You can revisit FreJun when
 revenue justifies the upgrade.
 
 **Skip:**
-- Knowlarity — too expensive for the use case
-- Exotel — overkill, credit pool is a trap for small teams
-- MyOperator — only if WhatsApp inclusion is decisive (it isn't
+- Knowlarity - too expensive for the use case
+- Exotel - overkill, credit pool is a trap for small teams
+- MyOperator - only if WhatsApp inclusion is decisive (it isn't
   here; you're already using Meta Cloud API directly)
-- WhatsApp Business Calling API alone — doesn't solve outbound
+- WhatsApp Business Calling API alone - doesn't solve outbound
 
 ---
 
 ## What changes in the locked stack (v6)
 
-§6 Integrations — replace the "Exotel Pro, ~₹2,500/month" line with:
+§6 Integrations - replace the "Exotel Pro, ~₹2,500/month" line with:
 
 ```
 - **Telephony**: FreJun (₹1,149/user/month, ~₹5,750-17,250/month

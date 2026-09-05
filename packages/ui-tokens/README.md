@@ -3,7 +3,7 @@
 CSS brand tokens for shadhil-crm and any future PaalStack project. Built
 on the [shadcn theming convention](https://ui.shadcn.com/docs/theming)
 using OKLCH color space. Inter is the brand font (loaded via
-`next/font` in each consuming app — see "Font setup" below).
+`next/font` in each consuming app - see "Font setup" below).
 
 ## Files in this package
 
@@ -18,7 +18,7 @@ using OKLCH color space. Inter is the brand font (loaded via
 
 This package used to ship `defaults.css` (a vendored copy of shadcn's
 default `:root`/`.dark` blocks). It was deleted in favor of importing
-`@paalstack/react-ui/base.css` directly — the library already ships the
+`@paalstack/react-ui/base.css` directly - the library already ships the
 same shadcn defaults, vendored and kept up-to-date with the library
 version. One source of truth, automatic updates on `pnpm install`.
 
@@ -26,7 +26,7 @@ version. One source of truth, automatic updates on `pnpm install`.
 
 ```css
 @import '@paalstack/react-ui/all.css';       /* shadcn defaults + theme + utilities + toast */
-@import '@shadhil/ui-tokens/brand.css';      /* YOUR overrides — last :root wins */
+@import '@shadhil/ui-tokens/brand.css';      /* YOUR overrides - last :root wins */
 @import 'tailwindcss';
 
 @source '../../node_modules/@paalstack/react-ui';
@@ -49,8 +49,8 @@ slots you change. Last `:root` declaration wins for CSS variables.
 
 You need exactly three brand values:
 
-- **Primary** — the main call-to-action / brand color (used for `--primary`)
-- **Secondary** — the accent / brand secondary (used for `--secondary`)
+- **Primary** - the main call-to-action / brand color (used for `--primary`)
+- **Secondary** - the accent / brand secondary (used for `--secondary`)
 
 Convert each hex value to OKLCH. Quick way:
 
@@ -131,7 +131,7 @@ export default function RootLayout({ children }) {
 
 The `inter.variable` class sets `--font-inter` on `<body>`. Tailwind's
 `font-sans` utility then resolves to `var(--font-sans)` (declared in
-`globals.css` as `var(--font-inter, system-ui, sans-serif)` — see the
+`globals.css` as `var(--font-inter, system-ui, sans-serif)` - see the
 cascade example above).
 
 **Why `next/font` instead of `@font-face` in CSS:**
@@ -161,6 +161,6 @@ For the font:
 - shadcn theming docs: https://ui.shadcn.com/docs/theming
 - OKLCH picker: https://oklch.com
 - Tailwind v4 `@theme` directive: https://tailwindcss.com/docs/theme
-- `@paalstack/react-ui/all.css` — the library's vendored shadcn
+- `@paalstack/react-ui/all.css` - the library's vendored shadcn
   defaults + theme mapping + utilities + toast rules (we import this;
   the project doesn't need to maintain its own copy)

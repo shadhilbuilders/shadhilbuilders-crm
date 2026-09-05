@@ -1,4 +1,4 @@
-# Client Feedback Round 3 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 3 - 2026-08-29 (Shadhil CRM)
 
 This is a delta on top of `DESIGN.md` (v1) and the two previous delta files
 (`CLIENT-FEEDBACK-2026-08-29.md` and `CLIENT-FEEDBACK-v2-2026-08-29.md`).
@@ -12,7 +12,7 @@ on real-world merit for a CRM. Doing that now.
 Your three decisions are defensible, but they have a real cost you should
 see clearly before locking them in. Summary, then details:
 
-1. **"Easy and best stack for CRM"** — depends on whether you mean
+1. **"Easy and best stack for CRM"** - depends on whether you mean
    *fastest to ship* or *most scalable long-term*. They pull in opposite
    directions. I've laid out the real tradeoffs below. For a 5-50 user
    internal CRM, the conventional full-stack (Next.js OR a single
@@ -21,7 +21,7 @@ see clearly before locking them in. Summary, then details:
    engineers. Below that, it's over-engineering you pay for in
    time-to-MVP and ongoing ops.
 
-2. **NestJS + GraphQL backend on Hostinger VPS via Coolify** — works,
+2. **NestJS + GraphQL backend on Hostinger VPS via Coolify** - works,
    real pattern, lots of teams do it. Three real costs: (a) splits
    the codebase into 3 instead of 2, (b) makes auth + RLS noticeably
    harder than the Next.js full-stack case, (c) puts you on call for
@@ -29,7 +29,7 @@ see clearly before locking them in. Summary, then details:
    run OmniRoute stable on a self-hosted setup (you have, on this
    machine), the operational risk is real but manageable.
 
-3. **"Best and easy"** — for THIS scope, the honest answer is "easy"
+3. **"Best and easy"** - for THIS scope, the honest answer is "easy"
    wins. You can refactor to a more complex stack at 10K users. You
    can't un-spend 8 weeks of dev time on architecture that didn't
    need to exist yet. But if the *learning* is part of the value
@@ -38,7 +38,7 @@ see clearly before locking them in. Summary, then details:
 
 I'll lay out three concrete stack options below, with honest pros/cons
 and a recommendation. The recommendation is not "what I usually pick"
-— it's "what fits this specific project, your stated constraints, and
+- it's "what fits this specific project, your stated constraints, and
 the cost of getting it wrong."
 
 ---
@@ -184,7 +184,7 @@ Dev time:  8-12 weeks to MVP
    same scope vs 4-6 weeks for Option A. The architecture
    decisions, the monorepo setup, the codegen config, the
    RLS-with-GraphQL pattern, the auth shim, the chat
-   subscription server — each one is a week.
+   subscription server - each one is a week.
 
 **Scaling ceiling: 1M+ users on this stack.**
 
@@ -239,7 +239,7 @@ without the PaalStack flavor:
   $3,000-6,000 at your loaded rate. The math doesn't favor
   Option B at this scale.
 
-**But —** if your real goal is "I want NestJS + GraphQL in my
+**But -** if your real goal is "I want NestJS + GraphQL in my
 portfolio for the next 5 client projects," then Option B is the
 right call. The 4-6 extra weeks are an investment, not waste.
 And the architecture genuinely IS more scalable for when
@@ -255,16 +255,16 @@ If reusable infra: Option B.
 
 ## What changes in DESIGN.md if you take Option B (your path)
 
-§7 Tech stack — full rewrite:
+§7 Tech stack - full rewrite:
 
 ```
 Web:        Next.js 16 + TypeScript + Tailwind v4
-Mobile:     Expo (React Native) + Expo Router — v1.1, PWA first in v1
+Mobile:     Expo (React Native) + Expo Router - v1.1, PWA first in v1
 Backend:    NestJS 10 + GraphQL (Apollo) + TypeORM (or Prisma)
 Database:   Postgres 16 (Docker container on Hostinger VPS via Coolify)
 Cache:      Redis 7 (Docker container, sessions + pub/sub for chat)
 Auth:       Passport.js + JWT in NestJS
-            (OR better-auth as a BFF in Next.js — TBD)
+            (OR better-auth as a BFF in Next.js - TBD)
 Realtime:   graphql-ws subscriptions + Redis pub/sub
 Storage:    MinIO (S3-compatible, self-hosted in Docker)
 Messaging:  WhatsApp Cloud API (webhook → NestJS resolver)
@@ -274,13 +274,13 @@ Deploy:     Coolify on Hostinger VPS (4-8GB plan, Mumbai/India region)
 
 Auth is the main TBD. Two viable options:
 
-1. **better-auth as a BFF in Next.js** — Next.js handles login,
+1. **better-auth as a BFF in Next.js** - Next.js handles login,
    session, password reset. Next.js proxies GraphQL calls to
    NestJS with a service token. NestJS trusts the token, sets
    the RLS session var from the JWT claims. Cleanest if you
    want better-auth's UX.
 
-2. **Passport.js + JWT in NestJS** — NestJS owns the entire auth
+2. **Passport.js + JWT in NestJS** - NestJS owns the entire auth
    surface. Web/mobile both call NestJS for login. JWTs are
    short-lived (15 min) + refresh tokens. More control, more
    code, more security surface to test.

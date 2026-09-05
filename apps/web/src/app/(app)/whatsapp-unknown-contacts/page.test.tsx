@@ -1,4 +1,4 @@
-// T-E2b admin queue — wire-shape contract.
+// T-E2b admin queue - wire-shape contract.
 //
 // Pins:
 //   - The list renders rows from useWaUnknownContacts, with phone,
@@ -60,7 +60,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('WhatsappUnknownContactsPage — wire-shape contract (T-E2b)', () => {
+describe('WhatsappUnknownContactsPage - wire-shape contract (T-E2b)', () => {
   it('renders PENDING rows with phone, first message, message count, and action buttons by default', () => {
     mockedUseList.mockReturnValue({
       data: {
@@ -207,7 +207,7 @@ describe('WhatsappUnknownContactsPage — wire-shape contract (T-E2b)', () => {
     } as never);
     mockedUseSpam.mockReturnValue(buildSpamMock() as never);
 
-    // Stub the useState hook so the page starts on CONVERTED — easier
+    // Stub the useState hook so the page starts on CONVERTED - easier
     // than navigating. We re-mock the page component's tab state by
     // setting the active tab via the rendered HTML only; the rest of
     // the contract is the same.

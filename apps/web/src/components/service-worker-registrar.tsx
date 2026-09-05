@@ -26,7 +26,7 @@ export function ServiceWorkerRegistrar() {
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) {
       // Old browser or environment without SW support (e.g. private mode in
-      // some Safari versions). Silent no-op — the app still works, it just
+      // some Safari versions). Silent no-op - the app still works, it just
       // can't be installed or used offline.
       console.warn('[PWA] navigator.serviceWorker unavailable; PWA features disabled');
       return;
@@ -37,7 +37,7 @@ export function ServiceWorkerRegistrar() {
       void serwist.register();
     } catch (err) {
       // SW registration can fail in restrictive environments (e.g. embedded
-      // webviews, strict cookie policies). Don't crash the app — offline +
+      // webviews, strict cookie policies). Don't crash the app - offline +
       // install just become unavailable.
       console.warn('[PWA] Service worker registration failed:', err);
     }

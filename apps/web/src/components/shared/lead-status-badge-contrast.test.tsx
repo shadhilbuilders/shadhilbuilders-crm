@@ -1,8 +1,8 @@
-// T-D8 — WCAG AA contrast verification for status badge pairings.
+// T-D8 - WCAG AA contrast verification for status badge pairings.
 //
 // The LeadStatusBadge pairs (background, foreground) from the design
 // system's semantic tokens. A future "I'll just swap to bg-info for
-// this state" change must NOT silently regress the contrast — most
+// this state" change must NOT silently regress the contrast - most
 // customers will never notice a 3:1 ratio on a status pill, but
 // accessibility audits will (and the law will, for any Indian
 // company with public-facing UI).
@@ -18,7 +18,7 @@
 //
 // History: the original version of this test read
 // `node_modules/@paalstack/react-ui/dist/base.css` (the library
-// defaults) — but the library's defaults fail AA on 6 of 9 status
+// defaults) - but the library's defaults fail AA on 6 of 9 status
 // pairs. Reading the library file meant the test was auditing the
 // wrong tokens. It "passed" only because every status pair in the
 // old `BADGE_PAIRS` list coincidentally mapped to a library
@@ -28,8 +28,8 @@
 //
 // What this test does NOT cover:
 //   - Real DOM mounting with text wrapping (text-length contrast
-//     adjustments don't apply here — we use the WCAG formula).
-//   - Dark mode pairings (covered separately when dark mode ships —
+//     adjustments don't apply here - we use the WCAG formula).
+//   - Dark mode pairings (covered separately when dark mode ships -
 //     the values will be in `.dark` overrides).
 
 import { describe, expect, it } from 'vitest';
@@ -105,11 +105,11 @@ const BADGE_PAIRS = [
 //
 //   1. pnpm's content-addressed store puts the library's files
 //      under `node_modules/.pnpm/@paalstack+react-ui@<ver>@<hash>/...`
-//      with a hash that depends on the exact dep tree — a path
+//      with a hash that depends on the exact dep tree - a path
 //      written today may not resolve after `pnpm install` rolls the
 //      version. The OLD test (before this commit) used
 //      `node_modules/@paalstack/react-ui/dist/base.css` (4 levels
-//      up from the test file) which NEVER resolved under pnpm — the
+//      up from the test file) which NEVER resolved under pnpm - the
 //      file system threw, the try/catch swallowed it, and every
 //      test passed vacuously. Pinning the values here closes that
 //      bug for good.
@@ -122,7 +122,7 @@ const BADGE_PAIRS = [
 //
 //   3. The audit is the same as the one in
 //      packages/ui-tokens/test/compliance.test.ts. Both tests
-//      pin the same set of values — a drift in one will be caught
+//      pin the same set of values - a drift in one will be caught
 //      by the other.
 //
 // Source-of-truth for the values: `packages/ui-tokens/src/brand.css`
@@ -151,7 +151,7 @@ function oklchToSrgb({ l, c, h }: Oklch): RgbTriple {
     b: -0.0041960863 * lLms - 0.7034186147 * mLms + 1.707614701 * sLms,
   };
   // Linear sRGB → gamma-encoded sRGB (the same code as
-  // packages/ui-tokens/src/contrast.ts — kept inline so this
+  // packages/ui-tokens/src/contrast.ts - kept inline so this
   // test has no dependency on the contrast module).
   const enc = (x: number): number => {
     const c2 = Math.max(0, Math.min(1, x));
@@ -177,7 +177,7 @@ const RESOLVED_TOKENS: Record<string, Oklch> = {
   'secondary':             { l: 0.684, c: 0.178, h: 136.1 },
   'secondary-foreground':  { l: 0.145, c: 0,     h: 0   },
   // Library's near-white foregrounds (the strong-variant fg).
-  // T-D8 didn't change these — it darkened the BG instead. They
+  // T-D8 didn't change these - it darkened the BG instead. They
   // are still oklch(0.99 0 0) (near-white) and only pass AA on
   // the now-darker (T-D8-overridden) bg values.
   'success-foreground':     { l: 0.99,  c: 0,     h: 0   },
@@ -220,7 +220,7 @@ describe('T-D8: WCAG AA contrast for status badge pairings (light mode)', () => 
     const fgToken = fgClass.replace(/^text-/, '');
     it(`${label}: ${bgClass} + ${fgClass} >= 4.5:1 (AA)`, () => {
       const result = pairContrast(bgToken, fgToken);
-      // RESOLVED_TOKENS is hardcoded in this file — a missing entry
+      // RESOLVED_TOKENS is hardcoded in this file - a missing entry
       // means the test is out of date with the actual class pair, not
       // that the browser can't apply the token. Fail loudly so the
       // drift is caught at PR time.
@@ -241,7 +241,7 @@ describe('T-D8: WCAG AA contrast for status badge pairings (light mode)', () => 
 });
 
 describe('T-D8: brand color contrast (foreground/background pairings the UI actually uses)', () => {
-  // The Shadhil secondary #62b132 is a FILL color — text on it is the
+  // The Shadhil secondary #62b132 is a FILL color - text on it is the
   // near-black --secondary-foreground token, NOT white. The library
   // convention for "secondary" is inverted from the typical
   // "white-on-accent" pattern: the accent is bright, the text is dark,
@@ -254,7 +254,7 @@ describe('T-D8: brand color contrast (foreground/background pairings the UI actu
     const nearBlack: [number, number, number] = [37, 37, 37];
     const ratio = contrastRatio(nearBlack, green);
     // WCAG 2.1 AA floor for normal text is 4.5:1. AAA (7:1) is the
-    // stricter aspirational target — the brand green doesn't clear
+    // stricter aspirational target - the brand green doesn't clear
     // AAA but it clears AA, which is the legal floor. If the brand
     // wants AAA later, darken --secondary-foreground further (or
     // swap to a darker green). Pin the current value so a future
@@ -265,7 +265,7 @@ describe('T-D8: brand color contrast (foreground/background pairings the UI actu
     ).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('secondary #62b132 with white text: < 3:1 (FAILS AA Large — pin the failure mode)', () => {
+  it('secondary #62b132 with white text: < 3:1 (FAILS AA Large - pin the failure mode)', () => {
     // The library convention is dark-on-bright for "secondary" surfaces,
     // so the white-on-green pairing is NOT used anywhere. We pin the
     // value explicitly so a future "swap to white text for contrast with
@@ -277,7 +277,7 @@ describe('T-D8: brand color contrast (foreground/background pairings the UI actu
     const ratio = contrastRatio(white, green);
     expect(
       ratio,
-      `white text on #62b132 is ${ratio.toFixed(2)}:1 — fails AA Large (3:1); library must use dark text on this fill`,
+      `white text on #62b132 is ${ratio.toFixed(2)}:1 - fails AA Large (3:1); library must use dark text on this fill`,
     ).toBeLessThan(3.0);
   });
 

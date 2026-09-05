@@ -1,4 +1,4 @@
-; PgBouncer auth file — SCRAM (auth_type = scram-sha-256 in pgbouncer.ini).
+; PgBouncer auth file - SCRAM (auth_type = scram-sha-256 in pgbouncer.ini).
 ; SECOND-ROUND AUDIT (AR-2c): userlist previously held a stale md5 verifier
 ; that did not match POSTGRES_PASSWORD and could never authenticate under
 ; scram-sha-256. With plaintext entries, PgBouncer derives the SCRAM

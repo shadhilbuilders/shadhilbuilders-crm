@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lighthouse-pwa.sh — Run Lighthouse PWA audit on a deployed URL.
+# scripts/lighthouse-pwa.sh - Run Lighthouse PWA audit on a deployed URL.
 #
 # Usage: ./scripts/lighthouse-pwa.sh <url>
 # Example: ./scripts/lighthouse-pwa.sh https://shadhil-crm-git-pwa-mvp-shadhilbuilders.vercel.app
 #
 # Requires: node + npx (ships with npm). Lighthouse is fetched on demand via
-# `npx --yes lighthouse@11.7.1` — DO NOT bump to 12.x or newer: Google removed
+# `npx --yes lighthouse@11.7.1` - DO NOT bump to 12.x or newer: Google removed
 # the `pwa` category in Lighthouse 12 (see web.dev changelog Oct 2025).
 # 11.7.1 is the last release with a scored PWA category, so we pin exactly.
 # First run downloads + caches the tarball (~10s); subsequent runs are fast.
@@ -103,10 +103,10 @@ for ref in d['categories']['pwa']['auditRefs']:
 # Pass/fail exit code.
 if [[ "$PWA_SCORE" =~ ^[0-9]+$ ]] && [ "$PWA_SCORE" -ge 90 ]; then
   echo
-  echo "✓ PASS — Task 15 (Lighthouse PWA ≥ 90) satisfied"
+  echo "✓ PASS - Task 15 (Lighthouse PWA ≥ 90) satisfied"
   exit 0
 else
   echo
-  echo "✗ FAIL — Lighthouse PWA score below 90. See $REPORT_PATH for full details."
+  echo "✗ FAIL - Lighthouse PWA score below 90. See $REPORT_PATH for full details."
   exit 1
 fi

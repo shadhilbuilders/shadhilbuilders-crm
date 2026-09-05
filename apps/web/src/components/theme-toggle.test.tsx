@@ -1,7 +1,7 @@
 // ThemeToggle wire-shape contract (T-D8 sibling, 2026-09-05).
 //
 // The `ThemeToggle` component subscribes to `useNextTheme` (a
-// next-themes wrapper) — that context only exists inside the
+// next-themes wrapper) - that context only exists inside the
 // NextThemeProvider mounted in apps/web/src/providers/providers.tsx.
 // To test the button in isolation we render the pure
 // `ThemeToggleButton` (the same JSX, no hooks) with a stub icon +
@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ThemeToggleButton } from './theme-toggle';
 
-describe('ThemeToggleButton — wire-shape contract', () => {
+describe('ThemeToggleButton - wire-shape contract', () => {
   it('renders the icon, label, and data-theme-mode attribute', () => {
     const html = renderToStaticMarkup(
       <ThemeToggleButton
@@ -68,7 +68,7 @@ describe('ThemeToggleButton — wire-shape contract', () => {
     // React's test renderer to mount the component and dispatch a
     // synthetic event.
     //
-    // Simpler: trust the wire shape — the onClick prop is forwarded
+    // Simpler: trust the wire shape - the onClick prop is forwarded
     // directly to <Button>'s underlying onClick. If the prop reaches
     // the DOM button, the click will fire. Verify the prop wiring
     // is intact by reading the rendered HTML for the right class

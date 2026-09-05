@@ -16,7 +16,7 @@
  * Mechanism: flag any file that (a) imports `prisma` (or aliases it)
  * from @shadhil/database, or accesses `prismaService.$client`, AND
  * (b) does not pass that client into withRlsContext. Files in the
- * ALLOWLIST are skipped (they are the sanctioned uses above — each
+ * ALLOWLIST are skipped (they are the sanctioned uses above - each
  * allowlist entry must carry a why).
  *
  * Exit 1 on any violation. Wired into CI as the `guardrails` job.
@@ -29,7 +29,7 @@ const ROOT = process.cwd();
 /** Sanctioned bare-client files. Key = path from repo root. Value = why. */
 const ALLOWLIST = {
   'apps/backend/src/auth/jwt-auth.guard.ts':
-    'T-S hardening: mustChangePassword gate — better-auth session/user lookups are pre-RLS by design (see policies.sql)',
+    'T-S hardening: mustChangePassword gate - better-auth session/user lookups are pre-RLS by design (see policies.sql)',
   'apps/backend/src/webhooks/webhooks.controller.ts':
     'Signature-verified Meta webhook ingest is a sanctioned bare-client path (AGENTS.md); barePrisma is passed INTO withRlsContext',
   'apps/backend/src/whatsapp-unknown-contacts/whatsapp-unknown-contacts.service.ts':
@@ -37,13 +37,13 @@ const ALLOWLIST = {
   'apps/backend/src/whatsapp/outbound.cron.ts':
     'System cron (CRON_SERVICE) is a sanctioned bare-client path (AGENTS.md)',
   'apps/backend/src/prisma/prisma.module.ts':
-    'Provider module — constructs and exposes PrismaService.$client for the whole app; performs no business queries itself',
+    'Provider module - constructs and exposes PrismaService.$client for the whole app; performs no business queries itself',
 };
 
 const SKIP_TEST_FILE = /(^|\.)(test|spec)\.tsx?$/;
 
 // Files that merely DECLARE the sanctioned pattern are fine even
-// without matching the heuristics — but the heuristic still needs to
+// without matching the heuristics - but the heuristic still needs to
 // catch the actual failure mode. Walk the tree.
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
@@ -81,7 +81,7 @@ function main() {
 
     if (!usesRls && !ALLOWLIST[rel]) {
       violations.push(
-        `${rel}: imports the bare prisma client (or prismaService.$client) but never calls withRlsContext — ` +
+        `${rel}: imports the bare prisma client (or prismaService.$client) but never calls withRlsContext - ` +
           `business queries MUST run under RLS (AGENTS.md). If this is a sanctioned bare-client path ` +
           `(webhook ingest, system cron, better-auth session), add it to scripts/check-bare-prisma.mjs ALLOWLIST with a why.`,
       );
@@ -94,7 +94,7 @@ function main() {
     console.error(`\n${violations.length} violation(s).`);
     process.exit(1);
   }
-  console.log('✓ bare-prisma guardrail passed — all bare-client imports are wrapped or allowlisted');
+  console.log('✓ bare-prisma guardrail passed - all bare-client imports are wrapped or allowlisted');
 }
 
 main();

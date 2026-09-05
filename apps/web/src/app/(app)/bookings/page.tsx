@@ -38,7 +38,7 @@ type BookingRow = {
 // Filter chips: All + every BookingStatus value. The "All" tab
 // sends no status param; selecting a specific status narrows the
 // server query. Backend re-validates the param via
-// BookingFilterDtoSchema — out-of-enum values throw 400 (handled
+// BookingFilterDtoSchema - out-of-enum values throw 400 (handled
 // by the api() client's ApiError → page renders ModulePending).
 const STATUS_FILTERS: { value: BookingStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All' },
@@ -60,7 +60,7 @@ function isBookingStatus(value: string): value is BookingStatus {
 }
 
 function formatMoney(value: string | undefined): string {
-  if (value === undefined) return '—';
+  if (value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   // Backend sends numbers as strings (Prisma Decimal serialises to
@@ -201,7 +201,7 @@ function BookingTable({
                 ? row.leadName
                 : leadId.length > 0
                   ? leadNameById.get(leadId)
-                  : undefined) ?? '—';
+                  : undefined) ?? '-';
             const status = typeof row.status === 'string' ? row.status : '';
             const badgeClass = isBookingStatus(status)
               ? STATUS_BADGE_CLASS[status]
@@ -228,7 +228,7 @@ function BookingTable({
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
                     data-qa="booking-status-badge"
                   >
-                    {isBookingStatus(status) ? labelFor('booking', status) : status || '—'}
+                    {isBookingStatus(status) ? labelFor('booking', status) : status || '-'}
                   </span>
                 </td>
                 <td className="hidden px-4 py-2.5 tabular-nums sm:table-cell">
@@ -240,7 +240,7 @@ function BookingTable({
                 <td className="text-muted-foreground hidden px-4 py-2.5 tabular-nums md:table-cell">
                   {typeof row.createdAt === 'string'
                     ? new Date(row.createdAt).toLocaleDateString('en-IN')
-                    : '—'}
+                    : '-'}
                 </td>
                 <td className="text-muted-foreground px-4 py-2.5 text-xs">
                   {typeof row.userName === 'string' && row.userName.length > 0 ? (

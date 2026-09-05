@@ -1,4 +1,4 @@
-// Metrics — minimal in-process counter / gauge / histogram for the
+// Metrics - minimal in-process counter / gauge / histogram for the
 // standalone SSE service.
 //
 // T-PERF-2 #4 (2026-09-04). Plain text Prometheus exposition format
@@ -46,7 +46,7 @@ export class Metrics {
   }
 
   /** Observe a value into a histogram. We keep the raw samples (no
-   *  bucketization) for simplicity — the dataset is small per process
+   *  bucketization) for simplicity - the dataset is small per process
    *  and Prometheus' `histogram_quantile()` over raw samples is exact.
    *  For high-cardinality histograms, switch to bucket-based. */
   observe(name: string, labels: Record<string, string> = {}, value: number): void {

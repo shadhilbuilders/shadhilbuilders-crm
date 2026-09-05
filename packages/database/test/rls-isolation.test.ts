@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// RLS isolation matrix — §19.2 of the plan
+// RLS isolation matrix - §19.2 of the plan
 // ────────────────────────────────────────────────────────────────────────────
 // Full matrix: 4 roles (ADMIN / MANAGER / SALES_EXEC / TELECALLER)
 //            × 8 business tables (Lead / Activity / SiteVisit / Message /
@@ -26,7 +26,7 @@
 // via userId) get their matrix rows derived from those columns.
 //
 // When the test runs without a database (DATABASE_URL unset) the
-// setup.ts `DATABASE_AVAILABLE` guard SKIPs — and with
+// setup.ts `DATABASE_AVAILABLE` guard SKIPs - and with
 // RLS_MATRIX_REQUIRED=true the suite HARD-FAILS at startup instead.
 // CI is wired at .github/workflows/ci.yml:rls-matrix.
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -37,8 +37,8 @@ import { withRlsContext, type RlsContext } from '../src/rls';
 
 import { DATABASE_AVAILABLE } from './setup';
 
-// The fixture needs the OWNER database role (bypass-RLS) — `shadhil`
-// via DIRECT_DATABASE_URL — not the non-owner `shadhil_app` role used
+// The fixture needs the OWNER database role (bypass-RLS) - `shadhil`
+// via DIRECT_DATABASE_URL - not the non-owner `shadhil_app` role used
 // at runtime via DATABASE_URL + PgBouncer. Construct a local PrismaClient
 // here rather than importing the shared `prisma` from `./index` (which is
 // bound to DATABASE_URL so the API runtime keeps RLS enforced). Without
@@ -47,7 +47,7 @@ import { DATABASE_AVAILABLE } from './setup';
 //
 // DIRECT_DATABASE_URL is set by CI (see .github/workflows/ci.yml:rls-matrix)
 // and by local dev (.env). If it's missing, DATABASE_AVAILABLE is false
-// and the test skips — same fail-fast path as missing DATABASE_URL.
+// and the test skips - same fail-fast path as missing DATABASE_URL.
 const adminUrl = process.env.DIRECT_DATABASE_URL ?? '';
 const adminPrisma = adminUrl
   ? new (prisma.constructor as new (opts: { adapter: PrismaPg }) => typeof prisma)({
@@ -70,7 +70,7 @@ type TableName =
 
 const ROLES: readonly Role[] = ['ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'];
 // OWNER travels as ADMIN at the RLS layer per packages/database/src/rls.ts,
-// so it isn't part of the RLS-visible role set — the matrix tests the
+// so it isn't part of the RLS-visible role set - the matrix tests the
 // 4 RLS-visible roles only.
 type OwnerType = Exclude<Role, never>;
 const ACTIONS: readonly Action[] = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
@@ -106,7 +106,7 @@ type Fixture = {
  * table linked to each lead. Idempotent: re-running overwrites by cuid-
  * derived keys (cuid() collision rate is negligible inside one DB).
  *
- * Uses DIRECT_DATABASE_URL semantics — bypasses RLS via the owner role,
+ * Uses DIRECT_DATABASE_URL semantics - bypasses RLS via the owner role,
  * which is correct for fixture setup. The matrix tests themselves run
  * inside `withRlsContext` under the actor's role.
  */
@@ -212,7 +212,7 @@ async function buildFixture(): Promise<Fixture> {
     await adminPrisma.user.update({ where: { id: userId }, data: { teamId } });
   }
 
-  // Need a Project + Phase + Unit for Booking — seed minimal versions.
+  // Need a Project + Phase + Unit for Booking - seed minimal versions.
   const projectAId = 'fixture-project-a';
   const projectBId = 'fixture-project-b';
   const phaseAId = 'fixture-phase-a';
@@ -521,7 +521,7 @@ function ctxFor(role: Role, fixture: Fixture): RlsContext {
  *
  * Note on counts: the fixture seeds exactly one row per table per
  * org (org-alpha + org-beta). Demo seed data + previous runs may
- * have left extra rows — to keep assertions stable we filter by
+ * have left extra rows - to keep assertions stable we filter by
  * `id IN fixture.rowIds[table]` instead of counting the whole table.
  * See runCase().
  */
@@ -554,22 +554,22 @@ const SELECT_EXPECTATIONS: Readonly<Record<Role, 'own' | 'all'>> = {
  *                UPDATE/DELETE: NO POLICY → DEFAULT DENY
  *   Booking:     FOR ALL (admin OR manager-team OR owner-of-parent)
  *   Reminder:    SELECT (admin OR manager OR owner),
- *                FOR ALL write (owner only — even admin/manager can't
+ *                FOR ALL write (owner only - even admin/manager can't
  *                write someone else's reminder)
- *   Notification:SELECT/UPDATE/DELETE (owner only — even admin/manager
+ *   Notification:SELECT/UPDATE/DELETE (owner only - even admin/manager
  *                can't see/touch someone else's notification),
- *                INSERT (owner-only, Day 4 — was DEFAULT DENY before the
+ *                INSERT (owner-only, Day 4 - was DEFAULT DENY before the
  *                notification_insert_owner migration landed)
  *   AuditLog:    SELECT (admin OR owner),
  *                INSERT (any authenticated actor),
  *                UPDATE/DELETE: NO POLICY → DEFAULT DENY
  *
  * The matrix below is the SINGLE SOURCE OF TRUTH for RLS expectations
- * — the policies.sql must mirror it. If a test fails here, the policy
+ * - the policies.sql must mirror it. If a test fails here, the policy
  * is wrong (not the test).
  *
- * "allowed" — operation should succeed (within own org for org-scoped roles).
- * "rejected" — RLS should block the operation.
+ * "allowed" - operation should succeed (within own org for org-scoped roles).
+ * "rejected" - RLS should block the operation.
  */
 type Outcome = 'allowed' | 'rejected';
 
@@ -578,12 +578,12 @@ type Outcome = 'allowed' | 'rejected';
  *
  * Encoding as nested Record<string, Record<Action, Outcome>> makes
  * the matrix readable and forces a TS error when a new action is
- * added — every row must be filled in.
+ * added - every row must be filled in.
  */
 const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outcome>>>> = {
   // INSERT on a NEW row tied to the alpha lead:
   //   - The policy gates on parent Lead's teamId (matches teamA) AND
-  //     ownerId (matches teleA — the lead's owner).
+  //     ownerId (matches teleA - the lead's owner).
   //   - ADMIN: matches via role. ALLOWED.
   //   - MANAGER: matches via teamId. ALLOWED.
   //   - SALES_EXEC: must match parent lead's ownerId. execA != teleA → REJECTED.
@@ -594,10 +594,10 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     SiteVisit: 'allowed',
     Message: 'allowed',
     Booking: 'allowed',
-    Reminder: 'allowed', // owner-only — admin creates their own reminder
+    Reminder: 'allowed', // owner-only - admin creates their own reminder
     Notification: 'allowed', // notification_insert_owner (Day 4):
                           // owner can write their own notif. Admin's
-                          // ctx.userId is managerA — they can write
+                          // ctx.userId is managerA - they can write
                           // notifs owned by managerA.
     AuditLog: 'allowed',
   },
@@ -607,19 +607,19 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     SiteVisit: 'allowed',
     Message: 'allowed',
     Booking: 'allowed',
-    Reminder: 'allowed', // owner-only — manager creates their own
+    Reminder: 'allowed', // owner-only - manager creates their own
     Notification: 'allowed', // owner can write own notif
     AuditLog: 'allowed',
   },
   SALES_EXEC: {
     Lead: 'allowed', // teamId matches → policy allows (ownerId is set by the
-                    // create() call to execA, which is fine — policy only
+                    // create() call to execA, which is fine - policy only
                     // checks teamId on INSERT).
     Activity: 'rejected', // policy gates on parent lead ownerId; execA != teleA
     SiteVisit: 'rejected',
     Message: 'rejected',
     Booking: 'rejected',
-    Reminder: 'allowed', // owner-only — exec creates their own
+    Reminder: 'allowed', // owner-only - exec creates their own
     Notification: 'allowed', // owner can write own notif
     AuditLog: 'allowed',
   },
@@ -629,7 +629,7 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     SiteVisit: 'allowed',
     Message: 'allowed',
     Booking: 'allowed',
-    Reminder: 'allowed', // owner-only — tele creates their own
+    Reminder: 'allowed', // owner-only - tele creates their own
     Notification: 'allowed', // owner can write own notif (teleA IS the owner)
     AuditLog: 'allowed',
   },
@@ -744,7 +744,7 @@ const DELETE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
  *     alpha row (team/owner-scoped).
  *   - Reminder/AuditLog: ADMIN sees both fixture rows; MANAGER sees
  *     both (team-broadened); SALES_EXEC/TELECALLER see only their own
- *     (owner-scoped) — which is the alpha row for our fixture.
+ *     (owner-scoped) - which is the alpha row for our fixture.
  *   - Notification: OWNER-ONLY for SELECT. ADMIN is NOT a separate
  *     superuser here. Each role sees only their own userId.
  */
@@ -764,7 +764,7 @@ function expectedSelectCount(role: Role, table: TableName): number {
   //
   // Reminder (owner-scoped with admin/manager override, no team gate):
   //   ADMIN → 2 (both alpha + beta).
-  //   MANAGER → 2 (broader SELECT — no team filter).
+  //   MANAGER → 2 (broader SELECT - no team filter).
   //   TELECALLER (teleA, owns alpha reminder) → 1.
   //   SALES_EXEC (execA, owns nothing) → 0.
   //
@@ -792,7 +792,7 @@ function expectedSelectCount(role: Role, table: TableName): number {
     if (role === 'MANAGER') return 1;
     return 0;
   }
-  // Lead / Activity / SiteVisit / Message / Booking — parent-Lead-scoped.
+  // Lead / Activity / SiteVisit / Message / Booking - parent-Lead-scoped.
   if (role === 'ADMIN') return 2;
   if (role === 'MANAGER') return 1; // managerA is on teamA; leadA is teamA.
   if (role === 'TELECALLER') return 1; // teleA owns leadA.
@@ -959,7 +959,7 @@ async function runCase(
       //     a SENTINEL so the savepoint rolls back the successful
       //     delete. The outer catch sees the sentinel and classifies
       //     as 'ok' (the policy ALLOWED the operation, which is what
-      //     we asserted — we just didn't commit the destructive side
+      //     we asserted - we just didn't commit the destructive side
       //     effect).
       const ROLLBACK_SENTINEL = 'matrix-rls-allowed-rollback';
       const own = fixture.rowIds[table].own;
@@ -974,7 +974,7 @@ async function runCase(
               >
             )[lower].delete({ where: { id: own } });
           } catch (err) {
-            // RLS rejection — bubble up to savepoint rollback.
+            // RLS rejection - bubble up to savepoint rollback.
             throw err;
           }
           // RLS allowed. Throw sentinel to rollback the savepoint.
@@ -983,17 +983,17 @@ async function runCase(
         return { kind: 'ok' };
       } catch (err) {
         if (err instanceof Error && err.message === ROLLBACK_SENTINEL) {
-          // Expected rollback — the policy ALLOWED the delete.
+          // Expected rollback - the policy ALLOWED the delete.
           return { kind: 'ok' };
         }
-        // RLS rejection (or anything else) — classify as err.
+        // RLS rejection (or anything else) - classify as err.
         return { kind: 'err' };
       }
     } catch (err) {
     // RLS rejections surface as PrismaClientKnownRequestError with
     // code P2001 (records not found) or raw Postgres errors. We
     // report 'err' for the matrix to classify.
-    void err; // consumed — result.kind encodes the classification
+    void err; // consumed - result.kind encodes the classification
     return { kind: 'err' };
     }
   });
@@ -1053,7 +1053,7 @@ describe('RLS isolation matrix: 4 roles × 8 tables × 4 actions = 128 cases', (
                 throw new Error(`${caseName}: expected allowed, got ${result.kind}`);
               }
             } else {
-              // 'rejected' — the RLS policy should block this
+              // 'rejected' - the RLS policy should block this
               if (result.kind !== 'err') {
                 throw new Error(`${caseName}: expected rejected, got ${result.kind}`);
               }
@@ -1066,7 +1066,7 @@ describe('RLS isolation matrix: 4 roles × 8 tables × 4 actions = 128 cases', (
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// T-CRONS (2026-09-07) — the 129th test case.
+// T-CRONS (2026-09-07) - the 129th test case.
 // ────────────────────────────────────────────────────────────────────────────
 // The reminder_cron_service RLS policy lets the reminder cron (a
 // service account, role=CRON_SERVICE AND userId='cron-service') UPDATE
@@ -1077,15 +1077,15 @@ describe('RLS isolation matrix: 4 roles × 8 tables × 4 actions = 128 cases', (
 //
 // Three things to pin:
 //   (a) The canonical cron-service pair (role=CRON_SERVICE AND
-//       userId='cron-service') CAN UPDATE any Reminder — proves the
+//       userId='cron-service') CAN UPDATE any Reminder - proves the
 //       bypass works end-to-end against a real DB.
 //   (b) The canonical cron-service pair CAN SELECT all Reminders (the
 //       policy is FOR ALL so it widens both read and write).
 //   (c) A user role that sets role=CRON_SERVICE but keeps their own
-//       userId CANNOT widen their privilege — the impersonation guard
+//       userId CANNOT widen their privilege - the impersonation guard
 //       at the policy AND clause keeps the bypass closed.
 //
-// ADMIN is excluded from (c) — admin already has full UPDATE
+// ADMIN is excluded from (c) - admin already has full UPDATE
 // privilege via reminder_select_owner's admin branch; the impersonation
 // guard is meaningful for non-admin roles only.
 
@@ -1101,7 +1101,7 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
     'canonical cron-service pair (role=CRON_SERVICE + userId=cron-service) can UPDATE any Reminder',
     { timeout: 30_000 },
     async () => {
-      // The legitimate cron actor — both role and userId match the
+      // The legitimate cron actor - both role and userId match the
       // service-account sentinel pair. The policy's CRON_SERVICE
       // branch matches and the bypass applies.
       const cronCtx: RlsContext = {
@@ -1154,16 +1154,16 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
 
   for (const userRole of ['MANAGER', 'SALES_EXEC', 'TELECALLER'] as const) {
     it.skipIf(!DATABASE_AVAILABLE)(
-      `${userRole} actor cannot impersonate CRON_SERVICE — keeps their own userId, role=CRON_SERVICE still rejected`,
+      `${userRole} actor cannot impersonate CRON_SERVICE - keeps their own userId, role=CRON_SERVICE still rejected`,
       { timeout: 30_000 },
       async () => {
         // Impersonation attempt: a user role sets
         // app.user_role='CRON_SERVICE' to widen their write privilege,
         // but keeps their own userId (so the AND-clause in the policy
-        // does not match — they need BOTH role=CRON_SERVICE AND
+        // does not match - they need BOTH role=CRON_SERVICE AND
         // userId='cron-service'). The owner-only branch requires
         // userId = the row's userId (teleA), and the impersonator's
-        // userId doesn't match — both branches fail, the UPDATE is
+        // userId doesn't match - both branches fail, the UPDATE is
         // rejected.
         const ctx: RlsContext = {
           userId: fixture.managerAId, // a real user from fixture
@@ -1183,7 +1183,7 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
             return { kind: 'err' as const, err };
           }
         });
-        // Expected: rejected — the impersonator's userId doesn't
+        // Expected: rejected - the impersonator's userId doesn't
         // match the row's userId (teleA), and the CRON_SERVICE branch
         // requires userId='cron-service' which doesn't match either.
         expect(result.kind).toBe('err');
@@ -1193,14 +1193,14 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// T-ARM-SCHEMA (2026-09-04) — the 129th + 130th cases (Plan §18 D2).
+// T-ARM-SCHEMA (2026-09-04) - the 129th + 130th cases (Plan §18 D2).
 // ────────────────────────────────────────────────────────────────────────────
 // The ManagerAssignmentRule table ships with a `managerassignmentrule_select_team`
 // RLS policy (see packages/database/prisma/rls/policies.sql + the Week-5
 // migration). It lets:
 //   - MANAGER read rules where teamId = app.user_team_id
 //   - ADMIN/OWNER read every rule
-//   - TELECALLER / SALES_EXEC read NO rules (DEFAULT DENY — there's no
+//   - TELECALLER / SALES_EXEC read NO rules (DEFAULT DENY - there's no
 //     rule policy that admits them today; rule editing is admin-class).
 //
 // Two assertions pin this end-to-end:
@@ -1250,7 +1250,7 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
   );
 
   it.skipIf(!DATABASE_AVAILABLE)(
-    'TELECALLER on team-a cannot SELECT any rule (DEFAULT DENY — no policy for staff roles)',
+    'TELECALLER on team-a cannot SELECT any rule (DEFAULT DENY - no policy for staff roles)',
     { timeout: 30_000 },
     async () => {
       const tcCtx: RlsContext = {

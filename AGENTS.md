@@ -1,7 +1,7 @@
-# AGENTS.md — shadhil-crm
+# AGENTS.md - shadhil-crm
 
 Working conventions for any AI agent or human working in this repo. The plan of
-record is `docs/planning/IMPLEMENTATION-PLAN-v1.md` — when plan and code
+record is `docs/planning/IMPLEMENTATION-PLAN-v1.md` - when plan and code
 disagree, flag it in one sentence and follow the plan (or update the plan
 first).
 
@@ -42,7 +42,7 @@ first).
   silently skip: CI sets `RLS_MATRIX_REQUIRED=true`, missing DB = red.
 - Every PR ships its own tests (plan §19.7) and keeps `pnpm lint`,
   `pnpm type-check`, `pnpm test` green.
-- Do NOT exclude test files from turbo cache inputs — stale green results are
+- Do NOT exclude test files from turbo cache inputs - stale green results are
   worse than no results.
 
 ## Database
@@ -60,21 +60,21 @@ first).
 - Single instance lives in `packages/auth-client/src/auth.ts` (exported as
   `@shadhil/auth`). Never construct a second `betterAuth()`.
 - User model: role is a better-auth additional field with default
-  `TELECALLER` (admin plugin defaultRole — never send `role` from signup
+  `TELECALLER` (admin plugin defaultRole - never send `role` from signup
   input); `teamId` is input:false (admins assign teams).
 - Credential accounts: `accountId = user.id`, `issuer = 'local:credential'`.
   Password hashing must match `@better-auth/utils` scrypt (N=16384, r=16,
-  p=1, dkLen=64, NFKC) with format `salt:key` — see seed.ts, which is the
+  p=1, dkLen=64, NFKC) with format `salt:key` - see seed.ts, which is the
   reference implementation.
 - JWT: HS256 shared secret; role claim validated against the enum in
-  `verifyJwt` — missing/unknown roles throw (no silent defaults).
+  `verifyJwt` - missing/unknown roles throw (no silent defaults).
 
 ## Planning documents
 
-- `docs/planning/IMPLEMENTATION-PLAN-v1.md` — plan of record + full review
+- `docs/planning/IMPLEMENTATION-PLAN-v1.md` - plan of record + full review
   history (GSTACK REPORT + SECOND-ROUND AUDIT sections list every open
   finding/task with IDs like T-G1, AR-3).
-- `docs/planning/` — DESIGN.md, WIREFRAMES.md, 6-INPUTS tracker, sign-off
+- `docs/planning/` - DESIGN.md, WIREFRAMES.md, 6-INPUTS tracker, sign-off
   summary. `PLANNING-MASTER.md` indexes them.
 - When a decision lands (durable scope/architecture change), add it to the
   plan's Decision Audit Trail table instead of burying it in commit messages.

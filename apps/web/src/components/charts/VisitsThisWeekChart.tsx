@@ -1,6 +1,6 @@
 'use client';
 
-// VisitsThisWeekChart — a 7-day vertical bar chart of visit counts.
+// VisitsThisWeekChart - a 7-day vertical bar chart of visit counts.
 //
 // T9 (the other dedicated file per plan D2). The "data shaping" that
 // earns this its own file:
@@ -22,7 +22,7 @@
 // primitives (Chart, ChartContainer, ChartTooltip, ChartTooltipContent)
 // come from @paalstack/react-ui (which owns the theme CSS vars +
 // accessibility layer). The raw recharts primitives (Bar, BarChart,
-// XAxis, YAxis) come from recharts directly — the library v1.4.1 does
+// XAxis, YAxis) come from recharts directly - the library v1.4.1 does
 // NOT re-export them, so this is the canonical shadcn split.
 //
 // Recharts BarChart API: when `layout="vertical"` (or default with
@@ -106,7 +106,7 @@ export function VisitsThisWeekChart({ data }: VisitsThisWeekChartProps) {
     <Chart config={VISITS_CONFIG}>
       <ChartContainer
         config={VISITS_CONFIG}
-        aria-label="Visits this week — count per day, Monday to Sunday"
+        aria-label="Visits this week - count per day, Monday to Sunday"
         className="h-72 w-full"
       >
         <BarChart data={buckets} margin={{ top: 8, left: 8, right: 16 }}>

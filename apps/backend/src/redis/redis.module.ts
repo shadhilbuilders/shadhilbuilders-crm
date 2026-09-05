@@ -6,7 +6,7 @@
 // T-G8: REDIS_URL is now REQUIRED. The previous `process.env.REDIS_URL ?? 'redis://localhost:6379'`
 // silent default caused prod to silently lose pub/sub + cron locks
 // whenever the real env var was missing. assertBootEnv() in main.ts
-// throws before this module instantiates if REDIS_URL is unset — so
+// throws before this module instantiates if REDIS_URL is unset - so
 // reaching this constructor with no URL means someone bypassed the
 // boot check (e.g. unit test stub). We still defensively throw here so
 // the failure mode is the same.
@@ -23,7 +23,7 @@ export class RedisService implements OnModuleDestroy {
     const url = process.env.REDIS_URL;
     if (url === undefined || url.length === 0) {
       throw new Error(
-        '[redis] REDIS_URL is not set. assertBootEnv() should have caught this — if you see this error, you bypassed main.ts (e.g. unit test stub).',
+        '[redis] REDIS_URL is not set. assertBootEnv() should have caught this - if you see this error, you bypassed main.ts (e.g. unit test stub).',
       );
     }
     this.client = new Redis(url, {
@@ -75,7 +75,7 @@ export class RedisService implements OnModuleDestroy {
    * the lock for `lockTtl = 50s`, but a batch of due reminders can run
    * longer than 60s (especially on cold start with a backlog). If the
    * lock expires mid-batch, another replica acquires it and starts
-   * processing the same rows — duplicate fires.
+   * processing the same rows - duplicate fires.
    *
    * The cron renews the lease every `lockTtl / 2 = 25s` inside its
    * batch loop. The Lua script is atomic: we only bump TTL if the

@@ -1,4 +1,4 @@
-# Shadhil CRM — Planning Master
+# Shadhil CRM - Planning Master
 
 **Single entry point for everything planning-related in this repo.**
 Migrated from `~/workspace/shadhil-projects/crm/` on 2026-08-31 (folder deleted after
@@ -8,8 +8,8 @@ byte-verified migration; user decision: "only keep needed ones").
 
 | Document | What it is | Status |
 |----------|-----------|--------|
-| [`docs/planning/IMPLEMENTATION-PLAN-v1.md`](IMPLEMENTATION-PLAN-v1.md) | **THE PLAN** — 13-week build, all phases, section 0-19 + full /autoplan review (2026-08-31, APPROVED) + task list + review report | Plan of record |
-| [`docs/planning/DESIGN.md`](DESIGN.md) | Source design (v3.1, 1,038 lines, 28 locked decisions) — §-referenced throughout the plan | Signed off |
+| [`docs/planning/IMPLEMENTATION-PLAN-v1.md`](IMPLEMENTATION-PLAN-v1.md) | **THE PLAN** - 13-week build, all phases, section 0-19 + full /autoplan review (2026-08-31, APPROVED) + task list + review report | Plan of record |
+| [`docs/planning/DESIGN.md`](DESIGN.md) | Source design (v3.1, 1,038 lines, 28 locked decisions) - §-referenced throughout the plan | Signed off |
 | [`docs/planning/WIREFRAMES.md`](WIREFRAMES.md) | Locked ASCII wireframes + UI reference (eng/design tasks point here) | Locked |
 | [`docs/planning/SIGN-OFF-SUMMARY-v3.1.md`](SIGN-OFF-SUMMARY-v3.1.md) | 1-page client sign-off + the 6 required inputs | Signed off |
 | [`docs/planning/SIGN-OFF-SUMMARY-v3.1.pdf`](SIGN-OFF-SUMMARY-v3.1.pdf) | Client-facing PDF of the same | Sent |
@@ -23,9 +23,9 @@ byte-verified migration; user decision: "only keep needed ones").
 ## Reading order (new engineer)
 
 1. This file (index)
-2. `DESIGN.md` — what we're building and why
-3. `IMPLEMENTATION-PLAN-v1.md` — how and when, plus the full review record
-4. `WIREFRAMES.md` — what the screens look like
+2. `DESIGN.md` - what we're building and why
+3. `IMPLEMENTATION-PLAN-v1.md` - how and when, plus the full review record
+4. `WIREFRAMES.md` - what the screens look like
 5. Traceability when needed: `DECISION-CHANGELOG.md`, `feedback-archive/`
 
 ## Post-migration path references
@@ -33,8 +33,8 @@ byte-verified migration; user decision: "only keep needed ones").
 The plan body still contains some legacy path mentions (`crm/.plans/...`,
 `~/workspace/shadhil-projects/crm/...`). As of this migration the canonical
 locations are the paths in the index above. Old paths are dead; do not recreate
-them. (Path sweep of the plan body: sections 16-17 refer to `.plans/...` names —
-same filenames now live in `docs/planning/` — plus the restore-point comment at
+them. (Path sweep of the plan body: sections 16-17 refer to `.plans/...` names -
+same filenames now live in `docs/planning/` - plus the restore-point comment at
 the top of the plan file, which points at an out-of-repo backup and stays valid.)
 
 ## Review artifacts (outside repo, deliberately)

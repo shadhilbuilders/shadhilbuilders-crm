@@ -1,6 +1,6 @@
 'use client';
 
-// Site Visits — weekly calendar grid (Wireframes #10).
+// Site Visits - weekly calendar grid (Wireframes #10).
 // 7 days × hourly rows, color-coded by exec per wireframe; "+ Schedule
 // visit" opens a Dialog (leads + date/time + exec). Backend visits module
 // is pending; data arrives via the locked api-types VisitFilterDto contract.

@@ -1,4 +1,4 @@
-// T-E2b: WhatsApp module — wires the client + outbound service +
+// T-E2b: WhatsApp module - wires the client + outbound service +
 // outbound cron processor.
 //
 // The module is intentionally thin: the actual logic lives in
@@ -19,7 +19,7 @@ import { WhatsAppClient } from './whatsapp.client';
   imports: [PrismaModule, RedisModule],
   providers: [
     // WhatsAppClient is constructed once at module init from env vars
-    // (loud failure if creds missing — fail-fast, per skill rule).
+    // (loud failure if creds missing - fail-fast, per skill rule).
     {
       provide: WhatsAppClient,
       useFactory: () => WhatsAppClient.fromEnv(),

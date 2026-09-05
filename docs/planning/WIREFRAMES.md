@@ -1,4 +1,4 @@
-# Shadhil CRM — ASCII Wireframes (locked UI design)
+# Shadhil CRM - ASCII Wireframes (locked UI design)
 
 **Source:** `IMPLEMENTATION-PLAN-v1.md` + `/plan-design-review` + `/plan-eng-review` decisions.
 **Component library:** `@paalstack/react-ui` (consume, don't author).
@@ -9,7 +9,7 @@
 
 ---
 
-## 1. Manager Dashboard — web (1280px+)
+## 1. Manager Dashboard - web (1280px+)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -29,7 +29,7 @@
 │  └──────────────┴──────────────┴──────────────┴──────────────┘                     │
 │                                                                                    │
 │                                                                                    │
-│  Team pipeline — Sales Team A (6 agents)                            [Filter ▼]     │
+│  Team pipeline - Sales Team A (6 agents)                            [Filter ▼]     │
 │  ───────────────────────────────────────────────────────────────────────────────  │
 │                                                                                    │
 │  Visits today (5)                                                  [See all →]    │
@@ -47,7 +47,7 @@
 │  │ Unit B-112  Priya M.    Anjali P.   Token receipt: received [Approve]  │    │
 │  └──────────────────────────────────────────────────────────────────────────┘    │
 │                                                                                    │
-│  Overdue leads — first-touch > 30 min (3)                            [See all →]  │
+│  Overdue leads - first-touch > 30 min (3)                            [See all →]  │
 │  ┌──────────────────────────────────────────────────────────────────────────┐    │
 │  │ ⚠ 12 min overdue  Suresh R.    NEW → CONTACTED    Asha T.  [Reassign]   │    │
 │  │ ⚠  8 min overdue  Lakshmi N.  NEW                  Asha T.  [Reassign]   │    │
@@ -62,11 +62,11 @@
 - Team pipeline = `DataTable` from `@paalstack/react-ui`. Three sections on the same page, each with "See all →" deep link.
 - Status badges use semantic colors: green for VISITED, red for NO_SHOW, amber for pending.
 - Manager-only actions: `Reassign` button on every row. Hidden for Telecaller/Sales Exec (per §18 permission model).
-- "Overdue leads" section is the manager's primary action surface — they click "Reassign" here when a Telecaller isn't responding.
+- "Overdue leads" section is the manager's primary action surface - they click "Reassign" here when a Telecaller isn't responding.
 
 ---
 
-## 2. Manager Dashboard — mobile (375px)
+## 2. Manager Dashboard - mobile (375px)
 
 ```
 ┌─────────────────────────┐
@@ -110,7 +110,7 @@
 
 ---
 
-## 3. Admin Dashboard — web (cross-team view)
+## 3. Admin Dashboard - web (cross-team view)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -137,7 +137,7 @@
 │  │ Total          247                                                  │    │
 │  └──────────────────────────────────────────────────────────────────────────┘    │
 │                                                                                    │
-│  Recent admin actions (audit stream — last 10)                  [See all in audit →]│
+│  Recent admin actions (audit stream - last 10)                  [See all in audit →]│
 │  ┌──────────────────────────────────────────────────────────────────────────┐    │
 │  │ 09:42  Priya S. reassigned lead Rajesh K. from Asha T. to Vikram E.    │    │
 │  │ 09:15  Priya S. reassigned lead Priya M.  from Vikram E. to Asha T.     │    │
@@ -155,7 +155,7 @@
 
 ---
 
-## 4. Telecaller "Dashboard" = Lead Inbox — web
+## 4. Telecaller "Dashboard" = Lead Inbox - web
 
 The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort surfaces their next action.
 
@@ -186,13 +186,13 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 **Notes:**
 - **Default sort: Overdue first-touch → New → Most recent activity** (Decision 0.2). The first row IS the action.
 - ⚠ icon + "12m overdue" badge surfaces overdue leads at the top of the list. Visual urgency.
-- No "Reassign" button visible to Telecaller (Admin/Manager only — per §18).
+- No "Reassign" button visible to Telecaller (Admin/Manager only - per §18).
 - No bulk actions visible to Telecaller beyond "Mark contacted" + "Add to reminder".
 - Filter chips in a single horizontal row. `MultiSelect` for Status + Source. `Switch` for "Shared with me".
 
 ---
 
-## 5. Lead Detail — web desktop (1280px+)
+## 5. Lead Detail - web desktop (1280px+)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -237,14 +237,14 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 **Notes:**
 - Two-column layout: left = lead info + tabs, right = embedded chat pane. Chat is permanently visible on desktop.
 - Status badge top-left = the current state. Background color = semantic state color.
-- "Co-owner: Vikram E." chip shows shared visibility (Model C — per Decision 0.3). Only visible when lead is in VISIT_SCHEDULED state.
-- RERA# appears in the lead header (per Decision 1 — compliance footer).
+- "Co-owner: Vikram E." chip shows shared visibility (Model C - per Decision 0.3). Only visible when lead is in VISIT_SCHEDULED state.
+- RERA# appears in the lead header (per Decision 1 - compliance footer).
 - Tab navigation in a horizontal row: Overview / Timeline / Notes / Visits / Bookings / Audit. **All 6 tabs visible** (not a "More" overflow).
 - T-2h sticky banner appears when visit is approaching (Decision 0.10): "Visit at 14:00, Mudichur Phase 1. [Get directions] [Mark on my way]"
 
 ---
 
-## 6. Lead Detail — mobile (375px)
+## 6. Lead Detail - mobile (375px)
 
 ```
 ┌─────────────────────────┐
@@ -291,14 +291,14 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 
 **Notes:**
 - 5-tab bottom nav (per Decision 0.1): Overview · Chat · Visits · Bookings · Notes.
-- Chat is its own tab (not embedded) on mobile — full-screen dedicated view.
+- Chat is its own tab (not embedded) on mobile - full-screen dedicated view.
 - T-2h sticky banner above the tabs is always visible (Decision 0.10).
 - "On my way" toggle fires the customer WhatsApp and updates the visit status (Decision 0.10).
-- Native tab bar at the bottom (per Vercel RN — native-tabs, NOT JS navigators).
+- Native tab bar at the bottom (per Vercel RN - native-tabs, NOT JS navigators).
 
 ---
 
-## 7. Notification Center — web dropdown panel
+## 7. Notification Center - web dropdown panel
 
 ```
 ┌────────────────────────────────────────┐
@@ -338,7 +338,7 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 
 ---
 
-## 8. Reassign Dialog — web (Sheet)
+## 8. Reassign Dialog - web (Sheet)
 
 Triggered from Lead Inbox (Admin/Manager only):
 
@@ -370,19 +370,19 @@ Triggered from Lead Inbox (Admin/Manager only):
 
 **Notes:**
 - Built with `Sheet` from `@paalstack/react-ui` (side drawer, right-aligned).
-- Two radio options (Telecaller vs Sales exec) — matches the cross-role move allowed per §18 D2.
+- Two radio options (Telecaller vs Sales exec) - matches the cross-role move allowed per §18 D2.
 - Dropdown filtered: Admin sees all teams; Manager sees own team only.
-- Reason is **required** — UI blocks submit if empty. Matches §18 audit log requirement.
+- Reason is **required** - UI blocks submit if empty. Matches §18 audit log requirement.
 - "Reassign lead" button calls `POST /leads/:id/reassign` (per §18 endpoint).
 - Hidden entirely for Telecaller / Sales Exec (per §18 permission model).
 
 ---
 
-## 9. Booking Pipeline — thin slice (Sales Exec view)
+## 9. Booking Pipeline - thin slice (Sales Exec view)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│  Booking — Unit A-204                                                              │
+│  Booking - Unit A-204                                                              │
 │                                                                                    │
 │  ┌────────────┐   ┌────────────┐   ┌────────────┐                                 │
 │  │ 1. HOLD ✓  │ → │ 2. TOKEN   │ → │ 3. APPROVAL│                                 │
@@ -415,15 +415,15 @@ Triggered from Lead Inbox (Admin/Manager only):
 - 3-step `Stepper`: Hold → Token receipt → Manager approval.
 - Visual stepper shows current state + completed states.
 - Upload area uses `Form` + `Input type="file"` from `@paalstack/react-ui`.
-- File storage target: S3-compatible (Backblaze B2 / Cloudflare R2 — per §10).
+- File storage target: S3-compatible (Backblaze B2 / Cloudflare R2 - per §10).
 
 ---
 
-## 10. Site Visit Scheduler — calendar grid (web)
+## 10. Site Visit Scheduler - calendar grid (web)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│  Site Visits — Week of Aug 30, 2026                       [+ Schedule visit]       │
+│  Site Visits - Week of Aug 30, 2026                       [+ Schedule visit]       │
 ├────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                    │
 │         Mon 30  │  Tue 31  │  Wed 1   │  Thu 2   │  Fri 3   │  Sat 4  │  Sun 5   │
@@ -450,7 +450,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 
 ---
 
-## 11. Audit Log — Admin view (web)
+## 11. Audit Log - Admin view (web)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
@@ -475,13 +475,13 @@ Triggered from Lead Inbox (Admin/Manager only):
 **Notes:**
 - DataTable with sortable columns.
 - Filters stack horizontally. Every filter is `MultiSelect` or `DateRangePicker`.
-- "Export CSV" + "Export JSON" use the same RERA export mechanism (per §9) — Postgres COPY + cursor pagination.
+- "Export CSV" + "Export JSON" use the same RERA export mechanism (per §9) - Postgres COPY + cursor pagination.
 - 7-year retention (RERA upper bound). Pagination over 4,521 entries suggests a real dataset.
 - Each row click → drawer with full details (before/after JSON, IP, user agent).
 
 ---
 
-## 12. Notification Center — mobile (full screen)
+## 12. Notification Center - mobile (full screen)
 
 ```
 ┌─────────────────────────┐
@@ -516,9 +516,9 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
-- Full-screen list (not dropdown — that's web only).
+- Full-screen list (not dropdown - that's web only).
 - Filter tabs use `@expo/ui` `SegmentedControl` for native iOS/Android look.
-- `FlashList` for the list (`estimatedItemSize: 120` — taller rows than web dropdown).
+- `FlashList` for the list (`estimatedItemSize: 120` - taller rows than web dropdown).
 - SSE on `user:{id}:notifications` channel for live updates.
 - Badge on the 🔔 tab in the bottom bar reflects unread count.
 

@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Test setup — load env vars + fail fast if the security suite runs without DB
+// Test setup - load env vars + fail fast if the security suite runs without DB
 // ────────────────────────────────────────────────────────────────────────────
 // AR-4 companion: RLS tests SKIP silently when DATABASE_URL is unset, which
 // lets CI show green while the security matrix enforces nothing. When CI sets
@@ -17,13 +17,13 @@ beforeAll(() => {
     if (process.env.RLS_MATRIX_REQUIRED === 'true') {
       throw new Error(
         '[test] RLS_MATRIX_REQUIRED is set but DIRECT_DATABASE_URL/DATABASE_URL is missing. ' +
-          'The RLS isolation matrix must never run without a database — fix the CI service ' +
+          'The RLS isolation matrix must never run without a database - fix the CI service ' +
           'container instead of letting the security suite silently no-op.',
       );
     }
     // eslint-disable-next-line no-console
     console.warn(
-      '[test] No DIRECT_DATABASE_URL / DATABASE_URL set — DB-dependent tests will be skipped.',
+      '[test] No DIRECT_DATABASE_URL / DATABASE_URL set - DB-dependent tests will be skipped.',
     );
   }
 });

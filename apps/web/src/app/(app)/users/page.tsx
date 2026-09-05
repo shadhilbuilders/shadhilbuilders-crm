@@ -1,6 +1,6 @@
 'use client';
 
-// Users management — LIVE against apps/backend/src/users (the one built
+// Users management - LIVE against apps/backend/src/users (the one built
 // backend module). Role hierarchy (Round 17/20/21, locked):
 //   OWNER ≙ ADMIN on this surface → create any role below admin,
 //   MANAGER → TELECALLER / SALES_EXEC in own team.
@@ -164,7 +164,7 @@ function UserTable({
                 )}
               </td>
               <td className="text-muted-foreground hidden px-4 py-2.5 md:table-cell">
-                {user.teamId ?? '—'}
+                {user.teamId ?? '-'}
               </td>
             </tr>
           ))}
@@ -178,7 +178,7 @@ function UserTable({
 }
 
 // ---------------------------------------------------------------------------
-// Create form — posts to POST /api/users (server enforces the hierarchy)
+// Create form - posts to POST /api/users (server enforces the hierarchy)
 // ---------------------------------------------------------------------------
 
 function CreateUserForm({

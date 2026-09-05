@@ -1,8 +1,8 @@
-// ManagerAssignmentRule engine — auto-routing for new leads.
+// ManagerAssignmentRule engine - auto-routing for new leads.
 //
 // Per Plan §18 (Decision D2 ratified 2026-08-31): every NEW lead is
 // routed by an evaluation chain at creation time. The engine is
-// pure — no DB / no Nest / no Prisma. The service (leads.service.ts
+// pure - no DB / no Nest / no Prisma. The service (leads.service.ts
 // #create) feeds in the team + lead attributes; the engine returns
 // the target user (or null); the service persists.
 //
@@ -24,7 +24,7 @@
 //   ┌─────────────────────────────────────┐
 //   │ active=true rules for the team,     │
 //   │ sorted by (priority ASC, createdAt  │
-//   │ ASC) — first match wins.            │
+//   │ ASC) - first match wins.            │
 //   └──────────────┬──────────────────────┘
 //                  │
 //                  ▼
@@ -36,7 +36,7 @@
 //   │ If YES → return rule.targetUserId,  │
 //   │   but only if the target is         │
 //   │   TELECALLER or SALES_EXEC (ADMIN   │
-//   │   / MANAGER are rejected — they     │
+//   │   / MANAGER are rejected - they     │
 //   │   don't own leads directly).        │
 //   └──────────────┬──────────────────────┘
 //                  │ no match
@@ -63,18 +63,18 @@ export type { Lead, Role } from '@shadhil/database';
 
 /**
  * Minimal rule shape. The Prisma model has all the criteria columns
- * (priority, projectId, phaseId, language, region) — the engine
+ * (priority, projectId, phaseId, language, region) - the engine
  * accepts them as plain optional fields so a future schema addition
  * (e.g. "campaign") is a non-breaking type change.
  */
 export interface ManagerAssignmentRule {
   id: string;
   teamId: string;
-  /** Lead source — exact match against Lead.source. */
+  /** Lead source - exact match against Lead.source. */
   source: string;
   targetUserId: string;
   active: boolean;
-  /** When the rule was created — used as a tiebreaker when priority is equal. */
+  /** When the rule was created - used as a tiebreaker when priority is equal. */
   createdAt: Date;
   /** Lower number = higher priority. Defaults to 0 when undefined. */
   priority?: number;
@@ -107,7 +107,7 @@ export interface Team {
 
 /**
  * The lead attributes the engine needs to evaluate a match.
- * Keeps the surface tiny — the engine doesn't need the whole
+ * Keeps the surface tiny - the engine doesn't need the whole
  * Lead row, just the fields used in criteria.
  */
 export interface LeadAttributes {
@@ -119,18 +119,18 @@ export interface LeadAttributes {
 }
 
 /**
- * Engine output — discriminated union so the service can audit
+ * Engine output - discriminated union so the service can audit
  * which path matched without re-deriving it.
  *
- *   rule         — the lowest-priority rule whose criteria all
+ *   rule         - the lowest-priority rule whose criteria all
  *                  matched AND whose target is assignable. The
  *                  service records the rule id + priority in
  *                  AuditLog.metadata.
- *   team-default — no rule matched, but team.defaultAssigneeId is
+ *   team-default - no rule matched, but team.defaultAssigneeId is
  *                  set and points at an assignable role.
- *   fallback     — neither rule nor team-default matched. The
+ *   fallback     - neither rule nor team-default matched. The
  *                  caller (service) passes actor.sub as the safe
- *                  default — a placeholder until the operator
+ *                  default - a placeholder until the operator
  *                  wires a rule. Audit logged as 'fallback'.
  */
 export type ResolverResult =
@@ -152,7 +152,7 @@ export type ResolverResult =
  *               targets (they don't own leads directly).
  * @param fallbackUserId  When no rule / team-default matches, the
  *               engine returns this as a `fallback` result. The
- *               service passes actor.sub — a placeholder until the
+ *               service passes actor.sub - a placeholder until the
  *               operator wires a rule or default assignee.
  */
 export function evaluateAssignment(
@@ -171,12 +171,12 @@ export function evaluateAssignment(
   });
 
   for (const rule of sorted) {
-    if (rule.teamId !== team.id) continue; // defensive — caller should pre-filter
-    if (!rule.active) continue; // defensive — caller filters
+    if (rule.teamId !== team.id) continue; // defensive - caller should pre-filter
+    if (!rule.active) continue; // defensive - caller filters
     if (!matchesCriteria(rule, lead)) continue;
 
     const target = targetResolver(rule.targetUserId);
-    if (target === null) continue; // target was deleted — skip
+    if (target === null) continue; // target was deleted - skip
     if (!isAssignableRole(target.role)) continue; // ADMIN/MANAGER can't own leads
     return {
       kind: 'rule',
@@ -193,7 +193,7 @@ export function evaluateAssignment(
     if (target !== null && isAssignableRole(target.role)) {
       return { kind: 'team-default', userId: defaultUserId };
     }
-    // Default exists but points at ADMIN/MANAGER / deleted user —
+    // Default exists but points at ADMIN/MANAGER / deleted user -
     // fall through to the actor fallback rather than risk assigning
     // to the wrong role.
   }
@@ -224,12 +224,12 @@ function matchesCriteria(
 
 /**
  * Single-criterion match. The rule's column is null/undefined → wildcard
- * (any lead value matches, including null — useful for catch-all rules
+ * (any lead value matches, including null - useful for catch-all rules
  * that have NO criteria set). When set, exact string equality is required.
  *
  * Note: we treat an empty string the same as null on the rule side
  * because the schema defaults are NULL but UI form inputs sometimes
- * submit "" — both should behave as wildcard.
+ * submit "" - both should behave as wildcard.
  */
 function criterionMatches(
   ruleValue: string | null | undefined,
@@ -251,7 +251,7 @@ function criterionMatches(
  * ("meta-ad?lang=hi&region=IN-TN") without changing the engine
  * signature.
  *
- * Pure — no DB / no Nest / no Prisma. Easy to exhaustively test.
+ * Pure - no DB / no Nest / no Prisma. Easy to exhaustively test.
  */
 export function extractCriteriaFromSource(
   source: string,

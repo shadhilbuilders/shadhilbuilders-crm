@@ -7,7 +7,7 @@
 // T-G8 (eng review A2 / 2026-09-03): fail-fast at boot for every required
 // env var. The previous behavior (process.env.X ?? 'silent-default') led
 // to production running with a localhost Redis URL when the real one was
-// missing — silent failure of pub/sub + cron leases. assertBootEnv() runs
+// missing - silent failure of pub/sub + cron leases. assertBootEnv() runs
 // FIRST so the container exits with a clear error instead of starting
 // half-dead. The validator lives in ./boot-env.ts and is unit-tested in
 // boot-env.test.ts.
@@ -39,7 +39,7 @@ async function bootstrap(): Promise<void> {
   // request body; re-stringifying JSON.parse()'d objects would change
   // whitespace/encoding and break the verification). The buffer is held
   // on `req.rawBody` (Buffer) and consumed only by signature middleware
-  // — the JSON body parser still produces `req.body` as normal.
+  // - the JSON body parser still produces `req.body` as normal.
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
     rawBody: true,

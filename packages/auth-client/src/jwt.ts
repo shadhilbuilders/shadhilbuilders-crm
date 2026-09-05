@@ -8,7 +8,7 @@
 // SECOND-ROUND AUDIT (AR-2, 2026-08-31):
 //   - Role values are EXACTLY the Prisma `Role` enum (UPPERCASE): ADMIN |
 //     MANAGER | SALES_EXEC | TELECALLER. The policies compare
-//     `current_setting('app.user_role') = 'ADMIN'` etc. — a lowercase or
+//     `current_setting('app.user_role') = 'ADMIN'` etc. - a lowercase or
 //     differently-spelled value would filter every row for every non-admin.
 //   - A token WITHOUT an explicit role claim is now REJECTED (was: silently
 //     defaulted to 'telecaller', which let role-less tokens read/write any
@@ -64,9 +64,9 @@ function parseRole(raw: unknown): Role {
 
 /**
  * Verify a JWT issued by better-auth's jwt() plugin and return a typed payload.
- * Throws on invalid/expired tokens — caller maps to 401.
+ * Throws on invalid/expired tokens - caller maps to 401.
  * Also throws when the token lacks a role claim or carries a role that is not
- * exactly one of the Prisma enum values (no silent defaults — AR-2).
+ * exactly one of the Prisma enum values (no silent defaults - AR-2).
  */
 export async function verifyJwt(token: string): Promise<JwtPayload> {
   const { payload } = await jwtVerify(token, getSecret(), {

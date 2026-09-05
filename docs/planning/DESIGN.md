@@ -1,4 +1,4 @@
-# Shadhil Builders CRM — Application Design Brief (v3)
+# Shadhil Builders CRM - Application Design Brief (v3)
 
 **Owner:** PaalStack delivery + Product · **Status:** Build-ready (v3.1, Model C handoff), awaiting client sign-off
 **Audience:** Shadhil sales leadership + PaalStack engineering
@@ -6,7 +6,7 @@
 **Out of scope for this doc:** implementation tasks, code, mockups, design review.
 
 This is the single source of truth. The 11 delta files in this
-directory are the change log — read them if you want the reasoning
+directory are the change log - read them if you want the reasoning
 behind any decision.
 
 ---
@@ -17,8 +17,8 @@ behind any decision.
 |---|---|---|---|
 | **Admin** | 1 | Manages all user accounts (managers, telecallers, sales executives), sees everything across the system, configures WhatsApp + telephony integrations, manages projects and inventory. | Act on leads directly unless also assigned Sales Executive role. Create other Admin accounts (seeded out-of-band by Shadhil leadership). |
 | **Manager** | 1+ | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / approves bookings. | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
-| **Telecaller** | N | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that — Model C). |
-| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / Cold." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (manager approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that — Model C). |
+| **Telecaller** | N | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that - Model C). |
+| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / Cold." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (manager approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
 
 ---
 
@@ -40,7 +40,7 @@ behind any decision.
 
 ---
 
-## 3. Lead lifecycle state machine (v3.1 — Model C hybrid handoff)
+## 3. Lead lifecycle state machine (v3.1 - Model C hybrid handoff)
 
 **The handoff is at the VISIT outcome, not at the verbal yes.** Telecaller owns the lead from New through "Visit Scheduled" (and conducts the confirmation work). Sales Exec actually conducts the site visit and takes over ownership after the visit is logged as "visited" or "no-show" reverts to the telecaller.
 
@@ -111,7 +111,7 @@ SALES EXEC OWNS:                          NO_SHOW → telecaller owns
 - Post-`NO_SHOW`: owner reverts to the telecaller (`currentOwnerId` = telecaller's userId) for re-engagement
 - Post-`RESCHEDULED` (new visit, after re-engagement): owner returns to the exec when the re-scheduled visit completes
 
-**The `LeadAssignment` table is critical** — it tracks every ownership change with timestamp + reason. The full audit trail for a lead looks like:
+**The `LeadAssignment` table is critical** - it tracks every ownership change with timestamp + reason. The full audit trail for a lead looks like:
 
 ```
 2026-09-15 10:00:00  →  Telecaller A  (created)
@@ -138,7 +138,7 @@ Or, with a no-show:
 
 **Auto-actions:**
 
-- **T-24h and T-2h before visit:** Reminders to CUSTOMER (WhatsApp templates `visit_reminder_24h`, `visit_reminder_2h`) AND to the TELE CALLER (pre-visit staff reminder — the telecaller is the one who confirms with the customer). The sales exec gets a T-1h "your visit is in 1 hour" reminder (so they can prep).
+- **T-24h and T-2h before visit:** Reminders to CUSTOMER (WhatsApp templates `visit_reminder_24h`, `visit_reminder_2h`) AND to the TELE CALLER (pre-visit staff reminder - the telecaller is the one who confirms with the customer). The sales exec gets a T-1h "your visit is in 1 hour" reminder (so they can prep).
 - **2h after `VISIT_SCHEDULED` with no outcome:** WhatsApp template `missed_visit_followup` fires to customer. Push to telecaller + manager. Lead stays in VISIT_SCHEDULED with `noShowPending: true` until the exec logs the outcome OR the telecaller marks no-show.
 - **Outcome = VISITED:** Lead auto-hands to exec. Push trigger #4 fires.
 - **Outcome = NO_SHOW:** Lead auto-reverts to telecaller. New WhatsApp follow-up to customer. Push to telecaller + manager.
@@ -146,7 +146,7 @@ Or, with a no-show:
 
 ---
 
-## 4. Permission matrix (RBAC) — Model C handoff
+## 4. Permission matrix (RBAC) - Model C handoff
 
 | Operation | Super Admin | Admin | Manager | Telecaller | Sales Exec |
 |---|---|---|---|---|---|
@@ -157,7 +157,7 @@ Or, with a no-show:
 | Assign telecaller to lead | ✅ | ✅ | ✅ (in team) | ❌ | ❌ |
 | Schedule site visit | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ (exec conducts, doesn't schedule) |
 | Confirm visit with customer (24h, 2h before) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
-| Log visit outcome (VISITED / NO_SHOW) | ✅ (any lead) | ✅ (any lead) | ✅ (in team — all outcomes) | ✅ (only NO_SHOW — marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
+| Log visit outcome (VISITED / NO_SHOW) | ✅ (any lead) | ✅ (any lead) | ✅ (in team - all outcomes) | ✅ (only NO_SHOW - marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
 | Re-engage after no-show | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
 | Log activity (call, note, WhatsApp) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
 | Initiate booking | ✅ | ✅ (any lead, post-visit) | ✅ (in team, post-visit) | ❌ | ✅ (post-visit only) |
@@ -171,10 +171,10 @@ Or, with a no-show:
 
 **What the model C RBAC matrix means in practice:**
 
-- **Role model v2 (Round 20, 2026-08-31):** five roles —
+- **Role model v2 (Round 20, 2026-08-31):** five roles -
   OWNER ⊃ ADMIN ⊃ MANAGER ⊃ {TELECALLER, SALES_EXEC}.
   Exactly ONE OWNER exists (partial unique index
-  `one_owner`; created by seed/migration only — the API
+  `one_owner`; created by seed/migration only - the API
   can never create or assign it, not even the owner
   themself). OWNER bootstraps ADMINs and can change any
   role; ADMIN manages everything below admin; MANAGER manages
@@ -182,7 +182,7 @@ Or, with a no-show:
   (before/after rows in AuditLog). The seeded
   admin@shadhilbuilders.in account IS the owner. (Round 20
   named this role SUPER_ADMIN; Round 21 renamed it OWNER
-  — see DECISION-CHANGELOG.)
+  - see DECISION-CHANGELOG.)
 
 - **Authority inheritance (client-confirmed 2026-08-31):**
   Admin can do anything a Manager can; a Manager can do
@@ -191,7 +191,7 @@ Or, with a no-show:
   only within their own team's leads; the admin inherits them
   across all leads. Role-specific gates that do not flow up:
   the exec-only scheduling block (exec conducts, never
-  schedules) and the telecaller-only NO_SHOW logging — those
+  schedules) and the telecaller-only NO_SHOW logging - those
   stay ❌ for admin/manager because they are role
   *responsibility* boundaries in Model C, not capability
   limits.
@@ -216,12 +216,12 @@ Or, with a no-show:
 
 **ABAC layer (fine-grained, per-resource):** Enforced at
 Postgres RLS. Attributes checked at query time:
-- `user_id` — the actor's ID
-- `role` — the actor's role
-- `team_id` — which manager's team the actor belongs to
-- `project_id` — for multi-project scoping
-- `lead.currentOwnerId` — for "own leads only"
-- `lead.teamId` — for "team leads only"
+- `user_id` - the actor's ID
+- `role` - the actor's role
+- `team_id` - which manager's team the actor belongs to
+- `project_id` - for multi-project scoping
+- `lead.currentOwnerId` - for "own leads only"
+- `lead.teamId` - for "team leads only"
 
 **RLS policies (high-level):**
 
@@ -235,7 +235,7 @@ CREATE POLICY lead_manager_select ON lead
   );
 
 -- Sales exec can see leads they own OR leads in VISIT_SCHEDULED
--- (shared visibility during the scheduled window — Model C)
+-- (shared visibility during the scheduled window - Model C)
 CREATE POLICY lead_exec_select ON lead
   FOR SELECT
   USING (
@@ -254,7 +254,7 @@ CREATE POLICY lead_exec_select ON lead
   );
 
 -- Telecaller can see leads they own OR leads in VISIT_SCHEDULED
--- (shared visibility during the scheduled window — Model C)
+-- (shared visibility during the scheduled window - Model C)
 CREATE POLICY lead_telecaller_select ON lead
   FOR SELECT
   USING (
@@ -282,7 +282,7 @@ NestJS request-scoped middleware sets these session variables
 per request from the JWT claims. RLS is defense-in-depth: even
 a bug in app code can't leak rows across users. The shared
 VISIT_SCHEDULED visibility is implemented via the EXISTS
-subquery — the telecaller and exec BOTH see the lead during
+subquery - the telecaller and exec BOTH see the lead during
 this window, but the RLS makes it explicit so neither can
 see leads they shouldn't.
 
@@ -320,49 +320,49 @@ action, not a rebuild.
 ### Prisma schema (full)
 
 **Auth tables (better-auth required):**
-- `User` — `id, email, name, emailVerified, image, createdAt, updatedAt, phone, role, teamId, pushSettings`
-- `Session` — `id, expiresAt, token, createdAt, ipAddress, userAgent, userId`
-- `Account` — `id, accountId, providerId, userId, accessToken, refreshToken, idToken, accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt`
-- `Verification` — `id, identifier, value, expiresAt, createdAt, updatedAt`
+- `User` - `id, email, name, emailVerified, image, createdAt, updatedAt, phone, role, teamId, pushSettings`
+- `Session` - `id, expiresAt, token, createdAt, ipAddress, userAgent, userId`
+- `Account` - `id, accountId, providerId, userId, accessToken, refreshToken, idToken, accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt`
+- `Verification` - `id, identifier, value, expiresAt, createdAt, updatedAt`
 
 **Business tables (12):**
-- `Team` — `id, name, managerId, createdAt`
-- `Project` — `id, slug, name, location, createdAt`
-- `Unit` — `id, projectId, unitNumber, phase, bhk, facing, sqft, basePrice, status, createdAt`
-- `Lead` — `id, projectId, teamId, fullName, phone, email, source, status, currentOwnerId, handoffAt, handoffFromId, handoffToUserId, createdById, createdAt, updatedAt`
-- `LeadAssignment` — `id, leadId, fromUserId, toUserId, reason, notes, createdAt`
-- `SiteVisit` — `id, leadId, salesExecId, scheduledAt, actualVisitAt, outcome, outcomeNotes, rescheduledFromId, remindersSent, createdAt, updatedAt`
-- `Booking` — `id, leadId, unitId, tokenAmount, tokenPaidAt, agreementSignedAt, approvedById, createdAt, updatedAt`
-- `Activity` — `id, leadId, userId, type, payload, createdAt`
-- `Message` — `id, leadId, senderId, direction, channel, body, externalId, createdAt` — `@@unique([externalId, channel])` for webhook dedup
-- `AuditLog` — `id, userId, action, resource, metadata, ipAddress, userAgent, createdAt`
-- `ManagerAssignmentRule` — `id, managerId, projectId, territory, priority, active, createdAt`
+- `Team` - `id, name, managerId, createdAt`
+- `Project` - `id, slug, name, location, createdAt`
+- `Unit` - `id, projectId, unitNumber, phase, bhk, facing, sqft, basePrice, status, createdAt`
+- `Lead` - `id, projectId, teamId, fullName, phone, email, source, status, currentOwnerId, handoffAt, handoffFromId, handoffToUserId, createdById, createdAt, updatedAt`
+- `LeadAssignment` - `id, leadId, fromUserId, toUserId, reason, notes, createdAt`
+- `SiteVisit` - `id, leadId, salesExecId, scheduledAt, actualVisitAt, outcome, outcomeNotes, rescheduledFromId, remindersSent, createdAt, updatedAt`
+- `Booking` - `id, leadId, unitId, tokenAmount, tokenPaidAt, agreementSignedAt, approvedById, createdAt, updatedAt`
+- `Activity` - `id, leadId, userId, type, payload, createdAt`
+- `Message` - `id, leadId, senderId, direction, channel, body, externalId, createdAt` - `@@unique([externalId, channel])` for webhook dedup
+- `AuditLog` - `id, userId, action, resource, metadata, ipAddress, userAgent, createdAt`
+- `ManagerAssignmentRule` - `id, managerId, projectId, territory, priority, active, createdAt`
 
 **Notifications + reminders (3):**
-- `Reminder` — `id, type, status, siteVisitId, leadId, recipientUserId, recipientPhone, scheduledFor, firedAt, acknowledgedAt, channel, payload, attempts, lastError, createdAt, updatedAt`
-- `PushSubscription` — `id, userId, expoPushToken, platform, deviceName, appVersion, isActive, lastSeenAt, createdAt, updatedAt`
-- `PushNotification` — `id, triggerType, triggerRefId, userId, subscriptionId, notificationId, title, body, data, status, sentAt, deliveredAt, clickedAt, failedAt, errorMessage, suppressedByQuietHours, rescheduledFor, expoPushId, createdAt, updatedAt`
+- `Reminder` - `id, type, status, siteVisitId, leadId, recipientUserId, recipientPhone, scheduledFor, firedAt, acknowledgedAt, channel, payload, attempts, lastError, createdAt, updatedAt`
+- `PushSubscription` - `id, userId, expoPushToken, platform, deviceName, appVersion, isActive, lastSeenAt, createdAt, updatedAt`
+- `PushNotification` - `id, triggerType, triggerRefId, userId, subscriptionId, notificationId, title, body, data, status, sentAt, deliveredAt, clickedAt, failedAt, errorMessage, suppressedByQuietHours, rescheduledFor, expoPushId, createdAt, updatedAt`
 
 **Notification inbox (1):**
-- `Notification` — `id, userId, type, category, title, body, icon, deepLink, refType, refId, readAt, dismissedAt, archivedAt, createdAt, updatedAt`
+- `Notification` - `id, userId, type, category, title, body, icon, deepLink, refType, refId, readAt, dismissedAt, archivedAt, createdAt, updatedAt`
 
 **Total: 19 Prisma models.**
 
 ### Enums
 
-- `Role` — `ADMIN | MANAGER | TELECALLER | SALES_EXECUTIVE`
-- `LeadStatus` — 13 states (NEW, CONTACTED, VISIT_REQUESTED, VISIT_SCHEDULED, VISITED, RESCHEDULED, NO_SHOW, NEGOTIATION, BOOKING_INITIATED, WON, LOST, COLD, plus the implicit shared visibility of VISIT_SCHEDULED)
-- `VisitOutcome` — `SCHEDULED | VISITED | NO_SHOW | CANCELLED | RESCHEDULED`
-- `MessageDirection` — `INBOUND | OUTBOUND`
-- `MessageChannel` — `WHATSAPP | IN_APP | SMS`
-- `UnitStatus` — `AVAILABLE | HOLD | BOOKED | SOLD`
-- `ActivityType` — `NOTE | CALL | WHATSAPP | EMAIL | STATUS_CHANGE | ASSIGNMENT | VISIT_OUTCOME`
-- `ReminderType` — `PRE_VISIT_STAFF | PRE_VISIT_CUSTOMER | RESCHEDULE_FOLLOWUP | NO_SHOW_STAFF | POST_BOOKING`
-- `ReminderStatus` — `SCHEDULED | FIRING | FIRED | ACKNOWLEDGED | CANCELLED | FAILED`
-- `ReminderChannel` — `IN_APP | PUSH | EMAIL | WHATSAPP`
-- `NotificationCategory` — `LEAD | VISIT | BOOKING | CHAT | SYSTEM`
-- `PushStatus` — `PENDING | SENT | DELIVERED | CLICKED | FAILED | CANCELLED`
-- `PushPlatform` — `IOS | ANDROID | WEB`
+- `Role` - `ADMIN | MANAGER | TELECALLER | SALES_EXECUTIVE`
+- `LeadStatus` - 13 states (NEW, CONTACTED, VISIT_REQUESTED, VISIT_SCHEDULED, VISITED, RESCHEDULED, NO_SHOW, NEGOTIATION, BOOKING_INITIATED, WON, LOST, COLD, plus the implicit shared visibility of VISIT_SCHEDULED)
+- `VisitOutcome` - `SCHEDULED | VISITED | NO_SHOW | CANCELLED | RESCHEDULED`
+- `MessageDirection` - `INBOUND | OUTBOUND`
+- `MessageChannel` - `WHATSAPP | IN_APP | SMS`
+- `UnitStatus` - `AVAILABLE | HOLD | BOOKED | SOLD`
+- `ActivityType` - `NOTE | CALL | WHATSAPP | EMAIL | STATUS_CHANGE | ASSIGNMENT | VISIT_OUTCOME`
+- `ReminderType` - `PRE_VISIT_STAFF | PRE_VISIT_CUSTOMER | RESCHEDULE_FOLLOWUP | NO_SHOW_STAFF | POST_BOOKING`
+- `ReminderStatus` - `SCHEDULED | FIRING | FIRED | ACKNOWLEDGED | CANCELLED | FAILED`
+- `ReminderChannel` - `IN_APP | PUSH | EMAIL | WHATSAPP`
+- `NotificationCategory` - `LEAD | VISIT | BOOKING | CHAT | SYSTEM`
+- `PushStatus` - `PENDING | SENT | DELIVERED | CLICKED | FAILED | CANCELLED`
+- `PushPlatform` - `IOS | ANDROID | WEB`
 
 ---
 
@@ -390,11 +390,11 @@ action, not a rebuild.
 - **Templates needed:**
   - `customer_enquiry_confirmation` (existing)
   - `internal_enquiry_notification` (existing)
-  - `missed_visit_followup` (new — for no-show 2h reminder to customer)
-  - `visit_reminder_24h` (new — customer pre-visit reminder)
-  - `visit_reminder_2h` (new — customer pre-visit reminder)
+  - `missed_visit_followup` (new - for no-show 2h reminder to customer)
+  - `visit_reminder_24h` (new - customer pre-visit reminder)
+  - `visit_reminder_2h` (new - customer pre-visit reminder)
   - **All new templates submitted in week 1 of build for Meta approval.**
-  - (Removed: `sales_exec_handoff_intro` — not needed in Model C because the handoff happens at the visit outcome, not at the verbal yes. The exec just shows up to a confirmed visit; no separate intro message needed.)
+  - (Removed: `sales_exec_handoff_intro` - not needed in Model C because the handoff happens at the visit outcome, not at the verbal yes. The exec just shows up to a confirmed visit; no separate intro message needed.)
 
 ### Telephony: FreJun
 
@@ -417,7 +417,7 @@ action, not a rebuild.
 ### Push notifications: Expo Push (universal)
 
 - **Per v10 design:** Expo Push is the universal push service
-  for iOS (APNs), Android (FCM), and Web (Web Push) — one API,
+  for iOS (APNs), Android (FCM), and Web (Web Push) - one API,
   one SDK, one payload format.
 - **Service worker** for web (Next.js as PWA per Q5).
 - **VAPID keys** for web push.
@@ -481,21 +481,21 @@ Deploy:        Coolify on Hostinger VPS (8GB, India region)
   v1.1, fast `curl` debugging.
 - **Postgres in Docker on Hostinger VPS** via PgBouncer (see
   v8 delta). Full control, India region, ~$30/month.
-- **Prisma** (locked in v4) — schema in `packages/database/`,
+- **Prisma** (locked in v4) - schema in `packages/database/`,
   generated client shared between web (auth tables) and NestJS
   (business tables). See v8 delta for the data ownership
   rules.
-- **better-auth** (not Supabase Auth) — MIT, self-hosted, no
+- **better-auth** (not Supabase Auth) - MIT, self-hosted, no
   per-user pricing, has org + admin + API-key plugins.
 - **SSE over graphql-ws subscriptions** for the chat realtime
   AND for the notification center AND for the reminder delivery.
   One way (server → client) is enough. Plain HTTP.
 - **TanStack Query v5** on both web and mobile. Same hooks,
   same caching.
-- **FreJun over Amazon Connect** — 4.4× cheaper for the
+- **FreJun over Amazon Connect** - 4.4× cheaper for the
   actual workload, mobile-first agent UX, AI transcription
   included.
-- **Expo Push** as the universal push service — handles iOS,
+- **Expo Push** as the universal push service - handles iOS,
   Android, AND web behind one API. Saves 1-2 weeks of
   multi-platform push setup.
 
@@ -530,7 +530,7 @@ shadhil-crm/
     and webhook receivers.
   - **Mobile calls NestJS REST, never touches Prisma directly.**
   - **Next.js server components do NOT query business tables
-    directly** — they call the NestJS REST API. (One exception:
+    directly** - they call the NestJS REST API. (One exception:
     server components may read User to load profile.)
 - Migrations run from `apps/backend` (`pnpm prisma migrate dev`).
 - **PgBouncer in session pooling mode for v1** (RLS works
@@ -624,11 +624,11 @@ and a per-user reminder stream. The client uses native
 
 ### Redis pub/sub channels (backend)
 
-- `lead:{id}:messages` — chat
-- `user:{id}:notifications` — inbox
-- `user:{id}:notifications:read` — single mark-read
-- `user:{id}:notifications:read-all` — all mark-read
-- `user:{id}:reminders` — reminder banner
+- `lead:{id}:messages` - chat
+- `user:{id}:notifications` - inbox
+- `user:{id}:notifications:read` - single mark-read
+- `user:{id}:notifications:read-all` - all mark-read
+- `user:{id}:reminders` - reminder banner
 
 ### Auth on SSE
 
@@ -658,7 +658,7 @@ One API, one payload format, one push token storage.
 | 3 | Lead handed off (team) | All managers in the team | "Team handoff" | "{{user.name}} handed off a lead to your team" |
 | 4 | Lead assigned (exec) | The assigned exec | "New lead for you" | "Manager {{user.name}} assigned a lead" |
 | 5 | Pre-visit staff (T-2h) | Sales exec | "Site visit soon" | "{{lead.name}} in 2 hours at {{time}}" |
-| 6 | No-show staff (T+2h) | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} — no outcome logged" |
+| 6 | No-show staff (T+2h) | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} - no outcome logged" |
 | 7 | Customer replied to chat (when staff away) | Lead's current owner | "{{lead.name}} replied" | "{{message preview}}" |
 | 8 | Booking awaiting approval | Manager | "Booking: {{lead.name}}" | "{{unit.number}} · ₹{{token.amount}}" |
 | 9 | Booking approved/rejected | Sales exec | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}" |
@@ -678,7 +678,7 @@ Triggers 1-10 ship in v1. Triggers 11-12 deferred to v1.1 / opt-in.
 
 ### Push token storage
 
-`PushSubscription` table — one user can have multiple devices
+`PushSubscription` table - one user can have multiple devices
 (phone + tablet + browser). Tokens rotate; backend handles
 re-registration. Invalid tokens marked `isActive: false`,
 cleaned up after 30 days.
@@ -713,7 +713,7 @@ exponential backoff, then mark `FAILED` and alert via Telegram.
 
 ### Data model
 
-`Notification` table — separate from `PushNotification` audit log.
+`Notification` table - separate from `PushNotification` audit log.
 Mutable state: `readAt`, `dismissedAt`, `archivedAt` (v1.1).
 
 ### Retention
@@ -805,7 +805,7 @@ When a customer reschedules (Type 3 + supporting reminders):
   (Replaces the v3 metric which measured verbal-yes-to-exec
   handoff; Model C makes that metric meaningless because
   there is no manual handoff. This metric measures the exec's
-  speed at the new handoff moment — the visit outcome —
+  speed at the new handoff moment - the visit outcome -
   rather than a manager-routing step.)
 - **No-show rate (Model C):** % of `VISIT_SCHEDULED` leads
   that end in `NO_SHOW`. **This is the KEY metric for
@@ -919,39 +919,39 @@ estimate was for the "fast" path; the "reusable infra + reliable
 
 ## 17. NOT in scope (deferred, with reason)
 
-- **Document Vault full version** — sales team uses Google Drive
+- **Document Vault full version** - sales team uses Google Drive
   + link in lead notes for v1. Vault adds no measurable value
   until agreement template flow is defined (Q2 deferred to v1.1).
-- **Reports beyond 4 KPI widgets** — instrument first, report later.
-- **Native mobile app beyond PWA + Expo** — Expo in v1 covers
+- **Reports beyond 4 KPI widgets** - instrument first, report later.
+- **Native mobile app beyond PWA + Expo** - Expo in v1 covers
   App Store / Play Store. iOS-specific polish deferred to v1.1.
-- **Tamil UI** — sales team English-comfortable. Defer to v1.2.
-- **AI lead scoring** — no validated signal yet. Defer until
+- **Tamil UI** - sales team English-comfortable. Defer to v1.2.
+- **AI lead scoring** - no validated signal yet. Defer until
   90 days of conversion data exist.
-- **Customer / buyer portal** — post-booking tracking lives with
+- **Customer / buyer portal** - post-booking tracking lives with
   the sales exec, not in a customer-facing app.
-- **Broker / channel-partner network** — out of scope for v1.
-- **E-sign integration** — Q2 deferred to v1.1.
-- **Per-trigger notification settings** — v1.1 (12 triggers all
+- **Broker / channel-partner network** - out of scope for v1.
+- **E-sign integration** - Q2 deferred to v1.1.
+- **Per-trigger notification settings** - v1.1 (12 triggers all
   on by default; use Mark all as read / Dismiss for noise control).
-- **Notification sound customization** — v1.1.
+- **Notification sound customization** - v1.1.
 
 ---
 
 ## 18. What already exists (carry forward, do not rebuild)
 
-- `~/workspace/shadhil-projects/landing-page/` — Next.js 16 +
+- `~/workspace/shadhil-projects/landing-page/` - Next.js 16 +
   Tailwind v4 marketing site at shadhilbuilders.in
 - Brand tokens (`--color-brand-primary #001a4c`, `--color-brand-
   secondary #62b132`, `--color-surface #f8f5ef`) → `packages/ui-tokens`
 - WhatsApp Cloud API integration in `lib/whatsapp.ts` with two
   approved templates (`customer_enquiry_confirmation`,
   `internal_enquiry_notification`)
-- Landing-page lead form posts to Google Sheet — becomes the
+- Landing-page lead form posts to Google Sheet - becomes the
   read-only archive, not the source of truth
-- Existing Shadhil WhatsApp number: +91 9025012311 — STAYS on
+- Existing Shadhil WhatsApp number: +91 9025012311 - STAYS on
   the landing site. CRM gets a NEW separate number (Q0).
-- Existing fallback WhatsApp number: +91 94454 50410 — same.
+- Existing fallback WhatsApp number: +91 94454 50410 - same.
 - Hostinger VPS is a new procurement; not previously used for
   PaalStack infra.
 
@@ -962,7 +962,7 @@ estimate was for the "fast" path; the "reusable infra + reliable
 1. **Stack is now NestJS + REST on a self-hosted VPS.** This
    is the "reusable infra" choice. Defensible but slower to
    ship than the Supabase + Next.js full-stack option. If at
-   week 3 the friction is real, revisit — the data model
+   week 3 the friction is real, revisit - the data model
    and auth design transfer to the alternative stack with
    ~1 week of rework.
 
@@ -1045,25 +1045,25 @@ estimate was for the "fast" path; the "reusable infra + reliable
 
 ## 21. Where to read more
 
-- `DECISION-CHANGELOG.md` — every decision round, in order
-- `WORKFLOW-DIAGRAMS.md` — 6 ELI10 diagrams (system, web auth,
-  mobile auth, lifecycle, handoff) — show to Shadhil.
+- `DECISION-CHANGELOG.md` - every decision round, in order
+- `WORKFLOW-DIAGRAMS.md` - 6 ELI10 diagrams (system, web auth,
+  mobile auth, lifecycle, handoff) - show to Shadhil.
   Diagram 4 regenerated to Model C state machine in v3.1.
   Diagram 6 regenerated to one-step automatic handoff on visit
   outcome (Model C).
-- `CLIENT-DECISIONS.md` — the 16 resolved client questions
+- `CLIENT-DECISIONS.md` - the 16 resolved client questions
   + reliability design (Q15 updated to Model C in v3.1)
 - `CLIENT-FEEDBACK-2026-08-29.md` through
-  `CLIENT-FEEDBACK-v12-2026-08-29.md` — the reasoning trail for
+  `CLIENT-FEEDBACK-v12-2026-08-29.md` - the reasoning trail for
   every decision above. **Numbering note:** the directory has 13
   delta files (R1 + v2–v11 + v12). The file named `v12` is
   internally labeled "Round 15" in its header (it discusses Model
   A/B/C/D comparison). All DESIGN.md references to "v12" for
   Model C rationale point to this file; the round-number
   discrepancy is cosmetic and tracked here for the next doc pass.
-- `SIGN-OFF-SUMMARY-v3.1.md` — 1-page executive summary for
+- `SIGN-OFF-SUMMARY-v3.1.md` - 1-page executive summary for
   Shadhil promoter + sales leadership + finance lead sign-off.
-- `CLIENT-QUESTIONS.md.archived-2026-08-29` — the original
+- `CLIENT-QUESTIONS.md.archived-2026-08-29` - the original
   open questions (now all resolved, kept for audit)
-- `REVIEW-OF-DESIGN.md` — PM-mode critique of v3 (the v3.1
+- `REVIEW-OF-DESIGN.md` - PM-mode critique of v3 (the v3.1
   addendum source)

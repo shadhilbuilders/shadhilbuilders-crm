@@ -7,8 +7,8 @@
 -- following the user's approval), MANAGERs need read+update too
 -- so they can work the queue from the team-management perspective.
 --
--- The WhatsappUnknownContact table has no teamId column — the queue
--- is company-wide, not per-team — so the policy is just role-based.
+-- The WhatsappUnknownContact table has no teamId column - the queue
+-- is company-wide, not per-team - so the policy is just role-based.
 -- TELECALLERs do not see this queue; they see the result of a
 -- conversion on the existing Leads page (the manager routes via
 -- the ManagerAssignmentRule engine after the manual call).

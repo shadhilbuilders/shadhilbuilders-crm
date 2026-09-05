@@ -8,7 +8,7 @@
 // the FAB sits bottom-right with `safe-area-inset-bottom` already
 // handled by the layout's padding.
 //
-// Eng-review Section 4 [P1]: "FAB silent-offline" — the FAB must hide
+// Eng-review Section 4 [P1]: "FAB silent-offline" - the FAB must hide
 // when the browser is offline so a user on a flaky 4G connection
 // doesn't tap "+ Add lead" and get a 504 from the BFF. `shouldShowFab`
 // encodes that rule as a pure function so it can be exhaustively

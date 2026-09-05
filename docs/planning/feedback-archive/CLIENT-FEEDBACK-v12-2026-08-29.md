@@ -1,4 +1,4 @@
-# Client Feedback Round 15 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 15 - 2026-08-29 (Shadhil CRM)
 
 You asked: "Should telecaller follow up the customer until site
 visited, or telecaller assign to manager after the first
@@ -43,7 +43,7 @@ sales process and the KPIs they measure.
     they trust for the visit. **Con:** exec only sees the
     lead after the visit, so the relationship starts later.
 
-  - **Model C (hybrid — my recommendation):** Shared
+  - **Model C (hybrid - my recommendation):** Shared
     visibility during the scheduled period, clean
     handoff at the visit outcome. Telecaller owns
     through "visit scheduled," both can see during the
@@ -113,7 +113,7 @@ SALES EXEC OWNS:
   telecaller than by the sales exec, causing trust loss
   at the handoff.
 - If the visit no-shows, the sales exec has no idea what
-  was discussed before — context loss.
+  was discussed before - context loss.
 
 **Who uses it:** Small builders with 1-2 sales people who
 wear multiple hats. Not a real CRM model.
@@ -145,7 +145,7 @@ SALES EXEC OWNS:
 
 **KPI structure:**
 - Telecaller: "number of visits COMPLETED" (not just
-  scheduled — has skin in the game)
+  scheduled - has skin in the game)
 - Sales exec: "number of bookings from leads handed off"
 - Manager: "team performance"
 
@@ -205,7 +205,7 @@ SALES EXEC OWNS:
 
 **KPI structure:**
 - Telecaller: "number of visits scheduled AND completed"
-  (perverse incentive removed — they lose credit if the
+  (perverse incentive removed - they lose credit if the
   visit no-shows)
 - Sales exec: "number of bookings from leads they visited"
   (each exec sees the customer exactly once, at the
@@ -388,10 +388,10 @@ exec), but it happens AFTER the visit.
 
 `LeadAssignment` table tracks the ownership changes:
 - telecaller (on creation)
-- telecaller (on VISIT_REQUESTED — no change)
-- exec (on VISITED — handoff complete)
-- telecaller (on NO_SHOW — re-engagement)
-- exec (on re-VISITED — second handoff)
+- telecaller (on VISIT_REQUESTED - no change)
+- exec (on VISITED - handoff complete)
+- telecaller (on NO_SHOW - re-engagement)
+- exec (on re-VISITED - second handoff)
 
 The state machine + the assignment history together give
 a complete audit trail.
@@ -445,7 +445,7 @@ The four options to present:
   D) No handoff (one person does everything)
 
 Plus the follow-up: "In your current process (before the
-CRM), who actually conducts the site visit — the telecaller
+CRM), who actually conducts the site visit - the telecaller
 or the sales exec?"
 
 If the answer is "the sales exec always conducts the visit,"
@@ -456,7 +456,7 @@ follow-up," the answer is Model D (but that's unlikely
 given the 4-role org they described).
 
 If the answer is "it depends" or "we haven't decided,"
-default to Model C — it's the safest default that won't
+default to Model C - it's the safest default that won't
 fight the team.
 
 ---
@@ -469,7 +469,7 @@ Even if the client literally said "handoff at verbal yes"
 in their first message, the industry data on no-shows
 (30-40% without telecaller skin in the game) is too strong
 to ignore. If the client insists on Model A after seeing
-the data, fine — but I would present the no-show rate
+the data, fine - but I would present the no-show rate
 problem to them first and let them choose with eyes open.
 
 ### Don't overcomplicate the v1 build with a "model selector"

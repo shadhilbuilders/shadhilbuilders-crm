@@ -1,4 +1,4 @@
-// T-F4 — BookingsPage wire-shape contract.
+// T-F4 - BookingsPage wire-shape contract.
 //
 // Pins: rows render when useBookings resolves with an array (the
 // T-F1 select unwrap); ModulePending surfaces on error; the
@@ -37,7 +37,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('BookingsPage — wire-shape contract (T-F4)', () => {
+describe('BookingsPage - wire-shape contract (T-F4)', () => {
   it('renders rows when useBookings resolves with the unwrapped row array', () => {
     mockedUseBookings.mockReturnValue({
       data: [

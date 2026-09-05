@@ -1,7 +1,7 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Bookings module DTOs (Zod)
+// Shadhil CRM - Bookings module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
-// Manager approval flow: §0.11 — Manager sees full-screen modal, Sales Exec
+// Manager approval flow: §0.11 - Manager sees full-screen modal, Sales Exec
 // sees drawer. Both call the same POST /bookings/:id/approve endpoint.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { BookingStatusSchema } from './enums';
 
 /**
- * POST /api/bookings — start a new booking (HOLD state).
+ * POST /api/bookings - start a new booking (HOLD state).
  * Sales Exec initiates. Manager approves later via /approve.
  */
 export const CreateBookingDtoSchema = z.object({
@@ -25,7 +25,7 @@ export const CreateBookingDtoSchema = z.object({
 export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
 
 /**
- * POST /api/bookings/:id/approve — Manager approves or rejects.
+ * POST /api/bookings/:id/approve - Manager approves or rejects.
  * `approved: false` requires a reason (audit + customer follow-up).
  */
 export const ApproveBookingDtoSchema = z.object({
@@ -35,7 +35,7 @@ export const ApproveBookingDtoSchema = z.object({
 export type ApproveBookingDto = z.infer<typeof ApproveBookingDtoSchema>;
 
 /**
- * PATCH /api/bookings/:id/transition — advance booking state.
+ * PATCH /api/bookings/:id/transition - advance booking state.
  * Used for: HOLD → TOKEN (after token payment) | any → CANCELLED.
  */
 export const BookingTransitionDtoSchema = z.object({

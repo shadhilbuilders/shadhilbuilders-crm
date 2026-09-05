@@ -1,9 +1,9 @@
 'use client';
 
-// SkeletonContainer — cross-fade between a skeleton and real content.
+// SkeletonContainer - cross-fade between a skeleton and real content.
 //
 // T17 (PR2). CEO cherry-pick: the page should feel "alive" instead of
-// popping from skeleton to content. The fade is CSS-only — no hook,
+// popping from skeleton to content. The fade is CSS-only - no hook,
 // no setTimeout. The classes are exported as constants so the T33
 // computed-style test can pin `transitionDuration === '200ms'`.
 //
@@ -21,7 +21,7 @@
 //
 // `motion-reduce:transition-none` honors the OS reduce-motion pref.
 // Both layers stay mounted (no remount) so the wrapper's transition
-// fires when `isLoading` flips. The skeleton layer is optional —
+// fires when `isLoading` flips. The skeleton layer is optional -
 // when callers don't pass it, only the content layer renders.
 import type { ReactNode } from 'react';
 
@@ -30,7 +30,7 @@ import { cn } from '@paalstack/react-ui/lib';
 import { Skeleton, type ChartDataHint, type SkeletonVariant } from './Skeleton';
 
 // ---------------------------------------------------------------------------
-// Class strings — exported so the T33 computed-style test can pin them.
+// Class strings - exported so the T33 computed-style test can pin them.
 // (See apps/web/src/components/shared/skeleton-container.test.ts.)
 // ---------------------------------------------------------------------------
 

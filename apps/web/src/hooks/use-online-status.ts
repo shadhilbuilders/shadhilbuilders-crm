@@ -1,4 +1,4 @@
-// T25 (PR3) — useOnlineStatus: SSR-safe online/offline tracker.
+// T25 (PR3) - useOnlineStatus: SSR-safe online/offline tracker.
 //
 // Returns `true` when the browser is online (default for SSR and the
 // initial paint to avoid a flash of "Will sync when online" before

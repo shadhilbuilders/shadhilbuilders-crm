@@ -1,4 +1,4 @@
-// Chat module — message history + send for the Lead detail page.
+// Chat module - message history + send for the Lead detail page.
 //
 // T-CHAT (2026-09-07): replaces the Phase-1 stub. The web page
 // already wires to GET /api/chat/:leadId and POST /api/chat/send via

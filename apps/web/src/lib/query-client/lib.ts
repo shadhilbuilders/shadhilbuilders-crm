@@ -28,7 +28,7 @@
  * structured-clone functions → DataCloneError on every persist. Replaced
  * with `dehydrate()` / `hydrate()` (TanStack's serialization helpers,
  * which strip non-cloneable fields by design) and dropped the custom
- * `retryDelay` function from defaults — TanStack's built-in default is
+ * `retryDelay` function from defaults - TanStack's built-in default is
  * the same exponential backoff (`Math.min(1000 * 2 ** n, 30000)`).
  */
 import { QueryClient, dehydrate, hydrate } from '@tanstack/react-query';
@@ -61,7 +61,7 @@ const persistCache = async (qc: QueryClient) => {
   // we wrote last time). Avoids the 1s-throttled-everything baseline
   // of the old throttled persister. `dehydrate` strips non-cloneable
   // fields (queryFn, retry, retryDelay, etc.) before we hand the
-  // payload to IDB — see Round 26 in DECISION-CHANGELOG.
+  // payload to IDB - see Round 26 in DECISION-CHANGELOG.
   const snapshot = dehydrate(qc);
   const hasState =
     snapshot.queries.length > 0 || snapshot.mutations.length > 0;
@@ -128,7 +128,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: false,
-      // retryDelay intentionally omitted — TanStack's default is
+      // retryDelay intentionally omitted - TanStack's default is
       // `Math.min(1000 * 2 ** attemptIndex, 30000)`, which is what we
       // want. Putting a function here previously broke IDB persistence
       // (Round 26: DataCloneError on structured-clone).
@@ -162,7 +162,7 @@ if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
       // intentional unmount with no data loss).
       if (query.state.fetchStatus === 'fetching') {
         console.warn(
-          `[query] GC'd while still fetching — exceeded 30s timeout. ` +
+          `[query] GC'd while still fetching - exceeded 30s timeout. ` +
             `queryKey=${JSON.stringify(query.queryKey)}`,
         );
       }

@@ -1,6 +1,6 @@
 'use client';
 
-// Skeleton — single generic loading-placeholder component with variants.
+// Skeleton - single generic loading-placeholder component with variants.
 //
 // T16 (PR2) + T34 (PR3). DRY collapse per CEO §5 1D: ONE component,
 // multiple shape variants, instead of 4 dedicated files. Wraps the
@@ -8,9 +8,9 @@
 // + `bg-muted`) with our own variant API so pages don't hand-roll
 // `h-4 w-32 bg-muted animate-pulse` snippets. The brand color, pulse
 // animation, and motion-reduce handling are inherited from the
-// library — this file only owns the *shape* contract.
+// library - this file only owns the *shape* contract.
 //
-// Variants and the exact shapes they render (T32 — shape-count tests
+// Variants and the exact shapes they render (T32 - shape-count tests
 // pin these counts so a future "I tweaked the skeleton" change fails
 // the build if it breaks the shape contract):
 //
@@ -53,14 +53,14 @@ export type SkeletonProps = {
   variant: SkeletonVariant;
   /** Override the default count for the variant (kpi, table, list, text). */
   count?: number;
-  /** Chart inside-shape — only consulted when `variant="chart"`. */
+  /** Chart inside-shape - only consulted when `variant="chart"`. */
   dataHint?: ChartDataHint;
   /**
    * T25 (PR3): when true, the skeleton renders an offline hint
    * ("Will sync when online") alongside the shape. The hook that
    * renders the skeleton (e.g. a page) decides this based on
    * `navigator.onLine`; this component just adds the label.
-   * Only meaningful for `variant="list"` — the other variants
+   * Only meaningful for `variant="list"` - the other variants
    * are too small for a meaningful inline message.
    */
   isOffline?: boolean;
@@ -69,7 +69,7 @@ export type SkeletonProps = {
 };
 
 // ---------------------------------------------------------------------------
-// Per-variant shape definitions (T32 — these are the contract).
+// Per-variant shape definitions (T32 - these are the contract).
 //
 // Pure data, exported for the test that asserts the shape-count pin.
 // Keeping them in one place means a variant tweak touches a single
@@ -90,7 +90,7 @@ export const SKELETON_SHAPES = {
 export function getChartShape(hint: ChartDataHint | undefined): ReactNode {
   switch (hint) {
     case 'pie':
-      // 1 circle — the canonical pie placeholder. T32 pins this count.
+      // 1 circle - the canonical pie placeholder. T32 pins this count.
       return (
         <div
           aria-hidden="true"
@@ -130,7 +130,7 @@ export function getChartShape(hint: ChartDataHint | undefined): ReactNode {
     case 'bar':
     case undefined:
     default:
-      // 5 bars — the canonical bar-chart shape. T32 pins this count.
+      // 5 bars - the canonical bar-chart shape. T32 pins this count.
       return (
         <div
           className="flex h-32 items-end justify-around gap-2 px-2"
@@ -152,7 +152,7 @@ export function getChartShape(hint: ChartDataHint | undefined): ReactNode {
 /**
  * Render the Skeleton. The output is a `<div role="status"
  * aria-busy="true" aria-live="polite">` so screen readers announce
- * "loading" — T26 asserts the `aria-busy` is present. `aria-label`
+ * "loading" - T26 asserts the `aria-busy` is present. `aria-label`
  * gives a short hint to assistive tech.
  */
 export function Skeleton({
@@ -271,7 +271,7 @@ export function Skeleton({
         );
 
       case 'text':
-        // Stacked shimmer lines — exactly what the library's
+        // Stacked shimmer lines - exactly what the library's
         // SkeletonContainer is designed for. We pass `className`
         // for each line's shape and `isFullWidth` so the lines
         // span the container, and `wrapperClassName` for the

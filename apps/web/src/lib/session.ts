@@ -1,6 +1,6 @@
 'use client';
 
-// Session plumbing — better-auth's useSession + our typed user extraction.
+// Session plumbing - better-auth's useSession + our typed user extraction.
 import { authClient } from '@/lib/auth-client';
 
 import {
@@ -39,7 +39,7 @@ export function isAdminLike(role: Role | undefined): boolean {
   return role === 'ADMIN' || role === 'OWNER';
 }
 
-/** Manager: manages a team — sees team pipeline, approval queue. */
+/** Manager: manages a team - sees team pipeline, approval queue. */
 export function isManager(role: Role | undefined): boolean {
   return role === 'MANAGER';
 }

@@ -1,4 +1,4 @@
-// Realtime service — stream-ticket mint + consume.
+// Realtime service - stream-ticket mint + consume.
 //
 // T-E2 (Week 6, 2026-09-04): replaces the Phase-1 SSE stub with a real
 // ticket-authenticated SSE layer. Flow:
@@ -11,15 +11,15 @@
 //
 // Why tickets instead of JWT on the SSE path: the browser's EventSource
 // cannot set Authorization headers (spec limitation). The ticket IS the
-// auth — unguessable cuid, bound to (user, channel), single-use, and
+// auth - unguessable cuid, bound to (user, channel), single-use, and
 // expires in 5 minutes so leakage is bounded.
 //
 // Channel access rules (enforced at mint time):
-//   - "notifications" — always allowed (the row userId = actor.sub)
-//   - "audit"         — allowed for all roles; the stream filters rows
+//   - "notifications" - always allowed (the row userId = actor.sub)
+//   - "audit"         - allowed for all roles; the stream filters rows
 //                       per the same policy the REST list uses
 //                       (admin/owner see all, others see own rows)
-//   - "chat:<leadId>" — allowed only if the actor could read the lead
+//   - "chat:<leadId>" - allowed only if the actor could read the lead
 //                       (same RLS visibility the REST list enforces:
 //                       owner, same-team, or admin/owner)
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
@@ -110,7 +110,7 @@ export class RealtimeService {
     }
 
     // 2. Channel access checks. For chat, the actor must be able to read
-    //    the lead — same visibility the REST list uses (owner / team /
+    //    the lead - same visibility the REST list uses (owner / team /
     //    admin-or-owner). This runs inside withRlsContext so the Lead
     //    row lookup honors the same policies the runtime requests do.
     if (parsed.kind === 'chat') {
@@ -149,7 +149,7 @@ export class RealtimeService {
   /**
    * Consume a ticket: must exist, not be expired, belong to nobody in
    * particular (the cuid is the auth), and match the requested channel.
-   * Single-use — deletes the row so a replayed ticket can't reconnect.
+   * Single-use - deletes the row so a replayed ticket can't reconnect.
    * Returns the ticket's userId so the stream can scope its queries.
    */
   async consumeTicket(

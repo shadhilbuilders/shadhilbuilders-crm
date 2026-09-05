@@ -105,7 +105,7 @@ afterAll(async () => {
   await adminSeed(async (db) => {
     // T-E2b: reorder cleanup. The Message delete cascades to
     // OutboundMessage (FK ON DELETE CASCADE), so we delete the
-    // message FIRST and skip the explicit outbound delete — the
+    // message FIRST and skip the explicit outbound delete - the
     // cascade handles it. This avoids the DELETE permission check
     // on OutboundMessage entirely.
     await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID } });
@@ -118,7 +118,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  // No global mock reset needed — we use real DB.
+  // No global mock reset needed - we use real DB.
 });
 
 // We stub the OutboundService by hand. Its enqueue() returns a
@@ -166,7 +166,7 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
       channel: 'WHATSAPP',
     });
 
-    // 1. Message was created — look it up via adminSeed (RLS-aware
+    // 1. Message was created - look it up via adminSeed (RLS-aware
     //    so the SELECT policy gates correctly). Bare prisma would
     //    hit the same RLS issue we had for the leadFirstName fix.
     if (prisma === null) throw new Error('prisma missing');

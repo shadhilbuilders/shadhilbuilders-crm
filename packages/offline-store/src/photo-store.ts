@@ -5,7 +5,7 @@
  *
  * Quota handling: IDB storage is best-effort on mobile browsers. The
  * plan calls for "if QuotaExceededError, evict the oldest photo, retry
- * once". This is a single retry — repeated quota errors surface to the
+ * once". This is a single retry - repeated quota errors surface to the
  * UI via the thrown exception.
  */
 import { del, get, keys, set } from 'idb-keyval';
@@ -20,9 +20,9 @@ export const createPhotoStore = () => ({
     } catch (err) {
       if (err instanceof DOMException && err.name === 'QuotaExceededError') {
         // Evict the oldest blob (insertion order = IDB key sort order, which
-        // is lexicographic on UUIDs — that's random, not chronological).
+        // is lexicographic on UUIDs - that's random, not chronological).
         // For a proper LRU, we'd need a separate metadata index. For the
-        // MVP, evictions just shuffle a random blob out — the user can
+        // MVP, evictions just shuffle a random blob out - the user can
         // re-capture if needed. A real LRU is a follow-up.
         const allKeys = (await keys(photoStore)) as string[];
         if (allKeys.length > 0) {

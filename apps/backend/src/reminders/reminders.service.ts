@@ -1,4 +1,4 @@
-// Reminders service — CRUD surface + the cron processor.
+// Reminders service - CRUD surface + the cron processor.
 //
 // T-G4 (P1): the cron processor is Redis-locked with two safety nets:
 //   1. LEASE RENEWAL: the per-batch loop bumps the lock TTL every 25s
@@ -11,7 +11,7 @@
 //      it during the renewal window), the second updateMany sees
 //      zero rows and exits. No duplicate fire.
 //
-// The owned-token release is the existing Lua releaseLock() — only
+// The owned-token release is the existing Lua releaseLock() - only
 // the holder of the token can DEL the key.
 import {
   Inject,
@@ -35,7 +35,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 
 export const REMINDER_LOCK_KEY = 'cron:reminders:lock';
-const LOCK_TTL_SEC = 50; // cron fires every 60s — keep < 60
+const LOCK_TTL_SEC = 50; // cron fires every 60s - keep < 60
 const LOCK_RENEWAL_SEC = 25; // renew at half-life
 const BATCH_SIZE = 100;
 
@@ -62,7 +62,7 @@ export interface ReminderListResult {
  * integration is Week 7 work per the plan; for T-G4 we just need a
  * delivery sink that the cron can call to mark rows SENT. The
  * processor treats any thrown error as FAILED (the row stays
- * PROCESSING for retry next tick — recovery is handled by the
+ * PROCESSING for retry next tick - recovery is handled by the
  * stuck-row query documented on Reminder.claimedAt).
  */
 async function deliverReminder(_reminder: Reminder): Promise<void> {
@@ -87,7 +87,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     lockHeld: boolean;
   } | null = null;
 
-  // Injectable timer refs for tests — the @Cron fires every minute
+  // Injectable timer refs for tests - the @Cron fires every minute
   // in production but tests want to drive the tick manually.
   private lastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -131,7 +131,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * GET /api/reminders — list due + recent reminders, role-scoped.
+   * GET /api/reminders - list due + recent reminders, role-scoped.
    * Currently a thin wrapper around prisma (returns the first 50
    * scheduled+processing+sent rows ordered by scheduledFor asc). The
    * full filter DTO from the api-types ReminderFilterDtoSchema will
@@ -194,7 +194,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
    *            its updateMany sees zero rows and exits cleanly.
    *
    * The cron returns void; errors are logged. We deliberately do
-   * NOT throw from a @Cron handler — that breaks the schedule
+   * NOT throw from a @Cron handler - that breaks the schedule
    * loop in some @nestjs/schedule versions.
    *
    * RLS: shadhil_app has BYPASSRLS (migration
@@ -242,7 +242,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     );
     if (!acquired) {
       this.logger.debug(
-        `Skipping tick — another replica holds ${REMINDER_LOCK_KEY}`,
+        `Skipping tick - another replica holds ${REMINDER_LOCK_KEY}`,
       );
       tick.finishedAt = new Date();
       return;
@@ -250,7 +250,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     tick.lockHeld = true;
 
     try {
-      // Lease renewal timer — bump the TTL every half-life so the
+      // Lease renewal timer - bump the TTL every half-life so the
       // lock doesn't expire mid-batch.
       const renewTimer = setInterval(() => {
         void this.redis
@@ -274,11 +274,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         // Layer 2: claim. updateMany(SCHEDULED → PROCESSING) is the
         // idempotency primitive. A second cron that somehow passes
         // the lock check (e.g. during the renewal window) will see
-        // zero rows here and exit cleanly — no duplicate fire.
+        // zero rows here and exit cleanly - no duplicate fire.
         //
         // T-CRONS (2026-09-07): wrapped in withRlsContext as
         // CRON_SERVICE so the reminder_cron_service RLS policy
-        // matches — the cron is a service account, not a real user,
+        // matches - the cron is a service account, not a real user,
         // and can't satisfy the owner-only reminder_write_owner
         // policy. See
         // packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
@@ -334,7 +334,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         for (const reminder of due) {
           if (!tick.renewedLease) {
             this.logger.warn(
-              `Aborting batch at row ${reminder.id} — lease lost`,
+              `Aborting batch at row ${reminder.id} - lease lost`,
             );
             break;
           }
@@ -360,7 +360,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
             );
             tick.sent++;
           } catch (err) {
-            // FAILED is sticky — the row stays PROCESSING until the
+            // FAILED is sticky - the row stays PROCESSING until the
             // stuck-row recovery flips it back to SCHEDULED (or the
             // operator re-queues). Per Plan §12, NO_SHOW_STAFF retries
             // are handled by re-scheduling, not by cron retries.
@@ -390,7 +390,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       // Layer 1 cleanup: releaseLock is a Lua compare-and-delete on
       // our token. If a different replica owns the lock by now (e.g.
       // our lease expired and someone else acquired it), the script
-      // returns 0 and we don't delete — correct behavior.
+      // returns 0 and we don't delete - correct behavior.
       await this.redis.releaseLock(REMINDER_LOCK_KEY, this.replicaId);
       tick.finishedAt = new Date();
     }
@@ -398,7 +398,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Test-only accessor for the most recent tick. Production code
-   * shouldn't depend on this — it's for the unit test that
+   * shouldn't depend on this - it's for the unit test that
    * asserts "tick > 60s does not double-fire" (Plan §18 / T-G4).
    */
   getLastTick(): typeof this.lastTick {

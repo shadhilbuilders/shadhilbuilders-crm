@@ -1,4 +1,4 @@
-# Shadhil Builders CRM — How It Works
+# Shadhil Builders CRM - How It Works
 
 A picture-book guide for Shadhil's sales leadership. Six diagrams, plain English, no jargon walls. Each diagram appears twice: once in plain text (so it reads in any terminal or email) and once in Mermaid format (so it renders nicely on GitHub or the company wiki).
 
@@ -6,7 +6,7 @@ A picture-book guide for Shadhil's sales leadership. Six diagrams, plain English
 
 ---
 
-## Diagram 1 — The Big Picture: All Our Apps and Where Data Lives
+## Diagram 1 - The Big Picture: All Our Apps and Where Data Lives
 
 **ELI10.** Think of the CRM as a small office with three front desks and one filing cabinet. The *web app* is the desk a Sales Manager uses on a laptop. The *mobile app* is the desk a Telecaller carries in their pocket. The *backend* is the clerk behind the scenes who actually files things. All three desks talk to the same clerk, who writes everything into a big locked filing cabinet (the database). When the clerk wants to "shout" a message to anyone who has a file open right now, he shouts through a little intercom (Redis), and messages on WhatsApp flow in and out through a special phone line (the WhatsApp Cloud API). Phone calls flow through FreJun, our Indian cloud phone system.
 
@@ -80,13 +80,13 @@ flowchart LR
     Nest -- "click-to-call" --> FreJun
 ```
 
-**Note.** Everything important sits in Postgres — Redis is only for "who is online, push them this chat message *now*". Losing Redis never loses a lead. Both apps share the same NestJS backend, so a Sales Manager's laptop and a Telecaller's phone always see the same data within a second of each other.
+**Note.** Everything important sits in Postgres - Redis is only for "who is online, push them this chat message *now*". Losing Redis never loses a lead. Both apps share the same NestJS backend, so a Sales Manager's laptop and a Telecaller's phone always see the same data within a second of each other.
 
 ---
 
-## Diagram 2 — Logging In From a Laptop (Web)
+## Diagram 2 - Logging In From a Laptop (Web)
 
-**ELI10.** Imagine Priya the Sales Executive walks up to the office door (opens her browser). She shows her ID (email + password) to the guard at the front desk (Next.js, which is also doing login). The guard checks her ID, gives her a little wristband (an encrypted cookie) so she doesn't have to show ID at every desk, and gives her a stamped pass (a JWT token) she can show to the back-office clerk (NestJS). Every time she asks the clerk for a file, the clerk checks the pass *and* the filing cabinet has a built-in lock that only opens files for people with the right pass — even if the clerk makes a mistake, the cabinet itself refuses to show her files she shouldn't see.
+**ELI10.** Imagine Priya the Sales Executive walks up to the office door (opens her browser). She shows her ID (email + password) to the guard at the front desk (Next.js, which is also doing login). The guard checks her ID, gives her a little wristband (an encrypted cookie) so she doesn't have to show ID at every desk, and gives her a stamped pass (a JWT token) she can show to the back-office clerk (NestJS). Every time she asks the clerk for a file, the clerk checks the pass *and* the filing cabinet has a built-in lock that only opens files for people with the right pass - even if the clerk makes a mistake, the cabinet itself refuses to show her files she shouldn't see.
 
 ```
 Step  Actor              Action
@@ -128,13 +128,13 @@ sequenceDiagram
     Nest-->>Priya: 200 OK [ her leads only ]
 ```
 
-**Note.** Two layers of security, on purpose. The cookie handles "is this a real logged-in user?" and the JWT handles "what's the user's role + team so we can tell Postgres who is asking". The RLS policy is the last wall — even if a developer writes a buggy query that forgets to add a `WHERE owner_id = ?`, the database still refuses to leak other people's leads.
+**Note.** Two layers of security, on purpose. The cookie handles "is this a real logged-in user?" and the JWT handles "what's the user's role + team so we can tell Postgres who is asking". The RLS policy is the last wall - even if a developer writes a buggy query that forgets to add a `WHERE owner_id = ?`, the database still refuses to leak other people's leads.
 
 ---
 
-## Diagram 3 — Logging In From a Phone (Expo Mobile)
+## Diagram 3 - Logging In From a Phone (Expo Mobile)
 
-**ELI10.** Same idea as the laptop login, but the "wristband" can't be an httpOnly cookie on a phone — phones don't send cookies back the same way browsers do. Instead, after the front desk (Next.js) checks Ravi the Telecaller's ID, Ravi's phone tucks the stamped pass (JWT) into the phone's *hardware safe* — on iPhones that's the secure Keychain chip, on Android that's the encrypted shared-preferences vault. Every time the app calls the back office, it pulls the pass out of the safe and shows it. If Ravi loses his phone, the safe is encrypted and locked, so nobody can read the pass.
+**ELI10.** Same idea as the laptop login, but the "wristband" can't be an httpOnly cookie on a phone - phones don't send cookies back the same way browsers do. Instead, after the front desk (Next.js) checks Ravi the Telecaller's ID, Ravi's phone tucks the stamped pass (JWT) into the phone's *hardware safe* - on iPhones that's the secure Keychain chip, on Android that's the encrypted shared-preferences vault. Every time the app calls the back office, it pulls the pass out of the safe and shows it. If Ravi loses his phone, the safe is encrypted and locked, so nobody can read the pass.
 
 ```
 Step  Actor              Action
@@ -144,7 +144,7 @@ Step  Actor              Action
  3.   App                User types email + password
  4.   Expo app           @better-auth/expo POSTs to /api/auth/sign-in on Next.js
  5.   Next.js BFF        better-auth validates credentials against Postgres
- 6.   Next.js BFF        Returns JWT in JSON response (no cookie — mobile)
+ 6.   Next.js BFF        Returns JWT in JSON response (no cookie - mobile)
  7.   Expo app           @better-auth/expo stores JWT in SecureStore
                           ├─ iOS:     writes to Keychain (hardware-backed)
                           └─ Android: writes to EncryptedSharedPreferences
@@ -180,13 +180,13 @@ sequenceDiagram
     Nest-->>Expo: 200 OK [ leads ]
 ```
 
-**Note.** The single biggest difference from the web flow: there is no cookie on mobile. The phone holds the JWT in a hardware-encrypted store, and the app attaches it manually on every API call. That's why we use `SecureStore` (not `AsyncStorage` — that one is plain-text and would leak tokens if the phone is compromised). If a user logs out, `SecureStore.deleteItem` wipes the entry from the secure store immediately.
+**Note.** The single biggest difference from the web flow: there is no cookie on mobile. The phone holds the JWT in a hardware-encrypted store, and the app attaches it manually on every API call. That's why we use `SecureStore` (not `AsyncStorage` - that one is plain-text and would leak tokens if the phone is compromised). If a user logs out, `SecureStore.deleteItem` wipes the entry from the secure store immediately.
 
 ---
 
-## Diagram 4 — A Lead's Life: From "New" to "Booked" (or "Lost") — Model C
+## Diagram 4 - A Lead's Life: From "New" to "Booked" (or "Lost") - Model C
 
-**ELI10 (v3.1, Model C).** Every potential buyer (a "lead") starts as a brand-new piece of paper on a Telecaller's desk. The Telecaller chats on WhatsApp, learns what the person wants, and books a site visit. From `NEW` through `VISIT_SCHEDULED`, the Telecaller owns the lead — they are responsible for confirming with the customer 24 hours and 2 hours before the visit. The Sales Executive appears on the lead only once it's `VISIT_SCHEDULED`, so they can prepare for the visit. Then there is a single clean handoff: the moment the visit outcome is logged, ownership transfers automatically. `VISITED` → ownership moves to the Sales Executive. `NO_SHOW` → ownership reverts back to the Telecaller (they have to re-engage and reschedule). After two no-shows in a row, the lead goes cold and the Manager is notified.
+**ELI10 (v3.1, Model C).** Every potential buyer (a "lead") starts as a brand-new piece of paper on a Telecaller's desk. The Telecaller chats on WhatsApp, learns what the person wants, and books a site visit. From `NEW` through `VISIT_SCHEDULED`, the Telecaller owns the lead - they are responsible for confirming with the customer 24 hours and 2 hours before the visit. The Sales Executive appears on the lead only once it's `VISIT_SCHEDULED`, so they can prepare for the visit. Then there is a single clean handoff: the moment the visit outcome is logged, ownership transfers automatically. `VISITED` → ownership moves to the Sales Executive. `NO_SHOW` → ownership reverts back to the Telecaller (they have to re-engage and reschedule). After two no-shows in a row, the lead goes cold and the Manager is notified.
 
 ```
 TELECALLER LANE  (first touch, qualifying, confirming visit)
@@ -206,7 +206,7 @@ SALES EXECUTIVE LANE  (conducts visit, closes)            │  │
                                                           │
                                             (exec appears here, lead in
                                              BOTH queues during
-                                             VISIT_SCHEDULED — exec
+                                             VISIT_SCHEDULED - exec
                                              prepares, telecaller
                                              confirms)
                                                           │
@@ -231,7 +231,7 @@ SALES EXECUTIVE LANE  (conducts visit, closes)            │  │
 ```
 
 ```
-HANDOFF POINT (the only one — automatic on visit outcome)
+HANDOFF POINT (the only one - automatic on visit outcome)
 ═══════════════════════════════════════════════════════════
 
    VISIT_SCHEDULED ──┬── outcome = VISITED ──▶ ownership → Sales Exec
@@ -288,19 +288,19 @@ stateDiagram-v2
     LOST --> [*]
 ```
 
-**Note (v3.1, Model C).** The handoff is automatic on the visit outcome — there is no Telecaller click, no Manager approval, no Sales Executive claiming. Three enforcement layers:
+**Note (v3.1, Model C).** The handoff is automatic on the visit outcome - there is no Telecaller click, no Manager approval, no Sales Executive claiming. Three enforcement layers:
 
 1. **API:** `POST /api/site-visits/:id/outcome` updates `Lead.status` and `Lead.currentOwnerId` in a single Postgres transaction. The exec must be the one logging `VISITED` (telecaller can only log `NO_SHOW`).
 2. **Postgres RLS:** `lead_exec_select` and `lead_telecaller_select` policies both allow reading when `status = 'VISIT_SCHEDULED'` (shared visibility), then narrow on visit outcome.
 3. **Audit:** `LeadAssignment` row is written on every ownership change with `reason` = `VISITED_HANDOFF` or `NO_SHOW_REVERT`. Six months later, you can answer "how many handoffs did Exec P. receive last month?" in one SQL query.
 
-The 2-hour no-show WhatsApp (`missed_visit_followup` template) fires automatically via NestJS cron — no human in the loop.
+The 2-hour no-show WhatsApp (`missed_visit_followup` template) fires automatically via NestJS cron - no human in the loop.
 
 ---
 
-## Diagram 5 — Live Chat: How a WhatsApp Message Reaches Everyone in Real Time
+## Diagram 5 - Live Chat: How a WhatsApp Message Reaches Everyone in Real Time
 
-**ELI10.** When a Sales Executive types a WhatsApp message in the app, here's what happens in 200 milliseconds: the app sends the message to the back office (NestJS), the back office writes a copy into the filing cabinet (Postgres), and the back office shouts into the office intercom (Redis) "new message for lead #42!" Every device that has lead #42 open at that moment — the Executive's own phone (so they see their message marked "sent"), the Manager's laptop (peeking at the same lead), and a second phone the Executive left open — hears the shout and updates the chat instantly. Customer replies come back the same way, but in reverse: WhatsApp calls our back office on a webhook, the clerk writes the message down and shouts into the intercom, and every open device updates.
+**ELI10.** When a Sales Executive types a WhatsApp message in the app, here's what happens in 200 milliseconds: the app sends the message to the back office (NestJS), the back office writes a copy into the filing cabinet (Postgres), and the back office shouts into the office intercom (Redis) "new message for lead #42!" Every device that has lead #42 open at that moment - the Executive's own phone (so they see their message marked "sent"), the Manager's laptop (peeking at the same lead), and a second phone the Executive left open - hears the shout and updates the chat instantly. Customer replies come back the same way, but in reverse: WhatsApp calls our back office on a webhook, the clerk writes the message down and shouts into the intercom, and every open device updates.
 
 ```
 SENDING (Sales Exec → Customer)
@@ -395,13 +395,13 @@ sequenceDiagram
     end
 ```
 
-**Note.** The single Redis channel per lead (`lead:42`) is the magic that makes this work at low cost. With 50 sales staff and maybe 5 leads open per person, that's ~250 open SSE connections — a single small NestJS instance handles it without breaking a sweat. If the SSE connection drops, the app reconnects automatically and Postgres is the source of truth, so nothing is lost.
+**Note.** The single Redis channel per lead (`lead:42`) is the magic that makes this work at low cost. With 50 sales staff and maybe 5 leads open per person, that's ~250 open SSE connections - a single small NestJS instance handles it without breaking a sweat. If the SSE connection drops, the app reconnects automatically and Postgres is the source of truth, so nothing is lost.
 
 ---
 
-## Diagram 6 — The One-Step Handoff (Automatic on Visit Outcome) — Model C
+## Diagram 6 - The One-Step Handoff (Automatic on Visit Outcome) - Model C
 
-**ELI10 (v3.1, Model C).** When a Telecaller's customer shows up to (or misses) a site visit, ownership of the lead moves in a single step. The Sales Executive logs the outcome (`VISITED` or `NO_SHOW`) from inside the app on the day of the visit — that's the trigger. The system then:
+**ELI10 (v3.1, Model C).** When a Telecaller's customer shows up to (or misses) a site visit, ownership of the lead moves in a single step. The Sales Executive logs the outcome (`VISITED` or `NO_SHOW`) from inside the app on the day of the visit - that's the trigger. The system then:
 
 - **If `VISITED`:** writes a `LeadAssignment` row moving the lead from the Telecaller to the Sales Executive (or to the exec picked by `ManagerAssignmentRule` if the visit had no pre-assigned exec), updates `Lead.currentOwnerId`, fires WhatsApp confirmation to the customer, fires push #4 to the exec, updates SSE channels, and the lead now appears in the Sales Exec's queue with the full chat history attached.
 - **If `NO_SHOW`:** writes a `LeadAssignment` row reverting ownership to the Telecaller, fires the `missed_visit_followup` WhatsApp template to the customer, fires push #6 to the Telecaller + Manager, and the lead goes back into the Telecaller's queue for re-engagement.
@@ -431,7 +431,7 @@ Step  What happens (human action)              System actions
      the lead (audit/coaching access)               (reason: 'VISITED_HANDOFF')
 
                                                   • Fires WhatsApp to customer
-                                                    (post-visit thank-you template —
+                                                    (post-visit thank-you template -
                                                     v1.1, not v1)
                                                   • Push trigger #4 to the exec
                                                   • Push trigger #11 to Manager
@@ -461,7 +461,7 @@ Step  What happens (human action)              System actions
       WhatsApp from inside the app                 • Audit log: "First post-outcome
       (within 30 min target per §13                  contact for lead #42"
       Exec response time metric)
-                                                  • No further handoff needed —
+                                                  • No further handoff needed -
                                                     ownership is settled
 
   5.  Lead continues to its next state           • VISITED → NEGOTIATION → BOOKING_-
@@ -484,7 +484,7 @@ sequenceDiagram
     participant WA as WhatsApp Cloud
     participant Expo as Expo Push
 
-    Note over TC,Exec: Lead in VISIT_SCHEDULED — shared visibility,<br/>both see it, Telecaller confirms with customer,<br/>Exec prepares for visit
+    Note over TC,Exec: Lead in VISIT_SCHEDULED - shared visibility,<br/>both see it, Telecaller confirms with customer,<br/>Exec prepares for visit
 
     Exec->>ExecApp: log outcome = VISITED<br/>(or NO_SHOW)
     ExecApp->>Nest: POST /api/site-visits/42/outcome<br/>{outcome: 'VISITED', notes: '...'}
@@ -511,7 +511,7 @@ sequenceDiagram
 
 **Note (v3.1, Model C).** Three small but important design choices in this handoff:
 
-1. **No auto-WhatsApp at the moment of handoff.** The system fires the post-visit WhatsApp (v1.1) but not a "you've been assigned to..." notification at the handoff instant. The Exec personally reaches out — it's a relationship moment, not an automated one.
+1. **No auto-WhatsApp at the moment of handoff.** The system fires the post-visit WhatsApp (v1.1) but not a "you've been assigned to..." notification at the handoff instant. The Exec personally reaches out - it's a relationship moment, not an automated one.
 2. **Read-only is sticky.** Once the Telecaller hands off via visit outcome, they can still see the lead forever (read-only). This is on purpose: it lets them review their own work, learn from wins, and resolve any "but I told them X!" disputes during coaching.
 3. **One audit entry per ownership change.** Every state transition writes its own `LeadAssignment` row with `reason`. Six months later, when leadership asks "how many leads did Exec P. inherit vs. lose to NO_SHOW last quarter?", we can answer in one SQL query.
 
@@ -519,7 +519,7 @@ sequenceDiagram
 
 ## A Quick Word on What This Document Is *Not*
 
-This is the *sales leadership view* — what happens, who does it, and why. It deliberately skips:
+This is the *sales leadership view* - what happens, who does it, and why. It deliberately skips:
 
 - The exact database tables and column names (those live in the engineering spec).
 - The exact endpoints and request/response shapes (those live in the API reference).
@@ -527,4 +527,4 @@ This is the *sales leadership view* — what happens, who does it, and why. It d
 
 If you want any of those, ask the engineering team and they'll pull the right doc.
 
-— *End of diagrams*
+- *End of diagrams*

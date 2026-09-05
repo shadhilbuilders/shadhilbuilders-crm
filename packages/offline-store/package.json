@@ -2,7 +2,7 @@
   "name": "@shadhil/offline-store",
   "version": "0.1.0",
   "private": true,
-  "description": "Shadhil CRM — Offline data store: IDB-backed mutation queue, photo blob store, TanStack Query persistence, LWW conflict resolver. Platform-agnostic; consumed by apps/web (PWA) and apps/mobile (Expo, future).",
+  "description": "Shadhil CRM - Offline data store: IDB-backed mutation queue, photo blob store, TanStack Query persistence, LWW conflict resolver. Platform-agnostic; consumed by apps/web (PWA) and apps/mobile (Expo, future).",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

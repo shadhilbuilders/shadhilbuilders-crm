@@ -1,4 +1,4 @@
-# Client Feedback Round 7 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 7 - 2026-08-29 (Shadhil CRM)
 
 You asked: "What about AWS Amazon Connect Customer?"
 
@@ -21,7 +21,7 @@ compliance requirements.
 
 The migration cost is low because both FreJun and Amazon Connect
 expose webhook-based APIs. Switching later is "swap the webhook
-receiver and click-to-call provider" — not "rewrite the CRM."
+receiver and click-to-call provider" - not "rewrite the CRM."
 
 ---
 
@@ -36,24 +36,24 @@ Nice inContact.
 
 **Key things Amazon Connect gives you that FreJun/Exotel don't:**
 
-- **Amazon Q in Connect** — real-time AI agent assist. Suggests
+- **Amazon Q in Connect** - real-time AI agent assist. Suggests
   responses to the sales exec during the call based on the
   customer conversation. "Customer asked about BHK sizes →
   Amazon Q suggests the relevant floor plan."
-- **Contact Lens** — post-call analytics. Sentiment analysis,
+- **Contact Lens** - post-call analytics. Sentiment analysis,
   topic detection, talk-time ratio, agent performance scoring
   across thousands of calls.
-- **Amazon Lex integration** — native chatbot/IVR (if you
+- **Amazon Lex integration** - native chatbot/IVR (if you
   ever want it).
-- **Bedrock integration** — bring your own LLM for advanced
+- **Bedrock integration** - bring your own LLM for advanced
   call analysis.
 - **30+ AWS regions** including Mumbai (`ap-south-1`). If
   Shadhil opens a UAE office, Connect gives you the same
   platform there.
-- **Enterprise compliance** — SOC 2, HIPAA, PCI-DSS, GDPR,
+- **Enterprise compliance** - SOC 2, HIPAA, PCI-DSS, GDPR,
   ISO 27001, all inherited from AWS. Indian providers have
   weaker compliance stories.
-- **No per-seat licensing** — pay per minute + per agent hour.
+- **No per-seat licensing** - pay per minute + per agent hour.
   Scales without renegotiating contracts.
 
 **Key things it doesn't give you that FreJun/Exotel do:**
@@ -192,12 +192,12 @@ Amazon Connect charges per-minute for everything.
 Both FreJun and Amazon Connect expose webhook-based APIs.
 The CRM's telephony integration has three touchpoints:
 
-1. **Click-to-call** — CRM calls a `POST /calls/initiate`
+1. **Click-to-call** - CRM calls a `POST /calls/initiate`
    endpoint with the number to dial.
-2. **Call event webhooks** — provider calls
+2. **Call event webhooks** - provider calls
    `POST /webhooks/provider` with call.initiated /
    call.ended / recording.ready events.
-3. **Recording URL storage** — CRM stores the recording
+3. **Recording URL storage** - CRM stores the recording
    URL in the activity log.
 
 **To switch providers, you change:**
@@ -245,7 +245,7 @@ documents the comparison so future-you can answer the
 Add to DESIGN.md §6 (Integrations):
 
 ```
-**Telephony vendor — why FreJun over Amazon Connect:**
+**Telephony vendor - why FreJun over Amazon Connect:**
 Amazon Connect was evaluated and rejected for v1. At 5-15
 users, Connect costs ~3-4× more than FreJun for the same
 workload (~$735/month vs ~$184/month for 10 users). Connect's

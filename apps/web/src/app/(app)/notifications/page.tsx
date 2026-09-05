@@ -1,9 +1,9 @@
 'use client';
 
-// Notification Center — full page (Wireframes #7 dropdown, #12 mobile; web
+// Notification Center - full page (Wireframes #7 dropdown, #12 mobile; web
 // full page per DESIGN.md §11): filter tabs All / Unread, mark-all-read,
 // unread counter. The notifications REST module (Pass 1) returns
-// `{ total, unread, rows }` — useNotifications unwraps the rows + exposes
+// `{ total, unread, rows }` - useNotifications unwraps the rows + exposes
 // the counters (T-F1).
 import { Button } from '@paalstack/react-ui';
 import { useState } from 'react';
@@ -47,7 +47,7 @@ export default function NotificationsPage() {
   const notificationsQuery = useNotifications({
     unreadOnly: filter === 'UNREAD',
   });
-  // T-E2 (Week 6): live updates — new notifications stream in via SSE
+  // T-E2 (Week 6): live updates - new notifications stream in via SSE
   // and invalidate the list query (no 60s polling).
   useNotificationsRealtime();
   const markRead = useMarkNotificationsRead();
@@ -171,14 +171,14 @@ function NotificationsEmpty({
   error: unknown;
 }) {
   // If the backend returned rows=[] on the ALL filter, we render the
-  // friendly "no notifications yet" empty state — the inbox genuinely
+  // friendly "no notifications yet" empty state - the inbox genuinely
   // is empty. The error/non-built branches surface ModulePending
   // (ModulePending owns the loading / 404 / 500 surface contract).
   if (error !== null && error !== undefined) {
     return (
       <ModulePending
         title="Notification Center"
-        description="Every trigger event lands here — new leads, handoffs, approvals, reminders (DESIGN.md §11)."
+        description="Every trigger event lands here - new leads, handoffs, approvals, reminders (DESIGN.md §11)."
         error={error}
       />
     );

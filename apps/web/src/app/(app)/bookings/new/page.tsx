@@ -1,6 +1,6 @@
 'use client';
 
-// /bookings/new — Create-Booking form (T-F4).
+// /bookings/new - Create-Booking form (T-F4).
 //
 // Posts to /api/bookings via useCreateBooking (T-F1). Server
 // validates with CreateBookingDto Zod schema in
@@ -10,7 +10,7 @@
 //
 // Lead picker is data-driven via useLeads (the same pattern as
 // ScheduleVisitDialog). Unit ID is required by the DTO but the
-// Inventory module is not yet wired — so we accept a free-text
+// Inventory module is not yet wired - so we accept a free-text
 // cuid input. When the inventory module ships this becomes a
 // picker driven by InventoryUnit.status='AVAILABLE'.
 //

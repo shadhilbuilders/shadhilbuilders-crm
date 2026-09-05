@@ -1,4 +1,4 @@
-// Public route decorator — bypasses the global JwtAuthGuard.
+// Public route decorator - bypasses the global JwtAuthGuard.
 // Use for: /health, /auth/login, /auth/signup, /webhooks/whatsapp (Meta
 // verification), /webhooks/frejun (signature header is its own auth).
 import { SetMetadata } from '@nestjs/common';

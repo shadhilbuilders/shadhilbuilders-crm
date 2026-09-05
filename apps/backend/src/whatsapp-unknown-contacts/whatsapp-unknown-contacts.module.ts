@@ -1,4 +1,4 @@
-// T-E2b follow-up queue — module.
+// T-E2b follow-up queue - module.
 //
 // Wires the controller + service. LeadsModule is imported because
 // the service injects LeadsService (for the convert flow that

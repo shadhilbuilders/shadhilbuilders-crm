@@ -8,7 +8,7 @@
 -- query-string param to GET /api/sse/<channel>?ticket=... .
 --
 -- Single-use is enforced at the controller level (DELETE on consume), not
--- via RLS — the ticket IS the auth for the SSE path. RLS on StreamTicket
+-- via RLS - the ticket IS the auth for the SSE path. RLS on StreamTicket
 -- would add a join with no security gain because:
 --   - the cuid is unguessable (Prisma's cuid() is collision-resistant)
 --   - the row's userId is what gates the subsequent data queries

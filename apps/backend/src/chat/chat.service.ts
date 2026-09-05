@@ -1,7 +1,7 @@
-// Chat service — in-app + WhatsApp message history per Lead.
+// Chat service - in-app + WhatsApp message history per Lead.
 //
 // Scoping (per JWT): every read/write flows through withRlsContext.
-// The Message table has no userId-scoped policy — Message policies
+// The Message table has no userId-scoped policy - Message policies
 // key off the parent Lead (activity_select_team pattern): ADMIN sees
 // all, MANAGER sees team, TELECALLER/SALES_EXEC see own leads. The
 // service inherits Lead-scoped visibility by virtue of the policy
@@ -14,7 +14,7 @@
 //     we honor the DTO's channel (the inbound WA webhook ships in
 //     T-WEBHOOK and routes here too).
 //
-// Reads use `withRlsContext` for symmetry with the writes — the
+// Reads use `withRlsContext` for symmetry with the writes - the
 // bare client would also work (no app.user_id is checked by the
 // Message policies) but the writes need the session vars for the
 // AuditLog insert's RLS gate.
@@ -39,7 +39,7 @@ import { OutboundService } from '../whatsapp/outbound.service';
 
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
- * schema in packages/api-types/src/chat.ts — the web app reads these
+ * schema in packages/api-types/src/chat.ts - the web app reads these
  * fields off `query.data` in apps/web/src/app/(app)/leads/[id]/page.tsx.
  * `mediaUrl` is optional because the SSE wire shape (`MessageEvent`)
  * declares it `string | null | undefined`; the page tolerates its
@@ -69,7 +69,7 @@ export class ChatService {
   }
 
   /**
-   * GET /api/chat/:leadId — list messages for a lead, ordered oldest
+   * GET /api/chat/:leadId - list messages for a lead, ordered oldest
    * first (the page renders in chronological order). Optional `since`
    * cursor filters to messages after the cursor; `limit` caps the
    * page size.
@@ -84,7 +84,7 @@ export class ChatService {
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       async (tx) => {
-        // Verify the lead exists under the actor's scope — a
+        // Verify the lead exists under the actor's scope - a
         // non-visible lead returns 0 messages anyway (the JOIN-based
         // policy filters them out), but surfacing a 404 helps the
         // BFF distinguish "no messages" from "no lead".
@@ -128,11 +128,11 @@ export class ChatService {
   }
 
   /**
-   * POST /api/chat/send — staff sends a message to a lead. The
+   * POST /api/chat/send - staff sends a message to a lead. The
    * direction is OUT (staff → customer). The Message table has no
    * userId-scoped policy, but we still need to satisfy the
    * AuditLog.insert RLS gate (auditlog_insert_any_authenticated:
-   * app.user_id IS NOT NULL) — that's why we wrap in withRlsContext
+   * app.user_id IS NOT NULL) - that's why we wrap in withRlsContext
    * even though the message insert would also work without it.
    *
    * Returns the persisted message in the SSE-friendly wire shape
@@ -151,7 +151,7 @@ export class ChatService {
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       async (tx) => {
         // RLS-scoped lead check. message_insert_team gates via the
-        // parent Lead's team/owner — a non-visible lead surfaces as
+        // parent Lead's team/owner - a non-visible lead surfaces as
         // P2003 (FK violation) or a RLS rejection. We pre-check so
         // the BFF gets a clear 404 rather than a 500.
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({

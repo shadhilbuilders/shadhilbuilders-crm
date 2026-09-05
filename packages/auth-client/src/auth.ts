@@ -2,7 +2,7 @@
 // Shared between apps/web (Next.js catch-all) and apps/backend (NestJS auth).
 //
 // Eng review constraints baked in:
-//   - A4: NO organization() plugin — Team is the single grouping concept
+//   - A4: NO organization() plugin - Team is the single grouping concept
 //   - JWT plugin (HS256, issuer: 'shadhil-crm') is the bridge to NestJS JwtStrategy
 //   - admin() plugin for role gating (admin role check)
 //
@@ -15,7 +15,7 @@
 // placeholder-gate.middleware.ts as a Nest middleware (sitting in
 // front of the better-auth catch-all in BetterAuthMiddlewareModule).
 // The placeholder email list is in packages/auth-client/
-// placeholder-users.json — committed, lists the 5 seed emails. The
+// placeholder-users.json - committed, lists the 5 seed emails. The
 // file is empty in production deploys that don't run the seed; the
 // gate is a no-op.
 
@@ -23,7 +23,7 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { jwt } from 'better-auth/plugins/jwt';
 import { admin } from 'better-auth/plugins/admin';
-// adminAc — better-auth's default admin permission statement set, reused as
+// adminAc - better-auth's default admin permission statement set, reused as
 // the definition for our ADMIN role key (Round 20).
 import { adminAc } from 'better-auth/plugins/admin/access';
 
@@ -44,7 +44,7 @@ export const auth: any = betterAuth({
   },
 
   // SECOND-ROUND AUDIT B4a (2026-08-31): the Prisma `User.role` column is a
-  // NOT NULL Role enum with no default — better-auth's signUpEmail inserts a
+  // NOT NULL Role enum with no default - better-auth's signUpEmail inserts a
   // bare user and Prisma rejects it ("Invalid value for argument `role`").
   // Declare role/teamId as additional fields with server-side defaults so
   // every better-auth-created user lands with a valid enum role and a team
@@ -67,7 +67,7 @@ export const auth: any = betterAuth({
   },
 
   // Per better-auth-best-practices skill: jwt + admin only.
-  // NO organization() — Team model is the single grouping.
+  // NO organization() - Team model is the single grouping.
   plugins: [
     jwt({
       jwt: {
@@ -81,10 +81,10 @@ export const auth: any = betterAuth({
     // signUpEmail always failed. Set it.
     //
     // Role model (Round 20/21, 2026-08-31 → 2026-09-03): one OWNER
-    // (seed + partial unique index only — the API can never create one)
+    // (seed + partial unique index only - the API can never create one)
     // bootstraps ADMINs; ADMIN creates MANAGER users; each MANAGER
     // creates TELECALLER/SALES_EXEC under their team.
-    // roles: our Prisma Role keys mapped to better-auth statement sets —
+    // roles: our Prisma Role keys mapped to better-auth statement sets -
     // ADMIN reuses the stock adminAc; OWNER (org owner, exactly one per
     // DB constraint) also gets adminAc. adminRoles then gates better-auth
     // admin endpoints to OWNER + ADMIN (case-insensitive match).
@@ -107,7 +107,7 @@ export const auth: any = betterAuth({
 
   // T-PERF-2 #1: cookie scope (plan Decision Audit #37).
   //
-  // The default better-auth cookie scope is host-only — which is
+  // The default better-auth cookie scope is host-only - which is
   // exactly what we want. We must NOT enable `crossSubDomainCookies`
   // because that would set Domain: '.crm.shadhilbuilders.in' and
   // auto-send the session cookie to BOTH crm.shadhilbuilders.in

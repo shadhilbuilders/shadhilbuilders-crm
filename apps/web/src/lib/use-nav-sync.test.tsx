@@ -1,4 +1,4 @@
-// Regression test — useNavSync Rules-of-Hooks crash (T37 follow-up).
+// Regression test - useNavSync Rules-of-Hooks crash (T37 follow-up).
 //
 // The original implementation called `useSidebar()` INSIDE the `useEffect`
 // callback in `lib/nav.ts`. Hooks are only valid during render, so React
@@ -8,7 +8,7 @@
 // `renderToStaticMarkup` is deliberately NOT used here: it never runs
 // effects, so it would PASS against the broken implementation and this
 // test would guard nothing. The tree must be MOUNTED with effects enabled
-// (createRoot + act) — exactly the environment that exposed the bug.
+// (createRoot + act) - exactly the environment that exposed the bug.
 //
 // Mirror the production mount shape: `useNavSync()` mounted exactly once
 // inside `SidebarProvider`, as `(app)/layout.tsx` → `AppShell` does.
@@ -62,7 +62,7 @@ async function unmount(): Promise<void> {
 }
 
 // jsdom does not implement `window.matchMedia`; `SidebarProvider` calls it
-// via useMediaQuery inside an effect. Real browsers all implement it — this
+// via useMediaQuery inside an effect. Real browsers all implement it - this
 // is a test-env gap only. Stub the minimal API the provider touches.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -78,7 +78,7 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-describe('useNavSync — Rules of Hooks regression guard', () => {
+describe('useNavSync - Rules of Hooks regression guard', () => {
   afterEach(() => {
     vi.clearAllMocks();
   });

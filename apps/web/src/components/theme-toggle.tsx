@@ -1,12 +1,12 @@
 'use client';
 
-// ThemeToggle — light/dark mode switch (icon button) for the topbar.
+// ThemeToggle - light/dark mode switch (icon button) for the topbar.
 //
 // Uses `@paalstack/react-ui`'s `useNextTheme` hook (a re-export of the
 // SSR-safe `next-themes` `useTheme` wrapper) to read the current
 // theme + set the new one. The library's homegrown `useTheme` is the
 // shadhil-crm-dev skill's explicit anti-recommendation (per
-// apps/web/src/README.md:266-271 — it calls setTheme('dark')
+// apps/web/src/README.md:266-271 - it calls setTheme('dark')
 // directly and breaks SSR), so we use the Next-safe one here.
 //
 // Two-state (light ↔ dark) by design. The provider at
@@ -14,12 +14,12 @@
 // with enableSystem, so on first paint the page respects the OS
 // preference; the button then lets the user override to a fixed
 // mode. The "system" value is a third option but exposing it would
-// require a 3-way dropdown — too much surface for a topbar icon
+// require a 3-way dropdown - too much surface for a topbar icon
 // button. The shadcn default for the "next-themes" toggle is also
 // two-state (sun/moon) so this is the conventional shape.
 //
 // Hydration: `resolvedTheme` is `undefined` until the client mounts
-// (next-themes' default — avoids a light/dark flash on first paint).
+// (next-themes' default - avoids a light/dark flash on first paint).
 // We render a neutral "Loading…" icon button while mounted=false so
 // the SSR markup is the same as the initial client markup (no
 // hydration mismatch warning) and swap to the proper sun/moon icon
@@ -42,14 +42,14 @@ export type ThemeToggleButtonProps = {
   label: string;
   /** What the button renders as its data-qa-theme-mode attribute. */
   mode: 'light' | 'dark' | 'unknown';
-  /** Click handler — tests inject a vi.fn. */
+  /** Click handler - tests inject a vi.fn. */
   onClick: () => void;
   /** Optional className for layout (e.g. min-h-11 sizing). */
   className?: string;
 };
 
 /**
- * The pure button — no hooks, no context. Rendered both by the
+ * The pure button - no hooks, no context. Rendered both by the
  * public `ThemeToggle` (with a live icon from useNextTheme) and by
  * the unit test (with a stub icon + spy onClick).
  */
@@ -76,7 +76,7 @@ export function ThemeToggleButton({
   );
 }
 
-/** Public component — subscribes to the next-themes context. */
+/** Public component - subscribes to the next-themes context. */
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useNextTheme();
   const [mounted, setMounted] = useState(false);

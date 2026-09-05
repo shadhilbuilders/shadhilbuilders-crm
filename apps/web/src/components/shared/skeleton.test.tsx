@@ -1,4 +1,4 @@
-// T26 (PR2) — Skeleton variant + a11y + motion-reduce contract.
+// T26 (PR2) - Skeleton variant + a11y + motion-reduce contract.
 //
 // Per locked decisions:
 //   - Shape-count tests: each variant renders the *exact* count of
@@ -7,11 +7,11 @@
 //     bar, or halves a list length fails the build.
 //   - aria-busy="true" on every Skeleton root, plus `role="status"`
 //     and `aria-live="polite"`, so screen readers announce "loading".
-//   - `motion-reduce:animate-none` honored — the library's `Skeleton`
+//   - `motion-reduce:animate-none` honored - the library's `Skeleton`
 //     primitive already pairs `animate-pulse` with that, so as long
 //     as we use `<LibSkeleton>` for shape elements the contract is
 //     upheld. Asserted indirectly by checking the `Skeleton` source
-//     contains the class (it's owned by the library — but the import
+//     contains the class (it's owned by the library - but the import
 //     proves we routed through it).
 //
 // Per shadhil-crm-dev skill: NO `@testing-library/react`. We use
@@ -37,7 +37,7 @@ describe('Skeleton', () => {
       // markers indirectly: kpi has no data-qa markers, so count
       // the Skeleton primitive by the underlying pulse class. The
       // library's Skeleton applies a `bg-muted` (or similar) class
-      // — we don't know the exact token, so count cells via the
+      // - we don't know the exact token, so count cells via the
       // grid structure instead.
       expect(html.match(/h-3 w-20/g)?.length ?? 0).toBe(SKELETON_SHAPES.kpi.count);
       expect(html.match(/h-8 w-24/g)?.length ?? 0).toBe(SKELETON_SHAPES.kpi.count);
@@ -83,7 +83,7 @@ describe('Skeleton', () => {
     it('text renders 3 h-4 lines (default count)', () => {
       const html = renderToStaticMarkup(<Skeleton variant="text" />);
       // The library's SkeletonContainer wraps each line. Count the
-      // h-4 occurrences — there should be 3 (the default count).
+      // h-4 occurrences - there should be 3 (the default count).
       const matches = html.match(/h-4/g);
       // ≥3 (the wrapper itself may add a h-4 reference too).
       expect(matches?.length ?? 0).toBeGreaterThanOrEqual(SKELETON_SHAPES.text.count);
@@ -96,7 +96,7 @@ describe('Skeleton', () => {
     });
   });
 
-  describe('chart variant — T19 + T34 inside-shape', () => {
+  describe('chart variant - T19 + T34 inside-shape', () => {
     it('chart frame is rendered with the correct shape', () => {
       const html = renderToStaticMarkup(<Skeleton variant="chart" />);
       expect(html).toContain('data-qa="skeleton-chart-frame"');
@@ -107,7 +107,7 @@ describe('Skeleton', () => {
       const html = renderToStaticMarkup(
         <Skeleton variant="chart" dataHint="bar" />,
       );
-      // 5 bars — each is a `bg-muted-foreground/20 w-8 rounded-t` div
+      // 5 bars - each is a `bg-muted-foreground/20 w-8 rounded-t` div
       // with an inline `style="height:NN%"`.
       const bars = html.match(/bg-muted-foreground\/20 w-8 rounded-t/g);
       expect(bars?.length ?? 0).toBe(5);

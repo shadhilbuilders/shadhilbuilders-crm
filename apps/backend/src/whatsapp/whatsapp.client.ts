@@ -30,14 +30,14 @@
 // three templates below cover T-E2b's outbound paths:
 //
 // 1. shadhil_chat_reply  (UTILITY, en)  ← env: WA_TEMPLATE_CHAT_REPLY
-//    Category:  Utility (customer-initiated reply window — must be sent
+//    Category:  Utility (customer-initiated reply window - must be sent
 //                within 24h of the lead's last inbound message)
 //    Header:    none
 //    Body:      "Hi {{1}}, {{2}}"
 //    Buttons:   none
 //    Sample:
 //                Hi Aarav, thanks for the enquiry about the 3BHK
-//                in Shadhil Meadows — let me know if you have any
+//                in Shadhil Meadows - let me know if you have any
 //                questions.
 //    Variables: {{1}} = lead first name (max 60 chars)
 //                {{2}} = message body (max 1024 chars; chat service
@@ -46,7 +46,7 @@
 //               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
 //
 // 2. shadhil_visit_followup  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
-//    Category:  Utility (proactive — must respect 24h+ window after
+//    Category:  Utility (proactive - must respect 24h+ window after
 //                last inbound; this is for follow-ups to leads whose
 //                last inbound was > 24h ago)
 //    Header:    none
@@ -74,7 +74,7 @@
 //                Friday, 12 Sept at 10:00 AM. Reply YES to confirm
 //                or RESCHEDULE.
 //    Variables: {{1}} = project name (max 60 chars)
-//                {{2}} = datetime (formatted, max 60 chars — e.g.
+//                {{2}} = datetime (formatted, max 60 chars - e.g.
 //                         "Friday, 12 Sept at 10:00 AM")
 //    When sent: reminder cron (T-E2b follow-up) → outbound.send() with
 //               templateName: 'shadhil_visit_reminder', sendType: TEMPLATE
@@ -109,7 +109,7 @@ export interface TemplateHeaderComponent {
 }
 
 export interface WhatsAppDelivery {
-  /** Meta message ID (wamid.*) — used by the webhook to correlate
+  /** Meta message ID (wamid.*) - used by the webhook to correlate
    *  status callbacks back to our outbox row. */
   wamid: string | null;
   /** True iff Meta accepted the message for delivery. False when
@@ -154,7 +154,7 @@ export class WhatsAppClient {
     private readonly templateLanguage: string,
   ) {}
 
-  /** Factory from env vars. Throws if any required var is missing —
+  /** Factory from env vars. Throws if any required var is missing -
    *  we want the failure to be loud at module init, not on first send. */
   static fromEnv(env: NodeJS.ProcessEnv = process.env): WhatsAppClient {
     const accessToken = env.WA_ACCESS_TOKEN;

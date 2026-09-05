@@ -1,16 +1,16 @@
 'use client';
 
-// /change-password — T-S hardening (Week 5, 2026-09-04).
+// /change-password - T-S hardening (Week 5, 2026-09-04).
 //
 // Self-service password rotation page. Reached two ways:
 //   1. User is redirected here after sign-in if the API returns
-//      403 + PASSWORD_CHANGE_REQUIRED (the seed users — owner /
-//      admin / manager / telecaller / sales_exec — all have
+//      403 + PASSWORD_CHANGE_REQUIRED (the seed users - owner /
+//      admin / manager / telecaller / sales_exec - all have
 //      mustChangePassword: true).
 //   2. Direct navigation (change-password bounce / menu).
 //
 // ALIGNMENT (2026-09-05): the form lives inside a centered Card on a
-// full-height flex main — same visual language as /login. The
+// full-height flex main - same visual language as /login. The
 // previous dashboard-style PageHeader + full-width Form hugged the
 // left edge and stretched inputs across the viewport (screenshot
 // reported by user).
@@ -21,13 +21,13 @@
 // the auth guard normally.
 //
 // Form uses the props-API <Form> from @paalstack/react-ui. Validation
-// is declarative zod via zodResolver — the schema is
+// is declarative zod via zodResolver - the schema is
 // ChangePasswordFormSchema from @shadhil/api-types, which EXTENDS the
 // server's ChangePasswordDtoSchema, so client and server rules can't
 // drift. The Form's FieldError renders each field's message inline.
 // NOTE: the library's Form spreads resetButtonProps BEFORE
 // `children: resetText`, so a `children` override in resetButtonProps
-// is silently clobbered — button text goes through `resetText`
+// is silently clobbered - button text goes through `resetText`
 // (verified in dist source).
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -61,7 +61,7 @@ export default function ChangePasswordPage() {
       <div className="bg-background flex min-h-[100dvh] flex-col">
         <AuthTopBar />
         <main className="text-ink flex flex-1 items-center justify-center px-4 py-8">
-          {/* Card-shaped skeleton mirroring the real form below it —
+          {/* Card-shaped skeleton mirroring the real form below it -
               the swap from pending → form doesn't shift layout. */}
           <div
             role="status"
@@ -100,7 +100,7 @@ export default function ChangePasswordPage() {
   function onSubmit(values: ChangePasswordFormValues) {
     // Validation is zod (zodResolver): required fields, min lengths,
     // and the cross-field match rule are all enforced BEFORE onSubmit
-    // runs — the inline FieldError messages render under each input.
+    // runs - the inline FieldError messages render under each input.
     // Keep the length guard as defense-in-depth; the API call body is
     // ChangePasswordDto-shaped (confirmPassword is client-only).
     void api<ChangePasswordResponse>(
@@ -202,7 +202,7 @@ export default function ChangePasswordPage() {
           />
 
           <p className="text-muted-foreground mt-6 text-center text-xs">
-            Shadhil Builders internal system — access is provisioned by an admin.
+            Shadhil Builders internal system - access is provisioned by an admin.
           </p>
         </Card>
       </main>

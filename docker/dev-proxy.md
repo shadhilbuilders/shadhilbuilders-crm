@@ -1,4 +1,4 @@
-# Local dev proxy — Traefik v3 + mkcert
+# Local dev proxy - Traefik v3 + mkcert
 
 T-PERF-2 #5 (2026-09-04). Why this exists, what it gives you, and how
 to use it.
@@ -36,7 +36,7 @@ disappears. SSE works over h2 multiplexed to the browser.
 # macOS
 brew install mkcert
 
-# Linux (Debian/Ubuntu — see https://github.com/FiloSottile/mkcert for others)
+# Linux (Debian/Ubuntu - see https://github.com/FiloSottile/mkcert for others)
 sudo apt install mkcert
 ```
 
@@ -93,7 +93,7 @@ docker compose -f docker/docker-compose.dev-proxy.yml up -d
 ```
 
 Traefik runs in the foreground; the three app services come up via
-the compose. Visit `https://crm.local` in your browser — TLS works,
+the compose. Visit `https://crm.local` in your browser - TLS works,
 no cert warnings, h2 multiplexed.
 
 ## What this does NOT do
@@ -110,24 +110,24 @@ no cert warnings, h2 multiplexed.
 
 ## Troubleshooting
 
-**"Your connection is not private"** — you didn't run `mkcert -install`
+**"Your connection is not private"** - you didn't run `mkcert -install`
 yet, OR your browser doesn't trust the system store. On Firefox, go to
 `about:preferences#privacy` → Certificates → View Certificates →
 Authorities → Import → select the CA file from `mkcert -install` output.
 
-**"Connection refused" on crm.local** — the apps didn't start. Check
+**"Connection refused" on crm.local** - the apps didn't start. Check
 `docker compose -f docker/docker-compose.dev-proxy.yml logs apps-web`.
 Common cause: the pnpm install is still running (first boot is slow).
 Give it 60s.
 
-**Traefik dashboard** — not exposed by default (we set
+**Traefik dashboard** - not exposed by default (we set
 `exposedbydefault=false`). If you want to see the Traefik dashboard
 during dev, add these command flags:
 ```
 - "--api.dashboard=true"
 - "--api.insecure=true"
 ```
-and port `:8080` (which the apps/web service also uses — change
+and port `:8080` (which the apps/web service also uses - change
 to `:8089` or another free port).
 
 ## Cleanup
@@ -140,6 +140,6 @@ mkcert -uninstall   # removes the local CA from system + browsers
 rm -rf ./docker/certs
 ```
 
-Leaving the CA installed is fine — it only issues certs for hostnames
+Leaving the CA installed is fine - it only issues certs for hostnames
 you explicitly ask for. But uninstalling is a 10-second op if you want
 to be tidy.

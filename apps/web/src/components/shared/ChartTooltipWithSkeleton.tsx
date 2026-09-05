@@ -1,11 +1,11 @@
 'use client';
 
-// ChartTooltipWithSkeleton — recharts `content` prop that shows a
+// ChartTooltipWithSkeleton - recharts `content` prop that shows a
 // Skeleton placeholder when no data is hovered, and the real
 // ChartTooltipContent when active.
 //
 // T38 (PR3): bridges the gap between "chart-shape skeleton" and
-// "live data" — when a user hovers over a chart surface during the
+// "live data" - when a user hovers over a chart surface during the
 // brief window between SkeletonContainer cross-fade and the data
 // being interactive, the tooltip itself shows a placeholder
 // instead of "0" or empty rows.
@@ -95,7 +95,7 @@ export function ChartTooltipWithSkeleton({
   renderTooltip,
 }: ChartTooltipWithSkeletonProps) {
   if (!active) {
-    // Hidden when the user is not hovering — but keep the Skeleton in
+    // Hidden when the user is not hovering - but keep the Skeleton in
     // the DOM so the surface is "shape-ready" the moment a hover
     // starts. T38 verify: a hovering user during isLoading sees
     // this shape, not a blank tooltip.
