@@ -81,6 +81,17 @@ export class JwtAuthGuard implements CanActivate {
     // prisma client connects on DATABASE_URL (the non-owner app role);
     // SELECT on the User row succeeds because User has no FORCE RLS
     // (auth tables are pre-RLS by design - see policies.sql comments).
+    //
+    // EXCEPTION: POST /api/users/:id/change-password is the ONE endpoint
+    // that can clear the flag, so the guard must step out of the way for
+    // it. The service layer (users.service.changePassword) still enforces
+    // who may rotate whose password - self only, or ADMIN/OWNER for any
+    // user. Without this exception, mustChangePassword=true locks the
+    // user into the page that is supposed to unlock them (verified
+    // 2026-09-05 via MCP playwright against the live dev server).
+    if (req.path.endsWith('/change-password')) {
+      return true;
+    }
     const user = await sharedPrisma.user.findUnique({
       where: { id: payload.sub },
       select: { mustChangePassword: true },
