@@ -1,4 +1,4 @@
-// T-D8 — Contrast math round-trip + reference values.
+// T-D8 - Contrast math round-trip + reference values.
 //
 // Pins the WCAG 2.x contrast computation so a future change to the
 // math (or a copy-paste error in the constants) fails the build.
@@ -15,7 +15,7 @@ import {
   relativeLuminance,
 } from '../src/contrast';
 
-describe('oklchToSrgb — known reference values', () => {
+describe('oklchToSrgb - known reference values', () => {
   it('oklch(0 0 0) → black', () => {
     const out = oklchToSrgb({ l: 0, c: 0, h: 0 });
     expect(out.r).toBeCloseTo(0, 5);
@@ -53,7 +53,7 @@ describe('oklchToSrgb — known reference values', () => {
   });
 });
 
-describe('relativeLuminance — known reference values', () => {
+describe('relativeLuminance - known reference values', () => {
   it('black = 0', () => {
     expect(relativeLuminance({ r: 0, g: 0, b: 0 })).toBe(0);
   });
@@ -73,7 +73,7 @@ describe('relativeLuminance — known reference values', () => {
   });
 });
 
-describe('contrastRatio — known reference values', () => {
+describe('contrastRatio - known reference values', () => {
   it('white vs black = 21:1 (max possible)', () => {
     const c = contrastRatio({ l: 0, c: 0, h: 0 }, { l: 1, c: 0, h: 0 });
     expect(c).toBeCloseTo(21, 4);
@@ -108,7 +108,7 @@ describe('WCAG_AA constants match the spec', () => {
   });
 });
 
-describe('evaluateContrast — verdict shape', () => {
+describe('evaluateContrast - verdict shape', () => {
   it('passes both thresholds when CR is high enough', () => {
     const out = evaluateContrast(
       { l: 0, c: 0, h: 0 },

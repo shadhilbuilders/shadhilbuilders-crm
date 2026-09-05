@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil Builders CRM — Prisma schema
+// Shadhil Builders CRM - Prisma schema
 // ────────────────────────────────────────────────────────────────────────────
 // 18 business models + 4 better-auth tables (User, Session, Account, Verification).
 // User is shared between better-auth and the business layer (single source of truth).
@@ -11,18 +11,18 @@
 // - Runtime queries via PgBouncer use DATABASE_URL + withRlsContext() through
 //   the @prisma/adapter-pg driver adapter (POOL_MODE must be 'session').
 //
-// Money: Decimal(12,2) — never Float.
-// IDs: cuid() — short, sortable, URL-safe.
+// Money: Decimal(12,2) - never Float.
+// IDs: cuid() - short, sortable, URL-safe.
 // ────────────────────────────────────────────────────────────────────────────
 
 generator client {
   // Prisma 7 default generator (the old `prisma-client-js` is in maintenance
   // mode and will be removed). Emits plain TypeScript into a normal source
-  // path — no more magic generation into `node_modules/.prisma/client`, no
+  // path - no more magic generation into `node_modules/.prisma/client`, no
   // more `ERR_UNSUPPORTED_DIR_IMPORT` from the consumer's bare-directory
   // import.
   //
-  // moduleFormat: "cjs" — the whole backend toolchain (nest build + node
+  // moduleFormat: "cjs" - the whole backend toolchain (nest build + node
   // dist/main.js) is CommonJS; CJS require() resolves the generated code's
   // bare relative imports natively. (With "esm" the generator emits bare
   // ESM imports that Node ESM rejects.)
@@ -123,7 +123,7 @@ enum ReminderStatus {
   // T-G4: PROCESSING is the intermediate state during a cron's lease.
   // The processor claims rows by updateMany(SCHEDULED → PROCESSING) so a
   // second cron tick (different replica, lock expired) sees zero rows
-  // and exits cleanly — no duplicate fire.
+  // and exits cleanly - no duplicate fire.
   PROCESSING
   SENT
   FAILED
@@ -248,7 +248,7 @@ model ManagerAssignmentRule {
   // priority fall through to createdAt ASC tiebreak. Default 0 so the
   // existing single-rule setup behaves identically.
   priority     Int      @default(0)
-  // Optional criteria — when present, the rule only matches leads where
+  // Optional criteria - when present, the rule only matches leads where
   // the same attribute equals this value. NULL = wildcard (rule matches
   // any value). All four columns are independent: a rule with
   // projectId="A" AND phaseId=null matches leads in project A regardless
@@ -265,7 +265,7 @@ model ManagerAssignmentRule {
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  // Composite unique — the previous [teamId, source] constraint forced
+  // Composite unique - the previous [teamId, source] constraint forced
   // one rule per (team, source). The widened constraint lets a team
   // declare multiple rules for the same source differentiated by
   // priority + criteria (e.g. "META_AD on project A" vs "META_AD on
@@ -312,7 +312,7 @@ model Phase {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 6. Unit (money lives here — Decimal(12,2))
+// 6. Unit (money lives here - Decimal(12,2))
 // ────────────────────────────────────────────────────────────────────────────
 
 model Unit {
@@ -512,7 +512,7 @@ model Reminder {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 13. Notification (in-app inbox — supersedes the dropped InAppNotification)
+// 13. Notification (in-app inbox - supersedes the dropped InAppNotification)
 // ────────────────────────────────────────────────────────────────────────────
 
 model Notification {
@@ -644,22 +644,22 @@ model WebhookEvent {
 // (T-G4) prevents duplicate sends if the cron runs on multiple
 // replicas.
 //
-// `wamid` is Meta's message ID returned from the send call — used by
+// `wamid` is Meta's message ID returned from the send call - used by
 // the status-callback webhook to correlate delivery receipts back to
 // our outbox row. The unique constraint is per-attempt; retries on
 // the same message get fresh `wamid` values (which we don't need to
-// keep — only the latest is meaningful for the delivery-receipt
+// keep - only the latest is meaningful for the delivery-receipt
 // correlation).
 model OutboundMessage {
   id              String    @id @default(cuid())
-  // FK to Message. 1:1 — one outbox row per outbound message. Cascade
+  // FK to Message. 1:1 - one outbox row per outbound message. Cascade
   // delete so removing a Message also removes its outbox row (e.g. on
-  // a chat retract — not implemented yet but the schema supports it).
+  // a chat retract - not implemented yet but the schema supports it).
   messageId       String    @unique
   leadId          String
   // Send type: FREEFORM (within 24h of lead's last inbound) or TEMPLATE
   // (after 24h, or for proactive outreach like the visit_followup and
-  // visit_reminder templates). Recorded for analytics — "how much of our
+  // visit_reminder templates). Recorded for analytics - "how much of our
   // outbound is 24h+?" is a useful business question.
   sendType        OutboundSendType @default(FREEFORM)
   // Template name + variable values, populated when sendType=TEMPLATE.
@@ -707,7 +707,7 @@ enum OutboundStatus {
 
 // ────────────────────────────────────────────────────────────────────────────
 // better-auth tables (Session / Account / Verification)
-// User is shared (defined above) — single source of truth.
+// User is shared (defined above) - single source of truth.
 // ────────────────────────────────────────────────────────────────────────────
 
 model Session {
@@ -760,12 +760,12 @@ model Verification {
   @@index([expiresAt])
 }
 
-// Jwks — required by better-auth's jwt() plugin (HS256 mode still creates the
+// Jwks - required by better-auth's jwt() plugin (HS256 mode still creates the
 // key store lazily on first token request). Its absence breaks
 // GET /api/auth/get-session with "Model jwks does not exist" (500), which
 // takes down authClient.useSession() across the web UI. Column set follows
 // better-auth 1.7's jwt() plugin schema (publicKey/privateKey/createdAt
-// required; expiresAt/alg/crv/n/e optional — they ARE written even in
+// required; expiresAt/alg/crv/n/e optional - they ARE written even in
 // HS256/EdDSA lazy-key mode, so they must exist, not just be nullable).
 model Jwks {
   id           String    @id @default(cuid())
@@ -783,7 +783,7 @@ model Jwks {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 19. StreamTicket — short-lived auth tokens for the SSE realtime layer.
+// 19. StreamTicket - short-lived auth tokens for the SSE realtime layer.
 // ────────────────────────────────────────────────────────────────────────────
 // T-E2 (Week 6, 2026-09-04): the SSE endpoint needs to authenticate without
 // driving every connection through the JwtAuthGuard + RLS interceptor stack
@@ -791,7 +791,7 @@ model Jwks {
 // run SET LOCAL on its long-lived connection cheaply). The compromise:
 //
 //   - POST /api/realtime/ticket  (JWT-authed) mints a single-use StreamTicket
-//     row scoped to (userId, channel). 5-minute TTL — long enough for a
+//     row scoped to (userId, channel). 5-minute TTL - long enough for a
 //     realistic chat session, short enough that ticket leakage is bounded.
 //   - GET /api/sse/<channel>?ticket=<id>  (ticket-authed) consumes the row,
 //     opens the SSE stream, and uses the user's JWT identity (stored on the
@@ -799,12 +799,12 @@ model Jwks {
 //
 // Single-use is enforced by the controller deleting the row on connect. The
 // `channel` column is a freeform string with a small fixed vocabulary:
-//   "notifications"         — current user's Notification inbox
-//   "audit"                 — current user's AuditLog visibility
-//   "chat:<leadId>"         — Message stream for a specific lead
+//   "notifications"         - current user's Notification inbox
+//   "audit"                 - current user's AuditLog visibility
+//   "chat:<leadId>"         - Message stream for a specific lead
 //
 // Channel-scope checks happen at the mint endpoint (withRlsContext as the
-// actor — the role gates which channels the user can ask for). The SSE
+// actor - the role gates which channels the user can ask for). The SSE
 // controller itself uses the bare prisma client (with the actor's userId
 // baked into the URL), so RLS still gates the actual data.
 //
@@ -813,7 +813,7 @@ model Jwks {
 // only legitimate writer is the mint endpoint (which writes with the
 // actor's role set); the only legitimate reader is the SSE controller
 // (which deletes the row on consume). Forcing RLS here would add a join
-// for no security gain — the ticket's cuid is unguessable and its TTL is
+// for no security gain - the ticket's cuid is unguessable and its TTL is
 // bounded. The GRANTs go to shadhil_app so the pooled path can read/write.
 model StreamTicket {
   id        String   @id @default(cuid())
@@ -834,17 +834,17 @@ model StreamTicket {
 // When a lead we don't know about messages us on WhatsApp, we can't
 // auto-create a Lead (per the T-E2b product decision: don't create
 // Leads on unknown inbound). But we DO need to capture the number
-// so a telecaller can follow up — otherwise the contact is lost.
+// so a telecaller can follow up - otherwise the contact is lost.
 //
 // This table is the dedup-by-phone, admin-visible "pending follow-up"
 // queue. One row per phone; multiple messages from the same number
 // bump `lastMessageAt` and `messageCount` rather than creating new
 // rows. Lifecycle:
-//   PENDING  — fresh inbound; telecaller hasn't seen it yet
-//   CONVERTED — telecaller called, real lead; `convertedToLeadId` set
-//   SPAM     — not a real person; ignored
+//   PENDING  - fresh inbound; telecaller hasn't seen it yet
+//   CONVERTED - telecaller called, real lead; `convertedToLeadId` set
+//   SPAM     - not a real person; ignored
 // Week 8+ ships the admin UI to process these. For now, the row
-// exists and is queryable via psql — a real lead is not lost.
+// exists and is queryable via psql - a real lead is not lost.
 model WhatsappUnknownContact {
   id               String                          @id @default(cuid())
   phoneE164        String                          @unique

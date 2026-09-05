@@ -1,5 +1,5 @@
-// Reminders controller — list endpoint. The cron processor lives in
-// RemindersService.tick() and runs via @Cron('* * * * *') — the
+// Reminders controller - list endpoint. The cron processor lives in
+// RemindersService.tick() and runs via @Cron('* * * * *') - the
 // controller is read-only surface for clients to poll recent fires.
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';

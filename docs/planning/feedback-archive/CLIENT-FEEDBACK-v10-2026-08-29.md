@@ -1,4 +1,4 @@
-# Client Feedback Round 10 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 10 - 2026-08-29 (Shadhil CRM)
 
 You asked: "Add push notification for staff for both web and mobile."
 
@@ -79,7 +79,7 @@ backend:
 | 3 | Lead handed off to my team | All managers in the team | "Team handoff" | "{{user.name}} handed off a lead to your team" | `/leads/{id}?team=mine` |
 | 4 | Lead assigned to me (exec) | The assigned exec | "New lead for you" | "Manager {{user.name}} assigned a lead" | `/leads/{id}` |
 | 5 | Site visit in 2 hours (pre-visit staff) | The sales exec | "Site visit soon" | "{{lead.name}} in 2 hours at {{time}}" | `/leads/{id}/visits/{visitId}` |
-| 6 | Site visit no-show | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} — no outcome logged" | `/leads/{id}/visits/{visitId}` |
+| 6 | Site visit no-show | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} - no outcome logged" | `/leads/{id}/visits/{visitId}` |
 | 7 | Customer replied to chat (when staff is away) | Lead's current owner | "{{lead.name}} replied" | "{{message preview, truncated 80 chars}}" | `/leads/{id}#chat` |
 | 8 | Booking awaiting my approval | The manager | "Booking: {{lead.name}}" | "{{unit.number}} · ₹{{token.amount}}" | `/leads/{id}/bookings/{bookingId}` |
 | 9 | Booking approved / rejected | The sales exec | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}" | `/leads/{id}/bookings/{bookingId}` |
@@ -99,7 +99,7 @@ All 12 use the same push infrastructure.
 ## The data model
 
 ```prisma
-// Per-user push token (one user can have multiple — phone, tablet, browser, etc.)
+// Per-user push token (one user can have multiple - phone, tablet, browser, etc.)
 model PushSubscription {
   id          String   @id @default(cuid())
   userId      String
@@ -233,7 +233,7 @@ async sendTriggerPush(trigger: PushTrigger) {
   });
   
   if (subscriptions.length === 0) {
-    // No devices registered — fall back to in-app only
+    // No devices registered - fall back to in-app only
     return;
   }
   
@@ -338,7 +338,7 @@ primarily; web is for managers and admin.
 
 If we want iOS Safari push to work fully, the web app
 needs to be a PWA. Recommend: ship web as PWA from day 1
-(per the v2 brief §5 — "PWA in v1"). PWA gives iOS
+(per the v2 brief §5 - "PWA in v1"). PWA gives iOS
 home-screen + Web Push support.
 
 ### Step 5: Push receipt handling

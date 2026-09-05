@@ -1,4 +1,4 @@
-// Visits controller — list + create + outcome + reschedule.
+// Visits controller - list + create + outcome + reschedule.
 //
 // Mirrors apps/backend/src/users/users.controller.ts and
 // apps/backend/src/leads/leads.controller.ts patterns:

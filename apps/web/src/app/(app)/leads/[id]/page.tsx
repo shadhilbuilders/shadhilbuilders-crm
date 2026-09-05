@@ -1,6 +1,6 @@
 'use client';
 
-// Lead Detail (Wireframes #5): two-column — left lead info + tabbed
+// Lead Detail (Wireframes #5): two-column - left lead info + tabbed
 // timeline/notes, right embedded chat pane. T-2h sticky banner when a visit
 // is approaching (Decision 0.10), co-owner chip in VISIT_SCHEDULED (0.3).
 //
@@ -51,7 +51,7 @@ export default function LeadDetailPage() {
         </div>
       ) : leadQuery.data !== undefined && leadQuery.data !== null ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
-          {/* Left — lead info + tabs */}
+          {/* Left - lead info + tabs */}
           <div className="space-y-4">
             <div>
               <Heading as="h2">
@@ -88,7 +88,7 @@ export default function LeadDetailPage() {
             />
           </div>
 
-          {/* Right — embedded chat (permanently visible on desktop) */}
+          {/* Right - embedded chat (permanently visible on desktop) */}
           <aside className="border-border rounded-lg border">
             <div className="border-border border-b px-4 py-2.5 text-xs font-semibold tracking-wide uppercase">
               Chat

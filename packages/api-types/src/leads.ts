@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Leads module DTOs (Zod)
+// Shadhil CRM - Leads module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // NestJS LeadsController DTOs. All state-machine transitions go through the
 // transition endpoint, which calls the leadsService.transition() guard
@@ -26,15 +26,15 @@ const phoneSchema = z
   );
 
 /**
- * Lead source — free-form today (Meta ads, landing site, referral). When the
+ * Lead source - free-form today (Meta ads, landing site, referral). When the
  * MarketingAttribution module ships (v2) this becomes a foreign key.
  */
 const sourceSchema = z.string().trim().min(1).max(80);
 
 /**
- * POST /api/leads — create a new lead. name, phone, source are required.
+ * POST /api/leads - create a new lead. name, phone, source are required.
  * email and projectId are optional. Owner is assigned by the
- * ManagerAssignmentRule service (IMPLEMENTATION-PLAN §7) — callers do NOT
+ * ManagerAssignmentRule service (IMPLEMENTATION-PLAN §7) - callers do NOT
  * pick the owner.
  */
 export const CreateLeadDtoSchema = z.object({
@@ -54,7 +54,7 @@ export const CreateLeadDtoSchema = z.object({
 export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
 
 /**
- * PATCH /api/leads/:id — partial update. Only mutable fields are listed; id
+ * PATCH /api/leads/:id - partial update. Only mutable fields are listed; id
  * state transitions, and ownership go through dedicated endpoints.
  */
 export const UpdateLeadDtoSchema = z.object({
@@ -73,7 +73,7 @@ export const UpdateLeadDtoSchema = z.object({
 export type UpdateLeadDto = z.infer<typeof UpdateLeadDtoSchema>;
 
 /**
- * POST /api/leads/:id/transition — drive the lead state machine.
+ * POST /api/leads/:id/transition - drive the lead state machine.
  * `toState` is validated against LeadStateSchema; the service then checks
  * the Model C ownership + role table to allow/reject.
  *
@@ -90,7 +90,7 @@ export type LeadStateTransitionDto = z.infer<
 >;
 
 /**
- * POST /api/leads/:id/reassign — move ownership to another user. Reason is
+ * POST /api/leads/:id/reassign - move ownership to another user. Reason is
  * mandatory (audit + manager visibility). The service verifies the target
  * user exists, shares a team with the actor (or actor is ADMIN), and that
  * the new owner's role permits owning leads at the current state.
@@ -103,7 +103,7 @@ export const ReassignLeadDtoSchema = z.object({
 export type ReassignLeadDto = z.infer<typeof ReassignLeadDtoSchema>;
 
 /**
- * Query filter for GET /api/leads — the Lead Inbox. `state` accepts an array
+ * Query filter for GET /api/leads - the Lead Inbox. `state` accepts an array
  * so the UI can filter "show me VISIT_SCHEDULED + VISITED". `ownerId` filters
  * to a single owner; `teamId` filters to a team (manager view).
  */
@@ -120,9 +120,9 @@ export const LeadFilterDtoSchema = z.object({
 export type LeadFilterDto = z.infer<typeof LeadFilterDtoSchema>;
 
 /**
- * POST /api/leads/:id/activities — append a manual activity (call note,
+ * POST /api/leads/:id/activities - append a manual activity (call note,
  * email log, etc.). Auto-emitted events (STATUS_CHANGE, VISIT_OUTCOME) use a
- * separate internal writer — clients never POST them directly.
+ * separate internal writer - clients never POST them directly.
  */
 export const CreateActivityDtoSchema = z.object({
   leadId: z.string().cuid(),

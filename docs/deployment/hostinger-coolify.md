@@ -6,7 +6,7 @@ Last verified: 2026-09-02. Author: Hermes (PaalStack OS).
 
 - Vercel CLI failed on this pnpm monorepo (see "Vercel CLI history" at the bottom).
 - The app is **Next.js 16 + NestJS 12 + Supabase Postgres + Redis**, with a
-  WhatsApp webhook — two long-running Node servers and a webhook that should not
+  WhatsApp webhook - two long-running Node servers and a webhook that should not
   cold-start. One VPS hosting all three is cheaper than three managed services
   and avoids cold starts.
 - Coolify gives us Vercel-like UX (git push → auto-build → preview URL) on our
@@ -16,7 +16,7 @@ Last verified: 2026-09-02. Author: Hermes (PaalStack OS).
 
 | Component | Plan | Cost |
 |---|---|---|
-| Hostinger VPS | KVM2 — 4 GB / 2 vCPU / 50 GB SSD, Ubuntu 22.04 | ~₹500/mo |
+| Hostinger VPS | KVM2 - 4 GB / 2 vCPU / 50 GB SSD, Ubuntu 22.04 | ~₹500/mo |
 | Coolify | Self-hosted (free tier) | ₹0 |
 | Supabase | Free tier (keep as-is) | ₹0 |
 | Cloudflare R2 | Free tier (keep as-is) | ₹0 |
@@ -47,7 +47,7 @@ Last verified: 2026-09-02. Author: Hermes (PaalStack OS).
                     │ Postgres + Auth      │
                     └──────────────────────┘
                               ▲
-                              │ (DB only — no app traffic)
+                              │ (DB only - no app traffic)
                               │
                               │
                     ┌──────────────────────┐
@@ -56,7 +56,7 @@ Last verified: 2026-09-02. Author: Hermes (PaalStack OS).
                     └──────────────────────┘
 ```
 
-## Prerequisites — what you need to bring
+## Prerequisites - what you need to bring
 
 1. **Hostinger KVM2 VPS**, Ubuntu 22.04 LTS. After purchase you'll get:
    - VPS public IP (e.g. `72.62.xx.xx`)
@@ -70,24 +70,24 @@ Last verified: 2026-09-02. Author: Hermes (PaalStack OS).
    PAT, use the deploy-key flow instead (Coolify generates a key you add to
    the repo).
 
-## Phase 1 — Provision VPS
+## Phase 1 - Provision VPS
 
 Buy Hostinger KVM2 from hpanel.hostinger.com. After checkout:
 
 1. Set the hostname in hPanel to something like `shadhil-prod-01`.
-2. Note the public IPv4 address — you'll need it for DNS and SSH.
+2. Note the public IPv4 address - you'll need it for DNS and SSH.
 3. Choose Ubuntu 22.04 LTS x86_64 as the OS.
-4. Set the root password (long, random — you'll use this once then disable
+4. Set the root password (long, random - you'll use this once then disable
    password auth).
 
-Send Hermes the **public IP** + **root password**. Do not send it in chat —
+Send Hermes the **public IP** + **root password**. Do not send it in chat -
 use the secure channel he provides.
 
-## Phase 2 — Harden VPS + install Coolify
+## Phase 2 - Harden VPS + install Coolify
 
 Hermes will SSH in and run (one-time, ~20 min):
 
-1. **Hardening baseline** — non-negotiable before Coolify install:
+1. **Hardening baseline** - non-negotiable before Coolify install:
    - `apt update && apt upgrade -y`
    - Create non-root user `deploy` with sudo, copy SSH key
    - `ufw allow 22,80,443,8000/tcp`; `ufw default deny incoming`
@@ -113,7 +113,7 @@ Hermes will SSH in and run (one-time, ~20 min):
    ssh deploy@<vps-ip> 'docker logs coolify-proxy 2>&1 | grep -i cert'
    ```
 
-## Phase 3 — Provision apps on Coolify
+## Phase 3 - Provision apps on Coolify
 
 In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
 
@@ -123,7 +123,7 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
 - Repo: `shadhilbuilders/shadhilbuilders-crm`
 - Branch: `main`
 
-### 3b. App 1 — `shadhil-web` (Next.js)
+### 3b. App 1 - `shadhil-web` (Next.js)
 
 - **Type**: Application
 - **Build pack**: `Dockerfile`
@@ -132,7 +132,7 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
 - **Port**: `3000`
 - **Domain**: `crm.yourdomain.com`
 - **Health check path**: `/` (or `/api/health` if you add one)
-- **Env vars** (set in Coolify UI — do NOT put in `.env` in the repo):
+- **Env vars** (set in Coolify UI - do NOT put in `.env` in the repo):
   ```
   NODE_ENV=production
   NEXT_PUBLIC_SUPABASE_URL=<from your .env>
@@ -145,7 +145,7 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
   BACKEND_API_URL=http://shadhil-api:8080
   JWT_SECRET=<from your .env>
   ```
-- **Build args** (Coolify "Build Arguments" section — `NEXT_PUBLIC_*` are baked at build time):
+- **Build args** (Coolify "Build Arguments" section - `NEXT_PUBLIC_*` are baked at build time):
   ```
   NEXT_PUBLIC_SUPABASE_URL
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -156,7 +156,7 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
 - Click **Deploy**. First build takes 4–8 min (pnpm install + Next build).
   Watch the logs in Coolify's terminal pane.
 
-### 3c. App 2 — `shadhil-api` (NestJS)
+### 3c. App 2 - `shadhil-api` (NestJS)
 
 - **Type**: Application
 - **Build pack**: `Dockerfile`
@@ -182,10 +182,10 @@ In Coolify UI (`coolify.<yourdomain>` after DNS), for each app:
 - Click **Deploy**. Watch the boot logs for `Nest application successfully
   started` and absence of `PoolModeError`.
 
-### 3d. Service — `shadhil-redis`
+### 3d. Service - `shadhil-redis`
 
 - **Type**: Service → Redis 7-alpine
-- **No domain** (internal only — referenced as `redis://shadhil-redis:6379`)
+- **No domain** (internal only - referenced as `redis://shadhil-redis:6379`)
 - The NestJS app uses Redis for BullMQ queues (if any); if not, skip this
   service.
 
@@ -199,7 +199,7 @@ need to reach each other:
 Coolify auto-resolves service names on shared networks. If the apps can't see
 each other, add both to a shared "shadhil-net" in Coolify's network settings.
 
-## Phase 4 — DNS
+## Phase 4 - DNS
 
 In your domain registrar's DNS panel, add A records:
 
@@ -213,10 +213,10 @@ DNS propagation: 5 min – 48 hr depending on TTL. Check with
 `dig crm.yourdomain.com`.
 
 Once DNS resolves, Coolify's auto-issued Let's Encrypt certs will activate
-within ~5 min. Verify with `curl -vI https://crm.yourdomain.com` — should
+within ~5 min. Verify with `curl -vI https://crm.yourdomain.com` - should
 show `subject: CN=crm.yourdomain.com`, `issuer: Let's Encrypt`.
 
-## Phase 5 — Verify end-to-end
+## Phase 5 - Verify end-to-end
 
 From your laptop:
 
@@ -227,7 +227,7 @@ curl -I https://crm.yourdomain.com
 
 # 2. Next.js can reach NestJS
 curl https://crm.yourdomain.com/api/backend/health
-# or whatever your BFF health route is — Next rewrites /api/backend/* → shadhil-api:8080/*
+# or whatever your BFF health route is - Next rewrites /api/backend/* → shadhil-api:8080/*
 
 # 3. NestJS health directly
 curl https://api.yourdomain.com/api/docs
@@ -235,17 +235,17 @@ curl https://api.yourdomain.com/api/docs
 
 # 4. Supabase connection
 curl https://api.yourdomain.com/api/users/me -H "Cookie: <test-session>"
-# expect: 401 (no auth) — confirms DB connection, not a 500
+# expect: 401 (no auth) - confirms DB connection, not a 500
 
 # 5. WhatsApp webhook
 # In Meta Business Suite → WhatsApp → Configuration → Webhook:
 #   URL: https://api.yourdomain.com/api/webhook/whatsapp
 #   Verify token: <WA_WEBHOOK_VERIFY_TOKEN>
 # Send a test message to your test number; check the Delivery status column
-# in the shadhil-web UI — should transition sent → delivered → read.
+# in the shadhil-web UI - should transition sent → delivered → read.
 ```
 
-## Phase 6 — Auto-deploy on git push (optional but recommended)
+## Phase 6 - Auto-deploy on git push (optional but recommended)
 
 In Coolify UI, for each app: **Settings → Webhooks → copy the webhook URL**.
 Then in your GitHub repo:
@@ -258,7 +258,7 @@ Then in your GitHub repo:
 
 Now every push to `main` triggers a rebuild in Coolify. Same UX as Vercel.
 
-For PR preview deploys: Coolify supports "Preview Deployments" — turn on per
+For PR preview deploys: Coolify supports "Preview Deployments" - turn on per
 app in Settings → Previews. Each PR gets its own URL like
 `https://pr-42.shadhil-web.<your-vps-ip>.traefik.me`.
 
@@ -280,7 +280,7 @@ If the schema changes:
 
 - **Supabase**: managed daily backups (free tier keeps 7 days). Verify in
   Supabase dashboard → Settings → Database → Backups.
-- **R2**: versioning off by default — turn on for the photos bucket if you
+- **R2**: versioning off by default - turn on for the photos bucket if you
   need undo.
 - **VPS itself**: use Hostinger's snapshot feature weekly, or set up
   `borgbackup` to push to R2. Hermes can set this up if you want.
@@ -300,28 +300,28 @@ Or in Coolify UI → app → Logs.
 KVM2 (4 GB) holds ~2 Next containers + 1 Nest + Redis + Coolify + nginx
 comfortably. If you hit memory pressure:
 
-1. Upgrade to KVM4 (8 GB / 4 vCPU, ~₹900/mo) — instant via Hostinger hPanel
+1. Upgrade to KVM4 (8 GB / 4 vCPU, ~₹900/mo) - instant via Hostinger hPanel
 2. Or move Supabase to a dedicated managed plan + add a 2nd VPS for backend
 
 ## Vercel CLI history (why we left)
 
-For posterity — the Vercel CLI deploys failed with two distinct errors, and
+For posterity - the Vercel CLI deploys failed with two distinct errors, and
 config tweaks alone didn't resolve them:
 
 1. **`pnpm install` failed: "Headless installation requires a pnpm-lock.yaml
-   file"** — root cause: `pnpm-lock.yaml` lives at the monorepo root, but
+   file"** - root cause: `pnpm-lock.yaml` lives at the monorepo root, but
    Vercel's local CLI (run from `apps/web/`) treated that directory as the
    project root, so install ran without the lockfile. **Partial fix**: change
    `installCommand` to `cd ../.. && pnpm install --frozen-lockfile`. pnpm
    walks up to find the workspace root.
 
-2. **"No Next.js version detected"** — appeared after fixing (1). The Next
+2. **"No Next.js version detected"** - appeared after fixing (1). The Next
    builder's `require.resolve('next/package.json', { paths: [entryPath] })`
    fails inside the Vercel build container despite pnpm linking `next` into
    `apps/web/node_modules/next` locally. `vercel/vercel` source:
    `packages/next/src/index.ts` line 433 (`getRealNextVersion`). Tried
    `rootDirectory=apps/web`, `sourceFilesOutsideRootDirectory=true`, varying
-   build/install commands — none resolved it.
+   build/install commands - none resolved it.
 
 The git-deploy path (`git push` → Vercel auto-build) would likely work, but
 hosting two Node apps + a webhook on Vercel costs more than one VPS at our
@@ -336,7 +336,7 @@ diff --git a/apps/web/vercel.json b/apps/web/vercel.json
 +  "outputDirectory": ".next",
 ```
 
-You do NOT need this `vercel.json` change for Coolify — leave it as-is or
+You do NOT need this `vercel.json` change for Coolify - leave it as-is or
 revert, Coolify uses the Dockerfile, not Vercel config. Hermes left it in
 place so the file is not broken if you ever go back to Vercel CLI deploys.
 

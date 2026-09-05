@@ -1,4 +1,4 @@
-// T-D3 — Lead Detail (state matrix).
+// T-D3 - Lead Detail (state matrix).
 //
 // Pins the three render branches in apps/web/src/app/(app)/leads/[id]/page.tsx:
 //
@@ -8,7 +8,7 @@
 //                                       <LeadChatPane />)
 //   3. data is undefined + error   → <ModulePending error={...} />
 //
-// The page has no separate empty state — a missing lead falls to the
+// The page has no separate empty state - a missing lead falls to the
 // error branch (the route param ?id may not resolve, the BFF may 404,
 // or the leads module is not yet wired up). ModulePending is the
 // universal "couldn't load this" surface.
@@ -28,7 +28,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // next/navigation: useParams is a client hook. Render the page
-// directly — the page reads `params?.id` from useParams; we use
+// directly - the page reads `params?.id` from useParams; we use
 // a string fallback that the page already handles.
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'lead-1' }),
@@ -67,7 +67,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('LeadDetailPage — T-D3 state matrix', () => {
+describe('LeadDetailPage - T-D3 state matrix', () => {
   it('loading: useLead isLoading renders <Skeleton> and not the detail layout', () => {
     mockedUseLead.mockReturnValue({
       data: undefined,

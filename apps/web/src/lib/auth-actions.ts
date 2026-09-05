@@ -2,7 +2,7 @@
 //
 // History: `app-header.tsx:42-46` inlined `signOut` as a `useCallback`
 // because only the topbar mounted a sign-out button. The redesigned
-// shell mounts a second one in the sidebar footer — and the `UserMenu`
+// shell mounts a second one in the sidebar footer - and the `UserMenu`
 // popover in the topbar keeps the original. Inlining the same three
 // lines in two places is a DRY regression waiting for a refactor: if
 // better-auth changes its sign-out contract, both sites need to be

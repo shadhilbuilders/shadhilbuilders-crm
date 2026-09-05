@@ -3,7 +3,7 @@
 // Meta signs every POST to the configured callback URL with
 // `X-Hub-Signature-256: sha256=<hex>`, computed as
 // `HMAC-SHA256(META_APP_SECRET, raw_request_body)`. The raw body is
-// the EXACT bytes of the HTTP request — re-stringifying
+// the EXACT bytes of the HTTP request - re-stringifying
 // `JSON.parse(body)` will change whitespace/key-ordering and break
 // the verification, which is why main.ts enables
 // `NestFactory.create(AppModule, { rawBody: true })` so the
@@ -13,10 +13,10 @@
 //   1. **Dev pass-through (WA_APP_SECRET unset):** log a warning and
 //      let the request through. This lets the local dev / smoke-test
 //      environment receive webhooks without real Meta creds wired up
-//      yet — the user explicitly chose to test against a
+//      yet - the user explicitly chose to test against a
 //      WA_PHONE_NUMBER_ID test number.
 //   2. **Prod verification (WA_APP_SECRET set):** compare the
-//      signature using `crypto.timingSafeEqual` (NOT `===` — the
+//      signature using `crypto.timingSafeEqual` (NOT `===` - the
 //      constant-time compare is the standard defense against timing
 //      attacks on HMAC). Mismatch → 401 Unauthorized.
 //
@@ -67,7 +67,7 @@ export class WhatsappSignatureGuard implements CanActivate {
     if (skip) return true;
 
     // The GET verify handshake (challenge-response) is unauthenticated
-    // by design — it carries a shared secret in the URL, not a
+    // by design - it carries a shared secret in the URL, not a
     // signature. Pass it through; the controller checks the verify
     // token before echoing the challenge.
     const req = context.switchToHttp().getRequest<RawBodyRequest>();
@@ -76,7 +76,7 @@ export class WhatsappSignatureGuard implements CanActivate {
     const appSecret = process.env['WA_APP_SECRET'];
     if (!appSecret) {
       if (process.env['NODE_ENV'] === 'production') {
-        // Fail closed in production — a missing secret must NEVER
+        // Fail closed in production - a missing secret must NEVER
         // result in unauthenticated traffic being accepted.
         throw new ServiceUnavailableException(
           'WA_APP_SECRET is not set; refusing to verify webhook signatures in production',
@@ -84,7 +84,7 @@ export class WhatsappSignatureGuard implements CanActivate {
       }
       // Dev pass-through. Log a one-time-per-process warning so a
       // dev knows their webhook is being trusted blindly, but don't
-      // spam the log on every request — once per boot is enough.
+      // spam the log on every request - once per boot is enough.
       this.warnOnce(
         'WA_APP_SECRET is unset; webhook signature verification SKIPPED (dev mode). Set WA_APP_SECRET to verify Meta signatures.',
       );
@@ -103,7 +103,7 @@ export class WhatsappSignatureGuard implements CanActivate {
 
     const rawBody = req.rawBody;
     if (!rawBody || rawBody.length === 0) {
-      // The raw body is missing — likely the request came in without
+      // The raw body is missing - likely the request came in without
       // the JSON parser touching it (e.g. an empty body). Without the
       // raw bytes, HMAC verification is impossible.
       throw new UnauthorizedException(

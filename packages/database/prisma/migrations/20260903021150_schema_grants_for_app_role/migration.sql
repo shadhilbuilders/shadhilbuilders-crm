@@ -8,6 +8,6 @@
 --
 -- This migration applies the schema-level grant. It is idempotent
 -- (`IF EXISTS` is not needed because GRANT USAGE on a schema is
--- idempotent at the role level — running it twice has no effect
+-- idempotent at the role level - running it twice has no effect
 -- on a role that already has it).
 GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;

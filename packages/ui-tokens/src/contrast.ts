@@ -1,4 +1,4 @@
-// T-D8 — WCAG 2.x contrast computation for the shadhil-crm design system.
+// T-D8 - WCAG 2.x contrast computation for the shadhil-crm design system.
 //
 // The oklch → sRGB conversion is the standard sRGB transform from
 // CSS Color Module Level 4 (https://www.w3.org/TR/css-color-4/#color-conversion-code).
@@ -40,7 +40,7 @@ export interface Srgb {
 
 /**
  * Convert an Oklch color to linear sRGB. May return channels outside
- * [0, 1] for out-of-gamut colors — the caller MUST clamp.
+ * [0, 1] for out-of-gamut colors - the caller MUST clamp.
  */
 export function oklchToLinearSrgb({ l, c, h }: Oklch): Srgb {
   const hRad = (h * Math.PI) / 180;

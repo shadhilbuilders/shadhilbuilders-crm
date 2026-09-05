@@ -3,17 +3,17 @@ import { PrismaClient } from './generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil Builders CRM — bootstrap seed.
+// Shadhil Builders CRM - bootstrap seed.
 // AR-8/B4b (2026-08-31): credentials are created in the EXACT shape better-auth
 // 1.7 expects at sign-in (dist/api/routes/sign-in.mjs:320):
 //   account.accountId === user.id  AND  account.issuer === 'local:credential'
 // Passwords use @better-auth/utils scrypt params (N=16384, r=16, p=1, dkLen=64,
 // NFKC-normalized) stored as "salt:key".
-// Placeholder fallbacks per plan §17 Input #5 — rotate on first login (T-S).
+// Placeholder fallbacks per plan §17 Input #5 - rotate on first login (T-S).
 // ────────────────────────────────────────────────────────────────────────────
 
 // The seed needs the OWNER database role (migration privileges,
-// bypass-RLS) — `shadhil` via DIRECT_DATABASE_URL — not the
+// bypass-RLS) - `shadhil` via DIRECT_DATABASE_URL - not the
 // non-owner `shadhil_app` role used at runtime via DATABASE_URL
 // + PgBouncer. Construct a local PrismaClient here rather than
 // importing the shared `prisma` from `./index` (which is bound
@@ -46,7 +46,7 @@ function readSeedUser(
   // clone can seed before the client roster arrives. Placeholders MUST be
   // rotated on first login (plan task T-S). Round 20/21: the seeded
   // owner@shadhilbuilders.in account IS the single OWNER (exactly one
-  // exists — partial unique index one_owner). Round 22: a second
+  // exists - partial unique index one_owner). Round 22: a second
   // ADMIN placeholder is seeded so the OWNER isn't the only account
   // that can create managers + admins out of the box.
   //   OWNER       → owner@shadhilbuilders.in
@@ -54,7 +54,7 @@ function readSeedUser(
   //   MANAGER     → manager@shadhilbuilders.in
   //   TELECALLER  → telecaller@shadhilbuilders.in
   //   SALES_EXEC  → sales_exec@shadhilbuilders.in
-  // Each email mirrors the role name — Round 23 swap from
+  // Each email mirrors the role name - Round 23 swap from
   // admin@/admin2@ → owner@/admin@.
   const FALLBACK_EMAIL: Record<typeof prefix, string> = {
     OWNER: 'owner@shadhilbuilders.in',
@@ -117,7 +117,7 @@ async function upsertUser(
       // T-S hardening (2026-09-04, Week 5): the 5 seed placeholders
       // carry mustChangePassword=true so the post-login /change-password
       // gate fires for every operator signing in with a placeholder.
-      // Demo users (setup-demo-user.ts) are exempt — see that script.
+      // Demo users (setup-demo-user.ts) are exempt - see that script.
       mustChangePassword: true,
     },
   });
@@ -140,7 +140,7 @@ async function upsertUser(
 }
 
 async function main() {
-  // Disable RLS for seed — the bootstrap admin needs to bypass policies until
+  // Disable RLS for seed - the bootstrap admin needs to bypass policies until
   // the database is fully populated. In production, run migrations with the
   // DIRECT_DATABASE_URL (owner role), which bypasses RLS by default.
   await prisma.$executeRawUnsafe(`SET LOCAL row_security = off`).catch(() => {
@@ -187,7 +187,7 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log(`[seed] team: ${team.name} (${team.id})`);
 
-  // ── Demo leads — one per LeadState so the Lead Inbox renders variety. ───
+  // ── Demo leads - one per LeadState so the Lead Inbox renders variety. ───
   // Phone numbers are 10-digit Indian-style; using the +91 98xxx / 87xxx /
   // 76xxx ranges so they don't collide with real customer numbers. The seed
   // is idempotent (upsert on phone) so re-running is safe. Owner is the
@@ -226,15 +226,15 @@ async function main() {
 
   // ── Demo ManagerAssignmentRule rows (T-ARM-SCHEMA, 2026-09-04) ────────
   // Three rules demonstrating the priority + criteria engine:
-  //   priority 10 (lowest) → telecaller — META_AD only
-  //   priority 20          → sales_exec — LANDING only
-  //   priority 30          → manager    — catch-all (any source)
+  //   priority 10 (lowest) → telecaller - META_AD only
+  //   priority 20          → sales_exec - LANDING only
+  //   priority 30          → manager    - catch-all (any source)
   // Plus: Team.defaultAssigneeId → manager (the team's catch-all).
   //
   // The ManagerAssignmentRule model's unique constraint is now
   // (teamId, source, priority, projectId, phaseId, language, region) so
   // we can have multiple rules for the same source differentiated by
-  // priority. The seed is idempotent — re-running upserts each rule by
+  // priority. The seed is idempotent - re-running upserts each rule by
   // a stable composite key in the orderBy of createdAt.
   const rules = [
     { source: 'META_AD', priority: 10, targetEmail: telecaller.email },

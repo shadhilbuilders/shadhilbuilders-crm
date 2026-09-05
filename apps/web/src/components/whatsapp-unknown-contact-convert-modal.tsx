@@ -1,13 +1,13 @@
 'use client';
 
-// WhatsappUnknownContactConvertModal — convert an unknown WhatsApp
+// WhatsappUnknownContactConvertModal - convert an unknown WhatsApp
 // contact into a Lead (T-E2b admin UI).
 //
 // Lifecycle (the single source of truth is the backend service
 // `whatsapp-unknown-contacts.service.ts:convert()`):
 //
 //   1. UI gathers name / email / notes from the admin.
-//      - phone is fixed (contact.phoneE164) — admin sees it, doesn't edit it
+//      - phone is fixed (contact.phoneE164) - admin sees it, doesn't edit it
 //      - source is fixed to 'WHATSAPP' (the whole point of this queue)
 //
 //   2. UI calls POST /api/whatsapp-unknown-contacts/:id/convert with
@@ -16,7 +16,7 @@
 //      (b) flips the contact's status to CONVERTED and sets
 //          convertedToLeadId
 //      …all inside ONE transaction. The UI does NOT call
-//      POST /api/leads separately — doing so would create a second Lead
+//      POST /api/leads separately - doing so would create a second Lead
 //      and violate the 1:1 contact→lead invariant.
 //
 //   3. On success, the modal closes and the page navigates to
@@ -27,7 +27,7 @@
 // Pre-fill (per the locked decision):
 //   - name  : empty; placeholder shows the phone number
 //   - email : empty (optional)
-//   - source: 'WHATSAPP' (forced — disabled input, this is the entire
+//   - source: 'WHATSAPP' (forced - disabled input, this is the entire
 //             reason the queue exists)
 //   - notes : "First message: <firstMessageBody>" (truncated to 2000 chars)
 //
@@ -63,7 +63,7 @@ type WhatsappUnknownContactConvertModalProps = {
   contact: WhatsappUnknownContactRow | null;
   /** Open state. */
   open: boolean;
-  /** Setter — the modal controls its own open state via this callback. */
+  /** Setter - the modal controls its own open state via this callback. */
   onOpenChange: (next: boolean) => void;
 };
 
@@ -75,7 +75,7 @@ type ConvertFormValues = {
 
 // ---------------------------------------------------------------------------
 // Pure helpers (extracted for testability + reusable across the form body
-// and any future consumers — e.g. a manual "convert" action from the chat
+// and any future consumers - e.g. a manual "convert" action from the chat
 // pane would build the same body).
 // ---------------------------------------------------------------------------
 
@@ -122,7 +122,7 @@ export function buildConvertBody(
 }
 
 // ---------------------------------------------------------------------------
-// Inner form body — exported for testability (the Dialog wrapper is
+// Inner form body - exported for testability (the Dialog wrapper is
 // Base UI's portal-based primitive and does not render content via
 // renderToStaticMarkup).
 // ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ export function ConvertFormBody({ contact, onSubmit }: ConvertFormBodyProps) {
         'data-qa': 'wa-unknown-convert-email',
       },
     },
-    // Source is intentionally NOT in the fields array — it's a fixed
+    // Source is intentionally NOT in the fields array - it's a fixed
     // server-side constant (the service normalizes whatever the UI
     // sends to 'WHATSAPP', per whatsapp-unknown-contacts.service.ts).
     // Surfacing it as a disabled input would be honest but adds noise
@@ -201,7 +201,7 @@ export function ConvertFormBody({ contact, onSubmit }: ConvertFormBodyProps) {
 
   return (
     <Form<ConvertFormValues>
-      // Key on contact id guarantees a fresh form instance per row —
+      // Key on contact id guarantees a fresh form instance per row -
       // defaultValues (especially the pre-filled notes) do not leak
       // from the previous row.
       key={contact.id}
@@ -259,7 +259,7 @@ export function WhatsappUnknownContactConvertModal({
   const description =
     contact === null
       ? 'Convert an unknown WhatsApp contact into a Lead.'
-      : `Converting ${contact.phoneE164} — Source will be saved as WHATSAPP.`;
+      : `Converting ${contact.phoneE164} - Source will be saved as WHATSAPP.`;
 
   return (
     <Dialog

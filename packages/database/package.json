@@ -2,7 +2,7 @@
   "name": "@shadhil/database",
   "version": "0.1.0",
   "private": true,
-  "description": "Shadhil CRM — Prisma schema, generated client, and model type re-exports. Single source of truth for all Prisma-derived types consumed by @shadhil/api-types and the apps.",
+  "description": "Shadhil CRM - Prisma schema, generated client, and model type re-exports. Single source of truth for all Prisma-derived types consumed by @shadhil/api-types and the apps.",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

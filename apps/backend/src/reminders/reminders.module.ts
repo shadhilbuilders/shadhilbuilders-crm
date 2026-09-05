@@ -1,4 +1,4 @@
-// Reminders module — wires the cron processor + Redis lease + Prisma.
+// Reminders module - wires the cron processor + Redis lease + Prisma.
 // T-G4: the cron fires every minute; Redis lock prevents duplicate
 // fires across replicas; status-claim (updateMany SCHEDULED →
 // PROCESSING) is the second-line idempotency primitive.

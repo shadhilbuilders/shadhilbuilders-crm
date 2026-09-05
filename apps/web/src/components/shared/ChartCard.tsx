@@ -1,12 +1,12 @@
 'use client';
 
-// ChartCard — thin glue around `ModulePending` for chart surfaces.
+// ChartCard - thin glue around `ModulePending` for chart surfaces.
 //
 // Eng-review Section 1 [P1]: "ChartCard must be glue around ModulePending,
 // not an independent state machine." This component owns ONLY the wiring
 // from a TanStack Query result (isLoading / error / data) into the
 // ModulePending contract. The chart's visual layer (recharts primitives,
-// the `Chart` wrapper, ARIA labels, etc.) is the caller's job — passed
+// the `Chart` wrapper, ARIA labels, etc.) is the caller's job - passed
 // in via `children(data)` once data exists.
 //
 // T22 (PR3) will wrap this in an ErrorBoundary that renders an `Empty`
@@ -42,7 +42,7 @@
 //   └──────────────┘
 //
 // T19 (PR2) replaces the ModulePending "Loading title…" text with the
-// shape-matched Skeleton variant. This file is unchanged by T19 — it
+// shape-matched Skeleton variant. This file is unchanged by T19 - it
 // already passes `isLoading` to ModulePending, and ModulePending is the
 // single point that knows how to render a "module loading" state.
 
@@ -66,21 +66,21 @@ export type ChartCardProps<T> = {
   /**
    * Renders the actual chart when data is defined and non-empty. Called
    * only with values that pass `isEmptyData(data) === false`. The caller
-   * is responsible for accessibility (aria-label, color contrast) — this
+   * is responsible for accessibility (aria-label, color contrast) - this
    * glue layer doesn't second-guess chart-specific markup.
    */
   children: (data: T) => React.ReactNode;
   /**
    * Optional override for the empty-state copy. Default: "No data yet".
    * When data is empty, the card body still renders inside `CardContent`
-   * so the chart's axis/labels reserve their space — important for
+   * so the chart's axis/labels reserve their space - important for
    * layout stability on first paint.
    */
   emptyTitle?: string;
   /**
    * T19 / T34: shape hint for the chart skeleton so the placeholder
    * matches the real chart's geometry. Defaults to `'bar'` (the most
-   * common case — PipelineFunnelChart and VisitsThisWeekChart both
+   * common case - PipelineFunnelChart and VisitsThisWeekChart both
    * use bar layouts). Pass `'pie'` for LeadStatusPie, `'line'` for
    * AuditTimeline, etc.
    */
@@ -110,7 +110,7 @@ export function ChartCard<T>({
   // T22 + T31: the entire ChartCard body is wrapped in an ErrorBoundary
   // so a render throw inside a chart (e.g. malformed data) shows an
   // <Empty> fallback instead of a white screen or infinite skeleton.
-  // The skeleton is *not* a valid fallback here — a skeleton hides the
+  // The skeleton is *not* a valid fallback here - a skeleton hides the
   // failure, which makes the bug unobservable. The user needs to see
   // the error so they can report it (CEO §2 1B + re-review 1D).
   return (
@@ -141,7 +141,7 @@ function ChartCardBody<T>({
   emptyTitle = 'No data yet',
   dataHint = 'bar',
 }: ChartCardProps<T>) {
-  // 1. Loading — render a shape-matched chart skeleton (T19) inside the
+  // 1. Loading - render a shape-matched chart skeleton (T19) inside the
   //    cross-fade SkeletonContainer (T17) so the transition to real data
   //    is a 200ms fade rather than a pop.
   if (query.isLoading) {
@@ -160,7 +160,7 @@ function ChartCardBody<T>({
     );
   }
 
-  // 2. Error — including 404/501 (handled inside ModulePending). The
+  // 2. Error - including 404/501 (handled inside ModulePending). The
   //    shape matches the existing chart surface so users see the same
   //    "backend module pending" empty that other pages use.
   if (query.error !== null && query.error !== undefined) {
@@ -175,7 +175,7 @@ function ChartCardBody<T>({
     );
   }
 
-  // 3. Resolved but empty — same frame, but the body shows "No data yet"
+  // 3. Resolved but empty - same frame, but the body shows "No data yet"
   //    instead of the "module pending" copy (because the module IS
   //    built, it just returned nothing).
   if (query.data === undefined || isEmptyData(query.data)) {
@@ -190,7 +190,7 @@ function ChartCardBody<T>({
     );
   }
 
-  // 4. Has data — render the chart inside the frame. SkeletonContainer
+  // 4. Has data - render the chart inside the frame. SkeletonContainer
   //    keeps the cross-fade in place: when isLoading was true and now
   //    is false, the skeleton layer fades out and the children fade in.
   return (
@@ -206,7 +206,7 @@ function ChartCardBody<T>({
 // T22 + T31: ErrorBoundary fallback. Renders an <Empty> with the
 // error message so the failure is visible to the user. We deliberately
 // do NOT render a Skeleton (skeleton hides the failure) and we do NOT
-// log to console here — the ErrorBoundary logs by default.
+// log to console here - the ErrorBoundary logs by default.
 // ---------------------------------------------------------------------------
 
 function ChartCardErrorFallback({

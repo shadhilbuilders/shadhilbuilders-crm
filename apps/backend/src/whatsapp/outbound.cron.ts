@@ -7,12 +7,12 @@
 // the MAX_ATTEMPTS cap. The cron is a thin orchestrator.
 //
 // Safety nets (mirroring the T-G4 reminders processor):
-//   1. Redis lease — `cron:outbound:lock`, TTL 30s. Only one replica
+//   1. Redis lease - `cron:outbound:lock`, TTL 30s. Only one replica
 //      per tick can claim a batch. If a tick takes > 30s (very large
-//      backlog), the lock expires and a peer replica may pick up —
+//      backlog), the lock expires and a peer replica may pick up -
 //      safe because the claim is via updateMany(status: PENDING) and
 //      the second replica sees zero rows (status-claim idempotency).
-//   2. Per-row try/catch — one row's send failure doesn't abort the
+//   2. Per-row try/catch - one row's send failure doesn't abort the
 //      batch. The catch in sendOne already writes lastError + flips
 //      status to PENDING/FAILED per the backoff schedule.
 //
@@ -62,7 +62,7 @@ export interface OutboundTickResult {
 @Injectable()
 export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboundCronService.name);
-  // Lock token — releaseLock is a compare-and-delete on this value.
+  // Lock token - releaseLock is a compare-and-delete on this value.
   private readonly replicaId = randomUUID();
 
   // Last-tick accessor for ops visibility + tests.
@@ -105,7 +105,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    // No persistent timer — @Cron manages its own. Nothing to clear.
+    // No persistent timer - @Cron manages its own. Nothing to clear.
   }
 
   /** @Cron wrapper. Bypasses the lock + runOnce path that tests use. */
@@ -136,7 +136,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
       tick.lockHeld = false;
       tick.finishedAt = new Date();
       this.lastTick = tick;
-      this.logger.debug('Skipping tick — another replica holds cron:outbound:lock');
+      this.logger.debug('Skipping tick - another replica holds cron:outbound:lock');
       return tick;
     }
     tick.lockHeld = true;
@@ -144,7 +144,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
     try {
       // Claim a batch. claimPending already filters by backoff
       // (rows with lastAttemptAt within the backoff window are
-      // skipped — see OutboundService.claimPending). We track
+      // skipped - see OutboundService.claimPending). We track
       // "skippedBackoff" via the gap between rows-returned and
       // rows-claimed.
       const batch = await this.outbound.claimPending(this.replicaId, BATCH_SIZE);
@@ -163,13 +163,13 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
           // attempts >= MAX_ATTEMPTS). The CRON_SERVICE RLS
           // bypass on OutboundMessage (added in T-E2b inbound
           // commit) lets the typed update inside sendOne succeed
-          // via withRlsContext — no more Prisma 7 raw-SQL
+          // via withRlsContext - no more Prisma 7 raw-SQL
           // workaround needed here.
           await this.outbound.sendOne(row);
           // Read back the row to count outcomes. (sendOne returns
           // the updated row but we count via the DB to avoid
           // double-counting in the rare PENDING-vs-FAILED race.)
-          // Must be in RLS context — bare shadhil_app has no
+          // Must be in RLS context - bare shadhil_app has no
           // permission to SELECT OutboundMessage without a matching
           // policy.
           const updated = await withRlsContext(
@@ -184,11 +184,11 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
           if (updated?.status === 'SENT') tick.sent += 1;
           else if (updated?.status === 'FAILED') tick.failed += 1;
           // PENDING rows (backoff / retry case) aren't counted in
-          // sent or failed — they're in flight, will be retried.
+          // sent or failed - they're in flight, will be retried.
         } catch (err) {
           // sendOne catches its own errors, but a DB-level error
           // (e.g. the RLS workaround timing out) could escape.
-          // Log and continue — don't abort the batch.
+          // Log and continue - don't abort the batch.
           this.logger.error(
             `outbound row ${row.id} crashed in cron: ${err instanceof Error ? err.message : String(err)}`,
           );
@@ -207,7 +207,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    // T-E2b: feed the tick into the alerts service. Best-effort —
+    // T-E2b: feed the tick into the alerts service. Best-effort -
     // AlertsService.recordTickResult never throws. If AlertsModule
     // isn't wired (alerts === undefined), this is a no-op skip.
     if (this.alerts !== undefined) {

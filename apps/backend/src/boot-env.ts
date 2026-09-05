@@ -1,8 +1,8 @@
-// Boot-time env validation (T-G8 / eng review A2 — 2026-09-03).
+// Boot-time env validation (T-G8 / eng review A2 - 2026-09-03).
 //
 // Fail-fast at the very first line of main.ts:bootstrap so a
 // misconfigured container exits with a clear, multi-line error listing
-// every missing or malformed env var — not a half-initialized NestJS
+// every missing or malformed env var - not a half-initialized NestJS
 // app failing on the first Redis call. The previous behavior was:
 //
 //   process.env.REDIS_URL ?? 'redis://localhost:6379'
@@ -28,7 +28,7 @@ export interface BootEnv {
   API_PORT: number;
   NODE_ENV: 'development' | 'production' | 'test';
 
-  // T-E2b Telegram alert config — all optional at boot. Empty
+  // T-E2b Telegram alert config - all optional at boot. Empty
   // string / default values mean the alerts module will no-op with
   // a one-time warn.
   TELEGRAM_BOT_TOKEN: string;
@@ -100,7 +100,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
   const CORS_ORIGINS =
     env['CORS_ORIGINS'] ?? 'http://localhost:3000,http://localhost:8081';
 
-  // T-E2b Telegram alert env vars — ALL OPTIONAL. The alerts module
+  // T-E2b Telegram alert env vars - ALL OPTIONAL. The alerts module
   // no-ops if any of these are missing (with a one-time warn at boot).
   // The dev experience is "Telegram disabled" rather than "boot fails".
   const TELEGRAM_BOT_TOKEN = env['TELEGRAM_BOT_TOKEN'];
@@ -151,7 +151,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     CORS_ORIGINS,
     API_PORT,
     NODE_ENV,
-    // T-E2b Telegram alert config — optional. Surface on BootEnv so
+    // T-E2b Telegram alert config - optional. Surface on BootEnv so
     // consumers can read without re-parsing process.env. The
     // AlertsService receives these via the module factory, not
     // directly from BootEnv, but exposing them here makes "what

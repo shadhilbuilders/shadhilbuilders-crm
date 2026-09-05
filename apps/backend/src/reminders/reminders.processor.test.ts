@@ -1,4 +1,4 @@
-// T-G4 unit test — cron processor with Redis lock + status-claim.
+// T-G4 unit test - cron processor with Redis lock + status-claim.
 //
 // The Plan §18 verify line: "processor test: tick > 60s does not
 // double-fire." This file drives the assertions via three scenarios:
@@ -6,12 +6,12 @@
 //   1. Happy path: a single tick claims and "sends" N due reminders.
 //   2. Lock contention: a second tick while another replica holds
 //      the lock does no work (lockHeld = false, claimed = 0).
-//   3. The killer test — tick > 60s does not double-fire: simulate a
+//   3. The killer test - tick > 60s does not double-fire: simulate a
 //      batch that takes longer than the original lock TTL by holding
 //      the lock past 50s; a SECOND replica that acquires the lock
 //      after expiry must see zero due rows (status-claim catches the
 //      race). Without the PROCESSING intermediate state, the second
-//      replica would re-claim and re-deliver — duplicate fire.
+//      replica would re-claim and re-deliver - duplicate fire.
 //
 // T-CRONS (2026-09-07): the cron's updateMany now runs inside
 // withRlsContext as role=CRON_SERVICE so the reminder_cron_service
@@ -23,7 +23,7 @@
 // packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
 // and known-runtime-bugs.md Bug 8.
 //
-// We don't actually wait 60s in tests — the lease-renewal script
+// We don't actually wait 60s in tests - the lease-renewal script
 // is exercised indirectly via the duplicate-fire scenario, which
 // covers the same code path. A live integration test (not in this
 // file) would mock the timer.
@@ -41,16 +41,16 @@ const HAS_REDIS = Boolean(process.env.REDIS_URL);
 // Runtime client (RLS-enforced, shadhil_app role). The cron's
 // updateMany / findMany go through withRlsContext as role=CRON_SERVICE
 // (see reminders.service.ts:tick) so the reminder_cron_service policy
-// matches — the cron's DB writes are no longer wrapped in adminSeed.
+// matches - the cron's DB writes are no longer wrapped in adminSeed.
 // adminSeed is still used in this test file for the LEASt scenario's
 // manual replica-A claim (test #3), which seeds state independently
 // of the cron service code path.
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 // Admin context wrapper for fixture seeding. shadhil_app is RLS-enforced
-// (no BYPASSRLS — the original attempt in T-G4 was reverted because
+// (no BYPASSRLS - the original attempt in T-G4 was reverted because
 // it broke the 128-case matrix). Seeding needs to insert
-// Lead/Reminder/etc — admin satisfies every policy by role alone,
+// Lead/Reminder/etc - admin satisfies every policy by role alone,
 // BUT the Lead INSERT policy also checks teamId = app.user_team_id,
 // so the admin context must set teamId to match the fixture's
 // teamId. The reminder INSERT policy gates on userId = app.user_id,
@@ -166,7 +166,7 @@ async function seedDueReminder(label: string): Promise<string> {
         userId: 'test-reminder-admin',
         type: 'PRE_VISIT_STAFF',
         status: 'SCHEDULED',
-        scheduledFor: new Date(Date.now() - 60_000), // 1 minute ago — due
+        scheduledFor: new Date(Date.now() - 60_000), // 1 minute ago - due
       },
     });
   });
@@ -192,7 +192,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
   private now = 0;
 
   acquireLock(key: string, ttlSec: number, token: string): Promise<boolean> {
-    // Lazy expiry check — Redis removes the key on access past
+    // Lazy expiry check - Redis removes the key on access past
     // its TTL, not in a background sweeper. If the key is present
     // but expired, treat it as absent.
     const existing = this.store.get(key);
@@ -202,7 +202,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
         // Still valid → reject.
         return Promise.resolve(false);
       }
-      // Expired — fall through and overwrite.
+      // Expired - fall through and overwrite.
     }
     this.store.set(key, JSON.stringify({ token, expiresAt: this.now + ttlSec * 1000 }));
     return Promise.resolve(true);
@@ -231,7 +231,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
   /** Test helper: advance the fake clock past a lock TTL. */
   advanceTime(ms: number): void {
     this.now += ms;
-    // Expire any keys past their TTL — mimics Redis's lazy expiry.
+    // Expire any keys past their TTL - mimics Redis's lazy expiry.
     for (const [key, raw] of this.store.entries()) {
       const parsed = JSON.parse(raw) as { expiresAt: number };
       if (parsed.expiresAt <= this.now) {
@@ -248,7 +248,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
 }
 
 describe.skipIf(!HAS_DB || !HAS_REDIS)(
-  'T-G4 reminder cron — lease + status-claim',
+  'T-G4 reminder cron - lease + status-claim',
   () => {
     let stubRedis: StubRedis;
     let prismaService: PrismaService;
@@ -293,7 +293,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
     it('lock contention: a second replica is rejected when first holds the lock', async () => {
       // Manually grab the lock with replica-A's token BEFORE the
-      // service tries to acquire — this simulates the case where
+      // service tries to acquire - this simulates the case where
       // another replica is mid-tick. The service's tick() will then
       // fail to acquire and return cleanly with lockHeld=false.
       const REPLICA_A = 'replica-a-test';
@@ -330,7 +330,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       const REPLICA_A = 'replica-a-lease';
       const REPLICA_B = 'replica-b-lease';
 
-      // 1. Replica A acquires the lock (TTL 10s — short so the
+      // 1. Replica A acquires the lock (TTL 10s - short so the
       // same advanceTime that triggers expiry also lets B acquire).
       const acquired = await stubRedis.acquireLock(
         REMINDER_LOCK_KEY,
@@ -341,9 +341,9 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
       // 2. Replica A's updateMany claims the rows. We call this
       // directly rather than going through tick() because we want
-      // to skip the renew/release logic — we're simulating a
+      // to skip the renew/release logic - we're simulating a
       // replica that crashes mid-batch. Wrap in adminSeed so the
-      // claim (an admin-actor UPDATE) succeeds — keeps this test
+      // claim (an admin-actor UPDATE) succeeds - keeps this test
       // independent of the CRON_SERVICE code path that the cron
       // tick uses in production.
       await adminSeed(async (db) => {
@@ -362,11 +362,11 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
         expect(claimResult.count).toBe(dueBeforeClaim);
       });
 
-      // 3. Fast-forward past the lock TTL — Redis would have expired
+      // 3. Fast-forward past the lock TTL - Redis would have expired
       // the key. Our stub mimics that with advanceTime.
       stubRedis.advanceTime(11_000);
 
-      // 4. Replica B acquires the lock (TTL 10s — short so the
+      // 4. Replica B acquires the lock (TTL 10s - short so the
       // next advanceTime also covers the new TTL window).
       const reacquired = await stubRedis.acquireLock(
         REMINDER_LOCK_KEY,
@@ -380,13 +380,13 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       stubRedis.advanceTime(11_000);
 
       // 6. Run B's full tick. Its updateMany should find zero
-      // SCHEDULED rows (A already flipped them) — status-claim
+      // SCHEDULED rows (A already flipped them) - status-claim
       // catches the race, no duplicate fire.
       //
       // Use withReplicaId so replica B uses REPLICA_B as its lock
       // token (matching the manual acquireLock we did above). The
       // tick's acquireLock will succeed because we advanced the
-      // fake clock past the TTL — Redis would have expired the key.
+      // fake clock past the TTL - Redis would have expired the key.
       const replicaB = RemindersService.withReplicaId(
         prismaService,
         stubRedis as unknown as RedisService,
@@ -400,7 +400,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       expect(lastB?.failed).toBe(0);
 
       // Verify the original row is still PROCESSING (A claimed it,
-      // B did NOT touch it — exactly what we want). Wrap in adminSeed
+      // B did NOT touch it - exactly what we want). Wrap in adminSeed
       // so the runtime shadhil_app client can bypass the
       // owner-only reminder_select_owner policy for the assertion.
       expect(seedId).toBeDefined();
@@ -416,7 +416,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
       // Cleanup: flip the row back to SCHEDULED + release the lock
       // so the next test starts clean. Use adminSeed so the
-      // PROCESSING → SCHEDULED update succeeds — the lease-expiry
+      // PROCESSING → SCHEDULED update succeeds - the lease-expiry
       // scenario asserts on admin-driven state changes, not the
       // CRON_SERVICE code path.
       await adminSeed(async (db) => {

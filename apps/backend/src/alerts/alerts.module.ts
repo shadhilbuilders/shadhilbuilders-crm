@@ -1,9 +1,9 @@
-// T-E2b — Telegram channel alert for systematic outbound-WhatsApp failure.
+// T-E2b - Telegram channel alert for systematic outbound-WhatsApp failure.
 //
 // The outbound cron (apps/backend/src/whatsapp/outbound.cron.ts) runs
 // every 5s and counts `tick.failed` per tick. A single transient Meta
 // 4xx isn't alarming (the row will retry per the backoff schedule);
-// 3 ticks in a row where every claimed send failed IS alarming — Meta
+// 3 ticks in a row where every claimed send failed IS alarming - Meta
 // is down, the template is broken, or our token rotated.
 //
 // Alert path:
@@ -42,7 +42,7 @@ export const DEFAULT_TELEGRAM_ALERT_THRESHOLD = 3;
 export const DEFAULT_TELEGRAM_ALERT_COOLDOWN_MS = 15 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
-// TelegramService — thin HTTP wrapper around the Bot API.
+// TelegramService - thin HTTP wrapper around the Bot API.
 // ---------------------------------------------------------------------------
 
 export interface TelegramServiceOptions {
@@ -53,9 +53,9 @@ export interface TelegramServiceOptions {
   channelId: string | undefined;
   /** Display name surfaced in alert text (cosmetic). */
   botName: string;
-  /** Override the API base URL — tests inject a stub. */
+  /** Override the API base URL - tests inject a stub. */
   apiBaseUrl?: string;
-  /** Override fetch — tests inject a spy. */
+  /** Override fetch - tests inject a spy. */
   fetchImpl?: typeof fetch;
 }
 
@@ -96,7 +96,7 @@ export class TelegramService {
    */
   async sendChannelMessage(text: string): Promise<boolean> {
     if (!this.enabled) {
-      this.logger.debug(`Telegram disabled — would have sent: ${text}`);
+      this.logger.debug(`Telegram disabled - would have sent: ${text}`);
       return false;
     }
     const url = `${this.apiBaseUrl}/bot${this.token}/sendMessage`;
@@ -122,7 +122,7 @@ export class TelegramService {
       }
       return true;
     } catch (err) {
-      // Network error or abort — never throw to the caller.
+      // Network error or abort - never throw to the caller.
       this.logger.warn(
         `Telegram sendMessage threw: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -132,7 +132,7 @@ export class TelegramService {
 }
 
 // ---------------------------------------------------------------------------
-// AlertsService — rolling counter + cooldown orchestrator.
+// AlertsService - rolling counter + cooldown orchestrator.
 // ---------------------------------------------------------------------------
 
 export interface AlertsServiceOptions {
@@ -144,7 +144,7 @@ export interface AlertsServiceOptions {
   telegram: TelegramService;
   /** Display name for the env we're running in (e.g. "production"). */
   environment: string;
-  /** "now" hook — tests inject a controllable clock. */
+  /** "now" hook - tests inject a controllable clock. */
   now?: () => number;
 }
 
@@ -187,7 +187,7 @@ export class AlertsService {
         this.lastFailedSample = null;
         return;
       case 'partial':
-        // Some sent, some failed — counts as a reset. The Meta API
+        // Some sent, some failed - counts as a reset. The Meta API
         // is at least partially working.
         this.consecutiveFailedTicks = 0;
         this.cooldownUntil = null;
@@ -195,7 +195,7 @@ export class AlertsService {
         return;
       case 'idle':
         // Nothing claimed (empty outbox or all rows in backoff).
-        // Don't reset on idle — a real outage looks like "claimed
+        // Don't reset on idle - a real outage looks like "claimed
         // and failed" not "no rows". Leave the counter alone.
         return;
       case 'all-failed':
@@ -233,7 +233,7 @@ export class AlertsService {
           `cooldownMs=${this.cooldownMs}`,
       );
     }
-    // Set the cooldown either way — even if Telegram rejected the
+    // Set the cooldown either way - even if Telegram rejected the
     // message, we don't want to spam retries every 5s.
     this.cooldownUntil = this.now() + this.cooldownMs;
     // Reset the counter so the next streak has to climb again from
@@ -244,7 +244,7 @@ export class AlertsService {
 
   /**
    * Exposed for tests + ops dashboards. Do not call from production
-   * code — `recordTickResult` is the only mutator.
+   * code - `recordTickResult` is the only mutator.
    */
   getStateForOps(): {
     consecutiveFailedTicks: number;
@@ -273,7 +273,7 @@ export class AlertsService {
     const sample = this.lastFailedSample;
     const lines: string[] = [];
     lines.push(
-      `🚨 *WhatsApp outbound — systematic failure* (${this.environment})`,
+      `🚨 *WhatsApp outbound - systematic failure* (${this.environment})`,
     );
     lines.push('');
     lines.push(

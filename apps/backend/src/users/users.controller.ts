@@ -1,4 +1,4 @@
-// Users controller — role-guarded user-creation surface (Rounds 17/18).
+// Users controller - role-guarded user-creation surface (Rounds 17/18).
 // All routes JWT-protected via the global guard; hierarchy enforced in the
 // service (assertCanCreateRole + team checks). The AuditLog insert runs in
 // the ACTOR's own RLS context so the policy's app.user_id check passes.
@@ -29,7 +29,7 @@ import { UsersService, type CreatedUser } from './users.service';
 
 /**
  * Parse a request body with a shared Zod schema; a ZodError becomes a 400
- * (not a 500 — the ValidationPipe doesn't handle raw Zod schemas).
+ * (not a 500 - the ValidationPipe doesn't handle raw Zod schemas).
  */
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
@@ -45,7 +45,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 @ApiBearerAuth('jwt')
 @Controller('users')
 export class UsersController {
-  // @Inject with an explicit token — tsx/esbuild does NOT emit
+  // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime (same reason app.module.ts uses useFactory + inject).
   constructor(

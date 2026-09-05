@@ -1,4 +1,4 @@
-// ManagerAssignmentRule engine — T-ARM-SCHEMA unit tests.
+// ManagerAssignmentRule engine - T-ARM-SCHEMA unit tests.
 //
 // Per Plan §18 (Decision D2 + D3), the Week-5 engine covers:
 //   1. rule priority order
@@ -60,7 +60,7 @@ const leadMETA: LeadAttributes = { source: 'META_AD' };
 const leadLANDING: LeadAttributes = { source: 'LANDING' };
 const leadREFERRAL: LeadAttributes = { source: 'REFERRAL' };
 
-// Default fallback user — the service passes actor.sub in production,
+// Default fallback user - the service passes actor.sub in production,
 // but the engine tests don't care about the actor identity; any
 // stable string works.
 const FALLBACK = 'actor-sub';
@@ -131,7 +131,7 @@ describe('T-ARM #1: rule priority order', () => {
     });
   });
 
-  it('first match wins — a lower-priority rule further down is not evaluated', () => {
+  it('first match wins - a lower-priority rule further down is not evaluated', () => {
     const rules = [
       rule({ id: 'r-prio-1', priority: 1, targetUserId: 'se-1' }),
       rule({ id: 'r-prio-2', priority: 2, targetUserId: 'tc-1' }),
@@ -228,7 +228,7 @@ describe('T-ARM #2: criteria combinations', () => {
     });
   });
 
-  it('language / region criteria — null on rule is wildcard; set value must match exactly', () => {
+  it('language / region criteria - null on rule is wildcard; set value must match exactly', () => {
     const rules = [
       rule({ id: 'r-hi-tn', language: 'hi', region: 'IN-TN', targetUserId: 'tc-1' }),
       rule({ id: 'r-wildcard', targetUserId: 'se-1' }),
@@ -259,7 +259,7 @@ describe('T-ARM #2: criteria combinations', () => {
     ).toEqual({ kind: 'rule', ruleId: 'r-wildcard', userId: 'se-1', priority: 0 });
   });
 
-  it('rules for OTHER teams do not match — team-scoped', () => {
+  it('rules for OTHER teams do not match - team-scoped', () => {
     const rules = [
       rule({ id: 'r-team-b', teamId: 'team-b', targetUserId: 'tc-1' }),
     ];
@@ -267,7 +267,7 @@ describe('T-ARM #2: criteria combinations', () => {
     expect(result).toEqual({ kind: 'fallback', userId: FALLBACK });
   });
 
-  it('inactive rules are filtered out at the engine level (defensive — caller filters)', () => {
+  it('inactive rules are filtered out at the engine level (defensive - caller filters)', () => {
     const rules = [
       rule({ id: 'r-inactive', active: false, targetUserId: 'tc-1' }),
       rule({ id: 'r-active', targetUserId: 'se-1' }),
@@ -292,7 +292,7 @@ describe('T-ARM #3: team.defaultAssigneeId fallback', () => {
 
   it('rules exist but none match (wrong source) → team default wins', () => {
     const rules = [rule({ id: 'r-meta', source: 'META_AD', targetUserId: 'tc-1' })];
-    // Lead has source REFERRAL — no rule matches → team default.
+    // Lead has source REFERRAL - no rule matches → team default.
     expect(evaluateAssignment(rules, TEAM_A_WITH_DEFAULT, leadREFERRAL, resolve, FALLBACK)).toEqual({
       kind: 'team-default',
       userId: 'se-1',
@@ -343,7 +343,7 @@ describe('T-ARM #4: no-match → fallback chain', () => {
     });
   });
 
-  it('engine does NOT call the notification side — that is the service responsibility', () => {
+  it('engine does NOT call the notification side - that is the service responsibility', () => {
     // Pure-function contract: no callbacks other than the synchronous
     // target resolver. Pin the surface so a future change doesn't
     // accidentally drag in side effects (Notification.create, etc.).
@@ -433,7 +433,7 @@ describe('T-ARM #6: inactive rule excluded', () => {
 });
 
 describe('T-ARM #7: manual reassign after auto-assign (engine contract)', () => {
-  it('engine has no re-evaluation surface — create() is the only entry', () => {
+  it('engine has no re-evaluation surface - create() is the only entry', () => {
     const engineExports = Object.keys(engineModule).sort();
     // Pin the runtime surface. Type-only exports (interfaces) are
     // erased at runtime so they don't appear here. If a future change
@@ -453,7 +453,7 @@ describe('T-ARM #7: manual reassign after auto-assign (engine contract)', () => 
   });
 });
 
-describe('extractCriteriaFromSource — T-ARM Week-8 placeholder', () => {
+describe('extractCriteriaFromSource - T-ARM Week-8 placeholder', () => {
   it('returns empty object for today\'s free-form sources (META_AD / LANDING / REFERRAL / WALK_IN)', () => {
     expect(extractCriteriaFromSource('META_AD')).toEqual({});
     expect(extractCriteriaFromSource('LANDING')).toEqual({});
@@ -463,14 +463,14 @@ describe('extractCriteriaFromSource — T-ARM Week-8 placeholder', () => {
     expect(extractCriteriaFromSource('some-future-source')).toEqual({});
   });
 
-  it('is a pure function — same input always yields the same output', () => {
+  it('is a pure function - same input always yields the same output', () => {
     const a = extractCriteriaFromSource('META_AD');
     const b = extractCriteriaFromSource('META_AD');
     expect(a).toEqual(b);
   });
 });
 
-describe('T-ARM edge cases (defensive — not in the plan spec)', () => {
+describe('T-ARM edge cases (defensive - not in the plan spec)', () => {
   it('empty rules array + no team default → fallback (no crash, no NPE)', () => {
     expect(evaluateAssignment([], TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
       kind: 'fallback',
@@ -478,7 +478,7 @@ describe('T-ARM edge cases (defensive — not in the plan spec)', () => {
     });
   });
 
-  it('a single rule for a different team is skipped — teamId must match the call', () => {
+  it('a single rule for a different team is skipped - teamId must match the call', () => {
     const rules = [rule({ id: 'r', teamId: 'team-other' })];
     expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
       kind: 'fallback',
@@ -486,7 +486,7 @@ describe('T-ARM edge cases (defensive — not in the plan spec)', () => {
     });
   });
 
-  it('a rule with empty targetUserId is skipped (defensive — DB should reject this)', () => {
+  it('a rule with empty targetUserId is skipped (defensive - DB should reject this)', () => {
     const rules = [rule({ id: 'r', targetUserId: '' })];
     expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
       kind: 'fallback',

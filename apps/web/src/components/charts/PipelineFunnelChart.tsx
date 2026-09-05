@@ -1,6 +1,6 @@
 'use client';
 
-// PipelineFunnelChart — bucketed lead-status counts, fed to a horizontal
+// PipelineFunnelChart - bucketed lead-status counts, fed to a horizontal
 // BarChart so the funnel reads top-to-bottom.
 //
 // T9 (one of two dedicated files per plan D2; the other is
@@ -8,7 +8,7 @@
 // file:
 //   1. Counts leads per status from the `useLeads` array
 //   2. Sorts by the canonical pipeline order (NEW → … → WON), not
-//      alphabetical — so the funnel reads left-to-right as a real
+//      alphabetical - so the funnel reads left-to-right as a real
 //      pipeline, not a jumble of letters
 //   3. Applies `labelFor('lead', status)` so the chart axis is the
 //      non-technical copy ("Talked", "Visit booked", "Won 🎉") rather
@@ -16,7 +16,7 @@
 //
 // T11 wired the labels map; this file is where the labels meet real
 // data for the first time in a chart axis. Once the leads module
-// ships, this component lights up with zero code change — the
+// ships, this component lights up with zero code change - the
 // `useLeads` query contract is already locked (api-types).
 //
 // Import pattern (per shadcn charts convention, see
@@ -24,7 +24,7 @@
 // primitives (Chart, ChartContainer, ChartTooltip, ChartTooltipContent)
 // come from @paalstack/react-ui (which owns the theme CSS vars +
 // accessibility layer). The raw recharts primitives (Bar, BarChart,
-// XAxis, YAxis) come from recharts directly — the library v1.4.1 does
+// XAxis, YAxis) come from recharts directly - the library v1.4.1 does
 // NOT re-export them, so this is the canonical shadcn split.
 import {
   Chart,
@@ -37,7 +37,7 @@ import { ChartTooltipWithSkeleton } from '@/components/shared/ChartTooltipWithSk
 import type { LeadStatus } from '@/lib/labels';
 import { labelFor, LEAD_STATUSES } from '@/lib/labels';
 
-/** Canonical pipeline order — top of the funnel is `NEW`, bottom is `WON`. */
+/** Canonical pipeline order - top of the funnel is `NEW`, bottom is `WON`. */
 const PIPELINE_ORDER: readonly LeadStatus[] = [
   'NEW',
   'CONTACTED',
@@ -93,7 +93,7 @@ export function PipelineFunnelChart({ data }: PipelineFunnelChartProps) {
     <Chart config={PIPELINE_CONFIG}>
       <ChartContainer
         config={PIPELINE_CONFIG}
-        aria-label="Lead pipeline funnel — leads per status"
+        aria-label="Lead pipeline funnel - leads per status"
         className="h-72 w-full"
       >
         <BarChart data={buckets} layout="vertical" margin={{ left: 8, right: 16 }}>

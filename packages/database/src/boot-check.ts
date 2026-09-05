@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil Builders CRM — Boot-time POOL_MODE check
+// Shadhil Builders CRM - Boot-time POOL_MODE check
 // ────────────────────────────────────────────────────────────────────────────
 // ENG REVIEW A5: PgBouncer transaction pooling silently breaks RLS because
 // per-request session variables (SET LOCAL app.user_id = ...) do not survive
@@ -62,7 +62,7 @@ if (isMain) {
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       // eslint-disable-next-line no-console
-      console.error(`[boot-check] FAIL — ${message}`);
+      console.error(`[boot-check] FAIL - ${message}`);
       process.exit(1);
     });
 }

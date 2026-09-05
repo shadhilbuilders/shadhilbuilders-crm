@@ -1,4 +1,4 @@
-# Shadhil CRM — Client Questions: Resolved (PaalStack Defaults)
+# Shadhil CRM - Client Questions: Resolved (PaalStack Defaults)
 
 **Status:** All 16 questions resolved with senior-engineer defaults, biased toward **reliability + scalability + adaptability** per the "system should not fail even 1 ms" constraint.
 
@@ -29,14 +29,14 @@ the client, full rationale in §2.
 | Q12 | Audit log retention | **7 years (RERA upper bound). Immutable, R2-archived.** | Reliability (legal) |
 | Q13 | Manager visibility scope | **Per-team ONLY.** Cross-team visibility is Admin only. | Reliability (RBAC) |
 | Q14 | Sites in v1 | **Mudichur only. Data model multi-site from day 1, UI gates.** | Scalability |
-| Q15 | Handoff trigger | **Automatic on visit outcome (Model C). ManagerAssignmentRule picks the exec. Telecaller cannot manually trigger handoff — there is no manual handoff.** *(Supersedes original "one-click from telecaller" decision; see CLIENT-FEEDBACK-v12 for Model C rationale.)* | Adaptability |
+| Q15 | Handoff trigger | **Automatic on visit outcome (Model C). ManagerAssignmentRule picks the exec. Telecaller cannot manually trigger handoff - there is no manual handoff.** *(Supersedes original "one-click from telecaller" decision; see CLIENT-FEEDBACK-v12 for Model C rationale.)* | Adaptability |
 | Q16 | Confirm FreJun | **Confirmed (recommended).** | (locked) |
 
 ---
 
 ## 2. Rationale per question (the why)
 
-### Q0 — WhatsApp Business number
+### Q0 - WhatsApp Business number
 
 **Decision:** New production-approved number, SEPARATE from the
 landing site's +91 9025012311.
@@ -67,7 +67,7 @@ we can avoid by provisioning a separate number.
 
 ---
 
-### Q1 — Concurrent users
+### Q1 - Concurrent users
 
 **Decision:** v1 designed for 5-15 users. v2 designed to scale to
 50-200 without re-architecture.
@@ -90,7 +90,7 @@ when Shadhil grows from 10 to 50 users.
 
 ---
 
-### Q4 — Leads per month
+### Q4 - Leads per month
 
 **Decision:** v1: 100-500/month (single project, Shadhil Metro
 Heights). v2: 1,000-5,000/month (multi-project).
@@ -112,7 +112,7 @@ backfill. Better to over-index for v1.
 
 ---
 
-### Q2 — Booking-to-agreement flow
+### Q2 - Booking-to-agreement flow
 
 **Decision:** v1 captures the handoff (lead → booking → token
 receipt → agreement handoff-off to lawyer). v1.1 adds agreement
@@ -130,7 +130,7 @@ agreement), not replace it. The CRM's job is to:
 v1 does NOT generate agreements. v1.1 adds a template system
 (you write a template, the system fills in customer name, unit
 details, price, etc.) and e-sign integration (Leegality /
-LegalDesk / similar — common in Indian real estate).
+LegalDesk / similar - common in Indian real estate).
 
 **"Should not fail even 1 ms" impact:** v1 matches the current
 process, so no business disruption. v1.1 adds efficiency later.
@@ -138,7 +138,7 @@ Ship fast, optimize later.
 
 ---
 
-### Q3 — RERA / Tamil Nadu compliance
+### Q3 - RERA / Tamil Nadu compliance
 
 **Decision:** RERA Tamil Nadu + DPDP Act requirements built into
 v1. Specifically:
@@ -165,7 +165,7 @@ reliability, not just uptime.
 
 ---
 
-### Q5 — Mobile vs desktop
+### Q5 - Mobile vs desktop
 
 **Decision:** BOTH PWA (v1) AND Expo app (v1.1) ship. Not
 optional.
@@ -190,23 +190,23 @@ pushes adoption to 95%+.
 
 ---
 
-### Q8 — Manager dashboard KPIs
+### Q8 - Manager dashboard KPIs
 
 **Decision:** v1 ships 4 widgets, not 1:
-1. **Funnel** — leads by status (NEW → CONTACTED → VISITED →
+1. **Funnel** - leads by status (NEW → CONTACTED → VISITED →
    WON/LOST), with conversion % between stages
-2. **Handoff latency** — median time from VISIT_REQUESTED to
+2. **Handoff latency** - median time from VISIT_REQUESTED to
    ASSIGNED_TO_EXEC, with per-manager breakdown
-3. **Per-exec performance** — bookings/month per sales exec,
+3. **Per-exec performance** - bookings/month per sales exec,
    no-show rate, lead → visit → won conversion
-4. **Source ROI** — leads by source (landing site, walk-in,
+4. **Source ROI** - leads by source (landing site, walk-in,
    MagicBricks, etc.) with cost-per-lead and conversion rate
 
 **Why:** The client said "manager can see all the things" and
 "monitor by application." One funnel widget isn't enough
 oversight. These 4 are the minimum for a manager to do their
 job. All 4 are simple Prisma aggregations on existing tables
-— no new schema needed.
+- no new schema needed.
 
 **"Should not fail even 1 ms" impact:** Manager oversight IS
 the reliability requirement. If the manager can't see handoff
@@ -216,7 +216,7 @@ makes them enforce adoption, which makes the system work.
 
 ---
 
-### Q9 — Manager account creation
+### Q9 - Manager account creation
 
 **Decision:** Admin in-app creates ALL roles, including the
 first manager.
@@ -233,7 +233,7 @@ The client doesn't need dev help to add their first manager.
 
 ---
 
-### Q10 — Telephony vendor
+### Q10 - Telephony vendor
 
 **Decision:** FreJun (already locked in v6).
 
@@ -243,7 +243,7 @@ Connect at 5-15 users, mobile-first agent UX, India-native.
 
 ---
 
-### Q11 — Call recording
+### Q11 - Call recording
 
 **Decision:** Recording ON by default for all calls on the
 cloud number. AI transcription ON by default. Both stored
@@ -270,7 +270,7 @@ customers are aware. Standard Indian real estate practice.
 
 ---
 
-### Q12 — Audit log retention
+### Q12 - Audit log retention
 
 **Decision:** 7 years (RERA upper bound).
 
@@ -295,7 +295,7 @@ problem for <$10/month.
 
 ---
 
-### Q13 — Manager visibility scope
+### Q13 - Manager visibility scope
 
 **Decision:** Manager sees their team ONLY. Admin sees all
 teams. No cross-team manager visibility in v1.
@@ -315,7 +315,7 @@ visibility, it's a one-line RLS policy change.
 
 ---
 
-### Q14 — Sites in v1
+### Q14 - Sites in v1
 
 **Decision:** Mudichur (Tambaram) only in v1 UI. Data model
 multi-site from day 1. Future sites (AKM Garden, future
@@ -335,7 +335,7 @@ NOT having multi-site from day 1 means a painful migration.
 
 ---
 
-### Q15 — Handoff trigger
+### Q15 - Handoff trigger
 
 **Decision (v3.1 update):** Automatic on visit outcome (Model C).
 The handoff happens at a concrete event (the visit outcome being
@@ -358,7 +358,7 @@ booking a visit they had no skin in the game for actually
 happening. Model C removes that incentive by making the
 telecaller responsible for the visit through its outcome.
 This is the model used by Housing.com, NoBroker, Brigade,
-Prestige, Lodha — best-in-class Indian real-estate CRMs.
+Prestige, Lodha - best-in-class Indian real-estate CRMs.
 
 **"Should not fail even 1 ms" impact:** Visit no-show rate
 drops because telecallers are accountable for confirmation
@@ -369,7 +369,7 @@ preserves the full audit trail of every ownership transfer.
 
 ---
 
-### Q16 — Confirm FreJun
+### Q16 - Confirm FreJun
 
 **Decision:** Confirmed.
 
@@ -382,7 +382,7 @@ No change. See Q10 + CLIENT-FEEDBACK-v6 for rationale.
 When applied:
 - §1 Roles: no change (Q9 locked)
 - §2 Modules: no change
-- §3 Lifecycle: handoff is automatic on visit outcome, Model C (Q15 — v3.1 update, supersedes one-click from telecaller)
+- §3 Lifecycle: handoff is automatic on visit outcome, Model C (Q15 - v3.1 update, supersedes one-click from telecaller)
 - §4 RBAC matrix: manager = per-team only, admin = global
   (Q13)
 - §6 Integrations: add NEW WhatsApp number for CRM, separate
@@ -438,7 +438,7 @@ require multi-region, which is out of scope for v1.
 
 Single VPS is not true HA. For 99.95% uptime, we need:
 - Primary VPS in Mumbai (Hostinger India)
-- Backup VPS in Singapore (Hostinger APAC) — same DB,
+- Backup VPS in Singapore (Hostinger APAC) - same DB,
   read-only standby, promoted on primary failure
 - DNS failover: Cloudflare with health checks, automatic
   failover on primary down
@@ -502,7 +502,7 @@ with alerting that pages you before the customer notices.
 If the client genuinely needs 99.99%+, that's a v3
 conversation, not v1.
 
-### "Should not adapt" — design for change
+### "Should not adapt" - design for change
 
 "Adapt" is the word I'd push on hardest. The system
 needs to be MODIFIABLE, not just available. That means:

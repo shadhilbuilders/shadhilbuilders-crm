@@ -1,14 +1,14 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Notifications module DTOs (Zod)
+// Shadhil CRM - Notifications module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // The in-app inbox uses the Notification model directly (no separate
-// InAppNotification — eng review C2). SSE channel: user:<id>:notifications.
+// InAppNotification - eng review C2). SSE channel: user:<id>:notifications.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
 
 /**
- * PATCH /api/notifications/mark-read — mark a batch as read.
+ * PATCH /api/notifications/mark-read - mark a batch as read.
  * Empty array = mark all as read.
  */
 export const MarkReadDtoSchema = z.object({
@@ -42,7 +42,7 @@ export const NotificationEventSchema = z.object({
 export type NotificationEvent = z.infer<typeof NotificationEventSchema>;
 
 /**
- * POST /api/push/subscribe — register a push subscription.
+ * POST /api/push/subscribe - register a push subscription.
  * WEB uses VAPID, IOS/Android route through Expo Push.
  */
 export const RegisterPushDtoSchema = z.object({

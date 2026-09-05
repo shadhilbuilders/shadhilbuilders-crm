@@ -1,4 +1,4 @@
-# Client Feedback Round 2 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 2 - 2026-08-29 (Shadhil CRM)
 
 This is a delta on top of `DESIGN.md` (v1) and `CLIENT-FEEDBACK-2026-08-29.md` (v1.1).
 Read those first. This file answers the seven new questions the client raised
@@ -6,7 +6,7 @@ and gives my honest opinion on each.
 
 ---
 
-## 1. "Focus on WhatsApp chat and calls" — agree, with a scope clarification
+## 1. "Focus on WhatsApp chat and calls" - agree, with a scope clarification
 
 v1 brief had 8 modules. Client wants to narrow the in-app messaging focus to
 **WhatsApp chat + in-app calls (via cloud telephony)**. The implication:
@@ -14,7 +14,7 @@ v1 brief had 8 modules. Client wants to narrow the in-app messaging focus to
 - **In-app chat = WhatsApp Business API messages**, displayed in a chat pane
   inside the lead detail view. This is the primary messaging surface.
 - **In-app calls = Exotel/Tata Tele cloud telephony** with click-to-call +
-  recording. Not a separate voice channel — a wrapper around the agent's
+  recording. Not a separate voice channel - a wrapper around the agent's
   normal phone that the manager can read the call log + recording for.
 - **Email** drops out of v1. (It was already deprioritised.) Outbound
   notifications go through WhatsApp only.
@@ -33,7 +33,7 @@ audit any call." This is what most Indian real-estate CRMs do.
 
 ---
 
-## 2. "If director name doesn't suit, use manager" — TAKE
+## 2. "If director name doesn't suit, use manager" - TAKE
 
 `Manager` is the right word for this domain. In Indian real estate, "Director"
 often means a senior salesperson (a job title), not an operations lead. Use
@@ -44,19 +44,19 @@ often means a senior salesperson (a job title), not an operations lead. Use
 | Admin | **Admin** (unchanged) |
 | Director | **Manager** |
 | Sales Agent (single role) | **Telecaller** + **Sales Executive** (two roles) |
-| Marketing (read-only) | (drop — not in v1) |
+| Marketing (read-only) | (drop - not in v1) |
 
 `DESIGN.md` §1 needs a full rewrite using these names.
 
 ---
 
-## 3. Stack: Supabase + Prisma + better-auth — PARTIALLY take
+## 3. Stack: Supabase + Prisma + better-auth - PARTIALLY take
 
 The PaalStack `saas-mvp-architecture` skill already recommends
 `Supabase + better-auth + RBAC+ABAC` as the canonical MVP stack. So this is
 the right direction. But there's a tradeoff on the ORM.
 
-### 3a. Supabase instead of Neon — TAKE (clearly)
+### 3a. Supabase instead of Neon - TAKE (clearly)
 
 **YES, take this.** Supabase:
 - Gives us Postgres + free tier + Mumbai region + dashboard + RLS.
@@ -65,7 +65,7 @@ the right direction. But there's a tradeoff on the ORM.
 - The paalstack-nextjs-starter has Supabase boilerplate already.
 - better-auth's plugin ecosystem assumes Postgres-with-RLS.
 
-### 3b. Prisma instead of Drizzle — PUSH BACK (recommend Drizzle)
+### 3b. Prisma instead of Drizzle - PUSH BACK (recommend Drizzle)
 
 **My honest opinion: keep Drizzle. Don't switch to Prisma.** Reasons:
 
@@ -85,10 +85,10 @@ the right direction. But there's a tradeoff on the ORM.
 
 **Counter-question for you:** is there a specific Prisma feature or
 existing skill you want to reuse? If so I'll revise. If it's "I just
-know Prisma better" — Drizzle is honestly easier to learn, and the
+know Prisma better" - Drizzle is honestly easier to learn, and the
 schema-first migration model is similar.
 
-### 3c. better-auth instead of Supabase Auth — TAKE (clearly)
+### 3c. better-auth instead of Supabase Auth - TAKE (clearly)
 
 **YES, take this.** better-auth is:
 - MIT, self-hosted, no per-user pricing (Supabase Auth charges per MAU
@@ -106,7 +106,7 @@ better-auth = who you are + login sessions. They do different jobs.
 
 ```
 Frontend (web):     Next.js 16 + TypeScript + Tailwind v4 + @paalstack/react-ui
-Frontend (mobile):  Expo (React Native) + Expo Router — share lib/ with web
+Frontend (mobile):  Expo (React Native) + Expo Router - share lib/ with web
 Backend:            Next.js 16 Route Handlers (single codebase, modular monolith)
 Database:           Supabase (Postgres, Mumbai region, RLS enabled)
 ORM:                Drizzle (if you agree) or Prisma (if you insist)
@@ -118,11 +118,11 @@ Deployment:         Vercel (web) + EAS (Expo mobile builds)
 
 ---
 
-## 4. "Web + Android + iPhone apps" — recommend Expo + phased
+## 4. "Web + Android + iPhone apps" - recommend Expo + phased
 
 This is a big scope expansion. Three real options:
 
-### Option A: Expo (React Native) — RECOMMENDED
+### Option A: Expo (React Native) - RECOMMENDED
 
 - One codebase for Android + iOS, share business logic with web via a
   `packages/lib` monorepo.
@@ -133,7 +133,7 @@ This is a big scope expansion. Three real options:
 - Native features (push notifications, deep links, contacts) work
   out of the box.
 
-### Option B: PWA only — fastest to ship
+### Option B: PWA only - fastest to ship
 
 - "Add to home screen" on both platforms, no App Store review.
 - No iOS push notifications (Apple restricts PWA push).
@@ -141,7 +141,7 @@ This is a big scope expansion. Three real options:
 - Best for "we need this NOW" timelines. Field agents get a home-screen
   icon that opens the same web app.
 
-### Option C: Three separate codebases — DON'T
+### Option C: Three separate codebases - DON'T
 
 - Triple the work. Maintenance nightmare. Not worth it for an internal
   tool with 5-50 users.
@@ -152,12 +152,12 @@ agents actually use the PWA. If they don't, you saved yourself
 $99/month + 4 weeks of work. If they do, you've validated the
 workflow before investing in native polish.
 
-If you disagree and want Expo in v1, that's fine — it's the more
+If you disagree and want Expo in v1, that's fine - it's the more
 "complete" answer. Just be aware of the App Store review hit.
 
 ---
 
-## 5. "Can telecaller directly assign to available sales executive?" — NO, with a path to YES in vNext
+## 5. "Can telecaller directly assign to available sales executive?" - NO, with a path to YES in vNext
 
 **My strong recommendation: keep the manager handoff as the default in v1.**
 
@@ -185,12 +185,12 @@ perception), managers keep oversight (they confirm or set the rules).
 
 ---
 
-## 6. "Customer no-show or reschedule follow-up" — design into v1
+## 6. "Customer no-show or reschedule follow-up" - design into v1
 
-You're right to call this out — it's the #1 source of lead loss in
+You're right to call this out - it's the #1 source of lead loss in
 Indian real-estate CRMs. The site visit needs a real outcome model:
 
-### SiteVisit entity — extended
+### SiteVisit entity - extended
 
 ```
 SiteVisit {
@@ -206,7 +206,7 @@ SiteVisit {
 }
 ```
 
-### Lead state machine — extended
+### Lead state machine - extended
 
 ```
 ... → Visit Scheduled
@@ -236,7 +236,7 @@ expensive to retrofit.
 
 ---
 
-## 7. "Both RBAC and ABAC" — take, this is the PaalStack default
+## 7. "Both RBAC and ABAC" - take, this is the PaalStack default
 
 The `saas-mvp-architecture` skill is explicit: **always do both layers
 from day one.** RBAC alone can't handle workspace isolation, resource
@@ -259,14 +259,14 @@ ownership, or plan limits. For Shadhil CRM:
 ### ABAC (fine-grained: who can access THIS specific resource)
 
 Attributes that get checked at query time:
-- `user_id` — the actor's ID
-- `role` — the actor's role
-- `team_id` — which manager's team the actor belongs to
-- `project_id` — for multi-project (we only have Shadhil Metro Heights
+- `user_id` - the actor's ID
+- `role` - the actor's role
+- `team_id` - which manager's team the actor belongs to
+- `project_id` - for multi-project (we only have Shadhil Metro Heights
   in v1 but the data model is multi-project)
-- `lead.currentOwnerId` — for "own leads only" rules
-- `lead.teamId` — for "their team" rules
-- `lead.projectId` — for "this project" rules
+- `lead.currentOwnerId` - for "own leads only" rules
+- `lead.teamId` - for "their team" rules
+- `lead.projectId` - for "this project" rules
 
 ### Enforcement: Postgres RLS (Supabase)
 
@@ -278,14 +278,14 @@ SET LOCAL app.current_team_id = '...';
 ```
 
 RLS policies on every table filter rows automatically. This is
-**defense in depth** — even if the application code has a bug, the
+**defense in depth** - even if the application code has a bug, the
 DB refuses to return rows the user shouldn't see.
 
 ### better-auth
 
 better-auth handles the "who are you" part: login, sessions, password
 reset, MFA (if you want it), account linking. It does NOT handle
-"what can you do" — that's our RLS + application-level guards.
+"what can you do" - that's our RLS + application-level guards.
 
 **One thing to plan for:** RLS is hard to debug. Budget 2-3 days of
 extra eng time to write tests for the RLS policies. The PaalStack
@@ -303,7 +303,7 @@ skill flags this as the #1 retrofit pain.
 2. Lead Detail (with embedded Chat Pane + Site Visit widget)
 3. Site Visit Scheduler (with no-show/reschedule outcomes)
 4. Inventory / Unit availability
-5. In-app Chat (new — replaces WhatsApp/Call activity log)
+5. In-app Chat (new - replaces WhatsApp/Call activity log)
 + Audit Log (writes in v1, UI in vNext)
 + Thin Booking slice
 

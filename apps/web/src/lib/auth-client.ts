@@ -1,4 +1,4 @@
-// Browser-safe auth surface — better-auth React client ONLY.
+// Browser-safe auth surface - better-auth React client ONLY.
 // Client components MUST import from here, never from '@/lib/auth'
 // (which re-exports the better-auth server instance and drags
 // @shadhil/database -> @prisma/adapter-pg -> pg into the browser bundle:

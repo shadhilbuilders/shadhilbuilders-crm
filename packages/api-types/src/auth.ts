@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Auth module DTOs (Zod)
+// Shadhil CRM - Auth module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Used by NestJS AuthController (login, signup) and the Next.js BFF at
 // apps/web/app/api/auth/[...all]/route.ts. Zod schemas validate before
@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { RoleSchema } from './enums';
 
 /**
- * Email format — strict enough to reject obvious typos, lenient enough to
+ * Email format - strict enough to reject obvious typos, lenient enough to
  * accept every RFC-5322-legal address. We lowercase before persisting.
  */
 const emailSchema = z
@@ -23,7 +23,7 @@ const emailSchema = z
 
 /**
  * Password rule: 8–128 chars. NIST 800-63B strength comes from server-side
- * breach-list checks (Have I Been Pwned) — Zod only enforces length here.
+ * breach-list checks (Have I Been Pwned) - Zod only enforces length here.
  */
 const passwordSchema = z
   .string()
@@ -40,7 +40,7 @@ const nameSchema = z
   .max(120, 'Name must be at most 120 characters');
 
 /**
- * POST /api/auth/login — credentials for email+password sign-in.
+ * POST /api/auth/login - credentials for email+password sign-in.
  */
 export const LoginDtoSchema = z.object({
   email: emailSchema,
@@ -49,7 +49,7 @@ export const LoginDtoSchema = z.object({
 export type LoginDto = z.infer<typeof LoginDtoSchema>;
 
 /**
- * POST /api/auth/signup — admin-provisioned account creation. `role`
+ * POST /api/auth/signup - admin-provisioned account creation. `role`
  * defaults to TELECALLER for self-serve flows; managers/admins are created
  * from the admin console, which sets role explicitly.
  */
@@ -66,18 +66,18 @@ export const SignupDtoSchema = z.object({
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 
 /**
- * POST /api/users — user creation via the role hierarchy
+ * POST /api/users - user creation via the role hierarchy
  * (DECISION-CHANGELOG Round 17): ADMIN → any role; MANAGER →
  * TELECALLER/SALES_EXEC in their own team; staff roles → nobody.
  * admin creating a manager without teamId auto-creates the team.
  */
 export const CreateUserDtoSchema = SignupDtoSchema.extend({
-  role: RoleSchema, // explicit — no default on the admin/manager surface
+  role: RoleSchema, // explicit - no default on the admin/manager surface
 });
 export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
 
 /**
- * PATCH /api/users/:id/role — role change (Round 20, rename 21). OWNER
+ * PATCH /api/users/:id/role - role change (Round 20, rename 21). OWNER
  * can change anyone into anything (except into/out of OWNER); ADMIN can
  * change MANAGER/TELECALLER/SALES_EXEC into MANAGER/TELECALLER/SALES_EXEC;
  * MANAGER the same within their team. Guards: no self-changes,
@@ -90,7 +90,7 @@ export type ChangeRoleDto = z.infer<typeof ChangeRoleDtoSchema>;
 
 /**
  * Verified JWT claims. Populated by NestJS after `jose.jwtVerify` on the
- * incoming Authorization header. Never accepted as request input — this is
+ * incoming Authorization header. Never accepted as request input - this is
  * output-only, used by NestJS request-scoped middleware to seed Postgres
  * session vars (`app.user_id`, `app.current_user_role`) for RLS.
  *
@@ -111,7 +111,7 @@ export const JwtPayloadSchema = z.object({
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
 
 /**
- * Refresh-token request body — sent when the access token expires. The
+ * Refresh-token request body - sent when the access token expires. The
  * better-auth HTTP-only cookie carries the session token; this body is only
  * needed for mobile (Expo SecureStore) clients.
  */
@@ -151,7 +151,7 @@ export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;
  * Client-side form contract for the /change-password page (T-S page +
  * zod validation, 2026-09-05). Extends the server's
  * ChangePasswordDtoSchema (wire contract, users.controller.ts) with
- * the `confirmPassword` field — a pure client concern, deliberately
+ * the `confirmPassword` field - a pure client concern, deliberately
  * NOT part of the wire DTO. The cross-field "passwords match" rule
  * lives in `.refine` so the error attaches to `confirmPassword` and
  * renders under the confirm input via the library Form's FieldError.

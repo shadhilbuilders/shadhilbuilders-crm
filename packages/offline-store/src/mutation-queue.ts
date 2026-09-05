@@ -9,7 +9,7 @@ export type { Mutation, OfflineState, ReplayResult } from './types';
  *
  * Persistence: the queue is a single array stored under MUTATION_QUEUE_KEY
  * in the `mutationStore` IDB object store. Every enqueue / replay / prune
- * re-reads and re-writes the whole array (the queue is small — typical
+ * re-reads and re-writes the whole array (the queue is small - typical
  * PWA session has <50 items). The trade-off: simple code, predictable
  * ordering, no partial-write risk.
  *
@@ -17,7 +17,7 @@ export type { Mutation, OfflineState, ReplayResult } from './types';
  * page's `withOffline` wrapper may both call `replay()` at the same time
  * (the SW after a Background Sync, the page after an `online` event).
  * Both reads and writes are sequential awaits so we won't interleave, but
- * the last writer wins. This is acceptable for the MVP — Expo (Week 8+)
+ * the last writer wins. This is acceptable for the MVP - Expo (Week 8+)
  * will introduce a proper queue serialization if it becomes a problem.
  *
  * Replay classification (per the plan's flow):
@@ -73,7 +73,7 @@ export const createMutationQueue = () => {
      * entry's id is returned so callers can track one logical mutation
      * across retries.
      *
-     * Scenario: user taps "Mark completed" three times while offline —
+     * Scenario: user taps "Mark completed" three times while offline -
      * without dedupe that's 3 queue entries and 3 replays; with it,
      * one entry whose payload is the last tap.
      *
@@ -81,7 +81,7 @@ export const createMutationQueue = () => {
      * field, see types.ts). The queue is re-read, the first match is
      * replaced in place (keeping its id + createdAt so FIFO order and
      * the badge's "queued Xs ago" stay stable), and the array is
-     * re-saved. Notification phase is 'enqueued' either way — the UI
+     * re-saved. Notification phase is 'enqueued' either way - the UI
      * doesn't distinguish fresh vs replaced.
      */
     async enqueueUnique(
@@ -103,7 +103,7 @@ export const createMutationQueue = () => {
       }
       const existing = all[idx];
       if (existing === undefined) {
-        // Unreachable (findIndex just matched) — guards the noUncheckedIndexedAccess build.
+        // Unreachable (findIndex just matched) - guards the noUncheckedIndexedAccess build.
         return this.enqueue(input);
       }
       const replaced: Mutation = {
@@ -146,7 +146,7 @@ export const createMutationQueue = () => {
             succeeded.push(m);
           } else if (res.status >= 400 && res.status < 500) {
             // Client error: don't retry. Surface via lastError so the UI
-            // can show a "Failed — Retry" CTA (the user must fix the
+            // can show a "Failed - Retry" CTA (the user must fix the
             // underlying problem, e.g. re-login, correct the data).
             m.lastError = `HTTP ${res.status}`;
             failed.push(m);

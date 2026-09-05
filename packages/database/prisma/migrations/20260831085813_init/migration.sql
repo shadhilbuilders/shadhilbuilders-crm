@@ -619,11 +619,11 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ────────────────────────────────────────────────────────────────────────────
--- RLS POLICIES (from prisma/rls/policies.sql) — applied in this migration so
+-- RLS POLICIES (from prisma/rls/policies.sql) - applied in this migration so
 -- `prisma migrate` is the single schema-change entry point. AR-1/G-5 fix.
 -- ────────────────────────────────────────────────────────────────────────────
 -- ────────────────────────────────────────────────────────────────────────────
--- Shadhil Builders CRM — Row-Level Security policies
+-- Shadhil Builders CRM - Row-Level Security policies
 -- ────────────────────────────────────────────────────────────────────────────
 -- All policies key off three session variables, set per-request via
 -- withRlsContext() in src/rls.ts:
@@ -633,7 +633,7 @@ ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId"
 --   app.user_team_id cuid of the user's team (null for ADMIN with no team)
 --
 -- These are intentionally read with current_setting('app.<x>', true) so a
--- missing setting returns NULL (rather than throwing) — the policies then
+-- missing setting returns NULL (rather than throwing) - the policies then
 -- evaluate NULL comparisons safely (no rows match).
 --
 -- ENG REVIEW A5: POOL_MODE must be 'session' for SET LOCAL to persist
@@ -948,7 +948,7 @@ CREATE POLICY consent_insert_owner ON "Consent"
   );
 -- ────────────────────────────────────────────────────────────────────────────
 -- AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY.
--- ENABLE alone does NOT constrain the table owner — FORCE does. These run
+-- ENABLE alone does NOT constrain the table owner - FORCE does. These run
 -- after all policies; ALTER TABLE on an existing table is idempotent-safe
 -- when wrapped in a guard via DO blocks (no-op if already forced).
 -- Also grants the non-owner app role access (00-init.sql creates the role).

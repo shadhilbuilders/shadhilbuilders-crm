@@ -18,8 +18,8 @@ Platform-agnostic offline data store for the Shadhil CRM. Provides the primitive
 
 ```
 shadhil-offline DB
-├── mutations store  (key: 'queue', value: Mutation[])  — append-only queue
-├── photos store     (key: blob UUID, value: Blob)      — photo blobs awaiting upload
+├── mutations store  (key: 'queue', value: Mutation[])  - append-only queue
+├── photos store     (key: blob UUID, value: Blob)      - photo blobs awaiting upload
 └── rq-cache store   (key: 'shadhil-rq-cache', value: serialized TanStack Query state)
 ```
 
@@ -29,7 +29,7 @@ The DB is created lazily via `idb-keyval`'s `createStore()`. The current schema 
 
 **To add a new object store** (e.g. `drafts`): bump to `createStore('shadhil-offline', 'drafts')` and add it to the `databaseName` of the new store. No version bump required.
 
-**To change an existing object store's key shape or value schema** (breaking change): bump the store version with `createStore('shadhil-offline', 'mutations', { version: 2 })` and provide an upgrade callback via idb-keyval's `upgrade` option. Write a one-time migration that copies data from the old key shape to the new one. **This has not been needed yet** — the current schema is intentionally minimal.
+**To change an existing object store's key shape or value schema** (breaking change): bump the store version with `createStore('shadhil-offline', 'mutations', { version: 2 })` and provide an upgrade callback via idb-keyval's `upgrade` option. Write a one-time migration that copies data from the old key shape to the new one. **This has not been needed yet** - the current schema is intentionally minimal.
 
 ## Usage
 

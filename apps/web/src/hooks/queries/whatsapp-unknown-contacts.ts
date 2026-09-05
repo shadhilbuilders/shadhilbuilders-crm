@@ -1,4 +1,4 @@
-// T-E2b follow-up queue — React Query hooks.
+// T-E2b follow-up queue - React Query hooks.
 //
 // Wire shape (per the BFF catch-all that proxies GET/POST
 // /api/whatsapp-unknown-contacts):
@@ -11,7 +11,7 @@
 //     → POST /api/whatsapp-unknown-contacts/:id/convert  body: CreateLeadDto
 //       returns { lead: {...}, contact: WhatsappUnknownContactRow }
 //       The backend service ALREADY creates the Lead (via LeadsService.createInTransaction
-//       inside one tx) AND flips the contact to CONVERTED — there is NO separate
+//       inside one tx) AND flips the contact to CONVERTED - there is NO separate
 //       useCreateLead call. Doing both would create two Leads (atom violated).
 //
 //   useMarkWaUnknownSpam()
@@ -77,7 +77,7 @@ export function useWaUnknownContacts(
 //
 // Body shape is CreateLeadDto (the same DTO POST /api/leads accepts).
 // The service normalizes `source` to 'WHATSAPP' regardless of what the
-// UI sends — we still pre-set it so the form's visual state is honest.
+// UI sends - we still pre-set it so the form's visual state is honest.
 // ---------------------------------------------------------------------------
 
 export function useConvertWaUnknownContact() {
@@ -89,7 +89,7 @@ export function useConvertWaUnknownContact() {
         { method: 'POST', json: args.body },
       ),
     onSuccess: () => {
-      // The list must refetch — convert flips the contact to CONVERTED
+      // The list must refetch - convert flips the contact to CONVERTED
       // and adds a row to the Leads inbox.
       void queryClient.invalidateQueries({
         queryKey: ['whatsapp-unknown-contacts'],
@@ -119,6 +119,6 @@ export function useMarkWaUnknownSpam() {
   });
 }
 
-// Type re-exports for convenience — pages can `import { WhatsappUnknownContactRow }`
+// Type re-exports for convenience - pages can `import { WhatsappUnknownContactRow }`
 // from this module instead of pulling @shadhil/api-types into the page tree.
 export type { WhatsappUnknownContactRow };

@@ -1,6 +1,6 @@
 'use client';
 
-// /leads/new — Create-Lead form (T-LEAD-CRUD).
+// /leads/new - Create-Lead form (T-LEAD-CRUD).
 //
 // Day 2 demo path: a real create-lead form wired to POST /api/leads via
 // the BFF. Server validates with the shared CreateLeadDto Zod schema
@@ -174,7 +174,7 @@ export default function NewLeadPage() {
         ]}
       />
 
-      {/* Source datalist — used by the source field above */}
+      {/* Source datalist - used by the source field above */}
       <datalist id="lead-sources">
         <option value="Landing site" />
         <option value="Meta ads" />

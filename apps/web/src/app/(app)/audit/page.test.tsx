@@ -1,4 +1,4 @@
-// T-F3 — AuditPage wire-shape contract.
+// T-F3 - AuditPage wire-shape contract.
 //
 // Pins: rows render when useAuditLog resolves with { rows, total };
 // ModulePending surfaces on error; the friendly empty state shows
@@ -33,7 +33,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('AuditPage — wire-shape contract (T-F3)', () => {
+describe('AuditPage - wire-shape contract (T-F3)', () => {
   it('renders rows when useAuditLog resolves with {rows, total}', () => {
     mockedUseAuditLog.mockReturnValue({
       data: {

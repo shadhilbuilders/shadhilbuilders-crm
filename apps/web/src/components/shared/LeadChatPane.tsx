@@ -1,6 +1,6 @@
 'use client';
 
-// LeadChatPane — embedded chat panel on the lead detail page.
+// LeadChatPane - embedded chat panel on the lead detail page.
 //
 // Wired to the chat backend (T-CHAT, Pass 1):
 //   - useMessages(leadId): GET /api/chat/:leadId → bare array
@@ -64,7 +64,7 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
   const { user } = useSessionUser();
   const messagesQuery = useMessages(leadId);
   const sendMessage = useSendMessage(leadId ?? '');
-  // T-E2 (Week 6): live message stream — invalidates the chat query
+  // T-E2 (Week 6): live message stream - invalidates the chat query
   // whenever a new Message row lands (inbound WhatsApp, another staff
   // member's reply, or the customer's own message). The pane re-renders
   // from the TanStack cache without a manual refresh.
@@ -85,7 +85,7 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
       : null;
 
   // Auto-scroll to bottom on every new message (or first load).
-  // We intentionally don't depend on draft state — typing shouldn't
+  // We intentionally don't depend on draft state - typing shouldn't
   // pull the user's view down; only when the conversation grows.
   useEffect(() => {
     const node = scrollRef.current;
@@ -107,7 +107,7 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
         // (parseBody in chat.controller.ts turns ZodError → 400).
         // Surface them via the global sonner toast singleton.
         //
-        // Imported statically — NOT via lazy require(): a CJS require()
+        // Imported statically - NOT via lazy require(): a CJS require()
         // resolves this dual-format package's `dist/index.cjs`, whose
         // sonner `toast` singleton is a SEPARATE module instance from
         // the ESM build that `<Toaster/>` (app root) listens to. Toasts

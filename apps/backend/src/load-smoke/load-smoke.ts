@@ -1,7 +1,7 @@
 /**
  * Standalone p95 load smoke for the T-DEMOSET BFF endpoints.
  *
- * NOT part of the regular vitest suite — run manually before the demo:
+ * NOT part of the regular vitest suite - run manually before the demo:
  *
  *   pnpm --filter @shadhil/backend load:smoke
  *
@@ -13,7 +13,7 @@
  * Design notes:
  *   - No new npm deps. Uses Node 22+ built-ins (fetch, crypto, util.parseArgs).
  *   - Signs in via better-auth against the WEB app (port 3000) and reuses
- *     the session cookie for the BFF call — the BFF route exchanges the
+ *     the session cookie for the BFF call - the BFF route exchanges the
  *     cookie for a JWT and forwards to NestJS. This is what a real browser
  *     does, so the latency numbers include the cookie → JWT mint + proxy hop.
  *   - The leads gate runs 3 times and reports the median p95. The first
@@ -44,7 +44,7 @@ const LEADS_P95_GATE_MS = 500;
 const WARMUP_SEQUENTIAL = 10;
 const WARMUP_BURST = 10;
 const DEFAULT_CONCURRENCY = 100;
-// Run the leads gate 3 times, take the median p95 — a single run can be
+// Run the leads gate 3 times, take the median p95 - a single run can be
 // skewed by a cold fork or a GC pause; 3 runs + median is the standard
 // "ignore the outliers" idiom for ad-hoc load smoke.
 const LEADS_GATE_RUNS = 3;
@@ -56,7 +56,7 @@ type Endpoint = {
   path: string;
   /** how many concurrent requests to fire in the batch */
   concurrency: number;
-  /** warmup before the batch (defaults to 0 — leads uses the global warmup) */
+  /** warmup before the batch (defaults to 0 - leads uses the global warmup) */
   warmup?: number;
 };
 
@@ -148,7 +148,7 @@ async function warmup(cookie: string): Promise<void> {
     try {
       await ping(url, headers);
     } catch {
-      /* swallow — warmup is best-effort */
+      /* swallow - warmup is best-effort */
     }
   }
   // concurrent warmup burst: load the connection pool + JIT
@@ -200,7 +200,7 @@ async function runEndpoint(
   };
   const url = `${WEB_ORIGIN}/api/bff${ep.path}`;
 
-  // warmup (best-effort — ignore failures here; the timed batch is what matters)
+  // warmup (best-effort - ignore failures here; the timed batch is what matters)
   const warmupN = ep.warmup ?? 0;
   for (let i = 0; i < warmupN; i++) {
     try {
@@ -304,7 +304,7 @@ async function main(): Promise<number> {
   }
   console.log(`load-smoke: signed in (cookie len=${cookie.length})`);
 
-  // preflight — fail fast if the leads endpoint itself is unreachable
+  // preflight - fail fast if the leads endpoint itself is unreachable
   try {
     await ping(`${WEB_ORIGIN}/api/bff${ENDPOINTS[0]!.path}`, { Cookie: cookie });
   } catch (err) {
@@ -312,7 +312,7 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  // Global warmup — see warmup() docstring. The first batch of requests
+  // Global warmup - see warmup() docstring. The first batch of requests
   // after a cold process can take 5-10x the steady-state latency due
   // to JIT compilation and Postgres plan cache cold-start. Running
   // this once before the leads gate puts every measurement batch
@@ -383,16 +383,16 @@ async function main(): Promise<number> {
       if (totalErrs > 0) {
         gateOk = false;
         console.error(
-          `\n[gate] /api/bff/leads FAIL — ${totalErrs}/${LEADS_GATE_RUNS * ep.concurrency} requests errored across ${LEADS_GATE_RUNS} runs`,
+          `\n[gate] /api/bff/leads FAIL - ${totalErrs}/${LEADS_GATE_RUNS * ep.concurrency} requests errored across ${LEADS_GATE_RUNS} runs`,
         );
       } else if (medianP95 >= LEADS_P95_GATE_MS) {
         gateOk = false;
         console.error(
-          `\n[gate] /api/bff/leads FAIL — median p95 ${medianP95.toFixed(1)}ms >= ${LEADS_P95_GATE_MS}ms (runs: ${gateP95s.map((p) => p.toFixed(0)).join(', ')}ms)`,
+          `\n[gate] /api/bff/leads FAIL - median p95 ${medianP95.toFixed(1)}ms >= ${LEADS_P95_GATE_MS}ms (runs: ${gateP95s.map((p) => p.toFixed(0)).join(', ')}ms)`,
         );
       } else {
         console.log(
-          `\n[gate] /api/bff/leads PASS — median p95 ${medianP95.toFixed(1)}ms < ${LEADS_P95_GATE_MS}ms (runs: ${gateP95s.map((p) => p.toFixed(0)).join(', ')}ms)`,
+          `\n[gate] /api/bff/leads PASS - median p95 ${medianP95.toFixed(1)}ms < ${LEADS_P95_GATE_MS}ms (runs: ${gateP95s.map((p) => p.toFixed(0)).join(', ')}ms)`,
         );
       }
     }
@@ -428,7 +428,7 @@ async function main(): Promise<number> {
         ),
       );
     } catch (err) {
-      console.error(`\n[chat] skipped — ${(err as Error).message}\n`);
+      console.error(`\n[chat] skipped - ${(err as Error).message}\n`);
     }
   }
 

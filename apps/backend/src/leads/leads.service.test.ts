@@ -1,4 +1,4 @@
-// Leads service tests — listWhere role-scoping (the only piece of the
+// Leads service tests - listWhere role-scoping (the only piece of the
 // service that doesn't need a real DB to reason about).
 //
 // The DB-touching methods (list/create/update/transition) are exercised
@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LeadsService } from './leads.service';
 
-// JWT payload shape — see @shadhil/auth JwtPayload.
+// JWT payload shape - see @shadhil/auth JwtPayload.
 type Actor = {
   sub: string;
   email: string;
@@ -63,7 +63,7 @@ function makeService(teamReturn: { id: string } | null = null): {
   const fakeClient = {
     team: { findFirst: teamFindFirst },
     // listWhere calls tx.team.findFirst only. list() also calls
-    // tx.lead.findMany / tx.lead.count — we don't exercise list() here.
+    // tx.lead.findMany / tx.lead.count - we don't exercise list() here.
     lead: {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
@@ -78,7 +78,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('listWhere — TELECALLER/SALES_EXEC scoped to own leads', () => {
+describe('listWhere - TELECALLER/SALES_EXEC scoped to own leads', () => {
   it('TELECALLER: where.ownerId === actor.sub; team lookup NOT called', async () => {
     const { service, tx } = makeService();
     const where = await (
@@ -111,7 +111,7 @@ describe('listWhere — TELECALLER/SALES_EXEC scoped to own leads', () => {
 
   it('TELECALLER + explicit ownerId filter: still scoped to actor (role wins)', async () => {
     // If the actor passes ownerId="someone-else", the role-scoped lane
-    // still overrides — they CANNOT ask for someone else's leads. The
+    // still overrides - they CANNOT ask for someone else's leads. The
     // narrowest correct behavior is to AND the filter with the role
     // constraint, but our implementation writes the role-scoped clause
     // LAST so it OVERWRITES the explicit filter. Either is safe-ish;
@@ -135,7 +135,7 @@ describe('listWhere — TELECALLER/SALES_EXEC scoped to own leads', () => {
   });
 });
 
-describe('listWhere — MANAGER scoped to own team', () => {
+describe('listWhere - MANAGER scoped to own team', () => {
   it('MANAGER with team: where.teamId === their team.id', async () => {
     const { service, tx } = makeService({ id: 'team-xyz' });
     const where = await (
@@ -169,7 +169,7 @@ describe('listWhere — MANAGER scoped to own team', () => {
   });
 });
 
-describe('listWhere — ADMIN/OWNER not narrowed', () => {
+describe('listWhere - ADMIN/OWNER not narrowed', () => {
   it('ADMIN: no ownerId/teamId narrowing', async () => {
     const { service, tx } = makeService();
     const where = await (
@@ -202,7 +202,7 @@ describe('listWhere — ADMIN/OWNER not narrowed', () => {
   });
 });
 
-describe('listWhere — filter chips compose with role scoping', () => {
+describe('listWhere - filter chips compose with role scoping', () => {
   it('ADMIN + state filter: where.state = NEW', async () => {
     const { service, tx } = makeService();
     const where = await (

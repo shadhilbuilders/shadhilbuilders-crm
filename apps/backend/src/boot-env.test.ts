@@ -1,4 +1,4 @@
-// Boot-env tests — T-G8 fail-fast behavior.
+// Boot-env tests - T-G8 fail-fast behavior.
 //
 // Coverage:
 //   1. Complete valid env → returns the typed BootEnv with POOL_MODE='session'.
@@ -9,10 +9,10 @@
 //   6. API_PORT non-numeric or <= 0 → BootEnvError.
 //   7. CORS_ORIGINS defaults to localhost list when absent.
 //   8. Multi-issue env → single BootEnvError with ALL issues (atomic).
-//   9. T-E2b Telegram vars are OPTIONAL — missing → defaults filled
+//   9. T-E2b Telegram vars are OPTIONAL - missing → defaults filled
 //      in, no error. Malformed (non-numeric) → BootEnvError.
 //
-// These run without a DB or Redis. The validator is pure — passes
+// These run without a DB or Redis. The validator is pure - passes
 // process.env explicitly so we don't mutate real env.
 
 import { describe, expect, it } from 'vitest';
@@ -33,7 +33,7 @@ const VALID_ENV: Record<string, string> = {
   NODE_ENV: 'production',
 };
 
-describe('assertBootEnv — happy path', () => {
+describe('assertBootEnv - happy path', () => {
   it('returns the typed env when every required var is present and well-formed', () => {
     const env = assertBootEnv({ ...VALID_ENV });
     expect(env.DATABASE_URL).toBe(VALID_ENV.DATABASE_URL);
@@ -63,7 +63,7 @@ describe('assertBootEnv — happy path', () => {
   });
 });
 
-describe('assertBootEnv — missing required vars', () => {
+describe('assertBootEnv - missing required vars', () => {
   it.each([
     'DATABASE_URL',
     'DIRECT_DATABASE_URL',
@@ -86,7 +86,7 @@ describe('assertBootEnv — missing required vars', () => {
   });
 });
 
-describe('assertBootEnv — length checks', () => {
+describe('assertBootEnv - length checks', () => {
   it('JWT_SECRET too short → length detail in message', () => {
     const env = { ...VALID_ENV, JWT_SECRET: 'too-short' };
     try {
@@ -118,7 +118,7 @@ describe('assertBootEnv — length checks', () => {
   });
 });
 
-describe('assertBootEnv — URL + format checks', () => {
+describe('assertBootEnv - URL + format checks', () => {
   it('BETTER_AUTH_URL malformed → URL error', () => {
     const env = { ...VALID_ENV, BETTER_AUTH_URL: 'not-a-url' };
     try {
@@ -181,12 +181,12 @@ describe('assertBootEnv — URL + format checks', () => {
   });
 });
 
-describe('assertBootEnv — atomic error: every gap reported in one pass', () => {
+describe('assertBootEnv - atomic error: every gap reported in one pass', () => {
   it('three missing vars → all three named in the same error', () => {
     const env = { ...VALID_ENV };
     delete env.REDIS_URL;
     delete env.JWT_ISSUER;
-    delete env.API_PORT; // also missing — defaults, but if it's explicitly missing AND other things too, defaults still apply. Make a non-defaulted one.
+    delete env.API_PORT; // also missing - defaults, but if it's explicitly missing AND other things too, defaults still apply. Make a non-defaulted one.
     try {
       assertBootEnv(env);
       expect.fail('should have thrown');
@@ -213,7 +213,7 @@ describe('assertBootEnv — atomic error: every gap reported in one pass', () =>
   });
 });
 
-describe('assertBootEnv — T-E2b Telegram alert env vars (optional)', () => {
+describe('assertBootEnv - T-E2b Telegram alert env vars (optional)', () => {
   it('all Telegram vars missing → defaults filled, no error', () => {
     const env = { ...VALID_ENV };
     delete env.TELEGRAM_BOT_TOKEN;

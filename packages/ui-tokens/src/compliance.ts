@@ -1,5 +1,5 @@
 /**
- * @shadhil/ui-tokens — compliance helpers
+ * @shadhil/ui-tokens - compliance helpers
  *
  * Single source of truth for RERA + CMDA regulatory text.
  *
@@ -61,7 +61,7 @@ function readEnv(key: string): string | undefined {
       return fromProcess;
     }
   } catch {
-    /* process is not defined in this runtime — fall through */
+    /* process is not defined in this runtime - fall through */
   }
 
   // 2. Inline replacement: Next.js with `env:` config / DefinePlugin / similar
@@ -73,7 +73,7 @@ function readEnv(key: string): string | undefined {
       return inline;
     }
   } catch {
-    /* not enumerable — fall through */
+    /* not enumerable - fall through */
   }
 
   return undefined;
@@ -110,7 +110,7 @@ const CmdaSchema = z.object({
  * Read RERA registration metadata from env and validate.
  *
  * @throws {z.ZodError} when any required env var is missing or malformed.
- *   Callers (web footer, push templates) should fail fast at boot — a missing
+ *   Callers (web footer, push templates) should fail fast at boot - a missing
  *   RERA number is a regulatory defect, not a soft warning.
  */
 export function getReraInfo(): ReraInfo {
@@ -137,7 +137,7 @@ export function getCmdaInfo(): CmdaInfo {
  *
  * Example output: `RERA TN/29/2017 | Valid 2026-01-01 to 2027-12-31`
  *
- * @throws {z.ZodError} when env is incomplete — propagate to caller so a
+ * @throws {z.ZodError} when env is incomplete - propagate to caller so a
  *   missing RERA number surfaces during deploy/CI, not silently in user copy.
  */
 export function formatReraFooter(): string {

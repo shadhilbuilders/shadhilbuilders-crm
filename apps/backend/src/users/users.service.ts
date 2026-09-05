@@ -1,4 +1,4 @@
-// Users service — the user-creation + role-change model (Rounds 17–21).
+// Users service - the user-creation + role-change model (Rounds 17–21).
 //
 // OWNER (exactly one, seed-only): creates any role except OWNER;
 // changes the role of anyone. ADMIN: creates/changes
@@ -13,7 +13,7 @@
 // Write paths:
 //   - User/Account/Team: bare prisma client (no RLS on auth tables; Team is
 //     RLS-FORCED with zero policies, so the app role cannot write it inside
-//     an RLS context — seed.ts precedent).
+//     an RLS context - seed.ts precedent).
 //   - AuditLog: withRlsContext (its insert policy requires app.user_id).
 //     OWNER travels as ADMIN at the RLS layer (downcast in rls.ts).
 import {
@@ -41,7 +41,7 @@ export interface CreatedUser {
 
 @Injectable()
 export class UsersService {
-  // @Inject with an explicit token — tsx/esbuild does NOT emit
+  // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
   constructor(
@@ -66,7 +66,7 @@ export class UsersService {
     let teamId = dto.teamId ?? null;
 
     if (actorIsManager) {
-      // The manager's team is resolved authoritatively via Team.managerId —
+      // The manager's team is resolved authoritatively via Team.managerId -
       // the JWT teamId claim is unreliable (seeded managers carry
       // teamId=null; the team links through managerId instead).
       const team = await this.client.team.findFirst({
@@ -78,7 +78,7 @@ export class UsersService {
       teamId = team.id;
     } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && !dto.teamId) {
       // Admin creating a manager WITHOUT teamId: auto-create the team.
-      // Admin creating a STAFF user without teamId: reject — ambiguous.
+      // Admin creating a STAFF user without teamId: reject - ambiguous.
       if (dto.role === 'MANAGER') {
         // Handled post-user-creation (needs the user id).
       } else {
@@ -127,7 +127,7 @@ export class UsersService {
         teamId = team.id;
       }
 
-      // Audit row — the only write inside an RLS transaction.
+      // Audit row - the only write inside an RLS transaction.
       await withRlsContext(
         this.client,
         { userId: actor.sub, role: actor.role, teamId: actor.teamId },
@@ -180,7 +180,7 @@ export class UsersService {
     }
 
     // 2. Absolute guard: nobody changes their own role (not even the
-    //    owner — role changes on self are how orgs get locked out).
+    //    owner - role changes on self are how orgs get locked out).
     if (target.id === actor.sub) {
       throw new ForbiddenException('You cannot change your own role');
     }
@@ -197,13 +197,13 @@ export class UsersService {
       });
       if (ledTeam) {
         throw new ConflictException(
-          `User still leads team "${ledTeam.name}" — move its members or reassign the team before demoting`,
+          `User still leads team "${ledTeam.name}" - move its members or reassign the team before demoting`,
         );
       }
     }
 
     // 5. Promotion to MANAGER: ensure a team exists (consistent with the
-    //    create flow — managers always lead exactly one team).
+    //    create flow - managers always lead exactly one team).
     let teamId: string | null = target.teamId;
     if (dto.role === 'MANAGER' && target.role !== 'MANAGER') {
       const existing = await this.client.team.findFirst({
@@ -223,7 +223,7 @@ export class UsersService {
     });
 
     // 6. Audit row in the actor's RLS context (OWNER downcasts to
-    //    ADMIN there — rls.ts).
+    //    ADMIN there - rls.ts).
     await withRlsContext(
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
@@ -309,7 +309,7 @@ export class UsersService {
       account === null ||
       !verifyPassword(dto.oldPassword, account.password)
     ) {
-      // 400 (not 401) — this is a request-body validation error from
+      // 400 (not 401) - this is a request-body validation error from
       // the client's perspective. Same shape better-auth's sign-in uses
       // for wrong-password so a probe can't tell the difference between
       // "no such user" and "wrong password" by status code alone.
@@ -317,7 +317,7 @@ export class UsersService {
     }
 
     // 4. Hash the new password + flip mustChangePassword. Bare client
-    // is correct here — User/Account are auth tables without FORCE
+    // is correct here - User/Account are auth tables without FORCE
     // RLS (same precedent as create()).
     await this.client.account.update({
       where: {
@@ -360,7 +360,7 @@ export class UsersService {
   }
 
   async list(actor: JwtPayload): Promise<CreatedUser[]> {
-    // Manager scoping resolves TEAM.managerId, same as create() — the JWT
+    // Manager scoping resolves TEAM.managerId, same as create() - the JWT
     // teamId claim is unreliable for managers (seed keeps it null).
     // OWNER and ADMIN see all.
     let where: Record<string, unknown>;

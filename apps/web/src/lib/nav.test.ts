@@ -8,7 +8,7 @@
 //     `/audit` for `canViewAudit(role)`.
 //   - Active-state: `/` is exact-only; everything else is a prefix
 //     match so `/leads/abc` still highlights the `Leads` menu item.
-//   - `NAV_ITEMS` is the single source of truth — both shells read it,
+//   - `NAV_ITEMS` is the single source of truth - both shells read it,
 //     so an addition must not silently re-introduce admin items in
 //     the topbar.
 import { describe, expect, it } from 'vitest';
@@ -20,7 +20,7 @@ import {
 } from '@/lib/nav';
 
 describe('lib/nav', () => {
-  describe('NAV_ITEMS — the single source of truth', () => {
+  describe('NAV_ITEMS - the single source of truth', () => {
     it('contains exactly one dashboard entry at the root', () => {
       const dashboards = NAV_ITEMS.filter((item) => item.href === '/');
       expect(dashboards).toHaveLength(1);
@@ -44,7 +44,7 @@ describe('lib/nav', () => {
     });
   });
 
-  describe('getVisibleNav — role gating', () => {
+  describe('getVisibleNav - role gating', () => {
     it('TELECALLER sees only the work group (no admin items)', () => {
       const items = getVisibleNav('TELECALLER');
       expect(items.map((i) => i.href)).toEqual([
@@ -127,7 +127,7 @@ describe('lib/nav', () => {
     });
   });
 
-  describe('isNavItemActive — active-state rules', () => {
+  describe('isNavItemActive - active-state rules', () => {
     it('Dashboard (`/`) is active only on exact match', () => {
       expect(isNavItemActive('/', '/')).toBe(true);
       expect(isNavItemActive('/', '/leads')).toBe(false);

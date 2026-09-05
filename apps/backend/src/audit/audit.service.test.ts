@@ -1,4 +1,4 @@
-// Audit service tests — pure logic + DB-touching stubs.
+// Audit service tests - pure logic + DB-touching stubs.
 //
 // Pattern: instantiate AuditService with a PrismaService stub whose
 // $client has the methods we exercise stubbed per-test.
@@ -51,7 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('list — filterable audit log', () => {
+describe('list - filterable audit log', () => {
   it('returns total + rows from the audit table', async () => {
     const { service, client } = makeService();
     client.auditLog.findMany.mockResolvedValue([

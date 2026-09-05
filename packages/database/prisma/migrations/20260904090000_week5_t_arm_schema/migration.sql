@@ -1,5 +1,5 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Week 5 — T-ARM-SCHEMA + T-S hardening (Plan §18 D2 + T-S hardening §).
+-- Week 5 - T-ARM-SCHEMA + T-S hardening (Plan §18 D2 + T-S hardening §).
 -- ────────────────────────────────────────────────────────────────────────────
 -- Brings the ManagerAssignmentRule engine from the stub to the FULL
 -- Plan §18 D2 spec, and adds the mustChangePassword column on User
@@ -7,11 +7,11 @@
 --
 -- Changes:
 --   ManagerAssignmentRule
---     + priority         Int          @default(0) — CSS-style ordering
---     + projectId        String?                 — optional criterion
---     + phaseId          String?                 — optional criterion
---     + language         String?                 — ISO 639-1 code (en/hi/ta)
---     + region           String?                 — ISO 3166-1 subdivision
+--     + priority         Int          @default(0) - CSS-style ordering
+--     + projectId        String?                 - optional criterion
+--     + phaseId          String?                 - optional criterion
+--     + language         String?                 - ISO 639-1 code (en/hi/ta)
+--     + region           String?                 - ISO 3166-1 subdivision
 --     ~ @@unique([teamId, source])
 --         widened to @@unique([teamId, source, priority, projectId,
 --                             phaseId, language, region])
@@ -36,7 +36,7 @@
 --     packages/database/scripts/setup-demo-user.ts) are updated in the
 --     same commit so a fresh seed reproduces this backfill.
 
--- 1. ManagerAssignmentRule — new columns + unique-constraint change.
+-- 1. ManagerAssignmentRule - new columns + unique-constraint change.
 ALTER TABLE "ManagerAssignmentRule"
   ADD COLUMN "priority" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN "projectId" TEXT,
@@ -52,7 +52,7 @@ CREATE UNIQUE INDEX "ManagerAssignmentRule_teamId_source_priority_projectId_phas
 
 CREATE INDEX "ManagerAssignmentRule_priority_idx" ON "ManagerAssignmentRule"("priority");
 
--- 2. Team — defaultAssigneeId column + FK + index.
+-- 2. Team - defaultAssigneeId column + FK + index.
 ALTER TABLE "Team"
   ADD COLUMN "defaultAssigneeId" TEXT;
 
@@ -73,11 +73,11 @@ BEGIN
   END IF;
 END $$;
 
--- 3. User — mustChangePassword column.
+-- 3. User - mustChangePassword column.
 ALTER TABLE "User"
   ADD COLUMN "mustChangePassword" BOOLEAN NOT NULL DEFAULT true;
 
--- 4. T-S hardening backfill (demo user exempt — see banner above).
+-- 4. T-S hardening backfill (demo user exempt - see banner above).
 UPDATE "User"
   SET "mustChangePassword" = false
   WHERE email = 'demo@shadhilbuilders.in';

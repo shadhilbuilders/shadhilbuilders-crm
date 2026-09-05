@@ -1,8 +1,8 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Audit module DTOs (Zod)
+// Shadhil CRM - Audit module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Every audit log entry is written inside a prisma.$transaction with the
-// triggering action (eng review A2) — so failure rolls back the action.
+// triggering action (eng review A2) - so failure rolls back the action.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';

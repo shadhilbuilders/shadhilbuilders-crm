@@ -1,4 +1,4 @@
-// PageHeader — shared header block for authenticated (app) routes.
+// PageHeader - shared header block for authenticated (app) routes.
 //
 // Per plan §3.3, every page in the (app) route group renders the same
 // header shape: breadcrumb on top, page title + optional action
@@ -8,7 +8,7 @@
 // call so the breadcrumb wiring is one place instead of five.
 //
 // Lives under `app/` (not `components/`) because the breadcrumb
-// is a layout concern — the next page to ship in (app) just imports
+// is a layout concern - the next page to ship in (app) just imports
 // this once and the breadcrumb is automatic.
 import type { ReactNode } from 'react';
 

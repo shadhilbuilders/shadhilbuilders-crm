@@ -1,4 +1,4 @@
-// T-E2b follow-up queue — service tests.
+// T-E2b follow-up queue - service tests.
 //
 // Real-DB tests (no mocks). The service uses withRlsContext, the
 // convert path uses LeadsService.createInTransaction, and the
@@ -119,7 +119,7 @@ async function cleanupAll(): Promise<void> {
   TEST_LEAD_IDS.length = 0;
 }
 
-describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService — T-E2b follow-up queue', () => {
+describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue', () => {
   let service: WhatsappUnknownContactsService;
   let prismaService: PrismaService;
   let leadsService: LeadsService;
@@ -162,9 +162,9 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService — T-E2b follow-up que
       );
     });
 
-    it('filters by status — CONVERTED contacts are excluded from PENDING', async () => {
+    it('filters by status - CONVERTED contacts are excluded from PENDING', async () => {
       const c = await seedContact('filter');
-      // Mark as CONVERTED (without creating a real Lead — just flip
+      // Mark as CONVERTED (without creating a real Lead - just flip
       // the status for this test).
       if (prisma === null) throw new Error('prisma missing');
       await adminSeed(async (db) => {
@@ -214,7 +214,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService — T-E2b follow-up que
     it('forces the Lead source to WHATSAPP regardless of input', async () => {
       const c = await seedContact('convert-source-override');
       const result = await service.convert(makeAdminActor(), c.id, {
-        // Try to set source to META_AD — the service must override.
+        // Try to set source to META_AD - the service must override.
         name: 'Source Override Attempt',
         phone: c.phoneE164,
         source: 'META_AD',

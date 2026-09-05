@@ -1,4 +1,4 @@
-// NestJS 12 (locked per plan §1) — REST API for Shadhil Builders CRM.
+// NestJS 12 (locked per plan §1) - REST API for Shadhil Builders CRM.
 // Phase 1 scaffold: 9 modules wired with RLS context, JWT auth, OpenAPI docs.
 import { Module } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
@@ -54,7 +54,7 @@ import { AlertsModule } from './alerts/alerts.module';
     AuditModule,
     WebhooksModule,
 
-    // Realtime (SSE — eng review A9: Last-Event-ID resume)
+    // Realtime (SSE - eng review A9: Last-Event-ID resume)
     RealtimeModule,
     WhatsappModule,
     // T-E2b follow-up queue: admin-class only (ADMIN/OWNER/MANAGER).
@@ -70,7 +70,7 @@ import { AlertsModule } from './alerts/alerts.module';
   ],
   providers: [
     // Default-deny: every route needs a valid JWT unless @Public() is set.
-    // Phase 1 keeps most routes @Public() — login flow lands in Week 3.
+    // Phase 1 keeps most routes @Public() - login flow lands in Week 3.
     //
     // useFactory + inject: workaround for nestjs/nest#2130 where
     // useClass for global guards occasionally leaves constructor-injected

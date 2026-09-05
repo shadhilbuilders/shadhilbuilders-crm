@@ -37,7 +37,7 @@ const ROLES: readonly Role[] = [
 const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'COLD'];
 
 // The transition table mirrored from the source. Duplicated deliberately
-// (the test is the spec) — if the source drifts the test fails loudly.
+// (the test is the spec) - if the source drifts the test fails loudly.
 const ALLOWED_EDGES: Readonly<Record<LeadState, readonly LeadState[]>> = {
   NEW: ['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST'],
   CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'COLD', 'LOST'],
@@ -53,7 +53,7 @@ const ALLOWED_EDGES: Readonly<Record<LeadState, readonly LeadState[]>> = {
   NO_SHOW: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
 };
 
-describe('leads.state-machine — LEAD_STATES source-of-truth', () => {
+describe('leads.state-machine - LEAD_STATES source-of-truth', () => {
   it('includes every LeadState the engine reasons about', () => {
     // 12 values today; this test exists to force a re-look on every enum
     // change, not to assert the specific count.
@@ -71,7 +71,7 @@ describe('leads.state-machine — LEAD_STATES source-of-truth', () => {
   });
 });
 
-describe('canTransition — SAME_STATE is always allowed', () => {
+describe('canTransition - SAME_STATE is always allowed', () => {
   it.each(LEAD_STATES)('%s → %s returns ok=true reason=SAME_STATE', (state) => {
     const result = canTransition({ from: state, to: state, role: 'TELECALLER' });
     expect(result.ok).toBe(true);
@@ -79,7 +79,7 @@ describe('canTransition — SAME_STATE is always allowed', () => {
   });
 });
 
-describe('canTransition — ADMIN/OWNER drive every existing edge', () => {
+describe('canTransition - ADMIN/OWNER drive every existing edge', () => {
   for (const from of LEAD_STATES) {
     for (const to of ALLOWED_EDGES[from]) {
       if (from === to) continue;
@@ -95,7 +95,7 @@ describe('canTransition — ADMIN/OWNER drive every existing edge', () => {
   }
 });
 
-describe('canTransition — ADMIN/OWNER can re-open terminal states', () => {
+describe('canTransition - ADMIN/OWNER can re-open terminal states', () => {
   // Re-open targets: any non-terminal state. The graph itself doesn't
   // include these edges (terminal states have no out-edges in the
   // canonical model), so the admin override applies.
@@ -118,13 +118,13 @@ describe('canTransition — ADMIN/OWNER can re-open terminal states', () => {
   }
 });
 
-describe('canTransition — non-existent edges reject non-admin roles', () => {
+describe('canTransition - non-existent edges reject non-admin roles', () => {
   for (const from of LEAD_STATES) {
     for (const to of LEAD_STATES) {
       if (from === to) continue;
       // Skip edges that ARE in the graph (handled by other describes).
       if (ALLOWED_EDGES[from].includes(to)) continue;
-      // ADMIN/OWNER can re-open terminals — those edges are NOT in the
+      // ADMIN/OWNER can re-open terminals - those edges are NOT in the
       // graph but ARE legal for admin/owner. Skip those cases here.
       const isReopen = TERMINAL_STATES.includes(from) && !TERMINAL_STATES.includes(to);
       if (isReopen) continue;
@@ -139,7 +139,7 @@ describe('canTransition — non-existent edges reject non-admin roles', () => {
   }
 });
 
-describe('canTransition — MANAGER can drive any non-terminal edge', () => {
+describe('canTransition - MANAGER can drive any non-terminal edge', () => {
   for (const from of LEAD_STATES) {
     if (TERMINAL_STATES.includes(from)) continue; // MANAGER can't reopen terminal
     for (const to of ALLOWED_EDGES[from]) {
@@ -151,7 +151,7 @@ describe('canTransition — MANAGER can drive any non-terminal edge', () => {
   }
 });
 
-describe('canTransition — MANAGER cannot reopen terminal states', () => {
+describe('canTransition - MANAGER cannot reopen terminal states', () => {
   for (const terminal of TERMINAL_STATES) {
     for (const to of LEAD_STATES) {
       if (to === terminal) continue;
@@ -163,7 +163,7 @@ describe('canTransition — MANAGER cannot reopen terminal states', () => {
   }
 });
 
-describe('canTransition — TELECALLER lane (NEW..VISIT_SCHEDULED + re-engagement)', () => {
+describe('canTransition - TELECALLER lane (NEW..VISIT_SCHEDULED + re-engagement)', () => {
   const telecallerLane: readonly LeadState[] = [
     'NEW',
     'CONTACTED',
@@ -197,7 +197,7 @@ describe('canTransition — TELECALLER lane (NEW..VISIT_SCHEDULED + re-engagemen
   }
 });
 
-describe('canTransition — SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () => {
+describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () => {
   const execLane: readonly LeadState[] = [
     'VISITED',
     'NEGOTIATION',
@@ -223,7 +223,7 @@ describe('canTransition — SALES_EXEC lane (VISITED → BOOKING_INITIATED)', ()
   }
 });
 
-describe('allowedNextStates — UI helper', () => {
+describe('allowedNextStates - UI helper', () => {
   it('TELECALLER on NEW sees CONTACTED, VISIT_REQUESTED, COLD, LOST', () => {
     const next = allowedNextStates('NEW', 'TELECALLER');
     expect(next).toEqual(['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST']);

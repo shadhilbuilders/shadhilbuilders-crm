@@ -1,4 +1,4 @@
-// T-F6 — LeadChatPane wire-shape + styling contract.
+// T-F6 - LeadChatPane wire-shape + styling contract.
 //
 // Pins:
 //   - Messages render in chronological order (oldest first) per the
@@ -39,7 +39,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('LeadChatPane — wire-shape + direction contract (T-F6)', () => {
+describe('LeadChatPane - wire-shape + direction contract (T-F6)', () => {
   it('renders messages oldest-first with OUT right-aligned + IN left-aligned', () => {
     mockedUseMessages.mockReturnValue({
       data: [
@@ -115,7 +115,7 @@ describe('LeadChatPane — wire-shape + direction contract (T-F6)', () => {
     expect(html).toContain('Chat will appear when the chat module lands');
     // The send form is still rendered (the user can type a message;
     // if the backend 404s on send, the mutation hook surfaces the
-    // error via toast — separate concern from the read path).
+    // error via toast - separate concern from the read path).
     expect(html).toMatch(/data-qa="chat-send-form"/);
   });
 });

@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 
-describe('@shadhil/auth — env validation', () => {
+describe('@shadhil/auth - env validation', () => {
   it('rejects missing BETTER_AUTH_SECRET', async () => {
     const { assertAuthEnv } = await import('../src/env');
     const old = process.env.BETTER_AUTH_SECRET;
@@ -39,7 +39,7 @@ describe('@shadhil/auth — env validation', () => {
   });
 });
 
-describe('@shadhil/auth — JWT helpers', () => {
+describe('@shadhil/auth - JWT helpers', () => {
   it('verifyJwt throws on garbage', async () => {
     process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
     const { verifyJwt } = await import('../src/jwt');
@@ -67,7 +67,7 @@ describe('@shadhil/auth — JWT helpers', () => {
     const { issueJwt, verifyJwt } = await import('../src/jwt');
     const token = await issueJwt({
       sub: 'user_123',
-      // lowercase legacy claim — normalized to enum at verify time
+      // lowercase legacy claim - normalized to enum at verify time
       role: 'manager' as never,
       teamId: 'team_1',
       email: 'mgr@example.com',
@@ -76,7 +76,7 @@ describe('@shadhil/auth — JWT helpers', () => {
     expect(payload.role).toBe('MANAGER');
   });
 
-  it('verifyJwt REJECTS tokens lacking a role claim (AR-2 — no silent defaults)', async () => {
+  it('verifyJwt REJECTS tokens lacking a role claim (AR-2 - no silent defaults)', async () => {
     process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
     const { SignJWT } = await import('jose');
     const token = await new SignJWT({ user: { teamId: 'team_1', email: 'x@y.com' } })
@@ -119,7 +119,7 @@ describe('@shadhil/auth — JWT helpers', () => {
   });
 });
 
-describe('@shadhil/auth — module surface (eng review A4)', () => {
+describe('@shadhil/auth - module surface (eng review A4)', () => {
   it('exports auth, authClient, verifyJwt, issueJwt, assertAuthEnv', async () => {
     const mod = await import('../src/index');
     expect(typeof mod.auth).toBeDefined();

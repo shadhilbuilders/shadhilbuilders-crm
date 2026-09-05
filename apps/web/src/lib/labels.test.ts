@@ -21,7 +21,7 @@ import {
 } from '@/lib/labels';
 
 describe('lib/labels', () => {
-  describe('LEAD_STATUSES — every enum value has a friendly label', () => {
+  describe('LEAD_STATUSES - every enum value has a friendly label', () => {
     it.each(LEAD_STATUSES)('%s renders a non-empty, non-raw label', (value) => {
       const label = labelFor('lead', value);
       expect(label.length).toBeGreaterThan(0);
@@ -50,7 +50,7 @@ describe('lib/labels', () => {
     });
   });
 
-  describe('VISIT_OUTCOMES — every enum value has a friendly label', () => {
+  describe('VISIT_OUTCOMES - every enum value has a friendly label', () => {
     it.each(VISIT_OUTCOMES)('%s renders a non-empty, non-raw label', (value) => {
       const label = labelFor('visit', value);
       expect(label.length).toBeGreaterThan(0);
@@ -71,7 +71,7 @@ describe('lib/labels', () => {
     });
   });
 
-  describe('INVENTORY_STATUSES — every enum value has a friendly label', () => {
+  describe('INVENTORY_STATUSES - every enum value has a friendly label', () => {
     it.each(INVENTORY_STATUSES)('%s renders a non-empty, non-raw label', (value) => {
       const label = labelFor('inventory', value);
       expect(label.length).toBeGreaterThan(0);
@@ -92,7 +92,7 @@ describe('lib/labels', () => {
     });
   });
 
-  describe('BOOKING_STATUSES — every enum value has a friendly label', () => {
+  describe('BOOKING_STATUSES - every enum value has a friendly label', () => {
     it.each(BOOKING_STATUSES)('%s renders a non-empty, non-raw label', (value) => {
       const label = labelFor('booking', value);
       expect(label.length).toBeGreaterThan(0);

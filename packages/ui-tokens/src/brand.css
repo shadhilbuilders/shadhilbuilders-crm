@@ -1,5 +1,5 @@
 /**
- * @shadhil/ui-tokens — brand.css
+ * @shadhil/ui-tokens - brand.css
  *
  * Per-project brand overrides. This is the ONLY file you edit when
  * starting a new project. Everything else cascades from
@@ -15,7 +15,7 @@
  * rather than as the Shadhil brand. Override the sidebar tokens here
  * (NOT in `all.css`, which is library-owned) so the Sidebar nav and
  * footer align with the navy primary. The plan's text mentioned
- * "orange/amber" — that was the plan author's assumption; the actual
+ * "orange/amber" - that was the plan author's assumption; the actual
  * brand is navy + green, decided in commit c1118a7 (brand/logo.png)
  * and the original brand.css. This file is the source of truth.
  *
@@ -75,7 +75,7 @@
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
 
-  /* ── Sidebar brand overrides — dark mode (T12) ────────────────────
+  /* ── Sidebar brand overrides - dark mode (T12) ────────────────────
    * The library's dark defaults make the sidebar a near-black void.
    * Replace with a deep navy-tinted gray so the sidebar still feels
    * "Shadhil" rather than "default." */

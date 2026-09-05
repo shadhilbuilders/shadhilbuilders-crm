@@ -1,4 +1,4 @@
-# Shadhil CRM — Client Questions to Resolve Before Implementation
+# Shadhil CRM - Client Questions to Resolve Before Implementation
 
 **Source:** Consolidated from 7 rounds of client feedback (2026-08-29).
 **Status:** Send to Shadhil sales leadership. Each answer unblocks a
@@ -12,7 +12,7 @@ at least Q0, Q1, and Q4 are answered.
 - **Q0 (blocker).** Is the WhatsApp Business number for the CRM
   the SAME one currently used on the landing site (+91 9025012311),
   or do you have a separate production-approved number we should
-  use? If same — what's the status of Meta template approval and
+  use? If same - what's the status of Meta template approval and
   WABA assignment? (As of Aug 27: the existing setup is on the Meta
   test number, the app dashboard has no WhatsApp product yet, the
   WABA is not assigned to the system user, and templates are not
@@ -30,7 +30,7 @@ at least Q0, Q1, and Q4 are answered.
 
 ## High-value (answer before MVP ships)
 
-- **Q2.** What is the booking-to-agreement document flow today —
+- **Q2.** What is the booking-to-agreement document flow today -
   manual, lawyer-mediated, or RERA-mandated template? (Drives
   whether Document Vault ships in v1 or v2 and whether we need
   agreement template generation in MVP.)
@@ -40,11 +40,11 @@ at least Q0, Q1, and Q4 are answered.
   data-retention rules, consent capture.)
 
 - **Q5.** Mobile-first vs desktop-first usage? Field agents are
-  on phones — is mobile responsive enough or do we need PWA in
+  on phones - is mobile responsive enough or do we need PWA in
   v1? (We recommend PWA first, then Expo app in v1.1.)
 
 - **Q8.** Sales targets / KPIs the manager must see on a dashboard
-  — bookings/month per agent, revenue pipeline, lead-to-visit
+  - bookings/month per agent, revenue pipeline, lead-to-visit
   conversion by source? (Drives the single funnel widget shipped
   in v1.)
 
@@ -61,11 +61,11 @@ at least Q0, Q1, and Q4 are answered.
 - **Q12.** Audit log retention period? RERA typically requires
   5-7 years for transaction records. Confirm.
 
-- **Q13.** "Manager sees all conversations" — across ALL managers,
+- **Q13.** "Manager sees all conversations" - across ALL managers,
   or only within their team? My matrix assumes "their reports
   only." Confirm.
 
-- **Q15.** "Once customer agrees to visit" — is this a one-click
+- **Q15.** "Once customer agrees to visit" - is this a one-click
   handoff button the telecaller clicks, or does the manager
   confirm the customer's intent? My model assumes one-click
   handoff from telecaller.
@@ -93,5 +93,5 @@ at least Q0, Q1, and Q4 are answered.
 
 - Marketing automation, advanced analytics, native mobile app
   beyond PWA, customer portal, broker network, AI lead scoring,
-  Tamil UI, email integration — all deferred to vNext per
+  Tamil UI, email integration - all deferred to vNext per
   `DESIGN.md` §14.

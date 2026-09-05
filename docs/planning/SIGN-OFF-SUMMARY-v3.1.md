@@ -1,4 +1,4 @@
-# Shadhil Builders CRM — v3.1 Executive Summary for Sign-Off
+# Shadhil Builders CRM - v3.1 Executive Summary for Sign-Off
 
 **For:** Shadhil promoters, sales leadership, finance lead
 **From:** PaalStack delivery
@@ -16,9 +16,9 @@ Shadhil currently runs sales on Google Sheets, personal phone calls, and individ
 
 A CRM is only as good as the discipline it enforces. Three things will determine whether this project succeeds or becomes shelfware:
 
-1. **Whether every lead, every message, every call flows through the system** — not personal WhatsApp on the side. This is what "monitor by application" means.
-2. **Whether the sales process changes to match Model C** — telecaller books and confirms, sales exec conducts the visit, ownership transfers automatically when the visit outcome is logged. This is non-negotiable for the no-show rate to drop from industry-baseline 30–40% to the target <25%.
-3. **Whether RERA + CMDA registration details become first-class data in the system** — not buried in a Google Drive folder. RERA TN inspectors ask for project-level data exports on complaint. We can produce one in 7 days if the schema supports it; we cannot if it doesn't.
+1. **Whether every lead, every message, every call flows through the system** - not personal WhatsApp on the side. This is what "monitor by application" means.
+2. **Whether the sales process changes to match Model C** - telecaller books and confirms, sales exec conducts the visit, ownership transfers automatically when the visit outcome is logged. This is non-negotiable for the no-show rate to drop from industry-baseline 30–40% to the target <25%.
+3. **Whether RERA + CMDA registration details become first-class data in the system** - not buried in a Google Drive folder. RERA TN inspectors ask for project-level data exports on complaint. We can produce one in 7 days if the schema supports it; we cannot if it doesn't.
 
 ## Question
 
@@ -40,7 +40,7 @@ A web + mobile CRM for Shadhil Metro Heights and any future RERA + CMDA approved
 - **Database:** Postgres in Docker via PgBouncer with row-level security enforced from day 1
 - **Telephony:** FreJun (₹1,149/user/month) with call recording + AI transcription on by default, archived 7 years to Cloudflare R2
 - **Mobile:** PWA in v1 (4–5 weeks) + Expo app in v1.1 (not optional, both ship)
-- **Lead lifecycle:** Model C hybrid handoff (telecaller owns through visit outcome, exec conducts visit, ownership transfers automatically) — removes the perverse incentive behind the 30–40% no-show rate
+- **Lead lifecycle:** Model C hybrid handoff (telecaller owns through visit outcome, exec conducts visit, ownership transfers automatically) - removes the perverse incentive behind the 30–40% no-show rate
 - **Reminders:** 4 types in v1 (pre-visit staff + customer, reschedule follow-up, no-show)
 - **Push notifications:** Expo Push as the universal service for iOS + Android + Web, 12 triggers in v1
 - **Audit retention:** 7 years (RERA upper bound), immutable, R2-archived
@@ -111,7 +111,7 @@ One-time: ~₹60,000–₹80,000 PaalStack delivery for v1. v1.1 scoped separate
 
 Per DESIGN.md §19:
 
-- **Stack is NestJS + REST on a self-hosted VPS** — defensible but slower to ship than Supabase + Next.js full-stack. If at Week 3 the friction is real, the data model and auth design transfer to the alternative stack with ~1 week of rework.
+- **Stack is NestJS + REST on a self-hosted VPS** - defensible but slower to ship than Supabase + Next.js full-stack. If at Week 3 the friction is real, the data model and auth design transfer to the alternative stack with ~1 week of rework.
 - **Coolify is a real product, but you (Shadhil) are the on-call.** Budget 4–8 hours/month for VPS maintenance, Postgres backup verification, Coolify upgrades. If that's not realistic for your bandwidth, this stack isn't the right pick.
 - **"1 ms literally" is impossible.** We deliver 99.95% uptime (52 min/year) for v1. Multi-region HA for true zero-downtime is a v3 conversation.
 - **99.95% uptime assumes the single-VPS design works as intended.** Backup verification is a weekly cron, not a hope.
@@ -120,9 +120,9 @@ Per DESIGN.md §19:
 
 ## Next steps if you sign off
 
-- **This week:** PaalStack delivers `REVIEW-OF-DESIGN.md` (the PM critique that produced this summary) and the v3.1 patched doc set (fixes 6 internal inconsistencies in the design brief — 30-minute mechanical fix).
+- **This week:** PaalStack delivers `REVIEW-OF-DESIGN.md` (the PM critique that produced this summary) and the v3.1 patched doc set (fixes 6 internal inconsistencies in the design brief - 30-minute mechanical fix).
 - **Week 1 of build:** VPS + Coolify + DNS + SSL provisioned, monorepo scaffolded, 4 WhatsApp templates submitted to Meta for approval.
-- **Weekly Friday update:** PaalStack sends async status to Shadhil promoter + sales lead. No one asks "what's the status" — we publish before anyone asks.
+- **Weekly Friday update:** PaalStack sends async status to Shadhil promoter + sales lead. No one asks "what's the status" - we publish before anyone asks.
 - **Week 13:** v1 live, runbook delivered, monitoring + alerting active, first production deployment.
 
 ---

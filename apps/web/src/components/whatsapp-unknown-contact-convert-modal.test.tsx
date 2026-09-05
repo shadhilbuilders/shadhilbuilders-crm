@@ -1,4 +1,4 @@
-// T-E2b convert modal — wire-shape + helper contract.
+// T-E2b convert modal - wire-shape + helper contract.
 //
 // Pins:
 //   - Pure helpers (prefillNotes, buildConvertBody) handle the
@@ -134,7 +134,7 @@ describe('buildConvertBody (T-E2b)', () => {
 // ConvertFormBody tests
 // ---------------------------------------------------------------------------
 
-describe('ConvertFormBody (T-E2b) — wire-shape contract', () => {
+describe('ConvertFormBody (T-E2b) - wire-shape contract', () => {
   it('renders name + email + notes fields; phone shows as placeholder', () => {
     const contact = makeContact();
 
@@ -187,7 +187,7 @@ describe('ConvertFormBody (T-E2b) — wire-shape contract', () => {
     // Since we can't reach into Form internals from a render test,
     // we exercise onSubmit by wrapping the body in a callback that
     // asserts the args. The test below verifies the helper
-    // buildConvertBody is the contract — the Form's wiring is
+    // buildConvertBody is the contract - the Form's wiring is
     // covered by ScheduleVisitDialog.test (which itself is the
     // canonical pattern in this codebase).
     //
@@ -199,7 +199,7 @@ describe('ConvertFormBody (T-E2b) — wire-shape contract', () => {
     // buildConvertBody tests above).
     //
     // The "calls onSubmit" assertion: render the body, confirm the
-    // form mounts without throwing — the helper wiring is covered by
+    // form mounts without throwing - the helper wiring is covered by
     // the pure-function tests above.
     const contact = makeContact();
     expect(() =>

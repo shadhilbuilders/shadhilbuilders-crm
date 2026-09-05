@@ -1,16 +1,16 @@
-// Leads service — REST surface for the Lead Inbox + state-machine guard.
+// Leads service - REST surface for the Lead Inbox + state-machine guard.
 //
 // Scoping (per JWT):
 //   - OWNER/ADMIN: all leads (after the model filter the RLS policies allow).
 //   - MANAGER: leads where Lead.teamId matches the team they manage
-//     (Team.managerId === actor.sub). Same trick users.service.ts uses —
+//     (Team.managerId === actor.sub). Same trick users.service.ts uses -
 //     the JWT teamId claim is unreliable for managers (seed keeps it null).
 //   - TELECALLER/SALES_EXEC: leads where Lead.ownerId === actor.sub.
 //
 // Write paths (all inside `withRlsContext` so the AuditLog insert
 // satisfies its RLS policy AND the actor's team is recorded for any
 // future-team-scoped triggers):
-//   - create: ManagerAssignmentRule stub — TELECALLER-actor creates land
+//   - create: ManagerAssignmentRule stub - TELECALLER-actor creates land
 //     on themselves; ADMIN/OWNER/MANAGER can pass ownerId in the DTO.
 //     The full rule engine (Plan §18 T-ARM) is deferred; this stub is the
 //     documented interim per DECISION-CHANGELOG.
@@ -18,7 +18,7 @@
 //   - transition: state-machine guard + Lead.state write + AuditLog row.
 //
 // Reads use the bare client (the RLS policies on `lead` are owned by
-// `shadhil_app` and need session vars set — but `tx.lead.findMany`
+// `shadhil_app` and need session vars set - but `tx.lead.findMany`
 // inside withRlsContext works just as well). We use withRlsContext
 // consistently for symmetry with the writes, even on reads.
 import {
@@ -93,7 +93,7 @@ export interface CreatedLead {
 
 /**
  * Result shape returned by `list()`. The page (apps/web/src/app/(app)/leads/page.tsx)
- * reads these exact fields — keep them in sync if you rename.
+ * reads these exact fields - keep them in sync if you rename.
  */
 export interface LeadListResult {
   rows: LeadRow[];
@@ -111,7 +111,7 @@ export class LeadsService {
   }
 
   /**
-   * Resolve the team a MANAGER leads. Mirrors users.service.ts:list() —
+   * Resolve the team a MANAGER leads. Mirrors users.service.ts:list() -
    * the JWT teamId claim is unreliable (seed keeps it null) so we look
    * up Team.managerId. Returns null for ADMIN (no team) or for a MANAGER
    * with no team (config error, but we don't 500 on it).
@@ -165,7 +165,7 @@ export class LeadsService {
       where['ownerId'] = actor.sub;
     } else if (actor.role === 'MANAGER') {
       const teamId = await this.managerTeamId(tx as unknown as PrismaClient, actor);
-      // Manager with no team sees nothing — narrow with a sentinel so the
+      // Manager with no team sees nothing - narrow with a sentinel so the
       // `where` is still well-formed.
       where['teamId'] = teamId ?? '__no_team__';
     }
@@ -176,7 +176,7 @@ export class LeadsService {
   }
 
   /**
-   * GET /api/leads — the Lead Inbox. Returns the page-shaped result the
+   * GET /api/leads - the Lead Inbox. Returns the page-shaped result the
    * UI expects (rows + total). Order: most recent activity first; the
    * page applies overdue-first client-side (Decision 0.2).
    */
@@ -223,17 +223,17 @@ export class LeadsService {
   }
 
   /**
-   * POST /api/leads — create a new lead.
+   * POST /api/leads - create a new lead.
    *
    * Owner assignment runs through the ManagerAssignmentRule engine
    * (manager-assignment.engine.ts). The engine evaluates in this order:
    *   1. Active rules for the team, sorted by (priority ASC,
-   *      createdAt ASC) — first matching rule wins.
-   *   2. Team.defaultAssigneeId fallback (deferred — column ships in
+   *      createdAt ASC) - first matching rule wins.
+   *   2. Team.defaultAssigneeId fallback (deferred - column ships in
    *      a future migration; today step 2 is a no-op).
    *   3. Neither matched → unassigned (ownerId=null). The service
    *      is responsible for firing notification trigger #1 to the
-   *      team manager (deferred — the notifications module ships
+   *      team manager (deferred - the notifications module ships
    *      in Phase 5; today the audit log records the unassigned
    *      state).
    *
@@ -277,7 +277,7 @@ export class LeadsService {
    * Note: the `clientOverride` is expected to ALREADY have the
    * RLS context set (i.e. it's a tx client from a parent
    * withRlsContext block). The caller is responsible for opening
-   * the transaction and setting the GUCs — we don't open a nested
+   * the transaction and setting the GUCs - we don't open a nested
    * transaction here because Prisma 7's pg driver adapter
    * doesn't support `$transaction` on a transaction client.
    *
@@ -294,7 +294,7 @@ export class LeadsService {
   }
 
   /**
-   * Internal helper. Pure async — does NOT open a transaction.
+   * Internal helper. Pure async - does NOT open a transaction.
    * Caller must have already set up the RLS context (either by
    * passing the tx client from a parent withRlsContext, or by
    * being the bare prisma client and using the public create()
@@ -306,7 +306,7 @@ export class LeadsService {
    * inside the inner withRlsContext, which we open here using
    * the supplied `client`.
    *
-   * Actually — we run EVERYTHING in one withRlsContext block
+   * Actually - we run EVERYTHING in one withRlsContext block
    * because the engine's read of `actor.teamId` is gated by
    * RLS, and partial reads outside the tx would fail. So if
    * `client` is a tx, opening another tx via `withRlsContext`
@@ -324,12 +324,12 @@ export class LeadsService {
    * public create() therefore does a TWO-LEVEL withRlsContext:
    * the outer one sets the GUCs and the inner one is a no-op
    * tx-wrap on the tx client (which IS supported by Prisma 7 if
-   * the inner is a savepoint, or — for the pg adapter — might
+   * the inner is a savepoint, or - for the pg adapter - might
    * require a workaround).
    *
-   * The cleanest path: split this into two helpers — one for the
+   * The cleanest path: split this into two helpers - one for the
    * "I own the transaction" case, one for the "I have a tx
-   * already" case — and have each open the correct number of
+   * already" case - and have each open the correct number of
    * transactions.
    */
   private async _createWithClient(
@@ -348,7 +348,7 @@ export class LeadsService {
       });
       if (!team) {
         throw new ForbiddenException(
-          'You do not manage any team — cannot create lead',
+          'You do not manage any team - cannot create lead',
         );
       }
       teamId = team.id;
@@ -413,7 +413,7 @@ export class LeadsService {
     const ownerId = resolution.userId;
 
     // Steps 5+: write Lead + audit log. The `client` is already a
-    // tx with RLS context set, so we use it directly — no inner
+    // tx with RLS context set, so we use it directly - no inner
     // withRlsContext wrapper.
     const existing = await client.lead.findUnique({
       where: { phone: dto.phone },
@@ -521,7 +521,7 @@ export class LeadsService {
    * discriminated ResolverResult so the caller can audit which path
    * matched.
    *
-   * This mirrors the engine's evaluation logic exactly — kept here
+   * This mirrors the engine's evaluation logic exactly - kept here
    * so the engine stays pure (no async deps) and the service owns
    * DB I/O.
    */
@@ -566,7 +566,7 @@ export class LeadsService {
       if (target !== null && canUserBeAssignedTo(target)) {
         return { kind: 'team-default', userId: target.id };
       }
-      // Default points at ADMIN/MANAGER or deleted user — fall through
+      // Default points at ADMIN/MANAGER or deleted user - fall through
       // to the actor fallback rather than risk assigning to the wrong
       // role.
     }
@@ -600,12 +600,12 @@ export class LeadsService {
   }
 
   /**
-   * POST /api/leads/:id/reassign — manual reassign (Plan §18 D2/D3).
+   * POST /api/leads/:id/reassign - manual reassign (Plan §18 D2/D3).
    *
    * Reassigns a Lead from its current owner to `targetUserId`,
    * preserving the state machine. Allowed for ADMIN (any team)
    * and MANAGER (same team as the lead only). TELECALLER +
-   * SALES_EXEC cannot reassign — they can update their own leads
+   * SALES_EXEC cannot reassign - they can update their own leads
    * via PATCH but not move them sideways.
    *
    * The target user's role must permit owning the lead at its
@@ -618,11 +618,11 @@ export class LeadsService {
    * Implementation per Plan §18 + DESIGN.md §3: everything happens
    * inside one `withRlsContext` transaction so the Lead update, the
    * AuditLog row, and the new ownerType are atomic. The previous
-   * co-owner (if any) is NULLed on reassign — co-ownership is a
+   * co-owner (if any) is NULLed on reassign - co-ownership is a
    * transient state for short handoffs; the new owner takes the
    * lead cleanly.
    *
-   * Does NOT fan out reminders or fire SSE events here — those
+   * Does NOT fan out reminders or fire SSE events here - those
    * are follow-ups (T-DOC scope, not in this commit). The audit
    * row IS the durable signal a downstream consumer can replay.
    */
@@ -694,7 +694,7 @@ export class LeadsService {
         // 4. Target user's role can own the lead at its current
         //    state? Mirrors the lane rules in the state machine.
         //    OWNER is treated as ADMIN for this check (OWNER doesn't
-        //    have a lead lane — it can own anything).
+        //    have a lead lane - it can own anything).
         if (!canRoleOwnState(existing.state, target.role as Role)) {
           throw new BadRequestException(
             `Target user's role ${target.role} cannot own a lead in state ${existing.state}`,
@@ -702,7 +702,7 @@ export class LeadsService {
         }
 
         // 5. Same-owner reassign is a no-op; return the current row.
-        //    We still want the audit row though — the reason is
+        //    We still want the audit row though - the reason is
         //    captured in the body and the operation is logically
         //    a "no-op write" the caller might want to record.
         const newOwnerType = this.ownerTypeForRole(target.role as Role);
@@ -724,7 +724,7 @@ export class LeadsService {
         }
 
         // 6. Update the lead + the audit row, in one transaction.
-        //    coOwnerId is omitted (not set to null) — the Prisma
+        //    coOwnerId is omitted (not set to null) - the Prisma
         //    client treats undefined as "skip this field". We don't
         //    want to write to the column at all in the same-owner
         //    no-op branch above; here, where we ARE writing, we
@@ -735,7 +735,7 @@ export class LeadsService {
         //
         //    teamId: Lead.teamId is NOT NULL. If the target user has
         //    a team, the lead follows them. If the target has no
-        //    team (rare — only OWNER, in current data), the lead
+        //    team (rare - only OWNER, in current data), the lead
         //    keeps its existing teamId. ADMIN is the only role that
         //    can assign to a team-less user (MANAGER is gated by
         //    the team-mismatch check above).
@@ -795,7 +795,7 @@ export class LeadsService {
   }
 
   /**
-   * PATCH /api/leads/:id — mutable fields only. State transitions go
+   * PATCH /api/leads/:id - mutable fields only. State transitions go
    * through the dedicated transition endpoint so the state-machine guard
    * always runs.
    */
@@ -876,7 +876,7 @@ export class LeadsService {
   }
 
   /**
-   * POST /api/leads/:id/transition — drive the state machine.
+   * POST /api/leads/:id/transition - drive the state machine.
    * Re-reads the lead inside the RLS transaction so the state-machine
    * guard sees the ACTUAL current state, not the client's stale view.
    */
@@ -922,7 +922,7 @@ export class LeadsService {
           );
         }
 
-        // No-op transition: still record an audit row? No — same-state
+        // No-op transition: still record an audit row? No - same-state
         // is genuinely a no-op; skip the write entirely.
         if (verdict.reason === 'SAME_STATE') {
           return {
@@ -993,7 +993,7 @@ export class LeadsService {
     if (role === 'TELECALLER' || role === 'SALES_EXEC' || role === 'MANAGER' || role === 'ADMIN') {
       return role;
     }
-    // OWNER creating a lead (rare, only for bootstrapping) — tag as
+    // OWNER creating a lead (rare, only for bootstrapping) - tag as
     // ADMIN so the lead appears in admin queries.
     return 'ADMIN';
   }

@@ -1,4 +1,4 @@
-// Webhooks controller — inbound from WhatsApp (Meta) and FreJun (telephony).
+// Webhooks controller - inbound from WhatsApp (Meta) and FreJun (telephony).
 //
 // Routes are @Public() BY DESIGN (AR-8): these receive calls from
 // Meta/FreJun servers, not authenticated users. Auth is the WhatsApp
@@ -6,21 +6,21 @@
 // and the FreJun signature mechanism (TBD). The GET verify-handshake
 // uses a shared token in the URL (hub.verify_token).
 //
-// T-E2b (2026-09-04): WhatsApp inbound handler — full implementation.
+// T-E2b (2026-09-04): WhatsApp inbound handler - full implementation.
 //
-//   GET  /api/webhooks/whatsapp  — Meta verify-handshake (echo challenge)
-//   POST /api/webhooks/whatsapp  — Inbound events
-//     • Status updates (sent/delivered/read/failed) — update the
+//   GET  /api/webhooks/whatsapp  - Meta verify-handshake (echo challenge)
+//   POST /api/webhooks/whatsapp  - Inbound events
+//     • Status updates (sent/delivered/read/failed) - update the
 //       matching OutboundMessage by metaMessageId
-//     • Inbound text messages from KNOWN leads — write a Message
+//     • Inbound text messages from KNOWN leads - write a Message
 //       row (channel=WHATSAPP, direction=INBOUND, body=Meta text)
-//     • Inbound text messages from UNKNOWN numbers — upsert a
+//     • Inbound text messages from UNKNOWN numbers - upsert a
 //       WhatsappUnknownContact row for telecaller follow-up. We
 //       deliberately do NOT auto-create a Lead (per the T-E2b
 //       product decision: lead creation is a manual telecaller
 //       action, not automatic from WA inbound).
 //
-//   POST /api/webhooks/frejun — FreJun inbound (still stubbed)
+//   POST /api/webhooks/frejun - FreJun inbound (still stubbed)
 //
 // The handler runs as CRON_SERVICE (no RLS user context) because
 // the sender is Meta/the system, not a staff user. CRON_SERVICE
@@ -76,7 +76,7 @@ type MetaEnvelope = {
           type?: string;
           text?: { body?: string };
           // (image/video/audio/document/interactive/button/...) are
-          // not yet supported in T-E2b — we accept them but ignore.
+          // not yet supported in T-E2b - we accept them but ignore.
           [k: string]: unknown;
         }>;
         statuses?: Array<{
@@ -132,7 +132,7 @@ export class WebhooksController {
   }
 
   // ── POST inbound ──────────────────────────────────────────────────
-  // Always 200 on success — Meta retries events with non-2xx
+  // Always 200 on success - Meta retries events with non-2xx
   // responses up to 7 days. Internal errors are caught and logged
   // but the response is still 200, so Meta doesn't keep hammering
   // a temporarily-failing handler.
@@ -159,13 +159,13 @@ export class WebhooksController {
     }
 
     // Flatten the nested envelope. The handler iterates each
-    // (message, status) event and processes it independently — a
+    // (message, status) event and processes it independently - a
     // failure in one event must not block the others.
     for (const entry of body.entry) {
       for (const change of entry.changes ?? []) {
         if (change.field !== 'messages' || !change.value) continue;
 
-        // Status updates first — they're cheap and independent of
+        // Status updates first - they're cheap and independent of
         // any DB lookup.
         for (const status of change.value.statuses ?? []) {
           try {
@@ -179,7 +179,7 @@ export class WebhooksController {
           }
         }
 
-        // Inbound messages second — each is one webhook event.
+        // Inbound messages second - each is one webhook event.
         for (const message of change.value.messages ?? []) {
           try {
             const r = await this.handleInboundMessage(message);
@@ -301,13 +301,13 @@ export class WebhooksController {
         });
 
         if (lead) {
-          // 3a) Known lead — create the Message row (text only in
+          // 3a) Known lead - create the Message row (text only in
           // T-E2b; media handling is a follow-up). Use $executeRaw
           // with a parameterized INSERT to avoid Prisma's typed API
           // path which has an RLS interaction quirk with the
           // CRON_SERVICE bypass policy (verified empirically:
           // typed `tx.message.create` fails 42501 even with the
-          // role set; raw `INSERT INTO` succeeds — same tx, same
+          // role set; raw `INSERT INTO` succeeds - same tx, same
           // role, same connection).
           if (isText) {
             const msgId = `wa_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -327,7 +327,7 @@ export class WebhooksController {
           return 'ignored';
         }
 
-        // 3b) Unknown number — upsert WhatsappUnknownContact. We
+        // 3b) Unknown number - upsert WhatsappUnknownContact. We
         // deliberately do NOT auto-create a Lead (per the T-E2b
         // product decision: don't create Leads on unknown inbound).
         // The telecaller can process the contact from the
@@ -369,7 +369,7 @@ export class WebhooksController {
 /**
  * Normalize a phone number to E.164 (digits only, no leading '+').
  * Mirrors `toE164` from `~/workspace/shadhil-projects/landing-page/lib/whatsapp.ts`
- * — both codebases share the same Meta integration, so the rules
+ * - both codebases share the same Meta integration, so the rules
  * for "what counts as E.164" must match exactly.
  */
 function toE164(raw: string): string {

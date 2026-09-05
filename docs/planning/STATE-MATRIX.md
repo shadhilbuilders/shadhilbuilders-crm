@@ -1,4 +1,4 @@
-# State matrix — every page × every state
+# State matrix - every page × every state
 
 **T-D3 (Plan D3+D5).** Single source of truth for which component a
 surface renders in each state. When a page grows a new state branch
@@ -20,7 +20,7 @@ Every data-driven page must handle:
 | **error** | `<ModulePending error={...}>` | Query's `error !== null`. The page may also show a `ToastProvider` toast. |
 | **partial** | The full list view (no special wrapper) | Query resolved with at least one row. `Skeleton` is NOT shown while `data` exists, even on refetch. |
 
-`ModulePending` is the canonical "broken" surface — it covers
+`ModulePending` is the canonical "broken" surface - it covers
 loading, error, and not-yet-built-module states (see
 `components/shared/ModulePending.tsx`). Pages that depend on a
 module that hasn't shipped yet (e.g. T-D8 visits before the
@@ -49,13 +49,13 @@ expected text/element, and the test file that covers it.
 
 | Page | Hook | Loading | Empty | Error | Partial | Test file |
 |---|---|---|---|---|---|---|
-| `/` (dashboard) | TBD | TBD | TBD | TBD | TBD | _none — dashboard uses placeholder widgets_ |
-| `/leads` | `data-qa="lead-inbox"` | `<Skeleton>` rows | "No leads" | `<ModulePending>` | full list table | _none — see T-D3 vitest addition_ |
-| `/leads/new` | `data-qa="lead-form"` | _n/a (form)_ | _n/a_ | field-level errors + `<ToastProvider>` | success → `/leads/{id}` | _none — see T-D3_ |
-| `/leads/[id]` | `data-qa="lead-detail"` | `<Skeleton>` | "Lead not found" + 404 | `<ModulePending>` | full detail layout | _none — see T-D3_ |
-| `/visits` | `data-qa="visits-list"` | `<Skeleton>` | "No visits scheduled" | `<ModulePending>` | full list table | _none — see T-D3_ |
-| `/inventory` | `data-qa="inventory-list"` | `<Skeleton>` | "No inventory" | `<ModulePending>` | full list | _none — see T-D3_ |
-| `/users` | `data-qa="users-list"` | `<Skeleton>` | "No users" | `<ModulePending>` | full list | _none — see T-D3_ |
+| `/` (dashboard) | TBD | TBD | TBD | TBD | TBD | _none - dashboard uses placeholder widgets_ |
+| `/leads` | `data-qa="lead-inbox"` | `<Skeleton>` rows | "No leads" | `<ModulePending>` | full list table | _none - see T-D3 vitest addition_ |
+| `/leads/new` | `data-qa="lead-form"` | _n/a (form)_ | _n/a_ | field-level errors + `<ToastProvider>` | success → `/leads/{id}` | _none - see T-D3_ |
+| `/leads/[id]` | `data-qa="lead-detail"` | `<Skeleton>` | "Lead not found" + 404 | `<ModulePending>` | full detail layout | _none - see T-D3_ |
+| `/visits` | `data-qa="visits-list"` | `<Skeleton>` | "No visits scheduled" | `<ModulePending>` | full list table | _none - see T-D3_ |
+| `/inventory` | `data-qa="inventory-list"` | `<Skeleton>` | "No inventory" | `<ModulePending>` | full list | _none - see T-D3_ |
+| `/users` | `data-qa="users-list"` | `<Skeleton>` | "No users" | `<ModulePending>` | full list | _none - see T-D3_ |
 | `/notifications` | `data-qa="notification-row"` | `<Skeleton>` | "No notifications yet" | `<ModulePending>` | list of `notification-row` | `notifications/page.test.tsx` |
 | `/audit` | `data-qa="audit-list"` | `<Skeleton>` | "No audit entries" | `<ModulePending>` | full audit list | `audit/page.test.tsx` |
 | `/bookings` | `data-qa="bookings-list"` | `<Skeleton>` | "No bookings" | `<ModulePending>` | full list | `bookings/page.test.tsx` |
@@ -69,9 +69,9 @@ already have partial coverage; the rest are stretch.)
 ## Skeleton / ModulePending contract
 
 `Skeleton` is the loading state. From `components/shared/Skeleton.tsx`:
-- `variant="text"` — line-shaped placeholder; one per row of
+- `variant="text"` - line-shaped placeholder; one per row of
   expected content.
-- `variant="user"` — avatar + 2 text lines; for the topbar user slot.
+- `variant="user"` - avatar + 2 text lines; for the topbar user slot.
 - No `isOffline` prop on the per-page Skeletons (offline-state
   handling lives in the topbar `OfflineQueueBadge` and the
   `useOnlineStatus` hook in shared layouts).
@@ -104,7 +104,7 @@ rows, user cards, etc.).
 
 ## What ships in T-D3
 
-1. **This document** — the state matrix above.
+1. **This document** - the state matrix above.
 2. **Vitest 4-state assertions for the 4 largest gaps**: leads
    list, leads/[id] detail, users, visits. Each new test pins
    the same 4 cases (loading / error / empty / partial) using
@@ -113,7 +113,7 @@ rows, user cards, etc.).
    target the right elements (the existing pages don't all have
    hooks; adding them is a 1-line change per page).
 
-## Future work (T-D3 part 2 — not in this commit)
+## Future work (T-D3 part 2 - not in this commit)
 
 A Playwright e2e sweep that drives every page × every state
 matrix cell against a live server. The hooks added in this

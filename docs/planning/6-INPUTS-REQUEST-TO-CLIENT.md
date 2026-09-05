@@ -1,4 +1,4 @@
-# Shadhil CRM — 6 Inputs Tracker
+# Shadhil CRM - 6 Inputs Tracker
 
 **Source:** `SIGN-OFF-SUMMARY-v3.1.md` §"What we need from you to start Week 1"
 **Status:** Awaiting client (Shadhil promoter + sales leadership + finance lead)
@@ -8,14 +8,14 @@
 
 ---
 
-## Input #1 — RERA + CMDA registration details
+## Input #1 - RERA + CMDA registration details
 
 **Required by:** Week 1 of build (blocks WhatsApp template submission + every customer-facing surface)
 **Format:** RERA = `TN/02/XXXX/YYYY`, CMDA = alphanumeric plan approval number, validity = date range
 
 | Field | Value | Status |
 |---|---|---|
-| RERA registration number | (awaiting — placeholder used) | ⏳ Pending |
+| RERA registration number | (awaiting - placeholder used) | ⏳ Pending |
 | CMDA plan approval number | (awaiting) | ⏳ Pending |
 | Validity start date | (awaiting) | ⏳ Pending |
 | Validity end date | (awaiting) | ⏳ Pending |
@@ -25,20 +25,20 @@
 
 **Where it surfaces in the app:**
 - WhatsApp template headers (4 templates, Meta approval pending)
-- Landing site footer (already on `~/workspace/shadhil-projects/landing-page/` — verify it's correct)
+- Landing site footer (already on `~/workspace/shadhil-projects/landing-page/` - verify it's correct)
 - Push notification titles (lead assigned, booking approved, etc.)
-- RERA compliance export (Admin → Compliance → Project data export — JSON includes RERA# per record)
+- RERA compliance export (Admin → Compliance → Project data export - JSON includes RERA# per record)
 
 ---
 
-## Input #2 — Signed Model C process adoption
+## Input #2 - Signed Model C process adoption
 
 **Required by:** Week 1 of build (blocks any state-machine implementation work in Week 4)
 **Owner of signature:** Shadhil sales leadership (NOT just promoter verbal)
 
 | Item | Value | Status |
 |---|---|---|
-| Signed document on file | (awaiting — confirmed intent) | ⏳ Pending signature |
+| Signed document on file | (awaiting - confirmed intent) | ⏳ Pending signature |
 | Telecaller role understood | "Books + confirms visit, owns through VISIT_SCHEDULED" | ✅ Confirmed |
 | Sales exec role understood | "Conducts visit, takes over at VISITED" | ✅ Confirmed |
 | Manager role understood | "Per-team only, no lead reassignment in v1" | ✅ Confirmed |
@@ -48,7 +48,7 @@
 
 ---
 
-## Input #3 — WhatsApp Business number provisioning
+## Input #3 - WhatsApp Business number provisioning
 
 **Required by:** Week 1 (provisioning) + Week 5 (active + templates approved)
 
@@ -63,13 +63,13 @@
 
 ---
 
-## Input #4 — FreJun vendor sign-off
+## Input #4 - FreJun vendor sign-off
 
 **Required by:** Week 1 (LOI) + Week 5 (signed contract + provisioning complete)
 
 | Field | Value | Status |
 |---|---|---|
-| FreJun contract signed | (awaiting — LOI sent) | ⏳ Pending |
+| FreJun contract signed | (awaiting - LOI sent) | ⏳ Pending |
 | 10 user plan confirmed | (awaiting) | ⏳ Pending |
 | Indian phone number provisioned | (awaiting) | ⏳ Pending |
 | Cost confirmed | ~₹15,300/month at 10 users | ✅ Estimated (per design) |
@@ -78,7 +78,7 @@
 
 ---
 
-## Input #5 — First roster (Admin/Manager/Telecaller/Sales Exec)
+## Input #5 - First roster (Admin/Manager/Telecaller/Sales Exec)
 
 **Required by:** Week 3 (3 users minimum provisioned) + Week 5 (full roster)
 
@@ -95,7 +95,7 @@
 
 ---
 
-## Input #6 — Sales exec + telecaller phone numbers for FreJun KYC
+## Input #6 - Sales exec + telecaller phone numbers for FreJun KYC
 
 **Required by:** Week 1 (FreJun KYC) + Week 5 (numbers live)
 
@@ -120,14 +120,14 @@
 
 ## What PaalStack is doing in parallel (doesn't need the inputs)
 
-- Monorepo scaffold (Turborepo + pnpm) — pure code, no client inputs needed
-- Prisma schema + RLS — pure schema work, no client inputs needed
-- better-auth integration — JWT bridge + auth flows, only needs BETTER_AUTH_SECRET (PaalStack generates)
-- NestJS module scaffold — pure code, no client inputs needed
-- Docker Compose for VPS provisioning — pure infra, no client inputs needed
-- WhatsApp template draft + Meta submission — needs #3 only at submission time, not draft time
-- FreJun dashboard agent provisioning script — code-ready, runs as soon as #6 lands
-- UI component work — uses placeholders for all 6 inputs
+- Monorepo scaffold (Turborepo + pnpm) - pure code, no client inputs needed
+- Prisma schema + RLS - pure schema work, no client inputs needed
+- better-auth integration - JWT bridge + auth flows, only needs BETTER_AUTH_SECRET (PaalStack generates)
+- NestJS module scaffold - pure code, no client inputs needed
+- Docker Compose for VPS provisioning - pure infra, no client inputs needed
+- WhatsApp template draft + Meta submission - needs #3 only at submission time, not draft time
+- FreJun dashboard agent provisioning script - code-ready, runs as soon as #6 lands
+- UI component work - uses placeholders for all 6 inputs
 
 **Estimated parallel work before inputs land: Weeks 1–2 fully productive on backend, partial Week 4 on UI.**
 
@@ -137,7 +137,7 @@
 
 - **Primary:** Reply to PaalStack's weekly Friday status email (gets routed to delivery@paalstack.com)
 - **Backup:** WhatsApp PaalStack delivery lead direct (+91 XXXXX XXXXX)
-- **RERA# specifically:** must come from signed certificate (not screenshot) — promoter signs and forwards PDF
+- **RERA# specifically:** must come from signed certificate (not screenshot) - promoter signs and forwards PDF
 
 ---
 

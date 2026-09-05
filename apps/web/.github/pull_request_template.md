@@ -22,9 +22,9 @@
 
 <!-- Describe how you tested your changes. -->
 
-- [ ] Ran `pnpm test` — all tests pass
-- [ ] Ran `pnpm type-check` — no TypeScript errors
-- [ ] Ran `pnpm lint` — no lint warnings
+- [ ] Ran `pnpm test` - all tests pass
+- [ ] Ran `pnpm type-check` - no TypeScript errors
+- [ ] Ran `pnpm lint` - no lint warnings
 - [ ] Manually tested in the browser
 
 ## Screenshots (if applicable)

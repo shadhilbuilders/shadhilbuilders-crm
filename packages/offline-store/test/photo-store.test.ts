@@ -36,7 +36,7 @@ describe('photo-store', () => {
 // Quota-eviction behavior is verified manually in dev (the code path
 // is `try { set(...) } catch (QuotaExceededError) { evict + retry }`).
 // ESM live bindings prevent mocking `idb-keyval`'s `set` from a test file
-// — mocking would require either restructuring photo-store to take a
+// - mocking would require either restructuring photo-store to take a
 // set function as a constructor arg, or moving to CJS. The trade-off
 // isn't worth it for a 4-line catch block. The real-device QA on
 // Xiaomi/Oppo/Vivo in Task 15 is the binding test for this code path.

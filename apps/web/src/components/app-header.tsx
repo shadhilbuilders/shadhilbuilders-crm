@@ -1,19 +1,19 @@
 'use client';
 
-// AppHeader — slim topbar inside the (app) layout's SidebarInset.
+// AppHeader - slim topbar inside the (app) layout's SidebarInset.
 //
 // History: Phase-1 had a full horizontal top-nav (logo + module nav +
 // user menu) here. The Phase-2 shell (plan §3.1) moves module nav
 // into the sidebar; this topbar becomes:
 //   - SidebarTrigger (mobile-only hamburger that opens the Sheet)
-//   - page title slot (left blank — T10 wires per-page titles)
+//   - page title slot (left blank - T10 wires per-page titles)
 //   - OfflineQueueBadge (D6: revalidation signal sits next to the user
 //     surface that queues work, not in a global <main>)
 //   - UserMenu popover (avatar + sign out)
 //
 // Plan §3.2 / §11 T8. Note: the notification bell is rendered
 // explicitly with `useNotifications({unreadOnly:true})` so the count
-// is honest — it reads from the live query, never a hard-coded value.
+// is honest - it reads from the live query, never a hard-coded value.
 // Until the notifications module ships, the count stays at 0 (which
 // matches the badge contract in ModulePending: no fake numbers).
 
@@ -48,7 +48,7 @@ export function AppHeader() {
 
       <div className="flex shrink-0 items-center gap-1">
         <OfflineQueueBadge />
-        {/* T-D3: SSE connection-state pill — sits next to the bell so
+        {/* T-D3: SSE connection-state pill - sits next to the bell so
             the user sees the realtime channel status at a glance.
             Connects to /api/sse/ping (the existing heartbeat endpoint)
             and reports Connected / Reconnecting / Offline with a
@@ -80,7 +80,7 @@ export function AppHeader() {
 }
 
 // ---------------------------------------------------------------------------
-// Notification bell — honest count from useNotifications, not a stub.
+// Notification bell - honest count from useNotifications, not a stub.
 // Until the backend module ships, useNotifications errors → count is 0.
 // ---------------------------------------------------------------------------
 

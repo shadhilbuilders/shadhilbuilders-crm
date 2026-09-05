@@ -1,7 +1,7 @@
 /**
  * Smoke tests for @shadhil/ui-tokens compliance helpers.
  *
- * We stub the env-resolution layer by setting keys on `globalThis` — that
+ * We stub the env-resolution layer by setting keys on `globalThis` - that
  * path is exercised by `readEnv` for Next.js inline-env replacement AND
  * for any process-shimmed runtime. (process.env is also covered; vitest
  * provides `process.env` automatically.)
@@ -113,18 +113,18 @@ describe('formatComplianceFooter', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/*  T-D8 — WCAG AA status badge contrast audit                                */
+/*  T-D8 - WCAG AA status badge contrast audit                                */
 /* -------------------------------------------------------------------------- */
 /* Every status badge pair used by LeadStatusBadge + the page-level status
  * chips MUST pass AA-normal (4.5:1) for text. The token values below are
  * the shadhil-crm brand overrides from `packages/ui-tokens/src/brand.css`
- * — the upstream @paalstack/react-ui values fail AA on 6/9 pairs (white text
+ * - the upstream @paalstack/react-ui values fail AA on 6/9 pairs (white text
  * on a medium-bright green/blue/red AND on light tints). The overrides
  * darken the strong bg to L~0.55 and add explicit dark foregrounds for the
  * soft tints.
  *
  * If a future change to the override file breaks AA, the test below FAILS
- * the build — that's the "contrast check script in compliance.test.ts"
+ * the build - that's the "contrast check script in compliance.test.ts"
  * verify line the plan calls for. */
 
 const SHADHIL_AA_OVERRIDES = {
@@ -156,7 +156,7 @@ const SHADHIL_AA_OVERRIDES = {
 
 /** Pairs the audit runs against. fg = text color, bg = badge bg.
  *  The token values mirror the overrides in
- *  `packages/ui-tokens/src/brand.css` :root — when you change one,
+ *  `packages/ui-tokens/src/brand.css` :root - when you change one,
  *  change the other. (The duplication is intentional: the .css file
  *  is consumed at runtime by the browser; the .ts file is consumed
  *  at test time by the audit. Both must agree.) */
@@ -177,7 +177,7 @@ const STATUS_PAIRS: ReadonlyArray<{
   { name: 'info-soft', surface: 'CONTACTED-soft badge', fg: SHADHIL_AA_OVERRIDES['info-soft-fg'], bg: SHADHIL_AA_OVERRIDES['info-soft'] },
 ];
 
-describe('T-D8 — WCAG AA status badge contrast', () => {
+describe('T-D8 - WCAG AA status badge contrast', () => {
   it('every shadhil-crm status pair passes AA-normal (>= 4.5:1)', () => {
     const failures: string[] = [];
     for (const pair of STATUS_PAIRS) {
@@ -190,7 +190,7 @@ describe('T-D8 — WCAG AA status badge contrast', () => {
     }
     if (failures.length > 0) {
       throw new Error(
-        `T-D8 audit failed — ${failures.length} status pair(s) below WCAG AA-normal:\n` +
+        `T-D8 audit failed - ${failures.length} status pair(s) below WCAG AA-normal:\n` +
           failures.join('\n') +
           '\nFix the oklch values in `packages/ui-tokens/src/brand.css` and the mirrored `SHADHIL_AA_OVERRIDES` map in `test/compliance.test.ts`, then re-run.',
       );
@@ -199,7 +199,7 @@ describe('T-D8 — WCAG AA status badge contrast', () => {
 
   it('regression: the @paalstack/react-ui defaults FAIL AA on 6/9 pairs (proof the override is needed)', () => {
     // These are the upstream library values (before shadhil-crm overrides).
-    // They exist here to lock the audit's reference point — if a future
+    // They exist here to lock the audit's reference point - if a future
     // library upgrade "fixes" them, this test will start passing and the
     // shadhil-crm override can be removed.
     const LIB_DEFAULTS = {

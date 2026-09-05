@@ -1,5 +1,5 @@
 /**
- * `withOffline()` — higher-order wrapper that adds offline-safety to any
+ * `withOffline()` - higher-order wrapper that adds offline-safety to any
  * existing `useMutation` hook in this app.
  *
  * Replaces the `useOfflineMutation` parallel-hook pattern that the
@@ -102,9 +102,9 @@ export function withOffline<TData = unknown, TVar = unknown, TError = Error>(
 
         // Replay target is the BFF (`/api/bff/*`), NOT the bare
         // `/api/backend` rewrite. Two reasons (T-D4 finding):
-        //   1. Auth — the JWT guard requires `Authorization: Bearer`;
+        //   1. Auth - the JWT guard requires `Authorization: Bearer`;
         //      the BFF route handler mints it from the session cookie.
-        //   2. Path shape — the backend mounts under global prefix
+        //   2. Path shape - the backend mounts under global prefix
         //      `api`, which the BFF proxy adds; the raw rewrite
         //      dropped it (every replay would 404).
         const res = await fetch(`/api/bff${arg.endpoint}`, {
@@ -141,7 +141,7 @@ export function withOffline<TData = unknown, TVar = unknown, TError = Error>(
         return { kind: 'queued', id: queued.id, queuedAt: queued.createdAt };
       } catch (err) {
         // TypeError: Failed to fetch (network error). Same treatment
-        // as 5xx — enqueue and report.
+        // as 5xx - enqueue and report.
         if (err instanceof TypeError && /Failed to fetch|NetworkError|fetch failed/i.test(err.message)) {
           const queued = await queue.enqueue({
             endpoint: arg.endpoint,
@@ -153,7 +153,7 @@ export function withOffline<TData = unknown, TVar = unknown, TError = Error>(
           } as Omit<Mutation, 'id' | 'createdAt' | 'retries'>);
           return { kind: 'queued', id: queued.id, queuedAt: queued.createdAt };
         }
-        // 4xx (or any other thrown error) — re-throw as 'failed' kind.
+        // 4xx (or any other thrown error) - re-throw as 'failed' kind.
         // We map to the discriminated union by throwing and letting the
         // caller's onError catch it. The caller can then call mutateAsync
         // and inspect: on success → kind: 'synced' | 'queued'; on error

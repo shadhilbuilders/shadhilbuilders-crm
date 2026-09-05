@@ -10,7 +10,7 @@ export default defineConfig({
       // CI resilience (runs 33892679873/33893618023): @shadhil/auth
       // resolves through dist/ which is flaky on GH runners (stale
       // tsbuildinfo skip-emit + cache-restore timing). Alias to the
-      // package's TS source — always present after pnpm install.
+      // package's TS source - always present after pnpm install.
       {
         find: /^@shadhil\/auth\/auth-client$/,
         replacement: fileURLToPath(
@@ -29,9 +29,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     // Nothing fails CI just because a fresh feature area hasn't grown tests
-    // yet — coverage is opt-in per module, not enforced repo-wide.
+    // yet - coverage is opt-in per module, not enforced repo-wide.
     passWithNoTests: true,
-    // Playwright e2e tests live in src/test/e2e/ — they have their
+    // Playwright e2e tests live in src/test/e2e/ - they have their
     // own runner (`pnpm test:e2e` → `playwright test`) and must not
     // be picked up by vitest, which would try to execute
     // `test.describe(...)` and fail with "Playwright Test did not

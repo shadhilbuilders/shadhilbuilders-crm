@@ -1,7 +1,7 @@
 // Role hierarchy for the user model (Rounds 17–21):
 //   OWNER ⊇ ADMIN ⊇ MANAGER ⊇ TELECALLER / SALES_EXEC
 // Exactly ONE OWNER exists (partial unique index one_owner,
-// migration 20260831110200) — it exists via seed/migration only; the
+// migration 20260831110200) - it exists via seed/migration only; the
 // API can never create or assign it. It bootstraps ADMINs and can
 // change any role. ADMIN creates/changes MANAGER/TELECALLER/SALES_EXEC.
 // MANAGER creates/changes TELECALLER/SALES_EXEC within their own team.
@@ -38,7 +38,7 @@ export function outranks(actor: Role, target: Role): boolean {
 export function assertCanCreateRole(actor: Role, targetRole: Role): void {
   if (targetRole === OWNER) {
     throw new ForbiddenException(
-      'OWNER cannot be created via the API — exactly one exists via seed',
+      'OWNER cannot be created via the API - exactly one exists via seed',
     );
   }
   if (RANK[actor] <= RANK[targetRole]) {
@@ -68,7 +68,7 @@ export function assertCanChangeRole(
   // Guard 1: nobody changes their own role.
   // (target-user identity check happens in the service; role-level rule:
     //  an actor can only change strictly-lower-ranked users, which already
-    //  excludes self — a role can never outrank itself.)
+    //  excludes self - a role can never outrank itself.)
   if (RANK[actor] <= RANK[targetRole]) {
     throw new ForbiddenException(`${actor} cannot change the role of a ${targetRole}`);
   }

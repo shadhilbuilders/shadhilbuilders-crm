@@ -1,4 +1,4 @@
-// T25 (PR3) — useOnlineStatus + offline-aware skeleton wiring.
+// T25 (PR3) - useOnlineStatus + offline-aware skeleton wiring.
 //
 // Per locked decisions: when `!navigator.onLine && isLoading`, the
 // skeleton surfaces a "Will sync when online" hint above the
@@ -39,7 +39,7 @@ describe('Skeleton.isOffline (T25)', () => {
   });
 
   it('only the list variant honors isOffline (other variants ignore it)', () => {
-    // The "text" variant is a flat list of placeholder lines — the
+    // The "text" variant is a flat list of placeholder lines - the
     // offline hint is intentionally not shown there because the
     // surface is too small. (Documented in the Skeleton prop type.)
     const html = renderToStaticMarkup(

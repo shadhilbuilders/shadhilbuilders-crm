@@ -1,17 +1,17 @@
 'use client';
 
-// PasswordInput — password field with a show/hide visibility toggle.
+// PasswordInput - password field with a show/hide visibility toggle.
 //
 // Shared by every password surface (login, change-password, users):
 // one implementation, one QA contract. Uses the library's prop-API
-// InputGroup with a ghost InputGroupButton as addonEnd — the button
+// InputGroup with a ghost InputGroupButton as addonEnd - the button
 // form (not a bare icon) because WCAG 2.5.8 wants a real control:
 // min 44px hit target, aria-pressed state, and a focusable tab stop.
 //
 // The addon wrapper's own click handler refocuses the INPUT when the
 // click didn't land on a button (dist source: `if
 // (e.target.closest('button')) return`), so a mis-aimed click never
-// closes the keyboard on mobile — another reason the button variant
+// closes the keyboard on mobile - another reason the button variant
 // is the right primitive here.
 //
 // a11y contract: the toggle carries aria-label ("Show password" /

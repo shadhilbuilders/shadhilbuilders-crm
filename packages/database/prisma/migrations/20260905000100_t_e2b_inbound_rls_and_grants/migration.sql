@@ -34,7 +34,7 @@ ALTER TABLE "WebhookEvent" ENABLE ROW LEVEL SECURITY;
 -- Cron service (the inbound webhook handler) has full access.
 -- The handler runs without an actor context (no app.user_id) and
 -- processes Meta events serially, so no row-level filtering is
--- needed — the only invariant is that the dedup happens via the
+-- needed - the only invariant is that the dedup happens via the
 -- externalId unique constraint.
 CREATE POLICY webhook_cron_service_all ON "WebhookEvent"
   FOR ALL
@@ -68,7 +68,7 @@ CREATE POLICY wa_unknown_cron_service_all ON "WhatsappUnknownContact"
 
 -- Admin: SELECT + UPDATE for the follow-up queue view. The
 -- telecaller will get their own policy in Week 8+ when the UI
--- ships — for now, ADMIN-only is enough to query via psql
+-- ships - for now, ADMIN-only is enough to query via psql
 -- (per the T-E2b plan, the UI is a follow-up task).
 CREATE POLICY wa_unknown_select_admin ON "WhatsappUnknownContact"
   FOR SELECT
@@ -85,7 +85,7 @@ CREATE POLICY wa_unknown_update_admin ON "WhatsappUnknownContact"
 -- The WhatsApp inbound webhook handler runs as CRON_SERVICE. It
 -- needs to:
 --   1. INSERT Message rows (channel=WHATSAPP, direction=INBOUND)
---      when a lead replies — sender is the lead, not staff.
+--      when a lead replies - sender is the lead, not staff.
 --   2. UPDATE OutboundMessage rows when Meta sends a delivery
 --      receipt (delivered/read/failed).
 -- The existing message_insert_team / outbound_update_team policies
@@ -97,7 +97,7 @@ CREATE POLICY message_insert_cron_service ON "Message"
 
 -- Message DELETE bypass for ADMIN/CRON_SERVICE. Without this,
 -- cleanup paths (test fixtures, manual purges) cannot delete
--- Message rows directly — only the FK cascade from Lead works.
+-- Message rows directly - only the FK cascade from Lead works.
 CREATE POLICY message_delete_admin_or_cron ON "Message"
   FOR DELETE
   USING (

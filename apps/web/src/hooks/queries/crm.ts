@@ -2,7 +2,7 @@
 //
 // Wire-shape contract (verified 2026-09-04, Pass 1 backend live):
 //   - `users` is the only list-returning module that returns a bare
-//     array — every other list endpoint returns
+//     array - every other list endpoint returns
 //     `{ total: number, rows: T[] }`. Each hook here unwraps `rows` so
 //     page consumers can read `.data` as a normal array.
 //
@@ -113,7 +113,7 @@ export function useCreateLead() {
 }
 
 /**
- * Partial update — name and email only (per LeadUpdateDto contract;
+ * Partial update - name and email only (per LeadUpdateDto contract;
  * state transitions and ownership go through dedicated endpoints).
  */
 export function useUpdateLead(leadId: string | null) {
@@ -138,7 +138,7 @@ export function useUpdateLead(leadId: string | null) {
 }
 
 /**
- * Drive the lead state machine (Model C — DECISION-CHANGELOG §3).
+ * Drive the lead state machine (Model C - DECISION-CHANGELOG §3).
  * Server enforces role + transition guards; UI shows all TRANSITIONS
  * for the current state (server may reject with 403 ROLE_FORBIDDEN).
  */
@@ -182,7 +182,7 @@ export function useVisits(params: { from?: string; to?: string } = {}) {
 
 /**
  * Schedule a new site visit. Invalidates ['visits'] + the parent
- * lead's caches on success — the parent lead auto-advances from
+ * lead's caches on success - the parent lead auto-advances from
  * VISIT_REQUESTED → VISIT_SCHEDULED on the server, so the lead
  * inbox needs a fresh fetch.
  */
@@ -277,7 +277,7 @@ export function useSendMessage(leadId: string) {
 // Bookings (contract: packages/api-types/src/bookings.ts)
 //
 // The bookings controller returns `{ total, rows }` (BookingListResult
-// — verified 2026-09-04, T-BOOK). `useBookings` unwraps so the page
+// - verified 2026-09-04, T-BOOK). `useBookings` unwraps so the page
 // reads `.data` as the row array.
 // ---------------------------------------------------------------------------
 

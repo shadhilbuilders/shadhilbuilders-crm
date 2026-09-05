@@ -1,9 +1,9 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil Builders CRM — RLS context helper
+// Shadhil Builders CRM - RLS context helper
 // ────────────────────────────────────────────────────────────────────────────
 // Sets the per-request session variables that drive PostgreSQL Row-Level
 // Security policies. Must be called inside a transaction (uses SET LOCAL)
-// so the vars are scoped to that transaction only — no cross-request bleed.
+// so the vars are scoped to that transaction only - no cross-request bleed.
 //
 // Usage:
 //   const result = await withRlsContext(prisma, {
@@ -27,12 +27,12 @@
 import type { PrismaClient } from './generated/prisma/client';
 
 // OWNER is org-owner (DB enum has it) but carries no RLS powers of its
-// own — withRlsContext downcasts it to ADMIN. There is EXACTLY ONE owner
+// own - withRlsContext downcasts it to ADMIN. There is EXACTLY ONE owner
 // (partial unique index one_owner, migration 20260831110200); they
 // bootstrap admins and are outside the business surfaces (no leads, no
 // teams) by design.
 //
-// CRON_SERVICE is a service-account marker, NOT a real user role — it
+// CRON_SERVICE is a service-account marker, NOT a real user role - it
 // lives only in the Postgres `app.user_role` GUC set by withRlsContext
 // so the reminder cron's claim UPDATE can satisfy the
 // reminder_cron_service RLS policy. It has no Prisma enum value, no
@@ -72,7 +72,7 @@ const ROLES: readonly string[] = [
 /**
  * Inline a string as a Postgres SQL literal.
  *
- * SET / SET LOCAL do NOT accept protocol bind parameters ($1) — that was the
+ * SET / SET LOCAL do NOT accept protocol bind parameters ($1) - that was the
  * latent breakage found live during AR verification (Prisma error 42601
  * "syntax error at or near $1", the very first withRlsContext call ever run
  * against a real database). Values are therefore inlined, using dollar-
@@ -89,10 +89,10 @@ function sqlLiteral(value: string): string {
  * Run `fn` inside a transaction with PostgreSQL RLS session vars set.
  *
  * Guarantees:
- *   - Vars are scoped to THIS transaction (SET LOCAL) — no cross-request bleed.
+ *   - Vars are scoped to THIS transaction (SET LOCAL) - no cross-request bleed.
  *   - role must be a valid Prisma Role enum value; anything else throws
  *     (fail-closed, AR-2 companion).
- *   - For null teamId (ADMIN), sets app.user_team_id to empty string —
+ *   - For null teamId (ADMIN), sets app.user_team_id to empty string -
  *     policies treat NULL and '' as "no team match" (no rows visible).
  */
 export async function withRlsContext<T>(
@@ -100,12 +100,12 @@ export async function withRlsContext<T>(
   ctx: RlsContext,
   fn: (tx: RlsTx) => Promise<T>,
 ): Promise<T> {
-  // OWNER has no policies of its own — it travels as ADMIN at the RLS
+  // OWNER has no policies of its own - it travels as ADMIN at the RLS
   // layer (superset semantics: policies already treat 'ADMIN' as
   // unrestricted). Business surfaces key off the JWT's real role, so the
   // distinction is preserved above Postgres.
   //
-  // CRON_SERVICE is a service-account marker — it must travel AS-IS so
+  // CRON_SERVICE is a service-account marker - it must travel AS-IS so
   // the reminder_cron_service policy can match its GUC. Downcasting
   // would defeat the bypass.
   const rlsRole =

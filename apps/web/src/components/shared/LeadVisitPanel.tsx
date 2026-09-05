@@ -1,6 +1,6 @@
 'use client';
 
-// LeadVisitPanel — visit scheduling + outcome buttons on the lead
+// LeadVisitPanel - visit scheduling + outcome buttons on the lead
 // detail page. Shows different UI based on the lead's current state:
 //
 //   - VISIT_REQUESTED: "Schedule visit" button (opens dialog)
@@ -31,16 +31,16 @@ type LeadData = {
 };
 
 /**
- * T-D4 — is this failure the "we're offline" case (queue it for later
+ * T-D4 - is this failure the "we're offline" case (queue it for later
  * replay) or a real server rejection (surface to the user)?
  *
  * Offline queueing is for TRANSPORT failures only:
- *   - TypeError: Failed to fetch (the browser can't reach the server —
+ *   - TypeError: Failed to fetch (the browser can't reach the server -
  *     classic offline signal)
  *   - 5xx ApiError (server-side problem; the SW replays later)
  *
  * A 4xx is a REAL rejection (validation, state-machine guard,
- * permissions) — queueing it would poison the offline queue with an
+ * permissions) - queueing it would poison the offline queue with an
  * entry that can never succeed, so it surfaces as a toast instead.
  */
 export function isOfflineError(err: unknown): boolean {
@@ -60,7 +60,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
   // For VISIT_SCHEDULED, we need the open visit row to record an
-  // outcome. Fetch with a wide time window — there should be at most
+  // outcome. Fetch with a wide time window - there should be at most
   // one open visit per lead (RLS + service rules).
   const visitsQuery = useVisits({});
   const openVisit = Array.isArray(visitsQuery.data)
@@ -105,7 +105,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
               method: 'PATCH',
               body,
             })
-            .then(() => toast.success('Saved locally — will sync when online'));
+            .then(() => toast.success('Saved locally - will sync when online'));
         },
       },
     );
@@ -120,7 +120,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
         {showSchedule && canScheduleVisits(user?.role) ? (
           <>
             <p className="text-muted-foreground text-sm">
-              The lead is ready for a site visit — pick a date/time and
+              The lead is ready for a site visit - pick a date/time and
               (optionally) the sales exec who'll conduct it.
             </p>
             <Button

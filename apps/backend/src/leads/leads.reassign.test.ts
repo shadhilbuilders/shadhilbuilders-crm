@@ -1,4 +1,4 @@
-// T-G1 — Reassign integration test (Plan §18 D2/D3).
+// T-G1 - Reassign integration test (Plan §18 D2/D3).
 //
 // Real-DB tests (no mocks). The reassign method runs inside
 // withRlsContext(actor) so we use the bare prisma client to seed
@@ -158,7 +158,7 @@ beforeAll(async () => {
         mustChangePassword: false,
       },
     });
-    // SALES_EXEC in team A — for the "target role can't own NEW lead" test.
+    // SALES_EXEC in team A - for the "target role can't own NEW lead" test.
     await db.user.upsert({
       where: { id: SE_A_ID },
       update: { teamId: TEAM_A_ID, role: 'SALES_EXEC' },
@@ -186,7 +186,7 @@ beforeAll(async () => {
         mustChangePassword: false,
       },
     });
-    // Yet another TELECALLER in team A — used for the same-owner
+    // Yet another TELECALLER in team A - used for the same-owner
     // no-op test (reassign to current owner).
     await db.user.upsert({
       where: { id: SE_A2_ID },
@@ -201,7 +201,7 @@ beforeAll(async () => {
       },
     });
 
-    // The lead under test — NEW state, telecaller-owned, team A.
+    // The lead under test - NEW state, telecaller-owned, team A.
     // Phone must be unique; use a per-run suffix.
     await db.lead.upsert({
       where: { id: LEAD_ID },
@@ -333,7 +333,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('TELECALLER cannot reassign (403 — only ADMIN/MANAGER)', async () => {
+  it('TELECALLER cannot reassign (403 - only ADMIN/MANAGER)', async () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
@@ -354,7 +354,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // role check fires. To exercise the service-layer role check
     // (which is what the test is verifying), the lead must be
     // owned by SE_A. We do that in beforeEach for the role-reject
-    // tests only — see `it.skip` block + manual owned-by-owner
+    // tests only - see `it.skip` block + manual owned-by-owner
     // override below.
     //
     // We re-seed the lead owned by SE_A for the duration of this
@@ -385,7 +385,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('Target role that cannot own the lead state — 400 lane violation', async () => {
+  it('Target role that cannot own the lead state - 400 lane violation', async () => {
     // Lead is in NEW state. SALES_EXEC's lane starts at VISITED,
     // so assigning a NEW lead to a SALES_EXEC is invalid.
     const leads = makeLeadsService();
@@ -401,9 +401,9 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('Target role CAN own a lead at VISITED — SALES_EXEC happy path', async () => {
+  it('Target role CAN own a lead at VISITED - SALES_EXEC happy path', async () => {
     // Move the lead through the legal state path. NEW can't go
-    // directly to VISITED — must go NEW → CONTACTED →
+    // directly to VISITED - must go NEW → CONTACTED →
     // VISIT_REQUESTED → VISIT_SCHEDULED → VISITED.
     const leads = makeLeadsService();
     const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
@@ -412,7 +412,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISIT_SCHEDULED' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISITED' });
 
-    // Now reassign to SE_OWNER (SALES_EXEC in team A) — valid
+    // Now reassign to SE_OWNER (SALES_EXEC in team A) - valid
     // because SALES_EXEC's lane starts at VISITED.
     const result = await leads.reassign(admin, {
       leadId: LEAD_ID,

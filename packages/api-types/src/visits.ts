@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Visits module DTOs (Zod)
+// Shadhil CRM - Visits module DTOs (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // NestJS VisitsController DTOs. Site visits are owned by SalesExec once
 // scheduled; telecaller schedules them but loses write access at VISITED.
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { VisitStatusSchema } from './enums';
 
 /**
- * POST /api/visits — schedule a new site visit. The lead must be in
+ * POST /api/visits - schedule a new site visit. The lead must be in
  * VISIT_REQUESTED or VISIT_SCHEDULED state; the service enforces this.
  */
 export const CreateSiteVisitDtoSchema = z.object({
@@ -26,7 +26,7 @@ export const CreateSiteVisitDtoSchema = z.object({
 export type CreateSiteVisitDto = z.infer<typeof CreateSiteVisitDtoSchema>;
 
 /**
- * PATCH /api/visits/:id — update visit outcome after the visit happens.
+ * PATCH /api/visits/:id - update visit outcome after the visit happens.
  * `outcome` is required. The state-machine service flips the parent lead
  * state accordingly (VISITED → NEGOTIATION, NO_SHOW → reverts to TELECALLER,
  * RESCHEDULED → spawns a new SiteVisit row).
@@ -39,7 +39,7 @@ export const UpdateVisitOutcomeDtoSchema = z.object({
 export type UpdateVisitOutcomeDto = z.infer<typeof UpdateVisitOutcomeDtoSchema>;
 
 /**
- * PATCH /api/visits/:id/reschedule — same shape as create, but pinned to
+ * PATCH /api/visits/:id/reschedule - same shape as create, but pinned to
  * an existing visit. The old visit row is marked RESCHEDULED and the new
  * one carries `rescheduledFromId`.
  */
@@ -57,7 +57,7 @@ export const RescheduleVisitDtoSchema = z.object({
 export type RescheduleVisitDto = z.infer<typeof RescheduleVisitDtoSchema>;
 
 /**
- * GET /api/visits query filter — for the Visit Calendar view.
+ * GET /api/visits query filter - for the Visit Calendar view.
  */
 export const VisitFilterDtoSchema = z.object({
   leadId: z.string().cuid().optional(),

@@ -88,7 +88,7 @@ const nextConfig: NextConfig = {
   ],
 
   // Proxy NestJS BFF paths to the backend (SSE streams, OpenAPI docs).
-  // Sentry, PostHog, and bundle-analyzer wiring are deferred to Phase 2 — they
+  // Sentry, PostHog, and bundle-analyzer wiring are deferred to Phase 2 - they
   // were stripped with the starter boilerplate; bring them back when needed.
   skipTrailingSlashRedirect: true,
   rewrites: async () => [
@@ -106,7 +106,7 @@ const nextConfig: NextConfig = {
 export default withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
-  // Don't register SW in dev — Turbopack HMR + SW is a known footgun.
+  // Don't register SW in dev - Turbopack HMR + SW is a known footgun.
   // Production build emits the bundled SW into public/sw.js.
   disable: process.env.NODE_ENV === 'development',
   // Cap precache at 5MB; a single analytics chunk can blow this otherwise.

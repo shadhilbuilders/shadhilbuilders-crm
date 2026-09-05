@@ -1,9 +1,9 @@
-// PasswordInput — visibility toggle contract.
+// PasswordInput - visibility toggle contract.
 //
 // renderToStaticMarkup-based (repo convention). The initial render is
 // type="password" with a "Show password" ghost button (aria-pressed
-// false). The visibility swap itself is client state — verified
-// in-browser — but the initial contract + a11y attributes are pinned
+// false). The visibility swap itself is client state - verified
+// in-browser - but the initial contract + a11y attributes are pinned
 // here.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * @shadhil/offline-store — platform-agnostic offline data primitives.
+ * @shadhil/offline-store - platform-agnostic offline data primitives.
  *
  * Barrel export. Both apps/web (PWA) and apps/mobile (Expo, future)
  * import from this single entry point.

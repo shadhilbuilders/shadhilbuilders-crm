@@ -1,9 +1,9 @@
-// Bookings service — REST surface for booking lifecycle (HOLD → TOKEN
+// Bookings service - REST surface for booking lifecycle (HOLD → TOKEN
 // → APPROVED/REJECTED/CANCELLED).
 //
 // Scoping (per JWT): every read/write flows through withRlsContext.
 // Booking is team-scoped via parent Lead (booking_write_team policy,
-// FOR ALL with EXISTS-subquery to Lead — same pattern as SiteVisit).
+// FOR ALL with EXISTS-subquery to Lead - same pattern as SiteVisit).
 // The service inherits Lead-scoped visibility: ADMIN sees all,
 // MANAGER sees team, TELECALLER/SALES_EXEC see own leads.
 //
@@ -16,7 +16,7 @@
 // (the plan §18 T-ARM-style transition rules land later); transitions
 // are gated by a simple "must be one of the legal next states from
 // the current state" check plus the manager approval flow. Manager
-// approval uses the `approvedById` column — when transitioning to
+// approval uses the `approvedById` column - when transitioning to
 // APPROVED we set it to actor.sub if the actor is MANAGER/ADMIN.
 import {
   BadRequestException,
@@ -44,7 +44,7 @@ import { PrismaService } from '../prisma/prisma.module';
  * shape in apps/web/src/hooks/queries/crm.ts (useBookings).
  *
  * NOTE: `notes` is referenced in the CreateBookingDto but NOT a
- * column on the Booking model — the service accepts dto.notes
+ * column on the Booking model - the service accepts dto.notes
  * silently (matching the leads pattern; adding the column is a
  * schema PR, out of scope for Pass 1).
  */
@@ -103,7 +103,7 @@ export class BookingsService {
   }
 
   /**
-   * GET /api/bookings?status=...&leadId=... — role-scoped list.
+   * GET /api/bookings?status=...&leadId=... - role-scoped list.
    * Same scoping as leads/visits: ADMIN sees all, MANAGER sees team
    * via teamId lookup, TELECALLER/SALES_EXEC see own leads via the
    * parent Lead's ownerId.
@@ -128,7 +128,7 @@ export class BookingsService {
         }
 
         // Role scoping via parent Lead. The booking policies already
-        // JOIN to Lead — the role-scoped lane just narrows the `where`
+        // JOIN to Lead - the role-scoped lane just narrows the `where`
         // further for staff.
         if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
           where['lead'] = { ownerId: actor.sub };
@@ -188,7 +188,7 @@ export class BookingsService {
   }
 
   /**
-   * POST /api/bookings — start a new booking in HOLD state. The
+   * POST /api/bookings - start a new booking in HOLD state. The
    * booking_write_team RLS policy gates the INSERT via the parent
    * Lead's team/owner.
    */
@@ -220,7 +220,7 @@ export class BookingsService {
             leadId: dto.leadId,
             unitId: dto.unitId,
             userId: actor.sub,
-            // Prisma Decimal — pass as a string to avoid float drift.
+            // Prisma Decimal - pass as a string to avoid float drift.
             amount: dto.amount.toFixed(2),
             ...(dto.tokenAmount !== undefined
               ? { tokenAmount: dto.tokenAmount.toFixed(2) }
@@ -280,7 +280,7 @@ export class BookingsService {
   }
 
   /**
-   * PATCH /api/bookings/:id — advance the booking state. The DTO's
+   * PATCH /api/bookings/:id - advance the booking state. The DTO's
    * toStatus is validated against legalNextStates() from the current
    * state. APPROVED transitions also set approvedById = actor.sub.
    */
@@ -320,11 +320,11 @@ export class BookingsService {
         const allowed = legalNextStates(existing.status);
         if (!allowed.includes(dto.toStatus)) {
           throw new BadRequestException(
-            `Cannot transition booking from ${existing.status} to ${dto.toStatus} (allowed: ${allowed.join(', ') || '<none — terminal>'})`,
+            `Cannot transition booking from ${existing.status} to ${dto.toStatus} (allowed: ${allowed.join(', ') || '<none - terminal>'})`,
           );
         }
 
-        // Manager approval — only MANAGER/ADMIN can transition to
+        // Manager approval - only MANAGER/ADMIN can transition to
         // APPROVED. The full plan §0.11 approval flow (separate modal
         // + audit reason) ships later; for Pass 1 we gate at the
         // service layer.

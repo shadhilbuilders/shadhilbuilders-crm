@@ -35,9 +35,9 @@ cat /path/to/agent-skills/skills/code-review-and-quality/SKILL.md >> .cursorrule
 
 Add these to `.cursor/rules/`:
 
-1. `test-driven-development.md` — TDD workflow and Prove-It pattern
-2. `code-review-and-quality.md` — Five-axis review
-3. `incremental-implementation.md` — Build in small verifiable slices
+1. `test-driven-development.md` - TDD workflow and Prove-It pattern
+2. `code-review-and-quality.md` - Five-axis review
+3. `incremental-implementation.md` - Build in small verifiable slices
 
 ### Phase-Specific Skills (Load on Demand)
 

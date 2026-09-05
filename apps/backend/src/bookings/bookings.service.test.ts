@@ -1,4 +1,4 @@
-// Bookings service tests — exercises the pure logic without a real DB
+// Bookings service tests - exercises the pure logic without a real DB
 // (legalNextStates is the only piece that doesn't need a DB; the
 // DB-touching paths need a live Postgres for the RLS JOIN).
 //
@@ -67,9 +67,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// ─── legalNextStates — pure state-machine helper ──────────────────────
+// ─── legalNextStates - pure state-machine helper ──────────────────────
 
-describe('legalNextStates — booking state machine', () => {
+describe('legalNextStates - booking state machine', () => {
   it.each([
     ['HOLD', ['TOKEN', 'CANCELLED']],
     ['TOKEN', ['APPROVED', 'REJECTED', 'CANCELLED']],
@@ -86,9 +86,9 @@ describe('legalNextStates — booking state machine', () => {
   });
 });
 
-// ─── create — happy path + 404s ──────────────────────────────────────
+// ─── create - happy path + 404s ──────────────────────────────────────
 
-describe('create — start a new booking in HOLD state', () => {
+describe('create - start a new booking in HOLD state', () => {
   it('creates the booking with status=HOLD and writes an audit row', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue({ id: 'lead-1' });
@@ -163,9 +163,9 @@ describe('create — start a new booking in HOLD state', () => {
   });
 });
 
-// ─── transition — state machine + audit row ──────────────────────────
+// ─── transition - state machine + audit row ──────────────────────────
 
-describe('transition — advance booking state', () => {
+describe('transition - advance booking state', () => {
   it('HOLD → TOKEN: succeeds, audit row written, no approvedBy change', async () => {
     const { service, client } = makeService();
     client.booking.findUnique.mockResolvedValue({
@@ -348,9 +348,9 @@ describe('transition — advance booking state', () => {
   });
 });
 
-// ─── list — role scoping + status filter ──────────────────────────────
+// ─── list - role scoping + status filter ──────────────────────────────
 
-describe('list — role-scoped query with status filter', () => {
+describe('list - role-scoped query with status filter', () => {
   it('passes status filter through to the where clause', async () => {
     const { service, client } = makeService();
     client.team.findFirst.mockResolvedValue({ id: 'team-mgr' });

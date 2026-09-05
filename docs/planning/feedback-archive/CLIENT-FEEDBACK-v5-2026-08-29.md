@@ -1,4 +1,4 @@
-# Client Feedback Round 5 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 5 - 2026-08-29 (Shadhil CRM)
 
 You asked: "Can we use REST instead of GraphQL? I only said GraphQL
 because easy integration for mobile app. Is it true?"
@@ -151,7 +151,7 @@ difference vs the GraphQL version is 50-100ms. The user can't
 tell.
 
 If you want the GraphQL "one query" behavior, TanStack Query
-has `useQueries` with dependencies — fire 5 queries, return a
+has `useQueries` with dependencies - fire 5 queries, return a
 joined object. Same code shape, REST underneath.
 
 ---
@@ -250,7 +250,7 @@ No codegen, no schema files, no magic. Just TypeScript.
 
 ---
 
-## The chat realtime — SSE is the right pick
+## The chat realtime - SSE is the right pick
 
 SSE is one-way (server → client), which is exactly what a
 chat needs (the client sends messages via a normal POST, the
@@ -281,9 +281,9 @@ Client (web/mobile)
 ```
 
 NestJS:
-- `POST /leads/:id/messages` — saves the message, publishes
+- `POST /leads/:id/messages` - saves the message, publishes
   to Redis channel `lead:{id}:messages`.
-- `GET /leads/:id/stream` — NestJS SSE handler. Subscribes
+- `GET /leads/:id/stream` - NestJS SSE handler. Subscribes
   to Redis channel, forwards each event to the client.
 - Auth: JWT in `Authorization` header for POST, JWT in
   query param for SSE (because `EventSource` doesn't support
@@ -318,7 +318,7 @@ Everything else from v4 carries over:
 - Monorepo structure (simplified)
 - VPS sizing (8GB Hostinger)
 - Subdomain structure (crm + crm-api, or pick option B/C)
-- 10-week timeline to v1 (now slightly faster — REST saves
+- 10-week timeline to v1 (now slightly faster - REST saves
   1-2 weeks of GraphQL setup, SSE saves another 1-2 weeks
   of subscription server work)
 
@@ -349,6 +349,6 @@ Tell me:
 3. **Apply now** = rewrite DESIGN.md v2 in one pass, OR
    **re-delegate** = have PM specialist produce v2 fresh?
 
-If you don't answer #3, I'll assume "apply now" — that's
+If you don't answer #3, I'll assume "apply now" - that's
 the path that preserves the reasoning trail from these 5
 rounds.

@@ -1,9 +1,9 @@
 'use client';
 
-// LeadActionPanel — bottom-of-detail action surface for a single lead.
+// LeadActionPanel - bottom-of-detail action surface for a single lead.
 //
 // Two actions:
-//   1. Edit name/email (PATCH /leads/:id — name + email only per
+//   1. Edit name/email (PATCH /leads/:id - name + email only per
 //      LeadUpdateDto; everything else goes through dedicated endpoints).
 //   2. Transition state (POST /leads/:id/transition).
 //
@@ -46,11 +46,11 @@ import { labelFor } from '@/lib/labels';
  * Local mirror of the backend Model C transition table. Mirrored here
  * (not imported from the backend) because the backend file lives in
  * `apps/backend/src/leads/leads.state-machine.ts` and is NOT a published
- * package — importing across workspace boundaries would violate the
+ * package - importing across workspace boundaries would violate the
  * monorepo direction (apps/backend may not be consumed by apps/web).
  *
  * Source of truth: apps/backend/src/leads/leads.state-machine.ts:48-72.
- * Drift here means the user sees a button the server will reject — the
+ * Drift here means the user sees a button the server will reject - the
  * server still wins. Re-verify on every backend state-machine change.
  */
 const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {

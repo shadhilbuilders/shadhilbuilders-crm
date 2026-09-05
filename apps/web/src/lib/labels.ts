@@ -1,6 +1,6 @@
 // Friendly-label mapping for every engineering enum that ever reaches the
 // user. The server keeps the canonical enum string (database column, API
-// payload, RLS predicate); the UI never displays the raw value — it looks
+// payload, RLS predicate); the UI never displays the raw value - it looks
 // it up here, falling back to a humanized form of the key.
 //
 // Why a separate file (D2 + Eng-review Section 1 P1):
@@ -15,7 +15,7 @@
 //     and the inventory picker all read from here, so a label rename
 //     touches exactly one site.
 //
-// Plan §9.1 enum source of truth — kept verbatim below. When the Prisma
+// Plan §9.1 enum source of truth - kept verbatim below. When the Prisma
 // schema gains or removes a value, this table and the test must follow.
 //
 //   ┌─────────────────────┬────────────────────┐
@@ -47,7 +47,7 @@
 
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
-// for every x in these lists — see `labels.test.ts`).
+// for every x in these lists - see `labels.test.ts`).
 // ---------------------------------------------------------------------------
 
 /** Lead-status values per the Prisma `Lead.status` enum. */

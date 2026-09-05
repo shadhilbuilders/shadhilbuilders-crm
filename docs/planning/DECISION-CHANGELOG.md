@@ -1,8 +1,8 @@
-# Shadhil CRM — Change Log
+# Shadhil CRM - Change Log
 
 A trace of every design decision in this directory, in order.
 
-## Round 0 — 2026-08-29, 19:41 UTC — PM-agent first brief
+## Round 0 - 2026-08-29, 19:41 UTC - PM-agent first brief
 
 `DESIGN.md` (v1) saved. Delegated to the `agency_agents` Product
 Manager specialist. 10 sections: roles (Sales Agent + Sales Manager +
@@ -11,14 +11,14 @@ MVP = 5 modules + thin booking, multi-project data model, 6
 integration touchpoints, stack = Next.js + Drizzle + Neon + Vercel,
 5 success metrics, 8 open questions, 7 out-of-scope items.
 
-## Round 1 — 2026-08-29, ~20:00 UTC — Client's first call
+## Round 1 - 2026-08-29, ~20:00 UTC - Client's first call
 
 `CLIENT-FEEDBACK-2026-08-29.md` saved. Client revealed:
 - Roles are actually 4 distinct: Admin (1, super-user), Manager
   (multiple, manages telecallers + execs), Telecaller (first touch),
   Sales Executive (closer, post-handoff).
 - Two-stage ownership with hard handoff gate at "customer agreed
-  to visit" — single `assignedTo` field is wrong.
+  to visit" - single `assignedTo` field is wrong.
 - Chat interface is a first-class MVP module, not an activity log.
 - Permission matrix is missing.
 - Cloud telephony (Exotel/Tata Tele/Knowlarity) gets promoted
@@ -26,7 +26,7 @@ integration touchpoints, stack = Next.js + Drizzle + Neon + Vercel,
 - Audit log writes in v1, UI in vNext.
 - 6 new open questions added (Q9–Q15).
 
-## Round 2 — 2026-08-29, ~20:30 UTC — Stack pushback
+## Round 2 - 2026-08-29, ~20:30 UTC - Stack pushback
 
 `CLIENT-FEEDBACK-v2-2026-08-29.md` saved. User asked about Supabase
 + Prisma + better-auth instead of Neon + Drizzle + NextAuth, and
@@ -38,14 +38,14 @@ Decisions:
 - **Supabase** over Neon (free tier + RLS + Mumbai region).
 - **Prisma** accepted (Drizzle push-back noted but user chose Prisma).
 - **better-auth** over Supabase Auth (MIT, no per-user pricing).
-- **Web + mobile both in v1** — recommend PWA first, Expo in v1.1.
+- **Web + mobile both in v1** - recommend PWA first, Expo in v1.1.
 - **Direct telecaller → exec: NO** for v1, manager handoff stays
   default. `ManagerAssignmentRule` table designed in for v1.1.
 - **No-show / reschedule states in v1**, not vNext.
 - **RBAC + ABAC both from day 1** (per PaalStack saas-mvp-architecture
   skill default at the time).
 
-## Round 3 — 2026-08-29, ~20:50 UTC — Real-world stack evaluation
+## Round 3 - 2026-08-29, ~20:50 UTC - Real-world stack evaluation
 
 `CLIENT-FEEDBACK-v3-2026-08-29.md` saved. User said: drop the
 PaalStack pattern matching, evaluate stacks for real-world fit.
@@ -56,7 +56,7 @@ Decision: **Option B (NestJS + GraphQL + VPS) locked**, with
 explicit acknowledgement of the 3-4× slower time-to-MVP cost
 in exchange for "reusable infra" value.
 
-## Round 4 — 2026-08-29, ~21:10 UTC — BFF pattern locked
+## Round 4 - 2026-08-29, ~21:10 UTC - BFF pattern locked
 
 `CLIENT-FEEDBACK-v4-2026-08-29.md` saved. User asked: "Can we
 use better-auth BFF in Next.js or Next.js route handler for
@@ -69,9 +69,9 @@ JWT bridge to NestJS. Monorepo with 3 apps (web, mobile, backend)
 + 3 shared packages (api-types, auth-client, ui-tokens). Full
 Prisma schema with 12 models included in this delta.
 
-Subdomain structure: Option 1 (split — crm + crm-api) chosen.
+Subdomain structure: Option 1 (split - crm + crm-api) chosen.
 
-## Round 5 — 2026-08-29, ~21:30 UTC — REST over GraphQL
+## Round 5 - 2026-08-29, ~21:30 UTC - REST over GraphQL
 
 `CLIENT-FEEDBACK-v5-2026-08-29.md` saved. User asked: "Can we
 use REST instead of GraphQL? I only said GraphQL because easy
@@ -84,7 +84,7 @@ Saves 1-2 weeks of GraphQL setup + 1-2 weeks of subscription
 server work. New realistic timeline: 8-9 weeks (later revised to
 10 weeks for the first-time-build tax).
 
-## Round 6 — 2026-08-29, ~21:45 UTC — India telephony pricing
+## Round 6 - 2026-08-29, ~21:45 UTC - India telephony pricing
 
 `CLIENT-FEEDBACK-v6-2026-08-29.md` saved. User asked: "For
 Telephony, can we have cheap and best for India?"
@@ -99,7 +99,7 @@ transcription INCLUDED is the killer feature for the "monitor
 by application" requirement. Total real cost for 10 users:
 ~₹15,300/month (plan + usage + number).
 
-## Round 7 — 2026-08-29, ~21:57 UTC — Amazon Connect comparison
+## Round 7 - 2026-08-29, ~21:57 UTC - Amazon Connect comparison
 
 `CLIENT-FEEDBACK-v7-2026-08-29.md` saved. User asked: "What about
 AWS Amazon Connect Customer?"
@@ -113,7 +113,7 @@ path: both providers expose webhook APIs, so switching is
 Connect documented as v2 migration path if Shadhil grows past
 50 users, expands to UAE, or hits enterprise compliance.**
 
-## Round 8 — 2026-08-29, ~22:15 UTC — Apply (DESIGN.md v2)
+## Round 8 - 2026-08-29, ~22:15 UTC - Apply (DESIGN.md v2)
 
 DESIGN.md v2 written. Consolidates v1 + 7 rounds into a single
 38KB document. 18 sections: roles, modules, lifecycle, RBAC
@@ -123,7 +123,7 @@ push notifications, success metrics, timeline, open questions
 log, where to read more. CLIENT-QUESTIONS.md updated to v2 with
 Q0–Q16 grouped by priority.
 
-## Round 9 — 2026-08-29, ~22:30 UTC — Prisma + multi-app database pattern
+## Round 9 - 2026-08-29, ~22:30 UTC - Prisma + multi-app database pattern
 
 `CLIENT-FEEDBACK-v8-2026-08-29.md` saved. User asked:
 1. "Can we use Prisma with NestJS + REST API?"
@@ -175,17 +175,17 @@ Two schema additions needed before build:
 | `CLIENT-FEEDBACK-v7-2026-08-29.md` | Round 7 (Amazon Connect) | ~11 KB |
 | `CLIENT-FEEDBACK-v8-2026-08-29.md` | Round 8 (Prisma + multi-app DB pattern) | ~13 KB |
 
-## Round 10 — 2026-08-29, ~22:35 UTC — Reminders module added
+## Round 10 - 2026-08-29, ~22:35 UTC - Reminders module added
 
 `CLIENT-FEEDBACK-v9-2026-08-29.md` saved. User asked for reminders
 to staff (telecaller + sales exec) when customer reschedules a
-site visit. Not just a clarification — a real new feature.
+site visit. Not just a clarification - a real new feature.
 
 Added a new Reminders module to v1 with 4 reminder types:
 1. Pre-visit staff reminder (T-2h before, push + in-app + email)
 2. Pre-visit customer reminder (T-24h and T-2h, WhatsApp)
 3. Reschedule follow-up reminder (T+1h after reschedule,
-   prompts staff to confirm with customer — THE ONE USER ASKED FOR)
+   prompts staff to confirm with customer - THE ONE USER ASKED FOR)
 4. No-show staff reminder (already in v2, T+2h)
 
 Added a new `Reminder` Prisma model with status state machine
@@ -199,12 +199,12 @@ Two genuine choices surfaced to the client:
   (recommended, push failures are real)
 
 Two new WhatsApp templates needed (visit_reminder_24h,
-visit_reminder_2h) — submit in week 1 to overlap with Meta's
+visit_reminder_2h) - submit in week 1 to overlap with Meta's
 approval SLA.
 
 Updated timeline: 10 weeks → 12 weeks (1 week for reminder system).
 
-## Round 11 — 2026-08-29, ~22:36 UTC — Resolved all 16 client questions
+## Round 11 - 2026-08-29, ~22:36 UTC - Resolved all 16 client questions
 
 User said "client leave it to me, you pick the best option for
 long run. System needs to adapt, adjust, reliable, scalable,
@@ -241,7 +241,7 @@ Reliability design (§4 of CLIENT-DECISIONS.md):
 Pushed back honestly: "1 ms literally" is impossible. 99.95% is
 the realistic target for v1.
 
-## Round 12 — 2026-08-29, ~22:50 UTC — Full push notification system
+## Round 12 - 2026-08-29, ~22:50 UTC - Full push notification system
 
 `CLIENT-FEEDBACK-v10-2026-08-29.md` saved. User asked for "push
 notification for staff for both web and mobile." The v2 brief §10
@@ -250,7 +250,7 @@ complete cross-platform push system.
 
 **Design:**
 - **Expo Push as the universal push service** (handles iOS,
-  Android, AND web via one API — saves 1-2 weeks of multi-
+  Android, AND web via one API - saves 1-2 weeks of multi-
   platform setup)
 - **12 distinct staff triggers** (lead assigned, handoff, no-show,
   chat reply, booking approval, daily summary, etc.) all going
@@ -267,7 +267,7 @@ complete cross-platform push system.
 **Two real reliability concerns flagged:**
 - Push delivery is not 100% (Expo ~99%, Web Push ~95%)
 - Push tokens change (app reinstall, FCM refresh, browser
-  data clear) — backend must handle
+  data clear) - backend must handle
 
 **The one choice to surface:** Daily summary push (trigger 12)
 should be opt-in, default off. Some managers love it, others
@@ -281,7 +281,7 @@ staff (T+2h) 7. Customer replied to chat (when staff is away)
 10. Customer rescheduled 11. Mentioned in note/chat (deferred
 to v1.1) 12. Daily summary (opt-in, default off).
 
-## Round 13 — 2026-08-29, ~22:58 UTC — Notification center (inbox) added
+## Round 13 - 2026-08-29, ~22:58 UTC - Notification center (inbox) added
 
 `CLIENT-FEEDBACK-v11-2026-08-29.md` saved. User asked: "Store
 notifications and show it in the crm app both web and mobile."
@@ -291,7 +291,7 @@ adds the inbox-style notification center.
 
 **Design:**
 - New `Notification` table (separate from v10's `PushNotification`
-  audit log) — the user's inbox. Mutable state (`readAt`,
+  audit log) - the user's inbox. Mutable state (`readAt`,
   `dismissedAt`). 90-day visibility, 7-year retention.
 - Bell icon + unread badge in top nav (web) and tab bar (mobile).
 - Dropdown panel (web) and full screen (mobile) listing all
@@ -312,7 +312,7 @@ adds the inbox-style notification center.
 - Deep links to relevant pages (best-effort, no validation in v1)
 - Real-time badge updates via SSE
 
-**One choice to surface:** Daily summary push (trigger 12) —
+**One choice to surface:** Daily summary push (trigger 12) -
 should it ALSO create an inbox entry? Default: yes. Surface
 to client.
 
@@ -330,7 +330,7 @@ to client.
   v1.1 adds per-trigger settings if Shadhil complains)
 - Don't add notification SOUND customization in v1
 
-## Round 14 — 2026-08-29, ~23:05 UTC — APPLY: DESIGN.md v3
+## Round 14 - 2026-08-29, ~23:05 UTC - APPLY: DESIGN.md v3
 
 DESIGN.md v3 written. 43.5KB, 21 sections, 19 Prisma models,
 9 modules, 12 push triggers, 4 reminder types.
@@ -376,7 +376,7 @@ web and mobile, and the longer production-readiness tail).
 **The brief is now build-ready.** Send to Shadhil for final
 sign-off. Then start week 1.
 
-## Round 15 — 2026-08-29, ~23:08 UTC — Telecaller handoff point question
+## Round 15 - 2026-08-29, ~23:08 UTC - Telecaller handoff point question
 
 User asked: "Should telecaller follow up the customer until site
 visited, or telecaller assign to manager after the first
@@ -392,7 +392,7 @@ existing sales process, not on what's cleanest architecturally.
 
 **The four models:**
 
-  A) Handoff at "verbal yes" — current v3. Telecaller has
+  A) Handoff at "verbal yes" - current v3. Telecaller has
      no skin in the game for visit actually happening. Bad
      for no-show rate (30-40% industry baseline).
 
@@ -421,7 +421,7 @@ If you (the PaalStack user) want to lock Model C in advance,
 say "apply Model C" and I'll update the relevant sections
 of DESIGN.md.
 
-## Round 16 — 2026-08-29, ~23:15 UTC — APPLY Model C: Hybrid handoff
+## Round 16 - 2026-08-29, ~23:15 UTC - APPLY Model C: Hybrid handoff
 
 User said "apply Model C." Updated DESIGN.md v3 → v3.1 with
 the hybrid handoff model (telecaller owns through VISIT
@@ -440,12 +440,12 @@ outcome, exec conducts the visit and takes over after).
     Telecaller schedules + confirms + re-engages. Exec
     conducts + logs outcome + closes.
   - **§4 RLS policies:** New EXISTS subquery for shared
-    VISIT_SCHEDULED visibility — both telecaller and exec
+    VISIT_SCHEDULED visibility - both telecaller and exec
     can see the lead during the scheduled window.
   - **§5 Enums:** LeadStatus reduced from 15 to 13 states
     (removed HANDED_OFF_TO_MANAGER, ASSIGNED_TO_EXEC).
   - **§6 Integrations:** Removed `sales_exec_handoff_intro`
-    WhatsApp template (not needed in Model C — the exec
+    WhatsApp template (not needed in Model C - the exec
     just shows up to a confirmed visit, no separate intro).
   - **§13 Success metrics:** New "No-show rate" metric
     (the KEY Model C metric) + updated "Handoff latency"
@@ -467,7 +467,7 @@ of truth.
 Model A (same state machine, just different transitions).
 13 weeks to v1.
 
-## Round 17 — 2026-08-31 — User-creation hierarchy locked
+## Round 17 - 2026-08-31 - User-creation hierarchy locked
 
 Client confirmed the user-creation model:
 
@@ -475,20 +475,20 @@ Client confirmed the user-creation model:
   Input #5, rotate on first login). The admin bootstraps the
   org: can create MANAGER, TELECALLER and SALES_EXEC users.
 - A MANAGER, once created, can create TELECALLER and
-  SALES_EXEC users — scoped to their own team.
+  SALES_EXEC users - scoped to their own team.
 - TELECALLER and SALES_EXEC can create nobody.
 
 Code change baked in now
 (`packages/auth-client/src/auth.ts`): `admin()` plugin options
 extended to `admin({ defaultRole: 'TELECALLER', adminRoles:
-['ADMIN'] })` — better-auth 1.7 gates its admin endpoints
+['ADMIN'] })` - better-auth 1.7 gates its admin endpoints
 (user create/list/ban via adminClient) to the ADMIN role only;
 MANAGER keeps plain sign-in. `role`/`teamId` remain
 `input: false` additional fields, so no signup path can
 self-assign a role.
 
 Still to build (not yet in the repo as of this round):
-- `users` module in apps/backend — role-guarded create/list
+- `users` module in apps/backend - role-guarded create/list
   endpoints. ADMIN creates any role; MANAGER creates
   TELECALLER/SALES_EXEC only within `Team.managerId` scope.
   Enforce with a NestJS guard, not UI hiding.
@@ -496,11 +496,11 @@ Still to build (not yet in the repo as of this round):
   `Account` row keyed `providerId: 'credential'`,
   `accountId: user.id`, `issuer: 'local:credential'`,
   scrypt `salt:key` hash (N=16384, r=16, p=1, dkLen=64,
-  NFKC-normalized) — better-auth 1.7 sign-in contract
+  NFKC-normalized) - better-auth 1.7 sign-in contract
   (dist/api/routes/sign-in.mjs:320).
 - Web UI: admin "Users" page + manager "My Team" page.
 - Open question: when the ADMIN creates a MANAGER, team
-  assignment — creating the manager auto-creates their Team
+  assignment - creating the manager auto-creates their Team
   (Team.managerId = manager) vs admin picks an existing team.
   Recommended: auto-create team on manager creation;
   manager-created users join the manager's teamId.
@@ -508,12 +508,12 @@ Still to build (not yet in the repo as of this round):
   single-ADMIN fragility is resolved by the new SUPER_ADMIN
   layer instead of admin self-service.
 
-## Round 18 — 2026-08-31 — Lead creation + authority inheritance
+## Round 18 - 2026-08-31 - Lead creation + authority inheritance
 
 Client confirmed two more rules:
 
 1. **Telecaller and Sales Exec CAN create leads/enquiries.**
-   The §4 permission matrix had no "create lead" row at all —
+   The §4 permission matrix had no "create lead" row at all -
    it now exists: telecaller/exec creation puts the creator on
    the lead as `ownerId` (ownerType from their role).
    Manager-created leads land in the manager's team; admin can
@@ -530,7 +530,7 @@ outcomes), re-engage after no-show, log activity, send
 WhatsApp. "Create user accounts" now shows manager ✅ for
 telecaller + exec in their own team (Round 17). Two gates stay
 ❌ for superiors on purpose: exec cannot schedule visits and
-telecaller cannot log VISITED — these are Model C
+telecaller cannot log VISITED - these are Model C
 *responsibility* boundaries (credit/KPI assignment), not
 capability caps. Reports row clarified: admin sees org-wide
 KPIs.
@@ -553,46 +553,46 @@ so admin/manager creating a lead INTO another team must have
 the service layer set the RLS context team to the TARGET team
 for that insert, or the WITH CHECK will reject the row.
 
-## Round 19 — 2026-08-31 — Users module BUILT and live-verified
+## Round 19 - 2026-08-31 - Users module BUILT and live-verified
 
 The user-creation hierarchy (Rounds 17/18) is implemented,
 endpoint-tested, and cleaned up after. Uncommitted.
 
 **New files**
-- `apps/backend/src/users/` — module, controller, service:
-  - `POST /api/users` — ADMIN creates any role; MANAGER
+- `apps/backend/src/users/` - module, controller, service:
+  - `POST /api/users` - ADMIN creates any role; MANAGER
     creates TELECALLER/SALES_EXEC in their own team; staff
     roles → 403. Admin creating a MANAGER without teamId
     auto-creates the Team. Admin creating staff without
     teamId → 400. Unique-email conflict → 409 (Prisma).
-  - `GET /api/users` — admin: all; manager: via
+  - `GET /api/users` - admin: all; manager: via
     `Team.managerId`; staff: self. 403-free for admin/manager
     paths by role. staff see exactly one row (self).
-  - `apps/backend/src/users/roles.ts` — hierarchy +
+  - `apps/backend/src/users/roles.ts` - hierarchy +
     `assertCanCreateRole`. Explicit per-target rules after
     live test caught rank-equality bug (manager→manager was
     201 before the fix).
-  - `apps/backend/src/users/credentials.ts` — better-auth 1.7
+  - `apps/backend/src/users/credentials.ts` - better-auth 1.7
     Account contract: `providerId: 'credential'`,
     `accountId: user.id`, `issuer: 'local:credential'`,
     scrypt N=16384/r=16/p=1/dkLen=64 "salt:key" (seed.ts
     mirror). Verified: admin-created manager signs in 200.
 
 **Changed files**
-- `packages/database/src/index.ts` — re-exports
+- `packages/database/src/index.ts` - re-exports
   `withRlsContext` / `RlsContext` / `RlsTx` (was internal only).
-- `packages/api-types/src/auth.ts` — `CreateUserDtoSchema` /
+- `packages/api-types/src/auth.ts` - `CreateUserDtoSchema` /
   `CreateUserDto` (Zod, role explicit, no default).
-- `apps/backend/src/auth/better-auth.middleware.ts` —
+- `apps/backend/src/auth/better-auth.middleware.ts` -
   `forRoutes('auth/*splat')` (Nest 12 path-to-regexp v8) +
   imports AuthModule for the handler token + **now imported in
-  app.module.ts** (it never was — sign-in was broken on the
+  app.module.ts** (it never was - sign-in was broken on the
   API side until today).
-- `apps/backend/src/app.module.ts` — UsersModule +
+- `apps/backend/src/app.module.ts` - UsersModule +
   BetterAuthMiddlewareModule registered.
-- `apps/backend/src/prisma/prisma.module.ts` — exports
+- `apps/backend/src/prisma/prisma.module.ts` - exports
   PrismaService.
-- `packages/auth-client/src/auth.ts` (from earlier today) —
+- `packages/auth-client/src/auth.ts` (from earlier today) -
   `admin({ defaultRole: 'TELECALLER', adminRoles: ['ADMIN'] })`.
 
 **Live verification (dev server, e2e via curl + issueJwt)**
@@ -615,21 +615,21 @@ users).
   better-auth docs) in a follow-up migration.
 - Manager scoping now depends on Team.managerId; the JWT
   teamId claim should be refreshed from the DB at session
-  issue (or manager JWTs should carry the managed team id) —
+  issue (or manager JWTs should carry the managed team id) -
   tracked as a follow-up.
 - Round 17's open question is resolved by implementation:
   manager creation auto-creates a Team; passing an explicit
   teamId for a new MANAGER is also supported (admin choice).
 
 
-## Round 20 — 2026-08-31 — 5-role model + role changes, BUILT and live-verified
+## Round 20 - 2026-08-31 - 5-role model + role changes, BUILT and live-verified
 
 Client locked the final role model and its change hierarchy:
 
 - Roles: SUPER_ADMIN, ADMIN, MANAGER, TELECALLER, SALES_EXEC.
 - Exactly ONE SUPER_ADMIN, ever (client-confirmed). Exists only
   via seed/migration; the API refuses to create, assign, or
-  change it — enforced in code AND by a Postgres partial
+  change it - enforced in code AND by a Postgres partial
   unique index (`one_super_admin`, verified live: inserting a
   second super admin is rejected at the DB).
 - Create hierarchy: SUPER_ADMIN → any role below itself;
@@ -648,12 +648,12 @@ Client locked the final role model and its change hierarchy:
   (verified: promoted user signed in 200 with the new role).
 
 **Schema/migration** (packages/database, applied to the live DB):
-- `20260831110000_role_super_admin` — ALTER TYPE Role ADD
+- `20260831110000_role_super_admin` - ALTER TYPE Role ADD
   VALUE 'SUPER_ADMIN' BEFORE 'ADMIN' (split transaction per
   Postgres ALTER TYPE rules).
-- `20260831110100_bootstrap_super_admin` — seeded
+- `20260831110100_bootstrap_super_admin` - seeded
   admin@shadhilbuilders.in row updated ADMIN → SUPER_ADMIN.
-- `20260831110200_one_super_admin_only` — partial unique index
+- `20260831110200_one_super_admin_only` - partial unique index
   ON "User"(role) WHERE role='SUPER_ADMIN' (Prisma cannot
   express partial indexes; native SQL only). Live-verified
   with a deliberate duplicate insert → unique violation.
@@ -662,18 +662,18 @@ Client locked the final role model and its change hierarchy:
   Role type widened.
 
 **RLS layer** (packages/database/src/rls.ts): SUPER_ADMIN has
-no policies of its own — withRlsContext downcasts it to ADMIN
+no policies of its own - withRlsContext downcasts it to ADMIN
 so all 19 existing policy sites keep working unchanged.
 app.user_role receives 'ADMIN' for super admins; the JWT and
 API layer keep the distinction. Role registries moved in
 lockstep: rls.ts ROLES + Role union, jwt.ts ROLES,
 api-types RoleSchema (+ new AssignableRoleSchema excluding
-SUPER_ADMIN — unused by the endpoint for now, kept as the
+SUPER_ADMIN - unused by the endpoint for now, kept as the
 documented contract), auth-client admin plugin now
 `roles: { ADMIN: adminAc, SUPER_ADMIN: adminAc },
 adminRoles: ['SUPER_ADMIN','ADMIN']` (better-auth 1.7 requires
 adminRoles entries to be keys in `roles`; ADMIN reuses the
-stock adminAc statement set — the package test caught this).
+stock adminAc statement set - the package test caught this).
 
 **Users module** (apps/backend/src/users/):
 - roles.ts reworked: RANK total order with SUPER_ADMIN=4,
@@ -689,7 +689,7 @@ stock adminAc statement set — the package test caught this).
   safeParse helper mapping ZodError → 400 (was 500).
 - api-types: ChangeRoleDtoSchema/ChangeRoleDto; SignupDto
   teamId relaxed from `.cuid()` to a non-empty string (seed
-  teams are `seed-team-<id>` — a permanent legit pattern the
+  teams are `seed-team-<id>` - a permanent legit pattern the
   old validator rejected).
 - apps/backend now declares zod (imports it directly for the
   parse helper).
@@ -704,7 +704,7 @@ demoting a team-leading manager → 409 with the team named in
 the message. RC9 the ADMIN-promoted user signs in → 200
 (credential row untouched by role changes). Audit trail
 verified: user.create + user.changeRole rows with before/after.
-Test data deleted after the run — DB back to the 4 seeded
+Test data deleted after the run - DB back to the 4 seeded
 users (1 super admin, 1 manager, 1 telecaller, 1 sales exec),
 1 team, audit rows intact.
 
@@ -712,12 +712,12 @@ users (1 super admin, 1 manager, 1 telecaller, 1 sales exec),
 for better-auth's /api/auth/token; JWT teamId claim refresh
 for managers.
 
-## Round 21 — 2026-09-03 — Role rename: SUPER_ADMIN → OWNER
+## Round 21 - 2026-09-03 - Role rename: SUPER_ADMIN → OWNER
 
 Client asked to rename the org-owner role from `SUPER_ADMIN` to
 `OWNER` for clarity (a "super admin" sounds like an elevated
 admin; "owner" matches how the client talks about the account
-that bootstraps the org). No semantic change to the role —
+that bootstraps the org). No semantic change to the role -
 same rank (top of hierarchy), same uniqueness invariant
 (exactly one exists, partial unique index), same RLS downcast
 behavior (travels as ADMIN at the Postgres layer).
@@ -730,7 +730,7 @@ been migrated past 20260831 init), so we could safely:
   and recreate them under new names with the renamed value.
 - Rename the partial unique index `one_super_admin` → `one_owner`.
 - Rename the env vars `SEED_ADMIN_*` → `SEED_OWNER_*` (the
-  existing `SEED_ADMIN_*` names were already a latent bug —
+  existing `SEED_ADMIN_*` names were already a latent bug -
   `seed.ts` always read `SEED_${prefix}_*` with `prefix ===
   'SUPER_ADMIN'`, so the env vars had never been reachable).
 - Update every string literal, type alias, exported constant,
@@ -751,42 +751,42 @@ been migrated past 20260831 init), so we could safely:
 place):**
 
 - `20260831110000_role_super_admin` → `20260831110000_role_owner`
-  — `ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'OWNER' BEFORE 'ADMIN';`
+  - `ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'OWNER' BEFORE 'ADMIN';`
 - `20260831110100_bootstrap_super_admin` → `20260831110100_bootstrap_owner`
-  — `UPDATE "User" SET "role" = 'OWNER' WHERE "email" = 'admin@shadhilbuilders.in';`
+  - `UPDATE "User" SET "role" = 'OWNER' WHERE "email" = 'admin@shadhilbuilders.in';`
 - `20260831110200_one_super_admin_only` → `20260831110200_one_owner_only`
-  — partial unique index renamed to `one_owner`, `WHERE` clause
+  - partial unique index renamed to `one_owner`, `WHERE` clause
     flipped to `'OWNER'`.
 
 **Renamed in code:**
 
-- `prisma/schema.prisma` — `enum Role` first value
+- `prisma/schema.prisma` - `enum Role` first value
   `SUPER_ADMIN` → `OWNER`.
-- `packages/database/src/rls.ts` — local `Role` union,
+- `packages/database/src/rls.ts` - local `Role` union,
   `ROLES` allowlist, and the downcast target `ctx.role === 'SUPER_ADMIN'`.
-- `packages/database/src/seed.ts` — `readSeedUser` prefix
+- `packages/database/src/seed.ts` - `readSeedUser` prefix
   union, default name `"Super Admin"` → `"Owner"`, env-var
   prefix, and the final `superAdmin` → `owner` local.
-- `packages/auth-client/src/auth.ts` — `admin({ roles: { ...
+- `packages/auth-client/src/auth.ts` - `admin({ roles: { ...
   }, adminRoles: [...] })` keys.
-- `packages/auth-client/src/jwt.ts` — `ROLES` tuple.
-- `packages/api-types/src/enums.ts` — `RoleSchema` and
+- `packages/auth-client/src/jwt.ts` - `ROLES` tuple.
+- `packages/api-types/src/enums.ts` - `RoleSchema` and
   `AssignableRoleSchema` (the `.exclude(['OWNER'])`).
-- `packages/api-types/src/auth.ts` — JSDoc on `ChangeRoleDtoSchema`.
-- `apps/backend/src/users/roles.ts` — `RANK` record, exported
+- `packages/api-types/src/auth.ts` - JSDoc on `ChangeRoleDtoSchema`.
+- `apps/backend/src/users/roles.ts` - `RANK` record, exported
   constant `SUPER_ADMIN` → `OWNER`, guard message strings,
   JSDoc.
-- `apps/backend/src/users/users.service.ts` — file header,
+- `apps/backend/src/users/users.service.ts` - file header,
   import name, all four `actorRole === '...'` checks,
   comments.
-- `apps/backend/src/users/users.controller.ts` — both
+- `apps/backend/src/users/users.controller.ts` - both
   `@ApiOperation({ summary })` strings.
-- `apps/web/src/lib/session.ts` — `isAdminLike` check,
+- `apps/web/src/lib/session.ts` - `isAdminLike` check,
   comments on `canReassign` and `canViewAudit`.
-- `apps/web/src/apis/client.ts` — `Role` union and
+- `apps/web/src/apis/client.ts` - `Role` union and
   `STAFF_ROLES` allowlist.
-- `apps/web/src/app/(app)/page.tsx` — file-header comment.
-- `apps/web/src/app/(app)/users/page.tsx` — file-header
+- `apps/web/src/app/(app)/page.tsx` - file-header comment.
+- `apps/web/src/app/(app)/users/page.tsx` - file-header
   comment.
 
 **Env vars:**
@@ -796,21 +796,21 @@ place):**
   `.env.example` and `packages/database/.env.example`. The
   placeholder display name changed from `"Admin"` to
   `"Owner"` (the seeded `admin@shadhilbuilders.in` email is
-  kept — it's the only stable handle the client knows).
+  kept - it's the only stable handle the client knows).
 
 **Unchanged on purpose:**
 
-- `docker/postgres-init/00-init.sql` line 30 — the Postgres
+- `docker/postgres-init/00-init.sql` line 30 - the Postgres
   role attribute `NOSUPERUSER` is a Postgres built-in, unrelated.
-- `packages/auth-client/test/auth.test.ts` line 99 — `'SUPERUSER'`
+- `packages/auth-client/test/auth.test.ts` line 99 - `'SUPERUSER'`
   is a deliberate sentinel role used to assert that `verifyJwt`
   rejects unknown role values. Renaming it would weaken the
   test.
-- `README.md` line 37 — `admin_placeholder_pw` is the password
+- `README.md` line 37 - `admin_placeholder_pw` is the password
   string. Renaming it would invalidate any existing dev DB
   rows; keeping it makes the migration a pure rename, not a
   re-seed.
-- All Round 17 and Round 20 entries in this changelog — they
+- All Round 17 and Round 20 entries in this changelog - they
   accurately describe what was decided at those rounds
   (`SUPER_ADMIN` was the name then). History is preserved;
   the rename is recorded here, in Round 21.
@@ -826,12 +826,12 @@ place):**
   sentinel test is the deliberate guard against future
   regressions).
 
-## Round 22 — 2026-09-03 — Seed: add ADMIN placeholder
+## Round 22 - 2026-09-03 - Seed: add ADMIN placeholder
 
 After Round 21's rename, the only seed user with admin-class
 powers was the OWNER (`admin@shadhilbuilders.in`). That left
 nothing for the OWNER to **practice delegation** with on a fresh
-clone — they could sign in and look around, but every demo
+clone - they could sign in and look around, but every demo
 flow ("OWNER creates an admin → admin creates a manager →
 manager creates a telecaller") had to start at the OWNER seat,
 which is the one seat the client is least likely to use in
@@ -857,7 +857,7 @@ now fully exercisable from the moment seed completes.
 `User.email` column has a `@unique` constraint; reusing
 `admin@shadhilbuilders.in` would collide with the OWNER row
 and the seed would silently UPSERT the OWNER back to
-role=ADMIN — a hard auth-bypass bug (the unique-OWNER partial
+role=ADMIN - a hard auth-bypass bug (the unique-OWNER partial
 index then refuses to run because more than one row has the
 role, but the OWNER's seed row would have lost its role
 mid-update). `admin2` sidesteps it without inventing a new
@@ -865,29 +865,29 @@ domain for the placeholder.
 
 **Changes:**
 
-- `packages/database/src/seed.ts` — `readSeedUser` prefix
+- `packages/database/src/seed.ts` - `readSeedUser` prefix
   union now includes `'ADMIN'`. Fallback email/name/password
   replaced with three `Record<typeof prefix, string>` lookup
   tables (cleaner than the chained ternary that would have
   been needed to slot ADMIN in). `main()` calls
   `readSeedUser('ADMIN')`, then `upsertUser(admin, 'ADMIN')`
-  (no team — same shape as the OWNER row).
-- `packages/database/.env.example` and `.env.example` — new
+  (no team - same shape as the OWNER row).
+- `packages/database/.env.example` and `.env.example` - new
   `SEED_ADMIN_EMAIL / NAME / PASSWORD` block, mirroring the
-  OWNER block. Optional — fall back to the `admin2` defaults.
-- `README.md` — seat table grew by one row; the
+  OWNER block. Optional - fall back to the `admin2` defaults.
+- `README.md` - seat table grew by one row; the
   `pnpm --filter @shadhil/database seed` description now
   reads "owner + admin + manager + 2 staff".
 
 **Not changed on purpose:**
 
-- `apps/backend/src/users/roles.ts` — the role hierarchy
+- `apps/backend/src/users/roles.ts` - the role hierarchy
   already accepts both OWNER and ADMIN. No code change
   needed; the hierarchy now has one extra row in the roster
   but zero new authorization rules.
-- The unique-OWNER partial unique index `one_owner` — only
+- The unique-OWNER partial unique index `one_owner` - only
   one OWNER ever, regardless of how many ADMINs are seeded.
-- Round 21 entry above — historical.
+- Round 21 entry above - historical.
 
 **Verification:**
 
@@ -896,18 +896,18 @@ domain for the placeholder.
   sales exec created/updated` and leave the seeded team
   untouched.
 - `pnpm --filter @shadhil/database generate` + the existing
-  type-checks stay green (no schema change this round — the
+  type-checks stay green (no schema change this round - the
   `Role` enum still has the same five values, the `User.email`
   unique constraint already covers `admin2@…`).
 - The dev README seat table matches the seat table in
   `docs/planning/DECISION-CHANGELOG.md` Round 22.
 
-## Round 23 — 2026-09-03 — Seed: align emails with role names
+## Round 23 - 2026-09-03 - Seed: align emails with role names
 
 Round 22 introduced an ADMIN placeholder but parked it at
 `admin2@shadhilbuilders.in` because the OWNER row already
 owned `admin@shadhilbuilders.in`. The `admin2@…` address was
-correct as a collision-avoidance tactic but read as a hack —
+correct as a collision-avoidance tactic but read as a hack -
 anyone reading the seed code had to mentally translate the
 suffix back to the role. Cleaner to put each role's email at
 `<role>@shadhilbuilders.in` and reserve `admin@…` for ADMIN.
@@ -940,18 +940,18 @@ entirely.
 
 **Changes:**
 
-- `packages/database/src/seed.ts` — `FALLBACK_EMAIL` and
+- `packages/database/src/seed.ts` - `FALLBACK_EMAIL` and
   `FALLBACK_PASSWORD` records updated. `FALLBACK_NAME` is
   unchanged. JSDoc on `readSeedUser` updated to reflect the
   new mapping and to point at this round.
-- `packages/database/.env.example` —
+- `packages/database/.env.example` -
   `SEED_OWNER_EMAIL=admin@…` → `owner@…`,
   `SEED_ADMIN_EMAIL=admin2@…` → `admin@…`.
-- `README.md` — seat table updated.
+- `README.md` - seat table updated.
 
 **Not changed:**
 
-- Round 22 entry above is preserved as historical — it
+- Round 22 entry above is preserved as historical - it
   accurately describes what shipped at the time (the
   `admin2@…` workaround). The current seat table is the one
   in Round 23.
@@ -965,7 +965,7 @@ entirely.
   match the migration's WHERE clause. Two paths:
 
   a) Drop and recreate the bootstrap migration to point at
-     `owner@shadhilbuilders.in`. Cleanest — every reference
+     `owner@shadhilbuilders.in`. Cleanest - every reference
      points at the same email.
   b) Keep both: migration sets up `admin@…` as OWNER, then
      seed.ts upserts `owner@…` as OWNER, then upserts
@@ -984,13 +984,13 @@ entirely.
 - All five workspaces still type-check clean (the
   `Record<typeof prefix, string>` lookup-table pattern
   enforces that `FALLBACK_EMAIL` covers every `prefix`
-  value — TS would have failed otherwise).
+  value - TS would have failed otherwise).
 - `pnpm --filter @shadhil/database seed` on a fresh DB
   should report `[seed] ✓ owner, admin, manager, telecaller,
   sales exec created/updated` and the `User` table should
   contain exactly five rows with the emails above.
 
-## Round 24 — 2026-09-03 — Fix `pn db:migrate` "Connection url is empty"
+## Round 24 - 2026-09-03 - Fix `pn db:migrate` "Connection url is empty"
 
 After Round 23, `pnpm db:migrate` (run from the repo root)
 errored with `Error: Connection url is empty`. Root cause:
@@ -1001,13 +1001,13 @@ config file's `process.env` access. pnpm doesn't auto-load
 `.env` either. Net: the var arrives empty when prisma.config.ts
 runs.
 
-**Investigation (chronological — kept for the record so the
+**Investigation (chronological - kept for the record so the
 next agent doesn't repeat it):**
 
 1. First instinct: add `--env-file=../../.env` to the
    migrate/generate/studio scripts (matching the existing
    pattern in `seed`, `nest start --watch`, `docker compose`).
-   Reverted: Prisma CLI does NOT accept `--env-file` — that's
+   Reverted: Prisma CLI does NOT accept `--env-file` - that's
    a Node runtime flag, not a Prisma flag.
    `prisma migrate dev --help` only lists `--config`,
    `--schema`, `--url`, `--name`, `--create-only`.
@@ -1019,9 +1019,9 @@ next agent doesn't repeat it):**
    from CWD (which pnpm filter sets to `packages/database`),
    so it looks for `.env` in the wrong place. Verified by
    control test (see below).
-4. **Actual fix:** use the explicit-path form of dotenv —
+4. **Actual fix:** use the explicit-path form of dotenv -
    `loadDotenv({ path: resolve(__dirname, '..', '..', '.env') })`
-   — so the path is anchored to the config file, not CWD.
+   - so the path is anchored to the config file, not CWD.
    Verified by:
    - Control test: remove the dotenv import → `pnpm db:migrate`
      fails with "Connection url is empty".
@@ -1031,16 +1031,16 @@ next agent doesn't repeat it):**
 
 **What changed this round:**
 
-- `packages/database/prisma.config.ts` — added the explicit
+- `packages/database/prisma.config.ts` - added the explicit
   `loadDotenv({ path: resolve(__dirname, '..', '..', '.env') })`
   call (with JSDoc explaining why and what the alternatives
   were tried). The defineConfig body is unchanged.
-- `packages/database/src/seed.ts` — replaced `import { prisma
+- `packages/database/src/seed.ts` - replaced `import { prisma
   } from './index'` with a local `new PrismaClient({ adapter:
   new PrismaPg({ connectionString: process.env
   .DIRECT_DATABASE_URL ?? process.env.DATABASE_URL }) })`. The
   shared `prisma` is bound to `DATABASE_URL` (the non-owner
-  pooled path) so the API runtime keeps RLS enforced — the
+  pooled path) so the API runtime keeps RLS enforced - the
   seed needs `DIRECT_DATABASE_URL` (owner role) for its GRANTs,
   so it constructs its own client. The previous workaround of
   exporting `DATABASE_URL=$DIRECT_DATABASE_URL` before
@@ -1056,10 +1056,10 @@ next agent doesn't repeat it):**
 - An intermediate edit that made the shared `prisma` in
   `src/index.ts` prefer `DIRECT_DATABASE_URL` over
   `DATABASE_URL`. Reverted because that would silently bypass
-  RLS for every runtime API request — the seed needs the
+  RLS for every runtime API request - the seed needs the
   owner role, not the runtime.
 
-**Verification (in a truly fresh shell — `env -i HOME="$HOME"
+**Verification (in a truly fresh shell - `env -i HOME="$HOME"
 PATH="$PATH"`):**
 
 - `pnpm db:migrate` → `◇ injected env (13) from ../../.env`
@@ -1071,7 +1071,7 @@ PATH="$PATH"`):**
 - `pnpm db:studio` was not exercised (it would block on a
   long-running server); the same env-load path applies.
 
-## Round 25 — 2026-09-03 — Fix web app login: shadhil_app GRANTs missing
+## Round 25 - 2026-09-03 - Fix web app login: shadhil_app GRANTs missing
 
 After Round 24, the web app's better-auth catch-all
 (`/api/auth/sign-in/email`) returned 500 with
@@ -1079,13 +1079,13 @@ After Round 24, the web app's better-auth catch-all
 `42501 permission denied for table Jwks`). Two GRANTs were
 missing on the `shadhil_app` role:
 
-1. **Schema-level USAGE + CREATE on `public`** — without
+1. **Schema-level USAGE + CREATE on `public`** - without
    these, table-level GRANTs are invisible to the role and
    Postgres returns `permission denied for schema public` (or
    `42P01 relation does not exist` depending on the access
    path). The `public` schema's default ACL was empty in this
    setup, so the implicit pseudo-role grant did not apply.
-2. **Table-level CRUD on `Jwks`** — added in migration
+2. **Table-level CRUD on `Jwks`** - added in migration
    `20260831140000_add_jwks` without GRANTs for `shadhil_app`.
    Better-auth's `jwt()` plugin reads/writes `Jwks` on the
    pooled URL (`DATABASE_URL` → `shadhil_app`), so every
@@ -1100,21 +1100,21 @@ missing on the `shadhil_app` role:
   "the bare client (this module's `prisma` export) is NOT
   subject to RLS because the DB role used is typically the
   owner/migration role. SECOND-ROUND audit: the app now connects
-  as the non-owner role `shadhil_app`..." — so the bare
+  as the non-owner role `shadhil_app`..." - so the bare
   client IS the right thing for `shadhil_app` queries;
   something else is wrong.
 - Probed `pg_namespace.nspacl` for `public` schema via
   `array_to_string` (Prisma can't serialize the raw array
-  type). Result: `null` — no ACL entries at all. In Postgres
+  type). Result: `null` - no ACL entries at all. In Postgres
   16-alpine with `shadhil` (not `postgres`) as the owner, the
   default `GRANT CREATE, USAGE ON SCHEMA public TO PUBLIC`
   was apparently not preserved.
 - Probed `has_schema_privilege('shadhil_app', 'public',
-  'USAGE')` — false. Probed
-  `has_schema_privilege('shadhil_app', 'public', 'CREATE')` —
+  'USAGE')` - false. Probed
+  `has_schema_privilege('shadhil_app', 'public', 'CREATE')` -
   false. The schema-level grants are missing.
 - Probed `has_table_privilege('shadhil_app', '"Jwks"',
-  'SELECT')` — false. (Noticed: `Jwks` must be quoted in the
+  'SELECT')` - false. (Noticed: `Jwks` must be quoted in the
   probe because Postgres folds unquoted identifiers to
   lowercase, so `'Jwks'` would have looked up `'jwks'` which
   doesn't exist.) The table-level grant is missing on `Jwks`
@@ -1122,16 +1122,16 @@ missing on the `shadhil_app` role:
 
 **Changes:**
 
-- `docker/postgres-init/00-init.sql` — added
+- `docker/postgres-init/00-init.sql` - added
   `GRANT USAGE, CREATE ON SCHEMA public TO shadhil_app;`
   (with JSDoc explaining the empty-ACL root cause).
 - `packages/database/prisma/migrations/20260903021150_schema_grants_for_app_role/migration.sql`
-  (new) — same GRANT, applied via the migration system to
+  (new) - same GRANT, applied via the migration system to
   the live DB. Idempotent at the role level.
 - `packages/database/prisma/migrations/20260903021500_grants_for_jwks/migration.sql`
-  (new) — `GRANT SELECT, INSERT, UPDATE, DELETE ON "Jwks" TO
+  (new) - `GRANT SELECT, INSERT, UPDATE, DELETE ON "Jwks" TO
   shadhil_app;` for the missing table-level GRANT.
-- `packages/database/prisma/rls/policies.sql` — canonical
+- `packages/database/prisma/rls/policies.sql` - canonical
   source updated with both GRANTs (so a future
   `psql -f policies.sql` lands them; the migrations are the
   application point for `prisma migrate`).
@@ -1140,7 +1140,7 @@ missing on the `shadhil_app` role:
 
 - Initial first-pass edit that added a `GRANT USAGE` only to
   `policies.sql` (no schema-level fix and no `Jwks` GRANT)
-  — replaced with the canonical 3-file fix above.
+  - replaced with the canonical 3-file fix above.
 
 **Verification:**
 
@@ -1171,10 +1171,10 @@ better-auth writes to the pooled path):**
   `20260903021150` migration, idempotent) and (b) a
   table-level GRANT on the new table.
 - Postgres' case-folding means `"Jwks"` (quoted) and `Jwks`
-  (unquoted) are different — when probing privileges, always
+  (unquoted) are different - when probing privileges, always
   quote the table name in the function argument.
 
-## Round 26 — 2026-09-03 — Fix IDB persistence: `retryDelay` function in cache
+## Round 26 - 2026-09-03 - Fix IDB persistence: `retryDelay` function in cache
 
 After Round 25 the login flow worked end-to-end, but a second
 console error fired on every cache mutation in the browser:
@@ -1195,18 +1195,18 @@ result straight into IndexedDB. Each `Query` object carries
 its full `options` (queryFn, retry, retryDelay, …), and the
 default-options block in `lib.ts` had a custom
 `retryDelay: (attemptIndex) => Math.min(1000 * 2 **
-attemptIndex, 30000)` — a function. IndexedDB's structured
+attemptIndex, 30000)` - a function. IndexedDB's structured
 clone algorithm refuses functions, so every persist threw.
 
-**Investigation (short — the stack trace pointed straight at
+**Investigation (short - the stack trace pointed straight at
 the bug):**
 
 1. Confirmed `queryClient.defaultOptions.queries.retryDelay`
    in `apps/web/src/lib/query-client/lib.ts:112` was the
    function being seen in the error.
 2. Confirmed `persistCache` in the same file used
-   `qc.getQueryCache().getAll()` — full Query objects, not
-   dehydrated — and passed them to `idbSet`.
+   `qc.getQueryCache().getAll()` - full Query objects, not
+   dehydrated - and passed them to `idbSet`.
 3. Confirmed `rehydrateQueryCache` used a hand-rolled
    `qc.getQueryCache().build(qc, { queryKey })` loop that
    only seeded `queryKey`, leaving the rehydrated queries in
@@ -1218,42 +1218,42 @@ the bug):**
 **Decision:** use TanStack Query's official serialization
 helpers (`dehydrate` / `hydrate`), which strip
 non-cloneable fields (queryFn, retry, retryDelay, observers,
-…) by design. Also drop the custom `retryDelay` default —
+…) by design. Also drop the custom `retryDelay` default -
 TanStack's built-in default is the same exponential backoff
 `Math.min(1000 * 2 ** attemptIndex, 30000)`, so no behavior
 change.
 
 **Changes:**
 
-- `apps/web/src/lib/query-client/lib.ts` —
+- `apps/web/src/lib/query-client/lib.ts` -
   - `persistCache` now uses `dehydrate(qc)` from
     `@tanstack/react-query` instead of `getAll()`. The
     dehydrated snapshot (`{ mutations, queries }`) contains
-    only data/status/error/queryKey/queryHash — no functions,
+    only data/status/error/queryKey/queryHash - no functions,
     no queryFn.
   - `rehydrateQueryCache` now uses `hydrate(qc,
     persisted.cacheState)` from the same package instead of the
     hand-rolled `build()` loop. `hydrate` re-seeds the
     QueryClient so observers can immediately see the cached
-    `data` without a fresh network request — the offline-boot
+    `data` without a fresh network request - the offline-boot
     UX goal.
   - Removed the custom `retryDelay` function from
     `queryClient` defaults. TanStack's built-in default is
     identical.
-- `apps/web/src/lib/query-client/lib.ts` — JSDoc updated to
+- `apps/web/src/lib/query-client/lib.ts` - JSDoc updated to
     describe the new dehydrated snapshot shape and to point
     future readers at Round 26 for the history.
 
 **What was kept:**
 
-- The `BUSTER` / `BUSTER_KEY` mechanism — same per-load UUID
+- The `BUSTER` / `BUSTER_KEY` mechanism - same per-load UUID
   envelope, same buster-mismatch wipes the cache. Migrations
   bump the buster by changing `BUSTER =` to a new value.
-- The `lastPersistedTimestamp === 0 && empty` short-circuit —
+- The `lastPersistedTimestamp === 0 && empty` short-circuit -
   preserves the eng-review 4C "only write on actual cache
   change" optimization. Now keyed off the dehydrated snapshot
   (`snapshot.queries.length + snapshot.mutations.length`).
-- The `RQ_CACHE_KEY` value — keys live in `rqCacheStore`
+- The `RQ_CACHE_KEY` value - keys live in `rqCacheStore`
   (`packages/offline-store/src/idb-stores.ts:69`).
 
 **Verification:**
@@ -1276,7 +1276,7 @@ change.
   path. Use `dehydrate()` / `hydrate()` for the round-trip,
   not raw `Query` objects. If a custom field needs to ride
   along, register it via the dehydrate options
-  (`shouldDehydrateQuery`) and add a rehydrate handler — but
+  (`shouldDehydrateQuery`) and add a rehydrate handler - but
   first ask whether it actually needs to survive a reload.
 - Functions in `defaultOptions` are fine for runtime, but
   they will reach `structuredClone` the moment you serialize

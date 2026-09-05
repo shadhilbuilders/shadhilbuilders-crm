@@ -1,4 +1,4 @@
-// SSE helper — thin wrapper around the browser's EventSource with
+// SSE helper - thin wrapper around the browser's EventSource with
 // reconnect + ticket lifecycle.
 //
 // T-E2 (Week 6, 2026-09-04). The backend realtime module exposes
@@ -14,7 +14,7 @@
 //      needed (single-use tickets are consumed on connect)
 //
 // Returns a cleanup function that closes the connection and stops
-// the reconnect loop. No external deps — the browser's EventSource
+// the reconnect loop. No external deps - the browser's EventSource
 // is stable and spec-complete.
 import { api } from '@/apis/client';
 
@@ -78,20 +78,20 @@ export function openStream<T>(opts: OpenStreamOptions<T>): () => void {
         if (typeof ev.data === 'string' && ev.data.length > 0) {
           try {
             const payload = JSON.parse(ev.data) as { type?: string };
-            if (payload.type === 'ping') return; // heartbeat — ignore
+            if (payload.type === 'ping') return; // heartbeat - ignore
             opts.onMessage(payload as T);
             if (typeof ev.lastEventId === 'string' && ev.lastEventId.length > 0) {
               lastEventId = ev.lastEventId;
             }
           } catch {
-            // Malformed JSON — skip the event, keep the stream open.
+            // Malformed JSON - skip the event, keep the stream open.
           }
         }
       };
 
       source.onerror = () => {
         // EventSource auto-reconnects natively, but the ticket is
-        // single-use — the reconnect will 403. Close + re-mint on our
+        // single-use - the reconnect will 403. Close + re-mint on our
         // schedule instead.
         source?.close();
         source = null;

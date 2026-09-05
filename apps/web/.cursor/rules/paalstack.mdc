@@ -1,10 +1,10 @@
 ---
-description: PaalStack + shadhil-crm conventions for the web app — library consumption rules, project layout, env, providers, route handlers. App-specific; complements the global paalstack-react-ui skill.
+description: PaalStack + shadhil-crm conventions for the web app - library consumption rules, project layout, env, providers, route handlers. App-specific; complements the global paalstack-react-ui skill.
 globs: **/*.tsx, **/*.ts
 alwaysApply: false
 ---
 
-# shadhil-crm (apps/web) — Conventions
+# shadhil-crm (apps/web) - Conventions
 
 This is a **Next.js 16 App Router app that consumes `@paalstack/react-ui`**.
 For library-side knowledge (component APIs, props/composition conventions,
@@ -17,17 +17,17 @@ that here.
 ## Imports
 
 ```tsx
-// UI components — umbrella package
+// UI components - umbrella package
 import { Button, Card, Form, Box, HStack, Heading, TypographyP, toast }
   from '@paalstack/react-ui';
 
-// Server-safe utilities — /lib sub-path
+// Server-safe utilities - /lib sub-path
 import { cn, logger, HttpError, httpClient } from '@paalstack/react-ui/lib';
 
-// Hooks — client-only, separate package
+// Hooks - client-only, separate package
 import { useDisclosure, useLocalStorage } from '@paalstack/react-hooks';
 
-// Icons — ALWAYS from a family sub-path, never the root barrel
+// Icons - ALWAYS from a family sub-path, never the root barrel
 import { LuSettings, LuMoon, LuSun } from '@paalstack/react-icons/lu';
 ```
 
@@ -46,18 +46,18 @@ Replace with PaalStack components:
 <div> <header> <main> <section> <nav> <footer> <h1>-<h6> <p> <span>
 // <button> <ul> <ol> <li> <code> <blockquote>
 
-// ✅ Layout — Box + `as` prop
+// ✅ Layout - Box + `as` prop
 <Box as="header" /> <Box as="main" /> <Box as="section" /> <Box as="nav" />
 
-// ✅ Typography — named exports (the Typography.* namespace is undefined
+// ✅ Typography - named exports (the Typography.* namespace is undefined
 //    under Turbopack)
 <TypographyH1 /> <TypographyH2 /> <TypographyH3 />
 <TypographyP /> <TypographyMuted /> <TypographyCode />
 
-// ✅ Dynamic heading level — `as` override on Heading
+// ✅ Dynamic heading level - `as` override on Heading
 <Heading as="h2" />
 
-// ✅ Button — replaces <button>
+// ✅ Button - replaces <button>
 <Button />
 ```
 
@@ -68,7 +68,7 @@ Replace with PaalStack components:
   a token exists.
 - Extend with `className`; merge via `cn` from `@paalstack/react-ui/lib`.
 - Brand overrides for shadhil-crm live in
-  `packages/ui-tokens/brand.css` — edit there for primary/secondary/
+  `packages/ui-tokens/brand.css` - edit there for primary/secondary/
   surface, not in `globals.css`.
 - Cascade in `src/styles/globals.css` is intentional and order-sensitive:
   `@paalstack/react-ui/all.css` → `@shadhil/ui-tokens/brand.css` →
@@ -81,7 +81,7 @@ Replace with PaalStack components:
 ```
 apps/web/src/
 ├── app/                          # Next.js App Router
-│   ├── layout.tsx                # Root layout — Inter font, <Providers>, <SiteHeader>
+│   ├── layout.tsx                # Root layout - Inter font, <Providers>, <SiteHeader>
 │   ├── page.tsx                  # Phase-1 landing (force-dynamic)
 │   ├── not-found.tsx             # (force-dynamic)
 │   └── api/
@@ -107,39 +107,39 @@ apps/web/src/
 `src/schemas/`, `src/features/`, `src/stores/`, `src/types/`,
 `src/utils/`, `src/components/ui/`, `src/components/shared/`, and
 `src/libs/{axios,error,logger,db,supabase,rbac,rate-limit}/` are
-**planned but not built**. Do not create them speculatively — when
+**planned but not built**. Do not create them speculatively - when
 Phase 2 needs them, add a single module at a time and update this rule.
 
 ---
 
-## Env — read only via `@/libs/env`
+## Env - read only via `@/libs/env`
 
 - Never read `process.env` directly. Import `env` from
   `@/libs/env` (which re-exports from `./env`).
 - Schema: `src/libs/env/env.ts`. Add new vars there with a Zod schema.
   Server vars in the `server` block; `NEXT_PUBLIC_*` in `client`.
-- `runtimeEnv` MUST list every var (tsc strict — `createEnv` errors
+- `runtimeEnv` MUST list every var (tsc strict - `createEnv` errors
   on missing entries).
 - `skipValidation: process.env.SKIP_ENV_VALIDATION === 'true'` exists
   for build-time tooling; do not set it in app code.
 - The shared `@shadhil/auth` package depends on the same `BETTER_AUTH_*`,
   `JWT_*`, `DIRECT_DATABASE_URL` keys. Both apps must agree or
-  `pnpm dev` will fail at boot — see `apps/web/.env` for the source.
+  `pnpm dev` will fail at boot - see `apps/web/.env` for the source.
 
-## Providers — single tree in `src/providers/providers.tsx`
+## Providers - single tree in `src/providers/providers.tsx`
 
 Current order (matters for context inheritance):
 
-1. `NextThemeProvider` — `next-themes` wrapper, SSR-safe, drives
+1. `NextThemeProvider` - `next-themes` wrapper, SSR-safe, drives
    `.dark` on `<html>`. Use this, **not** the homegrown `ThemeProvider`
-   from `@paalstack/react-ui` — that one calls `localStorage.getItem`
+   from `@paalstack/react-ui` - that one calls `localStorage.getItem`
    in a `useState` initializer and crashes SSR.
-2. `QueryProvider` — `QueryClientProvider` over the singleton from
+2. `QueryProvider` - `QueryClientProvider` over the singleton from
    `@/libs/query-client` (5 min `staleTime` / `gcTime`, no retries,
    focus-refetch in production only).
 3. `children`.
 
-`<Toaster />` is imported but not yet mounted — that's a known TODO
+`<Toaster />` is imported but not yet mounted - that's a known TODO
 from Phase 1. When you wire it, mount it inside `Providers` (theme
 context is needed for sonner to re-skin on toggle).
 
@@ -167,8 +167,8 @@ export const POST = async (req: Request) => { /* ... */ };
 - Better-auth lives at `src/app/api/auth/[...all]/route.ts` via
   `toNextJsHandler(auth.handler)` from `better-auth/next-js`. The
   `auth` instance is re-exported from `@shadhil/auth` via
-  `src/lib/auth.ts` — both apps share the same instance.
-- `/api/health` is the canonical liveness probe — extend, don't
+  `src/lib/auth.ts` - both apps share the same instance.
+- `/api/health` is the canonical liveness probe - extend, don't
   duplicate.
 - No `withApiErrorHandling` / `apiSuccess` / typed `AppError*` wrapper
   exists yet in apps/web. The Nest backend has one
@@ -181,25 +181,25 @@ export const POST = async (req: Request) => { /* ... */ };
 
 `NEXT_PUBLIC_API_BASE_URL` points at the Nest backend (default
 `http://localhost:8080`). Use the `httpClient` from
-`@paalstack/react-ui/lib` or your own axios/fetch — but always go
+`@paalstack/react-ui/lib` or your own axios/fetch - but always go
 through the env var, never hardcode `localhost`.
 
 ---
 
 ## Do Not
 
-- Author library components here. This is a consumer app — push changes
+- Author library components here. This is a consumer app - push changes
   to `paalstack-react-ui` upstream.
 - Duplicate Button/Input/Dialog/Table/Form/Select/Checkbox or the common
   hooks the library already provides.
-- Write new `useMediaQuery`, `useLocalStorage`, `useDisclosure` —
+- Write new `useMediaQuery`, `useLocalStorage`, `useDisclosure` -
   `@paalstack/react-hooks` covers them.
 - Import the `@paalstack/react-icons` root barrel or install icon
   packages directly.
 - Use raw hex colors when semantic tokens exist.
 - Use native HTML elements in JSX.
-- Read `process.env` directly — use `env` from `@/libs/env`.
-- Use the homegrown `ThemeProvider` from `@paalstack/react-ui` — it
+- Read `process.env` directly - use `env` from `@/libs/env`.
+- Use the homegrown `ThemeProvider` from `@paalstack/react-ui` - it
   crashes SSR. Use `NextThemeProvider`.
 - Skip `export const dynamic = 'force-dynamic'` on pages wrapped by
   `Providers`.

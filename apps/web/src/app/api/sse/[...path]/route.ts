@@ -1,4 +1,4 @@
-// BFF SSE proxy — streams ticket-authenticated SSE from the
+// BFF SSE proxy - streams ticket-authenticated SSE from the
 // standalone realtime-sse service to the browser.
 //
 // Why a separate route: /api/bff/[...path] is a JSON-only proxy
@@ -13,7 +13,7 @@
 //   (browser)               (Next.js route)    (apps/realtime-sse)
 //
 // The SSE service owns ticket consume + DB polling. The BFF just
-// passes bytes through — it never reads the ticket.
+// passes bytes through - it never reads the ticket.
 
 import { cookies } from 'next/headers';
 import { type NextRequest } from 'next/server';
@@ -33,7 +33,7 @@ const ALLOWED_SSE_ORIGINS = (process.env.ALLOWED_SSE_ORIGINS ?? 'http://localhos
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
-/** Allow only known SSE paths — defends against an open-proxy abuse
+/** Allow only known SSE paths - defends against an open-proxy abuse
  *  if the path is later broadened. */
 function isAllowedPath(path: string): boolean {
   if (path === 'ping' || path === 'healthz' || path === 'metrics' || path === 'notifications' || path === 'audit') return true;
@@ -67,7 +67,7 @@ export async function GET(
   }
 
   // T-PERF-2 #2: Origin allowlist check (BEFORE session check, so
-  // unauthenticated probes from foreign origins get 403 not 401 —
+  // unauthenticated probes from foreign origins get 403 not 401 -
   // we don't want to reveal whether a session exists at this origin).
   const originRejection = checkOrigin(request.headers.get('origin'));
   if (originRejection !== null) return originRejection;

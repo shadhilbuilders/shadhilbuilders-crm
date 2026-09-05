@@ -1,7 +1,7 @@
 {
   "name": "Shadhil CRM",
   "short_name": "Shadhil",
-  "description": "Real-estate CRM for Shadhil Builders — Lead Inbox, Site Visits, Bookings, Chat, Reminders.",
+  "description": "Real-estate CRM for Shadhil Builders - Lead Inbox, Site Visits, Bookings, Chat, Reminders.",
   "id": "/?source=pwa-v1",
   "scope": "/",
   "start_url": "/?utm_source=pwa",

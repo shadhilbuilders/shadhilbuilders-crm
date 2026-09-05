@@ -1,6 +1,6 @@
 'use client';
 
-// Role-aware Dashboard (Phase 2 — plan T9).
+// Role-aware Dashboard (Phase 2 - plan T9).
 //
 // Per D3 (role-tuned default), each role sees a different number of charts:
 //   - Telecaller/SalesExec : 1 chart (their own queue, status pie)
@@ -13,12 +13,12 @@
 //       - `VisitsThisWeekChart` (rolling 7-day window from useVisits)
 //   - Inline `ChartCard` calls (simple enough to live in the page):
 //       - `LeadStatusPie`     (count by status, only difference from funnel
-//                              is the chart type — pie vs bar — so no
+//                              is the chart type - pie vs bar - so no
 //                              dedicated file)
 //       - `AuditTimeline`     (bucket audit log by day, admin only)
 //
 // All charts flow through `ChartCard` so the loading/error/empty
-// state is centralized — the per-page wiring in T10 doesn't have to
+// state is centralized - the per-page wiring in T10 doesn't have to
 // re-implement the pending copy. T19 (PR2) will swap the pending
 // copy for a shape-matched Skeleton variant without changing this
 // file.
@@ -74,7 +74,7 @@ export default function DashboardPage() {
 }
 
 // ---------------------------------------------------------------------------
-// KPI strip — numbers in one row with label + trend, no cards (wireframe note)
+// KPI strip - numbers in one row with label + trend, no cards (wireframe note)
 // ---------------------------------------------------------------------------
 
 type Kpi = {
@@ -85,18 +85,18 @@ type Kpi = {
 
 // T20 (PR3): the KpiStrip value element picks up a one-time
 // `animate-shimmer-once` pulse when it transitions from the
-// placeholder "—" to a real number. We detect the transition via
+// placeholder "-" to a real number. We detect the transition via
 // a `data-state` attribute (loading → ready) and toggle the class
 // via a useEffect on the parent that flips when the data arrives.
 // Since the Dashboard pages don't yet have live KPI data, the
 // `data-state="ready"` is the *default* here, with a `data-just-
 // arrived` flag the parent can set when a value transitions from
-// "—" to a number. Future KPI-module work sets the flag once.
+// "-" to a number. Future KPI-module work sets the flag once.
 function KpiStrip({ items }: { items: Kpi[] }) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b pb-6 sm:grid-cols-4">
       {items.map((kpi) => {
-        const isPlaceholder = kpi.value === '—';
+        const isPlaceholder = kpi.value === '-';
         return (
           <div key={kpi.label}>
             <p className="text-muted-foreground text-xs tracking-wide uppercase">
@@ -121,7 +121,7 @@ function KpiStrip({ items }: { items: Kpi[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Manager dashboard (Wireframes #1) — 3 charts
+// Manager dashboard (Wireframes #1) - 3 charts
 // ---------------------------------------------------------------------------
 
 function ManagerDashboard({ name }: { name: string }) {
@@ -140,10 +140,10 @@ function ManagerDashboard({ name }: { name: string }) {
 
       <KpiStrip
         items={[
-          { label: 'Time to first touch', value: '—', sub: 'target < 30 min' },
-          { label: "Today's visits", value: '—', sub: 'across the team' },
-          { label: 'Awaiting your approval', value: '—', sub: 'bookings on hold' },
-          { label: "Yesterday's no-show", value: '—', sub: 'target < 25%' },
+          { label: 'Time to first touch', value: '-', sub: 'target < 30 min' },
+          { label: "Today's visits", value: '-', sub: 'across the team' },
+          { label: 'Awaiting your approval', value: '-', sub: 'bookings on hold' },
+          { label: "Yesterday's no-show", value: '-', sub: 'target < 25%' },
         ]}
       />
 
@@ -180,7 +180,7 @@ function ManagerDashboard({ name }: { name: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin dashboard (Wireframes #3) — 4 charts (Manager's 3 + audit timeline)
+// Admin dashboard (Wireframes #3) - 4 charts (Manager's 3 + audit timeline)
 // ---------------------------------------------------------------------------
 
 function AdminDashboard() {
@@ -201,10 +201,10 @@ function AdminDashboard() {
 
       <KpiStrip
         items={[
-          { label: 'Total leads', value: '—', sub: 'all teams' },
-          { label: 'Reassignments (7d)', value: '—' },
-          { label: 'Audit events (24h)', value: '—' },
-          { label: 'Users by role', value: '—', sub: usersVisible ? 'manage in Users' : undefined },
+          { label: 'Total leads', value: '-', sub: 'all teams' },
+          { label: 'Reassignments (7d)', value: '-' },
+          { label: 'Audit events (24h)', value: '-' },
+          { label: 'Users by role', value: '-', sub: usersVisible ? 'manage in Users' : undefined },
         ]}
       />
 
@@ -244,7 +244,7 @@ function AdminDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Telecaller / Sales Exec home (Wireframes #4) — 1 chart, their queue
+// Telecaller / Sales Exec home (Wireframes #4) - 1 chart, their queue
 // ---------------------------------------------------------------------------
 
 function InboxFirstHome({ role }: { role: string }) {
@@ -254,7 +254,7 @@ function InboxFirstHome({ role }: { role: string }) {
       <div>
         <Heading className="mb-1">Your queue</Heading>
         <TypographyP className="text-muted-foreground text-sm">
-          Signed in as {role.replace('_', ' ').toLowerCase()} — your leads and
+          Signed in as {role.replace('_', ' ').toLowerCase()} - your leads and
           next actions live in the inbox.
         </TypographyP>
       </div>
@@ -273,7 +273,7 @@ function InboxFirstHome({ role }: { role: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline charts (D2 — simple enough to live in the page file)
+// Inline charts (D2 - simple enough to live in the page file)
 // ---------------------------------------------------------------------------
 
 /** Pie of lead counts by status. Telecaller/Exec's single chart, and the
@@ -315,7 +315,7 @@ function LeadStatusPie({ data }: { data: unknown }) {
   );
 }
 
-/** Audit timeline — admin only. Buckets audit log entries by day so an
+/** Audit timeline - admin only. Buckets audit log entries by day so an
  *  admin can see "is anything weird happening this week". Uses an
  *  inline `<ul>` rendering instead of a chart primitive because the
  *  data is naturally sequential and a sparkline adds noise without

@@ -1,4 +1,4 @@
-// JWT auth guard — global, with @Public() opt-out.
+// JWT auth guard - global, with @Public() opt-out.
 //
 // Phase 1 wiring: verifies the JWT in `Authorization: Bearer *** and
 // resolves the JwtPayload onto request.user. Per-request RLS session vars
@@ -13,9 +13,9 @@
 // Trade-off (intentional, documented):
 //   We do a DB lookup per authenticated request. The "cache the flag on
 //   the JWT at mint time" alternative is rejected because:
-//     - It widens the surface — every JWT issuer (better-auth's jwt()
+//     - It widens the surface - every JWT issuer (better-auth's jwt()
 //       plugin, the BFF's issueJwt()) would need to add the claim.
-//     - It loses liveness — an admin who resets a password can't unlock
+//     - It loses liveness - an admin who resets a password can't unlock
 //       a stale-session user until their JWT expires.
 //   The DB hit is one indexed PK lookup on the bare prisma client
 //   (~0.5ms p50 on the dev Postgres). If this shows up in a p99
@@ -80,7 +80,7 @@ export class JwtAuthGuard implements CanActivate {
     // T-S hardening: enforce the mustChangePassword gate. The shared
     // prisma client connects on DATABASE_URL (the non-owner app role);
     // SELECT on the User row succeeds because User has no FORCE RLS
-    // (auth tables are pre-RLS by design — see policies.sql comments).
+    // (auth tables are pre-RLS by design - see policies.sql comments).
     const user = await sharedPrisma.user.findUnique({
       where: { id: payload.sub },
       select: { mustChangePassword: true },

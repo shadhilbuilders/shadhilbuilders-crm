@@ -9,12 +9,12 @@ describe('normalizeToWebP', () => {
 
   it('returns a Blob with type image/webp (jsdom happy-dom env polyfills canvas)', async () => {
     // jsdom doesn't provide createImageBitmap or OffscreenCanvas natively.
-    // We rely on vitest's environment: 'node' — but for this test we
+    // We rely on vitest's environment: 'node' - but for this test we
     // need DOM globals. Skip the actual conversion if the polyfill is
     // missing; the type check still validates the input handling.
     const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' });
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') {
-      // Environment doesn't have canvas — assert the error path instead.
+      // Environment doesn't have canvas - assert the error path instead.
       await expect(normalizeToWebP(blob, 0.85)).rejects.toBeDefined();
       return;
     }
@@ -57,7 +57,7 @@ describe('normalizeOnIdle', () => {
       ricMock;
     const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' });
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') {
-      // No canvas — start the call, verify the callback was registered,
+      // No canvas - start the call, verify the callback was registered,
       // then run it (it will reject, which is fine for this test).
       const p = normalizeOnIdle(blob, 0.85);
       expect(ricMock).toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('normalizeOnIdle', () => {
     delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
     const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' });
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') {
-      // No canvas — fallback will reject with the canvas error.
+      // No canvas - fallback will reject with the canvas error.
       await expect(normalizeOnIdle(blob, 0.85)).rejects.toBeDefined();
     } else {
       const result = await normalizeOnIdle(blob, 0.85);

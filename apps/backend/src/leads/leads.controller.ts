@@ -1,4 +1,4 @@
-// Leads controller — list/create/update/transition surface.
+// Leads controller - list/create/update/transition surface.
 //
 // All routes JWT-protected via the global JwtAuthGuard; this controller
 // does NOT add per-route guards. The service enforces:
@@ -7,7 +7,7 @@
 //   - State-machine guard on PATCH /leads/:id/transition.
 //   - Phone uniqueness on create.
 //
-// DTO validation happens HERE (controller), not via NestJS ValidationPipe —
+// DTO validation happens HERE (controller), not via NestJS ValidationPipe -
 // the api-types convention is shared Zod schemas that BOTH the NestJS
 // controller and the Next.js BFF route handler parse with. Keeps the
 // wire contract in one place.
@@ -43,7 +43,7 @@ import { LeadsService, type LeadListResult, type LeadRow } from './leads.service
 
 /**
  * Parse a request body with a shared Zod schema; a ZodError becomes a 400
- * (not a 500 — the ValidationPipe doesn't handle raw Zod schemas).
+ * (not a 500 - the ValidationPipe doesn't handle raw Zod schemas).
  * Mirrors users.controller.ts:31-39.
  */
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -60,7 +60,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 
 /**
  * Parse query-string filters into the LeadFilterDto. `state` may repeat
- * (e.g. `?state=NEW&state=VISIT_REQUESTED`) — coerce to an array.
+ * (e.g. `?state=NEW&state=VISIT_REQUESTED`) - coerce to an array.
  */
 function parseFilter(query: Record<string, unknown>): LeadFilterDto {
   const stateRaw = query['state'];
@@ -95,7 +95,7 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
 @ApiBearerAuth('jwt')
 @Controller('leads')
 export class LeadsController {
-  // @Inject with an explicit token — tsx/esbuild does NOT emit
+  // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes (same reason users.controller.ts:48 uses it).
   constructor(
     @Inject(LeadsService) private readonly leads: LeadsService,
@@ -126,7 +126,7 @@ export class LeadsController {
   @Patch(':id')
   @ApiOperation({
     summary:
-      'Partial update — name, email only. State transitions go through /transition.',
+      'Partial update - name, email only. State transitions go through /transition.',
   })
   async update(
     @Req() req: AuthedRequest,

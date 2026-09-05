@@ -1,10 +1,10 @@
 'use client';
 
-// Inventory — villa/unit availability grid (DESIGN.md §2 module 4,
+// Inventory - villa/unit availability grid (DESIGN.md §2 module 4,
 // Implementation Plan Week 7): Villa #, BHK, Facing, Sqft, Price, Status
 // with Project/Phase/BHK/Facing/Status filters; click → detail for hold +
 // booking flow. Units module is a backend stub; honest pending state until
-// it lands. There is no Units DTO in api-types v1 — the page renders the
+// it lands. There is no Units DTO in api-types v1 - the page renders the
 // locked column spec against the documented shape and flips live when the
 // endpoint exists.
 import { TypographyP } from '@paalstack/react-ui';
@@ -39,7 +39,7 @@ export default function InventoryPage() {
         subtitle="Shadhil Metro Heights · villa availability by phase, BHK, and facing."
       />
 
-      {/* Column spec preview — the real DataTable consumes /api/units when
+      {/* Column spec preview - the real DataTable consumes /api/units when
           the inventory module exists. Kept visible so the surface is
           reviewable today. */}
       <div className="border-border overflow-x-auto rounded-lg border">
@@ -59,7 +59,7 @@ export default function InventoryPage() {
           <tbody>
             <tr>
               <td colSpan={INVENTORY_COLUMNS.length} className="text-muted-foreground px-4 py-10 text-center text-sm">
-                No inventory yet — the units schema and endpoints ship with the
+                No inventory yet - the units schema and endpoints ship with the
                 inventory module (Implementation Plan Week 7).
               </td>
             </tr>

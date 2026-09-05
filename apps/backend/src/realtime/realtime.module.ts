@@ -1,4 +1,4 @@
-// Realtime ticket-mint controller — owns the POST /api/realtime/ticket
+// Realtime ticket-mint controller - owns the POST /api/realtime/ticket
 // endpoint. The SSE consumer endpoints (GET /api/sse/*) live in the
 // standalone apps/realtime-sse/ service (T-E2 fix, 2026-09-04).
 //

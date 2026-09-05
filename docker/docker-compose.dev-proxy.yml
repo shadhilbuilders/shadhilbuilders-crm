@@ -1,4 +1,4 @@
-# Local dev proxy — Traefik v3 with mkcert certs.
+# Local dev proxy - Traefik v3 with mkcert certs.
 #
 # T-PERF-2 #5 (2026-09-04). Why this exists:
 #   - The 6-connection-per-origin limit on HTTP/1.1 cleartext (marked
@@ -26,11 +26,11 @@
 #      (or just `http://localhost:8090` if running outside the dev-proxy network)
 #   7. Start the dev proxy: `docker compose -f docker/docker-compose.dev-proxy.yml up -d`
 #
-# Then visit https://crm.local — TLS works, h2 multiplexes, all 3 SSE
+# Then visit https://crm.local - TLS works, h2 multiplexes, all 3 SSE
 # channels share one connection per browser tab.
 #
 # Why Traefik (not Caddy): Coolify (the prod platform) is built around
-# Traefik — picking it for dev means the same label-based config syntax
+# Traefik - picking it for dev means the same label-based config syntax
 # you'll use in prod. See plan §5.1 for the full reasoning.
 
 services:

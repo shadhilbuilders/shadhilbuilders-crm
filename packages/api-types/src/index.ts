@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// @shadhil/api-types — barrel
+// @shadhil/api-types - barrel
 // ────────────────────────────────────────────────────────────────────────────
 // Single import surface for NestJS pipes and Next.js route handlers.
 // Re-exports Prisma-generated types from @shadhil/database (when consumed

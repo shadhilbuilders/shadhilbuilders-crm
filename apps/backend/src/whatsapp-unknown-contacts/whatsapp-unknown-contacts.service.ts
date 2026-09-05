@@ -1,25 +1,25 @@
-// T-E2b follow-up queue — service layer.
+// T-E2b follow-up queue - service layer.
 //
 // The service owns:
 //   - list() with status filter + cursor pagination (ordered by
 //     most-recent first)
-//   - convert() — the headline flow. Creates a Lead via LeadsService
+//   - convert() - the headline flow. Creates a Lead via LeadsService
 //     (which runs the manager-assignment engine, writes the audit
 //     log, applies RLS) and links the new lead to the contact via
 //     convertedToLeadId, all inside one transaction.
-//   - markSpam() — one-click status flip, no Lead required.
+//   - markSpam() - one-click status flip, no Lead required.
 //
 // RLS context: the actor is ADMIN/OWNER/MANAGER. The new
 // wa_unknown_select_admin_class / wa_unknown_update_admin_class
 // policies (migration 20260905000200) gate the access. We DO NOT
-// use the CRON_SERVICE bypass — the inbound webhook handler uses
+// use the CRON_SERVICE bypass - the inbound webhook handler uses
 // that, the admin queue handler does not.
 //
 // Transaction shape: withRlsContext wraps the convert flow so the
 // Lead insert + WhatsappUnknownContact update either both land or
 // neither does. The LeadsService.create call internally manages
 // its own sub-transaction (it does manager assignment + audit log
-// + lead insert), so we wrap the OUTER level only — the lead
+// + lead insert), so we wrap the OUTER level only - the lead
 // creation is atomic on its own, and the contact status flip is
 // our single additional write.
 
@@ -62,7 +62,7 @@ export type {
 } from '@shadhil/api-types';
 
 // Cursor encoding: base64url(`${createdAt.toISOString()}|${id}`).
-// Opaque to the client — server re-parses on next page. The
+// Opaque to the client - server re-parses on next page. The
 // `createdAt|id` key uniquely orders PENDING rows by recency.
 function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString('base64url');
@@ -124,7 +124,7 @@ export class WhatsappUnknownContactsService {
   }
 
   // ── list ───────────────────────────────────────────────────────────
-  // Filter by status (defaults to PENDING — the active follow-up
+  // Filter by status (defaults to PENDING - the active follow-up
   // queue). Cursor pagination ordered by createdAt DESC (most recent
   // first) so the telecaller sees the freshest messages at the top.
   // Total count is returned (capped at 1000) so the UI can show
@@ -191,7 +191,7 @@ export class WhatsappUnknownContactsService {
   // to status=CONVERTED with convertedToLeadId set.
   //
   // Why transaction: the contact must not be PENDING when another
-  // staff member is also working it — and the Link must be set so
+  // staff member is also working it - and the Link must be set so
   // the contact page shows the right Lead. Atomicity prevents
   // "Lead created but contact still PENDING" or "Contact marked
   // CONVERTED but Lead creation failed" intermediate states.
@@ -202,7 +202,7 @@ export class WhatsappUnknownContactsService {
   ): Promise<ConvertUnknownContactResult> {
     // Force the source to WHATSAPP regardless of what the UI sent.
     // The whole point of this flow is "a WhatsApp message turned
-    // into a Lead" — letting the caller set the source defeats the
+    // into a Lead" - letting the caller set the source defeats the
     // analytics ("how many leads came from WhatsApp this month?").
     const normalizedDto = CreateLeadDtoSchema.parse({
       ...dto,
@@ -216,7 +216,7 @@ export class WhatsappUnknownContactsService {
         // Lock the contact row so a concurrent convert/spam on the
         // same contact is serialized. findUnique + status check
         // (instead of an explicit SELECT FOR UPDATE) is fine for v1
-        // because the workload is "a few staff at a time" — true
+        // because the workload is "a few staff at a time" - true
         // high-concurrency would need a different pattern.
         const contact = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique(
           {
@@ -231,7 +231,7 @@ export class WhatsappUnknownContactsService {
         }
         if (contact.status !== 'PENDING') {
           throw new ConflictException(
-            `Contact ${contactId} is already ${contact.status} — cannot convert again`,
+            `Contact ${contactId} is already ${contact.status} - cannot convert again`,
           );
         }
 
@@ -296,7 +296,7 @@ export class WhatsappUnknownContactsService {
   }
 
   // ── markSpam ──────────────────────────────────────────────────────
-  // One-click status flip. No Lead required. Idempotent — calling
+  // One-click status flip. No Lead required. Idempotent - calling
   // it on an already-SPAM contact is a no-op (still returns the row).
   async markSpam(
     actor: JwtPayload,
@@ -315,10 +315,10 @@ export class WhatsappUnknownContactsService {
           );
         }
         if (existing.status === 'CONVERTED') {
-          // Refuse to mark a converted contact as spam — that would
+          // Refuse to mark a converted contact as spam - that would
           // orphan the linked Lead. Caller can update notes instead.
           throw new ConflictException(
-            `Contact ${contactId} is CONVERTED (linked to a Lead) — cannot mark as spam`,
+            `Contact ${contactId} is CONVERTED (linked to a Lead) - cannot mark as spam`,
           );
         }
 
@@ -364,5 +364,5 @@ export function makeTestContactId(label: string): string {
 // Re-export the BadRequestException so the controller can import
 // the error types from the service file (matches the pattern in
 // notifications.controller.ts where the controller imports parseBody
-// locally — keeping the service pure-async-no-HTTP).
+// locally - keeping the service pure-async-no-HTTP).
 export { BadRequestException };

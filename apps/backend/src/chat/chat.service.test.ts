@@ -1,4 +1,4 @@
-// Chat service tests — exercises the pure logic without a real DB
+// Chat service tests - exercises the pure logic without a real DB
 // (the DB-touching path needs a live Postgres for the RLS JOIN;
 // the unit test pins the shape + role-scoping intent).
 //
@@ -55,7 +55,7 @@ function makeService(): {
     };
   } = {
     // withRlsContext opens a transaction; for the unit test we just
-    // run the callback against the same client (no real SET LOCAL —
+    // run the callback against the same client (no real SET LOCAL -
     // there's no DB session). The callback's `(tx as unknown as
     // PrismaClient).message.create(...)` calls resolve to the same
     // mocks on `client` below.
@@ -89,7 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('list — RLS-scoped message history for a lead', () => {
+describe('list - RLS-scoped message history for a lead', () => {
   it('returns 404 when the lead is not visible to the actor', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue(null);
@@ -153,7 +153,7 @@ describe('list — RLS-scoped message history for a lead', () => {
   });
 });
 
-describe('send — staff message + audit row', () => {
+describe('send - staff message + audit row', () => {
   it('writes a Message row with direction=OUT and audit row in one call', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue({ id: 'lead-x' });

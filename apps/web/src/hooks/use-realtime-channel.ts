@@ -1,6 +1,6 @@
 'use client';
 
-// useRealtimeChannel — React hook wrapping the sse.ts helper.
+// useRealtimeChannel - React hook wrapping the sse.ts helper.
 //
 // T-E2 (Week 6, 2026-09-04). Subscribes to a ticket-authenticated SSE
 // channel for the lifetime of the component. On every non-ping event,
@@ -37,7 +37,7 @@ export function useRealtimeChannel(
     // environment) doesn't provide it, so unit tests that mount pages
     // with realtime subscriptions would crash on `new EventSource()`.
     // Skipping the subscription in non-browser runtimes is the honest
-    // behavior — tests still exercise the query/mutation paths, and the
+    // behavior - tests still exercise the query/mutation paths, and the
     // browser gets the live stream.
     if (typeof EventSource === 'undefined') return;
     const cleanup = openStream<unknown>({

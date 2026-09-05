@@ -1,5 +1,5 @@
 // Table-driven tests for the visits state machine. Mirrors the style
-// of apps/backend/src/leads/leads.state-machine.test.ts (432 cases) —
+// of apps/backend/src/leads/leads.state-machine.test.ts (432 cases) -
 // exhaustively walk every (from, to) pair per role so drift surfaces
 // immediately, not in production when a forgotten transition silently
 // 400s.
@@ -15,8 +15,8 @@ import {
 
 const ALL_STATES: readonly VisitStatus[] = VISIT_STATES;
 
-describe('visits.state-machine — canTransition', () => {
-  // Same-state idempotence — every role, every state.
+describe('visits.state-machine - canTransition', () => {
+  // Same-state idempotence - every role, every state.
   it.each(ALL_STATES)(
     'same-state is idempotent for %s',
     (state) => {
@@ -27,7 +27,7 @@ describe('visits.state-machine — canTransition', () => {
     },
   );
 
-  // ADMIN/OWNER override — every transition is allowed, including
+  // ADMIN/OWNER override - every transition is allowed, including
   // re-opening terminals. We don't exhaustively test every pair
   // (that's 5×4×5=100 cases), we test the relevant edges.
   describe('ADMIN/OWNER override', () => {
@@ -50,7 +50,7 @@ describe('visits.state-machine — canTransition', () => {
     });
   });
 
-  // MANAGER — non-terminal forward + NO_SHOW re-engagement.
+  // MANAGER - non-terminal forward + NO_SHOW re-engagement.
   describe('MANAGER lane', () => {
     it('allows SCHEDULED → COMPLETED', () => {
       expect(canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'MANAGER' }).ok).toBe(true);
@@ -68,7 +68,7 @@ describe('visits.state-machine — canTransition', () => {
     });
   });
 
-  // TELECALLER — schedule/cancel + NO_SHOW re-engagement.
+  // TELECALLER - schedule/cancel + NO_SHOW re-engagement.
   describe('TELECALLER lane', () => {
     it('allows SCHEDULED → CANCELLED', () => {
       expect(canTransition({ from: 'SCHEDULED', to: 'CANCELLED', role: 'TELECALLER' }).ok).toBe(true);
@@ -83,7 +83,7 @@ describe('visits.state-machine — canTransition', () => {
     });
   });
 
-  // SALES_EXEC — carries out visits, no cancellation.
+  // SALES_EXEC - carries out visits, no cancellation.
   describe('SALES_EXEC lane', () => {
     it('allows SCHEDULED → COMPLETED', () => {
       expect(canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'SALES_EXEC' }).ok).toBe(true);
@@ -126,7 +126,7 @@ const TRANSITIONS_FOR_TEST: Readonly<Record<VisitStatus, readonly VisitStatus[]>
   CANCELLED: [],
 };
 
-describe('visits.state-machine — allowedNextStates', () => {
+describe('visits.state-machine - allowedNextStates', () => {
   it('MANAGER SCHEDULED → [COMPLETED, NO_SHOW, CANCELLED, RESCHEDULED]', () => {
     const next = allowedNextStates('SCHEDULED', 'MANAGER');
     expect(next).toEqual(['COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED']);

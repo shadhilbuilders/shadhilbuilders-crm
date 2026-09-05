@@ -6,7 +6,7 @@
 // appends them in order).
 //
 // T-E2 (Week 6, 2026-09-04). The port of the broken Nest controller's
-// data fetchers — these run inside the working setInterval loop in
+// data fetchers - these run inside the working setInterval loop in
 // server.ts, not inside a Nest @Sse() executor.
 
 import type { PrismaClient } from '@shadhil/database';
@@ -14,7 +14,7 @@ import type { SseFrame } from './stream.js';
 
 const FETCH_BATCH = 50;
 
-/** Notifications fetcher — emits one frame per row. */
+/** Notifications fetcher - emits one frame per row. */
 export const notificationsFetcher =
   (prisma: PrismaClient, userId: string) =>
   async (lastSeenAt: Date): Promise<SseFrame[]> => {
@@ -38,7 +38,7 @@ export const notificationsFetcher =
     }));
   };
 
-/** Audit fetcher — emits one frame per row. Schema: AuditLog uses
+/** Audit fetcher - emits one frame per row. Schema: AuditLog uses
  *  `userId` (the actor) + `before`/`after` Json diffs, not `actorId`
  *  + `metadata`. The role check matches the legacy Nest controller:
  *  ADMIN/OWNER see all rows; everyone else sees only their own. */
@@ -74,7 +74,7 @@ export const auditFetcher =
     }));
   };
 
-/** Chat fetcher — emits one frame per Message for the given lead. */
+/** Chat fetcher - emits one frame per Message for the given lead. */
 export const chatFetcher =
   (prisma: PrismaClient, leadId: string) =>
   async (lastSeenAt: Date): Promise<SseFrame[]> => {

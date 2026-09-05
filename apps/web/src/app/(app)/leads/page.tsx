@@ -68,7 +68,7 @@ export default function LeadInboxPage() {
         }
         action={
           // The "+ New lead" button is hidden for TELECALLER per
-          // Plan §3 — leads are created by managers/landing site, then
+          // Plan §3 - leads are created by managers/landing site, then
           // routed by the assignment rule. SALES_EXEC and above can
           // self-source leads (e.g. walk-ins).
           user !== null && user.role !== 'TELECALLER' ? (
@@ -204,10 +204,10 @@ function LeadTable({ rows }: { rows: LeadRow[] }) {
                 <LeadStatusBadge status={row.status ?? 'UNKNOWN'} />
               </td>
               <td className="text-muted-foreground hidden px-4 py-2.5 text-sm sm:table-cell">
-                {row.source ?? '—'}
+                {row.source ?? '-'}
               </td>
               <td className="text-muted-foreground hidden px-4 py-2.5 text-sm md:table-cell">
-                {row.ownerName ?? '—'}
+                {row.ownerName ?? '-'}
               </td>
             </tr>
           ))}

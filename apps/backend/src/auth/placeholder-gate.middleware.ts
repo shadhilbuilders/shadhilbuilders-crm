@@ -1,4 +1,4 @@
-// T-S — placeholder-password gate middleware.
+// T-S - placeholder-password gate middleware.
 //
 // Sits in front of the better-auth catch-all (which is mounted at
 // /api/auth/*splat) and rejects sign-in for any email listed in
@@ -10,14 +10,14 @@
 // Why this exists as a Nest middleware (not a better-auth `hooks.before`):
 // better-auth 1.7.2's `hooks.before` is declared in the type signature
 // but the dispatcher in api/index.mjs only invokes `onRequestRateLimit`
-// and plugin `.onRequest` — `hooks.before` is never called. The
+// and plugin `.onRequest` - `hooks.before` is never called. The
 // practical gate lives at the HTTP layer.
 //
 // Implementation note: the same `placeholder-users.json` is read by
 // @shadhil/auth at boot. To avoid two reads on every request, we
 // import the pre-built Set the package exposes for the test suite
 // (the test build uses a __test__ export). For production we just
-// re-read the file — it's small (~5 entries) and the parse is O(1).
+// re-read the file - it's small (~5 entries) and the parse is O(1).
 
 import {
   Inject,
@@ -57,12 +57,12 @@ export class PlaceholderGateMiddleware {
     const body = (req.body ?? {}) as { email?: unknown };
     const email = typeof body.email === 'string' ? body.email.toLowerCase() : '';
     if (email.length === 0) {
-      // No email in body — let better-auth's own validator return 400.
+      // No email in body - let better-auth's own validator return 400.
       next();
       return;
     }
     if (!this.emails.has(email)) {
-      // Not a placeholder — pass through to better-auth.
+      // Not a placeholder - pass through to better-auth.
       next();
       return;
     }
@@ -86,7 +86,7 @@ export class PlaceholderGateMiddleware {
       // (so __dirname = /app/apps/backend/dist/auth/). The flag file
       // is at /app/packages/auth-client/placeholder-users.json, so
       // the path is ../../packages/auth-client/placeholder-users.json
-      // relative to the source — but at RUNTIME we walk up from
+      // relative to the source - but at RUNTIME we walk up from
       // /app/apps/backend/dist/auth/ to /app/ then into
       // packages/auth-client/. The exact number of `..` segments
       // depends on whether we're in the source tree (src/auth/)
@@ -109,7 +109,7 @@ export class PlaceholderGateMiddleware {
       const parsed = JSON.parse(raw) as { emails?: unknown };
       if (!Array.isArray(parsed.emails)) {
         this.logger.warn(
-          'placeholder-users.json has no emails array — T-S gate is a no-op',
+          'placeholder-users.json has no emails array - T-S gate is a no-op',
         );
         return new Set();
       }
@@ -133,7 +133,7 @@ export class PlaceholderGateMiddleware {
   private findFlagFile(path: typeof import('node:path')): string | null {
     const fs = require('node:fs') as typeof import('node:fs');
     let dir = __dirname;
-    // Cap the walk at 8 levels — defensive against infinite loop
+    // Cap the walk at 8 levels - defensive against infinite loop
     // in degenerate test setups that mount __dirname oddly.
     for (let i = 0; i < 8; i += 1) {
       const candidate = path.join(
@@ -165,7 +165,7 @@ export class PlaceholderGateModule implements NestModule {
     // as the splat part. For '/api/auth/sign-in/email' the splat
     // is 'sign-in/email'. We match '/sign-in/email' AND
     // '/api/auth/sign-in/email' AND '/auth/sign-in/email' to cover
-    // both modes (the behavior was inconsistent during testing —
+    // both modes (the behavior was inconsistent during testing -
     // depends on whether the request came in before or after the
     // global prefix is applied).
     consumer

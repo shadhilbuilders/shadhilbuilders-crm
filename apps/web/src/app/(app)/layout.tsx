@@ -1,6 +1,6 @@
 'use client';
 
-// Authenticated app shell — Phase 2.
+// Authenticated app shell - Phase 2.
 //
 // Wraps the (app) route group in `SidebarProvider` from @paalstack/react-ui.
 // The library handles the mobile / desktop breakpoint internally: ≤768px
@@ -8,7 +8,7 @@
 // persistent inset rail. The cookie-persisted `sidebar_state` defaults to
 // `true` on desktop so first-paint is "open and readable", and to
 // `false` on mobile so the first paint is "hamburger + page" rather than
-// a Sheet overlay flashing over a fresh route (T30 — the cookie SSR
+// a Sheet overlay flashing over a fresh route (T30 - the cookie SSR
 // flash was a re-review landmine).
 //
 // Architecture note (Eng-review Section 1 P1): this layout is
@@ -25,7 +25,7 @@
 //   │                                         cookie flash)
 //   ├── <AppShell>                         (logo, nav groups, footer)
 //   └── <SidebarInset>                     (replaces the old <main>)
-//       ├── <AppHeader>                    (slim topbar — T8 rewrites it)
+//       ├── <AppHeader>                    (slim topbar - T8 rewrites it)
 //       │   ├── SidebarTrigger             (mobile only, opens the Sheet)
 //       │   └── <OnlineRevalidationBar />  (D6: fixed at top of inset)
 //       └── <main>{children}</main>

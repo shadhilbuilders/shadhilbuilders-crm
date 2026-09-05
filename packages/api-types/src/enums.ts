@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Shadhil CRM — Enums (Zod)
+// Shadhil CRM - Enums (Zod)
 // ────────────────────────────────────────────────────────────────────────────
 // Zod enum schemas for every Prisma model enum. The SAME Zod schema validates
 // payloads in NestJS pipes AND Next.js route handlers, so a request rejected
@@ -16,7 +16,7 @@ import { z } from 'zod';
 // Auth / RBAC
 // ────────────────────────────────────────────────────────────────────────────
 
-/** User role. Single primary role per user (A6) — no v1 role switching. */
+/** User role. Single primary role per user (A6) - no v1 role switching. */
 export const RoleSchema = z.enum([
   'OWNER',
   'ADMIN',
@@ -28,7 +28,7 @@ export type Role = z.infer<typeof RoleSchema>;
 
 /**
  * Roles an actor may SET on another user (Round 20, rename 21). OWNER
- * appears here ONLY so zod accepts it — the users module rejects every
+ * appears here ONLY so zod accepts it - the users module rejects every
  * assignment of it at runtime; the single owner exists via seed/migration
  * only.
  */
@@ -172,7 +172,7 @@ export type WhatsappUnknownContactStatus = z.infer<
 >;
 
 // ────────────────────────────────────────────────────────────────────────────
-// Convenience union — every enum schema, exported for runtime validation.
+// Convenience union - every enum schema, exported for runtime validation.
 // ────────────────────────────────────────────────────────────────────────────
 
 export const ALL_ENUM_SCHEMAS = {

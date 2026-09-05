@@ -10,7 +10,7 @@ import {
 } from '@shadhil/offline-store';
 
 /**
- * Consumer wiring test for `withOffline` — exercises the **photo upload
+ * Consumer wiring test for `withOffline` - exercises the **photo upload
  * path end-to-end** (the part the sibling `with-offline.test.ts`
  * deliberately skips, because it would force React rendering).
  *
@@ -31,13 +31,13 @@ import {
  *     + blobName; photo blob stays in IDB so the SW can replay
  *   - photo upload on 5xx: same queued shape as network error
  *   - photo upload on 4xx: kind 'failed', nothing enqueued, photo blob
- *     stays in IDB so the consumer can show a "Failed — Retry" CTA
+ *     stays in IDB so the consumer can show a "Failed - Retry" CTA
  *   - photo upload with missing blobKey (IDB miss): throws an Error
  *     with the exact blobKey in the message; the form's onError catches it
  *
  * Test environment note: apps/web uses jsdom + fake-indexeddb. jsdom's
  * Blob does NOT survive the IDB structured-clone roundtrip (it returns
- * `{}` on retrieval). Production browsers do this fine — Blob is a
+ * `{}` on retrieval). Production browsers do this fine - Blob is a
  * structured-cloneable native type. To exercise the photo path without
  * fighting the jsdom limitation, this test registers the saved blob in
  * a parallel Map and uses a per-test `fetchPhoto` shim that swaps in
@@ -48,7 +48,7 @@ import {
 
 // Mirror of the inner mutationFn from with-offline.ts, scoped to the
 // photo-upload path. Kept in this test file (not in the source) so the
-// source's behavior is the contract, not this re-implementation — if
+// source's behavior is the contract, not this re-implementation - if
 // with-offline.ts changes its photo branch, this test file is the
 // canary that flags the drift.
 //
@@ -126,7 +126,7 @@ const fakeFetcher = (responses: Array<Response | Error>) => {
       method: init.method ?? 'GET',
       body: (init.body as FormData | null | undefined) ?? null,
     });
-    // No underflow check — if a test exhausts the response queue, throwing
+    // No underflow check - if a test exhausts the response queue, throwing
     // an explicit error makes the failure obvious instead of crashing
     // with an opaque `undefined is not a Response`.
     const next = responses[i++];
@@ -139,7 +139,7 @@ const fakeFetcher = (responses: Array<Response | Error>) => {
   return Object.assign(fn, { calls });
 };
 
-describe('withOffline — photo upload consumer wiring', () => {
+describe('withOffline - photo upload consumer wiring', () => {
   let photos: ReturnType<typeof createPhotoStore>;
   let mockedFetcher: ReturnType<typeof fakeFetcher>;
   // Mocked blob registry: blobKey → real Blob. See file header for why
@@ -157,7 +157,7 @@ describe('withOffline — photo upload consumer wiring', () => {
   });
 
   afterEach(() => {
-    // No global mocks to restore — fetch is injected per call, not patched globally.
+    // No global mocks to restore - fetch is injected per call, not patched globally.
   });
 
   /** Save a real Blob, then register it in our read-stub so jsdom can
@@ -200,7 +200,7 @@ describe('withOffline — photo upload consumer wiring', () => {
     // No queued mutation on a clean sync.
     const queue = ((await realGet(MUTATION_QUEUE_KEY, mutationStore)) as Mutation[] | undefined) ?? [];
     expect(queue).toHaveLength(0);
-    // Photo blob stays in IDB — consumer's job to delete after confirming
+    // Photo blob stays in IDB - consumer's job to delete after confirming
     // the server persisted it (with-offline.ts deliberately does not
     // delete on sync, because the consumer may still want to retry).
     expect(blobRegistry.has(blobKey)).toBe(true);
@@ -234,7 +234,7 @@ describe('withOffline — photo upload consumer wiring', () => {
     expect(queued?.blobKey).toBe(blobKey);
     expect(queued?.blobName).toBe('visit.webp');
     expect(queued?.body).toBeUndefined(); // multipart body lives in IDB
-    // Photo blob survives — the SW replay handler will read it by blobKey.
+    // Photo blob survives - the SW replay handler will read it by blobKey.
     expect(blobRegistry.has(blobKey)).toBe(true);
   });
 
@@ -280,7 +280,7 @@ describe('withOffline — photo upload consumer wiring', () => {
     }
     const queue = ((await realGet(MUTATION_QUEUE_KEY, mutationStore)) as unknown[] | undefined) ?? [];
     expect(queue).toHaveLength(0);
-    // Photo blob survives — the form's "Failed — Retry" CTA needs it
+    // Photo blob survives - the form's "Failed - Retry" CTA needs it
     // (consumer rebuilds FormData from the same blobKey).
     expect(blobRegistry.has(blobKey)).toBe(true);
   });

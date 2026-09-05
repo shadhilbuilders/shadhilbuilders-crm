@@ -3,7 +3,7 @@
 // Mirrors the T-G4 reminder cron test pattern:
 //   - StubRedis for the lease
 //   - Real Prisma (RLS-enforced; the cron runs as CRON_SERVICE)
-//   - Stub WhatsAppClient (the real one calls Meta — we don't want
+//   - Stub WhatsAppClient (the real one calls Meta - we don't want
 //     that in unit tests)
 //   - Stub OutboundService that uses the stub client
 //
@@ -14,7 +14,7 @@
 //      window is NOT claimed (the pre-filter in claimPending
 //      catches it)
 //   4. send failure: a row that throws on sendOne gets lastError
-//      set + status flipped to PENDING (not SENT) — the next
+//      set + status flipped to PENDING (not SENT) - the next
 //      tick will retry per the backoff schedule
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -35,7 +35,7 @@ const HAS_REDIS = Boolean(process.env.REDIS_URL);
 
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Test fixtures — unique per run so re-runs don't collide on
+// Test fixtures - unique per run so re-runs don't collide on
 // the unique `Lead_phoneE164_key` and `OutboundMessage_messageId_key`
 // constraints.
 const REPLICA_ID = 'test-outbound-cron-replica';
@@ -82,7 +82,7 @@ async function ensureFixtures(): Promise<void> {
     });
     // Lead with a per-test unique phone. The `phone` field has a
     // unique constraint (Lead_phone_key) and `phoneE164` has one too
-    // (Lead_phoneE164_key) — both must be unique per test run.
+    // (Lead_phoneE164_key) - both must be unique per test run.
     await db.lead.upsert({
       where: { id: TEST_LEAD_ID },
       update: {
@@ -149,7 +149,7 @@ async function cleanupTestOutbound(): Promise<void> {
   if (prisma === null) return;
   // Cleanup via FK cascade: deleting the Message removes the
   // OutboundMessage (FK ON DELETE CASCADE). This avoids the
-  // DELETE permission path on OutboundMessage — same workaround
+  // DELETE permission path on OutboundMessage - same workaround
   // as chat.service.send.test.ts. ADMIN role satisfies the
   // Message DELETE policy (message_delete via team membership).
   await adminSeed(async (db) => {
@@ -173,7 +173,7 @@ async function cleanupTestOutbound(): Promise<void> {
 async function cleanupAllTestRows(): Promise<void> {
   if (prisma === null) return;
   await adminSeed(async (db) => {
-    // Delete via Message cascade — same pattern as cleanupTestOutbound.
+    // Delete via Message cascade - same pattern as cleanupTestOutbound.
     await db.message.deleteMany({
       where: {
         OR: [
@@ -237,7 +237,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
   }
 }
 
-// Stub WhatsAppClient — exposes just the method the OutboundService
+// Stub WhatsAppClient - exposes just the method the OutboundService
 // actually calls. Records every call for assertions.
 class StubWhatsApp {
   public readonly calls: Array<{
@@ -267,7 +267,7 @@ class StubWhatsApp {
 }
 
 describe.skipIf(!HAS_DB || !HAS_REDIS)(
-  'T-E2b outbound cron — lease + claim + send',
+  'T-E2b outbound cron - lease + claim + send',
   () => {
     let stubRedis: StubRedis;
     let stubWhatsApp: StubWhatsApp;
@@ -347,7 +347,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       // Cleanup: release the manually-acquired lock so the next test starts clean.
       await stubRedis.releaseLock(OUTBOUND_LOCK_KEY, OTHER_REPLICA);
 
-      // Also clean up the seeded row — it stays PENDING because the
+      // Also clean up the seeded row - it stays PENDING because the
       // lock test doesn't claim it, but a later test's cron run
       // would claim it (since lastAttemptAt is null → backoff filter
       // treats it as ready). The next test's expected counts would
@@ -356,14 +356,14 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
     });
 
     it('backoff: a row within the backoff window is NOT claimed', async () => {
-      // Clear any PENDING orphans from previous test runs — if an
+      // Clear any PENDING orphans from previous test runs - if an
       // orphan's backoff has elapsed (> 5 min), the cron will claim
       // it before checking our test row, breaking the assertion
       // (claimed would be 1, expected 0). The backoff filter is
       // correct; this just isolates the test.
       await cleanupAllTestRows();
 
-      // First attempt happened 1 second ago — the first backoff
+      // First attempt happened 1 second ago - the first backoff
       // is 30s, so this row is still in its backoff window.
       const recentAttempt = new Date(Date.now() - 1_000);
       const { outboundId } = await seedOutbound('backoff', {
@@ -472,7 +472,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
         stubAlerts,
       );
 
-      // Run once with a happy path — recordTickResult must be called
+      // Run once with a happy path - recordTickResult must be called
       // exactly once with the resulting tick.
       await seedOutbound('alerts-happy');
       stubWhatsApp.nextResult = { wamid: 'wamid.alerts' };
@@ -483,8 +483,8 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
     });
 
     it('T-E2b: a throwing alerts service does NOT crash the cron (best-effort)', async () => {
-      // If alerts.recordTickResult throws (it shouldn't — it's
-      // contractually no-throw — but defense-in-depth), the cron
+      // If alerts.recordTickResult throws (it shouldn't - it's
+      // contractually no-throw - but defense-in-depth), the cron
       // must still complete and return a tick.
       const stubAlerts = {
         recordTickResult: vi.fn(

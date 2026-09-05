@@ -1,4 +1,4 @@
-// Notifications controller — list current user's inbox + mark-as-read.
+// Notifications controller - list current user's inbox + mark-as-read.
 //
 // Mirrors apps/backend/src/leads/leads.controller.ts and
 // apps/backend/src/visits/visits.controller.ts patterns:
@@ -9,8 +9,8 @@
 //   - Query-string boolean coercion for `unreadOnly=true`
 //
 // Endpoint shapes match the web hooks (apps/web/src/hooks/queries/crm.ts):
-//   - GET   /api/notifications              — list (useNotifications hook)
-//   - PATCH /api/notifications/mark-read    — mark read (useMarkNotificationsRead hook)
+//   - GET   /api/notifications              - list (useNotifications hook)
+//   - PATCH /api/notifications/mark-read    - mark read (useMarkNotificationsRead hook)
 import {
   BadRequestException,
   Body,

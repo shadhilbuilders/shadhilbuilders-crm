@@ -6,14 +6,14 @@
 -- updateMany(SCHEDULED → PROCESSING) returned 0 rows. Root cause: the
 -- `reminder_write_owner` policy (FOR ALL USING/WITH CHECK
 -- userId = app.user_id) blocked any actor whose userId didn't match
--- the row's userId — including the service-account cron actor with
+-- the row's userId - including the service-account cron actor with
 -- userId='cron-service'.
 --
 -- Fix: add a parallel `reminder_cron_service` policy that allows the
 -- cron actor (role=CRON_SERVICE AND userId='cron-service') to claim
 -- any row regardless of owner. PostgreSQL OR's overlapping FOR ALL
 -- policies, so the owner check is still enforced for every real user
--- role — only the canonical cron service-account pair bypasses it.
+-- role - only the canonical cron service-account pair bypasses it.
 --
 -- Impersonation guard: the CRON_SERVICE branch requires BOTH
 -- app.user_role='CRON_SERVICE' AND app.user_id='cron-service'. A user
@@ -26,7 +26,7 @@
 -- pins this behavior end-to-end against a real DB.
 --
 -- Alternative considered (rejected): split `shadhil_app_cron` role with
--- BYPASSRLS — wider blast radius and breaks the 128-case matrix for
+-- BYPASSRLS - wider blast radius and breaks the 128-case matrix for
 -- every read. Per postgres-multi-role-grants.md, option 2 (explicit
 -- service-account policy) is the minimum-blast-radius fix.
 

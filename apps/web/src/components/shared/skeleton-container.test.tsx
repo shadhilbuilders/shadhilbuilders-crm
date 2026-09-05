@@ -1,10 +1,10 @@
-// T26 + T33 — SkeletonContainer cross-fade contract.
+// T26 + T33 - SkeletonContainer cross-fade contract.
 //
 // Per locked decisions:
 //   - `transitionDuration === '200ms'` is pinned via the wrapper
 //     class string `transition-opacity duration-200` (T33). A
 //     regression to `duration-300` or `duration-500` flips the
-//     class and fails the test. No `vi.useFakeTimers` — CSS
+//     class and fails the test. No `vi.useFakeTimers` - CSS
 //     animations are not pauseable by fake timers (known pitfall,
 //     audit row 31).
 //   - `motion-reduce:transition-none` is on the wrapper, so users
@@ -21,7 +21,7 @@
 // component. For the literal T33 spec ("asserts
 // getComputedStyle(el).transitionDuration === '200ms'"), we render
 // into a real jsdom root and read the computed style of the wrapper
-// — proving the class string isn't just declared but actually
+// - proving the class string isn't just declared but actually
 // produces the right transition in the live CSS.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -34,7 +34,7 @@ import {
 
 describe('SkeletonContainer', () => {
   describe('class contract (T17, T33)', () => {
-    it('wrapper class string pins duration-200 (T33 — no fake timers)', () => {
+    it('wrapper class string pins duration-200 (T33 - no fake timers)', () => {
       expect(SKELETON_CONTAINER_WRAPPER_CLASSES).toContain('duration-200');
       expect(SKELETON_CONTAINER_WRAPPER_CLASSES).toContain('transition-opacity');
     });
@@ -165,26 +165,26 @@ describe('SkeletonContainer', () => {
     });
   });
 
-  describe('T33 — transitionDuration pinned at the source', () => {
+  describe('T33 - transitionDuration pinned at the source', () => {
     // T33 says: "Test asserts getComputedStyle(el).transitionDuration
     // === '200ms' instead of vi.useFakeTimers()." The intent is
     // "test the CSS contract, not the JS clock." We achieve that
     // intent with a string assertion on the exported
-    // `SKELETON_CONTAINER_WRAPPER_CLASSES` constant — which is the
+    // `SKELETON_CONTAINER_WRAPPER_CLASSES` constant - which is the
     // actual source of truth. A regression to `duration-300` or
     // `duration-500` flips the class string and fails the test
     // *before* the page ever ships.
     //
     // The literal "getComputedStyle === '200ms'" check requires
     // jsdom to resolve the Tailwind v4 utility chain (a non-trivial
-    // setup). The string assertion IS the spec — Tailwind guarantees
+    // setup). The string assertion IS the spec - Tailwind guarantees
     // `duration-200` maps to `200ms` in its generated stylesheet.
     // Anyone overriding the duration must update the constant,
     // which is the audit trail this test enforces.
-    it('wrapper class string pins duration-200 (T33 — source of truth)', () => {
+    it('wrapper class string pins duration-200 (T33 - source of truth)', () => {
       expect(SKELETON_CONTAINER_WRAPPER_CLASSES).toMatch(/duration-200\b/);
       // Belt-and-braces: also check the exact resolved value if
-      // jsdom DID process the utility (it returns '0s' otherwise —
+      // jsdom DID process the utility (it returns '0s' otherwise -
       // either is fine; the string assertion is the real test).
       const host = document.createElement('div');
       document.body.appendChild(host);
@@ -194,7 +194,7 @@ describe('SkeletonContainer', () => {
       const duration = getComputedStyle(div).transitionDuration;
       // Tailwind v4 emits `0.2s` or `200ms` for `duration-200`;
       // jsdom without the stylesheet returns `0s`. All three are
-      // valid outcomes of the class string being applied — the
+      // valid outcomes of the class string being applied - the
       // test passes as long as the class string is right.
       expect(['200ms', '0.2s', '0s']).toContain(duration);
     });

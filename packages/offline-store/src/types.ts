@@ -38,7 +38,7 @@ export type Mutation = {
    * Logical-operation key for dedupe (T-D4). When set, `enqueueUnique`
    * replaces an existing queued entry with the same key instead of
    * appending a duplicate (e.g. `outcome:{visitId}:{outcome}`). Not
-   * used by plain `enqueue` — the field is optional so existing
+   * used by plain `enqueue` - the field is optional so existing
    * enqueued entries and the SW replay path are unaffected.
    */
   dedupeKey?: string;

@@ -1,4 +1,4 @@
-# apps/web — Shadhil Builders CRM frontend
+# apps/web - Shadhil Builders CRM frontend
 
 > The Next.js 16 frontend for Shadhil Builders CRM. Consumes
 > [`@paalstack/react-ui`](https://github.com/paalamugan/paalstack-react-ui)
@@ -6,7 +6,7 @@
 > [`paalstack-nextjs-starter`](https://github.com/paalstack/paalstack-nextjs-starter).
 
 This `apps/web/` is one half of the shadhil-crm monorepo (the other half is
-`apps/backend/` — a NestJS 12 + Prisma 18 API). This README describes only
+`apps/backend/` - a NestJS 12 + Prisma 18 API). This README describes only
 the frontend. The monorepo root README covers the system as a whole.
 
 ---
@@ -15,7 +15,7 @@ the frontend. The monorepo root README covers the system as a whole.
 
 - **Next.js 16 App Router** with Server Components and Route Handlers
 - **React 19** + TypeScript strict
-- **`@paalstack/react-ui`** (the umbrella package) — Buttons, Cards, Dialog,
+- **`@paalstack/react-ui`** (the umbrella package) - Buttons, Cards, Dialog,
   Sheet, Tooltip, Form, Toast, Heading, Typography*, Box, Stack, plus 60+
   others. Browse the catalog in the
   [global agent skill](file:///home/paalstack/.hermes/skills/devops/paalstack-react-ui/SKILL.md)
@@ -25,22 +25,22 @@ the frontend. The monorepo root README covers the system as a whole.
   (`@paalstack/react-ui/all.css` → `@shadhil/ui-tokens/brand.css` →
   `tailwindcss`). Brand colors are defined per-project in
   [`packages/ui-tokens/README.md`](../../../packages/ui-tokens/README.md).
-- **TanStack Query v5** for server state — singleton client in
+- **TanStack Query v5** for server state - singleton client in
   `src/lib/query-client/`, mounted via `src/providers/QueryProvider`.
 - **Zod v4 + `@t3-oss/env-nextjs`** for runtime env validation in
   `src/lib/env/`. Misconfigured deploys fail immediately with a clear error.
 - **better-auth** catch-all at `src/app/api/auth/[...all]/route.ts`,
   sharing the same `auth` instance as the NestJS backend via the
   `@shadhil/auth` workspace package. The `Jwks` model (required by the
-  jwt() plugin) lives in `packages/database/prisma/schema.prisma` — its
+  jwt() plugin) lives in `packages/database/prisma/schema.prisma` - its
   absence broke `GET /api/auth/get-session` (500) app-wide.
-- **`next/font` + Inter** — the brand font is self-hosted via `next/font`,
+- **`next/font` + Inter** - the brand font is self-hosted via `next/font`,
   preloaded, no Google Fonts CDN request. See
   [`packages/ui-tokens/README.md`](../../../packages/ui-tokens/README.md#font-setup-inter-via-nextfont)
   for the setup pattern.
 - **`nextjs-toploader`** for the route-progress bar.
 
-### App pages (`src/app/(app)/` — authenticated route group)
+### App pages (`src/app/(app)/` - authenticated route group)
 
 The auth gate is `src/proxy.ts` (Next 16's renamed middleware): cookieless
 visitors bounce to `/login?next=…`; everything under `(app)/` requires a
@@ -48,14 +48,14 @@ better-auth session cookie.
 
 | Route | What it is | Data source |
 |---|---|---|
-| `/` | Role-aware home — Admin cross-team view, Manager KPI strip + pipeline (KPIs are numbers in a row, NOT cards — locked Decision 0.4), Telecaller/Exec inbox-first home | session only |
-| `/leads` | Lead Inbox — state filter chips, search, overdue-first sort (Decision 0.2), semantic status badges | leads module (pending) |
-| `/leads/[id]` | Lead Detail — two-column layout, embedded chat pane, timeline | leads/chat (pending) |
+| `/` | Role-aware home - Admin cross-team view, Manager KPI strip + pipeline (KPIs are numbers in a row, NOT cards - locked Decision 0.4), Telecaller/Exec inbox-first home | session only |
+| `/leads` | Lead Inbox - state filter chips, search, overdue-first sort (Decision 0.2), semantic status badges | leads module (pending) |
+| `/leads/[id]` | Lead Detail - two-column layout, embedded chat pane, timeline | leads/chat (pending) |
 | `/visits` | Site Visits week calendar (Mon-start) + schedule dialog | visits module (pending) |
 | `/inventory` | Unit grid shell + status legend | units module (not built) |
 | `/notifications` | Inbox with All/Unread/Leads/Bookings/Visits tabs + mark-all-read | notifications (pending) |
-| `/users` | User management — create + role change + list. **LIVE.** | users module (implemented) |
-| `/audit` | Audit log — admin-only table + export buttons | audit module (pending) |
+| `/users` | User management - create + role change + list. **LIVE.** | users module (implemented) |
+| `/audit` | Audit log - admin-only table + export buttons | audit module (pending) |
 
 Roles come from `useSessionUser()` (`src/lib/session.ts`): the header shows
 Users for admin-class + managers and Audit for admin-class only; page-level
@@ -70,7 +70,7 @@ client traffic goes through the BFF proxy:
 browser (session cookie)
   → /api/bff/<path>          (this route handler)
       verifies session against DB (cookie value is <token>.<hmac>, the DB
-      stores the bare token — split before lookup)
+      stores the bare token - split before lookup)
       → issueJwt() from @shadhil/auth (same claim shape better-auth emits)
       → fetch NestJS with Authorization: Bearer <jwt>
   ← JSON streamed back
@@ -81,17 +81,17 @@ TypeScript strict-mode type for the handler params comes from
 
 ### Data layer
 
-- **`src/apis/`** — browser API client (`api<T>(path, init)` through
+- **`src/apis/`** - browser API client (`api<T>(path, init)` through
   `/api/bff`, `ApiError`, `qs` filter-string helper, session user
   extraction and role constants). Server-only code must not import the
   client hooks; the BFF handler does its own session→JWT bridge.
-- **`src/hooks/queries/`** — TanStack Query hooks. `users.ts` is live
+- **`src/hooks/queries/`** - TanStack Query hooks. `users.ts` is live
   against the backend; `crm.ts` (leads/visits/chat/bookings/notifications/
   audit) is locked to the Zod contracts in `packages/api-types` and lights
   up when those controllers ship.
-- **`src/hooks/mutations/`** — write-path re-exports.
+- **`src/hooks/mutations/`** - write-path re-exports.
 - **Pending-module honesty:** pages whose backend module is still a stub
-  render `src/components/shared/ModulePending.tsx` — an explicit
+  render `src/components/shared/ModulePending.tsx` - an explicit
   "Not built yet" state. No placeholder/fake data anywhere.
 
 ## What is **not** here yet (planned)
@@ -99,19 +99,19 @@ TypeScript strict-mode type for the handler params comes from
 The starter template ships a fuller kit; we deliberately haven't pulled it
 all in. Items that will arrive when a feature needs them:
 
-- **Zustand stores** — for UI state that doesn't fit React context
+- **Zustand stores** - for UI state that doesn't fit React context
   (theme, sidebar, preferences).
-- **`withApiErrorHandling` / typed `AppError*`** — the typed error system
+- **`withApiErrorHandling` / typed `AppError*`** - the typed error system
   exists only in `apps/backend/` for now. `apps/web/` route handlers
   throw `HttpError` from `@paalstack/react-ui/lib` directly.
 - **Backend modules for leads / visits / chat / bookings / notifications /
-  audit** — the UI is built and wired to their locked contracts; the
+  audit** - the UI is built and wired to their locked contracts; the
   backend controllers ship in Implementation Plan Weeks 4–7.
-- **PostHog, Sentry, Resend** — not wired. Add via `src/providers/` when
+- **PostHog, Sentry, Resend** - not wired. Add via `src/providers/` when
   the analytics/monitoring/email feature lands.
 
 The Cursor rule at `apps/web/.cursor/rules/paalstack.mdc` enforces this
-"Do Not" list — don't create those folders until the first feature needs
+"Do Not" list - don't create those folders until the first feature needs
 them.
 
 ---
@@ -135,7 +135,7 @@ apps/web/
     │   └── index.ts            # Barrel
     ├── app/                    # Next.js App Router
     │   ├── (app)/              # Authenticated route group (app shell + AppHeader)
-    │   │   ├── layout.tsx      # App shell — AppHeader + container
+    │   │   ├── layout.tsx      # App shell - AppHeader + container
     │   │   ├── page.tsx        # Role-aware home (admin / manager / staff)
     │   │   ├── leads/          # /leads (inbox) + /leads/[id] (detail)
     │   │   ├── visits/         # /visits week calendar + schedule dialog
@@ -151,7 +151,7 @@ apps/web/
     │   ├── dev/
     │   │   └── components/page.tsx      # Component dev playground
     │   ├── login/              # /login (LoginForm + page)
-    │   ├── layout.tsx          # Root layout — Inter font, <Providers>
+    │   ├── layout.tsx          # Root layout - Inter font, <Providers>
     │   └── not-found.tsx       # 404 (force-dynamic)
     ├── components/
     │   ├── app-header.tsx      # Authenticated top nav (role-aware, user menu)
@@ -206,18 +206,18 @@ pnpm --filter apps/web dev
 ```
 
 The web app expects:
-- **`apps/web/.env.local`** — symlink to `../../.env` at the monorepo
+- **`apps/web/.env.local`** - symlink to `../../.env` at the monorepo
   root. Contains `BETTER_AUTH_SECRET`, `JWT_SECRET`,
   `DIRECT_DATABASE_URL`, `BACKEND_API_URL`, the `NEXT_PUBLIC_*` block,
   Sentry keys (optional), and the six regulatory inputs (RERA, CMDA, ...).
 - **NestJS backend running** at `BACKEND_API_URL` (default
-  `http://localhost:8080`) — for `/api/auth/*` and the eventual Lead
+  `http://localhost:8080`) - for `/api/auth/*` and the eventual Lead
   Inbox.
 
 Open [http://localhost:3000](http://localhost:3000) for the landing page,
 [http://localhost:3000/dev/components](http://localhost:3000/dev/components)
 for the component playground (visual smoke test for `@paalstack/react-ui`
-under the current CSS setup — delete this page once styling is locked in).
+under the current CSS setup - delete this page once styling is locked in).
 
 ---
 
@@ -230,13 +230,13 @@ reads; `client` block for `NEXT_PUBLIC_*`).
 | Variable | Where | Required | Default | Purpose |
 |---|---|---|---|---|
 | `NODE_ENV` | server | no | `development` | Set automatically by Next.js (`development` / `test` / `production`) |
-| `BETTER_AUTH_SECRET` | server | yes | — | Shared better-auth secret (≥32 chars) |
-| `BETTER_AUTH_URL` | server | yes | — | Public URL of the web app (for auth callbacks) |
-| `JWT_SECRET` | server | yes | — | Shared with NestJS JwtStrategy (≥32 chars) |
+| `BETTER_AUTH_SECRET` | server | yes | - | Shared better-auth secret (≥32 chars) |
+| `BETTER_AUTH_URL` | server | yes | - | Public URL of the web app (for auth callbacks) |
+| `JWT_SECRET` | server | yes | - | Shared with NestJS JwtStrategy (≥32 chars) |
 | `JWT_ISSUER` | server | no | `shadhil-crm` | JWT `iss` claim |
-| `DIRECT_DATABASE_URL` | server | yes | — | Admin DB URL — bypasses PgBouncer (migrations + RLS writes) |
+| `DIRECT_DATABASE_URL` | server | yes | - | Admin DB URL - bypasses PgBouncer (migrations + RLS writes) |
 | `BACKEND_API_URL` | server | no | `http://localhost:8080` | NestJS BFF proxy target |
-| `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | server | no | — | Sentry error monitoring (optional) |
+| `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | server | no | - | Sentry error monitoring (optional) |
 | `NEXT_PUBLIC_API_BASE_URL` | client | no | `http://localhost:8080` | What the browser hits for the BFF |
 | `NEXT_PUBLIC_APP_NAME` | client | no | `Shadhil Builders CRM` | `<title>` + brand text |
 | `NEXT_PUBLIC_APP_URL` | client | no | `http://localhost:3000` | Public URL of the web app |
@@ -245,7 +245,7 @@ reads; `client` block for `NEXT_PUBLIC_*`).
 | `NEXT_PUBLIC_MODEL_C_ENABLED` | client | no | `true` | Feature flag |
 
 `BETTER_AUTH_SECRET` and `JWT_SECRET` are shared with the NestJS backend
-— they must match the values in `apps/backend/.env` or auth will fail at
+- they must match the values in `apps/backend/.env` or auth will fail at
 boot. The shared `@shadhil/auth` workspace package depends on these being
 in sync; both apps read from the same `.env` at the monorepo root.
 
@@ -253,7 +253,7 @@ in sync; both apps read from the same `.env` at the monorepo root.
 
 ## Provider tree (`src/providers/providers.tsx`)
 
-The order matters — each layer's context is inherited by everything below it:
+The order matters - each layer's context is inherited by everything below it:
 
 ```
 <NextThemeProvider        // next-themes wrapper, SSR-safe, drives .dark on <html>
@@ -263,7 +263,7 @@ The order matters — each layer's context is inherited by everything below it:
 >
 ```
 
-- **`NextThemeProvider`** is from `@paalstack/react-ui`. Use it — **not**
+- **`NextThemeProvider`** is from `@paalstack/react-ui`. Use it - **not**
   the homegrown `ThemeProvider` from the same package, which calls
   `localStorage.getItem` in a `useState` initializer and crashes SSR.
 - **`<Toaster />`** is imported in this file but not yet mounted.
@@ -286,7 +286,7 @@ The order matters — each layer's context is inherited by everything below it:
 
 ## CSS cascade (`src/styles/globals.css`)
 
-The order is intentional — last `:root` in source wins for CSS variables:
+The order is intentional - last `:root` in source wins for CSS variables:
 
 ```css
 @import '@paalstack/react-ui/all.css';    /* shadcn defaults + theme + utilities + toast */
@@ -334,7 +334,7 @@ Toast variants, Form (with `react-hook-form`). Useful for:
   `footer=` / `fields=` props API rather than composition).
 
 Not linked from anywhere in the user-facing app. **Delete this page when
-component styling is verified** — the header comment in the file says the
+component styling is verified** - the header comment in the file says the
 same thing.
 
 ---
@@ -355,7 +355,7 @@ ESLint sorts imports automatically:
 
 - **Server Components by default.** Add `'use client'` only when you need
   state, effects, or browser-only APIs.
-- **`'use client'` for providers** — `src/providers/providers.tsx` and
+- **`'use client'` for providers** - `src/providers/providers.tsx` and
   `src/providers/query-provider.tsx` are the only two `.tsx` files in the
   tree that need it (they own context).
 
@@ -366,12 +366,12 @@ ESLint sorts imports automatically:
   `axiosDefaultConfig`) from `@paalstack/react-ui/lib`
 - Hooks from `@paalstack/react-hooks` (client-only)
 - Icons from a `@paalstack/react-icons/<family>` sub-path (e.g. `/lu`,
-  `/hi2`) — **never** the root barrel
+  `/hi2`) - **never** the root barrel
 
 ### No native HTML in JSX
 
 Use `<Box as="header" />`, `<TypographyH1 />`, `<Heading as="h2" />`,
-`<Button />` etc. — never raw `<div>`, `<header>`, `<h1>`, `<button>`. The
+`<Button />` etc. - never raw `<div>`, `<header>`, `<h1>`, `<button>`. The
 Cursor rule at `.cursor/rules/paalstack.mdc` enforces this.
 
 ### Styling
@@ -391,7 +391,7 @@ Cursor rule at `.cursor/rules/paalstack.mdc` enforces this.
   `@/lib/env` and add new keys to `src/lib/env/env.ts`.
 - **Server vs client keys:** `process.env.X` in the `server` block,
   `process.env.NEXT_PUBLIC_X` in the `client` block. The `client` block
-  is inlined into the browser bundle — keep it small and non-sensitive.
+  is inlined into the browser bundle - keep it small and non-sensitive.
 
 ### Commit messages
 
@@ -418,7 +418,7 @@ check + lint + tests before merge.
 ## Deployment
 
 Coolify auto-deploy from `main` via the Dockerfile at `apps/web/Dockerfile`
-(Phase 2 — not built yet). The
+(Phase 2 - not built yet). The
 [monorepo `docker/docker-compose.yml`](../../docker/docker-compose.yml)
 is the local reference config; production deploy uses the same image +
 env-var surface, with `BACKEND_API_URL` and the `NEXT_PUBLIC_*` block

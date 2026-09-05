@@ -1,10 +1,10 @@
-// T-F4 — NewBookingPage (props-API Form) wire-shape contract.
+// T-F4 - NewBookingPage (props-API Form) wire-shape contract.
 //
 // Pins: the props-API Form renders all required fields (Lead select,
 // Unit ID input, Amount + Token amount, Notes textarea); the
 // "Create booking" submit + "Cancel" reset button are wired.
 //
-// We deliberately do NOT exercise the mutation call here — that
+// We deliberately do NOT exercise the mutation call here - that
 // requires react-hook-form's setValue + submit plumbing and is
 // covered by the sibling renders-rows tests for the index page.
 // This file pins the form shape: a regression that drops a field
@@ -38,7 +38,7 @@ vi.mock('@/lib/session', () => ({
 
 import NewBookingPage from './page';
 
-describe('NewBookingPage — props-API Form surface (T-F4)', () => {
+describe('NewBookingPage - props-API Form surface (T-F4)', () => {
   it('renders all required form fields with the props-API <Form>', () => {
     const html = renderToStaticMarkup(<NewBookingPage />);
 
@@ -51,7 +51,7 @@ describe('NewBookingPage — props-API Form surface (T-F4)', () => {
 
     // The form's submit button text (props API)
     expect(html).toContain('Create booking');
-    // The reset button (props API — defaults to "Reset")
+    // The reset button (props API - defaults to "Reset")
     expect(html).toMatch(/data-qa="form-reset-button"/);
 
     // Lead options are wired to the props-API select. The Select
@@ -64,7 +64,7 @@ describe('NewBookingPage — props-API Form surface (T-F4)', () => {
     expect(html).toMatch(/data-qa="select-trigger"/);
     expect(html).toContain('Pick a lead');
 
-    // Test IDs from the field inputProps — proves the props-API
+    // Test IDs from the field inputProps - proves the props-API
     // forwarded the data-qa attribute correctly (regression canary)
     expect(html).toMatch(/data-qa="booking-unit-id"/);
     expect(html).toMatch(/data-qa="booking-amount"/);

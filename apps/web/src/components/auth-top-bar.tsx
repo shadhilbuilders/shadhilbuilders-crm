@@ -1,19 +1,19 @@
 'use client';
 
-// AuthTopBar — shared brand header for every UNAUTHENTICATED page.
+// AuthTopBar - shared brand header for every UNAUTHENTICATED page.
 //
 // Surfaces that render it: /login, /change-password, /offline,
 // not-found. Authenticated pages use the AppShell sidebar +
 // AppHeader instead (this component is intentionally NOT mounted
-// there — the sidebar owns brand there).
+// there - the sidebar owns brand there).
 //
-// Left: logo-with-bg.png inside a fixed-height row — the asset is a
+// Left: logo-with-bg.png inside a fixed-height row - the asset is a
 // full horizontal lockup (wordmark + tagline on a white tile), so it
 // renders as a rounded, bordered chip whose height drives the scale;
 // the tagline stays legible because the chip is 40px tall, unlike the
 // 28px sidebar mark where the tagline smudges.
 // Right: the ThemeToggle icon button (the same one the authenticated
-// topbar uses) — theme is switchable BEFORE sign-in too, since the
+// topbar uses) - theme is switchable BEFORE sign-in too, since the
 // OS default can be wrong and the user shouldn't have to authenticate
 // to fix eye-gouging contrast.
 //
@@ -37,8 +37,8 @@ export function AuthTopBar() {
       className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
     >
       <div className="container mx-auto flex h-19 w-full max-w-7xl items-center justify-between gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-2 h-12.5" data-qa="auth-brand">
-          {/* Transparent lockup (logo.png — tight 4% padding, wordmark +
+        <div className="flex min-w-0 items-center gap-2 h-15" data-qa="auth-brand">
+          {/* Transparent lockup (logo.png - tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are
               hard-coded, so the surface behind them must stay light in
               both themes. bg-card is theme-dependent (near-black in dark

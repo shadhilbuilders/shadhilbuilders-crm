@@ -1,5 +1,5 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Shadhil Builders CRM — Row-Level Security policies
+-- Shadhil Builders CRM - Row-Level Security policies
 -- ────────────────────────────────────────────────────────────────────────────
 -- All policies key off three session variables, set per-request via
 -- withRlsContext() in src/rls.ts:
@@ -9,7 +9,7 @@
 --   app.user_team_id cuid of the user's team (null for ADMIN with no team)
 --
 -- These are intentionally read with current_setting('app.<x>', true) so a
--- missing setting returns NULL (rather than throwing) — the policies then
+-- missing setting returns NULL (rather than throwing) - the policies then
 -- evaluate NULL comparisons safely (no rows match).
 --
 -- ENG REVIEW A5: POOL_MODE must be 'session' for SET LOCAL to persist
@@ -363,12 +363,12 @@ CREATE POLICY consent_insert_owner ON "Consent"
   );
 
 -- ────────────────────────────────────────────────────────────────────────────
--- Week 5 — ManagerAssignmentRule RLS (Plan §18 D2 + T-ARM-SCHEMA).
+-- Week 5 - ManagerAssignmentRule RLS (Plan §18 D2 + T-ARM-SCHEMA).
 -- ────────────────────────────────────────────────────────────────────────────
 -- The rules table is server-side state consulted by the engine at lead-
 -- creation time (apps/backend/src/leads/leads.service.ts::create). Every
 -- MANAGER needs to SELECT their team's rules so the engine can evaluate
--- them; ADMIN/OWNER see everything. No INSERT/UPDATE/DELETE policies —
+-- them; ADMIN/OWNER see everything. No INSERT/UPDATE/DELETE policies -
 -- rule management is an admin-class concern, exercised today via the
 -- seed/bootstrap path (DIRECT_DATABASE_URL bypasses RLS) and tomorrow
 -- via a dedicated admin endpoint with its own RLS-friendly write path.
@@ -387,7 +387,7 @@ CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
   );
 -- ────────────────────────────────────────────────────────────────────────────
 -- AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY.
--- ENABLE alone does NOT constrain the table owner — FORCE does. These run
+-- ENABLE alone does NOT constrain the table owner - FORCE does. These run
 -- after all policies; ALTER TABLE on an existing table is idempotent-safe
 -- when wrapped in a guard via DO blocks (no-op if already forced).
 -- Also grants the non-owner app role access (00-init.sql creates the role).
@@ -446,7 +446,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shadhil_app;
 -- Auth tables (better-auth writes these on the pooled URL too)
 GRANT SELECT, INSERT, UPDATE, DELETE ON "User", "Session", "Account", "Verification" TO shadhil_app;
 
--- Jwks — better-auth's jwt() plugin key store. Added in migration
+-- Jwks - better-auth's jwt() plugin key store. Added in migration
 -- 20260831140000_add_jwks; original migration omitted the GRANTs
 -- (Round 25 fix). Listed here for future psql -f policies.sql runs.
 GRANT SELECT, INSERT, UPDATE, DELETE ON "Jwks" TO shadhil_app;
@@ -487,8 +487,8 @@ CREATE POLICY wa_unknown_cron_service_all ON "WhatsappUnknownContact"
   WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
 
 -- Admin-class (ADMIN/OWNER/MANAGER) can see and update the follow-up
--- queue. The WhatsappUnknownContact table has no teamId column —
--- the queue is company-wide, not per-team — so the policy is just
+-- queue. The WhatsappUnknownContact table has no teamId column -
+-- the queue is company-wide, not per-team - so the policy is just
 -- role-based. T-E2b follow-up: telecallers see the result via the
 -- converted Lead on the existing Leads page, not here.
 CREATE POLICY wa_unknown_select_admin_class ON "WhatsappUnknownContact"
@@ -509,7 +509,7 @@ CREATE POLICY wa_unknown_update_admin_class ON "WhatsappUnknownContact"
 -- T-E2b follow-up (2026-09-05): INSERT bypass for admin-class so
 -- test fixtures and operator tools can seed PENDING rows. The
 -- webhook (CRON_SERVICE) already has its own FOR-ALL policy.
--- DELETE is intentionally NOT added here — see migration
+-- DELETE is intentionally NOT added here - see migration
 -- 20260905000300 for the rationale.
 CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
   FOR INSERT
@@ -522,7 +522,7 @@ CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
 -- ────────────────────────────────────────────────────────────────────
 -- The WhatsApp inbound webhook handler creates Message rows
 -- (channel=WHATSAPP, direction=INBOUND) when a lead replies. The
--- handler runs as CRON_SERVICE — no app.user_id is set, because
+-- handler runs as CRON_SERVICE - no app.user_id is set, because
 -- the sender is the lead (a customer), not an internal user. The
 -- existing message_insert_team policy gates on app.user_id being
 -- set to a staff member, which doesn't apply for inbound leads.
@@ -541,7 +541,7 @@ CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
 --   2. UPDATE rows from PENDING → SENDING (the claim lease)
 --   3. UPDATE rows from SENDING → SENT/FAILED/PENDING (after sendOne)
 -- The existing outbound_update_cron_service policy only covers
--- UPDATE — not SELECT. Without a SELECT bypass, the cron's
+-- UPDATE - not SELECT. Without a SELECT bypass, the cron's
 -- findMany returns zero rows and no messages ever get sent.
 -- The INSERT policy (outbound_insert_authenticated) already covers
 -- the chat-service enqueue path; we don't change that. The DELETE
@@ -559,7 +559,7 @@ CREATE POLICY outbound_cron_service_insert ON "OutboundMessage"
 -- ────────────────────────────────────────────────────────────────────
 -- The WhatsApp inbound webhook handler creates Message rows
 -- (channel=WHATSAPP, direction=INBOUND) when a lead replies. The
--- handler runs as CRON_SERVICE — no app.user_id is set, because
+-- handler runs as CRON_SERVICE - no app.user_id is set, because
 -- the sender is the lead (a customer), not an internal user. The
 -- existing message_insert_team policy gates on app.user_id being
 -- set to a staff member, which doesn't apply for inbound leads.
@@ -574,7 +574,7 @@ CREATE POLICY message_insert_cron_service ON "Message"
 
 -- Message DELETE bypass for ADMIN/CRON_SERVICE (cleanup paths,
 -- e.g. test fixtures, manual purges). Without this, the bare
--- shadhil_app role cannot delete Message rows at all — only
+-- shadhil_app role cannot delete Message rows at all - only
 -- inheritance via Lead/OutboundMessage cascade works in
 -- production. The chat test cleanup and the cron test cleanup
 -- both rely on this policy.
@@ -588,7 +588,7 @@ CREATE POLICY message_delete_admin_or_cron ON "Message"
 -- OutboundMessage status updates from the WhatsApp status webhook
 -- (delivered/read/failed) also run as CRON_SERVICE. The existing
 -- outbound_update_team policy requires the actor to be a staff
--- member with lead visibility, which doesn't apply — the actor IS
+-- member with lead visibility, which doesn't apply - the actor IS
 -- the system. Add a CRON_SERVICE bypass.
 CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
   FOR UPDATE
@@ -601,7 +601,7 @@ CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
 -- require staff-role context; add a CRON_SERVICE bypass so the
 -- system can resolve "is this phone a known lead?" without
 -- faking a staff user. The CRON_SERVICE role then writes
--- Message (via the CRON_SERVICE bypass above) — the Message row
+-- Message (via the CRON_SERVICE bypass above) - the Message row
 -- inherits the lead's visibility through the message_select_team
 -- policy, so staff still only see messages for leads they own.
 CREATE POLICY lead_select_cron_service ON "Lead"

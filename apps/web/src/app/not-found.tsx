@@ -1,7 +1,7 @@
 import { AuthTopBar } from '@/components/auth-top-bar';
 import { Heading, TypographyP } from '@paalstack/react-ui';
 
-// Force dynamic rendering — the wrapped Providers reads localStorage on
+// Force dynamic rendering - the wrapped Providers reads localStorage on
 // mount (theme persistence) and Next 16's static prerender chokes on that.
 export const dynamic = 'force-dynamic';
 

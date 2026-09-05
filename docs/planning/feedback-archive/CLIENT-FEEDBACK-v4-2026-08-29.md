@@ -1,4 +1,4 @@
-# Client Feedback Round 4 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 4 - 2026-08-29 (Shadhil CRM)
 
 Decision lock from this round:
 - ✅ Option B locked: NestJS + GraphQL + Next.js + Expo + Hostinger VPS via Coolify
@@ -31,7 +31,7 @@ Realtime:   graphql-ws subscriptions (in NestJS) over the WebSocket
             gateway, Redis pub/sub for fan-out
 Auth:       better-auth (BFF in Next.js, with @better-auth/expo
             plugin for mobile), JWT bridge to NestJS
-Storage:    MinIO (S3-compatible, Docker on VPS) — v1.1 only
+Storage:    MinIO (S3-compatible, Docker on VPS) - v1.1 only
 Messaging:  WhatsApp Cloud API (webhook → NestJS resolver)
 Telephony:  Exotel Pro (webhook → NestJS resolver)
 Deploy:     Coolify on Hostinger VPS (8GB plan, India region)
@@ -47,12 +47,12 @@ This is now the locked architecture for DESIGN.md §7.
 **The BFF (Backend-For-Frontend) is Next.js itself.** It's not a
 separate service. Next.js IS the BFF. Specifically:
 
-- `app/api/auth/[...all]/route.ts` — better-auth's catch-all
+- `app/api/auth/[...all]/route.ts` - better-auth's catch-all
   endpoint. Handles login, logout, register, session, OAuth
   callbacks, MFA, password reset. All auth flows land here.
-- `app/api/graphql/route.ts` — optional Next.js route handler
+- `app/api/graphql/route.ts` - optional Next.js route handler
   that proxies some calls to NestJS (more on this below).
-- `app/api/health/route.ts` — liveness for Coolify's health
+- `app/api/health/route.ts` - liveness for Coolify's health
   checks.
 - Everything else in the CRM UI uses Next.js server components
   or client components that call better-auth for auth state.
@@ -101,8 +101,8 @@ shadhil-crm/
 - The GraphQL schema lives here as `schema.graphql`.
 - Codegen runs `graphql-codegen` on this schema, produces:
   - TypeScript types for all queries/mutations
-  - React hooks (for web) — `useGetLeadQuery`, `useSendMessageMutation`
-  - React Native hooks (for mobile) — same hooks, different runtime
+  - React hooks (for web) - `useGetLeadQuery`, `useSendMessageMutation`
+  - React Native hooks (for mobile) - same hooks, different runtime
   - Apollo Client typed documents
 - Web and mobile import the generated hooks. They never hand-write
   GraphQL query strings.
@@ -202,12 +202,12 @@ shadhil-crm/
   `better-auth/jwt` plugin handles issuance; NestJS uses
   `jose` or `jsonwebtoken` to verify.
 - For self-hosted (VPS), symmetric secret (HS256) is fine.
-  For production-grade, switch to RS256 with a key pair —
+  For production-grade, switch to RS256 with a key pair -
   NestJS only needs the public key to verify.
 - The JWT payload includes the claims NestJS needs:
   `sub` (userId), `role`, `teamId`, `iat`, `exp`.
 
-### CORS — the one thing that will bite you
+### CORS - the one thing that will bite you
 
 - Next.js BFF: `https://crm.shadhilbuilders.in` (or
   `https://bff.shadhilbuilders.in` if you split subdomains)
@@ -226,7 +226,7 @@ shadhil-crm/
 
 ---
 
-## The chat realtime — building it on NestJS
+## The chat realtime - building it on NestJS
 
 The chat pane is a real engineering piece. With NestJS+GraphQL
 (no Supabase Realtime), here's the architecture:
@@ -627,7 +627,7 @@ this delta. If you want changes, name them.
 The one open question I have for you: **which subdomain
 structure do you want for the BFF vs backend?**
 
-Option 1 (split subdomains — clean, my recommendation):
+Option 1 (split subdomains - clean, my recommendation):
 - BFF (Next.js): `crm.shadhilbuilders.in`
 - Backend (NestJS): `crm-api.shadhilbuilders.in`
 - Mobile: native, no domain
@@ -635,7 +635,7 @@ Option 1 (split subdomains — clean, my recommendation):
 - Con: 2 DNS records, 2 SSL certs (Coolify handles both
   automatically)
 
-Option 2 (same domain, path-based — simpler):
+Option 2 (same domain, path-based - simpler):
 - BFF: `crm.shadhilbuilders.in` (Next.js)
 - Backend: `crm.shadhilbuilders.in/api/graphql` (NestJS
   reverse-proxied through Next.js or via a Coolify reverse

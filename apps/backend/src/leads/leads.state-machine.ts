@@ -1,4 +1,4 @@
-// Lead state machine — Model C (IMPLEMENTATION-PLAN §3).
+// Lead state machine - Model C (IMPLEMENTATION-PLAN §3).
 //
 // Allowed transitions are role-aware per DESIGN.md §3:
 //   - NEW → CONTACTED, VISIT_REQUESTED, COLD, LOST
@@ -8,13 +8,13 @@
 //   - VISITED → NEGOTIATION, COLD, LOST
 //   - NEGOTIATION → BOOKING_INITIATED, COLD, LOST
 //   - BOOKING_INITIATED → WON, LOST
-//   - WON, LOST, COLD — terminal (Admin-only override, see assertCanOverrideTerminal)
+//   - WON, LOST, COLD - terminal (Admin-only override, see assertCanOverrideTerminal)
 //   - RESCHEDULED, NO_SHOW → VISIT_SCHEDULED, COLD, LOST (re-engagement path)
-//   - CANCELLED is a VisitStatus (per-visit outcome), not a LeadState — it
+//   - CANCELLED is a VisitStatus (per-visit outcome), not a LeadState - it
 //     does NOT appear in TRANSITIONS. The cancel-visits flow lives in the
 //     visits module and does NOT touch Lead.state.
 //
-// This module is PURE — no DB, no Nest, no Prisma. Every code path is
+// This module is PURE - no DB, no Nest, no Prisma. Every code path is
 // covered by leads.state-machine.test.ts. The service calls into it; the
 // service handles persistence, RLS, audit, and notifications.
 import type { LeadState, Role } from '@shadhil/database';
@@ -23,7 +23,7 @@ export type { LeadState, Role } from '@shadhil/database';
 
 /**
  * Every LeadState value the Prisma enum declares. The test asserts this
- * tuple matches the schema enum — drift surfaces immediately, not when a
+ * tuple matches the schema enum - drift surfaces immediately, not when a
  * forgotten transition silently 400s in production.
  */
 export const LEAD_STATES = [
@@ -79,7 +79,7 @@ function canRoleTransition(
   // write-free call (no audit row).
   if (from === to) return true;
 
-  // ADMIN override on terminal states — re-open a WON/LOST/COLD lead.
+  // ADMIN override on terminal states - re-open a WON/LOST/COLD lead.
   if (role === 'ADMIN' || role === 'OWNER') {
     return true;
   }
@@ -136,18 +136,18 @@ export type TransitionResult =
     };
 
 /**
- * Decide whether a state transition is legal. Pure function — no side
+ * Decide whether a state transition is legal. Pure function - no side
  * effects. The service catches the discriminated-union non-ok variants
  * and turns them into 400/403 responses.
  *
  * Order of checks matters:
  *   1. Same-state short-circuit (no-op).
- *   2. Admin/OWNER override — they can re-open terminal states, which
+ *   2. Admin/OWNER override - they can re-open terminal states, which
  *      sit OUTSIDE the canonical TRANSITIONS graph. If the role is
  *      ADMIN/OWNER and the `from` is terminal, treat the edge as
  *      legal. (Same-state and within-graph are obviously legal too.)
- *   3. Graph membership — the edge must exist in TRANSITIONS.
- *   4. Role lane — even if the edge exists, only certain roles traverse it.
+ *   3. Graph membership - the edge must exist in TRANSITIONS.
+ *   4. Role lane - even if the edge exists, only certain roles traverse it.
  */
 export function canTransition(req: TransitionRequest): TransitionResult {
   const { from, to, role } = req;
@@ -191,7 +191,7 @@ export function allowedNextStates(
   role: Role,
 ): readonly LeadState[] {
   if (role === 'ADMIN' || role === 'OWNER') {
-    // Admin override on terminal states — re-open allowed.
+    // Admin override on terminal states - re-open allowed.
     return [
       ...TRANSITIONS[from],
       ...(from === 'WON' || from === 'LOST' || from === 'COLD'
@@ -208,7 +208,7 @@ export function allowedNextStates(
  * Distinct from canRoleTransition: that function gates the
  * `from → to` edge; this one gates the *static* fact of whether
  * the role is allowed to be the lead's owner in that state. Used
- * by the manual-reassign flow (Plan §18 D2/D3) — when an admin
+ * by the manual-reassign flow (Plan §18 D2/D3) - when an admin
  * or manager moves a lead to a new owner, the target user's role
  * must permit owning the lead at its current state. (The
  * transition is "self → self" in the state graph, so the regular

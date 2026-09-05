@@ -2,7 +2,7 @@
 
 // Lead-status pill shared by the Lead Inbox (`/leads`) and Lead Detail
 // (`/leads/[id]`) pages. Extracted out of the page module so we don't
-// re-export a non-allow-listed symbol from an App Router page — Next.js 16's
+// re-export a non-allow-listed symbol from an App Router page - Next.js 16's
 // generated `.next/types/app/...ts` validator rejects anything other than
 // `default` / `metadata` / `generateMetadata` / `generateStaticParams` /
 // etc. with a `{ [x: string]: never }` constraint.

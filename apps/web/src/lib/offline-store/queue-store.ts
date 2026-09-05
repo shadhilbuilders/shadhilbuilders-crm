@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Queue store — Zustand-based single source of truth for the mutation
+ * Queue store - Zustand-based single source of truth for the mutation
  * queue's view-model state (items + phase). Replaces the anti-pattern
  * of `window.__shadhilOfflineReplay` global (Eng review 1B).
  *

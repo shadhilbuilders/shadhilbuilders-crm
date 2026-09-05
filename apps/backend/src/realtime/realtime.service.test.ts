@@ -1,4 +1,4 @@
-// T-E2 — StreamTicket lifecycle integration tests.
+// T-E2 - StreamTicket lifecycle integration tests.
 //
 // Pins the contract RealtimeService.consumeTicket must hold:
 //   1. A valid ticket is consumed once, returns {userId, channel},
@@ -14,12 +14,12 @@
 //      succeeds).
 //
 // Real Prisma + real RLS. The bare shadhil_app role can read/write
-// StreamTicket (it's an auth-adjacent table — see references/postgres-
+// StreamTicket (it's an auth-adjacent table - see references/postgres-
 // multi-role-grants.md). Fixture: a User row + a hand-inserted
 // StreamTicket row.
 //
 // The plan's verify line is "integration test: expired/replayed
-// ticket rejected" — this file is that test. The identical logic
+// ticket rejected" - this file is that test. The identical logic
 // lives in apps/realtime-sse/src/stream.ts:consumeTicket (a port
 // of the same shape for the standalone SSE service). Backend is
 // the source of truth; testing it covers the contract.
@@ -118,7 +118,7 @@ async function ticketExists(id: string): Promise<boolean> {
   return row !== null;
 }
 
-describe.skipIf(!HAS_DB)('T-E2 StreamTicket — consumeTicket lifecycle', () => {
+describe.skipIf(!HAS_DB)('T-E2 StreamTicket - consumeTicket lifecycle', () => {
   let prismaService: PrismaService;
   let service: RealtimeService;
 
@@ -160,13 +160,13 @@ describe.skipIf(!HAS_DB)('T-E2 StreamTicket — consumeTicket lifecycle', () => 
     // First consume succeeds.
     await service.consumeTicket(id, 'notifications');
 
-    // Second consume with the SAME ticket id — the row is gone.
+    // Second consume with the SAME ticket id - the row is gone.
     await expect(
       service.consumeTicket(id, 'notifications'),
     ).rejects.toThrow(ForbiddenException);
 
     // Reject message must mention 'invalid ticket' (not 'expired'
-    // or 'channel mismatch' — we want to verify the *replay* path,
+    // or 'channel mismatch' - we want to verify the *replay* path,
     // not the expiry path, fires here).
     let thrown: unknown;
     try {
@@ -179,7 +179,7 @@ describe.skipIf(!HAS_DB)('T-E2 StreamTicket — consumeTicket lifecycle', () => 
   });
 
   it('rejects an expired ticket and auto-deletes the row (reap-on-consume)', async () => {
-    // Expired 1 hour ago — well past the 5-minute TTL.
+    // Expired 1 hour ago - well past the 5-minute TTL.
     const id = await seedTicket({
       channel: 'notifications',
       expiresAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -223,7 +223,7 @@ describe.skipIf(!HAS_DB)('T-E2 StreamTicket — consumeTicket lifecycle', () => 
       'ticket channel mismatch',
     );
 
-    // The row is NOT deleted on a mismatch — the legitimate caller
+    // The row is NOT deleted on a mismatch - the legitimate caller
     // (on the right channel) can still connect.
     expect(await ticketExists(id)).toBe(true);
 

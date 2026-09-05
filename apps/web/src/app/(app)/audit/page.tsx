@@ -1,8 +1,8 @@
 'use client';
 
-// Audit Log — Admin view (Wireframes #11): sortable table with
+// Audit Log - Admin view (Wireframes #11): sortable table with
 // date/user/action/entity filters. Audit module (T-AUDIT, Pass 1)
-// returns `{ total, rows }` — useAuditLog unwraps (T-F1).
+// returns `{ total, rows }` - useAuditLog unwraps (T-F1).
 import { Button } from '@paalstack/react-ui';
 import { useState } from 'react';
 
@@ -16,7 +16,7 @@ import { canViewAudit, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '../PageHeader';
 
-// Filter chips — only the ones the backend actually filters on
+// Filter chips - only the ones the backend actually filters on
 // (AuditLogQueryDtoSchema supports userId / entityType / entityId /
 // action / from / to / limit / offset). The legacy placeholder list
 // was decoration; we narrow it to actions that the writer layer
@@ -39,7 +39,7 @@ export default function AuditPage() {
     limit: 50,
     ...(actionFilter !== null ? { action: actionFilter } : {}),
   });
-  // T-E2 (Week 6): live audit stream — new rows (from lead transitions,
+  // T-E2 (Week 6): live audit stream - new rows (from lead transitions,
   // bookings, logins) stream in via SSE and invalidate the list.
   useAuditLogRealtime();
   const { user, isPending: sessionPending } = useSessionUser();
@@ -140,20 +140,20 @@ function AuditTable({ rows }: { rows: Record<string, unknown>[] }) {
                 <td className="px-4 py-2.5 tabular-nums">
                   {typeof row.createdAt === 'string'
                     ? new Date(row.createdAt).toLocaleString('en-IN')
-                    : '—'}
+                    : '-'}
                 </td>
                 <td className="px-4 py-2.5">
                   {typeof row.userName === 'string' && row.userName.length > 0
                     ? row.userName
                     : typeof row.userId === 'string'
                       ? row.userId
-                      : '—'}
+                      : '-'}
                 </td>
                 <td className="px-4 py-2.5 font-mono text-xs">
-                  {String(row.action ?? '—')}
+                  {String(row.action ?? '-')}
                 </td>
                 <td className="text-muted-foreground hidden px-4 py-2.5 sm:table-cell">
-                  {String(row.entityType ?? '—')}
+                  {String(row.entityType ?? '-')}
                   {row.entityId !== undefined && row.entityId !== null
                     ? ` · ${String(row.entityId)}`
                     : ''}
@@ -173,7 +173,7 @@ function AuditTable({ rows }: { rows: Record<string, unknown>[] }) {
 function formatBeforeAfter(before: unknown, after: unknown): string {
   const beforeStr = summarise(before);
   const afterStr = summarise(after);
-  if (beforeStr === null && afterStr === null) return '—';
+  if (beforeStr === null && afterStr === null) return '-';
   if (beforeStr === null) return `→ ${afterStr}`;
   if (afterStr === null) return `${beforeStr} →`;
   return `${beforeStr} → ${afterStr}`;
@@ -197,7 +197,7 @@ function AuditEmpty({
 }) {
   // The error branch surfaces ModulePending (its 404/501 detection
   // distinguishes "module not built" from "module failed"); the empty
-  // branch renders an honest message — both copy respects the
+  // branch renders an honest message - both copy respects the
   // audit-trail-is-7-year-retained invariant (no data lies here).
   if (error !== null && error !== undefined) {
     return (
@@ -223,7 +223,7 @@ function AuditEmpty({
       <p className="text-muted-foreground mt-1 text-xs">
         {filter !== null
           ? 'Try clearing the action filter.'
-          : 'Audit rows are written by every mutation in the system — they appear here as the activity happens.'}
+          : 'Audit rows are written by every mutation in the system - they appear here as the activity happens.'}
       </p>
     </div>
   );

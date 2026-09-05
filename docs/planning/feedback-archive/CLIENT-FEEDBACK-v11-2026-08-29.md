@@ -1,4 +1,4 @@
-# Client Feedback Round 13 — 2026-08-29 (Shadhil CRM)
+# Client Feedback Round 13 - 2026-08-29 (Shadhil CRM)
 
 You asked: "Store notifications and show it in the crm app both
 web and mobile."
@@ -8,7 +8,7 @@ system covers the OUTBOUND side (we send push). The user is
 asking for the INBOUND side (user sees their notifications in
 the app, in an inbox-style list).
 
-This delta adds the **notification center** — the persistent
+This delta adds the **notification center** - the persistent
 in-app inbox for all notifications on both web and mobile.
 
 ---
@@ -41,7 +41,7 @@ happened to them.
 
 The v10 design has a `PushNotification` table. That's the
 audit log for OUTBOUND pushes (what we sent, delivery status,
-Expo receipt). It's append-only — never mutated after creation.
+Expo receipt). It's append-only - never mutated after creation.
 
 The inbox is a different thing. It needs:
 - `readAt` (mutable, set when user clicks)
@@ -54,8 +54,8 @@ add mutable fields to an audit log, which is a bad pattern
 (loses the append-only guarantee for compliance).
 
 **Cleaner:** Two tables.
-- `PushNotification` — what we sent (audit, append-only)
-- `Notification` — what the user sees (mutable state)
+- `PushNotification` - what we sent (audit, append-only)
+- `Notification` - what the user sees (mutable state)
 
 Relationship: one `Notification` row can have 0+ `PushNotification`
 rows (one per device the push was sent to). Created in the
@@ -337,9 +337,9 @@ async notificationsStream(@Req() req, @Res() res) {
 ```
 
 Three Redis channels per user:
-- `user:{id}:notifications` — new notification created
-- `user:{id}:notifications:read` — single notification marked read
-- `user:{id}:notifications:read-all` — all marked read (reset badge)
+- `user:{id}:notifications` - new notification created
+- `user:{id}:notifications:read` - single notification marked read
+- `user:{id}:notifications:read-all` - all marked read (reset badge)
 
 ---
 
@@ -513,7 +513,7 @@ items appear at the top with a brief slide-in animation.
 
 When applied:
 
-- **§2 modules: ADD Notifications Center as a new module (8 → 9 modules).** Wait — the user wanted 8 modules max. Let me reconsider: should the inbox be a separate module, or part of the existing Notifications infrastructure? **Decision: part of the existing infrastructure, not a separate module.** The inbox is a UI surface, not a business module. The backend work is cross-cutting.
+- **§2 modules: ADD Notifications Center as a new module (8 → 9 modules).** Wait - the user wanted 8 modules max. Let me reconsider: should the inbox be a separate module, or part of the existing Notifications infrastructure? **Decision: part of the existing infrastructure, not a separate module.** The inbox is a UI surface, not a business module. The backend work is cross-cutting.
 - **§5 entities: add `Notification` model** (separate from
   v10's `PushNotification`). Add `notifications` relation to
   `User`. Add soft relation from `PushNotification` to
@@ -665,16 +665,16 @@ v1.1 if needed.
 
 ## One choice to surface to the client
 
-**Daily summary push (trigger 12 from v10) — does it ALSO
+**Daily summary push (trigger 12 from v10) - does it ALSO
 create an inbox entry?**
 
 Two options:
-- (a) Yes — daily summary creates a `Notification` row,
+- (a) Yes - daily summary creates a `Notification` row,
       visible in the inbox like any other
-- (b) No — daily summary is push-only, lives in the email
+- (b) No - daily summary is push-only, lives in the email
       fallback, not in the inbox
 
-**Default: (a) — yes, in the inbox. The inbox is the user's
+**Default: (a) - yes, in the inbox. The inbox is the user's
 single record of what happened. Push is just a delivery
 mechanism. If the user opens the inbox, they should see
 "Yesterday: 12 new leads, 3 visits, 1 booking" as the first
@@ -692,13 +692,13 @@ along with v8, v9, v10, and CLIENT-DECISIONS.md.
 
 The new v3 will have:
   - 9 modules in §2 (Notifications Center added as a
-    cross-cutting infrastructure, not a separate module —
+    cross-cutting infrastructure, not a separate module -
     but its UI is a first-class surface)
   - 15 models in §5 (Notification added; PushSubscription
     + PushNotification from v10; Reminder from v9; better-auth
     Account + Verification from v8; original 12 from v2)
-  - §10 split into §10 (Push — outbound) and §11
-    (Notification Center — inbox)
+  - §10 split into §10 (Push - outbound) and §11
+    (Notification Center - inbox)
   - §12 timeline: 13 weeks (was 12)
 
 If you want a different decision on any of the above

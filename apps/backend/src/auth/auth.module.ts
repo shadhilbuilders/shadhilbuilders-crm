@@ -1,4 +1,4 @@
-// Auth module — proxies better-auth handlers to the SHARED instance in
+// Auth module - proxies better-auth handlers to the SHARED instance in
 // @shadhil/auth (SECOND-ROUND AUDIT AR-8: backend previously built a second
 // betterAuth() that skipped assertAuthEnv and could drift config from the
 // web side. Single source of truth now).
@@ -9,7 +9,7 @@ import { Public } from './public.decorator';
 
 @Controller('auth')
 class AuthController {
-  // Phase 1: minimal — the heavy lifting (signup/signin flows) lands Week 3.
+  // Phase 1: minimal - the heavy lifting (signup/signin flows) lands Week 3.
   @Public()
   @Get('ok')
   ok(): { status: 'ok' } {

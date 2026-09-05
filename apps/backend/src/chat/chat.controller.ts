@@ -1,4 +1,4 @@
-// Chat controller — list messages for a lead + send a message.
+// Chat controller - list messages for a lead + send a message.
 //
 // Mirrors apps/backend/src/leads/leads.controller.ts and
 // apps/backend/src/visits/visits.controller.ts patterns:
@@ -8,8 +8,8 @@
 //   - @ApiTags + @ApiBearerAuth Swagger decorators
 //
 // Endpoint shapes match the web hooks:
-//   - GET  /api/chat/:leadId          — list (useMessages(leadId) hook)
-//   - POST /api/chat/send             — send (useSendMessage(leadId) hook)
+//   - GET  /api/chat/:leadId          - list (useMessages(leadId) hook)
+//   - POST /api/chat/send             - send (useSendMessage(leadId) hook)
 import {
   BadRequestException,
   Body,

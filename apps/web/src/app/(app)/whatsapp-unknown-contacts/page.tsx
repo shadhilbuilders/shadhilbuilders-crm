@@ -1,6 +1,6 @@
 'use client';
 
-// /whatsapp-unknown-contacts — T-E2b admin queue page.
+// /whatsapp-unknown-contacts - T-E2b admin queue page.
 //
 // Inbound WhatsApp messages from numbers that don't match any known
 // Lead are persisted to `WhatsappUnknownContact` (status=PENDING) by
@@ -12,16 +12,16 @@
 //                    (creates a Lead + links the contact atomically)
 //       "Mark as Spam"  → POST /api/whatsapp-unknown-contacts/:id/spam
 //   - CONVERTED:        history of contacts that became Leads.
-//                       No actions — see the linked Lead via the Lead Inbox.
+//                       No actions - see the linked Lead via the Lead Inbox.
 //   - SPAM:             history of contacts triaged out (wrong number /
 //                       bot / not interested). No actions.
 //
 // Permission gate is on the nav item (`canConvertWhatsappUnknownContact`
 // in lib/session.ts); the page itself does not re-check because a
 // user without permission can't reach it. The backend re-checks at
-// the controller via the new admin-class RLS policies — defense in depth.
+// the controller via the new admin-class RLS policies - defense in depth.
 //
-// Manual refresh for v1 (no SSE channel for the queue yet — the
+// Manual refresh for v1 (no SSE channel for the queue yet - the
 // admin-facing flow is low-volume and PUSH from the inbound webhook
 // is an obvious next step but out of scope for this ticket).
 

@@ -1,4 +1,4 @@
-// Bookings controller — list + create + transition.
+// Bookings controller - list + create + transition.
 //
 // Mirrors apps/backend/src/leads/leads.controller.ts and
 // apps/backend/src/visits/visits.controller.ts patterns:
@@ -10,9 +10,9 @@
 //     (NestJS @Query gives string | string[] | undefined)
 //
 // Endpoint shapes match the web hooks (apps/web/src/hooks/queries/crm.ts):
-//   - GET    /api/bookings             — list (useBookings hook)
-//   - POST   /api/bookings             — create (useCreateBooking hook)
-//   - PATCH  /api/bookings/:id         — transition status (useUpdateBooking hook)
+//   - GET    /api/bookings             - list (useBookings hook)
+//   - POST   /api/bookings             - create (useCreateBooking hook)
+//   - PATCH  /api/bookings/:id         - transition status (useUpdateBooking hook)
 import {
   BadRequestException,
   Body,
