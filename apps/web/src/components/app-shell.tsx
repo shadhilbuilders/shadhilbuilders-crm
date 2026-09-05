@@ -61,7 +61,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from '@paalstack/react-ui';
-import { LuLogOut, LuUserRound } from '@paalstack/react-icons/lu';
+import { LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 
 import { useSignOut } from '@/lib/auth-actions';
 import {
@@ -113,11 +113,11 @@ export function AppShell() {
         </div>
         <SidebarTrigger className="md:hidden" />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="min-w-0 overflow-x-hidden">
         <WorkNavGroup />
         <AdminNavGroup />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="min-w-0 overflow-x-hidden">
         <Separator />
         <UserMenuFooter />
       </SidebarFooter>
@@ -219,8 +219,8 @@ function NavMenuItem({
           href={item.href}
           aria-current={active ? 'page' : undefined}
         >
-          <Icon className="h-4 w-4" />
-          <span>{item.label}</span>
+          <Icon className="size-5 shrink-0" />
+          <span className="min-w-0 truncate">{item.label}</span>
         </Link>
       </SidebarMenuButton>
       {item.badgeKey !== undefined ? (
@@ -252,44 +252,78 @@ function UserMenuFooter() {
   }
 
   return (
-    <div className="flex items-center gap-1">
-      <UserMenu
+    <div className="flex w-full min-w-0 items-center gap-1 px-2">
+      <UserIdentity
         name={user.name || user.email}
         role={user.role}
       />
-      <Button
-        variant="ghost"
-        size="sm"
-        className="min-h-11 gap-2 px-3"
-        onClick={() => void signOut()}
-        aria-label="Sign out"
-      >
-        <LuLogOut className="h-4 w-4" />
-        <span className="hidden sm:inline">Sign out</span>
-      </Button>
+      <SettingsMenu onSignOut={() => void signOut()} />
     </div>
   );
 }
 
-function UserMenu({ name, role }: { name: string; role: string }) {
+// Read-only identity block (avatar + name + role). Not a button — the
+// footer has a SettingsMenu (cog icon) for app-level actions, and there
+// is no user-level action worth a popover today. If a /profile page or
+// "Switch team" lands later, wire those into the SettingsMenu (or a
+// dedicated UserMenu popover) at that point — until then, the clickable
+// affordance was misleading (the popover only re-displayed the same
+// identity info).
+function UserIdentity({ name, role }: { name: string; role: string }) {
+  return (
+    <div
+      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2"
+      title={`${name} - ${role.replace(/_/g, ' ')}`}
+      data-qa="sidebar-user-identity"
+    >
+      <LuUserRound className="size-5 shrink-0" />
+      <span className="hidden min-w-0 flex-1 truncate text-left text-sm sm:inline">
+        {name}
+      </span>
+    </div>
+  );
+}
+
+// App-level actions menu. The user popover (UserMenu) handles identity
+// (avatar + name + role); this one handles app-level actions like
+// Settings and Sign out. A cog icon is the conventional affordance for
+// settings; the popover keeps the footer compact while staying
+// discoverable.
+function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
   return (
     <PopoverRoot>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="sm" className="min-h-11 gap-2 px-3">
-            <LuUserRound className="h-4 w-4" />
-            <span className="hidden max-w-[10rem] truncate sm:inline">
-              {name}
-            </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 shrink-0"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <LuSettings className="size-4" />
           </Button>
         }
       />
-      <PopoverContent className="w-56" align="end">
-        <div className="mb-2 px-1">
-          <p className="truncate text-sm font-medium">{name}</p>
-          <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
+      <PopoverContent className="w-44" align="end">
+        <div className="flex flex-col">
+          <Link
+            href="/settings"
+            className="hover:bg-accent flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
+          >
+            <LuSettings className="size-4 shrink-0" />
+            <span>Settings</span>
+          </Link>
+          <Separator className="my-1" />
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="hover:bg-accent flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+          >
+            <LuLogOut className="size-4 shrink-0" />
+            <span>Sign out</span>
+          </button>
         </div>
-        <Separator />
       </PopoverContent>
     </PopoverRoot>
   );
