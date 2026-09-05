@@ -211,7 +211,7 @@ export class ChatService {
         // provide). The cron processor later picks it up via the
         // CRON_SERVICE role.
         if (created.channel === 'WHATSAPP') {
-          const templateName = process.env.WHATSAPP_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply';
+          const templateName = process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply';
           const body = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
           await this.outbound.enqueue({
             messageId: created.id,
