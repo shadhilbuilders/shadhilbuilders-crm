@@ -7,28 +7,32 @@
 //      403 + PASSWORD_CHANGE_REQUIRED (the seed users — owner /
 //      admin / manager / telecaller / sales_exec — all have
 //      mustChangePassword: true).
-//   2. Direct navigation from the user menu (Week 6+ when the
-//      user-management UI ships; for now only the redirect path
-//      uses this).
+//   2. Direct navigation (change-password bounce / menu).
+//
+// ALIGNMENT (2026-09-05): the form lives inside a centered Card on a
+// full-height flex main — same visual language as /login. The
+// previous dashboard-style PageHeader + full-width Form hugged the
+// left edge and stretched inputs across the viewport (screenshot
+// reported by user).
 //
 // Posts to /api/users/:id/change-password (T-S backend endpoint).
 // On success, the API flips the user's mustChangePassword flag to
-// false and writes an audit row, so the next guarded request
-// passes the auth guard normally.
+// false and writes an audit row, so the next guarded request passes
+// the auth guard normally.
 //
-// Form uses the props-API <Form> from @paalstack/react-ui per the
-// canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
-// Validation lives in onSubmit (the Form component doesn't accept
-// react-hook-form `rules`; client-side checks happen in JS).
+// Form uses the props-API <Form> from @paalstack/react-ui. Validation
+// lives in onSubmit (the Form component doesn't accept react-hook-form
+// `rules`; client-side checks happen in JS). NOTE: the library's Form
+// spreads resetButtonProps BEFORE `children: resetText`, so a
+// `children` override in resetButtonProps is silently clobbered —
+// button text goes through `resetText` (verified in dist source).
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
-import { Form, toast } from '@paalstack/react-ui';
+import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
 import { api } from '@/apis/client';
 import { useSessionUser } from '@/lib/session';
-
-import { PageHeader } from '../(app)/PageHeader';
 
 type FormValues = {
   oldPassword: string;
@@ -48,13 +52,9 @@ export default function ChangePasswordPage() {
 
   if (sessionPending) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Change password"
-          breadcrumb={[{ label: 'Change password' }]}
-        />
+      <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Loading…</p>
-      </div>
+      </main>
     );
   }
   if (user === null) {
@@ -96,67 +96,74 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Change password"
-        subtitle="Set a new password for your account."
-        breadcrumb={[{ label: 'Change password' }]}
-      />
+    <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
+      <Card className="w-full max-w-md">
+        <div className="mb-6 text-center">
+          <Heading className="mb-1">Change password</Heading>
+          <p className="text-muted-foreground text-sm">
+            Set a new password for your account.
+          </p>
+        </div>
 
-      <Form
-        form={form}
-        onSubmit={onSubmit}
-        submitText="Change password"
-        submitButtonProps={{ type: 'submit' }}
-        resetButtonProps={{
-          children: 'Cancel',
-          onClick: () => {
-            form.reset();
-            void router.push('/');
-          },
-        }}
-        fields={[
-          {
-            type: 'input',
-            name: 'oldPassword',
-            label: 'Current password',
-            placeholder: 'Enter your current password',
-            required: true,
-            inputProps: {
-              type: 'password',
-              autoComplete: 'current-password',
-              'data-qa': 'change-password-old',
-              maxLength: 200,
+        <Form
+          form={form}
+          onSubmit={onSubmit}
+          submitText="Change password"
+          submitButtonProps={{ type: 'submit' }}
+          resetText="Cancel"
+          resetButtonProps={{
+            onClick: () => {
+              form.reset();
+              void router.push('/');
             },
-          },
-          {
-            type: 'input',
-            name: 'newPassword',
-            label: 'New password',
-            placeholder: 'At least 8 characters',
-            required: true,
-            inputProps: {
-              type: 'password',
-              autoComplete: 'new-password',
-              'data-qa': 'change-password-new',
-              maxLength: 200,
+          }}
+          fields={[
+            {
+              type: 'input',
+              name: 'oldPassword',
+              label: 'Current password',
+              placeholder: 'Enter your current password',
+              required: true,
+              inputProps: {
+                type: 'password',
+                autoComplete: 'current-password',
+                'data-qa': 'change-password-old',
+                maxLength: 200,
+              },
             },
-          },
-          {
-            type: 'input',
-            name: 'confirmPassword',
-            label: 'Confirm new password',
-            placeholder: 'Re-enter the new password',
-            required: true,
-            inputProps: {
-              type: 'password',
-              autoComplete: 'new-password',
-              'data-qa': 'change-password-confirm',
-              maxLength: 200,
+            {
+              type: 'input',
+              name: 'newPassword',
+              label: 'New password',
+              placeholder: 'At least 8 characters',
+              required: true,
+              inputProps: {
+                type: 'password',
+                autoComplete: 'new-password',
+                'data-qa': 'change-password-new',
+                maxLength: 200,
+              },
             },
-          },
-        ]}
-      />
-    </div>
+            {
+              type: 'input',
+              name: 'confirmPassword',
+              label: 'Confirm new password',
+              placeholder: 'Re-enter the new password',
+              required: true,
+              inputProps: {
+                type: 'password',
+                autoComplete: 'new-password',
+                'data-qa': 'change-password-confirm',
+                maxLength: 200,
+              },
+            },
+          ]}
+        />
+
+        <p className="text-muted-foreground mt-6 text-center text-xs">
+          Shadhil Builders internal system — access is provisioned by an admin.
+        </p>
+      </Card>
+    </main>
   );
 }
