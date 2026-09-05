@@ -486,14 +486,36 @@ CREATE POLICY wa_unknown_cron_service_all ON "WhatsappUnknownContact"
   USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
   WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
 
-CREATE POLICY wa_unknown_select_admin ON "WhatsappUnknownContact"
+-- Admin-class (ADMIN/OWNER/MANAGER) can see and update the follow-up
+-- queue. The WhatsappUnknownContact table has no teamId column —
+-- the queue is company-wide, not per-team — so the policy is just
+-- role-based. T-E2b follow-up: telecallers see the result via the
+-- converted Lead on the existing Leads page, not here.
+CREATE POLICY wa_unknown_select_admin_class ON "WhatsappUnknownContact"
   FOR SELECT
-  USING (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+  );
 
-CREATE POLICY wa_unknown_update_admin ON "WhatsappUnknownContact"
+CREATE POLICY wa_unknown_update_admin_class ON "WhatsappUnknownContact"
   FOR UPDATE
-  USING (current_setting('app.user_role', true) = 'ADMIN')
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+  );
+
+-- T-E2b follow-up (2026-09-05): INSERT bypass for admin-class so
+-- test fixtures and operator tools can seed PENDING rows. The
+-- webhook (CRON_SERVICE) already has its own FOR-ALL policy.
+-- DELETE is intentionally NOT added here — see migration
+-- 20260905000300 for the rationale.
+CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+  );
 
 -- ────────────────────────────────────────────────────────────────────
 -- T-E2b (2026-09-04): Message INSERT bypass for CRON_SERVICE

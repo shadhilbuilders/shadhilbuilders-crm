@@ -18,6 +18,7 @@ import { AuditModule } from './audit/audit.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whatsapp-unknown-contacts.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -55,6 +56,11 @@ import { RedisModule } from './redis/redis.module';
     // Realtime (SSE — eng review A9: Last-Event-ID resume)
     RealtimeModule,
     WhatsappModule,
+    // T-E2b follow-up queue: admin-class only (ADMIN/OWNER/MANAGER).
+    // Imported after WhatsappModule so the same convert flow could
+    // (in a future iteration) trigger an outbound reply; today it
+    // just creates a Lead via LeadsService.
+    WhatsappUnknownContactsModule,
   ],
   providers: [
     // Default-deny: every route needs a valid JWT unless @Public() is set.
