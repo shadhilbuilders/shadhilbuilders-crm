@@ -66,6 +66,59 @@ export const createMutationQueue = () => {
       return queued;
     },
 
+    /**
+     * Dedupe-aware enqueue (T-D4). If an entry with the same
+     * `dedupeKey` is already queued, the newer payload replaces it
+     * (last-write-wins on the SAME logical operation) and the original
+     * entry's id is returned so callers can track one logical mutation
+     * across retries.
+     *
+     * Scenario: user taps "Mark completed" three times while offline —
+     * without dedupe that's 3 queue entries and 3 replays; with it,
+     * one entry whose payload is the last tap.
+     *
+     * Implementation: `dedupeKey` is stored on the Mutation (optional
+     * field, see types.ts). The queue is re-read, the first match is
+     * replaced in place (keeping its id + createdAt so FIFO order and
+     * the badge's "queued Xs ago" stay stable), and the array is
+     * re-saved. Notification phase is 'enqueued' either way — the UI
+     * doesn't distinguish fresh vs replaced.
+     */
+    async enqueueUnique(
+      input: Omit<Mutation, 'id' | 'createdAt' | 'retries'> & { dedupeKey: string },
+    ): Promise<Mutation> {
+      const all = await loadAll();
+      const idx = all.findIndex((m) => m.dedupeKey === input.dedupeKey);
+      if (idx === -1) {
+        const queued: Mutation = {
+          ...input,
+          id: crypto.randomUUID(),
+          createdAt: Date.now(),
+          retries: 0,
+        };
+        all.push(queued);
+        await saveAll(all);
+        notify('enqueued', queued);
+        return queued;
+      }
+      const existing = all[idx];
+      if (existing === undefined) {
+        // Unreachable (findIndex just matched) — guards the noUncheckedIndexedAccess build.
+        return this.enqueue(input);
+      }
+      const replaced: Mutation = {
+        ...existing,
+        ...input,
+        id: existing.id,
+        createdAt: existing.createdAt,
+        retries: existing.retries,
+      };
+      all[idx] = replaced;
+      await saveAll(all);
+      notify('enqueued', replaced);
+      return replaced;
+    },
+
     /** Return all queued mutations in FIFO order. */
     async all(): Promise<Mutation[]> {
       return loadAll();
