@@ -39,6 +39,7 @@ import {
 } from '@shadhil/api-types';
 import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
+import { AuthTopBar } from '@/components/auth-top-bar';
 import { api } from '@/apis/client';
 import { useSessionUser } from '@/lib/session';
 
@@ -55,9 +56,12 @@ export default function ChangePasswordPage() {
 
   if (sessionPending) {
     return (
-      <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-        <p className="text-muted-foreground text-sm">Loading…</p>
-      </main>
+      <div className="bg-background flex min-h-[100dvh] flex-col">
+        <AuthTopBar />
+        <main className="text-ink flex flex-1 items-center justify-center px-4">
+          <p className="text-muted-foreground text-sm">Loading…</p>
+        </main>
+      </div>
     );
   }
   if (user === null) {
@@ -96,74 +100,77 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <main className="text-ink flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <div className="mb-6 text-center">
-          <Heading className="mb-1">Change password</Heading>
-          <p className="text-muted-foreground text-sm">
-            Set a new password for your account.
+    <div className="bg-background flex min-h-[100dvh] flex-col">
+      <AuthTopBar />
+      <main className="text-ink flex flex-1 items-center justify-center px-4 py-8">
+        <Card className="w-full max-w-md">
+          <div className="mb-6 text-center">
+            <Heading className="mb-1">Change password</Heading>
+            <p className="text-muted-foreground text-sm">
+              Set a new password for your account.
+            </p>
+          </div>
+
+          <Form
+            form={form}
+            onSubmit={onSubmit}
+            submitText="Change password"
+            submitButtonProps={{ type: 'submit' }}
+            resetText="Cancel"
+            resetButtonProps={{
+              onClick: () => {
+                form.reset();
+                void router.push('/');
+              },
+            }}
+            fields={[
+              {
+                type: 'input',
+                name: 'oldPassword',
+                label: 'Current password',
+                placeholder: 'Enter your current password',
+                required: true,
+                inputProps: {
+                  type: 'password',
+                  autoComplete: 'current-password',
+                  'data-qa': 'change-password-old',
+                  maxLength: 200,
+                },
+              },
+              {
+                type: 'input',
+                name: 'newPassword',
+                label: 'New password',
+                placeholder: 'At least 8 characters',
+                required: true,
+                inputProps: {
+                  type: 'password',
+                  autoComplete: 'new-password',
+                  'data-qa': 'change-password-new',
+                  maxLength: 200,
+                },
+              },
+              {
+                type: 'input',
+                name: 'confirmPassword',
+                label: 'Confirm new password',
+                placeholder: 'Re-enter the new password',
+                required: true,
+                inputProps: {
+                  type: 'password',
+                  autoComplete: 'new-password',
+                  'data-qa': 'change-password-confirm',
+                  maxLength: 200,
+                },
+              },
+            ]}
+          />
+
+          <p className="text-muted-foreground mt-6 text-center text-xs">
+            Shadhil Builders internal system — access is provisioned by an admin.
           </p>
-        </div>
-
-        <Form
-          form={form}
-          onSubmit={onSubmit}
-          submitText="Change password"
-          submitButtonProps={{ type: 'submit' }}
-          resetText="Cancel"
-          resetButtonProps={{
-            onClick: () => {
-              form.reset();
-              void router.push('/');
-            },
-          }}
-          fields={[
-            {
-              type: 'input',
-              name: 'oldPassword',
-              label: 'Current password',
-              placeholder: 'Enter your current password',
-              required: true,
-              inputProps: {
-                type: 'password',
-                autoComplete: 'current-password',
-                'data-qa': 'change-password-old',
-                maxLength: 200,
-              },
-            },
-            {
-              type: 'input',
-              name: 'newPassword',
-              label: 'New password',
-              placeholder: 'At least 8 characters',
-              required: true,
-              inputProps: {
-                type: 'password',
-                autoComplete: 'new-password',
-                'data-qa': 'change-password-new',
-                maxLength: 200,
-              },
-            },
-            {
-              type: 'input',
-              name: 'confirmPassword',
-              label: 'Confirm new password',
-              placeholder: 'Re-enter the new password',
-              required: true,
-              inputProps: {
-                type: 'password',
-                autoComplete: 'new-password',
-                'data-qa': 'change-password-confirm',
-                maxLength: 200,
-              },
-            },
-          ]}
-        />
-
-        <p className="text-muted-foreground mt-6 text-center text-xs">
-          Shadhil Builders internal system — access is provisioned by an admin.
-        </p>
-      </Card>
-    </main>
+        </Card>
+      </main>
+    </div>
   );
 }

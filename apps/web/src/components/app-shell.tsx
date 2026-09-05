@@ -87,16 +87,28 @@ export function AppShell() {
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
-          <Image
-            src="/brand/logo.png"
-            alt="Shadhil CRM"
-            width={28}
-            height={28}
-            className="h-7 w-7 shrink-0"
-            // If the PNG is missing the user still sees the wordmark.
-            // next/image falls back to the alt text in that case.
-          />
-          <span className="truncate text-sm font-semibold">Shadhil CRM</span>
+          {/* Full brand lockup on its native white tile — rendered as a
+              rounded chip so the opaque white canvas reads as intentional
+              in both themes instead of a floating white box. The tagline
+              is part of the asset; h-8 keeps it legible. In the collapsed
+              (icon) rail the wordmark truncates to a compact strip. */}
+          <Link
+            href="/"
+            className="border-border bg-card inline-flex h-9 shrink-0 items-center overflow-hidden rounded-md border px-2"
+            aria-label="Shadhil CRM home"
+            data-qa="sidebar-brand"
+          >
+            <Image
+              src="/brand/logo-with-bg.png"
+              alt="Shadhil Builders"
+              width={96}
+              height={36}
+              className="h-7 w-auto object-contain"
+            />
+          </Link>
+          <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
+            Shadhil CRM
+          </span>
         </div>
         <SidebarTrigger className="md:hidden" />
       </SidebarHeader>
