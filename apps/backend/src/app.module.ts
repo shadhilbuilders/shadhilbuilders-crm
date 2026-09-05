@@ -17,6 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AuditModule } from './audit/audit.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -53,6 +54,7 @@ import { RedisModule } from './redis/redis.module';
 
     // Realtime (SSE — eng review A9: Last-Event-ID resume)
     RealtimeModule,
+    WhatsappModule,
   ],
   providers: [
     // Default-deny: every route needs a valid JWT unless @Public() is set.
