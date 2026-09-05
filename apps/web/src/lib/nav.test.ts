@@ -76,6 +76,12 @@ describe('lib/nav', () => {
       expect(hrefs).not.toContain('/audit');
     });
 
+    it('MANAGER also sees WA Unknown (canConvertWhatsappUnknownContact)', () => {
+      const items = getVisibleNav('MANAGER');
+      const hrefs = items.map((i) => i.href);
+      expect(hrefs).toContain('/whatsapp-unknown-contacts');
+    });
+
     it('ADMIN sees work + Users + Audit', () => {
       const items = getVisibleNav('ADMIN');
       const hrefs = items.map((i) => i.href);
@@ -83,11 +89,35 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/audit');
     });
 
+    it('ADMIN also sees WA Unknown (admin-class)', () => {
+      const items = getVisibleNav('ADMIN');
+      expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
+    });
+
     it('OWNER sees work + Users + Audit (admin-class)', () => {
       const items = getVisibleNav('OWNER');
       const hrefs = items.map((i) => i.href);
       expect(hrefs).toContain('/users');
       expect(hrefs).toContain('/audit');
+    });
+
+    it('OWNER also sees WA Unknown (admin-class)', () => {
+      const items = getVisibleNav('OWNER');
+      expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
+    });
+
+    it('TELECALLER does NOT see WA Unknown (raw inbound triage is admin-only)', () => {
+      const items = getVisibleNav('TELECALLER');
+      expect(items.map((i) => i.href)).not.toContain(
+        '/whatsapp-unknown-contacts',
+      );
+    });
+
+    it('SALES_EXEC does NOT see WA Unknown (raw inbound triage is admin-only)', () => {
+      const items = getVisibleNav('SALES_EXEC');
+      expect(items.map((i) => i.href)).not.toContain(
+        '/whatsapp-unknown-contacts',
+      );
     });
 
     it('undefined role sees only the work group (safe default)', () => {

@@ -59,6 +59,18 @@ export function canViewAudit(role: Role | undefined): boolean {
   return isAdminLike(role);
 }
 
+/**
+ * T-E2b follow-up queue (admin-only). ADMIN/OWNER/MANAGER triage
+ * inbound WhatsApp messages from unknown numbers (PENDING →
+ * CONVERTED → Lead, or PENDING → SPAM). TELECALLER / SALES_EXEC
+ * see the converted leads in the regular Lead Inbox instead.
+ */
+export function canConvertWhatsappUnknownContact(
+  role: Role | undefined,
+): boolean {
+  return isAdminLike(role) || role === 'MANAGER';
+}
+
 /** Users module: admin-class creates any role below; manager → staff only. */
 export function canManageUsers(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';

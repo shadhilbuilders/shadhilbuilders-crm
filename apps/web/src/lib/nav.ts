@@ -57,12 +57,17 @@ import {
   LuShieldCheck,
   LuUserCog,
   LuHandshake,
+  LuMessageCircleQuestion,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { canManageUsers, canViewAudit } from '@/lib/session';
+import {
+  canConvertWhatsappUnknownContact,
+  canManageUsers,
+  canViewAudit,
+} from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -144,6 +149,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LuShieldCheck,
     group: 'admin',
   },
+  // T-E2b follow-up queue — admin + manager only (DESIGN.md §4 + plan
+  // §11 T-E2b). Telecaller / SalesExec never triage raw inbound from
+  // unknown numbers — they only see the result (a converted Lead)
+  // in the regular Lead Inbox.
+  {
+    href: '/whatsapp-unknown-contacts',
+    label: 'WA Unknown',
+    icon: LuMessageCircleQuestion,
+    group: 'admin',
+  },
 ] as const;
 
 /**
@@ -164,6 +179,11 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
     // group === 'admin'
     if (item.href === '/users' && canManageUsers(role)) items.push(item);
     else if (item.href === '/audit' && canViewAudit(role)) items.push(item);
+    else if (
+      item.href === '/whatsapp-unknown-contacts' &&
+      canConvertWhatsappUnknownContact(role)
+    )
+      items.push(item);
   }
   return items;
 }
