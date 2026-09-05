@@ -11,13 +11,52 @@
 //     an attacker-supplied https://evil.example/next must not be honored).
 //   - Already signed in? bounce straight to the target (client-side — the
 //     middleware handles server-side; this covers after-login revisits).
+//   - Password visibility toggle via the shared PasswordInput (2026-09-05).
+//
+// VALIDATION (2026-09-05): declarative zod via zodResolver. The schema
+// is derived from the server's LoginDtoSchema (packages/api-types) —
+// extending it with an explicit min-length message for the empty
+// password case — so client and server rules can't drift. Field-level
+// zod errors render under each input via the library Form's FieldError;
+// the generic account-enumeration Alert stays for AUTH failures
+// (bad credentials), which zod can't know about.
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Field, Heading } from '@paalstack/react-ui';
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  FieldError,
+  Heading,
+} from '@paalstack/react-ui';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type FormEvent, useState } from 'react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 
-import { authClient } from '@/lib/auth-client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
+import { authClient } from '@/lib/auth-client';
+
+import { z } from 'zod';
+
+/**
+ * Client form contract for the login form. Derived from the server's
+ * LoginDtoSchema (email rules: trim+lowercase, 3..254, email format;
+ * password: min 1) so the client validation is a superset of what the
+ * server enforces — never a divergent copy. The password's min(1) is
+ * re-messaged to 'Password is required' for the inline empty-case hint.
+ */
+const LoginFormSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'Email is required')
+    .max(254, 'Email is too long')
+    .email('Enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
 function isSafeNextPath(raw: string | null): string {
   if (!raw) return '/';
@@ -33,25 +72,28 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(LoginFormSchema),
+    defaultValues: { email: '', password: '' },
+    mode: 'onSubmit',
+  });
 
   const nextPath = isSafeNextPath(searchParams.get('next'));
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
+  async function onSubmit(values: LoginFormValues) {
+    setAuthError(null);
     setPending(true);
 
     const { error: authError } = await authClient.signIn.email({
-      email,
-      password,
+      email: values.email,
+      password: values.password,
     });
 
     if (authError) {
-      setError('Invalid email or password.');
+      setAuthError('Invalid email or password.');
       setPending(false);
       return;
     }
@@ -73,26 +115,25 @@ export function LoginForm() {
         </p>
       </div>
 
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <Field className="mb-4">
           <label htmlFor="login-email" className="text-sm font-medium">
             Email
           </label>
           <input
             id="login-email"
-            name="email"
             type="email"
             autoComplete="email"
             inputMode="email"
-            required
             autoFocus
             placeholder="you@shadhilbuilders.in"
             className="border-input bg-transparent mt-1.5 min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
+            {...form.register('email')}
             disabled={pending}
-            aria-invalid={error !== null}
+            aria-invalid={form.formState.errors.email !== undefined || authError !== null}
+            data-qa="login-email"
           />
+          <FieldError errors={[form.formState.errors.email]} className="mt-1" />
         </Field>
 
         <Field className="mb-4">
@@ -101,26 +142,25 @@ export function LoginForm() {
           </label>
           <div className="mt-1.5">
             <PasswordInput
-              id="login-password"
-              name="password"
               autoComplete="current-password"
-              required
               className="min-h-11 w-full text-sm"
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
               disabled={pending}
               placeholder="Enter your password"
-              aria-invalid={error !== null}
+              {...form.register('password')}
+              aria-invalid={form.formState.errors.password !== undefined || authError !== null}
               data-qa="login-password"
             />
           </div>
+          <FieldError errors={[form.formState.errors.password]} className="mt-1" />
         </Field>
 
-        {error !== null && (
+        {authError !== null && (
           // NOTE: @paalstack Alert renders text via title/description props —
           // children are DISCARDED by the component (verified in dist source),
           // which is why the error initially showed as an empty box.
-          <Alert colorVariant="danger" title={error} className="mb-4" role="alert" />
+          // This Alert is AUTH failure ONLY (bad credentials); field-shape
+          // errors are zod's inline FieldErrors above.
+          <Alert colorVariant="danger" title={authError} className="mb-4" role="alert" />
         )}
 
         <Button type="submit" className="mt-2 h-11 w-full" disabled={pending}>
