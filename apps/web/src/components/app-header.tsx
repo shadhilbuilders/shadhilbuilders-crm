@@ -28,10 +28,10 @@ import {
   Separator,
 } from '@paalstack/react-ui';
 import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
-import { SidebarTrigger } from '@paalstack/react-ui';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
+import { SidebarToggleButton } from '@/components/app-shell';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -54,7 +54,13 @@ export function AppHeader() {
   return (
     <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
-        <SidebarTrigger className="-ml-1 md:hidden" />
+        {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
+            shadcn sidebar-07 position) - beside the welcome message, visible
+            on ALL breakpoints. Same LuPanelLeft icon as the sidebar's own
+            toggle (SidebarToggleButton), shared via the export from
+            app-shell. -ml-1 aligns the ghost button's hit area with the
+            header's px-4 padding. */}
+        <SidebarToggleButton className="-ml-1" />
         {isPending ? (
           <span
             aria-hidden
