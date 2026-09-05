@@ -509,9 +509,59 @@ CREATE POLICY wa_unknown_update_admin ON "WhatsappUnknownContact"
 -- without needing to fake an internal user_id. The row's
 -- visibility is still gated by the lead's existing select_team
 -- policy (the Message row is visible to the lead's team only).
+-- ────────────────────────────────────────────────────────────────────
+-- T-E2b (2026-09-04): OutboundMessage CRON_SERVICE bypass (for the
+-- outbound cron processor, apps/backend/src/whatsapp/outbound.cron.ts)
+-- ────────────────────────────────────────────────────────────────────
+-- The cron processor (OutboundCronService) runs as CRON_SERVICE and
+-- needs full read+update on OutboundMessage rows to:
+--   1. SELECT PENDING rows (claimPending → findMany)
+--   2. UPDATE rows from PENDING → SENDING (the claim lease)
+--   3. UPDATE rows from SENDING → SENT/FAILED/PENDING (after sendOne)
+-- The existing outbound_update_cron_service policy only covers
+-- UPDATE — not SELECT. Without a SELECT bypass, the cron's
+-- findMany returns zero rows and no messages ever get sent.
+-- The INSERT policy (outbound_insert_authenticated) already covers
+-- the chat-service enqueue path; we don't change that. The DELETE
+-- policy (outbound_delete_admin) is for operator cleanup.
+CREATE POLICY outbound_cron_service_select ON "OutboundMessage"
+  FOR SELECT
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+CREATE POLICY outbound_cron_service_insert ON "OutboundMessage"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- ────────────────────────────────────────────────────────────────────
+-- Message INSERT bypass for CRON_SERVICE
+-- ────────────────────────────────────────────────────────────────────
+-- The WhatsApp inbound webhook handler creates Message rows
+-- (channel=WHATSAPP, direction=INBOUND) when a lead replies. The
+-- handler runs as CRON_SERVICE — no app.user_id is set, because
+-- the sender is the lead (a customer), not an internal user. The
+-- existing message_insert_team policy gates on app.user_id being
+-- set to a staff member, which doesn't apply for inbound leads.
+--
+-- Adding this CRON_SERVICE bypass lets the handler insert messages
+-- without needing to fake an internal user_id. The row's
+-- visibility is still gated by the lead's existing select_team
+-- policy (the Message row is visible to the lead's team only).
 CREATE POLICY message_insert_cron_service ON "Message"
   FOR INSERT
   WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- Message DELETE bypass for ADMIN/CRON_SERVICE (cleanup paths,
+-- e.g. test fixtures, manual purges). Without this, the bare
+-- shadhil_app role cannot delete Message rows at all — only
+-- inheritance via Lead/OutboundMessage cascade works in
+-- production. The chat test cleanup and the cron test cleanup
+-- both rely on this policy.
+CREATE POLICY message_delete_admin_or_cron ON "Message"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    OR current_setting('app.user_role', true) = 'CRON_SERVICE'
+  );
 
 -- OutboundMessage status updates from the WhatsApp status webhook
 -- (delivered/read/failed) also run as CRON_SERVICE. The existing

@@ -685,8 +685,13 @@ const UPDATE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
 const DELETE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outcome>>>> = {
   // DELETE on the alpha row:
   //   - Lead: admin-only.
-  //   - Activity/Message: NO DELETE POLICY → DEFAULT DENY.
+  //   - Activity: NO DELETE POLICY → DEFAULT DENY.
   //   - SiteVisit: FOR ALL via parent owner/team.
+  //   - Message: T-E2b cron cleanup paths need to delete Message
+  //     rows (FK cascade from a deleted Lead is the production path,
+  //     but test fixtures + admin manual purges use the direct
+  //     delete). ADMIN + CRON_SERVICE allowed; everyone else
+  //     DEFAULT DENY.
   //   - Booking: FOR ALL via parent owner/team.
   //   - Reminder/Notification: owner-only.
   //   - AuditLog: NO DELETE POLICY → DEFAULT DENY.
@@ -694,7 +699,7 @@ const DELETE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
     Lead: 'allowed',
     Activity: 'rejected',
     SiteVisit: 'allowed',
-    Message: 'rejected',
+    Message: 'allowed', // T-E2b: message_delete_admin_or_cron policy
     Booking: 'allowed',
     Reminder: 'rejected',
     Notification: 'rejected',
