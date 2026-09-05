@@ -143,6 +143,7 @@ export default function ChangePasswordPage() {
             submitText="Change password"
             submitButtonProps={{ type: 'submit' }}
             resetText="Cancel"
+            actionClassName='justify-start'
             resetButtonProps={{
               onClick: () => {
                 form.reset();
