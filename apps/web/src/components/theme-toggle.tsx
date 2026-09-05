@@ -95,7 +95,7 @@ export function ThemeToggle() {
 
   return (
     <ThemeToggleButton
-      icon={<Icon className="h-5 w-5" />}
+      icon={<Icon className="size-5" />}
       label={label}
       mode={mounted ? (isDark ? 'dark' : 'light') : 'unknown'}
       onClick={() => setTheme(nextTheme)}

@@ -36,15 +36,15 @@ export function AuthTopBar() {
       data-qa="auth-topbar"
       className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
     >
-      <div className="container mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-2" data-qa="auth-brand">
+      <div className="container mx-auto flex h-19 w-full max-w-7xl items-center justify-between gap-3 px-4">
+        <div className="flex min-w-0 items-center gap-2 h-12.5" data-qa="auth-brand">
           {/* Transparent lockup (logo.png — tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are
               hard-coded, so the surface behind them must stay light in
               both themes. bg-card is theme-dependent (near-black in dark
               mode → navy-on-navy contrast failure, found in-browser);
               bg-white + a subtle border reads as a brand plate instead. */}
-          <span className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 dark:bg-white">
+          <span className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 py-2 dark:bg-white">
             <Image
               src="/brand/logo.png"
               alt="Shadhil Builders"

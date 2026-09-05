@@ -31,6 +31,7 @@ import {
   useSessionUser,
 } from '@/lib/session';
 
+import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '../PageHeader';
 
@@ -234,14 +235,14 @@ function CreateUserForm({
         />
       </Field>
       <Field label="Temporary password" description="Minimum 8 characters. User should change it after first sign-in.">
-        <input
-          type="password"
+        <PasswordInput
           value={password}
           onChange={(event) => setPassword(event.currentTarget.value)}
           required
           minLength={8}
           autoComplete="new-password"
-          className="border-input bg-background focus-visible:ring-ring min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+          className="min-h-11 w-full text-sm"
+          data-qa="create-user-password"
         />
       </Field>
       <Field label="Role">

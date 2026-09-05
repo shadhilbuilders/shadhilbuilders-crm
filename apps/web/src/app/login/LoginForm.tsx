@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 
 import { authClient } from '@/lib/auth-client';
+import { PasswordInput } from '@/components/shared/PasswordInput';
 
 function isSafeNextPath(raw: string | null): string {
   if (!raw) return '/';
@@ -98,20 +99,21 @@ export function LoginForm() {
           <label htmlFor="login-password" className="text-sm font-medium">
             Password
           </label>
-          <input
-            id="login-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            // min-h-11 = 44px touch target (WCAG 2.5.8 / iOS HIG)
-            className="border-input bg-transparent mt-1.5 min-h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-            disabled={pending}
-            placeholder="Enter your password"
-            aria-invalid={error !== null}
-          />
+          <div className="mt-1.5">
+            <PasswordInput
+              id="login-password"
+              name="password"
+              autoComplete="current-password"
+              required
+              className="min-h-11 w-full text-sm"
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+              disabled={pending}
+              placeholder="Enter your password"
+              aria-invalid={error !== null}
+              data-qa="login-password"
+            />
+          </div>
         </Field>
 
         {error !== null && (
