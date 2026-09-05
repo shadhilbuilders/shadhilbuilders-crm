@@ -63,6 +63,8 @@ import {
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { useSidebar } from '@paalstack/react-ui';
+
 import {
   canConvertWhatsappUnknownContact,
   canManageUsers,
@@ -264,19 +266,26 @@ export function isNavItemActive(href: string, pathname: string): boolean {
  */
 export function useNavSync(): void {
   const pathname = usePathname();
-  // Lazy-require so this module is importable from server components
-  // (e.g. the eventual `<head>` consumers) without pulling the entire
-  // Sidebar context into a server bundle. The hook is a no-op on the
-  // server because `useEffect` never fires there.
-  const { useSidebar } = require('@paalstack/react-ui') as {
-    useSidebar: () => { setOpenMobile: (open: boolean) => void };
-  };
+  //
+  // Rules of Hooks: `useSidebar()` MUST run in the hook body (during
+  // render), never inside the `useEffect` callback — calling it inside
+  // the effect threw "Invalid hook call" in dev and crashed the (app)
+  // layout after login.
+  //
+  // Module identity: imported statically (top of file), NOT via lazy
+  // `require()`. A CJS require() resolves this dual-format package's
+  // `dist/index.cjs`, while client components resolve `dist/index.js` —
+  // two module instances = two `SidebarContext` objects, so a hook from
+  // the CJS copy would never see the ESM `SidebarProvider` and would
+  // throw "useSidebar must be used within a SidebarProvider" at runtime.
+  // The file is `'use client'`, so a static import is always safe here.
+  const { setOpenMobile } = useSidebar();
 
   useEffect(() => {
     // Only close on mobile: on desktop the sidebar is a persistent rail
     // and `setOpenMobile` is a no-op.
-    useSidebar().setOpenMobile(false);
-    // We intentionally exclude `useSidebar` from deps — its identity is
-    // stable across renders (it's a context value, not a hook result).
-  }, [pathname]);
+    setOpenMobile(false);
+    // `setOpenMobile` is a stable useState setter from SidebarProvider;
+    // listing it keeps the deps array honest without re-running the effect.
+  }, [pathname, setOpenMobile]);
 }

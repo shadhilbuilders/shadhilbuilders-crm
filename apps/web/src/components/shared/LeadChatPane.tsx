@@ -25,7 +25,7 @@
 // now, sending a message invalidates the query → refetch → render.
 // Good enough for the demo loop.
 
-import { Button } from '@paalstack/react-ui';
+import { Button, toast } from '@paalstack/react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
@@ -105,11 +105,15 @@ export function LeadChatPane({ leadId }: { leadId: string | null }) {
       onError: (err) => {
         // Server validation messages come through verbatim on 400
         // (parseBody in chat.controller.ts turns ZodError → 400).
-        // Surface them via toast — toast is global so we import
-        // lazily to keep this component dependency-light.
-        const { toast } = require('@paalstack/react-ui') as {
-          toast: { error: (msg: string) => void };
-        };
+        // Surface them via the global sonner toast singleton.
+        //
+        // Imported statically — NOT via lazy require(): a CJS require()
+        // resolves this dual-format package's `dist/index.cjs`, whose
+        // sonner `toast` singleton is a SEPARATE module instance from
+        // the ESM build that `<Toaster/>` (app root) listens to. Toasts
+        // fired from the CJS copy never render. The component is
+        // already a client component importing `Button` from the same
+        // package, so a static import costs nothing.
         toast.error(err instanceof Error ? err.message : 'Send failed');
       },
     });
