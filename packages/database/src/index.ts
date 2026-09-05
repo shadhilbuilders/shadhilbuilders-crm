@@ -94,6 +94,8 @@ export type {
   OutboundMessage,
   OutboundSendType,
   OutboundStatus,
+  WhatsappUnknownContact,
+  WhatsappUnknownContactStatus,
   AuditLog,
   Consent,
   ConsentType,
