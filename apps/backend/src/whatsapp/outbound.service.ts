@@ -18,6 +18,7 @@ import {
   type OutboundStatus,
   type PrismaClient,
   type OutboundSendType,
+  withRlsContext,
 } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -90,130 +91,182 @@ export class OutboundService {
    * claim-lease pattern: updateMany sets status=SENDING and
    * claimedAt/claimedBy atomically. Rows whose `lastAttemptAt` is
    * within the backoff window are skipped.
+   *
+   * Wraps all DB operations in `withRlsContext(CRON_SERVICE)` so
+   * the outbound_cron_service_all RLS policy matches (the bare
+   * shadhil_app role has no RLS context set, so a direct call
+   * returns zero rows from findMany — see commit b2f94ca where
+   * the chat-service enqueue path was in-staff-RLS-context but
+   * the cron path was missed).
    */
   async claimPending(claimantId: string, limit: number): Promise<OutboundMessage[]> {
-    const now = new Date();
-    // First, find candidates (rows in PENDING that are not within a
-    // backoff window for their attempt count).
-    const candidates = await this.client.outboundMessage.findMany({
-      where: { status: 'PENDING' },
-      orderBy: { createdAt: 'asc' },
-      take: limit * 3, // overshoot; updateMany will narrow to limit
-      select: { id: true, attempts: true, lastAttemptAt: true },
-    });
-    const ready: string[] = [];
-    for (const c of candidates) {
-      if (ready.length >= limit) break;
-      if (c.lastAttemptAt === null) {
-        ready.push(c.id);
-        continue;
-      }
-      const backoff = BACKOFF_MS[Math.min(c.attempts, BACKOFF_MS.length - 1)];
-      const elapsed = now.getTime() - c.lastAttemptAt.getTime();
-      if (elapsed >= backoff) ready.push(c.id);
-    }
-    if (ready.length === 0) return [];
+    return withRlsContext(
+      this.client,
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '' },
+      async (tx) => {
+        const now = new Date();
+        // First, find candidates (rows in PENDING that are not within a
+        // backoff window for their attempt count).
+        const candidates = await (tx as unknown as PrismaClient).outboundMessage.findMany({
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'asc' },
+          take: limit * 3, // overshoot; updateMany will narrow to limit
+          select: { id: true, attempts: true, lastAttemptAt: true },
+        });
+        const ready: string[] = [];
+        for (const c of candidates) {
+          if (ready.length >= limit) break;
+          if (c.lastAttemptAt === null) {
+            ready.push(c.id);
+            continue;
+          }
+          const backoff = BACKOFF_MS[Math.min(c.attempts, BACKOFF_MS.length - 1)];
+          const elapsed = now.getTime() - c.lastAttemptAt.getTime();
+          if (elapsed >= backoff) {
+            ready.push(c.id);
+          }
+        }
+        if (ready.length === 0) return [];
 
-    // Atomic claim.
-    const updateResult = await this.client.outboundMessage.updateMany({
-      where: { id: { in: ready }, status: 'PENDING' },
-      data: {
-        status: 'SENDING',
-        claimedAt: now,
-        claimedBy: claimantId,
-        attempts: { increment: 1 },
-        lastAttemptAt: now,
+        // Atomic claim.
+        const updateResult = await (tx as unknown as PrismaClient).outboundMessage.updateMany({
+          where: { id: { in: ready }, status: 'PENDING' },
+          data: {
+            status: 'SENDING',
+            claimedAt: now,
+            claimedBy: claimantId,
+            attempts: { increment: 1 },
+            lastAttemptAt: now,
+          },
+        });
+        if (updateResult.count === 0) return [];
+
+        return (tx as unknown as PrismaClient).outboundMessage.findMany({
+          where: { id: { in: ready }, status: 'SENDING', claimedBy: claimantId },
+          orderBy: { claimedAt: 'desc' },
+          take: limit,
+        });
       },
-    });
-    if (updateResult.count === 0) return [];
-
-    return this.client.outboundMessage.findMany({
-      where: { id: { in: ready }, status: 'SENDING', claimedBy: claimantId },
-      orderBy: { claimedAt: 'desc' },
-      take: limit,
-    });
+    );
   }
 
   /** Send a single claimed row via the Meta API. Updates status
-   *  based on the response. Returns the updated row. */
+   *  based on the response. Returns the updated row.
+   *
+   *  The Meta call is outside the RLS transaction (it's a network
+   *  call, not a DB call). The DB writes — both the success
+   *  UPDATE (→ SENT) and the failure UPDATE (→ PENDING/FAILED with
+   *  lastError) — run inside withRlsContext(CRON_SERVICE) so the
+   *  outbound_cron_service_all / outbound_update_cron_service
+   *  RLS policies match. The lead phone lookup is also inside
+   *  RLS context (uses Lead which has its own CRON_SERVICE bypass
+   *  policy from the T-E2b inbound commit).
+   *
+   *  On success we also store the Meta wamid in the OutboundMessage
+   *  row — the inbound webhook (webhooks.controller.ts) uses this
+   *  to correlate delivery receipts back to the right outbox row. */
   async sendOne(row: OutboundMessage): Promise<OutboundMessage> {
+    // First, do the network call OUTSIDE the RLS transaction.
+    // (RLS transaction holds a connection; the Meta fetch is a
+    // blocking call to graph.facebook.com — we don't want to pin
+    // a pool connection for the duration of a 30s+ HTTP call.)
+    let deliveryResult:
+      | { ok: true; wamid: string | null }
+      | { ok: false; error: string };
     try {
       if (row.sendType === 'TEMPLATE') {
-        // Template path: build the parameters from the stored
-        // templateVars, looking up the template name by which of our
-        // three templates is stored.
         const templateName = this.resolveTemplateName(row);
         const vars = (row.templateVars as Record<string, string> | null) ?? {};
-        // The order of parameters must match the template's
-        // placeholder order. For our 3 templates the placeholder
-        // orders are:
-        //   - chatReply:         {{1}} firstName, {{2}} body
-        //   - visitFollowup:     {{1}} firstName, {{2}} staffName,
-        //                        {{3}} projectName, {{4}} context
-        //   - visitReminder:     {{1}} firstName, {{2}} time,
-        //                        {{3}} location, {{4}} staffName
-        // The chat service sets templateVars with the right keys;
-        // we sort alphabetically for a stable order, but the chat
-        // service is the source of truth on what to put in.
-        const parameters = Object.values(vars).map((text) => ({ type: 'text' as const, text }));
-        await this.whatsapp.sendTemplateMessage(
+        const parameters = Object.values(vars).map((text) => ({
+          type: 'text' as const,
+          text,
+        }));
+        const delivery = await this.whatsapp.sendTemplateMessage(
           await this.leadPhone(row.leadId),
           templateName,
           parameters,
         );
+        // Meta can return HTTP 200 with message_status: 'failed' in
+        // the body (the "soft failure" case — recipient not on the
+        // test allowlist, undeliverable, etc.). Treat as a hard
+        // failure so we go through the backoff path.
+        if (!delivery.accepted) {
+          deliveryResult = {
+            ok: false,
+            error: `Meta refused: code=${delivery.errorCode} title=${delivery.errorTitle}`,
+          };
+        } else {
+          deliveryResult = { ok: true, wamid: delivery.wamid };
+        }
       } else {
-        // FREEFORM path: not implemented in this commit batch
-        // (template-only is sufficient for the T-E2b demo; the
-        // landing-page-only freeform flow comes in Week 9+).
-        // We mark the row as FAILED with a clear error so the
-        // operator sees what to fix.
-        throw new Error('FREEFORM outbound is not yet supported in shadhil-crm; use a template');
+        throw new Error(
+          'FREEFORM outbound is not yet supported in shadhil-crm; use a template',
+        );
       }
-
-      return this.client.outboundMessage.update({
-        where: { id: row.id },
-        data: { status: 'SENT' },
-      });
     } catch (err) {
-      const isFinal = row.attempts >= MAX_ATTEMPTS;
       const errorMessage =
         err instanceof WhatsAppSendError
           ? `${err.message}${err.code ? ` (code ${err.code})` : ''}`
           : err instanceof Error
             ? err.message
             : String(err);
-      this.logger.warn(
-        `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${errorMessage}`,
-      );
-      return this.client.outboundMessage.update({
-        where: { id: row.id },
-        data: {
-          status: isFinal ? 'FAILED' : 'PENDING',
-          lastError: errorMessage,
-        },
-      });
+      deliveryResult = { ok: false, error: errorMessage };
     }
+
+    // Now do the DB write inside the RLS transaction.
+    return withRlsContext(
+      this.client,
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '' },
+      async (tx) => {
+        const txClient = tx as unknown as PrismaClient;
+        if (deliveryResult.ok) {
+          return txClient.outboundMessage.update({
+            where: { id: row.id },
+            data: {
+              status: 'SENT',
+              wamid: deliveryResult.wamid,
+            },
+          });
+        }
+        const isFinal = row.attempts >= MAX_ATTEMPTS;
+        this.logger.warn(
+          `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${deliveryResult.error}`,
+        );
+        return txClient.outboundMessage.update({
+          where: { id: row.id },
+          data: {
+            status: isFinal ? 'FAILED' : 'PENDING',
+            lastError: deliveryResult.error,
+          },
+        });
+      },
+    );
   }
 
   /** Resolve the lead's phone in E.164 form. Returns the digits-only
    *  string. The chat service guarantees the lead has phoneE164
-   *  (the enqueue path validates this), so this is just a lookup. */
+   *  (the enqueue path validates this), so this is just a lookup.
+   *  Wrapped in withRlsContext(CRON_SERVICE) so the
+   *  lead_select_cron_service policy from the T-E2b inbound commit
+   *  matches — the bare shadhil_app role has no RLS context, so
+   *  a direct findUnique would return null. */
   private async leadPhone(leadId: string): Promise<string> {
-    const lead = await this.client.lead.findUnique({
-      where: { id: leadId },
-      select: { phoneE164: true, phone: true },
-    });
+    const lead = await withRlsContext(
+      this.client,
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '' },
+      async (tx) =>
+        (tx as unknown as PrismaClient).lead.findUnique({
+          where: { id: leadId },
+          select: { phoneE164: true, phone: true },
+        }),
+    );
     if (lead === null) {
       throw new Error(`Lead ${leadId} not found in OutboundService.leadPhone`);
     }
     if (lead.phoneE164 === null) {
-      // Fallback to raw phone, normalized. Shouldn't happen in
-      // practice (the chat service enqueue validates phoneE164
-      // presence), but defensive.
       if (lead.phone === null) {
         throw new Error(`Lead ${leadId} has no phone at all`);
       }
-      // Inline the same toE164 used elsewhere.
       return lead.phone.replace(/[\s\-().+]/g, '');
     }
     return lead.phoneE164;

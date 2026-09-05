@@ -95,9 +95,32 @@ CREATE POLICY message_insert_cron_service ON "Message"
   FOR INSERT
   WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
 
+-- Message DELETE bypass for ADMIN/CRON_SERVICE. Without this,
+-- cleanup paths (test fixtures, manual purges) cannot delete
+-- Message rows directly — only the FK cascade from Lead works.
+CREATE POLICY message_delete_admin_or_cron ON "Message"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    OR current_setting('app.user_role', true) = 'CRON_SERVICE'
+  );
+
 CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
   FOR UPDATE
   USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
+  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+-- T-E2b (2026-09-04): the outbound CRON processor (apps/backend/src/
+-- whatsapp/outbound.cron.ts) needs SELECT on OutboundMessage to find
+-- PENDING rows. Without this, claimPending returns zero rows and
+-- no messages ever get sent. INSERT bypass is also needed for the
+-- (rare) case where the cron creates a row directly.
+CREATE POLICY outbound_cron_service_select ON "OutboundMessage"
+  FOR SELECT
+  USING (current_setting('app.user_role', true) = 'CRON_SERVICE');
+
+CREATE POLICY outbound_cron_service_insert ON "OutboundMessage"
+  FOR INSERT
   WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
 
 -- The inbound handler needs to SELECT the Lead (to look up by
