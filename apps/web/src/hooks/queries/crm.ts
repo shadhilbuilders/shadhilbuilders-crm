@@ -63,7 +63,7 @@ export function useLeads(filter: LeadFilterInput = {}) {
   return useQuery({
     queryKey: ['leads', filter] as const,
     queryFn: ({ signal }) =>
-      api<unknown[]>(
+      api<unknown>(
         `/leads${qs({
           state: filter.state?.join(','),
           ownerId: filter.ownerId,
@@ -75,6 +75,16 @@ export function useLeads(filter: LeadFilterInput = {}) {
         })}`,
         { signal },
       ),
+    // T-DashCharts (2026-09-06): backend `leads.service.list` returns
+    // `{ total, rows }` (paginated response, app/contracts LeadListResult).
+    // The dashboard charts (PipelineFunnelChart) and the leads inbox
+    // page both iterate `data` directly, so unwrap here instead of
+    // re-shaping in every consumer. Same pattern as useBookings /
+    // useNotifications / useAuditLog. Without `select: unwrapRows` the
+    // charts threw `TypeError: data is not iterable` and React's
+    // error-boundary fallback surfaced the "Hydration failed because
+    // the server rendered HTML didn't match the client" log.
+    select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
@@ -181,7 +191,7 @@ export function useVisits(
   return useQuery({
     queryKey: ['visits', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown[]>(
+      api<unknown>(
         `/visits${qs({
           from: params.from,
           to: params.to,
@@ -189,6 +199,12 @@ export function useVisits(
         })}`,
         { signal },
       ),
+    // T-DashCharts (2026-09-06): backend `visits.service.list` returns
+    // `{ total, rows }` (VisitListResult). Dashboard VisitsThisWeekChart
+    // iterates `data` directly; the /visits page also expects an array.
+    // Unwrap here so all consumers see the same shape - same pattern as
+    // useLeads / useBookings / useNotifications.
+    select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });

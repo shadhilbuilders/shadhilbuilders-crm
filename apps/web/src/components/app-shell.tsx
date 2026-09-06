@@ -140,6 +140,9 @@ export function AppShell() {
               size and truncates awkwardly next to a 143px chip. Hidden
               entirely - the chip IS the brand. */}
         </div>
+        {/* Separator between the brand chip and the project switcher so
+            the two header sections read as distinct groups. */}
+        <SidebarSeparator />
         {/* sidebar-07 pattern: below the brand, the project switcher
             dropdown (display-only for now - see project-switcher.tsx).
             Hidden until the session resolves so the collapsed rail
@@ -150,6 +153,9 @@ export function AppShell() {
         <WorkNavGroup activeProjectId={activeProjectId} />
         <AdminNavGroup activeProjectId={activeProjectId} />
       </SidebarContent>
+      {/* Separator between the work/admin nav groups and the footer
+          (UserMenu + sign out). */}
+      <SidebarSeparator />
       <SidebarFooter className="min-w-0 overflow-x-hidden">
         <UserMenuFooter />
       </SidebarFooter>
