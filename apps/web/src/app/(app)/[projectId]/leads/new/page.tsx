@@ -23,6 +23,7 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 import { useParams } from 'next/navigation';
 
 import { useCreateLead } from '@/hooks/queries/crm';
+import { projectHref } from '@/lib/nav';
 
 import { PageHeader } from '../../../PageHeader';
 
@@ -76,9 +77,9 @@ export default function NewLeadPage() {
         toast.success(`Lead ${payload.name} created`);
         const leadId = (data as CreatedLead | undefined)?.id;
         if (typeof leadId === 'string' && leadId.length > 0) {
-          void router.push(`/${projectId}/leads/${leadId}`);
+          void router.push(projectHref(projectId, `/leads/${leadId}`));
         } else {
-          void router.push(`/${projectId ?? ''}/leads`);
+          void router.push(projectHref(projectId, '/leads'));
         }
       },
       onError: (error) => {
@@ -96,7 +97,7 @@ export default function NewLeadPage() {
         title="New lead"
         breadcrumb={[
           { label: 'Work' },
-          { label: 'Leads', href: '/leads' },
+          { label: 'Leads', href: projectHref(projectId, '/leads') },
           { label: 'New' },
         ]}
         subtitle="Owner is assigned automatically by the assignment rule."
@@ -111,7 +112,7 @@ export default function NewLeadPage() {
           children: 'Cancel',
           onClick: () => {
             form.reset();
-            void router.push(`/${projectId ?? ''}/leads`);
+            void router.push(projectHref(projectId, '/leads'));
           },
         }}
         fields={[
@@ -197,7 +198,7 @@ export default function NewLeadPage() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => void router.push(`/${projectId ?? ''}/leads`)}
+          onClick={() => void router.push(projectHref(projectId, '/leads'))}
         >
           ← Back to Lead Inbox
         </Button>

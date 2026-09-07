@@ -28,6 +28,7 @@
 import { useState } from 'react';
 
 import { Button, Card, CardContent, toast } from '@paalstack/react-ui';
+import Link from 'next/link';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -43,6 +44,8 @@ import {
 } from '@/hooks/queries/whatsapp-unknown-contacts';
 
 import type { WhatsappUnknownContactRow } from '@/hooks/queries/whatsapp-unknown-contacts';
+import { pickDefaultProject, useProjects } from '@/hooks/queries';
+import { projectHref } from '@/lib/nav';
 
 // ---------------------------------------------------------------------------
 // Tab filter
@@ -70,6 +73,8 @@ export default function WhatsappUnknownContactsPage() {
     limit: 50,
   });
   const markSpam = useMarkWaUnknownSpam();
+  const { data: projects } = useProjects();
+  const defaultProjectId = pickDefaultProject(projects ?? [])?.id ?? null;
 
   const rows = listQuery.data?.rows ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -161,6 +166,7 @@ export default function WhatsappUnknownContactsPage() {
               }
               onConvert={setConvertTarget}
               onSpam={handleSpam}
+              projectId={defaultProjectId}
             />
           ))}
         </ul>
@@ -187,6 +193,7 @@ type RowProps = {
   pendingSpamId: string | null;
   onConvert: (row: WhatsappUnknownContactRow) => void;
   onSpam: (row: WhatsappUnknownContactRow) => void;
+  projectId: string | null;
 };
 
 function Row({
@@ -195,6 +202,7 @@ function Row({
   pendingSpamId,
   onConvert,
   onSpam,
+  projectId,
 }: RowProps) {
   const isSpamming = pendingSpamId === row.id;
   return (
@@ -231,13 +239,13 @@ function Row({
           {row.status === 'CONVERTED' && row.convertedToLeadId !== null ? (
             <>
               {' · '}
-              <a
-                href={`/leads/${row.convertedToLeadId}`}
+              <Link
+                href={projectHref(projectId, `/leads/${row.convertedToLeadId}`)}
                 className="underline-offset-2 hover:underline"
                 data-qa="wa-unknown-converted-lead"
               >
                 View Lead
-              </a>
+              </Link>
             </>
           ) : null}
         </p>

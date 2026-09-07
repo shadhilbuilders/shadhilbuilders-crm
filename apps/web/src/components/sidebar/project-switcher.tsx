@@ -5,7 +5,7 @@
 // T-ProjectSwitch (2026-09-05): REAL project switching. The dropdown rows
 // are Project-table rows (GET /api/projects); clicking one navigates to
 // /{projectId}/{currentSection} - the first URL segment IS the active
-// project. Work surfaces (leads, visits, inventory, bookings,
+// project. Work surfaces (dashboard, leads, visits, inventory, bookings,
 // notifications) live under that segment and every list query filters by
 // it. Selection is URL-owned: no localStorage, no context - the URL is
 // the source of truth (shareable, back/forward safe).
@@ -29,7 +29,7 @@
 // trigger renders the SidebarMenuButton; the content positions right
 // on desktop, bottom on mobile (useSidebar().isMobile).
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -43,6 +43,8 @@ import {
   useSidebar,
 } from '@paalstack/react-ui';
 import { LuBuilding2, LuChevronsUpDown, LuPlus } from '@paalstack/react-icons/lu';
+
+import { PROJECT_SCOPED_PATHS, projectHref } from '@/lib/nav';
 
 export type ProjectListItem = {
   id: string;
@@ -67,10 +69,27 @@ export function ProjectSwitcher({
 }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const pathname = usePathname();
+
   const active =
-    projects.find((p) => p.id === activeProjectId) ??
-    projects[0] ??
-    null;
+    projects.find((p) => p.id === activeProjectId) ?? projects[0] ?? null;
+
+  // Determine the current work surface from the pathname
+  // e.g., /proj-1/visits/abc -> /visits
+  const currentWorkSurface = (() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return '/dashboard';
+    // If we're on a project-scoped path, the second segment is the work surface
+    if (activeProjectId && segments.length >= 2) {
+      return `/${segments[1]}`;
+    }
+    // If no project active but on a known work surface
+    const knownWorkSurfaces = Array.from(PROJECT_SCOPED_PATHS);
+    if (knownWorkSurfaces.includes(`/${segments[0]}`)) {
+      return `/${segments[0]}`;
+    }
+    return '/dashboard';
+  })();
 
   return (
     <SidebarMenu>
@@ -124,9 +143,10 @@ export function ProjectSwitcher({
                   className="data-[active=true]:bg-accent data-[active=true]:text-accent-foreground cursor-pointer gap-2 p-2"
                   onSelect={() => {
                     // Real switching: the first URL segment IS the active
-                    // project. Navigate to the same work surface under the
-                    // new project (dashboard stays project-less).
-                    router.push(`/${project.id}/leads`);
+                    // project. Navigate to the SAME work surface under the
+                    // new project (dashboard included).
+                    const targetHref = projectHref(project.id, currentWorkSurface);
+                    router.push(targetHref);
                   }}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">

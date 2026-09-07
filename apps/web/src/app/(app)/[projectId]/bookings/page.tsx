@@ -19,6 +19,7 @@ import { useParams } from 'next/navigation';
 
 import { useBookings, useLeads } from '@/hooks/queries/crm';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
+import { projectHref } from '@/lib/nav';
 import { useSessionUser, canApproveBookings } from '@/lib/session';
 
 import { PageHeader } from '../../PageHeader';
@@ -123,7 +124,7 @@ export default function BookingsPage() {
         action={
           canCreate ? (
             <Button asChild size="sm" className="min-h-11" data-qa="new-booking-button">
-              <Link href={`/${projectId}/bookings/new`}>
+              <Link href={projectHref(projectId ?? null, '/bookings/new')}>
                 <LuPlus className="mr-1 h-4 w-4" /> New booking
               </Link>
             </Button>
@@ -152,6 +153,7 @@ export default function BookingsPage() {
           rows={rows as BookingRow[]}
           leadNameById={leadNameById}
           canApprove={canApproveBookings(user?.role)}
+          projectId={projectId ?? null}
         />
       ) : (
         <BookingsEmpty
@@ -168,10 +170,12 @@ function BookingTable({
   rows,
   leadNameById,
   canApprove,
+  projectId,
 }: {
   rows: BookingRow[];
   leadNameById: Map<string, string>;
   canApprove: boolean;
+  projectId: string | null;
 }) {
   return (
     <div className="border-border overflow-x-auto rounded-lg border">
@@ -220,7 +224,7 @@ function BookingTable({
                 <td className="px-4 py-2.5">
                   {leadId.length > 0 ? (
                     <Link
-                      href={`/leads/${leadId}`}
+                      href={projectHref(projectId, `/leads/${leadId}`)}
                       className="font-medium underline-offset-4 hover:underline"
                     >
                       {leadName}
@@ -259,7 +263,7 @@ function BookingTable({
                   ) : null}
                   {canApprove && status === 'TOKEN' ? (
                     <Link
-                      href={`/bookings/${id}`}
+                      href={projectHref(projectId, `/bookings/${id}`)}
                       className="mt-1 inline-block font-medium text-blue-700 underline-offset-4 hover:underline"
                       data-qa="approve-booking-link"
                     >

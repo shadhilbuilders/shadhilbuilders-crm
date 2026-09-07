@@ -10,8 +10,9 @@ import {
 } from './nav';
 
 describe('isProjectScopedNavPath', () => {
-  it('marks the five work surfaces as project-scoped', () => {
+  it('marks the work surfaces as project-scoped', () => {
     for (const href of [
+      '/dashboard',
       '/leads',
       '/visits',
       '/inventory',
@@ -22,7 +23,12 @@ describe('isProjectScopedNavPath', () => {
     }
   });
 
-  it('keeps dashboard/users/audit unscoped', () => {
+  it('treats nested work-surface paths as scoped', () => {
+    expect(isProjectScopedNavPath('/leads/abc')).toBe(true);
+    expect(isProjectScopedNavPath('/bookings/new')).toBe(true);
+  });
+
+  it('keeps users/audit/home unscoped', () => {
     for (const href of ['/', '/users', '/audit', '/whatsapp-unknown-contacts']) {
       expect(isProjectScopedNavPath(href)).toBe(false);
     }
@@ -33,6 +39,8 @@ describe('projectHref', () => {
   it('resolves scoped paths under the active project', () => {
     expect(projectHref('proj-1', '/leads')).toBe('/proj-1/leads');
     expect(projectHref('proj-1', '/visits')).toBe('/proj-1/visits');
+    expect(projectHref('proj-1', '/dashboard')).toBe('/proj-1/dashboard');
+    expect(projectHref('proj-1', '/leads/abc')).toBe('/proj-1/leads/abc');
   });
 
   it('passes unscoped paths through unchanged', () => {
@@ -81,9 +89,15 @@ describe('isNavItemActive with project segments (integration)', () => {
     expect(isNavItemActive('/leads', inbox)).toBe(true);
   });
 
-  it('does not highlight Dashboard on project routes', () => {
-    expect(isNavItemActive('/', stripProjectSegment('/proj-1/leads'))).toBe(
-      false,
-    );
+  it('does not highlight Dashboard on other project work surfaces', () => {
+    expect(
+      isNavItemActive('/dashboard', stripProjectSegment('/proj-1/leads')),
+    ).toBe(false);
+  });
+
+  it('highlights Dashboard on /proj-1/dashboard', () => {
+    expect(
+      isNavItemActive('/dashboard', stripProjectSegment('/proj-1/dashboard')),
+    ).toBe(true);
   });
 });

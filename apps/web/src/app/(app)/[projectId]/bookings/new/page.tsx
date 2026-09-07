@@ -24,6 +24,7 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 import { useParams } from 'next/navigation';
 
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
+import { projectHref } from '@/lib/nav';
 
 import { PageHeader } from '../../../PageHeader';
 
@@ -119,9 +120,9 @@ export default function NewBookingPage() {
         const leadId =
           (data as CreatedBooking | undefined)?.leadId ?? values.leadId;
         if (typeof id === 'string' && id.length > 0) {
-          void router.push(`/${projectId}/leads/${leadId}`);
+          void router.push(projectHref(projectId, `/leads/${leadId}`));
         } else {
-          void router.push(`/${projectId ?? ''}/bookings`);
+          void router.push(projectHref(projectId, '/bookings'));
         }
       },
       onError: (error) => {
@@ -137,7 +138,7 @@ export default function NewBookingPage() {
         title="New booking"
         breadcrumb={[
           { label: 'Work' },
-          { label: 'Bookings', href: '/bookings' },
+          { label: 'Bookings', href: projectHref(projectId, '/bookings') },
           { label: 'New' },
         ]}
         subtitle="Starts in HOLD. Manager approval advances to APPROVED."
@@ -152,7 +153,7 @@ export default function NewBookingPage() {
           children: 'Cancel',
           onClick: () => {
             form.reset();
-            void router.push(`/${projectId ?? ''}/bookings`);
+            void router.push(projectHref(projectId, '/bookings'));
           },
         }}
         fields={[
@@ -215,7 +216,7 @@ export default function NewBookingPage() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => void router.push(`/${projectId ?? ''}/bookings`)}
+          onClick={() => void router.push(projectHref(projectId, '/bookings'))}
         >
           ← Back to bookings
         </Button>

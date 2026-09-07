@@ -21,8 +21,8 @@ import {
 
 describe('lib/nav', () => {
   describe('NAV_ITEMS - the single source of truth', () => {
-    it('contains exactly one dashboard entry at the root', () => {
-      const dashboards = NAV_ITEMS.filter((item) => item.href === '/');
+    it('contains exactly one dashboard entry at /dashboard', () => {
+      const dashboards = NAV_ITEMS.filter((item) => item.href === '/dashboard');
       expect(dashboards).toHaveLength(1);
     });
 
@@ -48,7 +48,7 @@ describe('lib/nav', () => {
     it('TELECALLER sees only the work group (no admin items)', () => {
       const items = getVisibleNav('TELECALLER');
       expect(items.map((i) => i.href)).toEqual([
-        '/',
+        '/dashboard',
         '/leads',
         '/visits',
         '/inventory',
@@ -60,7 +60,7 @@ describe('lib/nav', () => {
     it('SALES_EXEC sees only the work group (no admin items)', () => {
       const items = getVisibleNav('SALES_EXEC');
       expect(items.map((i) => i.href)).toEqual([
-        '/',
+        '/dashboard',
         '/leads',
         '/visits',
         '/inventory',
@@ -128,10 +128,10 @@ describe('lib/nav', () => {
   });
 
   describe('isNavItemActive - active-state rules', () => {
-    it('Dashboard (`/`) is active only on exact match', () => {
-      expect(isNavItemActive('/', '/')).toBe(true);
-      expect(isNavItemActive('/', '/leads')).toBe(false);
-      expect(isNavItemActive('/', '/leads/abc')).toBe(false);
+    it('Dashboard (`/dashboard`) is active on `/dashboard` and `/dashboard/*`', () => {
+      expect(isNavItemActive('/dashboard', '/dashboard')).toBe(true);
+      expect(isNavItemActive('/dashboard', '/dashboard/extra')).toBe(true);
+      expect(isNavItemActive('/dashboard', '/leads')).toBe(false);
     });
 
     it('Leads (`/leads`) is active on `/leads` and `/leads/*`', () => {

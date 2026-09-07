@@ -62,7 +62,7 @@ import { LuPanelLeft } from '@paalstack/react-icons/lu';
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
-import { useProjects } from '@/hooks/queries';
+import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import {
   activeProjectIdFromPathname,
@@ -90,7 +90,13 @@ export function AppShell() {
   // work surfaces (/proj-1/leads). Computed here once and passed down
   // to the switcher slot + nav groups so every link resolves against it.
   const pathname = usePathname();
-  const activeProjectId = activeProjectIdFromPathname(pathname);
+  const pathProjectId = activeProjectIdFromPathname(pathname);
+  const { data: projects } = useProjects();
+  // Work-surface hrefs always need a project id (pages live under
+  // /{projectId}/dashboard, /{projectId}/leads, …). On unscoped routes
+  // (/users, /audit) fall back to the default registry project.
+  const activeProjectId =
+    pathProjectId ?? pickDefaultProject(projects ?? [])?.id ?? null;
   // T-Sidebar07: collapsed state drives the logo swap (wide lockup ↔
   // square brand icon). Read from the sidebar context.
   const { state: sidebarState } = useSidebar();
@@ -99,7 +105,7 @@ export function AppShell() {
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           {/* Brand chip: the wide logo lockup when the sidebar is expanded,
               the square brand icon when collapsed (the 64px icon rail is
               too narrow for the wordmark). Same white tile in both states
@@ -108,31 +114,15 @@ export function AppShell() {
               nav items below also use p-2, so the brand and nav share
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
-            href="/"
-            className="inline-flex h-15 shrink-0 items-center overflow-hidden rounded-md bg-white dark:bg-white"
+            href={projectHref(activeProjectId, '/dashboard')}
+            className="inline-flex h-9.5 shrink-0 items-center overflow-hidden rounded-md"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
             {isCollapsed ? (
-              <Image
-                src="/icons/brand-icon.png"
-                alt="Shadhil Builders"
-                width={28}
-                height={28}
-                className="size-7 object-contain"
-                data-qa="sidebar-brand-icon-collapsed"
-                loading="eager"
-              />
+              <span className="text-3xl font-bold">SB</span>
             ) : (
-              <Image
-                src="/brand/logo.png"
-                alt="Shadhil Builders"
-                width={112}
-                height={34}
-                className="h-11/12 w-auto object-contain"
-                data-qa="sidebar-brand-logo-expanded"
-                loading="eager"
-              />
+              <span className="text-4xl md:text-3xl font-bold">Shadhil CRM</span>
             )}
           </Link>
           {/* The chip carries the full brand lockup (wordmark + tagline);
@@ -187,17 +177,17 @@ function SidebarSwitcherSlot({
   const { data: projects, isPending: projectsPending } = useProjects();
 
   // Show skeleton while projects are loading
-  if (projectsPending) {
-    return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <div className="w-full">
-            <Skeleton variant="projectSwitcher" className="w-full" />
-          </div>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    );
-  }
+    if (projectsPending) {
+      return (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <div className="w-full">
+              <Skeleton variant="projectSwitcher" className="w-full" />
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      );
+    }
 
   // No session yet - render nothing (the nav groups below do the same).
   if (user === null) return null;

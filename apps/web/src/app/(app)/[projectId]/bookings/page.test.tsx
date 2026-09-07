@@ -9,6 +9,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('next/navigation', () => ({
+  useParams: () => ({ projectId: 'proj-1' }),
+}));
+
 vi.mock('@/hooks/queries/crm', () => ({
   useBookings: vi.fn(),
   useLeads: vi.fn(() => ({ data: [] })),
@@ -80,7 +84,7 @@ describe('BookingsPage - wire-shape contract (T-F4)', () => {
     // Lead column links back to the parent lead
     expect(html).toContain('Priya Sharma');
     expect(html).toContain('Rajesh Kumar');
-    expect(html).toContain('href="/leads/lead-1"');
+    expect(html).toContain('href="/proj-1/leads/lead-1"');
     // Status badges via labelFor (NOT raw enum)
     expect(html).toContain('Token received');
     expect(html).toContain('On hold');

@@ -39,6 +39,27 @@ vi.mock('@/components/whatsapp-unknown-contact-convert-modal', () => ({
   WhatsappUnknownContactConvertModal: () => null,
 }));
 
+vi.mock('@/hooks/queries', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    useProjects: vi.fn(() => ({
+      data: [
+        {
+          id: 'proj-1',
+          slug: 'shadhil-metro-heights',
+          name: 'Shadhil Metro Heights',
+          address: '',
+          reraNumber: null,
+          cmdaNumber: null,
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      isPending: false,
+    })),
+  };
+});
+
 import WhatsappUnknownContactsPage from './page';
 import {
   useMarkWaUnknownSpam,

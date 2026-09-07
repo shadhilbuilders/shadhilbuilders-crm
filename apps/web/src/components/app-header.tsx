@@ -29,13 +29,18 @@ import {
 } from '@paalstack/react-ui';
 import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 import { SidebarToggleButton } from '@/components/app-shell';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
+import {
+  activeProjectIdFromPathname,
+  projectHref,
+} from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useNotifications } from '@/hooks/queries/crm';
 
@@ -106,8 +111,15 @@ export function AppHeader() {
 // ---------------------------------------------------------------------------
 
 function NotificationBell() {
+  const pathname = usePathname();
+  const { data: projects } = useProjects();
   const query = useNotifications({ unreadOnly: true });
   const count = Array.isArray(query.data) ? query.data.length : 0;
+  const projectId =
+    activeProjectIdFromPathname(pathname) ??
+    pickDefaultProject(projects ?? [])?.id ??
+    null;
+  const href = projectHref(projectId, '/notifications');
   return (
     <Button
       variant="ghost"
@@ -116,16 +128,19 @@ function NotificationBell() {
       aria-label={
         count === 0 ? 'Notifications' : `${count} unread notifications`
       }
+      asChild
     >
-      <LuBell className="size-5" />
-      {count > 0 ? (
-        <span
-          className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
-          aria-hidden="true"
-        >
-          {count}
-        </span>
-      ) : null}
+      <Link href={href}>
+        <LuBell className="size-5" />
+        {count > 0 ? (
+          <span
+            className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
+            aria-hidden="true"
+          >
+            {count}
+          </span>
+        ) : null}
+      </Link>
     </Button>
   );
 }

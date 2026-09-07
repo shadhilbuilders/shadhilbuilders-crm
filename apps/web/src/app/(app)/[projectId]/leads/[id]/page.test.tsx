@@ -31,7 +31,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // directly - the page reads `params?.id` from useParams; we use
 // a string fallback that the page already handles.
 vi.mock('next/navigation', () => ({
-  useParams: () => ({ id: 'lead-1' }),
+  useParams: () => ({ id: 'lead-1', projectId: 'proj-1' }),
 }));
 
 vi.mock('@/hooks/queries/crm', () => ({

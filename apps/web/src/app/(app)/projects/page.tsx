@@ -30,6 +30,7 @@ import {
   useProjects,
   type ProjectListItem,
 } from '@/hooks/queries';
+import { projectHref } from '@/lib/nav';
 import {
   canManageUsers,
   useSessionUser,
@@ -241,10 +242,10 @@ function ProjectTable({
           className="text-foreground underline underline-offset-2"
           onClick={() => {
             const first = projects[0];
-            if (first) void router.push(`/${first.id}/leads`);
+            if (first) void router.push(projectHref(first.id, '/dashboard'));
           }}
         >
-          go to leads
+          go to dashboard
         </button>
       </p>
     </div>
