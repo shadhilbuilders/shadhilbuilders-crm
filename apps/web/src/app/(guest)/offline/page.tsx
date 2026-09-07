@@ -7,7 +7,6 @@ import { LuCloudOff } from '@paalstack/react-icons/lu';
 
 import { get, keys } from 'idb-keyval';
 
-import { AuthTopBar } from '@/components/auth-top-bar';
 import { rqCacheStore, RQ_CACHE_KEY } from '@shadhil/offline-store';
 
 // T-ProjectSwitch: work-surface links on the offline page point at the
@@ -91,18 +90,15 @@ const OfflinePage = () => {
   // State A: no cache yet
   if (!state.hasCache) {
     return (
-      <div className="bg-background flex min-h-[100dvh] flex-col">
-        <AuthTopBar />
-        <main className="container mx-auto flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-          <LuCloudOff className="text-muted-foreground h-12 w-12" aria-hidden="true" />
-          <h1 className="text-2xl font-semibold">Offline</h1>
-          <p className="text-muted-foreground max-w-sm">
-            Open Shadhil CRM online once to enable offline access.
-          </p>
-          <Button onClick={() => location.reload()} size="lg" className="min-h-11 min-w-32">
-            Retry
-          </Button>
-        </main>
+      <div className="flex flex-col items-center gap-4 text-center">
+        <LuCloudOff className="text-muted-foreground h-12 w-12" aria-hidden="true" />
+        <h1 className="text-2xl font-semibold">Offline</h1>
+        <p className="text-muted-foreground max-w-sm">
+          Open Shadhil CRM online once to enable offline access.
+        </p>
+        <Button onClick={() => location.reload()} size="lg" className="min-h-11 min-w-32">
+          Retry
+        </Button>
       </div>
     );
   }
@@ -117,31 +113,28 @@ const OfflinePage = () => {
     : 'recently';
 
   return (
-    <div className="bg-background flex min-h-dvh flex-col">
-      <AuthTopBar />
-      <main className="container mx-auto flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-        <LuCloudOff className="text-muted-foreground h-12 w-12" aria-hidden="true" />
-        <h1 className="text-2xl font-semibold">You're offline</h1>
-        <p className="text-muted-foreground max-w-sm">
-          Last synced {lastSynced}. Cached leads and visits are still available.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Link
-            href={leadHref}
-            className="bg-primary text-primary-foreground inline-flex min-h-11 items-center justify-center rounded-md px-6 font-medium"
-          >
-            View cached leads
-          </Link>
-          <Button
-            onClick={() => location.reload()}
-            variant="outline"
-            size="lg"
-            className="min-h-11 min-w-32"
-          >
-            Retry
-          </Button>
-        </div>
-      </main>
+    <div className="flex flex-col items-center gap-4 text-center">
+      <LuCloudOff className="text-muted-foreground h-12 w-12" aria-hidden="true" />
+      <h1 className="text-2xl font-semibold">You're offline</h1>
+      <p className="text-muted-foreground max-w-sm">
+        Last synced {lastSynced}. Cached leads and visits are still available.
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Link
+          href={leadHref}
+          className="bg-primary text-primary-foreground inline-flex min-h-11 items-center justify-center rounded-md px-6 font-medium"
+        >
+          View cached leads
+        </Link>
+        <Button
+          onClick={() => location.reload()}
+          variant="outline"
+          size="lg"
+          className="min-h-11 min-w-32"
+        >
+          Retry
+        </Button>
+      </div>
     </div>
   );
 };

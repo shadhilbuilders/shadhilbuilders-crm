@@ -1,11 +1,11 @@
 'use client';
 
-// AuthTopBar - shared brand header for every UNAUTHENTICATED page.
+// GuestTopBar - shared brand header for every guest-facing page.
 //
-// Surfaces that render it: /login, /change-password, /offline,
-// not-found. Authenticated pages use the AppShell sidebar +
-// AppHeader instead (this component is intentionally NOT mounted
-// there - the sidebar owns brand there).
+// Surfaces that render it: (guest) routes (/login,
+// /change-password, /offline), not-found. Authenticated pages use the
+// AppShell sidebar + AppHeader instead (this component is intentionally
+// NOT mounted there - the sidebar owns brand there).
 //
 // Left: logo-with-bg.png inside a fixed-height row - the asset is a
 // full horizontal lockup (wordmark + tagline on a white tile), so it
@@ -24,20 +24,20 @@
 //
 // The bar is deliberately minimal: no nav links (an unauthenticated
 // visitor has nowhere else to go), no user menu. Layout wrapper
-// (min-h + centering) stays the page's responsibility so /offline
-// can keep its shorter min-h-[60vh] etc.
+// (min-h + centering) lives in (guest)/layout.tsx so each page
+// only renders its own content.
 import Image from 'next/image';
 
 import { ThemeToggle } from '@/components/theme-toggle';
 
-export function AuthTopBar() {
+export function GuestTopBar() {
   return (
     <header
-      data-qa="auth-topbar"
-      className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
+      data-qa="guest-topbar"
+      className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
     >
       <div className="container mx-auto flex h-19 w-full max-w-7xl items-center justify-between gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-2 h-15" data-qa="auth-brand">
+        <div className="flex min-w-0 items-center gap-2 h-15" data-qa="guest-brand">
           {/* Transparent lockup (logo.png - tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are
               hard-coded, so the surface behind them must stay light in
@@ -52,7 +52,7 @@ export function AuthTopBar() {
               height={42}
               priority
               className="h-12 w-auto object-contain"
-              data-qa="auth-brand-logo"
+              data-qa="guest-brand-logo"
               loading="eager"
             />
           </span>

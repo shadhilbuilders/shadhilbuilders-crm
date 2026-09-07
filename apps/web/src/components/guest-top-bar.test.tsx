@@ -1,4 +1,4 @@
-// AuthTopBar - wire-shape contract test (T-brand).
+// GuestTopBar - wire-shape contract test (T-brand).
 //
 // renderToStaticMarkup-based (repo convention - no @testing-library).
 // Covers: bar renders, brand chip + logo present, theme toggle mounted
@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/image', () => ({
   default: (props: Record<string, unknown>) => (
-    <img src={String(props.src)} alt={String(props.alt)} data-qa="auth-brand-logo" />
+    <img src={String(props.src)} alt={String(props.alt)} data-qa="guest-brand-logo" />
   ),
 }));
 
@@ -20,14 +20,14 @@ vi.mock('@/components/theme-toggle', () => ({
   ThemeToggle: () => <button type="button" data-qa="theme-toggle">theme</button>,
 }));
 
-import { AuthTopBar } from './auth-top-bar';
+import { GuestTopBar } from './guest-top-bar';
 
-describe('AuthTopBar (unauthenticated brand bar)', () => {
+describe('GuestTopBar (guest brand bar)', () => {
   it('renders the bar with brand chip + logo + theme toggle', () => {
-    const html = renderToStaticMarkup(<AuthTopBar />);
-    expect(html).toContain('data-qa="auth-topbar"');
-    expect(html).toContain('data-qa="auth-brand"');
-    expect(html).toContain('data-qa="auth-brand-logo"');
+    const html = renderToStaticMarkup(<GuestTopBar />);
+    expect(html).toContain('data-qa="guest-topbar"');
+    expect(html).toContain('data-qa="guest-brand"');
+    expect(html).toContain('data-qa="guest-brand-logo"');
     expect(html).toContain('data-qa="theme-toggle"');
     // The transparent lockup asset is the source of truth (user
     // instruction: use logo.png everywhere).
@@ -45,7 +45,7 @@ describe('AuthTopBar (unauthenticated brand bar)', () => {
   });
 
   it('the logo file exists in public/brand', () => {
-    // If someone renames/moves the asset the auth pages lose their brand
+    // If someone renames/moves the asset the guest pages lose their brand
     // silently - pin the path.
     const stat = readFileSync('public/brand/logo.png');
     expect(stat.length).toBeGreaterThan(10_000); // real PNG, not a stub
