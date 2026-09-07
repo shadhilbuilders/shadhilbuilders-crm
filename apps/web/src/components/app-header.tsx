@@ -52,7 +52,7 @@ export function AppHeader() {
   const showDebugPill = searchParams.get('debug') === '1';
 
   return (
-    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
+    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
             shadcn sidebar-07 position) - beside the welcome message, visible
@@ -61,22 +61,6 @@ export function AppHeader() {
             app-shell. -ml-1 aligns the ghost button's hit area with the
             header's px-4 padding. */}
         <SidebarToggleButton className="-ml-1" />
-        {isPending ? (
-          <span
-            aria-hidden
-            className="text-muted-foreground hidden truncate text-base font-semibold sm:inline"
-            data-qa="topbar-greeting"
-          >
-            {'\u00a0'}
-          </span>
-        ) : user !== null ? (
-          <span
-            className="text-foreground hidden min-w-0 truncate text-base font-semibold sm:inline"
-            data-qa="topbar-greeting"
-          >
-            Welcome, {user.name || user.email}
-          </span>
-        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -99,7 +83,7 @@ export function AppHeader() {
             and signals "loading" via shape, not text. */}
         {isPending ? (
           <div
-            className="min-w-[120px] px-2"
+            className="min-w-30 px-2"
             data-qa="user-skeleton-topbar"
           >
             <Skeleton variant="user" />
@@ -161,7 +145,7 @@ function UserMenu({
         render={
           <Button variant="ghost" size="sm" className="min-h-11 gap-2 px-3">
             <LuUserRound className="size-5" />
-            <span className="hidden max-w-[10rem] truncate sm:inline">
+            <span className="hidden max-w-40 truncate sm:inline">
               {name}
             </span>
           </Button>

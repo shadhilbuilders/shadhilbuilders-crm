@@ -117,7 +117,7 @@ const OfflinePage = () => {
     : 'recently';
 
   return (
-    <div className="bg-background flex min-h-[100dvh] flex-col">
+    <div className="bg-background flex min-h-dvh flex-col">
       <AuthTopBar />
       <main className="container mx-auto flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
         <LuCloudOff className="text-muted-foreground h-12 w-12" aria-hidden="true" />

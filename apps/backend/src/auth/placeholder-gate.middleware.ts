@@ -170,6 +170,6 @@ export class PlaceholderGateModule implements NestModule {
     // global prefix is applied).
     consumer
       .apply(PlaceholderGateMiddleware)
-      .forRoutes('auth/*splat', 'auth/sign-in/email', '*/auth/*splat');
+      .forRoutes('auth/*splat', 'auth/sign-in/email', '*path/auth/*splat');
   }
 }
