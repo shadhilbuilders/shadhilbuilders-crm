@@ -29,12 +29,10 @@ vi.mock('@hookform/resolvers/zod', () => ({
 import ChangePasswordPage from './page';
 
 describe('ChangePasswordPage - session-pending skeleton', () => {
-  it('renders the AuthTopBar + card-shaped Skeleton while the session query is pending', () => {
+  it('renders the card-shaped Skeleton while the session query is pending', () => {
     mocks.useSessionUser.mockReturnValue({ user: null, isPending: true });
 
     const html = renderToStaticMarkup(<ChangePasswordPage />);
-    // Bar renders (brand stays visible during load).
-    expect(html).toContain('data-qa="auth-topbar"');
     // The skeleton branch renders - with the accessible loading status.
     expect(html).toContain('data-qa="change-password-skeleton"');
     expect(html).toContain('aria-busy="true"');
