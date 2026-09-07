@@ -75,6 +75,17 @@ describe('Skeleton', () => {
       expect(html).toContain('h-3 w-20');
     });
 
+    it('projectSwitcher renders 1 icon + 2 lines + chevron', () => {
+      const html = renderToStaticMarkup(
+        <Skeleton variant="projectSwitcher" />,
+      );
+      expect(html).toContain('data-qa="skeleton-project-switcher"');
+      expect(html).toContain('h-8 w-8 shrink-0 rounded-lg');
+      expect(html).toContain('h-3 w-32');
+      expect(html).toContain('h-2 w-24');
+      expect(html).toContain('h-4 w-4 ml-auto shrink-0');
+    });
+
     it('card renders 1 h-32 rounded-lg block', () => {
       const html = renderToStaticMarkup(<Skeleton variant="card" />);
       expect(html).toContain('h-32 w-full rounded-lg');
@@ -151,6 +162,7 @@ describe('Skeleton', () => {
         'list',
         'card',
         'user',
+        'projectSwitcher',
         'text',
       ] as const;
       for (const variant of variants) {
