@@ -20,7 +20,7 @@
 //      and violate the 1:1 contact→lead invariant.
 //
 //   3. On success, the modal closes and the page navigates to
-//      /leads/<newLeadId>. The convert mutation hook invalidates the
+//      /{projectId}/leads/<newLeadId>. The convert mutation hook invalidates the
 //      list query + the leads query cache, so the next render of the
 //      inbox shows the new Lead without a manual refresh.
 //
@@ -53,6 +53,7 @@ import {
   pickDefaultProject,
   useProjects,
 } from '@/hooks/queries';
+import { projectHref } from '@/lib/nav';
 
 import type { ConvertUnknownContactDto, WhatsappUnknownContactRow } from '@shadhil/api-types';
 
@@ -261,11 +262,8 @@ export function WhatsappUnknownContactConvertModal({
           toast.success(`Lead "${name}" created from WhatsApp contact`);
           onOpenChange(false);
           if (typeof newLeadId === 'string' && newLeadId.length > 0) {
-            const projectId = defaultProject?.id;
             void router.push(
-              projectId === undefined
-                ? `/leads/${newLeadId}`
-                : `/${projectId}/leads/${newLeadId}`,
+              projectHref(defaultProject?.id ?? null, `/leads/${newLeadId}`),
             );
           }
         },

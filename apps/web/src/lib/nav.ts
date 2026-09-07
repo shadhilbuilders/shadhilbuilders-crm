@@ -87,7 +87,8 @@ export type IconComponent = (props: {
 }) => React.ReactNode;
 
 export type NavItem = {
-  /** Route path. `'/dashboard'` is a special case for the root active state. */
+  /** Template route path (e.g. `'/leads'`). Project-scoped items are
+   *  resolved with `projectHref(activeProjectId, href)`. */
   href: string;
   /** Short label used by both the sidebar menu button and the topbar. */
   label: string;
@@ -111,7 +112,7 @@ export type NavBadgeKey = 'leadCount' | 'unreadNotifications';
 // ---------------------------------------------------------------------------
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LuLayoutDashboard, group: 'work' },
+  { href: '/dashboard', label: 'Dashboard', icon: LuLayoutDashboard, group: 'work' },
   {
     href: '/leads',
     label: 'Leads',
@@ -257,21 +258,25 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 // `projectHref(activeProjectId, item.href)` to resolve the real URL.
 
 /** Nav hrefs whose pages are scoped to the active project (URL segment 1). */
-const PROJECT_SCOPED_PATHS = new Set([
+export const PROJECT_SCOPED_PATHS = new Set([
   '/leads',
   '/visits',
   '/inventory',
   '/bookings',
   '/notifications',
+  '/dashboard',
 ]);
 
 export function isProjectScopedNavPath(href: string): boolean {
-  return PROJECT_SCOPED_PATHS.has(href);
+  const segments = href.split('/').filter(Boolean);
+  if (segments.length === 0) return false;
+  return PROJECT_SCOPED_PATHS.has(`/${segments[0]}`);
 }
 
 /**
  * Resolve a nav template path against the active project.
- * `/leads` + `proj-1` → `/proj-1/leads`; unscoped paths (`/`, `/users`)
+ * `/leads` + `proj-1` → `/proj-1/leads`; nested templates
+ * (`/leads/abc`) prefix the same way. Unscoped paths (`/`, `/users`)
  * pass through unchanged. `activeProjectId === null` keeps the template
  * (caller decides whether to render a disabled state).
  */

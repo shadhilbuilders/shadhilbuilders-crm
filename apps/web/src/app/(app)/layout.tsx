@@ -74,7 +74,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <Suspense fallback={<Skeleton variant="text" className="h-14 w-full" />}>
           <AppHeader />
         </Suspense>
-        <main className="container mx-auto w-full max-w-7xl flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
+        <main className="w-full flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
           {children}
         </main>
       </SidebarInset>

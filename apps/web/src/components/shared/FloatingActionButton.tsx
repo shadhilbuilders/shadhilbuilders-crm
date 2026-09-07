@@ -21,6 +21,11 @@ import { LuPlus } from '@paalstack/react-icons/lu';
 import { Button } from '@paalstack/react-ui';
 
 import type { Role } from '@/apis/client';
+import {
+  activeProjectIdFromPathname,
+  projectHref,
+  stripProjectSegment,
+} from '@/lib/nav';
 import { canReassign } from '@/lib/session';
 
 const FAB_PATHNAME_PREFIXES = ['/leads'] as const;
@@ -31,7 +36,8 @@ const FAB_PATHNAME_PREFIXES = ['/leads'] as const;
  * every role × route combination without rendering.
  *
  * Rule (D4 + Eng-review Section 4):
- *   - Pathname must start with `/leads` (covers `/leads` and `/leads/[id]`)
+ *   - Pathname must be the leads work surface (`/leads` or
+ *     `/{projectId}/leads`, including nested `/leads/[id]`)
  *   - Role must be allowed to log lead activity (telecaller / sales exec
  *     / manager / admin / owner). `canReassign` is the closest canonical
  *     helper; telecaller + sales exec are the staff-side operators that
@@ -48,8 +54,12 @@ export function shouldShowFab(
   if (!isOnline) return false;
   if (role === undefined) return false;
   if (!canReassign(role)) return false;
+  const surface =
+    activeProjectIdFromPathname(pathname) === null
+      ? pathname
+      : stripProjectSegment(pathname);
   return FAB_PATHNAME_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    (prefix) => surface === prefix || surface.startsWith(`${prefix}/`),
   );
 }
 
@@ -76,7 +86,7 @@ function useOnlineStatus(): boolean {
 
 export type FloatingActionButtonProps = {
   role: Role | undefined;
-  /** Defaults to `/leads/new`. */
+  /** Defaults to `/{projectId}/leads/new` when a project is in the URL. */
   href?: string;
 };
 
@@ -87,10 +97,12 @@ export type FloatingActionButtonProps = {
  */
 export function FloatingActionButton({
   role,
-  href = '/leads/new',
+  href,
 }: FloatingActionButtonProps) {
   const pathname = usePathname();
   const online = useOnlineStatus();
+  const projectId = activeProjectIdFromPathname(pathname);
+  const resolvedHref = href ?? projectHref(projectId, '/leads/new');
 
   if (!shouldShowFab(role, pathname, online)) return null;
 
@@ -101,7 +113,7 @@ export function FloatingActionButton({
       className="bg-primary text-primary-foreground hover:bg-primary/90 fixed right-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-50 h-14 w-14 rounded-full shadow-lg md:hidden"
       aria-label="Add a new lead"
     >
-      <Link href={href}>
+      <Link href={resolvedHref}>
         <LuPlus className="h-6 w-6" />
       </Link>
     </Button>

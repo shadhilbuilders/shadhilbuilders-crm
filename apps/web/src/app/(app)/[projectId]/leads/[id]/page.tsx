@@ -21,6 +21,7 @@ import {
 } from '@/hooks/queries/crm';
 
 import { PageHeader } from '../../../PageHeader';
+import { projectHref } from '@/lib/nav';
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string; projectId: string }>();
@@ -40,12 +41,12 @@ export default function LeadDetailPage() {
         title="Lead"
         breadcrumb={[
           { label: 'Work' },
-          { label: 'Leads', href: `/${projectId ?? ''}/leads` },
+          { label: 'Leads', href: projectHref(projectId, '/leads') },
           { label: typeof (leadQuery.data as { name?: string } | undefined)?.name === 'string' ? (leadQuery.data as { name: string }).name : 'Detail' },
         ]}
       />
 
-      <BackLink href={`/${projectId ?? ''}/leads`} label="Back to inbox" />
+      <BackLink href={projectHref(projectId, '/leads')} label="Back to inbox" />
 
       {leadQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">

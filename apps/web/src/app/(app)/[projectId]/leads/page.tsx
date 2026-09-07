@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { useParams } from 'next/navigation';
 
 import { useLeads } from '@/hooks/queries/crm';
+import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '../../PageHeader';
@@ -80,7 +81,7 @@ export default function LeadInboxPage() {
           // self-source leads (e.g. walk-ins).
           user !== null && user.role !== 'TELECALLER' ? (
             <Button asChild variant="default" size="sm">
-              <Link href={`/${projectId}/leads/new`} data-qa="new-lead-button">
+              <Link href={projectHref(projectId, '/leads/new')} data-qa="new-lead-button">
                 + New lead
               </Link>
             </Button>
@@ -107,7 +108,7 @@ export default function LeadInboxPage() {
       {leadsQuery.isLoading ? (
         <Skeleton variant="table" />
       ) : leadsQuery.data !== undefined && Array.isArray(leadsQuery.data) ? (
-        <LeadTable rows={sorted} />
+        <LeadTable rows={sorted} projectId={projectId} />
       ) : (
         <ModulePending
           title="Lead Inbox"
@@ -161,7 +162,13 @@ function LeadStateFilterChips({
   );
 }
 
-function LeadTable({ rows }: { rows: LeadRow[] }) {
+function LeadTable({
+  rows,
+  projectId,
+}: {
+  rows: LeadRow[];
+  projectId: string | null;
+}) {
   if (rows.length === 0) {
     return (
       <div className="border-border rounded-lg border p-10 text-center">
@@ -201,7 +208,7 @@ function LeadTable({ rows }: { rows: LeadRow[] }) {
             >
               <td className="px-4 py-2.5">
                 <Link
-                  href={`/leads/${row.id}`}
+                  href={projectHref(projectId, `/leads/${row.id}`)}
                   className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
                 >
                   {row.name}

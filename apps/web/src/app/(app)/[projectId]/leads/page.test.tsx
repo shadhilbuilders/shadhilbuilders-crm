@@ -22,6 +22,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('next/navigation', () => ({
+  useParams: () => ({ projectId: 'proj-1' }),
+}));
+
 vi.mock('@/hooks/queries/crm', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
@@ -88,8 +92,8 @@ describe('LeadInboxPage - T-D3 state matrix', () => {
     // lib/labels.ts, NOT the raw enum - same wire-shape as
     // LeadStatusBadge. assert the friendly form.
     expect(html).toContain('New');
-    // The link wraps the name and points to /leads/{id}.
-    expect(html).toContain('href="/leads/lead-1"');
+    // The link wraps the name and points to /{projectId}/leads/{id}.
+    expect(html).toContain('href="/proj-1/leads/lead-1"');
     // No Skeleton, no ModulePending ("failed to load" surface).
     expect(html).not.toContain('data-slot="skeleton"');
     expect(html).not.toContain('failed to load');
