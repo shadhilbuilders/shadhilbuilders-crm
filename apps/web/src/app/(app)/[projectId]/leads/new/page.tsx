@@ -25,7 +25,7 @@ import { useParams } from 'next/navigation';
 import { useCreateLead } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 
-import { PageHeader } from '../../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 type CreateLeadFormValues = {
   name: string;

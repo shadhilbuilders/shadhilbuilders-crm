@@ -36,7 +36,7 @@ import {
   WhatsappUnknownContactConvertModal,
 } from '@/components/whatsapp-unknown-contact-convert-modal';
 
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 import {
   useMarkWaUnknownSpam,

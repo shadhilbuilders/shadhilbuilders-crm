@@ -33,7 +33,7 @@ import {
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;

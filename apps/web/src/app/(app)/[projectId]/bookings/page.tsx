@@ -22,7 +22,7 @@ import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser, canApproveBookings } from '@/lib/session';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 type BookingRow = {
   id: string;

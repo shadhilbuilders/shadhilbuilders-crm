@@ -16,7 +16,7 @@ import { useParams } from 'next/navigation';
 import { useVisits } from '@/hooks/queries/crm';
 import { canScheduleVisits, useSessionUser } from '@/lib/session';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 const HOURS = [9, 10, 11, 12, 14, 15, 16, 17] as const;
 

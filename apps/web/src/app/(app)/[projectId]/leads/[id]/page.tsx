@@ -20,7 +20,7 @@ import {
   useLeadActivities,
 } from '@/hooks/queries/crm';
 
-import { PageHeader } from '../../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { projectHref } from '@/lib/nav';
 
 export default function LeadDetailPage() {

@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 import {
   useMarkNotificationsRead,
   useNotifications,
