@@ -41,7 +41,7 @@ import {
   ProjectDeleteBody,
   ProjectFormBody,
 } from '@/components/projects/project-form-bodies';
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 export default function ProjectsPage() {
   const { user, isPending: sessionPending } = useSessionUser();

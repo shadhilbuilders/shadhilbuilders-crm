@@ -26,7 +26,7 @@ import { useParams } from 'next/navigation';
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 
-import { PageHeader } from '../../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 type CreateBookingFormValues = {
   leadId: string;

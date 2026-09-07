@@ -14,7 +14,7 @@ import { useAuditLog } from '@/hooks/queries/crm';
 import { useAuditLogRealtime } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
-import { PageHeader } from '../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 // Filter chips - only the ones the backend actually filters on
 // (AuditLogQueryDtoSchema supports userId / entityType / entityId /

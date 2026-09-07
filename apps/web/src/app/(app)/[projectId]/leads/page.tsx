@@ -23,7 +23,7 @@ import { useLeads } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 
-import { PageHeader } from '../../PageHeader';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 type LeadRow = {
   id: string;
