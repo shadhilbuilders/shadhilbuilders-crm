@@ -109,7 +109,7 @@ export function AppShell() {
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
             href="/"
-            className="inline-flex h-15 shrink-0 items-center overflow-hidden rounded-md bg-white px-2.5 dark:bg-white"
+            className="inline-flex h-15 shrink-0 items-center overflow-hidden rounded-md bg-white dark:bg-white"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
