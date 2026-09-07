@@ -29,13 +29,14 @@
 //       │   ├── SidebarTrigger             (mobile only, opens the Sheet)
 //       │   └── <OnlineRevalidationBar />  (D6: fixed at top of inset)
 //       └── <main>{children}</main>
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { SidebarInset, SidebarProvider } from '@paalstack/react-ui';
 
 import { AppShell } from '@/components/app-shell';
 import { AppHeader } from '@/components/app-header';
+import { Skeleton } from '@/components/shared/Skeleton';
 
 const DESKTOP_BREAKPOINT_QUERY = '(min-width: 768px)';
 
@@ -70,7 +71,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <SidebarProvider defaultOpen={isDesktop}>
       <AppShell />
       <SidebarInset>
-        <AppHeader />
+        <Suspense fallback={<Skeleton variant="text" className="h-14 w-full" />}>
+          <AppHeader />
+        </Suspense>
         <main className="container mx-auto w-full max-w-7xl flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
           {children}
         </main>

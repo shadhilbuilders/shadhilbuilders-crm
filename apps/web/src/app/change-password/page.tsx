@@ -126,7 +126,7 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="bg-background flex min-h-[100dvh] flex-col">
+    <div className="bg-background flex min-h-dvh flex-col">
       <AuthTopBar />
       <main className="text-ink flex flex-1 items-center justify-center px-4 py-8">
         <Card className="w-full max-w-md">
