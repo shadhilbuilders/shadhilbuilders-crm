@@ -184,7 +184,20 @@ function SidebarSwitcherSlot({
   activeProjectId: string | null;
 }) {
   const { user } = useSessionUser();
-  const { data: projects } = useProjects();
+  const { data: projects, isPending: projectsPending } = useProjects();
+
+  // Show skeleton while projects are loading
+  if (projectsPending) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="w-full">
+            <Skeleton variant="projectSwitcher" className="w-full" />
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
 
   // No session yet - render nothing (the nav groups below do the same).
   if (user === null) return null;

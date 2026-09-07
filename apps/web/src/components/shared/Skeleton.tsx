@@ -24,6 +24,7 @@
 //   │ list   │ 6 items: avatar + 2 text lines per item           │
 //   │ card   │ 1 cell: h-32 w-full rounded-lg                    │
 //   │ user   │ 1 row: avatar + 2 text lines (sidebar/topbar)     │
+//   │ projectSwitcher │ 1 row: icon + 2 text lines + chevron   │
 //   │ text   │ N lines: h-4 w-full, 3 lines by default            │
 //   └────────┴───────────────────────────────────────────────────┘
 //
@@ -43,6 +44,7 @@ export type SkeletonVariant =
   | 'list'
   | 'card'
   | 'user'
+  | 'projectSwitcher'
   | 'text';
 
 /** T34: when `variant="chart"`, this prop selects the inside-shape
@@ -83,6 +85,12 @@ export const SKELETON_SHAPES = {
   list: { count: 6, item: { avatar: 'h-9 w-9', lines: 2 } },
   card: { count: 1, shape: 'h-32 w-full rounded-lg' },
   user: { count: 1, avatar: 'h-10 w-10', lines: 2 },
+  projectSwitcher: {
+    count: 1,
+    icon: 'h-8 w-8',
+    lines: 2,
+    chevron: 'h-4 w-4',
+  },
   text: { count: 3, shape: 'h-4 w-full' },
 } as const;
 
@@ -267,6 +275,25 @@ export function Skeleton({
               <LibSkeleton className="h-3 w-32" />
               <LibSkeleton className="h-3 w-20" />
             </div>
+          </div>
+        );
+
+      case 'projectSwitcher':
+        return (
+          <div
+            className="flex items-center gap-2"
+            data-qa="skeleton-project-switcher"
+          >
+            <LibSkeleton
+              className={`${SKELETON_SHAPES.projectSwitcher.icon} shrink-0 rounded-lg`}
+            />
+            <div className="grid flex-1 gap-1.5">
+              <LibSkeleton className="h-3 w-32" />
+              <LibSkeleton className="h-2 w-24" />
+            </div>
+            <LibSkeleton
+              className={`${SKELETON_SHAPES.projectSwitcher.chevron} ml-auto shrink-0`}
+            />
           </div>
         );
 
