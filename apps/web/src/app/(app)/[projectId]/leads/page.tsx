@@ -142,7 +142,6 @@ function LeadStateFilterChips({
       <Button
         variant={value === null ? 'default' : 'outline'}
         size="sm"
-        className="min-h-11"
         onClick={() => onChange(null)}
       >
         All
@@ -152,7 +151,6 @@ function LeadStateFilterChips({
           key={chip.value}
           variant={value === chip.value ? 'default' : 'outline'}
           size="sm"
-          className="min-h-11"
           onClick={() => onChange(value === chip.value ? null : chip.value)}
         >
           {chip.label}

@@ -115,7 +115,7 @@ export function AppShell() {
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
             href={projectHref(activeProjectId, '/dashboard')}
-            className="inline-flex h-9.5 shrink-0 items-center overflow-hidden rounded-md"
+            className="inline-flex h-8 shrink-0 items-center overflow-hidden rounded-md"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
