@@ -18,6 +18,13 @@ import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@sha
 
 import { WebhooksController } from './webhooks.controller';
 
+// DB-backed test (real Postgres via pgbouncer). Skip cleanly when
+// DATABASE_URL isn't loaded (e.g. bare `pnpm vitest run` without env),
+// matching chat.service.send.test.ts's HAS_DB guard. Without this, the
+// module-level beforeAll connects to the DB and fails loudly with
+// "client password must be a string" instead of skipping.
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+
 // ── Test fixtures ──────────────────────────────────────────────────
 const TEST_USER_ID = 'test-wa-handler-user';
 const TEST_TEAM_ID = 'test-wa-handler-team';
@@ -31,6 +38,7 @@ let unknownPhone: string;
 let outboundMessageId: string;
 
 beforeAll(async () => {
+  if (!HAS_DB) return;
   // Seed a manager user + a team that owns the known lead. The
   // WhatsappUnknownContact / WebhookEvent / OutboundMessage rows
   // we create here are owned by CRON_SERVICE (no real actor), so
@@ -120,6 +128,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  if (!HAS_DB) return;
   // Clean up our fixtures. Order matters: WebhookEvent /
   // OutboundMessage / Message / Lead / WhatsappUnknownContact
   // before User / Team (FK cascade may already handle some of this
@@ -155,7 +164,7 @@ afterAll(async () => {
 
 // ── The tests ──────────────────────────────────────────────────────
 
-describe('WhatsApp inbound webhook - T-E2b', () => {
+describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
   const controller = new WebhooksController();
 
   it('writes a Message row when an inbound text comes from a known lead', async () => {

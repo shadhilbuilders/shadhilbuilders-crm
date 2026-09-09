@@ -69,6 +69,7 @@ import {
   canConvertWhatsappUnknownContact,
   canManageUsers,
   canViewAudit,
+  isAdminLike,
 } from '@/lib/session';
 import type { Role } from '@/apis/client';
 
@@ -96,6 +97,9 @@ export type NavItem = {
   icon: IconComponent;
   /** Which group the item belongs to (drives SidebarGroup + role gating). */
   group: NavGroup;
+  /** When false, `navItemHref` returns the href unchanged (top-level route
+   *  like the admin `/overview` command center). Defaults to true. */
+  scoped?: boolean;
   /**
    * Stable key used by `useNavBadge` to look up a live count from the
    * query layer. Undefined = static item, no badge slot rendered.
@@ -145,6 +149,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     badgeKey: 'unreadNotifications',
   },
   // ── admin group (role-gated by canManageUsers / canViewAudit) ─────────
+  // Admin/owner command center (dashboard split, 2026-09-08). Cross-project
+  // overview at the top-level /overview — NOT project-scoped, so it resolves
+  // unscoped via `navItemHref` (scoped:false). Distinct from the work
+  // "Dashboard" item above, which stays /{projectId}/dashboard.
+  {
+    href: '/overview',
+    label: 'Overview',
+    icon: LuLayoutDashboard,
+    group: 'admin',
+    scoped: false,
+  },
   { href: '/users', label: 'Users', icon: LuUserCog, group: 'admin' },
   {
     href: '/audit',
@@ -187,6 +202,10 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
       canConvertWhatsappUnknownContact(role)
     )
       items.push(item);
+    // Admin/owner command center (dashboard split). Admin-only: the
+    // cross-project overview is an executive surface, unlike Users which is
+    // admin+manager (operational). MANAGER sees a Users-only admin group.
+    else if (item.href === '/overview' && isAdminLike(role)) items.push(item);
   }
   return items;
 }
@@ -291,6 +310,19 @@ export function projectHref(
 }
 
 /**
+ * Resolve a nav item against the active project, honoring its `scoped`
+ * flag. Scoped items (work surfaces) prefix the project id; unscoped
+ * items (admin `/overview` command center) pass through unchanged.
+ */
+export function navItemHref(
+  item: Pick<NavItem, 'href' | 'scoped'>,
+  activeProjectId: string | null,
+): string {
+  if (item.scoped === false) return item.href;
+  return projectHref(activeProjectId, item.href);
+}
+
+/**
  * Extract the active project id from a work-surface pathname (first
  * segment when it is NOT a top-level template path). Returns null on
  * `/`, `/users`, `/audit`, `/login`, etc.
@@ -313,6 +345,7 @@ export function activeProjectIdFromPathname(
     '/users',
     '/audit',
     '/projects',
+    '/overview',
     '/whatsapp-unknown-contacts',
   ];
   if (TOP_LEVEL_ROUTES.includes(first)) return null;

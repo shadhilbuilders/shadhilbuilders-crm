@@ -72,6 +72,12 @@ export { verifyPoolMode, PoolModeError } from './boot-check';
 export { withRlsContext } from './rls';
 export type { RlsContext, RlsTx } from './rls';
 export type { PrismaClient } from './generated/prisma/client';
+// Prisma namespace (Prisma.sql / Prisma.join / Prisma.raw / Prisma.empty) for
+// building dynamic raw queries (e.g. the leads list's overdue-first ORDER BY,
+// which Prisma's typed orderBy cannot express). Re-exported so services can
+// build parameterized SQL without reaching into the generated client's
+// internal paths.
+export { Prisma } from './generated/prisma/client';
 export type {
   User,
   Team,

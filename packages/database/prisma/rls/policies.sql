@@ -52,6 +52,18 @@ CREATE POLICY lead_insert_telecaller ON "Lead"
     AND "teamId" = current_setting('app.user_team_id', true)
   );
 
+-- T-TEAMLESS-CREATE (2026-09-08): allow ADMIN (and OWNER, downcast to ADMIN
+-- by withRlsContext) to INSERT a Lead into ANY team. Seed ADMIN/OWNER have
+-- teamId=null, so app.user_team_id is '' (empty) and the team-equality
+-- policy above would reject the insert even after the service resolves a
+-- default team. DESIGN.md §3: "admin-created leads can be assigned to any
+-- team" - consistent with lead_update_admin / lead_delete_admin (role-only).
+-- Postgres OR's overlapping FOR INSERT policies, so staff roles still get
+-- team-equality enforcement; only ADMIN bypasses it.
+CREATE POLICY lead_insert_admin ON "Lead"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
 CREATE POLICY lead_update_telecaller ON "Lead"
   FOR UPDATE
   USING (
@@ -311,6 +323,37 @@ CREATE POLICY notification_delete_owner ON "Notification"
   USING ("userId" = current_setting('app.user_id', true));
 
 CREATE POLICY notification_insert_owner ON "Notification"
+  FOR INSERT
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
+-- ── PushSubscription (only owner) ─────────────────────────────────────────
+ALTER TABLE "PushSubscription" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY push_subscription_select_owner ON "PushSubscription"
+  FOR SELECT
+  USING ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_insert_owner ON "PushSubscription"
+  FOR INSERT
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_update_owner ON "PushSubscription"
+  FOR UPDATE
+  USING ("userId" = current_setting('app.user_id', true))
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_delete_owner ON "PushSubscription"
+  FOR DELETE
+  USING ("userId" = current_setting('app.user_id', true));
+
+-- ── PushNotification (only owner) ──────────────────────────────────────────
+ALTER TABLE "PushNotification" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY push_notification_select_owner ON "PushNotification"
+  FOR SELECT
+  USING ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_notification_insert_owner ON "PushNotification"
   FOR INSERT
   WITH CHECK ("userId" = current_setting('app.user_id', true));
 

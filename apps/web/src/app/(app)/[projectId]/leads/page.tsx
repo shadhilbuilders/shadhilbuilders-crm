@@ -1,29 +1,58 @@
 'use client';
 
-// Lead Inbox (Wireframes #4 + Implementation Plan Week 4):
-//   DataTable with overdue-first default sort (Decision 0.2)
-//   Filter chips: Status, Owner, search
-//   Bulk actions: reassign/mark contacted (role-gated)
-//   Row click → /leads/[id]
+// Lead Inbox (Wireframes #4 + Implementation Plan Week 4) - REBUILT on the
+// @paalstack/react-ui DataTable (autoplan 2026-09-07, plan §1) with SERVER
+// pagination (T-SRVPG, 2026-09-07).
 //
-// The backend leads module is scaffolded-not-implemented; until it ships the
-// page renders the honest ModulePending state. The DataTable columns and
-// filter UI below are already locked to the api-types LeadFilterDto shape so
-// the switch to live data is a query-key flip, not a rewrite.
-import { Button, TypographyP } from '@paalstack/react-ui';
+//   Summary line: "N overdue · M new today" above the table (D12) - the
+//     SLA answer is visible before any filtering. The counts now come from
+//     the server (LeadListResult.overdueCount / newTodayCount) computed for
+//     the FULL filtered set, so they stay correct across pages.
+//   DataTable toolbar (storybook `ToolbarWithRightSideContent` pattern):
+//     - search lives IN the toolbar, server-side (D9) - wired to useLeads
+//       search param via onSearchValueChange (≥2 chars hits the API).
+//     - the "+ New lead" button is the toolbar's right-side content
+//       (role-gated: hidden for TELECALLER per Plan §3).
+//     - status filter is a server-driven MultiSelect (toolbar left side) -
+//       the DataTable's built-in facet filter is client-side over the loaded
+//       page, which is wrong under server pagination. Selection feeds the
+//       `state` query param.
+//   Pagination: SERVER-side. The page passes `total`/`currentPage`/
+//     `onPageChange`/`onPageSizeChange` to the DataTable; each page change
+//     refetches `{ limit, offset }` from the API. Selection OFF (D11).
+//   Columns (D12 order): Name+phone → Status(+Overdue) → Last activity →
+//     Owner → Source (reference data demoted to last).
+//   Sort: overdue-first is enforced SERVER-side (Decision 0.2) so pages
+//     come back in a consistent order - NEW + createdAt older than 30 min
+//     float to the top (freshest first), then most recent activity.
+//   Row actions: View / Edit (LeadEditDialog) / Delete (canDeleteLeads
+//     only, D14) with AlertDialog confirm (Cancel gets initial focus).
+//   URL state (D23): search survives back-navigation via useSearchParams.
+import { Button, TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger, TypographyP, toast } from '@paalstack/react-ui';
+import { AlertDialog, DataTable, DataTableColumnHeaderToggle, DataTableRowActions, MultiSelect } from '@paalstack/react-ui';
+import type { DataTableColumnDef } from '@paalstack/react-ui';
+import { dateIntl } from '@paalstack/react-ui/lib';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
+import { z } from 'zod';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
-import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { useParams } from 'next/navigation';
+import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 
-import { useLeads } from '@/hooks/queries/crm';
+import {
+  useDeleteLead,
+  useLeads,
+  useLeadsEnvelope,
+} from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser } from '@/lib/session';
+import { canDeleteLeads, useSessionUser } from '@/lib/session';
+import { isOverdue, LEAD_STATES } from '@/lib/leads';
+import { labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
+import { LuInfo, LuPlus } from '@paalstack/react-icons/lu';
 
 type LeadRow = {
   id: string;
@@ -32,200 +61,575 @@ type LeadRow = {
   status?: string;
   source?: string;
   ownerName?: string;
+  createdAt?: string;
   updatedAt?: string;
 };
 
+const DEFAULT_PAGE_SIZE = 10;
+
+// Zod schema for DataTableRowActions (it parses row.original with it).
+// Cast to the library's AnyZodObject shape (zod v4 vs the lib's v3-typed
+// reference) - the schema itself is the source of truth for the row shape.
+const leadRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  phone: z.string().optional(),
+  status: z.string().optional(),
+  source: z.string().optional(),
+  ownerName: z.string().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+}) as unknown as Parameters<typeof DataTableRowActions>[0]['rowSchema'];
+
+function relativeTime(iso: string | undefined): string {
+  if (typeof iso !== 'string' || iso.length === 0) return '-';
+  // Library canonical relative-time formatter (date-fns formatRelative):
+  // "5 minutes ago", "today at 14:05", "2 Sep", etc. Deterministic per
+  // the library's locale/timezone config - no hand-rolled Date.now()
+  // math that could diverge between SSR and the client.
+  const raw = dateIntl.formatRelativeTime(iso);
+  // The library returns lowercase day prefixes ("last Wednesday at 1:19 AM",
+  // "today at 14:05"). Capitalize the first letter so the cell reads as a
+  // sentence ("Last Wednesday at 1:19 AM").
+  if (raw.length === 0) return raw;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 export default function LeadInboxPage() {
+  // useSearchParams() must be inside a Suspense boundary (Next.js App
+  // Router requirement - same pattern as the login page) or the client
+  // render throws a hydration mismatch. The inner component holds the
+  // real page; this wrapper provides the boundary.
+  return (
+    <Suspense fallback={<Skeleton variant="table" />}>
+      <LeadInboxPageInner />
+    </Suspense>
+  );
+}
+
+function LeadInboxPageInner() {
   const { user } = useSessionUser();
   // T-ProjectSwitch: the first URL segment IS the active project; the
   // inbox queries only that project's leads.
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
-  const [stateFilter, setStateFilter] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
 
-  const leadsQuery = useLeads({
-    state: stateFilter !== null ? [stateFilter] : undefined,
+  // D23: search lives in the URL so back-navigation restores the slice.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlSearch = searchParams.get('q') ?? '';
+
+  const [search, setSearch] = useState(urlSearch);
+  // D9: server-side search, ≥2 chars (same contract as pre-rewrite page).
+  const serverSearch = search.length >= 2 ? search : undefined;
+
+  // T-SRVPG: server pagination state. Page is 1-indexed (the DataTable's
+  // Pagination component is 1-indexed); offset = (page - 1) * pageSize.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // Server-driven status filter (replaces the DataTable's client-side
+  // facet filter, which only sees the loaded page).
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
+  // Server-side sort (T-SRVPG): the DataTable sorts client-side over the
+  // loaded page, which is wrong under server pagination. The page passes
+  // the sort column + direction to the API. Default: most recent activity
+  // (updatedAt desc) - matches the overdue-first default ordering.
+  const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name'>('updatedAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const filter = {
     projectId: projectId ?? undefined,
-    search: search.length >= 2 ? search : undefined,
-    limit: 100,
-  });
+    search: serverSearch,
+    state: selectedStates.length > 0 ? selectedStates : undefined,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    sortBy,
+    sortDir,
+  } as const;
 
-  // Overdue-first sort happens client-side on live data (Decision 0.2):
-  // rows with a first-touch SLA breach float to the top, then NEW, then
-  // most recent activity. Applied once the real payload arrives.
-  const sorted = useMemo(() => {
-    const rows = leadsQuery.data;
-    if (!Array.isArray(rows)) return [];
-    return [...(rows as LeadRow[])].sort((a, b) => {
-      const overdueOf = (row: LeadRow) =>
-        row.status === 'NEW' && row.updatedAt !== undefined ? 0 : 1;
-      return overdueOf(a) - overdueOf(b);
-    });
-  }, [leadsQuery.data]);
+  const leadsQuery = useLeads(filter);
+  const envelope = useLeadsEnvelope(filter);
+
+  const rows = Array.isArray(leadsQuery.data) ? (leadsQuery.data as LeadRow[]) : [];
+  const total = envelope?.total ?? 0;
+  const overdueCount = envelope?.overdueCount ?? 0;
+  const newTodayCount = envelope?.newTodayCount ?? 0;
+
+  const canDelete = user !== null && canDeleteLeads(user.role);
+  const staffLane =
+    user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC');
+  const canCreate = user !== null && user.role !== 'TELECALLER';
+
+  const [editTarget, setEditTarget] = useState<LeadRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LeadRow | null>(null);
+  const deleteLead = useDeleteLead(deleteTarget?.id ?? null);
+
+  function syncUrl(nextQ: string) {
+    const usp = new URLSearchParams();
+    if (nextQ.length >= 2) usp.set('q', nextQ);
+    const qs = usp.toString();
+    void router.replace(qs.length > 0 ? `?${qs}` : '?', { scroll: false });
+  }
+
+  function applySearch(next: string) {
+    setSearch(next);
+    setPage(1); // a new search starts back at page 1
+    syncUrl(next); // URL carries the server-effective search (≥2 chars)
+  }
+
+  function applyStates(next: string[]) {
+    setSelectedStates(next);
+    setPage(1); // a new filter starts back at page 1
+  }
+
+  const summaryParts: string[] = [];
+  if (overdueCount > 0) summaryParts.push(`${overdueCount} overdue`);
+  if (newTodayCount > 0) summaryParts.push(`${newTodayCount} new today`);
+  const summaryLine =
+    summaryParts.length > 0
+      ? summaryParts.join(' · ')
+      : staffLane
+        ? 'Nothing overdue for you right now.'
+        : 'No overdue first-touch. Queue is clear.';
+
+  const isFiltered = serverSearch !== undefined || selectedStates.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Lead Inbox"
         breadcrumb={[{ label: 'Work' }, { label: 'Leads' }]}
         subtitle={
-          user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC')
+          staffLane
             ? 'Your assigned leads, next action first.'
             : 'Team lead queue with overdue-first sorting.'
         }
-        action={
-          // The "+ New lead" button is hidden for TELECALLER per
-          // Plan §3 - leads are created by managers/landing site, then
-          // routed by the assignment rule. SALES_EXEC and above can
-          // self-source leads (e.g. walk-ins).
-          user !== null && user.role !== 'TELECALLER' ? (
-            <Button asChild variant="default" size="sm">
-              <Link href={projectHref(projectId, '/leads/new')} data-qa="new-lead-button">
-                + New lead
-              </Link>
-            </Button>
-          ) : null
-        }
       />
 
-      <div className="flex justify-end">
-        <LeadStateFilterChips
-          value={stateFilter}
-          onChange={(next) => setStateFilter(next)}
-        />
+      {/* D12: calm summary line - the queue's one question answered first. */}
+      <div className="text-muted-foreground flex flex-wrap items-center gap-2 px-1 text-sm" data-qa="leads-summary">
+        <span>{summaryLine}</span>
+        <TooltipProvider>
+          <TooltipRoot>
+            <TooltipTrigger
+              className="text-muted-foreground/60 hover:text-muted-foreground inline-flex cursor-help items-center"
+              aria-label="What do these counts mean?"
+              data-qa="leads-summary-info"
+            >
+              <LuInfo className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-64">
+              <div className="space-y-1.5 text-xs">
+                <p>
+                  <span className="font-medium">Overdue</span> — NEW leads that
+                  haven't been contacted within 30 minutes of creation (the
+                  time-to-first-touch SLA).
+                </p>
+                <p>
+                  <span className="font-medium">New today</span> — leads created
+                  today that are still in the NEW state.
+                </p>
+              </div>
+            </TooltipContent>
+          </TooltipRoot>
+        </TooltipProvider>
       </div>
-
-      <input
-        type="search"
-        value={search}
-        onChange={(event) => setSearch(event.currentTarget.value)}
-        placeholder="Search by name or phone…"
-        className="border-input bg-background focus-visible:ring-ring min-h-11 w-full max-w-md rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
-        aria-label="Search leads"
-      />
 
       {leadsQuery.isLoading ? (
         <Skeleton variant="table" />
-      ) : leadsQuery.data !== undefined && Array.isArray(leadsQuery.data) ? (
-        <LeadTable rows={sorted} projectId={projectId} />
-      ) : (
-        <ModulePending
-          title="Lead Inbox"
-          description="Lists every lead with status, source, owner, and last activity (Wireframe #4). The leads REST module ships in Implementation Plan Week 4."
-          error={leadsQuery.error}
+      ) : leadsQuery.error !== null && leadsQuery.error !== undefined ? (
+        // D21: list fetch errors are retryable - inline error + retry,
+        // not ModulePending (that surface means "module not shipped").
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
+        >
+          <p className="text-sm font-medium">Couldn&apos;t load the lead queue.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {leadsQuery.error instanceof Error
+              ? leadsQuery.error.message
+              : 'Unexpected error.'}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            onClick={() => void leadsQuery.refetch()}
+            data-qa="leads-retry-button"
+          >
+            Try again
+          </Button>
+        </div>
+      ) : Array.isArray(leadsQuery.data) ? (
+        <LeadTable
+          rows={rows}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(by, dir) => {
+            setSortBy(by);
+            setSortDir(dir);
+            setPage(1); // a new sort starts back at page 1
+          }}
+          selectedStates={selectedStates}
+          onStatesChange={applyStates}
+          projectId={projectId}
+          canDelete={canDelete}
+          canCreate={canCreate}
+          isFiltered={isFiltered}
+          search={search}
+          onSearchChange={applySearch}
+          onEdit={(row) => {
+            setEditTarget(row);
+          }}
+          onDelete={(row) => {
+            setDeleteTarget(row);
+          }}
         />
-      )}
+      ) : null}
+
+      <LeadEditDialog
+        lead={
+          editTarget === null
+            ? null
+            : {
+                id: editTarget.id,
+                name: editTarget.name,
+                phone: editTarget.phone ?? '',
+                email: null,
+              }
+        }
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      />
+
+      <DeleteConfirmDialog
+        target={deleteTarget}
+        pending={deleteLead.isPending}
+        onConfirm={() => {
+          if (deleteTarget === null) return;
+          deleteLead.mutate(undefined, {
+            onSuccess: () => {
+              setDeleteTarget(null);
+            },
+            onError: (error) => {
+              // Server copy arrives verbatim (409 guidance, 403 reason).
+              const msg =
+                error instanceof Error ? error.message : 'Delete failed';
+              toast.error(msg);
+            },
+          });
+        }}
+        onCancel={() => {
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
 
-const STATE_CHIPS: { value: string; label: string }[] = [
-  { value: 'NEW', label: 'New' },
-  { value: 'CONTACTED', label: 'Contacted' },
-  { value: 'VISIT_REQUESTED', label: 'Visit requested' },
-  { value: 'VISIT_SCHEDULED', label: 'Visit scheduled' },
-  { value: 'VISITED', label: 'Visited' },
-  { value: 'WON', label: 'Won' },
-  { value: 'LOST', label: 'Lost' },
-];
-
-function LeadStateFilterChips({
-  value,
-  onChange,
+function DeleteConfirmDialog({
+  target,
+  pending,
+  onConfirm,
+  onCancel,
 }: {
-  value: string | null;
-  onChange: (next: string | null) => void;
+  target: LeadRow | null;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Button
-        variant={value === null ? 'default' : 'outline'}
-        size="sm"
-        onClick={() => onChange(null)}
-      >
-        All
-      </Button>
-      {STATE_CHIPS.map((chip) => (
-        <Button
-          key={chip.value}
-          variant={value === chip.value ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onChange(value === chip.value ? null : chip.value)}
-        >
-          {chip.label}
-        </Button>
-      ))}
-    </div>
+    <AlertDialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+      trigger={null}
+      header={{
+        title: `Delete ${target?.name ?? 'lead'}?`,
+        description:
+          'This permanently removes the lead, its chat history, activities, and visits. This action cannot be undone.',
+      }}
+      cancelButtonText="Cancel"
+      confirmButtonText={pending ? 'Deleting…' : 'Delete lead'}
+      confirmButtonProps={{
+        variant: 'destructive',
+        disabled: pending,
+      }}
+      onConfirm={() => onConfirm()}
+      onCancel={() => onCancel()}
+      
+    />
   );
 }
 
 function LeadTable({
   rows,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  sortBy,
+  sortDir,
+  onSortChange,
+  selectedStates,
+  onStatesChange,
   projectId,
+  canDelete,
+  canCreate,
+  isFiltered,
+  search,
+  onSearchChange,
+  onEdit,
+  onDelete,
 }: {
   rows: LeadRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  sortBy: 'updatedAt' | 'createdAt' | 'name';
+  sortDir: 'asc' | 'desc';
+  onSortChange: (by: 'updatedAt' | 'createdAt' | 'name', dir: 'asc' | 'desc') => void;
+  selectedStates: string[];
+  onStatesChange: (states: string[]) => void;
   projectId: string | null;
+  canDelete: boolean;
+  canCreate: boolean;
+  isFiltered: boolean;
+  search: string;
+  onSearchChange: (next: string) => void;
+  onEdit: (row: LeadRow) => void;
+  onDelete: (row: LeadRow) => void;
 }) {
-  if (rows.length === 0) {
-    return (
-      <div className="border-border rounded-lg border p-10 text-center">
-        <p className="text-sm font-medium">No leads match these filters.</p>
-        <TypographyP className="text-muted-foreground mt-1 text-xs">
-          They'll appear here as soon as the landing-site webhook fires or a
-          lead is created manually.
-        </TypographyP>
-      </div>
-    );
-  }
+  const columns = useMemo<DataTableColumnDef<LeadRow>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <div className="min-w-45">
+            <Link
+              href={projectHref(projectId, `/leads/${row.original.id}`)}
+              className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
+            >
+              {row.original.name}
+            </Link>
+            {typeof row.original.phone === 'string' &&
+            row.original.phone.length > 0 ? (
+              <span className="text-muted-foreground block text-xs">
+                {row.original.phone}
+              </span>
+            ) : null}
+          </div>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => {
+          const overdue = isOverdue(row.original);
+          return (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <LeadStatusBadge status={row.original.status ?? 'UNKNOWN'} />
+              {overdue ? (
+                <span
+                  className="bg-warning-soft text-warning-foreground inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  data-qa="lead-overdue-badge"
+                >
+                  Overdue
+                </span>
+              ) : null}
+            </span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'updatedAt',
+        header: ({ column }) => (
+          <DataTableColumnHeaderToggle column={column} title="Last Activity" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {relativeTime(row.original.updatedAt)}
+          </span>
+        ),
+        // Server-side sort (T-SRVPG): the DataTable's built-in sorting is
+        // client-side over the loaded page, which is wrong under server
+        // pagination. Enable the column header so the user can click it;
+        // the sort state is forwarded to the API via onSortingChange.
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'ownerName',
+        header: 'Owner',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {row.original.ownerName ?? '-'}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'source',
+        header: 'Source',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {row.original.source ? labelFor('source', row.original.source) : '-'}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'actions',
+        header: () => <span className="sr-only">Actions</span>,
+        // TODO(a11y): pass `ariaLabel={`Actions for ${row.original.name}`}`
+        // to DataTableRowActions once @paalstack/react-ui ships the new
+        // ariaLabel prop (added to source 2026-09-07, awaiting publish).
+        cell: ({ row }) => (
+          <div className="text-right">
+            <DataTableRowActions
+              row={row}
+              rowSchema={leadRowSchema}
+              actionItems={[
+                { label: 'View', value: 'view' },
+                { label: 'Edit', value: 'edit', onClick: () => onEdit(row.original) },
+                { label: 'Delete', value: 'delete', onClick: () => onDelete(row.original) },
+              ].filter((item) => item.value !== 'delete' || canDelete)}
+            />
+          </div>
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
+    ],
+    [projectId, canDelete, onEdit, onDelete],
+  );
+
+  const statusOptions = useMemo(
+    () =>
+      LEAD_STATES.map((state) => ({
+        value: state,
+        label: labelFor('lead', state),
+      })),
+    [],
+  );
 
   return (
-    <div className="border-border overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-border bg-muted/40 border-b text-left">
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Name
-            </th>
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Status
-            </th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase sm:table-cell">
-              Source
-            </th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase md:table-cell">
-              Owner
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.id}
-              className="border-border hover:bg-muted/30 border-b last:border-b-0"
-            >
-              <td className="px-4 py-2.5">
-                <Link
-                  href={projectHref(projectId, `/leads/${row.id}`)}
-                  className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
-                >
-                  {row.name}
-                </Link>
-              </td>
-              <td className="px-4 py-2.5">
-                <LeadStatusBadge status={row.status ?? 'UNKNOWN'} />
-              </td>
-              <td className="text-muted-foreground hidden px-4 py-2.5 text-sm sm:table-cell">
-                {row.source ?? '-'}
-              </td>
-              <td className="text-muted-foreground hidden px-4 py-2.5 text-sm md:table-cell">
-                {row.ownerName ?? '-'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      rows={rows}
+      // Search is server-side (onSearchValueChange → API). The DataTable's
+      // built-in client-side global filter is redundant here AND throws
+      // "Column with id 'phone' does not exist" because there is no standalone
+      // phone column (phone renders inside the Name cell). Make the client
+      // filter a no-op so it never hides rows or looks up a missing column -
+      // the backend already returns the filtered set.
+      globalFilterFn={() => true}
+      // Server-side sort (T-SRVPG): forward the sort state to the API.
+      // The DataTable's built-in sorting is client-side over the loaded
+      // page, which is wrong under server pagination - so we drive it
+      // through the controlled `sorting`/`onSortingChange` props and
+      // refetch with the new sortBy/sortDir.
+      sorting={[{ id: sortBy, desc: sortDir === 'desc' }]}
+      onSortingChange={(next) => {
+        const s = next[0];
+        if (s && (s.id === 'updatedAt' || s.id === 'createdAt' || s.id === 'name')) {
+          onSortChange(s.id, s.desc ? 'desc' : 'asc');
+        }
+      }}
+      // Storybook `ToolbarWithRightSideContent` pattern: search lives in
+      // the toolbar (server-side via onSearchValueChange, D9) and the
+      // create button is the toolbar's right-side content.
+      search={{
+        accessorKey: ['name', 'phone'],
+        placeholder: 'Search by name or phone…',
+        searchValue: search,
+        onSearchValueChange: onSearchChange,
+        className: 'ml-2'
+      }}
+      // Server-driven status filter (T-SRVPG): the DataTable's built-in
+      // facet filter is client-side over the loaded page, which is wrong
+      // under server pagination. A MultiSelect in the toolbar's left side
+      // feeds the `state` query param instead.
+      toolbarLeftSideContent={
+        <MultiSelect
+          options={statusOptions}
+          selectedValues={selectedStates}
+          onSelectedValueChange={onStatesChange}
+          placeholder="Filter by status"
+          // Wide enough trigger + dropdown so the longest status labels
+          // ("Booking in progress", "Didn't show up") don't wrap or clip,
+          // and selected-state badges have room when multiple are picked.
+          // max-w keeps the filter from sprawling when many states are selected
+          // and keeps the dropdown readable (no ultra-wide column).
+          // maxSelectedBadges collapses the trigger to the first 3 badges +
+          // a "+N selected" summary when more than 3 states are picked, so
+          // the button doesn't overflow with every selection.
+          maxSelectedBadges={2}
+          triggerProps={{
+            size: 'sm',
+            variant: 'outline',
+            className: 'min-w-48 max-w-96',
+          }}
+          contentProps={{ className: 'min-w-56 max-w-96' }}
+          className='w-full'
+          data-qa="leads-status-filter"
+        />
+      }
+      toolbarRightSideContent={
+        canCreate ? (
+          <Button asChild>
+            <Link href={projectHref(projectId, '/leads/new')} data-qa="new-lead-button">
+             <LuPlus className='size-4' />
+              New lead
+            </Link>
+          </Button>
+        ) : null
+      }
+
+      showPagination
+      paginationProps={{
+        total,
+        currentPage: page,
+        onPageChange,
+        pageSize,
+        onPageSizeChange,
+        showTotalResults: true,
+        showOnlyIfTotalGreaterThanPageSize: true,
+      }}
+      emptyContent={
+        isFiltered ? (
+          <div className="rounded-lg p-10 text-center space-y-1">
+            <TypographyP className="text-xl font-medium">No leads match this search.</TypographyP>
+            <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+              Check the spelling or try a different number.
+            </TypographyP>
+          </div>
+        ) : (
+          <div className="rounded-lg p-10 text-center space-y-1">
+            <TypographyP className="text-xl font-medium">No leads yet.</TypographyP>
+            <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+              They&apos;ll appear here as soon as the landing-site webhook fires
+              or a lead is created manually.
+            </TypographyP>
+          </div>
+        )
+      }
+      tableContainerClassName="rounded-lg border"
+    />
   );
 }
-

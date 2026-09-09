@@ -23,6 +23,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   withRlsContext,
@@ -37,6 +38,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -96,6 +98,12 @@ export function legalNextStates(from: BookingStatus): BookingStatus[] {
 export class BookingsService {
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    // @Optional() (rule 7h): best-effort notifications dep. Existing test
+    // factories construct BookingsService with one arg; optional keeps them
+    // green. Production DI resolves via @Global() NotificationsModule.
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notifications?: NotificationsService,
   ) {}
 
   private get client(): PrismaClient {
@@ -266,6 +274,15 @@ export class BookingsService {
           },
         });
 
+        // Notify the booking owner that their booking is on hold awaiting
+        // manager approval.
+        this.emitBestEffort(created.userId, {
+          type: 'booking.created',
+          title: 'Booking on hold',
+          body: `Booking for ${created.lead.name} (${created.amount.toString()}) is awaiting approval.`,
+          leadId: created.leadId,
+        });
+
         return {
           id: created.id,
           leadId: created.leadId,
@@ -379,6 +396,17 @@ export class BookingsService {
           },
         });
 
+        // Notify the booking owner that its status changed (e.g. approved,
+        // rejected). Skip when the actor IS the owner (they made the change).
+        if (updated.userId !== actor.sub) {
+          this.emitBestEffort(updated.userId, {
+            type: 'booking.transition',
+            title: 'Booking status changed',
+            body: `Booking for ${updated.lead.name} moved to ${updated.status}.`,
+            leadId: updated.leadId,
+          });
+        }
+
         return {
           id: updated.id,
           leadId: updated.leadId,
@@ -396,5 +424,22 @@ export class BookingsService {
         };
       },
     );
+  }
+
+  /**
+   * Best-effort notification emit (rule 7j). Never throws to the caller:
+   * a notification failure must not break the booking write path. No-ops when
+   * the notifications dep is absent (test harness) or emit throws.
+   */
+  private emitBestEffort(
+    recipientSub: string,
+    payload: { type: string; title: string; body: string; leadId?: string },
+  ): void {
+    if (this.notifications === undefined) return;
+    try {
+      void this.notifications.emit(recipientSub, payload).catch(() => undefined);
+    } catch {
+      // swallow - best-effort
+    }
   }
 }

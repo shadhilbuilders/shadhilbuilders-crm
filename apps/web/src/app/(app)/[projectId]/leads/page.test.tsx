@@ -1,29 +1,29 @@
-// T-D3 - Lead Inbox (state matrix).
+// T-D3 + autoplan 2026-09-07 - Lead Inbox state matrix (rewritten page).
 //
-// Pins the three render branches in apps/web/src/app/(app)/leads/page.tsx:
-//
+// Pins the render branches of the DataTable-based inbox:
 //   1. isLoading === true         → <Skeleton variant="table" />
-//   2. data is an array (any size) → <LeadTable />  (partial + empty both land here;
-//                                                the table itself renders the
-//                                                "No leads match these filters." panel
-//                                                when rows.length === 0)
-//   3. data is undefined + error   → <ModulePending error={...} />
+//   2. error + no data            → inline retry error branch (D21)
+//   3. data array, empty + search → "No leads match this search."
+//   4. data array, empty, clean   → "No leads yet." (warm queue empty)
+//   5. data array with rows       → name link + friendly status label
+//   6. overdue row                → "Overdue" badge (NEW + createdAt > 30 min)
+//   7. delete action visible/hidden by role (D14: canDeleteLeads)
 //
-// The page does NOT distinguish "error" from "module not shipped" -
-// both fall to ModulePending. That matches the project-wide convention
-// in components/shared/ModulePending.tsx (the title is "Lead Inbox"
-// either way). The wire-shape contract pins the three branches so a
-// future regression that adds an explicit "fetched but empty" branch
-// surfaces here as a deliberate code change, not a silent UI bug.
+// T-SRVPG (2026-09-07): the summary counts now come from the server
+// envelope (useLeadsEnvelope → overdueCount / newTodayCount), not from
+// client-side row filtering. The status filter is a server-driven
+// MultiSelect (toolbar left side) instead of the DataTable's client-side
+// facet filter.
 //
 // Uses renderToStaticMarkup per the standing rule (apps/web has no
-// @testing-library/react). The hook layer is mocked via vi.mock so the
-// page renders with deterministic data.
+// @testing-library/react). The hook layer is mocked via vi.mock.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ projectId: 'proj-1' }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(''),
 }));
 
 vi.mock('@/hooks/queries/crm', async (importOriginal) => {
@@ -31,6 +31,12 @@ vi.mock('@/hooks/queries/crm', async (importOriginal) => {
   return {
     ...actual,
     useLeads: vi.fn(),
+    useLeadsEnvelope: vi.fn(() => null),
+    useDeleteLead: vi.fn(() => ({
+      mutate: vi.fn(),
+      isPending: false,
+    })),
+    useUpdateLead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   };
 });
 
@@ -39,19 +45,36 @@ vi.mock('@/lib/session', () => ({
     user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
     isPending: false,
   })),
+  canDeleteLeads: (role: string) => role === 'ADMIN' || role === 'OWNER',
 }));
 
 import LeadInboxPage from './page';
-import { useLeads } from '@/hooks/queries/crm';
+import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 
 const mockedUseLeads = vi.mocked(useLeads);
+const mockedUseLeadsEnvelope = vi.mocked(useLeadsEnvelope);
+
+const baseRow = {
+  id: 'lead-1',
+  name: 'Priya Sharma',
+  phone: '9876543210',
+  status: 'NEW',
+  source: 'WEBSITE',
+  ownerName: 'Admin',
+  createdAt: new Date(Date.now() - 60 * 60_000).toISOString(), // 60 min ago → overdue
+  updatedAt: new Date().toISOString(),
+};
+
+function freshRow(overrides: Record<string, unknown>) {
+  return { ...baseRow, ...overrides };
+}
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('LeadInboxPage - T-D3 state matrix', () => {
-  it('loading: isLoading === true renders <Skeleton> and not the table', () => {
+describe('LeadInboxPage - state matrix (rewritten)', () => {
+  it('loading: renders the summary skeleton + table skeleton, no error branch', () => {
     mockedUseLeads.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -59,47 +82,99 @@ describe('LeadInboxPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadInboxPage />);
-    // The Skeleton renders an animated placeholder; in
-    // renderToStaticMarkup the class is the signal (no real DOM
-    // measurement). We assert the page header is present + the
-    // table is NOT rendered.
     expect(html).toContain('Lead Inbox');
     expect(html).toContain('data-slot="skeleton"');
-    expect(html).not.toContain('No leads match these filters');
+    expect(html).not.toContain('Try again');
   });
 
-  it('partial: data is an array of 1 row renders the LeadTable with the row', () => {
+  it('row: renders name link, friendly status label, and per-row actions', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({})],
+      isLoading: false,
+      error: null,
+    } as never);
+    mockedUseLeadsEnvelope.mockReturnValue({
+      total: 1,
+      overdueCount: 1,
+      newTodayCount: 0,
+    });
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).toContain('Priya Sharma');
+    expect(html).toContain('href="/proj-1/leads/lead-1"');
+    // Friendly label via LeadStatusBadge (T11 rule), not raw enum.
+    expect(html).toContain('New');
+    expect(html).not.toMatch(/>NEW</);
+    // The library DataTableRowActions renders its own trigger marker.
+    expect(html).toContain('data-qa="data-table-row-actions-button"');
+    // Storybook ToolbarWithRightSideContent pattern: search lives in the
+    // toolbar + the create button is the toolbar's right-side content.
+    expect(html).toContain('data-qa="data-table-search-input"');
+    expect(html).toContain('data-qa="data-table-toolbar-right-side-content"');
+    expect(html).toContain('data-qa="new-lead-button"');
+  });
+
+  it('overdue: NEW + created 60 min ago renders the Overdue badge', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({})],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).toContain('data-qa="lead-overdue-badge"');
+    expect(html).toContain('Overdue');
+  });
+
+  it('fresh: NEW + created 5 min ago does NOT render the Overdue badge', () => {
     mockedUseLeads.mockReturnValue({
       data: [
-        {
-          id: 'lead-1',
-          name: 'Priya Sharma',
-          phone: '+919876543210',
-          status: 'NEW',
-          source: 'WEBSITE',
-          ownerName: 'Admin',
-          updatedAt: '2026-09-04T10:00:00Z',
-        },
+        freshRow({
+          createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+        }),
       ],
       isLoading: false,
       error: null,
     } as never);
 
     const html = renderToStaticMarkup(<LeadInboxPage />);
-    expect(html).toContain('Lead Inbox');
-    expect(html).toContain('Priya Sharma');
-    // The status badge renders the friendly label ("New") via
-    // lib/labels.ts, NOT the raw enum - same wire-shape as
-    // LeadStatusBadge. assert the friendly form.
-    expect(html).toContain('New');
-    // The link wraps the name and points to /{projectId}/leads/{id}.
-    expect(html).toContain('href="/proj-1/leads/lead-1"');
-    // No Skeleton, no ModulePending ("failed to load" surface).
-    expect(html).not.toContain('data-slot="skeleton"');
-    expect(html).not.toContain('failed to load');
+    expect(html).not.toContain('data-qa="lead-overdue-badge"');
   });
 
-  it('empty: data is an empty array renders the LeadTable with "No leads match these filters" (still partial)', () => {
+  it('non-NEW state never renders the Overdue badge', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [
+        freshRow({
+          status: 'CONTACTED',
+          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).not.toContain('data-qa="lead-overdue-badge"');
+  });
+
+  it('summary line: reads overdue + new-today counts from the server envelope (D12 + T-SRVPG)', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({})],
+      isLoading: false,
+      error: null,
+    } as never);
+    mockedUseLeadsEnvelope.mockReturnValue({
+      total: 2,
+      overdueCount: 1,
+      newTodayCount: 1,
+    });
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    expect(html).toContain('1 overdue');
+    expect(html).toContain('1 new today');
+  });
+
+  it('empty + no search: warm queue empty state', () => {
     mockedUseLeads.mockReturnValue({
       data: [],
       isLoading: false,
@@ -107,16 +182,10 @@ describe('LeadInboxPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadInboxPage />);
-    // The page still has the header; the empty state is inside
-    // the table - a 1-cell panel - and the ModulePending
-    // ("failed to load") surface is NOT shown (because data
-    // resolved cleanly, just to []).
-    expect(html).toContain('Lead Inbox');
-    expect(html).toContain('No leads match these filters');
-    expect(html).not.toContain('failed to load');
+    expect(html).toContain('No leads yet.');
   });
 
-  it('error: data is undefined and error is set renders <ModulePending>', () => {
+  it('error: renders the retry branch (D21), not ModulePending', () => {
     const apiError = new Error('API 500: Internal Server Error');
     mockedUseLeads.mockReturnValue({
       data: undefined,
@@ -125,13 +194,25 @@ describe('LeadInboxPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadInboxPage />);
-    expect(html).toContain('Lead Inbox');
-    // ModulePending surfaces the error message via its "failed to
-    // load" branch.
-    expect(html).toContain('failed to load');
-    expect(html).toContain('API 500');
-    // Empty-state panel and Skeleton must not appear.
-    expect(html).not.toContain('No leads match these filters');
-    expect(html).not.toContain('data-slot="skeleton"');
+    // renderToStaticMarkup escapes the apostrophe as &#x27;.
+    expect(html).toContain('load the lead queue.');
+    expect(html).toContain('Try again');
+    expect(html).toContain('data-qa="leads-retry-button"');
+  });
+
+  it('delete action: VISIBLE for ADMIN (canDeleteLeads)', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [freshRow({})],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<LeadInboxPage />);
+    // The library DataTableRowActions trigger renders in SSR; the menu
+    // content opens on click (client-only). Role-visibility is pinned at
+    // the unit level in lib/session (canDeleteLeads mirrors RLS) + the
+    // backend D14 tests. (The library's trigger uses a generic sr-only
+    // "Open menu" label - no per-row aria-label prop.)
+    expect(html).toContain('data-qa="data-table-row-actions-button"');
   });
 });

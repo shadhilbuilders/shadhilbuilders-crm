@@ -7,6 +7,7 @@ import {
   LeadStateSchema,
   LoginDtoSchema,
   CreateLeadDtoSchema,
+  LeadFilterDtoSchema,
   CreateSiteVisitDtoSchema,
   SendMessageDtoSchema,
   CreateBookingDtoSchema,
@@ -61,13 +62,14 @@ describe('@shadhil/api-types - auth DTOs', () => {
 });
 
 describe('@shadhil/api-types - lead DTOs', () => {
-  it('CreateLeadDto accepts valid lead with 10-digit phone', () => {
+  it('CreateLeadDto accepts valid lead with 10-digit phone (normalized to E.164)', () => {
     const r = CreateLeadDtoSchema.parse({
       name: 'Rajesh',
       phone: '9876543210',
       source: 'Meta',
     });
-    expect(r.phone).toBe('9876543210');
+    // Landing-page normalizePhone: bare 10-digit Indian mobile → +91 prefix.
+    expect(r.phone).toBe('919876543210');
   });
   it('CreateLeadDto normalizes phone with +91 prefix', () => {
     const r = CreateLeadDtoSchema.parse({
@@ -86,6 +88,35 @@ describe('@shadhil/api-types - lead DTOs', () => {
     expect(() =>
       CreateLeadDtoSchema.parse({ name: '  ', phone: '9876543210', source: 'Meta' }),
     ).toThrow();
+  });
+  // T-PROJID-CUID2 (2026-09-08): seed projects now carry real cuid2 ids.
+  // The create DTO requires a valid cuid2, so the seeded Metro Heights id
+  // must parse. Regression guard - a readable id (e.g. seed-project-*)
+  // would fail z.cuid2() and break lead creation from /[projectId]/leads/new.
+  it('CreateLeadDto accepts the seeded Metro Heights project id (cuid2)', () => {
+    const r = CreateLeadDtoSchema.parse({
+      name: 'Rajesh',
+      phone: '9876543210',
+      source: 'Referral',
+      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+    });
+    expect(r.projectId).toBe('oe6g1xkagiisnn4oeefpdyhk');
+  });
+  it('LeadFilterDto accepts the seeded Metro Heights project id (cuid2)', () => {
+    const r = LeadFilterDtoSchema.parse({
+      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+    });
+    expect(r.projectId).toBe('oe6g1xkagiisnn4oeefpdyhk');
+  });
+  it('CreateLeadDto rejects a readable (non-cuid2) project id', () => {
+    expect(() =>
+      CreateLeadDtoSchema.parse({
+        name: 'Rajesh',
+        phone: '9876543210',
+        source: 'Referral',
+        projectId: 'seed-project-metro-heights',
+      }),
+    ).toThrow(/cuid2/i);
   });
 });
 

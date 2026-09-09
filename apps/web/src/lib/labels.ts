@@ -62,6 +62,8 @@ export const LEAD_STATUSES = [
   'WON',
   'LOST',
   'COLD',
+  'RESCHEDULED',
+  'NO_SHOW',
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
@@ -97,6 +99,38 @@ export const BOOKING_STATUSES = [
 ] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
+/**
+ * Lead-source values as stored in the DB (free-form uppercase strings,
+ * not a Prisma enum). The Source column renders these via `labelFor('source', …)`
+ * so staff see "Magicbricks" not "MAGICBRICKS". Added 2026-09-08.
+ */
+export const LEAD_SOURCES = [
+  '99ACRES',
+  'HOUSING',
+  'LANDING',
+  'MAGICBRICKS',
+  'META_AD',
+  'OTHER',
+  'REFERRAL',
+  'WALK_IN',
+  'WEBSITE',
+] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+/**
+ * Activity-timeline entry types (Prisma `Activity.type` enum). The lead
+ * detail timeline renders these via `labelFor('activity', …)` so staff see
+ * "Call" not "CALL". Added 2026-09-08 alongside the lead detail timeline.
+ */
+export const ACTIVITY_TYPES = [
+  'CALL',
+  'NOTE',
+  'STATUS_CHANGE',
+  'VISIT',
+  'EMAIL',
+] as const;
+export type ActivityType = (typeof ACTIVITY_TYPES)[number];
+
 // ---------------------------------------------------------------------------
 // Lookup tables
 // ---------------------------------------------------------------------------
@@ -112,6 +146,11 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   WON: 'Won 🎉',
   LOST: 'Lost',
   COLD: 'Cold',
+  // autoplan 2026-09-07: full 12-state coverage (the inbox facets now
+  // render every LeadState; these two were reachable via visit outcomes
+  // but had no lead-state label, so the facet fell back to humanize()).
+  RESCHEDULED: 'Postponed',
+  NO_SHOW: "Didn't show up",
 };
 
 const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
@@ -136,6 +175,26 @@ const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   CANCELLED: 'Cancelled',
 };
 
+const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
+  '99ACRES': '99acres',
+  HOUSING: 'Housing.com',
+  LANDING: 'Landing site',
+  MAGICBRICKS: 'Magicbricks',
+  META_AD: 'Meta ads',
+  OTHER: 'Other',
+  REFERRAL: 'Referral',
+  WALK_IN: 'Walk-in',
+  WEBSITE: 'Website',
+};
+
+const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  CALL: 'Call',
+  NOTE: 'Note',
+  STATUS_CHANGE: 'Status change',
+  VISIT: 'Visit',
+  EMAIL: 'Email',
+};
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -150,7 +209,7 @@ const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
  * failing assertion so the label table gets updated before merge.
  */
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory' | 'booking',
+  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -161,6 +220,12 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'inventory') {
     const mapped = (INVENTORY_STATUS_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'source') {
+    const mapped = (LEAD_SOURCE_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'activity') {
+    const mapped = (ACTIVITY_TYPE_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];

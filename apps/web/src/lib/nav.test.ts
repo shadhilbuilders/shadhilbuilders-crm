@@ -21,9 +21,17 @@ import {
 
 describe('lib/nav', () => {
   describe('NAV_ITEMS - the single source of truth', () => {
-    it('contains exactly one dashboard entry at /dashboard', () => {
-      const dashboards = NAV_ITEMS.filter((item) => item.href === '/dashboard');
-      expect(dashboards).toHaveLength(1);
+    it('contains exactly one work dashboard entry at /dashboard and one admin Overview at /overview', () => {
+      const workDashboards = NAV_ITEMS.filter(
+        (item) => item.href === '/dashboard' && item.group === 'work',
+      );
+      const adminDashboards = NAV_ITEMS.filter(
+        (item) => item.href === '/overview' && item.group === 'admin',
+      );
+      expect(workDashboards).toHaveLength(1);
+      expect(adminDashboards).toHaveLength(1);
+      // The admin Overview is unscoped (top-level /overview command center).
+      expect(adminDashboards[0]!.scoped).toBe(false);
     });
 
     it('every work-group item has a valid shape', () => {
@@ -35,11 +43,12 @@ describe('lib/nav', () => {
       }
     });
 
-    it('no duplicate hrefs across groups', () => {
+    it('no duplicate hrefs within a group', () => {
       const seen = new Set<string>();
       for (const item of NAV_ITEMS) {
-        expect(seen.has(item.href)).toBe(false);
-        seen.add(item.href);
+        const key = `${item.group}:${item.href}`;
+        expect(seen.has(key)).toBe(false);
+        seen.add(key);
       }
     });
   });
@@ -89,6 +98,23 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/audit');
     });
 
+    it('ADMIN sees the Overview command center (admin-only)', () => {
+      const items = getVisibleNav('ADMIN');
+      const overview = items.find((i) => i.href === '/overview' && i.group === 'admin');
+      expect(overview).toBeDefined();
+      expect(overview!.scoped).toBe(false);
+    });
+
+    it('MANAGER sees Users but NOT the Overview command center (Users is admin+manager, Overview is admin-only)', () => {
+      const items = getVisibleNav('MANAGER');
+      const hrefs = items.map((i) => i.href);
+      expect(hrefs).toContain('/users');
+      const adminOverview = items.find(
+        (i) => i.href === '/overview' && i.group === 'admin',
+      );
+      expect(adminOverview).toBeUndefined();
+    });
+
     it('ADMIN also sees WA Unknown (admin-class)', () => {
       const items = getVisibleNav('ADMIN');
       expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
@@ -104,6 +130,21 @@ describe('lib/nav', () => {
     it('OWNER also sees WA Unknown (admin-class)', () => {
       const items = getVisibleNav('OWNER');
       expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
+    });
+
+    it('OWNER sees the Overview command center (admin-class)', () => {
+      const items = getVisibleNav('OWNER');
+      const overview = items.find((i) => i.href === '/overview' && i.group === 'admin');
+      expect(overview).toBeDefined();
+      expect(overview!.scoped).toBe(false);
+    });
+
+    it('TELECALLER does NOT see the Overview command center (admin group)', () => {
+      const items = getVisibleNav('TELECALLER');
+      const adminOverview = items.find(
+        (i) => i.href === '/overview' && i.group === 'admin',
+      );
+      expect(adminOverview).toBeUndefined();
     });
 
     it('TELECALLER does NOT see WA Unknown (raw inbound triage is admin-only)', () => {

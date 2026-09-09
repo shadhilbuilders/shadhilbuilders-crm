@@ -19,6 +19,8 @@ import type {
   CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
+  LeadActivity,
+  LeadDetail,
   LeadStateTransitionDto,
   SendMessageDto,
   UpdateLeadDto,
@@ -57,6 +59,12 @@ export type LeadFilterInput = {
   search?: string;
   limit?: number;
   offset?: number;
+  // Server-side sort (T-SRVPG): the DataTable sorts client-side over the
+  // loaded page, which is wrong under server pagination. The page passes
+  // the sort column + direction and the service applies it in the SQL
+  // ORDER BY.
+  sortBy?: 'updatedAt' | 'createdAt' | 'name';
+  sortDir?: 'asc' | 'desc';
 };
 
 export function useLeads(filter: LeadFilterInput = {}) {
@@ -72,6 +80,8 @@ export function useLeads(filter: LeadFilterInput = {}) {
           search: filter.search,
           limit: filter.limit,
           offset: filter.offset,
+          sortBy: filter.sortBy,
+          sortDir: filter.sortDir,
         })}`,
         { signal },
       ),
@@ -84,17 +94,77 @@ export function useLeads(filter: LeadFilterInput = {}) {
     // charts threw `TypeError: data is not iterable` and React's
     // error-boundary fallback surfaced the "Hydration failed because
     // the server rendered HTML didn't match the client" log.
+    //
+    // autoplan 2026-09-07 (D22): the inbox also needs `total` for the
+    // "Showing first 100 of N" truncation-honesty line. Keep `data` as
+    // the plain rows array (charts + tests depend on it) and expose the
+    // raw envelope via `select`-adjacent state: read it from
+    // `leadsQueryTotal` below, computed from the same cache entry.
     select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
 }
 
+/**
+ * Read the raw `{ total, rows, overdueCount, newTodayCount }` envelope for
+ * the SAME query key the useLeads hook caches under (T-SRVPG, 2026-09-07).
+ * Returns null before the first fetch resolves. Separate hook because
+ * `select` already projects `data` to rows; two subscribers share one cache
+ * entry, so this adds no extra request.
+ *
+ * The leads inbox needs `total` (pagination + truncation honesty) and the
+ * summary counts (`overdueCount` / `newTodayCount`) which the server now
+ * computes for the FULL filtered set (not the page) so the summary line
+ * stays correct across pages.
+ */
+export type LeadsEnvelope = {
+  total: number;
+  overdueCount: number;
+  newTodayCount: number;
+};
+
+export function useLeadsEnvelope(filter: LeadFilterInput = {}): LeadsEnvelope | null {
+  const query = useQuery({
+    queryKey: ['leads', filter] as const,
+    queryFn: ({ signal }) =>
+      api<unknown>(
+        `/leads${qs({
+          state: filter.state?.join(','),
+          ownerId: filter.ownerId,
+          teamId: filter.teamId,
+          projectId: filter.projectId,
+          search: filter.search,
+          limit: filter.limit,
+          offset: filter.offset,
+          sortBy: filter.sortBy,
+          sortDir: filter.sortDir,
+        })}`,
+        { signal },
+      ),
+    // No row projection here - the consumer reads `.data.total` etc.
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
+  const raw = query.data;
+  if (raw !== null && typeof raw === 'object') {
+    const obj = raw as { total?: unknown; overdueCount?: unknown; newTodayCount?: unknown };
+    if (typeof obj.total === 'number') {
+      return {
+        total: obj.total,
+        overdueCount: typeof obj.overdueCount === 'number' ? obj.overdueCount : 0,
+        newTodayCount: typeof obj.newTodayCount === 'number' ? obj.newTodayCount : 0,
+      };
+    }
+  }
+  return null;
+}
+
 export function useLead(id: string | null) {
   return useQuery({
     queryKey: ['leads', id] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: ({ signal }) => api<unknown>(`/leads/${id as string}`, { signal }),
+    queryFn: ({ signal }) => api<LeadDetail>(`/leads/${id as string}`, { signal }),
   });
 }
 
@@ -102,7 +172,7 @@ export function useLeadActivities(id: string | null) {
   return useQuery({
     queryKey: ['leads', id, 'activities'] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: ({ signal }) => api<unknown[]>(`/leads/${id as string}/activities`, { signal }),
+    queryFn: ({ signal }) => api<LeadActivity[]>(`/leads/${id as string}/activities`, { signal }),
   });
 }
 
@@ -181,12 +251,40 @@ export function useTransitionLead(leadId: string | null) {
   });
 }
 
+/**
+ * Hard delete a lead (autoplan 2026-09-07, D14/D18). Server allows
+ * OWNER/ADMIN only - the UI must hide the action for every other role
+ * (defense in depth: a hidden-but-allowed action is still a 403).
+ *
+ * Cache semantics (D18): the list invalidates (refetch) but the DETAIL
+ * cache is REMOVED, not invalidated - invalidate would refetch a deleted
+ * row into ['lead', id] and render a 404-shaped error page if the user
+ * later follows a stale link. removeQueries drops it entirely.
+ */
+export function useDeleteLead(leadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      if (leadId === null) {
+        return Promise.reject(new Error('Lead id required'));
+      }
+      return api<{ id: string }>(`/leads/${leadId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (leadId !== null) {
+        void queryClient.removeQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Visits (contract: packages/api-types/src/visits.ts)
 // ---------------------------------------------------------------------------
 
 export function useVisits(
-  params: { from?: string; to?: string; projectId?: string } = {},
+  params: { from?: string; to?: string; projectId?: string; limit?: number } = {},
 ) {
   return useQuery({
     queryKey: ['visits', params] as const,
@@ -196,6 +294,7 @@ export function useVisits(
           from: params.from,
           to: params.to,
           projectId: params.projectId,
+          limit: params.limit,
         })}`,
         { signal },
       ),

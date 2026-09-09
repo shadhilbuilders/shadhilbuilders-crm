@@ -48,9 +48,9 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   return result.data;
 }
 
-// Project id format: cuids from the app AND readable seed ids
-// (`seed-project-metro-heights`) are both valid - same convention as the
-// LeadFilterDto projectId (min(1).max(64), auth.ts teamId precedent).
+// Project id format: real cuid2 (T-PROJID-CUID2, 2026-09-08) - the same
+// shape the app generates at runtime. The [projectId] URL segment and every
+// DTO pin it to z.cuid2().
 const ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 @ApiTags('projects')

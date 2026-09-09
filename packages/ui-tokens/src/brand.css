@@ -35,6 +35,13 @@
   --secondary: oklch(0.684 0.178 136.1);
   --secondary-foreground: oklch(0.145 0 0);
 
+  /* ── Link color ──────────────────────────────────────────────────
+   * Reusable link color for inline text links (lead names, etc.).
+   * Map to `text-link` via the `--color-link` @theme inline entry in
+   * the app's globals.css. Blue tuned to read clearly on the brand's
+   * off-white surface while staying within the navy accent family. */
+  --link: oklch(0.46 0.15 255);
+
   /* ── Sidebar brand overrides (T12) ────────────────────────────────
    * Tinted to harmonize with the navy primary instead of the
    * library's neutral gray. Active-state (--sidebar-accent) uses
@@ -74,6 +81,9 @@
 
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
+
+  /* ── Link color - dark mode ───────────────────────────────────── */
+  --link: oklch(0.72 0.13 255);
 
   /* ── Sidebar brand overrides - dark mode (T12) ────────────────────
    * The library's dark defaults make the sidebar a near-black void.

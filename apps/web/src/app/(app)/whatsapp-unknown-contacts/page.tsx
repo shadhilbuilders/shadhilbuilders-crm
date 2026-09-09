@@ -31,6 +31,7 @@ import { Button, Card, CardContent, toast } from '@paalstack/react-ui';
 import Link from 'next/link';
 
 import { ModulePending } from '@/components/shared/ModulePending';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { Skeleton } from '@/components/shared/Skeleton';
 import {
   WhatsappUnknownContactConvertModal,
@@ -214,10 +215,9 @@ function Row({
     >
       <div className="min-w-0 flex-1">
         <p
-          className="font-mono text-sm font-medium"
           data-qa="wa-unknown-phone"
         >
-          {row.phoneE164}
+          <PhoneNumber phone={row.phoneE164} variant="text" className="font-mono text-sm font-medium" />
         </p>
         <p
           className="text-muted-foreground mt-1 line-clamp-2 text-sm"

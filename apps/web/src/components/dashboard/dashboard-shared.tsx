@@ -36,12 +36,12 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
       {items.map((kpi) => {
         const isPlaceholder = kpi.value === '-';
         return (
-          <div key={kpi.label}>
+          <div key={kpi.label} className="min-w-0">
             <p className="text-muted-foreground text-xs tracking-wide uppercase">
               {kpi.label}
             </p>
             <p
-              className={`mt-1 text-3xl font-semibold tabular-nums ${
+              className={`mt-1 text-3xl font-semibold tabular-nums break-words ${
                 isPlaceholder ? 'text-muted-foreground' : 'animate-shimmer-once'
               }`}
               data-state={isPlaceholder ? 'loading' : 'ready'}
@@ -72,7 +72,7 @@ export function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section>
+    <section className="min-w-0">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold tracking-wide uppercase">
           {title}

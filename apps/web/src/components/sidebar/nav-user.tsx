@@ -112,7 +112,7 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               data-qa="sidebar-user-signout"
-              onSelect={() => {
+              onClick={() => {
                 onSignOut();
               }}
               className="gap-2 cursor-pointer"

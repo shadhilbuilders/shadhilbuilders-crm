@@ -83,3 +83,5 @@ skills-lock.json
 C:\\Users\\*\\AppData\\Local\\lighthouse.*
 
 docs/**/*.jsonl
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

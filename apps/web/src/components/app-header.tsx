@@ -30,6 +30,7 @@ import {
 import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { SidebarToggleButton } from '@/components/app-shell';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -50,6 +51,20 @@ export function AppHeader() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
+
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // button → "Hydration failed because the server rendered HTML didn't
+  // match the client." Render the skeleton for the first client paint too,
+  // then swap to the menu after mount.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showUserArea = mounted && !isPending && user !== null;
+
   // T-D3: SSE pill only renders when the URL has ?debug=1. Read on
   // every render so URL changes (e.g. devtools typing the query) take
   // effect immediately. searchParams is stable per render from
@@ -57,7 +72,7 @@ export function AppHeader() {
   const showDebugPill = searchParams.get('debug') === '1';
 
   return (
-    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur">
+    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b px-4 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
             shadcn sidebar-07 position) - beside the welcome message, visible
@@ -85,21 +100,23 @@ export function AppHeader() {
         {/* T23 (PR3): render a UserSkeleton placeholder in the slot
             where the UserMenu will mount once the session resolves.
             Keeps the topbar height stable during the first paint
-            and signals "loading" via shape, not text. */}
-        {isPending ? (
+            and signals "loading" via shape, not text. Gated on the
+            `mounted` flag so SSR and the first client paint both show
+            the skeleton (no hydration mismatch from the SSR session). */}
+        {showUserArea ? (
+          <UserMenu
+            name={user!.name || user!.email}
+            role={user!.role}
+            onSignOut={() => void signOut()}
+          />
+        ) : (
           <div
             className="min-w-30 px-2"
             data-qa="user-skeleton-topbar"
           >
             <Skeleton variant="user" />
           </div>
-        ) : user !== null ? (
-          <UserMenu
-            name={user.name || user.email}
-            role={user.role}
-            onSignOut={() => void signOut()}
-          />
-        ) : null}
+        )}
       </div>
     </header>
   );
@@ -115,10 +132,21 @@ function NotificationBell() {
   const { data: projects } = useProjects();
   const query = useNotifications({ unreadOnly: true });
   const count = Array.isArray(query.data) ? query.data.length : 0;
-  const projectId =
-    activeProjectIdFromPathname(pathname) ??
-    pickDefaultProject(projects ?? [])?.id ??
-    null;
+  // Mounted gate: on SSR (and the first client paint) useProjects hasn't
+  // resolved, so pickDefaultProject returns null and the href would be the
+  // unscoped "/notifications" template. Hydration then swaps that for the
+  // project-scoped href once projects load → "server rendered HTML didn't
+  // match". Render a stable placeholder href until after mount, exactly like
+  // the AppHeader session gate above.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const projectId = mounted
+    ? (activeProjectIdFromPathname(pathname) ??
+      pickDefaultProject(projects ?? [])?.id ??
+      null)
+    : null;
   const href = projectHref(projectId, '/notifications');
   return (
     <Button

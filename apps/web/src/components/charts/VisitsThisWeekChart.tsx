@@ -107,7 +107,7 @@ export function VisitsThisWeekChart({ data }: VisitsThisWeekChartProps) {
       <ChartContainer
         config={VISITS_CONFIG}
         aria-label="Visits this week - count per day, Monday to Sunday"
-        className="h-72 w-full"
+        className="aspect-auto h-72 w-full"
       >
         <BarChart data={buckets} margin={{ top: 8, left: 8, right: 16 }}>
           <XAxis dataKey="day" tickLine={false} axisLine={false} />

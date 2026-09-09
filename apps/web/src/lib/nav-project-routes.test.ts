@@ -5,6 +5,7 @@ import {
   activeProjectIdFromPathname,
   isNavItemActive,
   isProjectScopedNavPath,
+  navItemHref,
   projectHref,
   stripProjectSegment,
 } from './nav';
@@ -50,6 +51,26 @@ describe('projectHref', () => {
 
   it('keeps the template when no project is active', () => {
     expect(projectHref(null, '/leads')).toBe('/leads');
+  });
+});
+
+describe('navItemHref', () => {
+  it('resolves scoped items under the active project', () => {
+    expect(navItemHref({ href: '/leads' }, 'proj-1')).toBe('/proj-1/leads');
+    expect(navItemHref({ href: '/dashboard' }, 'proj-1')).toBe('/proj-1/dashboard');
+  });
+
+  it('passes unscoped items (scoped:false) through unchanged', () => {
+    expect(navItemHref({ href: '/overview', scoped: false }, 'proj-1')).toBe(
+      '/overview',
+    );
+    expect(navItemHref({ href: '/overview', scoped: false }, null)).toBe(
+      '/overview',
+    );
+  });
+
+  it('keeps the template for scoped items when no project is active', () => {
+    expect(navItemHref({ href: '/leads' }, null)).toBe('/leads');
   });
 });
 

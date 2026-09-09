@@ -47,14 +47,14 @@ export function PageHeader({
 }: PageHeaderProps) {
   const crumbs = breadcrumb ?? [{ label: 'Work' }, { label: title }];
   return (
-    <div className="border-border border-b px-4 py-3 sm:px-6 sm:py-4">
+    <div className="border-border border-b">
       <Breadcrumb
         items={crumbs.map((crumb) => ({
           label: crumb.label,
           ...(crumb.href !== undefined ? { href: crumb.href } : {}),
         }))}
       />
-      <div className="mt-2 flex items-center justify-between gap-3">
+      <div className="mt-2 flex items-center justify-between gap-3 pb-2">
         <div className="min-w-0">
           <Heading as="h1" className="truncate">
             {title}
