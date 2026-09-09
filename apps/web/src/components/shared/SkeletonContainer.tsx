@@ -12,7 +12,7 @@
 //   ┌─ wrapper (transition-opacity duration-200) ───────────────┐
 //   │                                                          │
 //   │  ┌─ skeleton layer (opacity-100 if isLoading else 0) ─┐  │
-//   │  │  <Skeleton variant=… />                            │  │
+//   │  │  <Skeleton variant=... />                            │  │
 //   │  └────────────────────────────────────────────────────┘  │
 //   │  ┌─ content layer (opacity-0 if isLoading else 100) ───┐  │
 //   │  │  {children}                                          │  │

@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 
-import { ChatService } from './chat.service';
+import { ChatService, extractMentionedNames } from './chat.service';
 
 function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
@@ -31,6 +31,9 @@ function makeService(): {
     lead: {
       findUnique: ReturnType<typeof vi.fn>;
     };
+    user: {
+      findUnique: ReturnType<typeof vi.fn>;
+    };
     message: {
       findMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
@@ -44,6 +47,9 @@ function makeService(): {
     $transaction: ReturnType<typeof vi.fn>;
     $executeRawUnsafe: ReturnType<typeof vi.fn>;
     lead: {
+      findUnique: ReturnType<typeof vi.fn>;
+    };
+    user: {
       findUnique: ReturnType<typeof vi.fn>;
     };
     message: {
@@ -65,6 +71,9 @@ function makeService(): {
     // Stub the SET LOCAL calls so withRlsContext's preamble resolves.
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     lead: {
+      findUnique: vi.fn(),
+    },
+    user: {
       findUnique: vi.fn(),
     },
     message: {
@@ -129,7 +138,7 @@ describe('list - RLS-scoped message history for a lead', () => {
     expect(rows[1]?.mediaUrl).toBe('https://x/y.png');
     expect(client.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { leadId: 'lead-x' },
+        where: { leadId: 'lead-x', kind: 'CUSTOMER' },
         orderBy: { createdAt: 'asc' },
         take: 50,
       }),
@@ -145,6 +154,7 @@ describe('list - RLS-scoped message history for a lead', () => {
       expect.objectContaining({
         where: {
           leadId: 'lead-x',
+          kind: 'CUSTOMER',
           createdAt: { gt: new Date('2026-01-01T00:00:00Z') },
         },
         take: 10,
@@ -156,7 +166,8 @@ describe('list - RLS-scoped message history for a lead', () => {
 describe('send - staff message + audit row', () => {
   it('writes a Message row with direction=OUT and audit row in one call', async () => {
     const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-x' });
+    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', name: 'Lead X' });
+    client.user.findUnique.mockResolvedValue({ name: 'Asha T.' });
     client.message.create.mockResolvedValue({
       id: 'm-new',
       leadId: 'lead-x',
@@ -242,5 +253,66 @@ describe('send - staff message + audit row', () => {
         data: expect.objectContaining({ channel: 'IN_APP' }),
       }),
     );
+  });
+
+  it('writes kind=INTERNAL and skips the WhatsApp enqueue for internal notes', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', name: 'Lead X' });
+    client.user.findUnique.mockResolvedValue({ name: 'Asha T.' });
+    client.message.create.mockResolvedValue({
+      id: 'm-int',
+      leadId: 'lead-x',
+      direction: 'OUT',
+      channel: 'IN_APP',
+      kind: 'INTERNAL',
+      body: 'loop @Manager',
+      mediaUrl: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    client.auditLog.create.mockResolvedValue({ id: 'audit-1' });
+
+    await service.send(makeActor(), {
+      leadId: 'lead-x',
+      body: 'loop @Manager',
+      kind: 'INTERNAL',
+      channel: 'WHATSAPP', // even if a caller forces WHATSAPP, internal never enqueues
+    });
+
+    expect(client.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ kind: 'INTERNAL' }),
+      }),
+    );
+    // The outbound stub is a no-op - internal notes never enqueue WhatsApp.
+    expect(client.message.create).toHaveBeenCalled();
+  });
+
+  it('filters list by kind=INTERNAL when requested', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({ id: 'lead-x' });
+    client.message.findMany.mockResolvedValue([]);
+    await service.list(makeActor(), 'lead-x', undefined, 50, 'INTERNAL');
+    expect(client.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { leadId: 'lead-x', kind: 'INTERNAL' },
+      }),
+    );
+  });
+});
+
+describe('extractMentionedNames - @mention parsing', () => {
+  it('extracts @Name tokens', () => {
+    expect(extractMentionedNames('loop @Asha T. and @Ravi')).toEqual([
+      'Asha T.',
+      'Ravi',
+    ]);
+  });
+
+  it('returns empty for no mentions', () => {
+    expect(extractMentionedNames('no mentions here')).toEqual([]);
+  });
+
+  it('ignores a bare @ with no name', () => {
+    expect(extractMentionedNames('email me @')).toEqual([]);
   });
 });

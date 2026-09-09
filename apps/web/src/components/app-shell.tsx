@@ -40,6 +40,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import {
   Button,
@@ -92,7 +93,7 @@ export function AppShell() {
   const pathProjectId = activeProjectIdFromPathname(pathname);
   const { data: projects } = useProjects();
   // Work-surface hrefs always need a project id (pages live under
-  // /{projectId}/dashboard, /{projectId}/leads, …). On unscoped routes
+  // /{projectId}/dashboard, /{projectId}/leads, ...). On unscoped routes
   // (/users, /audit) fall back to the default registry project.
   const activeProjectId =
     pathProjectId ?? pickDefaultProject(projects ?? [])?.id ?? null;
@@ -284,12 +285,28 @@ function AdminNavGroup({
   const pathname = usePathname();
   const { user } = useSessionUser();
   const role = user?.role;
+  const [mounted, setMounted] = useState(false);
+
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. During SSR `role` is
+  // undefined, so `getVisibleNav` returns no admin items and this group
+  // renders `null`; on the client the session resolves and the Admin group
+  // (with its SidebarSeparator) appears → "Hydration failed because the
+  // server rendered HTML didn't match the client." Render nothing for the
+  // first client paint too, then swap after mount (same pattern as
+  // app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const items = getVisibleNav(role).filter(
     (item) => item.group === 'admin',
   );
 
-  // Don't render an empty "Admin" group with just a label.
-  if (items.length === 0) return null;
+  // Don't render an empty "Admin" group with just a label. Also gate on
+  // `mounted` so SSR and the first client paint agree (both render nothing
+  // until the session resolves).
+  if (!mounted || items.length === 0) return null;
   // canManageUsers / canViewAudit are the canonical helpers; reference
   // them so tree-shakers + linters see they're part of the contract.
   void canManageUsers;
@@ -329,7 +346,7 @@ function NavMenuItem({
   pathname: string;
   activeProjectId: string | null;
 }) {
-  const badge = useNavBadge(item.badgeKey);
+  const badge = useNavBadge(item.badgeKey, activeProjectId);
   // T-ProjectSwitch: work-surface hrefs resolve under the active project
   // (/proj-1/leads). Active-state strips the project segment back to the
   // template so /proj-1/leads/abc still highlights Leads. Unscoped items
@@ -378,10 +395,21 @@ function NavMenuItem({
 function UserMenuFooter() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
+  const [mounted, setMounted] = useState(false);
 
-  if (isPending || user === null) {
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // NavUser (a <ul>) → "Hydration failed because the server rendered HTML
+  // didn't match the client." Render the skeleton for the first client
+  // paint too, then swap after mount (same pattern as app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || isPending || user === null) {
     // T23 (PR3): render a UserSkeleton placeholder while the session
-    // resolves - no "Loading…" text, the avatar+lines shape matches
+    // resolves - no "Loading..." text, the avatar+lines shape matches
     // the resolved footer so the layout doesn't shift on hydration.
     return (
       <div className="px-2 py-1.5" data-qa="user-skeleton-footer">

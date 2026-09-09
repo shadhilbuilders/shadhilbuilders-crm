@@ -5,7 +5,7 @@
 // autoplan 2026-09-08: companion to TeamPerformanceChart in the dashboard's
 // 2-column grid. Fed by the /api/dashboard/stats aggregate endpoint's
 // `bookingsByStatus` buckets (status + count). Uses a horizontal bar so the
-// friendly status labels (On hold, Token, Approved, …) read left-to-right.
+// friendly status labels (On hold, Token, Approved, ...) read left-to-right.
 //
 // Import pattern (per shadcn charts convention): the wrapper primitives
 // (Chart, ChartContainer, ChartTooltip) come from @paalstack/react-ui; the raw

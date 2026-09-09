@@ -184,7 +184,7 @@ export class OutboundService {
         // Map the row's `templateVars` (the chat service populates
         // this with the right keys for the template) into the
         // ordered Meta `parameters` array. The order of values
-        // MUST match the {{1}}, {{2}}, … placeholder order in the
+        // MUST match the {{1}}, {{2}}, ... placeholder order in the
         // template body - Meta rejects out-of-order parameters.
         // See apps/backend/src/whatsapp/whatsapp.client.ts for
         // the full template specs (3 templates: shadhil_chat_reply,

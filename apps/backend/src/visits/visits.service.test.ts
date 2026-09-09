@@ -8,7 +8,7 @@
 // Conflict rule (visits.service.ts, updateOutcome):
 //   - Exact replay (visit already has status+outcome === dto.outcome):
 //     no-op - returns the current row, writes ONE audit row marked
-//     "Idempotent replay … no state change".
+//     "Idempotent replay ... no state change".
 //   - Different outcome on an advanced visit: falls through to the
 //     state machine → rejected (server-wins per offline-store LWW).
 //   - COMPLETED still drives the parent lead to VISITED exactly once.

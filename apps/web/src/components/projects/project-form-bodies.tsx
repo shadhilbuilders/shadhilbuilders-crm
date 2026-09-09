@@ -161,7 +161,7 @@ export function ProjectFormBody({
         </Button>
         <Button type="submit" disabled={pending || name.trim().length === 0}>
           {pending
-            ? 'Saving…'
+            ? 'Saving...'
             : mode === 'create'
               ? 'Create project'
               : 'Save changes'}
@@ -231,7 +231,7 @@ export function ProjectDeleteBody({
           disabled={deleteProject.isPending}
           data-qa="project-delete-confirm"
         >
-          {deleteProject.isPending ? 'Deleting…' : 'Delete project'}
+          {deleteProject.isPending ? 'Deleting...' : 'Delete project'}
         </Button>
       </div>
     </form>

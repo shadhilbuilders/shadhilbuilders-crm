@@ -7,7 +7,7 @@
 //
 //   process.env.REDIS_URL ?? 'redis://localhost:6379'
 //
-// …which silently lost pub/sub + cron locks in production when the real
+// ...which silently lost pub/sub + cron locks in production when the real
 // env var was missing. Same pattern for JWT_SECRET, BETTER_AUTH_URL, etc.
 //
 // This module owns ONE function: assertBootEnv(). Tests live next door

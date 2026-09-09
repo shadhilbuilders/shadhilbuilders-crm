@@ -1,13 +1,13 @@
 'use client';
 
 // PipelineFunnelChart - bucketed lead-status counts, fed to a vertical
-// BarChart so the funnel reads left-to-right (NEW → … → WON).
+// BarChart so the funnel reads left-to-right (NEW → ... → WON).
 //
 // T9 (one of two dedicated files per plan D2; the other is
 // VisitsThisWeekChart). The "data shaping" that earns this its own
 // file:
 //   1. Counts leads per status from the `useLeads` array
-//   2. Sorts by the canonical pipeline order (NEW → … → WON), not
+//   2. Sorts by the canonical pipeline order (NEW → ... → WON), not
 //      alphabetical - so the funnel reads left-to-right as a real
 //      pipeline, not a jumble of letters
 //   3. Applies `labelFor('lead', status)` so the chart axis is the

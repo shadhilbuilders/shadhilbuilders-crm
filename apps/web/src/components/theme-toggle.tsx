@@ -20,7 +20,7 @@
 //
 // Hydration: `resolvedTheme` is `undefined` until the client mounts
 // (next-themes' default - avoids a light/dark flash on first paint).
-// We render a neutral "Loading…" icon button while mounted=false so
+// We render a neutral "Loading..." icon button while mounted=false so
 // the SSR markup is the same as the initial client markup (no
 // hydration mismatch warning) and swap to the proper sun/moon icon
 // after mount.

@@ -898,7 +898,7 @@ domain for the placeholder.
 - `pnpm --filter @shadhil/database generate` + the existing
   type-checks stay green (no schema change this round - the
   `Role` enum still has the same five values, the `User.email`
-  unique constraint already covers `admin2@…`).
+  unique constraint already covers `admin2@...`).
 - The dev README seat table matches the seat table in
   `docs/planning/DECISION-CHANGELOG.md` Round 22.
 
@@ -906,11 +906,11 @@ domain for the placeholder.
 
 Round 22 introduced an ADMIN placeholder but parked it at
 `admin2@shadhilbuilders.in` because the OWNER row already
-owned `admin@shadhilbuilders.in`. The `admin2@…` address was
+owned `admin@shadhilbuilders.in`. The `admin2@...` address was
 correct as a collision-avoidance tactic but read as a hack -
 anyone reading the seed code had to mentally translate the
 suffix back to the role. Cleaner to put each role's email at
-`<role>@shadhilbuilders.in` and reserve `admin@…` for ADMIN.
+`<role>@shadhilbuilders.in` and reserve `admin@...` for ADMIN.
 
 **Decision:** swap the OWNER and ADMIN fallback emails:
 
@@ -935,7 +935,7 @@ After this round the seeded roster is:
 
 Each email is now `<role-name>@shadhilbuilders.in`. The
 collision-avoidance problem Round 22 was solving doesn't
-recur because Round 23 removes the second-`admin@…` attempt
+recur because Round 23 removes the second-`admin@...` attempt
 entirely.
 
 **Changes:**
@@ -945,15 +945,15 @@ entirely.
   unchanged. JSDoc on `readSeedUser` updated to reflect the
   new mapping and to point at this round.
 - `packages/database/.env.example` -
-  `SEED_OWNER_EMAIL=admin@…` → `owner@…`,
-  `SEED_ADMIN_EMAIL=admin2@…` → `admin@…`.
+  `SEED_OWNER_EMAIL=admin@...` → `owner@...`,
+  `SEED_ADMIN_EMAIL=admin2@...` → `admin@...`.
 - `README.md` - seat table updated.
 
 **Not changed:**
 
 - Round 22 entry above is preserved as historical - it
   accurately describes what shipped at the time (the
-  `admin2@…` workaround). The current seat table is the one
+  `admin2@...` workaround). The current seat table is the one
   in Round 23.
 - The bootstrap migration `20260831110100_bootstrap_owner`
   references the OLD `admin@shadhilbuilders.in` email for
@@ -967,9 +967,9 @@ entirely.
   a) Drop and recreate the bootstrap migration to point at
      `owner@shadhilbuilders.in`. Cleanest - every reference
      points at the same email.
-  b) Keep both: migration sets up `admin@…` as OWNER, then
-     seed.ts upserts `owner@…` as OWNER, then upserts
-     `admin@…` as ADMIN. Works but leaves the placeholder
+  b) Keep both: migration sets up `admin@...` as OWNER, then
+     seed.ts upserts `owner@...` as OWNER, then upserts
+     `admin@...` as ADMIN. Works but leaves the placeholder
      layout split across two files.
 
   **Resolution this round:** we are dropping and recreating
@@ -1192,7 +1192,7 @@ The error names two offenders that converge on the same root
 cause: the `persistCache` function was serializing the entire
 Query cache via `qc.getQueryCache().getAll()` and pushing the
 result straight into IndexedDB. Each `Query` object carries
-its full `options` (queryFn, retry, retryDelay, …), and the
+its full `options` (queryFn, retry, retryDelay, ...), and the
 default-options block in `lib.ts` had a custom
 `retryDelay: (attemptIndex) => Math.min(1000 * 2 **
 attemptIndex, 30000)` - a function. IndexedDB's structured
@@ -1218,7 +1218,7 @@ the bug):**
 **Decision:** use TanStack Query's official serialization
 helpers (`dehydrate` / `hydrate`), which strip
 non-cloneable fields (queryFn, retry, retryDelay, observers,
-…) by design. Also drop the custom `retryDelay` default -
+...) by design. Also drop the custom `retryDelay` default -
 TanStack's built-in default is the same exponential backoff
 `Math.min(1000 * 2 ** attemptIndex, 30000)`, so no behavior
 change.

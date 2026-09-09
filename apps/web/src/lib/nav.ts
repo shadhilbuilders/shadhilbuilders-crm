@@ -230,26 +230,37 @@ const FALLBACK_BADGE = 0;
  * module lands, the response is 404 → `ModulePending`, so `data` stays
  * `undefined` and we render 0 (not a fake number).
  */
-export function useNavBadge(key: NavBadgeKey | undefined): number {
+export function useNavBadge(
+  key: NavBadgeKey | undefined,
+  projectId: string | null = null,
+): number {
   // Lazy-require to avoid a circular import in the test harness (T15 builds
   // a pure-function test that never mounts the app, so the queries module's
   // session/BFF dependencies must not be loaded at import time).
-  const { useLeads, useNotifications } = require('@/hooks/queries/crm') as {
-    useLeads: () => { data: unknown };
-    useNotifications: (params: { unreadOnly?: boolean }) => { data: unknown };
+  const { useNewLeadsBadge, useNotifications } = require('@/hooks/queries/crm') as {
+    useNewLeadsBadge: (projectId: string | null) => { data: { newLeads: number } | undefined };
+    useNotifications: (params: { unreadOnly?: boolean }) => {
+      data: { rows: unknown[]; total: number; unread: number };
+    };
   };
 
-  const leads = useLeads();
+  const newLeads = useNewLeadsBadge(projectId);
   const notifications = useNotifications({ unreadOnly: true });
 
   if (key === undefined) return FALLBACK_BADGE;
   if (key === 'leadCount') {
-    return Array.isArray(leads.data) ? leads.data.length : FALLBACK_BADGE;
+    // Project-scoped count of NEW leads (the sidebar badge). A lead leaves
+    // NEW the moment anyone works it, so the badge clears as leads get
+    // attention. `useNewLeadsBadge` returns `{ newLeads }`; the badge shows
+    // that number (0 when the query hasn't resolved yet).
+    const n = newLeads.data?.newLeads;
+    return typeof n === 'number' ? n : FALLBACK_BADGE;
   }
   if (key === 'unreadNotifications') {
-    return Array.isArray(notifications.data)
-      ? notifications.data.length
-      : FALLBACK_BADGE;
+    // `useNotifications` returns `{ rows, total, unread }`. The badge should
+    // show the server-computed `unread` count, not the rows array length.
+    const unread = notifications.data?.unread;
+    return typeof unread === 'number' ? unread : FALLBACK_BADGE;
   }
   return FALLBACK_BADGE;
 }

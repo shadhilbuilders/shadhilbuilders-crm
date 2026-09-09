@@ -31,6 +31,7 @@
 // (verified in dist source).
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import {
@@ -54,8 +55,19 @@ export default function ChangePasswordPage() {
     defaultValues: { oldPassword: '', newPassword: '', confirmPassword: '' },
     mode: 'onSubmit',
   });
+  const [mounted, setMounted] = useState(false);
 
-  if (sessionPending) {
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // page → "Hydration failed because the server rendered HTML didn't match
+  // the client." Render the skeleton for the first client paint too, then
+  // swap after mount (same pattern as app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sessionPending) {
     return (
       <div
         role="status"

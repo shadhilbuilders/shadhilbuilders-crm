@@ -48,13 +48,28 @@ export type LeadSourceChartProps = {
  */
 export function LeadSourceChart({ data }: LeadSourceChartProps) {
   if (!Array.isArray(data)) return null;
-  const slices = (data as LeadSourceSlice[])
-    .filter((s) => s.count > 0)
-    .map((s, i) => ({
-      name: labelFor('source', s.source),
-      value: s.count,
-      fill: SOURCE_COLORS[i % SOURCE_COLORS.length],
-    }));
+  // Dedupe by friendly label: legacy rows may carry a humanized source
+  // ("Landing site") alongside the canonical enum ("LANDING"), which both
+  // render as the same label and would otherwise produce duplicate React
+  // keys. Merge their counts so the donut stays unique-keyed.
+  const byLabel = new Map<string, { name: string; value: number; fill: string }>();
+  let colorIndex = 0;
+  for (const s of data as LeadSourceSlice[]) {
+    if (typeof s?.count !== 'number' || s.count <= 0) continue;
+    const name = labelFor('source', s.source);
+    const existing = byLabel.get(name);
+    if (existing) {
+      existing.value += s.count;
+    } else {
+      byLabel.set(name, {
+        name,
+        value: s.count,
+        fill: SOURCE_COLORS[colorIndex % SOURCE_COLORS.length]!,
+      });
+      colorIndex += 1;
+    }
+  }
+  const slices = [...byLabel.values()];
   if (slices.length === 0) return null;
 
   return (

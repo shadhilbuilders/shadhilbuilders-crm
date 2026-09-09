@@ -112,4 +112,37 @@ export class UsersController {
   async list(@Req() req: AuthedRequest): Promise<CreatedUser[]> {
     return this.users.list(req.user!);
   }
+
+  /**
+   * GET /api/users/team - the actor's team + manager, for the chat
+   * mention picker. Unlike `list` (staff→self only), this returns the
+   * whole team so a telecaller can see + mention their manager and
+   * teammates. Route order matters: `team` must be declared BEFORE
+   * `:id/...` routes so it isn't captured as an id.
+   */
+  @Get('team')
+  @ApiOperation({
+    summary:
+      'List the actor team + manager (mention picker). ADMIN/OWNER: all; MANAGER: own team; staff: team + manager.',
+  })
+  async team(@Req() req: AuthedRequest): Promise<CreatedUser[]> {
+    return this.users.teamMembers(req.user!);
+  }
+
+  /**
+   * GET /api/users/project/:projectId/sales-execs - SALES_EXEC staff linked
+   * to a project, for the schedule-visit exec picker. Route order matters:
+   * declared before `:id/...` routes so it isn't captured as an id.
+   */
+  @Get('project/:projectId/sales-execs')
+  @ApiOperation({
+    summary:
+      'List SALES_EXEC staff linked to a project (MANAGER: own team; ADMIN/OWNER: all project execs).',
+  })
+  async projectSalesExecs(
+    @Req() req: AuthedRequest,
+    @Param('projectId') projectId: string,
+  ): Promise<CreatedUser[]> {
+    return this.users.projectSalesExecs(req.user!, projectId);
+  }
 }

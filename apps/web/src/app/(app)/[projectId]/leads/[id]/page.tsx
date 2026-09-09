@@ -22,7 +22,6 @@ import { LeadChatPane } from '@/components/shared/LeadChatPane';
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
-import { BackLink } from '@/components/shared/ModulePending';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import {
@@ -59,10 +58,8 @@ export default function LeadDetailPage() {
         ]}
       />
 
-      <BackLink href={projectHref(projectId, '/leads')} label="Back to inbox" />
-
       {leadQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,440px)]">
           <div className="space-y-4">
             <Skeleton variant="card" />
             <Skeleton variant="list" count={4} />
@@ -70,7 +67,7 @@ export default function LeadDetailPage() {
           <Skeleton variant="card" />
         </div>
       ) : lead !== undefined && lead !== null ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,440px)]">
           {/* Left - lead info + actions + timeline */}
           <div className="space-y-4">
             <LeadInfoCard lead={lead} />
@@ -83,12 +80,12 @@ export default function LeadDetailPage() {
             />
           </div>
 
-          {/* Right - embedded chat (permanently visible on desktop) */}
-          <aside className="border-border rounded-lg border">
-            <div className="border-border border-b px-4 py-2.5 text-xs font-semibold tracking-wide uppercase">
-              Chat
-            </div>
-            <LeadChatPane leadId={leadId} />
+          {/* Right - embedded chat (permanently visible on desktop).
+              LeadChatPane renders its own Card (border + rounding).
+              Cap the aside to the viewport + sticky so the composer is
+              always visible and the scroller can't grow the page. */}
+          <aside className="min-w-0 self-start overflow-hidden lg:sticky lg:top-24 lg:h-[calc(100dvh-14rem)]">
+            <LeadChatPane leadId={leadId} leadName={lead.name} />
           </aside>
         </div>
       ) : (

@@ -101,7 +101,7 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 /**
  * Lead-source values as stored in the DB (free-form uppercase strings,
- * not a Prisma enum). The Source column renders these via `labelFor('source', …)`
+ * not a Prisma enum). The Source column renders these via `labelFor('source', ...)`
  * so staff see "Magicbricks" not "MAGICBRICKS". Added 2026-09-08.
  */
 export const LEAD_SOURCES = [
@@ -119,7 +119,7 @@ export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 /**
  * Activity-timeline entry types (Prisma `Activity.type` enum). The lead
- * detail timeline renders these via `labelFor('activity', …)` so staff see
+ * detail timeline renders these via `labelFor('activity', ...)` so staff see
  * "Call" not "CALL". Added 2026-09-08 alongside the lead detail timeline.
  */
 export const ACTIVITY_TYPES = [

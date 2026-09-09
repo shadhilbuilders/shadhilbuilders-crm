@@ -389,4 +389,118 @@ export class UsersService {
     });
     return users;
   }
+
+  /**
+   * GET /api/users/project/:projectId/sales-execs - SALES_EXEC staff linked
+   * to a project, for the schedule-visit exec picker.
+   *
+   * The project→exec link is via lead ownership (Lead.projectId +
+   * Lead.ownerId) - there is no direct Project↔Team↔User relation in the
+   * schema. Scoping:
+   *   - MANAGER: only execs in the manager's own team (resolved via
+   *     Team.managerId) who own leads in this project.
+   *   - ADMIN/OWNER: all SALES_EXEC who own leads in this project.
+   *   - TELECALLER/SALES_EXEC: empty (they can't assign execs).
+   */
+  async projectSalesExecs(
+    actor: JwtPayload,
+    projectId: string,
+  ): Promise<CreatedUser[]> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER' && actor.role !== 'MANAGER') {
+      return [];
+    }
+
+    // Resolve the manager's team (JWT teamId is unreliable for managers).
+    let teamId: string | null = null;
+    if (actor.role === 'MANAGER') {
+      const team = await this.client.team.findFirst({
+        where: { managerId: actor.sub },
+        select: { id: true },
+      });
+      teamId = team?.id ?? '__none__';
+    }
+
+    // Distinct owners of this project's leads, optionally team-scoped.
+    const owners = await this.client.lead.findMany({
+      where: {
+        projectId,
+        ...(teamId !== null ? { teamId } : {}),
+      },
+      select: { ownerId: true },
+      distinct: ['ownerId'],
+    });
+    const ownerIds = owners.map((o) => o.ownerId);
+
+    if (ownerIds.length === 0) return [];
+
+    const execs = await this.client.user.findMany({
+      where: {
+        id: { in: ownerIds },
+        role: 'SALES_EXEC',
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        teamId: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    return execs;
+  }
+
+  /**
+   * GET /api/users/team - the actor's team + manager, for the chat
+   * mention picker. Unlike `list` (staff→self only), this returns the
+   * whole team so a telecaller can see + mention their manager and
+   * teammates. Scoping:
+   *   - OWNER/ADMIN: all users (they can mention anyone).
+   *   - MANAGER: their own team (resolved via Team.managerId).
+   *   - TELECALLER/SALES_EXEC: their team + the team's manager.
+   * Returns the same CreatedUser shape as `list`.
+   */
+  async teamMembers(actor: JwtPayload): Promise<CreatedUser[]> {
+    let where: Record<string, unknown>;
+    if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
+      where = {};
+    } else {
+      // Resolve the actor's team. Managers link via Team.managerId (JWT
+      // teamId is unreliable for them); staff carry teamId on the JWT.
+      let teamId: string | null = actor.teamId ?? null;
+      if (actor.role === 'MANAGER') {
+        const team = await this.client.team.findFirst({
+          where: { managerId: actor.sub },
+        });
+        teamId = team?.id ?? null;
+      }
+      if (teamId === null) {
+        // No team - the actor can only mention themselves.
+        return [];
+      }
+      // Team members + the team's manager (so staff can loop their
+      // manager even though the manager isn't a teamId member).
+      const team = await this.client.team.findUnique({
+        where: { id: teamId },
+        select: { managerId: true },
+      });
+      where = {
+        OR: [{ teamId }, { id: team?.managerId ?? '__none__' }],
+      };
+    }
+
+    const users = await this.client.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        teamId: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 200,
+    });
+    return users;
+  }
 }

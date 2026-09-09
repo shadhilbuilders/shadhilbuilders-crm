@@ -9,7 +9,7 @@
 // its page switches to live data with zero UI changes.
 //
 // T18 (PR2): when `isLoading`, render a shape-matched Skeleton instead of
-// the text "Loading {title}…". The Skeleton's cross-fade (T17) hides the
+// the text "Loading {title}...". The Skeleton's cross-fade (T17) hides the
 // swap so the user sees a smooth transition from shape to content.
 //
 // The state machine (CEO §1 P1) is unchanged:

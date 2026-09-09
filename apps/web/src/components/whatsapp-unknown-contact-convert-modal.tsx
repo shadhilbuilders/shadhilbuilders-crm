@@ -15,7 +15,7 @@
 //      (a) creates the Lead (manager assignment + audit log + RLS)
 //      (b) flips the contact's status to CONVERTED and sets
 //          convertedToLeadId
-//      …all inside ONE transaction. The UI does NOT call
+//      ...all inside ONE transaction. The UI does NOT call
 //      POST /api/leads separately - doing so would create a second Lead
 //      and violate the 1:1 contact→lead invariant.
 //
@@ -98,7 +98,12 @@ export function prefillNotes(row: WhatsappUnknownContactRow | null): string {
   const prefix = 'First message: ';
   const budget = NOTES_MAX - prefix.length;
   const trimmed =
-    body.length > budget ? body.slice(0, Math.max(0, budget - 1)) + '…' : body;
+    body.length > budget
+      ? // Reserve 3 chars for the '...' marker so prefix + body + '...'
+        // stays within NOTES_MAX (the -3, not -1, is what keeps the
+        // total ≤ 2000).
+        body.slice(0, Math.max(0, budget - 3)) + '...'
+      : body;
   return `${prefix}${trimmed}`;
 }
 
@@ -305,7 +310,7 @@ export function WhatsappUnknownContactConvertModal({
             type="submit"
             form="wa-unknown-convert-form"
             isLoading={convert.isPending}
-            loadingText="Converting…"
+            loadingText="Converting..."
             data-qa="wa-unknown-convert-submit"
           >
             Convert to lead

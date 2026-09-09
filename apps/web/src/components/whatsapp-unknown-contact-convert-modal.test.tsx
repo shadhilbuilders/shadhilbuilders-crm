@@ -77,7 +77,7 @@ describe('prefillNotes (T-E2b)', () => {
     expect(out.length).toBeLessThanOrEqual(NOTES_MAX);
     expect(out.startsWith('First message: ')).toBe(true);
     // The trailing ellipsis is the truncation marker.
-    expect(out.endsWith('…')).toBe(true);
+    expect(out.endsWith('...')).toBe(true);
   });
 });
 

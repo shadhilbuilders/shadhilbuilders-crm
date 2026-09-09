@@ -4,7 +4,7 @@
 // date/user/action/entity filters. Audit module (T-AUDIT, Pass 1)
 // returns `{ total, rows }` - useAuditLog unwraps (T-F1).
 import { Button } from '@paalstack/react-ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import { ModulePending } from '@/components/shared/ModulePending';
@@ -47,8 +47,19 @@ export default function AuditPage() {
   // offline and the list is loading, the skeleton surfaces a
   // "Will sync when online" hint.
   const isOnline = useOnlineStatus();
+  const [mounted, setMounted] = useState(false);
 
-  if (sessionPending) {
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // page → "Hydration failed because the server rendered HTML didn't match
+  // the client." Render the skeleton for the first client paint too, then
+  // swap after mount (same pattern as app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sessionPending) {
     return <Skeleton variant="user" className="py-24" />;
   }
   if (user === null || !canViewAudit(user.role)) {
@@ -183,7 +194,7 @@ function summarise(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const json = JSON.stringify(value);
   if (json === undefined) return null;
-  return json.length > 80 ? `${json.slice(0, 77)}…` : json;
+  return json.length > 80 ? `${json.slice(0, 77)}...` : json;
 }
 
 function AuditEmpty({

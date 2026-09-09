@@ -213,7 +213,7 @@ export function LeadEditDialog({
             type="submit"
             form={FORM_ID}
             isLoading={pending}
-            loadingText="Saving…"
+            loadingText="Saving..."
             data-qa="lead-edit-save"
           >
             Save changes

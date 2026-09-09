@@ -33,7 +33,7 @@ export const normalizeToWebP = async (blob: Blob, quality = 0.85): Promise<Blob>
  * environments), falls back to immediate execution.
  *
  * Returns a promise that resolves with the WebP blob. The caller can
- * show a "Saving…" state during the wait (the `PhotoStatusChip` from
+ * show a "Saving..." state during the wait (the `PhotoStatusChip` from
  * the design review uses this exact state).
  */
 export const normalizeOnIdle = async (blob: Blob, quality = 0.85): Promise<Blob> => {

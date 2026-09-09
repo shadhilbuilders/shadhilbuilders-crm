@@ -4,7 +4,7 @@
 // header shape: breadcrumb on top, page title + optional action
 // underneath, separated from page content by a border. Pages already
 // have an inline `<Heading>` + `<TypographyP>` div; this component
-// replaces that with a single `<PageHeader title="…" breadcrumb={…}>`
+// replaces that with a single `<PageHeader title="..." breadcrumb={...}>`
 // call so the breadcrumb wiring is one place instead of five.
 //
 // Lives under `app/` (not `components/`) because the breadcrumb

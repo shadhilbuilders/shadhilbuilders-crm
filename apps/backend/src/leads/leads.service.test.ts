@@ -252,3 +252,39 @@ describe('listWhere - filter chips compose with role scoping', () => {
     ]);
   });
 });
+
+describe('badgeCount - project-scoped NEW-lead count (sidebar badge)', () => {
+  function makeBadgeService(count: number) {
+    // badgeCount runs inside withRlsContext, which calls $transaction
+    // (to SET LOCAL) then invokes the callback with a tx that has
+    // $queryRaw. Stub both.
+    const queryRaw = vi.fn().mockResolvedValue([{ c: BigInt(count) }]);
+    const tx = {
+      $queryRaw: queryRaw,
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      team: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const fakeClient = {
+      $transaction: vi.fn(async (fn: (t: unknown) => Promise<unknown>) => fn(tx)),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      team: { findFirst: vi.fn().mockResolvedValue(null) },
+    } as never;
+    const prismaService = { $client: fakeClient } as never;
+    const service = new LeadsService(prismaService);
+    return { service, queryRaw };
+  }
+
+  it('returns the NEW-lead count for the project', async () => {
+    const { service, queryRaw } = makeBadgeService(5);
+    const result = await service.badgeCount(admin as never, 'proj-1');
+    expect(result).toEqual({ newLeads: 5 });
+    // The query must filter to NEW state.
+    expect(queryRaw).toHaveBeenCalled();
+  });
+
+  it('returns 0 when the count query resolves to no rows', async () => {
+    const { service } = makeBadgeService(0);
+    const result = await service.badgeCount(admin as never, 'proj-1');
+    expect(result).toEqual({ newLeads: 0 });
+  });
+});

@@ -705,7 +705,7 @@ without buffering. Path allowlist (only `ping | healthz | notifications
 
 Exponential backoff 1s → 2s → 4s → 8s → max 30s, re-minting the
 ticket on each new connection (single-use tickets are consumed on
-connect). UI shows a "Reconnecting…" pill during outage.
+connect). UI shows a "Reconnecting..." pill during outage.
 
 ---
 

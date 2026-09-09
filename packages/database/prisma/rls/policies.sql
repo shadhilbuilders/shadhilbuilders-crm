@@ -175,6 +175,17 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
     )
   );
 
+-- T-VISIT-ADMIN-INSERT (2026-09-09): allow ADMIN (and OWNER, which downcasts
+-- to ADMIN at the RLS layer) to INSERT a SiteVisit for ANY lead. Mirrors
+-- lead_insert_admin (2026-09-08) and message_insert_admin (2026-09-09).
+-- Seed ADMIN/OWNER carry teamId=null -> app.user_team_id='' -> the
+-- site_visit_write_team WITH CHECK (l.teamId = '') rejects admin inserts.
+-- Postgres OR's overlapping FOR INSERT policies: MANAGER still gets
+-- team-equality enforcement, TELECALLER/SALES_EXEC still gate on ownerId.
+CREATE POLICY site_visit_insert_admin ON "SiteVisit"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
 -- ── Message (team-scoped via lead) ─────────────────────────────────────────
 ALTER TABLE "Message" ENABLE ROW LEVEL SECURITY;
 

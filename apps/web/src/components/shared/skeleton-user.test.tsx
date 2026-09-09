@@ -1,7 +1,7 @@
 // T23 (PR3) - UserSkeleton rendered while `isPending`.
 //
 // Per the locked decisions: signed-out / signed-in transitions
-// render UserSkeleton, not "Loading…" text. This file pins the
+// render UserSkeleton, not "Loading..." text. This file pins the
 // behavior on the topbar (`app-header.tsx`) and the sidebar
 // footer (`app-shell.tsx`) - both call sites now render
 // `<Skeleton variant="user" />` while the session is resolving.
@@ -24,11 +24,14 @@ describe('UserSkeleton - T23 contract', () => {
     expect(html).toContain('h-3 w-20');
   });
 
-  it('user variant does NOT leak "Loading…" copy', () => {
-    // Regression guard: the original text was "Loading…" - the
+  it('user variant does NOT leak "Loading..." copy', () => {
+    // Regression guard: the original text was "Loading..." - the
     // entire point of T23 is that we don't surface it anymore.
+    // The dots must be ESCAPED: `Loading...` as a regex would match
+    // `Loading user` (`.` = any char), which is the valid aria-label
+    // on the skeleton. Escaping pins the literal three-dot copy.
     const html = renderToStaticMarkup(<Skeleton variant="user" />);
-    expect(html).not.toMatch(/Loading…/);
+    expect(html).not.toMatch(/Loading\.\.\./);
   });
 
   it('user variant has the a11y contract (aria-busy=true)', () => {
