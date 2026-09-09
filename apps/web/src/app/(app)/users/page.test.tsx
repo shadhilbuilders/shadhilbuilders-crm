@@ -41,6 +41,12 @@ const mocks = vi.hoisted(() => ({
   })),
   useUpdateUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useDeleteUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useTeams: vi.fn(() => ({
+    data: [
+      { id: 't-1', name: 'Team Alpha', defaultAssigneeId: null, memberCount: 0 },
+    ],
+    isLoading: false,
+  })),
 }));
 
 vi.mock('@/hooks/queries/users', () => ({
@@ -49,6 +55,10 @@ vi.mock('@/hooks/queries/users', () => ({
   useChangeUserRole: mocks.useChangeUserRole,
   useUpdateUser: mocks.useUpdateUser,
   useDeleteUser: mocks.useDeleteUser,
+}));
+
+vi.mock('@/hooks/queries/teams', () => ({
+  useTeams: mocks.useTeams,
 }));
 
 vi.mock('@/lib/session', () => ({

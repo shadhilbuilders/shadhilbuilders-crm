@@ -58,6 +58,7 @@ import {
   useUsers,
   type BackendCreatedUser,
 } from '@/hooks/queries/users';
+import { useTeams } from '@/hooks/queries/teams';
 import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
 import {
@@ -111,6 +112,10 @@ export default function UsersPage() {
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
   const changeRole = useChangeUserRole();
+  // Team registry for the create dialog - ADMIN/OWNER sees every team so
+  // they can link a new TELECALLER/SALES_EXEC to one (the backend rejects
+  // staff users without a teamId). MANAGER's team is auto-resolved server-side.
+  const teamsQuery = useTeams();
   const [createOpen, setCreateOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -248,6 +253,9 @@ export default function UsersPage() {
                 creatableRoles={[...creatableRoles]}
                 createUser={createUser}
                 onDone={() => setCreateOpen(false)}
+                showTeamField={isAdminLike(user.role)}
+                teams={teamsQuery.data ?? []}
+                teamsLoading={teamsQuery.isLoading}
               />
             </Dialog>
           }
@@ -870,17 +878,25 @@ function ChangeRoleDialog({
 // Client-side validation IS the server contract: CreateUserDtoSchema in
 // packages/api-types/src/auth.ts (name/email/password rules + role enum).
 // The server re-validates the same shape and surfaces errors verbatim via
-// toast. teamId is optional and omitted - the server resolves it by role.
+// toast. teamId is optional in the schema but the service REQUIRES it when
+// role is TELECALLER/SALES_EXEC (an admin creating staff without a team =
+// "teamId is required"). The dialog shows the Team field only for staff roles.
 type CreateUserFormValues = z.infer<typeof CreateUserDtoSchema>;
 
 function CreateUserForm({
   creatableRoles,
   createUser,
   onDone,
+  showTeamField,
+  teams,
+  teamsLoading,
 }: {
   creatableRoles: string[];
   createUser: ReturnType<typeof useCreateUser>;
   onDone: () => void;
+  showTeamField: boolean;
+  teams: { id: string; name: string }[];
+  teamsLoading: boolean;
 }) {
   const form = useForm<CreateUserFormValues>({
     resolver: zodResolver(CreateUserDtoSchema),
@@ -889,17 +905,40 @@ function CreateUserForm({
       email: '',
       password: '',
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
+      teamId: '',
     },
     mode: 'onSubmit',
   });
 
+  // Watch the role so the Team field appears only for staff (and a MANAGER
+  // being created auto-creates its own team, so no team picker needed).
+  const selectedRole = form.watch('role');
+
   function onSubmit(values: CreateUserFormValues) {
-    // zodResolver already validated name/email/password/role, so no manual
-    // checks needed here. The payload is CreateUserDto-shaped (teamId is
-    // optional and omitted - the server resolves it by role).
-    createUser.mutate(
-      { name: values.name, email: values.email, password: values.password, role: values.role },
-      {
+    // The payload is CreateUserDto-shaped. teamId is sent only when a staff
+    // user is being created (the field is present) - the server auto-creates
+    // a team for MANAGER and requires one for TELECALLER/SALES_EXEC.
+    const payload: {
+      name: string;
+      email: string;
+      password: string;
+      role: Role;
+      teamId?: string;
+    } = {
+      name: values.name,
+      email: values.email,
+      password: values.password,
+      role: values.role,
+    };
+    const needsTeam = values.role === 'TELECALLER' || values.role === 'SALES_EXEC';
+    if (needsTeam) {
+      if (!values.teamId) {
+        toast.error('Please select a team for this user.');
+        return;
+      }
+      payload.teamId = values.teamId;
+    }
+    createUser.mutate(payload, {
         onSuccess: () => {
           toast.success(`User ${values.name} created`);
           onDone();
@@ -963,6 +1002,24 @@ function CreateUserForm({
       selectProps: { 'data-qa': 'create-user-role' },
     },
   ];
+
+  // Team field - shown only when creating a STAFF user (TELECALLER/SALES_EXEC)
+  // so the user is linked to a team. The backend rejects staff users without
+  // a teamId; MANAGER auto-creates a team and ADMIN/OWNER users aren't
+  // created with a team here.
+  const isStaffRole =
+    selectedRole === 'TELECALLER' || selectedRole === 'SALES_EXEC';
+  if (showTeamField && isStaffRole) {
+    fields.push({
+      type: 'select',
+      name: 'teamId',
+      label: 'Team',
+      required: true,
+      placeholder: teamsLoading ? 'Loading teams...' : 'Select a team',
+      options: teams.map((team) => ({ value: team.id, label: team.name })),
+      selectProps: { 'data-qa': 'create-user-team' },
+    });
+  }
 
   return (
     <Form
