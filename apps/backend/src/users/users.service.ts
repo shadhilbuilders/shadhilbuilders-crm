@@ -26,9 +26,9 @@ import {
 } from '@nestjs/common';
 import { withRlsContext, type Role, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto } from '@shadhil/api-types';
+import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
-import { assertCanCreateRole, assertCanChangeRole, OWNER } from './roles';
+import { assertCanCreateRole, assertCanChangeRole, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 export interface CreatedUser {
@@ -252,6 +252,135 @@ export class UsersService {
   }
 
   /**
+   * PATCH /api/users/:id - edit a user's name/email (autoplan 2026-09-09).
+   * Hierarchy-gated: the actor must strictly outrank the target (no
+   * self-edit, OWNER protected). Mirrors the changeRole guards.
+   */
+  async update(
+    actor: JwtPayload,
+    targetUserId: string,
+    dto: UpdateUserDto,
+  ): Promise<CreatedUser> {
+    // 1. Target must exist.
+    const target = await this.client.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) {
+      throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+
+    // 2. No self-edit (an admin shouldn't rename their own account here;
+    //    self-profile editing is a separate surface).
+    if (target.id === actor.sub) {
+      throw new ForbiddenException('You cannot edit your own user');
+    }
+
+    // 3. Hierarchy: actor must strictly outrank the target. OWNER is
+    //    protected (nobody outranks it).
+    if (!outranks(actor.role, target.role as Role)) {
+      throw new ForbiddenException(
+        `${actor.role} cannot edit a ${target.role} user`,
+      );
+    }
+
+    // 4. Apply the update (only the provided fields).
+    const data: { name?: string; email?: string } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.email !== undefined) data.email = dto.email;
+
+    const updated = await this.client.user.update({
+      where: { id: target.id },
+      data,
+    });
+
+    // 5. Audit row in the actor's RLS context.
+    await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.update',
+            entityType: 'User',
+            entityId: target.id,
+            before: { name: target.name, email: target.email },
+            after: { name: updated.name, email: updated.email },
+            reason: `user.update by ${actor.email} (${actor.role})`,
+          },
+        });
+      },
+    );
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role,
+      teamId: updated.teamId,
+    };
+  }
+
+  /**
+   * DELETE /api/users/:id - remove a user (autoplan 2026-09-09).
+   * Hierarchy-gated: the actor must strictly outrank the target (no
+   * self-delete, OWNER protected). Also deletes the credential Account row
+   * so the user can't sign in.
+   */
+  async remove(
+    actor: JwtPayload,
+    targetUserId: string,
+  ): Promise<{ ok: true }> {
+    // 1. Target must exist.
+    const target = await this.client.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) {
+      throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+
+    // 2. No self-delete.
+    if (target.id === actor.sub) {
+      throw new ForbiddenException('You cannot delete your own user');
+    }
+
+    // 3. Hierarchy: actor must strictly outrank the target. OWNER is
+    //    protected (nobody outranks it).
+    if (!outranks(actor.role, target.role as Role)) {
+      throw new ForbiddenException(
+        `${actor.role} cannot delete a ${target.role} user`,
+      );
+    }
+
+    // 4. Delete the credential Account row (so the user can't sign in),
+    //    then the User row. Bare client (auth tables have no RLS).
+    await this.client.account.deleteMany({
+      where: { accountId: target.id },
+    });
+    await this.client.user.delete({ where: { id: target.id } });
+
+    // 5. Audit row in the actor's RLS context.
+    await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.delete',
+            entityType: 'User',
+            entityId: target.id,
+            before: { name: target.name, email: target.email, role: target.role },
+            reason: `user.delete by ${actor.email} (${actor.role})`,
+          },
+        });
+      },
+    );
+
+    return { ok: true };
+  }
+
+  /**
    * T-S hardening (2026-09-04, Week 5):
    * POST /api/users/:id/change-password
    *
@@ -359,7 +488,7 @@ export class UsersService {
     return { ok: true, mustChangePassword: false };
   }
 
-  async list(actor: JwtPayload): Promise<CreatedUser[]> {
+  async list(actor: JwtPayload, filter: UserFilterDto = { limit: 50, offset: 0 }): Promise<UserListResult> {
     // Manager scoping resolves TEAM.managerId, same as create() - the JWT
     // teamId claim is unreliable for managers (seed keeps it null).
     // OWNER and ADMIN see all.
@@ -375,19 +504,48 @@ export class UsersService {
       where = { id: actor.sub };
     }
 
-    const users = await this.client.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        teamId: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    return users;
+    // Server-driven role filter (autoplan 2026-09-09): the UI's MultiSelect
+    // sends ?role=SALES_EXEC,TELECALLER; apply it as a WHERE role IN (...)
+    // so filtering works across the whole list, not just the loaded page.
+    if (filter.role !== undefined) {
+      const roles = Array.isArray(filter.role) ? filter.role : [filter.role];
+      where = { ...where, role: { in: roles } };
+    }
+
+    // Server-side search (autoplan 2026-09-09): the toolbar search input
+    // sends ?search=...; match name OR email case-insensitively so search
+    // works across the whole list, not just the loaded page.
+    if (filter.search !== undefined && filter.search.length > 0) {
+      where = {
+        ...where,
+        OR: [
+          { name: { contains: filter.search, mode: 'insensitive' } },
+          { email: { contains: filter.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+
+    // Server-side pagination (T-SRVPG, mirrors leads): the DataTable
+    // paginates client-side over the loaded page, which is wrong for large
+    // sets. The page passes limit/offset and the service applies them in the
+    // SQL, returning { rows, total } so the pagination control stays honest.
+    const [rows, total] = await Promise.all([
+      this.client.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          teamId: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: filter.offset,
+        take: filter.limit,
+      }),
+      this.client.user.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   /**

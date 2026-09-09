@@ -1,11 +1,23 @@
 // Project dashboard page test - real-data wiring (autoplan 2026-09-08).
 //
 // Pins: real KPI values render from useDashboardStats (not placeholders),
-// and the new charts receive the aggregate data. Uses renderToStaticMarkup
-// per the standing rule (apps/web has no @testing-library/react). The hook
-// layer is mocked via vi.mock so the page renders with deterministic data.
-import { renderToStaticMarkup } from 'react-dom/server';
+// and the new charts receive the aggregate data.
+//
+// The page has a `mounted` gate (`if (!mounted || sessionPending) return
+// <Skeleton/>`) where `mounted` flips true only in `useEffect`. Under
+// `renderToStaticMarkup` effects never run, so `mounted` stays false and the
+// page renders Skeleton for every test. Fix: MOUNT the page with
+// `createRoot` + `act` (which runs effects) - the same pattern as
+// `use-nav-sync.test.tsx` and the users page test. This keeps the page code
+// unchanged and tests the real render path.
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// `globalThis.IS_REACT_ACT_ENVIRONMENT` tells React this is a test env so
+// `act` works with a raw createRoot (no @testing-library/react in this app).
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true;
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: vi.fn(() => ({ user: { name: 'Demo Manager', role: 'MANAGER' }, isPending: false })),
@@ -58,26 +70,50 @@ const STATS = {
   bookingsByStatus: [{ status: 'HOLD', count: 1 }],
 };
 
-afterEach(() => {
+let container: HTMLDivElement | null = null;
+let root: Root | null = null;
+
+async function mount(): Promise<void> {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(<DashboardPage />);
+  });
+}
+
+async function unmount(): Promise<void> {
+  await act(async () => {
+    root?.unmount();
+  });
+  root = null;
+  container?.remove();
+  container = null;
+}
+
+afterEach(async () => {
+  await unmount();
   vi.clearAllMocks();
 });
 
 describe('DashboardPage - real-data wiring (autoplan 2026-09-08)', () => {
-  it('renders real KPI values (not placeholders) for a MANAGER', () => {
+  it('renders real KPI values (not placeholders) for a MANAGER', async () => {
     mockedUseDashboardStats.mockReturnValue({
       data: STATS,
       isLoading: false,
       error: null,
     } as never);
 
-    const html = renderToStaticMarkup(<DashboardPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     // Real KPI numbers render.
     expect(html).toContain('New leads today');
     expect(html).toContain('5');
     expect(html).toContain('Overdue leads');
     expect(html).toContain('2');
-    // Apostrophe is HTML-escaped in renderToStaticMarkup.
-    expect(html).toContain('Today&#x27;s visits');
+    // Apostrophe is a literal character in a real DOM mount (createRoot+act),
+    // unlike renderToStaticMarkup which HTML-escapes it to &#x27;.
+    expect(html).toContain("Today's visits");
     expect(html).toContain('3');
     expect(html).toContain('Bookings on hold');
     expect(html).toContain('1');
@@ -89,27 +125,29 @@ describe('DashboardPage - real-data wiring (autoplan 2026-09-08)', () => {
     expect(html).not.toContain('Conversion funnel');
   });
 
-  it('shows a KPI skeleton while stats are loading', () => {
+  it('shows a KPI skeleton while stats are loading', async () => {
     mockedUseDashboardStats.mockReturnValue({
       data: undefined,
       isLoading: true,
       error: null,
     } as never);
 
-    const html = renderToStaticMarkup(<DashboardPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     // The KPI strip is replaced by a shape-matched skeleton while loading.
     expect(html).toContain('data-skeleton-variant="kpi"');
     expect(html).toContain('aria-label="Loading kpi"');
   });
 
-  it('shows an error banner when the stats query fails', () => {
+  it('shows an error banner when the stats query fails', async () => {
     mockedUseDashboardStats.mockReturnValue({
       data: undefined,
       isLoading: false,
       error: new Error('API 500: Internal Server Error'),
     } as never);
 
-    const html = renderToStaticMarkup(<DashboardPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     expect(html).toContain('Dashboard data unavailable');
     expect(html).toContain('API 500: Internal Server Error');
   });

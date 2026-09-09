@@ -16,12 +16,14 @@ import {
   BOOKING_STATUSES,
   LEAD_SOURCES,
   ACTIVITY_TYPES,
+  ROLES,
   type LeadStatus,
   type VisitOutcome,
   type InventoryStatus,
   type BookingStatus,
   type LeadSource,
   type ActivityType,
+  type RoleLabel,
 } from '@/lib/labels';
 
 describe('lib/labels', () => {
@@ -168,6 +170,30 @@ describe('lib/labels', () => {
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('activity', enumValue)).toBe(expected);
+      }
+    });
+  });
+
+  describe('ROLES - every role value has a friendly label', () => {
+    it.each(ROLES)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('role', value);
+      expect(label.length).toBeGreaterThan(0);
+      // Reject the raw enum leaking to the UI.
+      expect(label).not.toBe(value);
+      // Reject ALL_CAPS or SHOUTY_SNAKE.
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('contains the explicit role mappings', () => {
+      const expectations: Record<RoleLabel, string> = {
+        OWNER: 'Owner',
+        ADMIN: 'Admin',
+        MANAGER: 'Manager',
+        SALES_EXEC: 'Sales Executive',
+        TELECALLER: 'Telecaller',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('role', enumValue)).toBe(expected);
       }
     });
   });

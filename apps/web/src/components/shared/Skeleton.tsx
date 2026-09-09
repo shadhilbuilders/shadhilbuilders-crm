@@ -44,6 +44,7 @@ export type SkeletonVariant =
   | 'list'
   | 'card'
   | 'user'
+  | 'users'
   | 'projectSwitcher'
   | 'text';
 
@@ -85,6 +86,13 @@ export const SKELETON_SHAPES = {
   list: { count: 6, item: { avatar: 'h-9 w-9', lines: 2 } },
   card: { count: 1, shape: 'h-32 w-full rounded-lg' },
   user: { count: 1, avatar: 'h-10 w-10', lines: 2 },
+  users: {
+    count: 1,
+    header: { title: 'h-6 w-24', subtitle: 'h-4 w-56' },
+    toolbar: { search: 'h-9 w-64', filter: 'h-9 w-40', create: 'h-9 w-32' },
+    rows: 5,
+    cols: 4,
+  },
   projectSwitcher: {
     count: 1,
     icon: 'h-8 w-8',
@@ -274,6 +282,53 @@ export function Skeleton({
             <div className="flex-1 space-y-2">
               <LibSkeleton className="h-3 w-32" />
               <LibSkeleton className="h-3 w-20" />
+            </div>
+          </div>
+        );
+
+      case 'users':
+        // Dedicated users-page skeleton (autoplan 2026-09-09): mirrors the
+        // real page layout - PageHeader (title + subtitle), then a DataTable
+        // with a toolbar (search + role filter + create button) and a table
+        // body of rows. Replaces the generic `variant="user"` avatar row
+        // that was a poor fit for a full page.
+        return (
+          <div className="space-y-6" data-qa="skeleton-users">
+            {/* PageHeader */}
+            <div className="space-y-2">
+              <LibSkeleton className={SKELETON_SHAPES.users.header.title} />
+              <LibSkeleton className={SKELETON_SHAPES.users.header.subtitle} />
+            </div>
+            {/* DataTable: toolbar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <LibSkeleton className={SKELETON_SHAPES.users.toolbar.search} />
+              <LibSkeleton className={SKELETON_SHAPES.users.toolbar.filter} />
+              <LibSkeleton
+                className={`${SKELETON_SHAPES.users.toolbar.create} ml-auto`}
+              />
+            </div>
+            {/* DataTable: body */}
+            <div
+              className="border-border overflow-x-auto rounded-lg border"
+              data-qa="skeleton-users-table"
+            >
+              {Array.from({ length: SKELETON_SHAPES.users.rows }).map(
+                (_, index) => (
+                  <div
+                    key={index}
+                    className="border-border flex gap-4 border-b px-4 py-3 last:border-b-0"
+                  >
+                    {Array.from({ length: SKELETON_SHAPES.users.cols }).map(
+                      (_, colIndex) => (
+                        <LibSkeleton
+                          key={colIndex}
+                          className="h-10 flex-1"
+                        />
+                      ),
+                    )}
+                  </div>
+                ),
+              )}
             </div>
           </div>
         );

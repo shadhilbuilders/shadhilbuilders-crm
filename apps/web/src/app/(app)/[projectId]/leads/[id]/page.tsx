@@ -127,7 +127,7 @@ function LeadInfoCard({ lead }: { lead: LeadDetail }) {
               <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                 {row.label}
               </dt>
-              <dd className="text-sm">{row.value ?? '—'}</dd>
+              <dd className="text-sm">{row.value ?? '-'}</dd>
             </div>
           ))}
           <div className="flex items-baseline justify-between gap-2">
@@ -217,7 +217,7 @@ function LeadTimeline({
 
 /** Format an ISO datetime for the timeline / info card. */
 function formatDateTime(iso: string): string {
-  if (typeof iso !== 'string' || iso.length === 0) return '—';
+  if (typeof iso !== 'string' || iso.length === 0) return '-';
   const raw = dateIntl.formatDateTime(iso);
-  return raw.length === 0 ? '—' : raw;
+  return raw.length === 0 ? '-' : raw;
 }

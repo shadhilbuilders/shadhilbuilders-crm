@@ -11,7 +11,7 @@
 // Data-confidence honesty (autoplan 2026-09-08, CEO F3): metrics that depend
 // on data the team may not produce yet (avgTimeToFirstTouch from Activity,
 // noShowRate from visit outcomes) return null/0 HONESTLY - never a fabricated
-// number. The UI renders "—"/0 and the sub-label explains "no outcome data yet".
+// number. The UI renders "-"/0 and the sub-label explains "no outcome data yet".
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';

@@ -77,6 +77,37 @@ export const CreateUserDtoSchema = SignupDtoSchema.extend({
 export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
 
 /**
+ * Query filter for GET /api/users - the Users admin page. `role` accepts an
+ * array so the UI can filter "show me SALES_EXEC + TELECALLER". The server
+ * applies it as a WHERE role IN (...) inside the existing role-scoped query.
+ * `limit`/`offset` drive server-side pagination (T-SRVPG, mirrors leads).
+ */
+export const UserFilterDtoSchema = z.object({
+  role: z
+    .union([RoleSchema, z.array(RoleSchema)])
+    .optional(),
+  search: z.string().trim().min(1).max(120).optional(),
+  limit: z.number().int().min(1).max(200).default(50),
+  offset: z.number().int().min(0).default(0),
+});
+export type UserFilterDto = z.infer<typeof UserFilterDtoSchema>;
+
+/** Paginated response for GET /api/users (mirrors LeadListResult). */
+export const UserListResultSchema = z.object({
+  rows: z.array(
+    z.object({
+      id: z.string(),
+      email: z.string(),
+      name: z.string(),
+      role: RoleSchema,
+      teamId: z.string().nullable(),
+    }),
+  ),
+  total: z.number().int().nonnegative(),
+});
+export type UserListResult = z.infer<typeof UserListResultSchema>;
+
+/**
  * PATCH /api/users/:id/role - role change (Round 20, rename 21). OWNER
  * can change anyone into anything (except into/out of OWNER); ADMIN can
  * change MANAGER/TELECALLER/SALES_EXEC into MANAGER/TELECALLER/SALES_EXEC;
@@ -87,6 +118,18 @@ export const ChangeRoleDtoSchema = z.object({
   role: RoleSchema,
 });
 export type ChangeRoleDto = z.infer<typeof ChangeRoleDtoSchema>;
+
+/**
+ * PATCH /api/users/:id - edit a user's name/email (autoplan 2026-09-09).
+ * Hierarchy-gated in the service: the actor must strictly outrank the
+ * target (no self-edit, OWNER protected). `name`/`email` are optional so a
+ * caller can update just one field.
+ */
+export const UpdateUserDtoSchema = z.object({
+  name: nameSchema.optional(),
+  email: emailSchema.optional(),
+});
+export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
 
 /**
  * Verified JWT claims. Populated by NestJS after `jose.jwtVerify` on the

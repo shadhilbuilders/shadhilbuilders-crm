@@ -7,7 +7,7 @@
 //
 // The page owns `weekStart` (its Prev/Next buttons shift it). That value is
 // passed in here as the calendar's controlled `selectedDate`, so the page's
-// Prev/Next drive BOTH the fetch range (from/to) AND the calendar view —
+// Prev/Next drive BOTH the fetch range (from/to) AND the calendar view -
 // otherwise the buttons would refetch data but the view wouldn't move.
 import { useMemo, useState } from 'react';
 

@@ -150,7 +150,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   // ── admin group (role-gated by canManageUsers / canViewAudit) ─────────
   // Admin/owner command center (dashboard split, 2026-09-08). Cross-project
-  // overview at the top-level /overview — NOT project-scoped, so it resolves
+  // overview at the top-level /overview - NOT project-scoped, so it resolves
   // unscoped via `navItemHref` (scoped:false). Distinct from the work
   // "Dashboard" item above, which stays /{projectId}/dashboard.
   {

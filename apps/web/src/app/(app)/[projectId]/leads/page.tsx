@@ -222,12 +222,12 @@ function LeadInboxPageInner() {
             <TooltipContent side="right" className="max-w-64">
               <div className="space-y-1.5 text-xs">
                 <p>
-                  <span className="font-medium">Overdue</span> — NEW leads that
+                  <span className="font-medium">Overdue</span> - NEW leads that
                   haven't been contacted within 30 minutes of creation (the
                   time-to-first-touch SLA).
                 </p>
                 <p>
-                  <span className="font-medium">New today</span> — leads created
+                  <span className="font-medium">New today</span> - leads created
                   today that are still in the NEW state.
                 </p>
               </div>

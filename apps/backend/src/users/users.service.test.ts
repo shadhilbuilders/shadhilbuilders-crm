@@ -387,3 +387,325 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     expect(mocks.userFindMany).not.toHaveBeenCalled();
   });
 });
+
+describe('list - role facet filter + server pagination (autoplan 2026-09-09)', () => {
+  function makeListService() {
+    const teamFindFirst = vi.fn();
+    const userFindMany = vi.fn();
+    const userCount = vi.fn();
+    const fakeClient = {
+      team: { findFirst: teamFindFirst },
+      user: { findMany: userFindMany, count: userCount },
+    } as never;
+    const prismaService = { $client: fakeClient } as never;
+    return {
+      service: new UsersService(prismaService),
+      mocks: { teamFindFirst, userFindMany, userCount },
+    };
+  }
+
+  it('ADMIN with no filter → no role WHERE clause, default limit/offset', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor);
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, skip: 0, take: 50 }),
+    );
+    expect(mocks.userCount).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
+  });
+
+  it('ADMIN with a single role → WHERE role IN ([role])', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor, { role: 'SALES_EXEC', limit: 50, offset: 0 });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { role: { in: ['SALES_EXEC'] } },
+      }),
+    );
+  });
+
+  it('ADMIN with multiple roles → WHERE role IN ([...])', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor, {
+      role: ['SALES_EXEC', 'TELECALLER'],
+      limit: 50,
+      offset: 0,
+    });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { role: { in: ['SALES_EXEC', 'TELECALLER'] } },
+      }),
+    );
+  });
+
+  it('MANAGER with a role filter → team scope AND role IN ([...])', async () => {
+    const { service, mocks } = makeListService();
+    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(managerActor, { role: 'TELECALLER', limit: 50, offset: 0 });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { teamId: 'team-mgr', role: { in: ['TELECALLER'] } },
+      }),
+    );
+  });
+
+  it('applies skip/take from the filter (server pagination)', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor, { limit: 10, offset: 20 });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 20, take: 10 }),
+    );
+  });
+
+  it('applies a name/email OR search clause', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor, { search: 'priya', limit: 50, offset: 0 });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: 'priya', mode: 'insensitive' } },
+            { email: { contains: 'priya', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('combines role filter + search + pagination', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(adminActor, {
+      role: 'SALES_EXEC',
+      search: 'priya',
+      limit: 10,
+      offset: 20,
+    });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          role: { in: ['SALES_EXEC'] },
+          OR: [
+            { name: { contains: 'priya', mode: 'insensitive' } },
+            { email: { contains: 'priya', mode: 'insensitive' } },
+          ],
+        },
+        skip: 20,
+        take: 10,
+      }),
+    );
+  });
+
+  it('returns { rows, total } envelope', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([
+      { id: 'u1', email: 'a@x', name: 'A', role: 'ADMIN', teamId: null },
+    ]);
+    mocks.userCount.mockResolvedValue(1);
+    const result = await service.list(adminActor, { limit: 50, offset: 0 });
+    expect(result).toEqual({
+      rows: [{ id: 'u1', email: 'a@x', name: 'A', role: 'ADMIN', teamId: null }],
+      total: 1,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// update (PATCH /api/users/:id) + remove (DELETE /api/users/:id)
+// Hierarchy-gated: actor must strictly outrank the target; no self-actions;
+// OWNER protected. Mirrors the changeRole guards.
+// ---------------------------------------------------------------------------
+
+interface ManageStubOptions {
+  target?: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    teamId: string | null;
+  } | null;
+}
+
+function makeManageService(opts: ManageStubOptions = {}) {
+  const userFindUnique = vi
+    .fn()
+    .mockResolvedValue(
+      opts.target === undefined
+        ? {
+            id: 'u-priya',
+            email: 'priya@x',
+            name: 'Priya',
+            role: 'SALES_EXEC',
+            teamId: 't-1',
+          }
+        : opts.target,
+    );
+  const userUpdate = vi.fn().mockResolvedValue({
+    id: 'u-priya',
+    email: 'priya@x',
+    name: 'Priya',
+    role: 'SALES_EXEC',
+    teamId: 't-1',
+  });
+  const userDelete = vi.fn().mockResolvedValue({});
+  const accountDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
+  const auditCreate = vi.fn().mockResolvedValue({});
+  const txMock = {
+    auditLog: { create: auditCreate },
+    $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+  };
+  const fakeClient = {
+    user: {
+      findUnique: userFindUnique,
+      update: userUpdate,
+      delete: userDelete,
+    },
+    account: { deleteMany: accountDeleteMany },
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb(txMock),
+  } as never;
+  const prismaService = { $client: fakeClient } as never;
+  return {
+    service: new UsersService(prismaService),
+    mocks: {
+      userFindUnique,
+      userUpdate,
+      userDelete,
+      accountDeleteMany,
+      auditCreate,
+    },
+  };
+}
+
+describe('update - PATCH /api/users/:id (hierarchy-gated)', () => {
+  it('ADMIN edits a SALES_EXEC → updates name/email + writes audit', async () => {
+    const { service, mocks } = makeManageService();
+    const result = await service.update(adminActor, 'u-priya', {
+      name: 'Priya New',
+      email: 'priya.new@x',
+    });
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u-priya' },
+      data: { name: 'Priya New', email: 'priya.new@x' },
+    });
+    expect(result).toEqual({
+      id: 'u-priya',
+      email: 'priya@x',
+      name: 'Priya',
+      role: 'SALES_EXEC',
+      teamId: 't-1',
+    });
+    expect(mocks.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'user.update' }),
+      }),
+    );
+  });
+
+  it('ADMIN editing self → 403 ForbiddenException', async () => {
+    const { service } = makeManageService({
+      target: {
+        id: adminActor.sub,
+        email: 'admin@x',
+        name: 'Admin',
+        role: 'ADMIN',
+        teamId: null,
+      },
+    });
+    await expect(
+      service.update(adminActor, adminActor.sub, { name: 'X' }),
+    ).rejects.toThrow('You cannot edit your own user');
+  });
+
+  it('MANAGER editing an ADMIN → 403 (does not outrank)', async () => {
+    const { service } = makeManageService({
+      target: {
+        id: 'u-admin',
+        email: 'admin@x',
+        name: 'Admin',
+        role: 'ADMIN',
+        teamId: null,
+      },
+    });
+    await expect(
+      service.update(managerActor, 'u-admin', { name: 'X' }),
+    ).rejects.toThrow('MANAGER cannot edit a ADMIN user');
+  });
+
+  it('unknown target → 404 NotFoundException', async () => {
+    const { service } = makeManageService({ target: null });
+    await expect(
+      service.update(adminActor, 'missing', { name: 'X' }),
+    ).rejects.toThrow('not found');
+  });
+});
+
+describe('remove - DELETE /api/users/:id (hierarchy-gated)', () => {
+  it('ADMIN deletes a SALES_EXEC → deletes account + user + writes audit', async () => {
+    const { service, mocks } = makeManageService();
+    const result = await service.remove(adminActor, 'u-priya');
+    expect(result).toEqual({ ok: true });
+    expect(mocks.accountDeleteMany).toHaveBeenCalledWith({
+      where: { accountId: 'u-priya' },
+    });
+    expect(mocks.userDelete).toHaveBeenCalledWith({
+      where: { id: 'u-priya' },
+    });
+    expect(mocks.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'user.delete' }),
+      }),
+    );
+  });
+
+  it('ADMIN deleting self → 403 ForbiddenException', async () => {
+    const { service } = makeManageService({
+      target: {
+        id: adminActor.sub,
+        email: 'admin@x',
+        name: 'Admin',
+        role: 'ADMIN',
+        teamId: null,
+      },
+    });
+    await expect(service.remove(adminActor, adminActor.sub)).rejects.toThrow(
+      'You cannot delete your own user',
+    );
+  });
+
+  it('MANAGER deleting an ADMIN → 403 (does not outrank)', async () => {
+    const { service } = makeManageService({
+      target: {
+        id: 'u-admin',
+        email: 'admin@x',
+        name: 'Admin',
+        role: 'ADMIN',
+        teamId: null,
+      },
+    });
+    await expect(service.remove(managerActor, 'u-admin')).rejects.toThrow(
+      'MANAGER cannot delete a ADMIN user',
+    );
+  });
+
+  it('unknown target → 404 NotFoundException', async () => {
+    const { service } = makeManageService({ target: null });
+    await expect(service.remove(adminActor, 'missing')).rejects.toThrow(
+      'not found',
+    );
+  });
+});
