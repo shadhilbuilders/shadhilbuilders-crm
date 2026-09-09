@@ -38,7 +38,6 @@
 // Sheet on route change. Imported here so the hook mounts once at the
 // shell root.
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -69,7 +68,7 @@ import {
   getVisibleNav,
   isNavItemActive,
   isProjectScopedNavPath,
-  projectHref,
+  navItemHref,
   stripProjectSegment as stripProjectSegmentForNav,
   NAV_ITEMS,
   useNavBadge,
@@ -114,8 +113,11 @@ export function AppShell() {
               nav items below also use p-2, so the brand and nav share
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
-            href={projectHref(activeProjectId, '/dashboard')}
-            className="inline-flex h-8 shrink-0 items-center overflow-hidden rounded-md"
+            href={navItemHref(
+              { href: '/overview', scoped: false },
+              activeProjectId,
+            )}
+            className="inline-flex h-10 shrink-0 items-center overflow-hidden text-primary"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
@@ -175,6 +177,12 @@ function SidebarSwitcherSlot({
 }) {
   const { user } = useSessionUser();
   const { data: projects, isPending: projectsPending } = useProjects();
+  // M2 (eng-corrected): on the cross-project /overview command center, the
+  // switcher must NOT imply a project scope. Scope the null to the switcher
+  // ONLY — the shared activeProjectId (passed to the nav groups) stays intact
+  // so work nav hrefs keep resolving correctly.
+  const pathname = usePathname();
+  const isCommandCenter = pathname === '/overview';
 
   // Show skeleton while projects are loading
     if (projectsPending) {
@@ -197,7 +205,7 @@ function SidebarSwitcherSlot({
   return (
     <ProjectSwitcher
       projects={projects ?? []}
-      activeProjectId={activeProjectId}
+      activeProjectId={isCommandCenter ? null : activeProjectId}
       canManageProjects={canManageProjects}
     />
   );
@@ -325,9 +333,10 @@ function NavMenuItem({
   // T-ProjectSwitch: work-surface hrefs resolve under the active project
   // (/proj-1/leads). Active-state strips the project segment back to the
   // template so /proj-1/leads/abc still highlights Leads. Unscoped items
-  // (/, /users, /audit) keep template behavior.
-  const href = projectHref(activeProjectId, item.href);
-  const scoped = isProjectScopedNavPath(item.href);
+  // (/, /users, /audit, and the admin /overview command center via
+  // scoped:false) keep template behavior.
+  const href = navItemHref(item, activeProjectId);
+  const scoped = item.scoped === false ? false : isProjectScopedNavPath(item.href);
   const active = scoped
     ? isNavItemActive(
         item.href,

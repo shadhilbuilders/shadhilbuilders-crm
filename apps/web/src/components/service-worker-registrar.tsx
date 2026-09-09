@@ -4,9 +4,13 @@ import { useEffect } from 'react';
 import { Serwist } from '@serwist/window';
 
 /**
- * Registers the service worker in production. Skipped in dev because:
- *   1. `withSerwistInit({ disable: NODE_ENV === 'development' })` skips SW emission.
- *   2. Turbopack dev doesn't bundle Serwist (serwist/serwist#54).
+ * Registers the service worker in both dev and production.
+ *
+ * Dev: `withSerwistInit({ disable: NODE_ENV === 'development' })` skips SW
+ * emission, but `public/sw.js` is still served (from a prior build) and
+ * Turbopack dev can register it. Registering in dev is what makes web push
+ * testable locally (the push handler lives in sw.js). If sw.js is missing
+ * or stale, registration still succeeds and push simply no-ops.
  *
  * `Serwist('/sw.js', { scope: '/' })` matches the public/sw.js emitted by
  * withSerwistInit in next.config.ts. The `Service-Worker-Allowed: /` response
@@ -19,11 +23,16 @@ import { Serwist } from '@serwist/window';
  */
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
-    // Early-return is the only NODE_ENV check; the rest of the effect runs
-    // in the browser, where process.env.NODE_ENV is undefined-typed. Webpack
-    // inlines the literal at build time.
-    if (process.env.NODE_ENV !== 'production') return;
     if (typeof window === 'undefined') return;
+    // Skip registration in dev. `next dev` serves a stale public/sw.js
+    // from a prior build, and a stale SW can serve cached HTML/JS that
+    // fights hot-reload and masks fresh changes. `process.env.NODE_ENV`
+    // is inlined by Next.js at build time, so this is a compile-time
+    // constant in the client bundle - no runtime cost.
+    if (process.env.NODE_ENV === 'development') {
+      console.info('[PWA] Service worker disabled in development');
+      return;
+    }
     if (!('serviceWorker' in navigator)) {
       // Old browser or environment without SW support (e.g. private mode in
       // some Safari versions). Silent no-op - the app still works, it just

@@ -46,3 +46,7 @@ graphify-out
 supabase/.temp/
 
 .agents
+
+test-results/
+
+playwright-report/

@@ -16,8 +16,10 @@ import { ChatModule } from './chat/chat.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PushModule } from './push/push.module';
 import { AuditModule } from './audit/audit.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whatsapp-unknown-contacts.module';
@@ -57,8 +59,10 @@ import { AlertsModule } from './alerts/alerts.module';
     BookingsModule,
     RemindersModule,
     NotificationsModule,
+    PushModule,
     AuditModule,
     WebhooksModule,
+    DashboardModule,
 
     // Realtime (SSE - eng review A9: Last-Event-ID resume)
     RealtimeModule,

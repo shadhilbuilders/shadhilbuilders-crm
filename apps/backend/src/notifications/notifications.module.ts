@@ -7,11 +7,18 @@
 // The page wiring (apps/web/src/hooks/queries/crm.ts) calls
 // useNotifications / useMarkNotificationsRead - both light up
 // against this module.
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
+// @Global() (rule 7i): a cross-cutting service that feature modules
+// (leads, visits, bookings) consume without owning. Registered once in
+// AppModule; any module can @Inject(NotificationsService) without the
+// imports chain. The tradeoff (harder to mock per-test) is acceptable
+// here because the domain services call emit() best-effort and never
+// let a notification failure break the request path.
+@Global()
 @Module({
   controllers: [NotificationsController],
   providers: [NotificationsService],

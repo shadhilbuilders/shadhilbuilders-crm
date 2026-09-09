@@ -30,6 +30,7 @@
     "docker:up": "cd ../../docker && docker compose --env-file ../.env up -d postgres pgbouncer redis"
   },
   "dependencies": {
+    "@paralleldrive/cuid2": "^3.3.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@prisma/client-runtime-utils": "7.10.0"

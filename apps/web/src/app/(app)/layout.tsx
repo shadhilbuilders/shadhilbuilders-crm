@@ -37,6 +37,7 @@ import { SidebarInset, SidebarProvider } from '@paalstack/react-ui';
 import { AppShell } from '@/components/app-shell';
 import { AppHeader } from '@/components/app-header';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { usePushSubscription } from '@/hooks/use-push-subscription';
 
 const DESKTOP_BREAKPOINT_QUERY = '(min-width: 768px)';
 
@@ -63,6 +64,9 @@ function useIsDesktop(): boolean {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
+  // T-PUSH: subscribe this device to web push once the authenticated shell
+  // mounts (best-effort - no-ops if push is unsupported/disabled).
+  usePushSubscription();
   // Mobile: defaultOpen=false so the first paint shows the page, not a
   // Sheet overlay. Desktop: defaultOpen=true so the rail is visible
   // immediately. The library cookie-persists the user-toggle so this
@@ -70,8 +74,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider defaultOpen={isDesktop}>
       <AppShell />
-      <SidebarInset>
-        <Suspense fallback={<Skeleton variant="text" className="h-14 w-full" />}>
+      <SidebarInset className='md:peer-data-[variant=inset]:mt-0'>
+        <Suspense fallback={<Skeleton variant="text" count={1} className="h-14 w-full" />}>
           <AppHeader />
         </Suspense>
         <main className="w-full flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">

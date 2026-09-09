@@ -9,21 +9,10 @@
 import { z } from 'zod';
 import {
   LeadStateSchema,
+  LeadOwnerTypeSchema,
   ActivityTypeSchema,
 } from './enums';
-
-/**
- * Indian phone numbers are 10 digits with optional +91 prefix. We strip
- * everything except digits, then validate length.
- */
-const phoneSchema = z
-  .string()
-  .transform((val: string) => val.replace(/\D/g, ''))
-  .pipe(
-    z
-      .string()
-      .regex(/^\d{10,15}$/, 'Phone must be 10–15 digits (country code allowed)'),
-  );
+import { PhoneSchema } from './common';
 
 /**
  * Lead source - free-form today (Meta ads, landing site, referral). When the
@@ -39,16 +28,15 @@ const sourceSchema = z.string().trim().min(1).max(80);
  */
 export const CreateLeadDtoSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  phone: phoneSchema,
+  phone: PhoneSchema,
   email: z
-    .string()
+    .email()
     .trim()
     .toLowerCase()
-    .email()
     .max(254)
     .optional(),
   source: sourceSchema,
-  projectId: z.string().cuid().optional(),
+  projectId: z.cuid2().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
 export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
@@ -56,10 +44,16 @@ export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
 /**
  * PATCH /api/leads/:id - partial update. Only mutable fields are listed; id
  * state transitions, and ownership go through dedicated endpoints.
+ *
+ * `phone` is mutable as of autoplan 2026-09-07 (D10): the most common bad
+ * data in a phone-first sales org is a mistyped number, and the dialog
+ * could not fix it before. Uniqueness is enforced by the DB (Lead.phone
+ * @unique); the service maps the violation to a 409 with what/why/fix.
  */
 export const UpdateLeadDtoSchema = z.object({
   id: z.string().cuid(),
   name: z.string().trim().min(1).max(120).optional(),
+  phone: PhoneSchema.optional(),
   email: z
     .string()
     .trim()
@@ -113,12 +107,18 @@ export const LeadFilterDtoSchema = z.object({
     .optional(),
   ownerId: z.string().cuid().optional(),
   teamId: z.string().trim().min(1).max(64).optional(),
-  // Seed project ids are readable (`seed-project-metro-heights`), not
-  // cuids - same convention as auth.ts teamId (min(1).max(64)).
-  projectId: z.string().trim().min(1).max(64).optional(),
+  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08) - the URL
+  // segment and every filter pin it to cuid2.
+  projectId: z.cuid2().optional(),
   search: z.string().trim().min(1).max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
+  // Server-side sort (T-SRVPG): the DataTable sorts client-side over the
+  // loaded page, which is wrong under server pagination. The page passes
+  // the sort column + direction and the service applies it in the SQL
+  // ORDER BY. `sortBy` is a whitelisted column name; `sortDir` is asc/desc.
+  sortBy: z.enum(['updatedAt', 'createdAt', 'name']).optional(),
+  sortDir: z.enum(['asc', 'desc']).optional(),
 });
 export type LeadFilterDto = z.infer<typeof LeadFilterDtoSchema>;
 
@@ -134,3 +134,42 @@ export const CreateActivityDtoSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateActivityDto = z.infer<typeof CreateActivityDtoSchema>;
+
+/**
+ * GET /api/leads/:id - full lead detail row (Lead Detail page, Wireframe #5).
+ * Superset of the list-page `LeadRow` projection: includes co-owner, team,
+ * project, and the raw display phone. The page renders the full record so
+ * staff see everything about a lead in one place.
+ */
+export const LeadDetailSchema = z.object({
+  id: z.string().cuid(),
+  name: z.string(),
+  phone: z.string(),
+  email: z.string().nullable(),
+  source: z.string().nullable(),
+  status: LeadStateSchema,
+  ownerId: z.string().cuid(),
+  ownerName: z.string().nullable(),
+  ownerType: LeadOwnerTypeSchema,
+  coOwnerId: z.string().cuid().nullable(),
+  coOwnerName: z.string().nullable(),
+  teamId: z.string(),
+  projectId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type LeadDetail = z.infer<typeof LeadDetailSchema>;
+
+/**
+ * GET /api/leads/:id/activities - the lead's timeline (oldest → newest).
+ * Each entry is a manual or auto-emitted activity with the acting user's
+ * name joined in so the UI can render "First call (Asha)" per Wireframe #5.
+ */
+export const LeadActivitySchema = z.object({
+  id: z.string().cuid(),
+  type: ActivityTypeSchema,
+  body: z.string(),
+  createdAt: z.string(),
+  userName: z.string().nullable(),
+});
+export type LeadActivity = z.infer<typeof LeadActivitySchema>;

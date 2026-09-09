@@ -1,7 +1,7 @@
 'use client';
 
-// PipelineFunnelChart - bucketed lead-status counts, fed to a horizontal
-// BarChart so the funnel reads top-to-bottom.
+// PipelineFunnelChart - bucketed lead-status counts, fed to a vertical
+// BarChart so the funnel reads left-to-right (NEW → … → WON).
 //
 // T9 (one of two dedicated files per plan D2; the other is
 // VisitsThisWeekChart). The "data shaping" that earns this its own
@@ -94,17 +94,16 @@ export function PipelineFunnelChart({ data }: PipelineFunnelChartProps) {
       <ChartContainer
         config={PIPELINE_CONFIG}
         aria-label="Lead pipeline funnel - leads per status"
-        className="h-72 w-full"
+        className="aspect-auto h-56 w-full"
       >
-        <BarChart data={buckets} layout="vertical" margin={{ left: 8, right: 16 }}>
-          <XAxis type="number" allowDecimals={false} />
-          <YAxis
+        <BarChart data={buckets} margin={{ top: 8, left: 8, right: 16 }}>
+          <XAxis
             dataKey="label"
-            type="category"
-            width={140}
             tickLine={false}
             axisLine={false}
+            interval="preserveStartEnd"
           />
+          <YAxis allowDecimals={false} />
           <ChartTooltip
             content={(props) => (
               <ChartTooltipWithSkeleton

@@ -1,21 +1,22 @@
 'use client';
 
-// Admin/owner command center (dashboard split, 2026-09-08).
+// Admin/owner command center (dashboard split, 2026-09-08; real-data wiring
+// autoplan 2026-09-08).
 //
 // Cross-project overview at the top-level /overview. Because this route
-// carries NO project segment, the pipeline/visits queries run unscoped and
-// return data across ALL projects (verified: RLS policies lead_select_admin,
+// carries NO project segment, the overview stats run unscoped and return data
+// across ALL projects (verified: RLS policies lead_select_admin,
 // site_visit_select_team admin branch, and auditlog_select_admin_or_owner have
 // no project filter — an unscoped admin query returns all projects).
 //
-// H1 audit note: the per-project audit context is intentionally dropped from
-// the project work dashboard (admin/owner see the Manager view there). The
-// global /audit page is the audit path; this command center's audit timeline
-// is cross-project.
+// Real-data wiring (autoplan 2026-09-08): the placeholder KPIs are replaced
+// with REAL numbers from GET /api/dashboard/overview (one role-scoped
+// aggregate query, ADMIN/OWNER only). The endpoint enforces the role guard
+// server-side (403 for staff).
 //
 // LOW-1: the isAdminLike guard below is a UX mirror, NOT a security boundary.
-// The real data boundary is RLS. Do not "harden" this guard by removing RLS
-// reliance — the server is the wall.
+// The real data boundary is RLS + the service guard. Do not "harden" this
+// guard by removing RLS reliance — the server is the wall.
 
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
@@ -26,7 +27,8 @@ import { ChartCard } from '@/components/shared/ChartCard';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 import type { Role } from '@/apis/client';
-import { useAuditLog, useLeads, useVisits } from '@/hooks/queries/crm';
+import { useAuditLog, useVisits } from '@/hooks/queries/crm';
+import { useDashboardOverview } from '@/hooks/queries/dashboard';
 import { PipelineFunnelChart } from '@/components/charts/PipelineFunnelChart';
 import { VisitsThisWeekChart } from '@/components/charts/VisitsThisWeekChart';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
@@ -79,7 +81,7 @@ function RedirectToProject({ href }: { href: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin command center (Wireframes #3) - cross-project pipeline + visits + audit
+// Admin command center (Wireframes #3) - cross-project KPIs + pipeline + visits
 // ---------------------------------------------------------------------------
 
 function AdminDashboard({
@@ -89,12 +91,13 @@ function AdminDashboard({
   role: Role;
   defaultProjectId: string | null;
 }) {
-  // Unscoped queries (no projectId) → all projects. limit caps the overview.
-  const leadsQuery = useLeads({ limit: 200 });
+  const overviewQuery = useDashboardOverview();
   const visitsQuery = useVisits({ limit: 200 });
-  const usersVisible = canViewAudit(role);
   const auditVisible = canViewAudit(role);
   const auditQuery = useAuditLog({ limit: 200 });
+  const overview = overviewQuery.data;
+  const overviewLoading = overviewQuery.isLoading;
+  const overviewError = overviewQuery.error;
 
   return (
     <div className="space-y-8">
@@ -106,14 +109,52 @@ function AdminDashboard({
         </TypographyP>
       </div>
 
-      <KpiStrip
-        items={[
-          { label: 'Total leads', value: '-', sub: 'all teams' },
-          { label: 'Reassignments (7d)', value: '-' },
-          { label: 'Audit events (24h)', value: '-' },
-          { label: 'Users by role', value: '-', sub: usersVisible ? 'manage in Users' : undefined },
-        ]}
-      />
+      {overviewLoading ? (
+        <Skeleton variant="kpi" aria-label="Loading overview KPIs" />
+      ) : (
+        <KpiStrip
+          items={[
+            {
+              label: 'Total leads',
+              value: overview ? String(overview.kpis.totalLeads) : '-',
+              sub: 'all teams',
+            },
+            {
+              label: 'Reassignments (7d)',
+              value: overview ? String(overview.kpis.reassignments7d) : '-',
+              sub: 'ownership changes',
+            },
+            {
+              label: 'Audit events (24h)',
+              value: overview ? String(overview.kpis.auditEvents24h) : '-',
+              sub: 'system activity',
+            },
+            {
+              label: 'Users by role',
+              value: overview
+                ? overview.kpis.usersByRole
+                    .map((u) => `${u.role}: ${u.count}`)
+                    .join(' · ')
+                : '-',
+              sub: auditVisible ? 'manage in Users' : undefined,
+            },
+          ]}
+        />
+      )}
+
+      {overviewError !== null && overviewError !== undefined ? (
+        <div
+          role="alert"
+          className="border-destructive/50 bg-destructive/5 text-destructive rounded-lg border p-4 text-sm"
+        >
+          <p className="font-semibold">Overview data unavailable</p>
+          <p className="mt-1 opacity-90">
+            {overviewError instanceof Error
+              ? overviewError.message
+              : 'Could not load the overview. Please try again.'}
+          </p>
+        </div>
+      ) : null}
 
       {/* CEO C2 fix: "See all" resolves against the default project so it
           links to a real /{projectId}/leads route. Drop the link if no
@@ -128,10 +169,10 @@ function AdminDashboard({
       >
         <ChartCard
           title="Lead pipeline (all teams)"
-          description="Cross-team distribution of leads by status. The leads module (Week 4) provides the data."
-          query={leadsQuery}
+          description="Cross-team distribution of leads by status."
+          query={overviewQuery}
         >
-          {(data) => <PipelineFunnelChart data={data} />}
+          {(data) => <PipelineFunnelChart data={data.pipeline} />}
         </ChartCard>
       </SectionCard>
 
@@ -145,7 +186,7 @@ function AdminDashboard({
       >
         <ChartCard
           title="Visits this week"
-          description="Site visits across all teams, per day. Arrives with the visits module (Week 6)."
+          description="Site visits across all teams, per day."
           query={visitsQuery}
         >
           {(data) => <VisitsThisWeekChart data={data} />}
@@ -156,7 +197,7 @@ function AdminDashboard({
         <SectionCard title="Audit activity (last 7 days)" moreHref="/audit">
           <ChartCard
             title="Audit timeline"
-            description="Audit events bucketed by day, admin-class only. The audit writer (Week 7) provides the data."
+            description="Audit events bucketed by day, admin-class only."
             query={auditQuery}
           >
             {(data) => <AuditTimeline data={data} />}

@@ -25,6 +25,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Optional,
 } from '@nestjs/common';
 import {
   withRlsContext,
@@ -34,6 +35,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import type { MarkReadDto, NotificationFilterDto } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { PushService } from '../push/push.service';
 
 /**
  * Wire shape returned by every endpoint. Matches the
@@ -61,6 +63,12 @@ export type NotificationListResult = {
 export class NotificationsService {
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    // @Optional() (rule 7h): the push dep is best-effort. Existing test
+    // factories construct NotificationsService with one arg; optional keeps
+    // them green. Production DI resolves via @Global() PushModule.
+    @Optional()
+    @Inject(PushService)
+    private readonly push?: PushService,
   ) {}
 
   private get client(): PrismaClient {
@@ -254,6 +262,13 @@ export class NotificationsService {
           },
         });
 
+        // Fire a web push alongside the in-app notification (best-effort).
+        this.pushBestEffort(recipientSub, {
+          title: created.title,
+          body: created.body,
+          leadId: created.leadId ?? undefined,
+        });
+
         return {
           id: created.id,
           type: created.type,
@@ -265,5 +280,28 @@ export class NotificationsService {
         };
       },
     );
+  }
+
+  /**
+   * Best-effort web push alongside an in-app notification (rule 7j). Never
+   * throws to the caller. No-ops when the push dep is absent (test harness)
+   * or push is disabled (no VAPID keys).
+   */
+  private pushBestEffort(
+    recipientSub: string,
+    payload: { title: string; body: string; leadId?: string },
+  ): void {
+    if (this.push === undefined) return;
+    try {
+      void this.push
+        .sendToUser(recipientSub, {
+          title: payload.title,
+          body: payload.body,
+          url: payload.leadId !== undefined ? `/leads/${payload.leadId}` : undefined,
+        })
+        .catch(() => undefined);
+    } catch {
+      // swallow - best-effort
+    }
   }
 }

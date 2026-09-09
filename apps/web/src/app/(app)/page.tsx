@@ -2,28 +2,42 @@
 
 // Authenticated `/` is not a work surface. Dashboard, leads, visits,
 // inventory, bookings, and notifications live under `/{projectId}/…`.
-// Bounce to the default project's dashboard (or /projects if the
-// registry is empty).
+// Bounce to the role-appropriate dashboard (decision in
+// lib/dashboard-redirect.ts):
+//   - Admin/owner → /overview (cross-project command center)
+//   - Everyone else → /{projectId}/dashboard (project work dashboard)
+//   - Empty project registry → /projects
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { pickDefaultProject, useProjects } from '@/hooks/queries';
+import { useProjects } from '@/hooks/queries';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { projectHref } from '@/lib/nav';
+import { useSessionUser } from '@/lib/session';
+import { rootRedirectTarget } from '@/lib/dashboard-redirect';
 
 export default function AppHomePage() {
   const router = useRouter();
   const { data: projects, isPending } = useProjects();
+  const { user, isPending: sessionPending } = useSessionUser();
 
   useEffect(() => {
-    if (isPending) return;
-    const project = pickDefaultProject(projects ?? []);
-    if (project !== null) {
-      router.replace(projectHref(project.id, '/dashboard'));
-      return;
+    if (isPending || sessionPending) return;
+    const target = rootRedirectTarget(user, projects ?? []);
+    switch (target.kind) {
+      case 'login':
+        router.replace('/login');
+        break;
+      case 'command-center':
+        router.replace('/overview');
+        break;
+      case 'project-dashboard':
+        router.replace(target.href);
+        break;
+      case 'projects':
+        router.replace('/projects');
+        break;
     }
-    router.replace('/projects');
-  }, [isPending, projects, router]);
+  }, [isPending, sessionPending, projects, user, router]);
 
   return <Skeleton variant="user" className="py-24" />;
 }

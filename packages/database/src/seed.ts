@@ -3,6 +3,16 @@ import { PrismaClient } from './generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 // ────────────────────────────────────────────────────────────────────────────
+// Seed project identities (T-PROJID-CUID2, 2026-09-08).
+//
+// Project.id is a real cuid2 - the same shape the app generates at runtime
+// via @paralleldrive/cuid2 (schema.prisma `@default(cuid())` is Prisma's
+// cuid v1; the runtime DTOs + URL segment pin cuid2 via z.cuid2()). The seed
+// uses a FIXED, pre-generated cuid2 per project so re-runs are idempotent
+// (upsert by stable id), while `slug` stays the human-readable URL-safe form.
+// These were generated once (`createId()` from @paralleldrive/cuid2) and
+// validated against z.cuid2() - do not hand-edit.
+// ────────────────────────────────────────────────────────────────────────────
 // Shadhil Builders CRM - bootstrap seed.
 // AR-8/B4b (2026-08-31): credentials are created in the EXACT shape better-auth
 // 1.7 expects at sign-in (dist/api/routes/sign-in.mjs:320):
@@ -92,6 +102,13 @@ function readSeedUser(
 }
 
 type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC';
+
+// Fixed cuid2 ids for the seeded projects. Generated once with
+// `createId()` from @paralleldrive/cuid2 and validated against
+// z.cuid2() - stable so the seed's upsert-by-id stays idempotent.
+export const SEED_PROJECT_METRO_ID = 'oe6g1xkagiisnn4oeefpdyhk';
+export const SEED_PROJECT_SKYLINE_ID = 'u5ou76r0nsnximp7kwljgrgv';
+export const SEED_PROJECT_LAKEVIEW_ID = 'o0n22ikcbvecgkqqa6rc5aqt';
 
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
@@ -194,14 +211,14 @@ async function main() {
     { id: salesExecUser.id },
   ];
   const metroHeights = await prisma.project.upsert({
-    where: { id: 'seed-project-metro-heights' },
+    where: { id: SEED_PROJECT_METRO_ID },
     update: {
       name: 'Shadhil Metro Heights',
       slug: 'shadhil-metro-heights',
       address: 'Metro Heights, Chennai, Tamil Nadu (placeholder address)',
     },
     create: {
-      id: 'seed-project-metro-heights',
+      id: SEED_PROJECT_METRO_ID,
       name: 'Shadhil Metro Heights',
       slug: 'shadhil-metro-heights',
       address: 'Metro Heights, Chennai, Tamil Nadu (placeholder address)',
@@ -211,12 +228,12 @@ async function main() {
   });
   const upcomingProjects = [
     {
-      id: 'seed-project-skyline',
+      id: SEED_PROJECT_SKYLINE_ID,
       name: 'Shadhil Skyline Towers',
       slug: 'shadhil-skyline-towers',
     },
     {
-      id: 'seed-project-lakeview',
+      id: SEED_PROJECT_LAKEVIEW_ID,
       name: 'Shadhil Lakeview Residences',
       slug: 'shadhil-lakeview-residences',
     },

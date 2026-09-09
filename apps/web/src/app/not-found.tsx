@@ -1,5 +1,6 @@
 import { GuestTopBar } from '@/components/guest-top-bar';
-import { Heading, TypographyP } from '@paalstack/react-ui';
+import { Button, Heading, TypographyP } from '@paalstack/react-ui';
+import Link from 'next/link';
 
 // Force dynamic rendering - the wrapped Providers reads localStorage on
 // mount (theme persistence) and Next 16's static prerender chokes on that.
@@ -14,6 +15,9 @@ export default function NotFound(): React.JSX.Element {
         <TypographyP className="text-muted-foreground">
           The page you were looking for doesn't exist or has moved.
         </TypographyP>
+        <Link href="/">
+          <Button>Go to home</Button>
+        </Link>
       </main>
     </div>
   );

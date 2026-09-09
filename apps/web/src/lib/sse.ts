@@ -27,6 +27,17 @@ interface MintTicketResponse {
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
+/** True when a fetch was cancelled via AbortController (component teardown). */
+export function isAbortError(err: unknown): boolean {
+  return (
+    err instanceof DOMException && err.name === 'AbortError'
+  ) || (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: unknown }).name === 'AbortError'
+  );
+}
+
 export interface OpenStreamOptions<T> {
   /** SSE path under /api/sse, e.g. "/notifications" or "/chat/<cuid>". */
   path: string;
@@ -101,6 +112,11 @@ export function openStream<T>(opts: OpenStreamOptions<T>): () => void {
     } catch (err) {
       // Ticket mint failed (e.g. 403 on channel access, backend down).
       if (closed) return;
+      // An aborted mint is a component teardown, not a real failure - the
+      // request may have reached the backend (which logs a 400 for the
+      // half-sent body), but we must NOT reconnect or surface onError for
+      // it. Silent teardown.
+      if (isAbortError(err)) return;
       opts.onError?.(err);
       scheduleReconnect();
     }

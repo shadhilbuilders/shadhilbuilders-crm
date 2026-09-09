@@ -50,10 +50,9 @@ export type BookingTransitionDto = z.infer<typeof BookingTransitionDtoSchema>;
 export const BookingFilterDtoSchema = z.object({
   leadId: z.string().cuid().optional(),
   unitId: z.string().cuid().optional(),
-  // Seed project ids are readable (`seed-project-metro-heights`), not
-  // cuids - same convention as leads.ts projectId. Resolved through
-  // Lead.projectId on the server.
-  projectId: z.string().trim().min(1).max(64).optional(),
+  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08). Resolved
+  // through Lead.projectId on the server.
+  projectId: z.cuid2().optional(),
   status: z
     .union([BookingStatusSchema, z.array(BookingStatusSchema)])
     .optional(),

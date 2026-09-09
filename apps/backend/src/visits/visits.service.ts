@@ -22,6 +22,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   withRlsContext,
@@ -38,6 +39,7 @@ import type {
 
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.module';
+import { NotificationsService } from '../notifications/notifications.service';
 
 import { canTransition } from './visits.state-machine';
 
@@ -69,6 +71,12 @@ export class VisitsService {
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(LeadsService) private readonly leadsService: LeadsService,
+    // @Optional() (rule 7h): best-effort notifications dep. Existing test
+    // factories construct VisitsService with two args; optional keeps them
+    // green. Production DI resolves via @Global() NotificationsModule.
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notifications?: NotificationsService,
   ) {}
 
   private get client(): PrismaClient {
@@ -285,6 +293,14 @@ export class VisitsService {
             },
             reason: `Visit created by ${actor.email} (${actor.role})`,
           },
+        });
+
+        // Notify the assigned exec that a site visit was scheduled for them.
+        this.emitBestEffort(created.userId, {
+          type: 'visit.scheduled',
+          title: 'Site visit scheduled',
+          body: `A site visit for ${created.lead.name} was scheduled for ${created.scheduledFor.toISOString()}.`,
+          leadId: created.leadId,
         });
 
         return {
@@ -590,6 +606,23 @@ export class VisitsService {
         };
       },
     );
+  }
+
+  /**
+   * Best-effort notification emit (rule 7j). Never throws to the caller:
+   * a notification failure must not break the visit write path. No-ops when
+   * the notifications dep is absent (test harness) or emit throws.
+   */
+  private emitBestEffort(
+    recipientSub: string,
+    payload: { type: string; title: string; body: string; leadId?: string },
+  ): void {
+    if (this.notifications === undefined) return;
+    try {
+      void this.notifications.emit(recipientSub, payload).catch(() => undefined);
+    } catch {
+      // swallow - best-effort
+    }
   }
 }
 

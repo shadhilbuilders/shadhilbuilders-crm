@@ -23,6 +23,9 @@
 // module allow-list is strict).
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 
 import {
   Button,
@@ -30,7 +33,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  Input,
+  Form,
   Label,
   Textarea,
   toast,
@@ -73,7 +76,7 @@ const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'COLD']);
 type LeadData = {
   id: string;
   name?: string;
-  email?: string;
+  email?: string | null;
   status?: string;
 };
 
@@ -97,26 +100,54 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
   );
 }
 
+// Client-side validation for the inline edit form. Mirrors the server's
+// UpdateLeadDto contract (packages/api-types/src/leads.ts): name required
+// (≤120), email optional but must be a valid email when present. The
+// server remains the source of truth - a 400/409 surfaces verbatim.
+const editLeadSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(120, 'Name must be 120 characters or fewer'),
+  email: z
+    .string()
+    .trim()
+    .max(254, 'Email must be 254 characters or fewer')
+    .refine((v) => v.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: 'Enter a valid email address',
+    })
+    .optional(),
+});
+
+type EditLeadFormValues = z.infer<typeof editLeadSchema>;
+
 function EditLeadForm({ lead }: { lead: LeadData }) {
   const updateLead = useUpdateLead(lead.id);
   const initialName = typeof lead.name === 'string' ? lead.name : '';
   const initialEmail = typeof lead.email === 'string' ? lead.email : '';
-  const [name, setName] = useState(initialName);
-  const [email, setEmail] = useState(initialEmail);
-  const dirty = name !== initialName || email !== initialEmail;
 
-  function onSave() {
-    if (!dirty) return;
+  const form = useForm<EditLeadFormValues>({
+    resolver: zodResolver(editLeadSchema),
+    defaultValues: {
+      name: initialName,
+      email: initialEmail,
+    },
+    mode: 'onSubmit',
+  });
+
+  function onSave(values: EditLeadFormValues) {
     const body: UpdateLeadDto = { id: lead.id };
-    if (name.trim().length > 0 && name !== initialName) body.name = name.trim();
-    if (email.trim().length > 0 && email !== initialEmail) {
-      body.email = email.trim().toLowerCase();
-    } else if (email.trim().length === 0 && initialEmail.length > 0) {
-      // Allow clearing email by setting empty
-      body.email = '';
+    if (values.name.trim() !== initialName) body.name = values.name.trim();
+    if (values.email !== undefined && values.email.trim() !== initialEmail) {
+      if (values.email.trim().length > 0) {
+        body.email = values.email.trim().toLowerCase();
+      } else if (initialEmail.length > 0) {
+        // Allow clearing email by setting empty.
+        body.email = '';
+      }
     }
     updateLead.mutate(body, {
-      onSuccess: () => toast.success('Lead updated'),
+      onSuccess: () => {
+        toast.success('Lead updated');
+        form.reset({ name: values.name.trim(), email: values.email?.trim() ?? '' });
+      },
       onError: (e) => toast.error(e instanceof Error ? e.message : 'Update failed'),
     });
   }
@@ -126,40 +157,45 @@ function EditLeadForm({ lead }: { lead: LeadData }) {
       <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
         Edit
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div>
-          <Label htmlFor={`lead-name-${lead.id}`}>Name</Label>
-          <Input
-            id={`lead-name-${lead.id}`}
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-            maxLength={120}
-            data-qa="edit-lead-name"
-          />
-        </div>
-        <div>
-          <Label htmlFor={`lead-email-${lead.id}`}>Email</Label>
-          <Input
-            id={`lead-email-${lead.id}`}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
-            data-qa="edit-lead-email"
-          />
-        </div>
-      </div>
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          variant="default"
-          onClick={onSave}
-          disabled={!dirty || updateLead.isPending}
-          data-qa="edit-lead-save"
-        >
-          {updateLead.isPending ? 'Saving…' : 'Save'}
-        </Button>
-      </div>
+      <Form
+        form={form}
+        onSubmit={onSave}
+        submitText={updateLead.isPending ? 'Saving…' : 'Save'}
+        submitButtonProps={{
+          size: 'sm',
+          disabled: updateLead.isPending,
+          'data-qa': 'edit-lead-save',
+        }}
+        actionClassName="justify-end col-span-2"
+        className="grid grid-cols-2 gap-2"
+        hideResetButton
+        fields={[
+          {
+            type: 'input',
+            name: 'name',
+            label: 'Name',
+            required: true,
+            placeholder: 'Enter full name',
+            inputProps: {
+              maxLength: 120,
+              'data-qa': 'edit-lead-name',
+              autoComplete: 'name',
+            },
+          },
+          {
+            type: 'input',
+            name: 'email',
+            label: 'Email',
+            inputType: 'email',
+            placeholder: 'Enter email address',
+            description: 'Optional. Used for booking confirmations.',
+            inputProps: {
+              'data-qa': 'edit-lead-email',
+              autoComplete: 'email',
+            },
+          },
+        ]}
+      />
     </div>
   );
 }

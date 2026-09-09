@@ -141,7 +141,7 @@ export function ProjectSwitcher({
                   data-qa="project-switcher-item"
                   data-active={project.id === activeProjectId}
                   className="data-[active=true]:bg-accent data-[active=true]:text-accent-foreground cursor-pointer gap-2 p-2"
-                  onSelect={() => {
+                  onClick={() => {
                     // Real switching: the first URL segment IS the active
                     // project. Navigate to the SAME work surface under the
                     // new project (dashboard included).
@@ -158,7 +158,7 @@ export function ProjectSwitcher({
                       aria-hidden
                       className="text-muted-foreground ml-auto text-xs"
                     >
-                      active
+                      Active
                     </span>
                   ) : null}
                 </DropdownMenuItem>
@@ -170,7 +170,7 @@ export function ProjectSwitcher({
                 <DropdownMenuItem
                   data-qa="project-switcher-manage"
                   className="cursor-pointer gap-2 p-2"
-                  onSelect={() => {
+                  onClick={() => {
                     router.push('/projects');
                   }}
                 >

@@ -218,9 +218,11 @@ export function ConvertFormBody({
       // defaultValues (especially the pre-filled notes) do not leak
       // from the previous row.
       key={contact.id}
+      id="wa-unknown-convert-form"
       form={form}
       onSubmit={innerSubmit}
       hideSubmitButton
+      hideResetButton
       fields={fields}
     />
   );
@@ -301,11 +303,12 @@ export function WhatsappUnknownContactConvertModal({
           </Button>
           <Button
             type="submit"
-            disabled={convert.isPending}
             form="wa-unknown-convert-form"
+            isLoading={convert.isPending}
+            loadingText="Converting…"
             data-qa="wa-unknown-convert-submit"
           >
-            {convert.isPending ? 'Converting…' : 'Convert to lead'}
+            Convert to lead
           </Button>
         </div>
       }

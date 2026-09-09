@@ -187,10 +187,12 @@ export function ScheduleVisitDialog({
           </Button>
           <Button
             type="submit"
-            disabled={createVisit.isPending}
             form="schedule-visit-form"
+            isLoading={createVisit.isPending}
+            loadingText="Scheduling…"
+            data-qa="schedule-visit-submit"
           >
-            {createVisit.isPending ? 'Scheduling…' : 'Schedule'}
+            Schedule
           </Button>
         </div>
       }
@@ -198,9 +200,11 @@ export function ScheduleVisitDialog({
       onOpenChange={onOpenChange}
     >
       <Form
+        id="schedule-visit-form"
         form={form}
         onSubmit={onSubmit}
         hideSubmitButton
+        hideResetButton
         fields={fields as FormFieldItemType<FormValues>[]}
       />
     </Dialog>

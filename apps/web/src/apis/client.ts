@@ -130,11 +130,27 @@ export async function api<T>(
     }
   }
   if (!response.ok) {
+    // autoplan 2026-09-07 (DX Pass 3): unwrap the Nest exception envelope
+    // {"message": "..."} so toasts show the human message ("This lead is
+    // WON - it cannot be deleted..."), not `API 409: {"message": ...}`.
+    // Falls back to the previous raw form for non-JSON bodies (keeps the
+    // Zod 400 arrays readable as before for existing call sites).
     const detail = await response.text().catch(() => '');
+    let human: string | null = null;
+    if (detail.length > 0) {
+      try {
+        const parsed = JSON.parse(detail) as { message?: unknown };
+        if (typeof parsed.message === 'string') human = parsed.message;
+        else if (Array.isArray(parsed.message)) human = parsed.message.join('; ');
+      } catch {
+        /* not JSON - keep raw detail */
+      }
+    }
     throw new ApiError(
-      detail.length > 0
-        ? `API ${response.status}: ${detail.slice(0, 300)}`
-        : `API ${response.status} ${response.statusText}`,
+      human ??
+        (detail.length > 0
+          ? `API ${response.status}: ${detail.slice(0, 300)}`
+          : `API ${response.status} ${response.statusText}`),
       response.status,
     );
   }

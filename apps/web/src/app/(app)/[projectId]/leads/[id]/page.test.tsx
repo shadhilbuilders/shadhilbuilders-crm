@@ -1,11 +1,10 @@
 // T-D3 - Lead Detail (state matrix).
 //
-// Pins the three render branches in apps/web/src/app/(app)/leads/[id]/page.tsx:
+// Pins the three render branches in apps/web/src/app/(app)/[projectId]/leads/[id]/page.tsx:
 //
 //   1. isLoading === true           → <Skeleton variant="card" /> + variant="list"
-//   2. data is set                  → detail layout (name + LeadActionPanel +
-//                                       LeadVisitPanel + LeadTabsPanel +
-//                                       <LeadChatPane />)
+//   2. data is set                  → detail layout (LeadInfoCard + LeadActionPanel +
+//                                       LeadVisitPanel + LeadTimeline + <LeadChatPane />)
 //   3. data is undefined + error   → <ModulePending error={...} />
 //
 // The page has no separate empty state - a missing lead falls to the
@@ -18,7 +17,7 @@
 // page renders with deterministic data.
 //
 // The detail page composes several child components (LeadActionPanel,
-// LeadVisitPanel, LeadTabsPanel, LeadChatPane). Each of those pulls
+// LeadVisitPanel, LeadTimeline, LeadChatPane). Each of those pulls
 // its own react-query hooks; mocking only `useLead`/`useLeadActivities`
 // leaves the children crashing on `useQueryClient()`. We mock the
 // child components as a render-only stub so the page-level state
@@ -49,6 +48,12 @@ vi.mock('@/components/shared/LeadVisitPanel', () => ({
 vi.mock('@/components/shared/LeadChatPane', () => ({
   LeadChatPane: () => null,
 }));
+vi.mock('@/components/shared/LeadStatusBadge', () => ({
+  LeadStatusBadge: () => null,
+}));
+vi.mock('@/components/shared/PhoneNumber', () => ({
+  PhoneNumber: () => null,
+}));
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: vi.fn(() => ({
@@ -62,6 +67,24 @@ import { useLead, useLeadActivities } from '@/hooks/queries/crm';
 
 const mockedUseLead = vi.mocked(useLead);
 const mockedUseLeadActivities = vi.mocked(useLeadActivities);
+
+const FULL_LEAD = {
+  id: 'lead-1',
+  name: 'Priya Sharma',
+  phone: '+919876543210',
+  email: 'priya@example.com',
+  source: 'WEBSITE',
+  status: 'NEW',
+  ownerId: 'u-2',
+  ownerName: 'Asha T.',
+  ownerType: 'TELECALLER',
+  coOwnerId: null,
+  coOwnerName: null,
+  teamId: 'team-1',
+  projectId: null,
+  createdAt: '2026-09-04T10:00:00Z',
+  updatedAt: '2026-09-04T10:00:00Z',
+};
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -89,19 +112,9 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
     expect(html).not.toContain('failed to load');
   });
 
-  it('partial: useLead resolves with data renders the detail layout with the name + phone', () => {
+  it('data: useLead resolves with data renders the detail layout with the name + phone', () => {
     mockedUseLead.mockReturnValue({
-      data: {
-        id: 'lead-1',
-        name: 'Priya Sharma',
-        phone: '+919876543210',
-        email: 'priya@example.com',
-        status: 'NEW',
-        source: 'WEBSITE',
-        ownerId: 'u-2',
-        teamId: 'team-1',
-        updatedAt: '2026-09-04T10:00:00Z',
-      },
+      data: FULL_LEAD,
       isLoading: false,
       error: null,
     } as never);
@@ -113,11 +126,12 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
 
     const html = renderToStaticMarkup(<LeadDetailPage />);
     expect(html).toContain('Back to inbox');
-    // The lead name appears in the heading and the breadcrumb.
+    // The lead name appears in the breadcrumb.
     expect(html).toContain('Priya Sharma');
-    expect(html).toContain('+919876543210');
-    // No Skeleton on the partial branch (the partial path renders
-    // the full layout; the Skeleton only shows when isLoading is true).
+    // The info card renders the source + owner labels.
+    expect(html).toContain('Website');
+    expect(html).toContain('Asha T.');
+    // No Skeleton on the data branch.
     expect(html).not.toContain('data-slot="skeleton"');
     // No ModulePending ("failed to load") surface.
     expect(html).not.toContain('failed to load');

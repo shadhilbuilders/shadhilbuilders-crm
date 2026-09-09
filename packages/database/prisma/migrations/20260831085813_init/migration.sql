@@ -899,6 +899,37 @@ CREATE POLICY notification_delete_owner ON "Notification"
   FOR DELETE
   USING ("userId" = current_setting('app.user_id', true));
 
+-- ── PushSubscription (only owner) ─────────────────────────────────────────
+ALTER TABLE "PushSubscription" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY push_subscription_select_owner ON "PushSubscription"
+  FOR SELECT
+  USING ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_insert_owner ON "PushSubscription"
+  FOR INSERT
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_update_owner ON "PushSubscription"
+  FOR UPDATE
+  USING ("userId" = current_setting('app.user_id', true))
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_subscription_delete_owner ON "PushSubscription"
+  FOR DELETE
+  USING ("userId" = current_setting('app.user_id', true));
+
+-- ── PushNotification (only owner) ──────────────────────────────────────────
+ALTER TABLE "PushNotification" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY push_notification_select_owner ON "PushNotification"
+  FOR SELECT
+  USING ("userId" = current_setting('app.user_id', true));
+
+CREATE POLICY push_notification_insert_owner ON "PushNotification"
+  FOR INSERT
+  WITH CHECK ("userId" = current_setting('app.user_id', true));
+
 -- ── AuditLog (admin sees all; others see their own) ────────────────────────
 ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
 

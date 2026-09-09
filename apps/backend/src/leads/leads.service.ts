@@ -23,19 +23,24 @@
 // consistently for symmetry with the writes, even on reads.
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   withRlsContext,
+  Prisma,
   type PrismaClient,
   type Role,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreateLeadDto,
+  LeadActivity,
+  LeadDetail,
   LeadFilterDto,
   LeadStateTransitionDto,
   ReassignLeadDto,
@@ -43,6 +48,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { NotificationsService } from '../notifications/notifications.service';
 
 import {
   canRoleOwnState,
@@ -65,6 +71,10 @@ export interface LeadRow {
   source: string | null;
   ownerName: string | null;
   ownerId: string;
+  // autoplan 2026-09-07 (D16): the inbox's overdue-first sort needs the
+  // creation timestamp (time-to-first-touch SLA, Decision 0.2). Additive,
+  // non-breaking.
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -94,16 +104,31 @@ export interface CreatedLead {
 /**
  * Result shape returned by `list()`. The page (apps/web/src/app/(app)/leads/page.tsx)
  * reads these exact fields - keep them in sync if you rename.
+ *
+ * `overdueCount` / `newTodayCount` (T-SRVPG, 2026-09-07): under server
+ * pagination only the current page is loaded, so the summary line
+ * ("N overdue · M new today") can no longer be computed from the rows
+ * in the browser. The service returns the counts for the FULL filtered
+ * set (not the page) so the summary stays correct across pages.
  */
 export interface LeadListResult {
   rows: LeadRow[];
   total: number;
+  overdueCount: number;
+  newTodayCount: number;
 }
 
 @Injectable()
 export class LeadsService {
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    // @Optional() (rule 7h): the notifications dep is best-effort. Existing
+    // test factories construct LeadsService with one arg; making this
+    // optional keeps them green. In production DI resolves it via the
+    // @Global() NotificationsModule.
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notifications?: NotificationsService,
   ) {}
 
   private get client(): PrismaClient {
@@ -179,48 +204,239 @@ export class LeadsService {
   }
 
   /**
+   * Build the SQL `WHERE` conditions for the Lead list, mirroring
+   * `listWhere`'s role-scoping exactly. T-SRVPG (2026-09-07): the list
+   * query moved to raw SQL because Prisma's typed `orderBy` cannot express
+   * the overdue-first ordering (a CASE expression over `state` +
+   * `createdAt`). The role-scoping logic is duplicated here (not derived
+   * from the Prisma `where` object) because converting a Prisma where
+   * object back to SQL is error-prone; keep the two in sync.
+   */
+  private async listConditions(
+    tx: PrismaClient,
+    actor: JwtPayload,
+    dto: LeadFilterDto,
+  ): Promise<Prisma.Sql[]> {
+    const conditions: Prisma.Sql[] = [];
+
+    if (dto.state !== undefined) {
+      conditions.push(
+        Array.isArray(dto.state)
+          ? Prisma.sql`"state" IN (${Prisma.join(dto.state)})`
+          : Prisma.sql`"state" = ${dto.state}`,
+      );
+    }
+    if (dto.ownerId !== undefined) {
+      conditions.push(Prisma.sql`"ownerId" = ${dto.ownerId}`);
+    }
+    if (dto.teamId !== undefined) {
+      conditions.push(Prisma.sql`"teamId" = ${dto.teamId}`);
+    }
+    if (dto.projectId !== undefined) {
+      conditions.push(Prisma.sql`"projectId" = ${dto.projectId}`);
+    }
+    if (dto.search !== undefined && dto.search.length > 0) {
+      conditions.push(
+        Prisma.sql`("name" ILIKE ${`%${dto.search}%`} OR "phone" ILIKE ${`%${dto.search}%`})`,
+      );
+    }
+
+    // Role scoping AFTER the explicit filters (same order as listWhere).
+    if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
+      conditions.push(Prisma.sql`"ownerId" = ${actor.sub}`);
+    } else if (actor.role === 'MANAGER') {
+      const teamId = await this.managerTeamId(tx, actor);
+      conditions.push(Prisma.sql`"teamId" = ${teamId ?? '__no_team__'}`);
+    }
+
+    return conditions;
+  }
+
+  /**
+   * Build the SQL `ORDER BY` clause for the Lead list. Defaults to
+   * overdue-first (NEW + created > 30 min ago float to the top, freshest
+   * first) then most recent activity - Decision 0.2. When the page passes
+   * `sortBy`/`sortDir` (server-side sort, T-SRVPG), that column + direction
+   * wins instead. `sortBy` is whitelisted by the DTO enum so it can never
+   * inject SQL.
+   */
+  private sortOrderSql(dto: LeadFilterDto): Prisma.Sql {
+    if (dto.sortBy !== undefined) {
+      const dir = dto.sortDir === 'asc' ? 'ASC' : 'DESC';
+      // sortBy is a z.enum(['updatedAt','createdAt','name']) - safe to
+      // interpolate as a column name.
+      return Prisma.sql`"${Prisma.raw(dto.sortBy)}" ${Prisma.raw(dir)}`;
+    }
+    return Prisma.sql`
+      (CASE WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0 ELSE 1 END) ASC,
+      "updatedAt" DESC
+    `;
+  }
+
+  /**
    * GET /api/leads - the Lead Inbox. Returns the page-shaped result the
-   * UI expects (rows + total). Order: most recent activity first; the
-   * page applies overdue-first client-side (Decision 0.2).
+   * UI expects (rows + total + summary counts). Order: overdue-first
+   * (NEW + created > 30 min ago float to the top, freshest first), then
+   * most recent activity - Decision 0.2, now enforced server-side so
+   * pagination returns a consistent order (T-SRVPG).
    */
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
     return withRlsContext(
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       async (tx) => {
-        const where = await this.listWhere(tx as unknown as PrismaClient, actor, dto);
-        const [rows, total] = await Promise.all([
-          tx.lead.findMany({
-            where,
-            orderBy: { updatedAt: 'desc' },
-            take: dto.limit,
-            skip: dto.offset,
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              state: true,
-              source: true,
-              ownerId: true,
-              updatedAt: true,
-              owner: { select: { name: true } },
-            },
-          }),
-          tx.lead.count({ where }),
+        const conditions = await this.listConditions(
+          tx as unknown as PrismaClient,
+          actor,
+          dto,
+        );
+        const whereSql =
+          conditions.length > 0
+            ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+            : Prisma.empty;
+
+        const [rows, total, overdueCount, newTodayCount] = await Promise.all([
+          tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+            SELECT "id", "name", "phone", "state", "source", "ownerId",
+              "createdAt", "updatedAt",
+              (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName"
+            FROM "Lead"
+            ${whereSql}
+            ORDER BY
+              ${this.sortOrderSql(dto)}
+            LIMIT ${dto.limit} OFFSET ${dto.offset}
+          `),
+          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+            SELECT COUNT(*) AS c FROM "Lead" ${whereSql}
+          `),
+          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+            SELECT COUNT(*) AS c FROM "Lead"
+            ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
+              "state"='NEW' AND "createdAt" <= now() - interval '30 minutes'
+          `),
+          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+            SELECT COUNT(*) AS c FROM "Lead"
+            ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
+              "state"='NEW' AND "createdAt" >= now() - interval '24 hours'
+          `),
         ]);
+
         return {
-          total,
+          total: Number(total[0]?.c ?? 0),
+          overdueCount: Number(overdueCount[0]?.c ?? 0),
+          newTodayCount: Number(newTodayCount[0]?.c ?? 0),
           rows: rows.map((r) => ({
-            id: r.id,
-            name: r.name,
-            phone: r.phone,
-            status: r.state,
-            source: r.source,
-            ownerId: r.ownerId,
-            ownerName: r.owner?.name ?? null,
-            updatedAt: r.updatedAt.toISOString(),
+            id: r.id as string,
+            name: r.name as string,
+            phone: r.phone as string,
+            status: r.state as string,
+            source: (r.source as string | null) ?? null,
+            ownerId: r.ownerId as string,
+            ownerName: (r.ownerName as string | null) ?? null,
+            createdAt: (r.createdAt as Date).toISOString(),
+            updatedAt: (r.updatedAt as Date).toISOString(),
           })),
         };
+      },
+    );
+  }
+
+  /**
+   * GET /api/leads/:id - full lead detail row (Lead Detail page, Wireframe #5).
+   *
+   * Runs inside withRlsContext so the actor's role/team scoping applies
+   * (the same RLS policies that gate the inbox). A lead the actor cannot
+   * see, or that does not exist, surfaces as a typed 404 (RLS-silent-zero
+   * and missing row are indistinguishable to the caller - both are "not
+   * found" for this actor).
+   */
+  async findOne(actor: JwtPayload, leadId: string): Promise<LeadDetail> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const row = await tx.lead.findUnique({
+          where: { id: leadId },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            source: true,
+            state: true,
+            ownerId: true,
+            ownerType: true,
+            coOwnerId: true,
+            teamId: true,
+            projectId: true,
+            createdAt: true,
+            updatedAt: true,
+            owner: { select: { name: true } },
+            coOwner: { select: { name: true } },
+          },
+        });
+        if (row === null) {
+          throw new NotFoundException(`Lead ${leadId} not found`);
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          phone: row.phone,
+          email: row.email,
+          source: row.source,
+          status: row.state,
+          ownerId: row.ownerId,
+          ownerName: row.owner?.name ?? null,
+          ownerType: row.ownerType,
+          coOwnerId: row.coOwnerId,
+          coOwnerName: row.coOwner?.name ?? null,
+          teamId: row.teamId,
+          projectId: row.projectId,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        };
+      },
+    );
+  }
+
+  /**
+   * GET /api/leads/:id/activities - the lead's timeline (oldest → newest).
+   *
+   * Verifies the lead exists (and is visible to the actor) first, then
+   * returns the Activity rows with the acting user's name joined in so
+   * the UI can render "First call (Asha)" per Wireframe #5. Same RLS
+   * scoping as findOne.
+   */
+  async activities(actor: JwtPayload, leadId: string): Promise<LeadActivity[]> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const lead = await tx.lead.findUnique({
+          where: { id: leadId },
+          select: { id: true },
+        });
+        if (lead === null) {
+          throw new NotFoundException(`Lead ${leadId} not found`);
+        }
+        const rows = await tx.activity.findMany({
+          where: { leadId },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            body: true,
+            createdAt: true,
+            user: { select: { name: true } },
+          },
+        });
+        return rows.map((a) => ({
+          id: a.id,
+          type: a.type,
+          body: a.body,
+          createdAt: a.createdAt.toISOString(),
+          userName: a.user?.name ?? null,
+        }));
       },
     );
   }
@@ -256,6 +472,13 @@ export class LeadsService {
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       (tx) => this._createWithClient(actor, dto, tx as unknown as PrismaClient),
     );
+    // Notify the assigned owner that a new lead landed in their queue.
+    this.emitBestEffort(created.ownerId, {
+      type: 'lead.created',
+      title: 'New lead assigned',
+      body: `${created.name} was assigned to you.`,
+      leadId: created.id,
+    });
     return {
       id: created.id,
       name: created.name,
@@ -264,6 +487,7 @@ export class LeadsService {
       source: created.source,
       ownerId: created.ownerId,
       ownerName: created.ownerName,
+      createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt,
     };
   }
@@ -357,9 +581,22 @@ export class LeadsService {
       teamId = team.id;
     }
     if (teamId === null) {
-      throw new BadRequestException(
-        'teamId is required when an ADMIN/OWNER creates a lead (no actor teamId)',
-      );
+      // ADMIN/OWNER carry no teamId on the JWT (seed keeps it null), but
+      // Lead.teamId is NOT NULL. DESIGN.md §3: "admin-created leads can be
+      // assigned to any team." Resolve the DEFAULT team (oldest first -
+      // the seeded primary team) so a teamless admin/owner can create a
+      // lead; the manager-assignment engine then routes the owner within
+      // that team. Mirrors pickDefaultProject() (oldest-first default).
+      const defaultTeam = await client.team.findFirst({
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (defaultTeam === null) {
+        throw new BadRequestException(
+          'No team exists - create a team before creating leads',
+        );
+      }
+      teamId = defaultTeam.id;
     }
 
     const ruleRows = await client.managerAssignmentRule.findMany({
@@ -651,6 +888,7 @@ export class LeadsService {
             name: true,
             phone: true,
             source: true,
+            createdAt: true,
             owner: { select: { name: true } },
           },
         });
@@ -722,6 +960,7 @@ export class LeadsService {
             // Same-owner reassign: the owner hasn't changed, so
             // existing.owner.name is the right value to return.
             ownerName: existing.owner?.name ?? target.name,
+            createdAt: existing.createdAt.toISOString(),
             updatedAt: new Date().toISOString(),
           };
         }
@@ -757,6 +996,7 @@ export class LeadsService {
             state: true,
             source: true,
             ownerId: true,
+            createdAt: true,
             updatedAt: true,
           },
         });
@@ -783,6 +1023,14 @@ export class LeadsService {
           },
         });
 
+        // Notify the new owner that the lead was handed to them.
+        this.emitBestEffort(target.id, {
+          type: 'lead.reassigned',
+          title: 'Lead reassigned to you',
+          body: `${updated.name} was assigned to you.`,
+          leadId: updated.id,
+        });
+
         return {
           id: updated.id,
           name: updated.name,
@@ -791,6 +1039,7 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: target.name,
+          createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
       },
@@ -839,6 +1088,7 @@ export class LeadsService {
           data: {
             ...(dto.name !== undefined ? { name: dto.name } : {}),
             ...(dto.email !== undefined ? { email: dto.email } : {}),
+            ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
           },
           select: {
             id: true,
@@ -847,6 +1097,7 @@ export class LeadsService {
             state: true,
             source: true,
             ownerId: true,
+            createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
           },
@@ -858,8 +1109,16 @@ export class LeadsService {
             action: 'lead.update',
             entityType: 'Lead',
             entityId: updated.id,
-            before: { name: existing.name, email: existing.email },
-            after: { name: updated.name, email: dto.email },
+            before: {
+              name: existing.name,
+              email: existing.email,
+              phone: existing.phone,
+            },
+            after: {
+              name: updated.name,
+              email: dto.email,
+              phone: updated.phone,
+            },
             reason: `lead.update by ${actor.email} (${actor.role})`,
           },
         });
@@ -872,6 +1131,7 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: updated.owner?.name ?? null,
+          createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
       },
@@ -901,6 +1161,7 @@ export class LeadsService {
             name: true,
             phone: true,
             source: true,
+            createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
           },
@@ -936,6 +1197,7 @@ export class LeadsService {
             source: existing.source,
             ownerId: existing.ownerId,
             ownerName: existing.owner?.name ?? null,
+            createdAt: existing.createdAt.toISOString(),
             updatedAt: existing.updatedAt.toISOString(),
           };
         }
@@ -950,6 +1212,7 @@ export class LeadsService {
             state: true,
             source: true,
             ownerId: true,
+            createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
           },
@@ -967,6 +1230,18 @@ export class LeadsService {
           },
         });
 
+        // Notify the lead's owner that its state changed (e.g. a visit was
+        // booked, a deal moved to negotiation). Skip when the actor IS the
+        // owner (they already know - they made the change).
+        if (existing.ownerId !== actor.sub) {
+          this.emitBestEffort(existing.ownerId, {
+            type: 'lead.transition',
+            title: 'Lead status changed',
+            body: `${updated.name} moved to ${updated.state}.`,
+            leadId: updated.id,
+          });
+        }
+
         return {
           id: updated.id,
           name: updated.name,
@@ -975,8 +1250,131 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: updated.owner?.name ?? null,
+          createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
+      },
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Delete (autoplan 2026-09-07, D13/D14/D17/D19)
+  // -------------------------------------------------------------------------
+
+  /**
+   * DELETE /api/leads/:id - hard delete, OWNER/ADMIN only (D14: mirrors the
+   * `lead_delete_admin` RLS policy exactly; withRlsContext maps OWNER →
+   * ADMIN at the Postgres layer, so both roles pass).
+   *
+   * Guard semantics (D13/D17):
+   *   - WON leads and leads with ANY booking are unrecoverable history:
+   *     revenue records (Booking cascades on Lead delete - schema.prisma)
+   *     and the customer's chat/visit trail must not vanish. 409 with
+   *     what/why/fix copy.
+   *   - The guard lives in the deleteMany `where` clause, NOT a
+   *     select-then-delete: check-then-act has a TOCTOU window (a
+   *     transition or booking create between check and delete would
+   *     sail through). One atomic statement; 0 rows deleted means
+   *     classify by re-reading INSIDE the same tx.
+   *
+   * Audit (A2/G-1): the before-snapshot is the ONLY trace of the lead
+   * after this runs (AuditLog has no lead FK, so it survives the
+   * cascade) - snapshot the full row. Same tx: null any
+   * WhatsappUnknownContact.convertedToLeadId pointing here (bare unique
+   * string, no FK - cascade never touches it, D19).
+   */
+  async delete(actor: JwtPayload, leadId: string): Promise<{ id: string }> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'Only admins and managers (owner/admin) can delete leads',
+      );
+    }
+
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        // Full row first: it becomes the audit before-snapshot AND the
+        // 0-rows classifier (was it ever there? was it blocked?).
+        const existing = await tx.lead.findUnique({
+          where: { id: leadId },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            phoneE164: true,
+            email: true,
+            source: true,
+            state: true,
+            ownerId: true,
+            ownerType: true,
+            coOwnerId: true,
+            teamId: true,
+            projectId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`Lead ${leadId} not found`);
+        }
+
+        // Atomic guarded delete: only removes the row when it is safe
+        // to remove (not WON, no bookings of any status). RLS additionally
+        // scopes this to rows the admin can see.
+        const deleted = await tx.lead.deleteMany({
+          where: {
+            id: leadId,
+            state: { not: 'WON' },
+            bookings: { none: {} },
+          },
+        });
+
+        if (deleted.count === 0) {
+          // The row existed when we read it but the guard refused it -
+          // name the blocker for the operator (re-read is same-tx, so
+          // the state we report is the state the delete saw).
+          const blocker = await tx.lead.findUnique({
+            where: { id: leadId },
+            select: { state: true, bookings: { select: { id: true } } },
+          });
+          if (blocker === null) {
+            // Vanished between our read and the delete: a concurrent
+            // admin won the race. Typed 404 (not P2025-as-500).
+            throw new NotFoundException(`Lead ${leadId} not found`);
+          }
+          if (blocker.state === 'WON') {
+            throw new ConflictException(
+              'This lead is WON - it cannot be deleted. Close it as LOST instead if the deal fell through.',
+            );
+          }
+          throw new ConflictException(
+            'This lead has bookings. Deleting it would erase booking history - cancel the booking or close the lead as LOST instead.',
+          );
+        }
+
+        // D19: WhatsappUnknownContact.convertedToLeadId is a bare unique
+        // string (no FK) - the cascade never nulls it. Same tx keeps the
+        // convert-flow accounting consistent with the delete.
+        await tx.whatsappUnknownContact.updateMany({
+          where: { convertedToLeadId: leadId },
+          data: { convertedToLeadId: null },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'lead.delete',
+            entityType: 'Lead',
+            entityId: leadId,
+            // The lead row is GONE after this tx - this JSON snapshot is
+            // the only remaining record of what was deleted.
+            before: { ...existing },
+            reason: `lead.delete by ${actor.email} (${actor.role})`,
+          },
+        });
+
+        return { id: leadId };
       },
     );
   }
@@ -1012,5 +1410,22 @@ export class LeadsService {
       if (actor.sub === ownerId) return;
     }
     throw new ForbiddenException('You cannot edit this lead');
+  }
+
+  /**
+   * Best-effort notification emit (rule 7j). Never throws to the caller:
+   * a notification failure must not break the lead write path. No-ops when
+   * the notifications dep is absent (test harness) or emit throws.
+   */
+  private emitBestEffort(
+    recipientSub: string,
+    payload: { type: string; title: string; body: string; leadId?: string },
+  ): void {
+    if (this.notifications === undefined) return;
+    try {
+      void this.notifications.emit(recipientSub, payload).catch(() => undefined);
+    } catch {
+      // swallow - best-effort
+    }
   }
 }

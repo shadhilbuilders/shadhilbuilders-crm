@@ -64,3 +64,50 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// ────────────────────────────────────────────────────────────────────────────
+// Web push (T-PUSH, 2026-09-08)
+// ────────────────────────────────────────────────────────────────────────────
+// Handle incoming push events: parse the JSON payload ({ title, body, url })
+// and show a notification. Clicking it focuses/opens the target URL.
+self.addEventListener('push', (event) => {
+  let title = 'Shadhil CRM';
+  let body = '';
+  let url = '/';
+  try {
+    const parsed = event.data ? event.data.json() : {};
+    title = parsed.title ?? title;
+    body = parsed.body ?? '';
+    url = parsed.url ?? url;
+  } catch {
+    // non-JSON payload - fall back to the raw text
+    title = event.data?.text() ?? title;
+  }
+  const options: NotificationOptions = {
+    body,
+    icon: '/icons/apple-touch-180.png',
+    badge: '/icons/apple-touch-180.png',
+    data: { url },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Clicking a notification focuses the app and navigates to the target URL.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          client.focus();
+          if ('navigate' in client) {
+            void client.navigate(url);
+          }
+          return;
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});

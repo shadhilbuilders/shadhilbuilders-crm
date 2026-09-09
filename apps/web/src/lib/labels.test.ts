@@ -14,10 +14,14 @@ import {
   INVENTORY_STATUSES,
   VISIT_OUTCOMES,
   BOOKING_STATUSES,
+  LEAD_SOURCES,
+  ACTIVITY_TYPES,
   type LeadStatus,
   type VisitOutcome,
   type InventoryStatus,
   type BookingStatus,
+  type LeadSource,
+  type ActivityType,
 } from '@/lib/labels';
 
 describe('lib/labels', () => {
@@ -43,6 +47,10 @@ describe('lib/labels', () => {
         WON: 'Won 🎉',
         LOST: 'Lost',
         COLD: 'Cold',
+        // autoplan 2026-09-07: full 12-state coverage (visit-outcome
+        // states are also lead states; same friendly labels).
+        RESCHEDULED: 'Postponed',
+        NO_SHOW: "Didn't show up",
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('lead', enumValue)).toBe(expected);
@@ -110,6 +118,56 @@ describe('lib/labels', () => {
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('booking', enumValue)).toBe(expected);
+      }
+    });
+  });
+
+  describe('LEAD_SOURCES - every source value has a friendly label', () => {
+    it.each(LEAD_SOURCES)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('source', value);
+      expect(label.length).toBeGreaterThan(0);
+      // Reject the raw enum leaking to the UI (the original bug T11 fixes).
+      expect(label).not.toBe(value);
+      // Reject ALL_CAPS or SHOUTY_SNAKE (the original bug).
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('contains the explicit source mappings', () => {
+      const expectations: Record<LeadSource, string> = {
+        '99ACRES': '99acres',
+        HOUSING: 'Housing.com',
+        LANDING: 'Landing site',
+        MAGICBRICKS: 'Magicbricks',
+        META_AD: 'Meta ads',
+        OTHER: 'Other',
+        REFERRAL: 'Referral',
+        WALK_IN: 'Walk-in',
+        WEBSITE: 'Website',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('source', enumValue)).toBe(expected);
+      }
+    });
+  });
+
+  describe('ACTIVITY_TYPES - every activity type has a friendly label', () => {
+    it.each(ACTIVITY_TYPES)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('activity', value);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(value);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('contains the explicit activity mappings', () => {
+      const expectations: Record<ActivityType, string> = {
+        CALL: 'Call',
+        NOTE: 'Note',
+        STATUS_CHANGE: 'Status change',
+        VISIT: 'Visit',
+        EMAIL: 'Email',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('activity', enumValue)).toBe(expected);
       }
     });
   });

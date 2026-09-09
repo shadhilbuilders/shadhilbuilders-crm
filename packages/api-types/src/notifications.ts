@@ -22,10 +22,9 @@ export type MarkReadDto = z.infer<typeof MarkReadDtoSchema>;
 export const NotificationFilterDtoSchema = z.object({
   unreadOnly: z.boolean().default(false),
   type: z.string().optional(),
-  // Seed project ids are readable (`seed-project-metro-heights`), not
-  // cuids - same convention as leads.ts projectId. Resolved through
-  // Notification.lead.projectId on the server.
-  projectId: z.string().trim().min(1).max(64).optional(),
+  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08). Resolved
+  // through Notification.lead.projectId on the server.
+  projectId: z.cuid2().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });

@@ -15,6 +15,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
@@ -31,6 +32,8 @@ import {
   ReassignLeadDtoSchema,
   UpdateLeadDtoSchema,
   type CreateLeadDto,
+  type LeadActivity,
+  type LeadDetail,
   type LeadFilterDto,
   type LeadStateTransitionDto,
   type ReassignLeadDto,
@@ -66,7 +69,12 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
   const stateRaw = query['state'];
   let state: string | string[] | undefined;
   if (typeof stateRaw === 'string') {
-    state = stateRaw;
+    // The frontend joins multi-select states with a comma
+    // (`state=NEW,CONTACTED`). Split before schema validation - a
+    // literal "NEW,CONTACTED" is not a valid single LeadState enum value.
+    const parts = stateRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    state = parts.length > 1 ? parts : parts[0];
+    if (parts.length === 0) state = undefined;
   } else if (Array.isArray(stateRaw)) {
     state = stateRaw.filter((v): v is string => typeof v === 'string');
   }
@@ -81,6 +89,8 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
       typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
     offset:
       typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
+    sortBy: typeof query['sortBy'] === 'string' ? query['sortBy'] : undefined,
+    sortDir: typeof query['sortDir'] === 'string' ? query['sortDir'] : undefined,
   };
   const result = LeadFilterDtoSchema.safeParse(candidate);
   if (!result.success) {
@@ -113,6 +123,38 @@ export class LeadsController {
     @Query() query: Record<string, unknown>,
   ): Promise<LeadListResult> {
     return this.leads.list(req.user!, parseFilter(query));
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Get a single lead (Lead Detail page). Role-scoped by the same RLS policies as the inbox; a lead the actor cannot see 404s.',
+  })
+  async findOne(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<LeadDetail> {
+    const idSchema = z.string().cuid();
+    if (!idSchema.safeParse(id).success) {
+      throw new BadRequestException(`Lead id "${id}" is not a valid id`);
+    }
+    return this.leads.findOne(req.user!, id);
+  }
+
+  @Get(':id/activities')
+  @ApiOperation({
+    summary:
+      'Get a lead timeline (oldest → newest). Each entry carries the acting user name for the UI.',
+  })
+  async getActivities(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<LeadActivity[]> {
+    const idSchema = z.string().cuid();
+    if (!idSchema.safeParse(id).success) {
+      throw new BadRequestException(`Lead id "${id}" is not a valid id`);
+    }
+    return this.leads.activities(req.user!, id);
   }
 
   @Post()
@@ -179,5 +221,24 @@ export class LeadsController {
     }
     const dto: ReassignLeadDto = parsed;
     return this.leads.reassign(req.user!, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary:
+      'Hard delete (autoplan 2026-09-07 D13/D14). OWNER/ADMIN only - mirrors the lead_delete_admin RLS policy. 409 when the lead is WON or has any booking (revenue/audit trail must not cascade away). Guard + delete run as ONE statement inside the RLS transaction (no check-then-act race).',
+  })
+  async delete(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<{ id: string }> {
+    // URL-authoritative param check (eng review: unvalidated param was a
+    // LOW finding). Cuid format pins "this is a lead id" before the DB
+    // round trip; a mismatch is a client bug, not a "not found".
+    const idSchema = z.string().cuid();
+    if (!idSchema.safeParse(id).success) {
+      throw new BadRequestException(`Lead id "${id}" is not a valid id`);
+    }
+    return this.leads.delete(req.user!, id);
   }
 }

@@ -10,8 +10,8 @@
 // Phone is normalized to digits-only client-side before submit (server's
 // CreateLeadDto.phone does the same).
 //
-// Source is a free-form text input per Plan §3 (will become a foreign key
-// when MarketingAttribution ships in v2).
+// Source is a fixed option set today; will become a foreign key when
+// MarketingAttribution ships in v2.
 //
 // We use the props-API Form (data-driven, declarative `fields` array)
 // per the canonical pattern in apps/web/src/app/dev/components/page.tsx.
@@ -26,16 +26,32 @@ import { useCreateLead } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 
 import { PageHeader } from '@/components/shared/PageHeader';
-
-type CreateLeadFormValues = {
-  name: string;
-  phone: string;
-  email: string;
-  source: string;
-  notes: string;
-};
+import { PhoneSchema } from '@shadhil/api-types';
+import z from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 
 type CreatedLead = { id: string };
+
+const createLeadSchema = z.object({
+  name: z.string().min(1, 'Name is required').trim().max(120),
+  phone: PhoneSchema,
+  email: z.email().optional(),
+  source: z.enum(['Landing site', 'Meta ads', 'Walk-in', 'Referral', '99acres', 'Magicbricks', 'Housing.com', 'Other']),
+  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+});
+
+type CreateLeadSchema = z.infer<typeof createLeadSchema>;
+
+const LEAD_SOURCE_OPTIONS = [
+  { value: 'Landing site', label: 'Landing site' },
+  { value: 'Meta ads', label: 'Meta ads' },
+  { value: 'Walk-in', label: 'Walk-in' },
+  { value: 'Referral', label: 'Referral' },
+  { value: '99acres', label: '99acres' },
+  { value: 'Magicbricks', label: 'Magicbricks' },
+  { value: 'Housing.com', label: 'Housing.com' },
+  { value: 'Other', label: 'Other' },
+];
 
 export default function NewLeadPage() {
   const router = useRouter();
@@ -43,7 +59,8 @@ export default function NewLeadPage() {
   // T-ProjectSwitch: new leads belong to the project in the URL.
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
-  const form = useForm<CreateLeadFormValues>({
+  const form = useForm<CreateLeadSchema>({
+    resolver: zodResolver(createLeadSchema),
     defaultValues: {
       name: '',
       phone: '',
@@ -54,8 +71,10 @@ export default function NewLeadPage() {
     mode: 'onSubmit',
   });
 
-  function onSubmit(values: CreateLeadFormValues) {
-    const phone = values.phone.replace(/\D/g, '');
+  function onSubmit(values: CreateLeadSchema) {
+    // PhoneSchema already validated + normalized `values.phone` to E.164
+    // digits (no "+", no spaces) during parse - no manual cleanup needed.
+    const phone = values.phone;
     if (phone.length < 10) {
       toast.error('Phone must be at least 10 digits');
       return;
@@ -65,11 +84,11 @@ export default function NewLeadPage() {
       name: values.name.trim().replace(/\s+/g, ' '),
       phone,
       ...(projectId !== null ? { projectId } : {}),
-      ...(values.email.trim().length > 0
+      ...(values.email && values.email.trim().length > 0
         ? { email: values.email.trim().toLowerCase() }
         : {}),
       source: values.source.trim(),
-      ...(values.notes.trim().length > 0 ? { notes: values.notes.trim() } : {}),
+      ...(values.notes && values.notes.trim().length > 0 ? { notes: values.notes.trim() } : {}),
     };
 
     createLead.mutate(payload, {
@@ -108,8 +127,9 @@ export default function NewLeadPage() {
         onSubmit={onSubmit}
         submitText={createLead.isPending ? 'Saving…' : 'Create lead'}
         submitButtonProps={{ disabled: createLead.isPending }}
+        actionClassName='justify-end'
+        resetText='Cancel'
         resetButtonProps={{
-          children: 'Cancel',
           onClick: () => {
             form.reset();
             void router.push(projectHref(projectId, '/leads'));
@@ -133,8 +153,7 @@ export default function NewLeadPage() {
             label: 'Phone',
             placeholder: '9876543210',
             required: true,
-            inputType: 'tel',
-            description: 'Indian numbers: 10 digits, optional +91 prefix.',
+            description: 'Indian numbers: 10 digits, no spaces or dashes.',
             inputProps: {
               inputMode: 'numeric',
               'data-qa': 'lead-phone',
@@ -152,15 +171,14 @@ export default function NewLeadPage() {
             },
           },
           {
-            type: 'input',
+            type: 'select',
             name: 'source',
             label: 'Source',
-            placeholder: 'Landing site',
+            placeholder: 'Pick a source',
             required: true,
             description: 'Where this lead came from.',
-            inputProps: {
-              list: 'lead-sources',
-              maxLength: 80,
+            options: LEAD_SOURCE_OPTIONS,
+            selectProps: {
               'data-qa': 'lead-source',
             },
           },
@@ -180,17 +198,6 @@ export default function NewLeadPage() {
           },
         ]}
       />
-
-      {/* Source datalist - used by the source field above */}
-      <datalist id="lead-sources">
-        <option value="Landing site" />
-        <option value="Meta ads" />
-        <option value="Walk-in" />
-        <option value="Referral" />
-        <option value="99acres" />
-        <option value="Magicbricks" />
-        <option value="Housing.com" />
-      </datalist>
 
       {/* Manual Cancel shortcut in addition to the form's Reset button. */}
       <div className="flex justify-start">

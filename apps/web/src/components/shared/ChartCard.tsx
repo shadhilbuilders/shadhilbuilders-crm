@@ -177,14 +177,15 @@ function ChartCardBody<T>({
 
   // 3. Resolved but empty - same frame, but the body shows "No data yet"
   //    instead of the "module pending" copy (because the module IS
-  //    built, it just returned nothing).
+  //    built, it just returned nothing). Rendered directly with <Empty>
+  //    - NOT via ModulePending, which would fall through to the
+  //    "backend module pending" branch when error is null.
   if (query.data === undefined || isEmptyData(query.data)) {
     return (
       <ChartFrame title={title}>
-        <ModulePending
+        <Empty
           title={emptyTitle}
           description={`${title} has no records to plot yet.`}
-          error={null}
         />
       </ChartFrame>
     );

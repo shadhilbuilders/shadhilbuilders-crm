@@ -60,6 +60,17 @@ export function canViewAudit(role: Role | undefined): boolean {
 }
 
 /**
+ * Lead deletion (autoplan 2026-09-07 D14): OWNER/ADMIN only. Mirrors the
+ * `lead_delete_admin` RLS policy (policies.sql:82-84) EXACTLY - the RLS
+ * layer has no MANAGER (or OWNER) DELETE policy, so any wider gate here
+ * would turn a manager's delete into a silent 0-row write (P2025 → 500).
+ * Widening RLS is a security-policy change: see TODOS.md T-RLSMGR.
+ */
+export function canDeleteLeads(role: Role | undefined): boolean {
+  return isAdminLike(role);
+}
+
+/**
  * T-E2b follow-up queue (admin-only). ADMIN/OWNER/MANAGER triage
  * inbound WhatsApp messages from unknown numbers (PENDING →
  * CONVERTED → Lead, or PENDING → SPAM). TELECALLER / SALES_EXEC
