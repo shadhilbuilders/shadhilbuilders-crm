@@ -39,3 +39,12 @@ overrides:
   'deepmerge-ts': '8.0.0'
   'mysql2': '3.23.1'
   'qs': '6.16.0'
+
+  # ── Dependabot 2026-09-09 - multer DoS (4 alerts: 3 high + 1 low). ─────
+  # multer < 2.3.0 is vulnerable to crafted multipart field names (DoS),
+  # file descriptor leak on aborted uploads, and a file-size-limit bypass.
+  # It's a TRANSITIVE dep of @nestjs/platform-express@12.0.1 (which still
+  # pins 2.2.0). The backend does NOT use multer (no file uploads), so this
+  # override is inert at runtime but clears the advisories. Re-evaluate
+  # when @nestjs/platform-express bumps its multer range.
+  'multer': '2.3.0'
