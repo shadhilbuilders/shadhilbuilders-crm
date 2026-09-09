@@ -5,7 +5,7 @@
 // Extracted from `[projectId]/dashboard/page.tsx` so BOTH the project work
 // dashboard and the admin/owner `/dashboard` command center reuse the same
 // KPI strip, section wrapper, and inline charts. DRY: do NOT re-declare these
-// in either page — import from here.
+// in either page - import from here.
 
 import Link from 'next/link';
 

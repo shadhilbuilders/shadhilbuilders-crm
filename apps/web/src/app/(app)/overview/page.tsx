@@ -7,7 +7,7 @@
 // carries NO project segment, the overview stats run unscoped and return data
 // across ALL projects (verified: RLS policies lead_select_admin,
 // site_visit_select_team admin branch, and auditlog_select_admin_or_owner have
-// no project filter — an unscoped admin query returns all projects).
+// no project filter - an unscoped admin query returns all projects).
 //
 // Real-data wiring (autoplan 2026-09-08): the placeholder KPIs are replaced
 // with REAL numbers from GET /api/dashboard/overview (one role-scoped
@@ -16,7 +16,7 @@
 //
 // LOW-1: the isAdminLike guard below is a UX mirror, NOT a security boundary.
 // The real data boundary is RLS + the service guard. Do not "harden" this
-// guard by removing RLS reliance — the server is the wall.
+// guard by removing RLS reliance - the server is the wall.
 
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
@@ -66,14 +66,14 @@ export default function AdminDashboardPage() {
   }
   // Design fix M1: redirect non-admins to the project work dashboard (no
   // dead-end). Guard the empty-registry loop (eng CRITICAL-2): if no
-  // default project, go to /projects — otherwise projectHref(null, ...)
+  // default project, go to /projects - otherwise projectHref(null, ...)
   // returns /overview and the redirect loops forever.
   const redirectTarget = commandCenterRedirectTarget(user.role, projects ?? []);
   if (redirectTarget !== null) {
     return <RedirectToProject href={redirectTarget} />;
   }
   // Pass the REAL role (OWNER travels as admin-class) into the visibility
-  // checks — never hardcode 'ADMIN' (design M4).
+  // checks - never hardcode 'ADMIN' (design M4).
   return (
     <AdminDashboard
       role={user.role}
@@ -113,7 +113,7 @@ function AdminDashboard({
   return (
     <div className="space-y-8">
       <div>
-        {/* H2 naming fix: "Overview" matches the nav label — one name. */}
+        {/* H2 naming fix: "Overview" matches the nav label - one name. */}
         <Heading className="mb-1">Overview</Heading>
         <TypographyP className="text-muted-foreground text-sm">
           All teams, all activity.

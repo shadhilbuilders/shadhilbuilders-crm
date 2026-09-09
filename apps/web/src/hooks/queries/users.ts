@@ -25,10 +25,37 @@ export type CreateUserInput = {
 
 const USERS_KEY = ['users'] as const;
 
-export function useUsers() {
+export type UsersFilter = {
+  role?: Role[];
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type UsersListResult = {
+  rows: BackendCreatedUser[];
+  total: number;
+};
+
+export function useUsers(filter: UsersFilter = {}) {
   return useQuery({
-    queryKey: USERS_KEY,
-    queryFn: ({ signal }) => api<BackendCreatedUser[]>('/users', { signal }),
+    queryKey: [
+      ...USERS_KEY,
+      filter.role ?? [],
+      filter.search ?? '',
+      filter.limit,
+      filter.offset,
+    ],
+    queryFn: ({ signal }) =>
+      api<UsersListResult>(
+        `/users${qs({
+          role: filter.role?.join(','),
+          search: filter.search,
+          limit: filter.limit,
+          offset: filter.offset,
+        })}`,
+        { signal },
+      ),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
@@ -83,6 +110,39 @@ export function useChangeUserRole() {
         method: 'PATCH',
         json: { role },
       }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+    },
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      name,
+      email,
+    }: {
+      id: string;
+      name?: string;
+      email?: string;
+    }) =>
+      api<BackendCreatedUser>(`/users/${id}`, {
+        method: 'PATCH',
+        json: { name, email },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<{ ok: true }>(`/users/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });
     },

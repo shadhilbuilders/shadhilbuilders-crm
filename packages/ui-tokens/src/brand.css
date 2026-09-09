@@ -35,6 +35,12 @@
   --secondary: oklch(0.684 0.178 136.1);
   --secondary-foreground: oklch(0.145 0 0);
 
+  /* ── Control borders (inputs / selects / textareas) ──────────────────
+   * The library default --input (oklch 0.929) is near-white and invisible
+   * on the white/off-white dialog surface. Set a visibly-darker neutral
+   * gray so input borders read clearly (autoplan 2026-09-09). */
+  --input: oklch(0.88 0.012 255);
+
   /* ── Link color ──────────────────────────────────────────────────
    * Reusable link color for inline text links (lead names, etc.).
    * Map to `text-link` via the `--color-link` @theme inline entry in

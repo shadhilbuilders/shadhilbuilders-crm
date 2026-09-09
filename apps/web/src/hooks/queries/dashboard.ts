@@ -6,7 +6,7 @@
 //
 // Data-confidence honesty (autoplan 2026-09-08, CEO F3): metrics that depend on
 // data the team may not produce yet return null/0 HONESTLY - never a fabricated
-// number. avgTimeToFirstTouch is null (KPI shows "—"), noShowRate is 0 with a
+// number. avgTimeToFirstTouch is null (KPI shows "-"), noShowRate is 0 with a
 // "no outcome data yet" sub-label.
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 

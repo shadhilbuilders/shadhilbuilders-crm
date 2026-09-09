@@ -212,10 +212,10 @@ function ProjectTable({
               </td>
               <td className="text-muted-foreground px-4 py-2.5">{project.slug}</td>
               <td className="text-muted-foreground hidden px-4 py-2.5 md:table-cell">
-                {project.reraNumber ?? '—'}
+                {project.reraNumber ?? '-'}
               </td>
               <td className="text-muted-foreground hidden px-4 py-2.5 md:table-cell">
-                {project.cmdaNumber ?? '—'}
+                {project.cmdaNumber ?? '-'}
               </td>
               <td className="px-4 py-2.5 text-right">
                 <Button

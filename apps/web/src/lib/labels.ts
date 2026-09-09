@@ -195,6 +195,29 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   EMAIL: 'Email',
 };
 
+/**
+ * Staff-role values per the Prisma `User.role` enum (OWNER/ADMIN/MANAGER/
+ * SALES_EXEC/TELECALLER). The users page renders these via
+ * `labelFor('role', ...)` so staff see "Sales executive" not "SALES_EXEC".
+ * Added 2026-09-09 alongside the users-page DataTable rebuild.
+ */
+export const ROLES = [
+  'OWNER',
+  'ADMIN',
+  'MANAGER',
+  'SALES_EXEC',
+  'TELECALLER',
+] as const;
+export type RoleLabel = (typeof ROLES)[number];
+
+const ROLE_LABELS: Record<RoleLabel, string> = {
+  OWNER: 'Owner',
+  ADMIN: 'Admin',
+  MANAGER: 'Manager',
+  SALES_EXEC: 'Sales Executive',
+  TELECALLER: 'Telecaller',
+};
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -209,7 +232,7 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
  * failing assertion so the label table gets updated before merge.
  */
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity',
+  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -226,6 +249,9 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'activity') {
     const mapped = (ACTIVITY_TYPE_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'role') {
+    const mapped = (ROLE_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];

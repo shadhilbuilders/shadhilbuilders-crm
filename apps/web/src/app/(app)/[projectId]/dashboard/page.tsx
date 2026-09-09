@@ -3,7 +3,7 @@
 // Project work dashboard (dashboard split, 2026-09-08; real-data wiring
 // autoplan 2026-09-08).
 //
-// Serves EVERY role on /{projectId}/dashboard — "anyone can see this
+// Serves EVERY role on /{projectId}/dashboard - "anyone can see this
 // dashboard." Admin/owner now have a dedicated cross-project /overview
 // command center; on the project work dashboard they see the Manager view
 // (project-scoped, all teams in this project).
@@ -22,7 +22,7 @@
 //     real 0s (honest), never a fabricated number.
 //
 // Data-confidence honesty (CEO F3): metrics that depend on data the team may
-// not produce yet (avgTimeToFirstTouch, noShowRate) show "—"/0 honestly, never
+// not produce yet (avgTimeToFirstTouch, noShowRate) show "-"/0 honestly, never
 // a fabricated number. The KPI sub-labels explain "no outcome data yet".
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
@@ -88,7 +88,7 @@ export default function DashboardPage() {
 
   // Admin/owner now have a dedicated cross-project /overview command center.
   // On the project work dashboard they see the Manager view (project-scoped,
-  // all teams in this project) — "anyone can see this dashboard."
+  // all teams in this project) - "anyone can see this dashboard."
   if (isAdminLike(role) || role === 'MANAGER') {
     return <ManagerDashboard name={user.name || role} />;
   }

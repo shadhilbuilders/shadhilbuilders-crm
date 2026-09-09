@@ -180,7 +180,7 @@ function SidebarSwitcherSlot({
   const { data: projects, isPending: projectsPending } = useProjects();
   // M2 (eng-corrected): on the cross-project /overview command center, the
   // switcher must NOT imply a project scope. Scope the null to the switcher
-  // ONLY — the shared activeProjectId (passed to the nav groups) stays intact
+  // ONLY - the shared activeProjectId (passed to the nav groups) stays intact
   // so work nav hrefs keep resolving correctly.
   const pathname = usePathname();
   const isCommandCenter = pathname === '/overview';

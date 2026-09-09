@@ -6,12 +6,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -19,9 +21,14 @@ import {
   ChangePasswordDtoSchema,
   ChangeRoleDtoSchema,
   CreateUserDtoSchema,
+  UpdateUserDtoSchema,
+  UserFilterDtoSchema,
   type ChangePasswordDto,
   type ChangeRoleDto,
   type CreateUserDto,
+  type UpdateUserDto,
+  type UserFilterDto,
+  type UserListResult,
 } from '@shadhil/api-types';
 import { z } from 'zod';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
@@ -36,6 +43,46 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   if (!result.success) {
     throw new BadRequestException(
       result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
+    );
+  }
+  return result.data;
+}
+
+/**
+ * Parse query-string filters into the UserFilterDto. `role` may repeat
+ * (e.g. `?role=SALES_EXEC&role=TELECALLER`) - coerce to an array.
+ * `limit`/`offset` drive server-side pagination.
+ */
+function parseFilter(query: Record<string, unknown>): UserFilterDto {
+  const roleRaw = query['role'];
+  let role: string | string[] | undefined;
+  if (typeof roleRaw === 'string') {
+    // The frontend joins multi-select roles with a comma
+    // (`role=SALES_EXEC,TELECALLER`). Split before schema validation - a
+    // literal "SALES_EXEC,TELECALLER" is not a valid single Role enum value.
+    const parts = roleRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    role = parts.length > 1 ? parts : parts[0];
+    if (parts.length === 0) role = undefined;
+  } else if (Array.isArray(roleRaw)) {
+    role = roleRaw.filter((v): v is string => typeof v === 'string');
+  }
+  const result = UserFilterDtoSchema.safeParse({
+    role,
+    search: typeof query['search'] === 'string' ? query['search'] : undefined,
+    limit:
+      typeof query['limit'] === 'string'
+        ? Number.parseInt(query['limit'], 10)
+        : undefined,
+    offset:
+      typeof query['offset'] === 'string'
+        ? Number.parseInt(query['offset'], 10)
+        : undefined,
+  });
+  if (!result.success) {
+    throw new BadRequestException(
+      result.error.issues.map(
+        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
+      ),
     );
   }
   return result.data;
@@ -81,6 +128,33 @@ export class UsersController {
     return this.users.changeRole(req.user!, id, dto);
   }
 
+  @Patch(':id')
+  @ApiOperation({
+    summary:
+      'Edit a user name/email (autoplan 2026-09-09). Hierarchy-gated: actor must strictly outrank the target; no self-edit; OWNER protected.',
+  })
+  async update(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<CreatedUser> {
+    const dto: UpdateUserDto = UpdateUserDtoSchema.parse(body);
+    return this.users.update(req.user!, id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Delete a user (autoplan 2026-09-09). Hierarchy-gated: actor must strictly outrank the target; no self-delete; OWNER protected. Also removes the credential Account row.',
+  })
+  async remove(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    return this.users.remove(req.user!, id);
+  }
+
   /**
    * T-S hardening (2026-09-04, Week 5):
    * POST /api/users/:id/change-password
@@ -107,10 +181,13 @@ export class UsersController {
 
   @Get()
   @ApiOperation({
-    summary: 'List users (ADMIN: all; MANAGER: own team; staff: self)',
+    summary: 'List users (ADMIN: all; MANAGER: own team; staff: self). Optional ?role= filter + server pagination.',
   })
-  async list(@Req() req: AuthedRequest): Promise<CreatedUser[]> {
-    return this.users.list(req.user!);
+  async list(
+    @Req() req: AuthedRequest,
+    @Query() query: Record<string, unknown>,
+  ): Promise<UserListResult> {
+    return this.users.list(req.user!, parseFilter(query));
   }
 
   /**

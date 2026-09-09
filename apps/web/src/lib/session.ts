@@ -87,6 +87,23 @@ export function canManageUsers(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';
 }
 
+// Role rank for the users surface (mirrors apps/backend/src/users/roles.ts
+// RANK). Higher = more authority. An actor can edit/delete/change-role a
+// target they strictly outrank.
+const ROLE_RANK: Record<Role, number> = {
+  OWNER: 4,
+  ADMIN: 3,
+  MANAGER: 2,
+  TELECALLER: 1,
+  SALES_EXEC: 1,
+};
+
+/** True when the actor strictly outranks the target role (users surface). */
+export function outranks(actor: Role | undefined, target: Role): boolean {
+  if (actor === undefined) return false;
+  return ROLE_RANK[actor] > ROLE_RANK[target];
+}
+
 /** Telecaller is the only role that schedules + confirms visits (Model C). */
 export function canScheduleVisits(role: Role | undefined): boolean {
   return (

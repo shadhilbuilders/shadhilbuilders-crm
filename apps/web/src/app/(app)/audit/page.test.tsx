@@ -5,10 +5,21 @@
 // when the list resolves empty. Admin gate (canViewAudit) is
 // exercised via a mocked useSessionUser.
 //
-// Uses renderToStaticMarkup per the standing rule (apps/web has no
-// @testing-library/react).
-import { renderToStaticMarkup } from 'react-dom/server';
+// The page has a `mounted` gate (`if (!mounted || sessionPending) return
+// <Skeleton/>`) where `mounted` flips true only in `useEffect`. Under
+// `renderToStaticMarkup` effects never run, so `mounted` stays false and the
+// page renders Skeleton for every test. Fix: MOUNT the page with
+// `createRoot` + `act` (which runs effects) - the same pattern as
+// `use-nav-sync.test.tsx` and the users page test. This keeps the page code
+// unchanged and tests the real render path.
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// `globalThis.IS_REACT_ACT_ENVIRONMENT` tells React this is a test env so
+// `act` works with a raw createRoot (no @testing-library/react in this app).
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true;
 
 vi.mock('@/hooks/queries/crm', () => ({
   useAuditLog: vi.fn(),
@@ -29,12 +40,34 @@ import { useAuditLog } from '@/hooks/queries/crm';
 
 const mockedUseAuditLog = vi.mocked(useAuditLog);
 
-afterEach(() => {
+let container: HTMLDivElement | null = null;
+let root: Root | null = null;
+
+async function mount(): Promise<void> {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(<AuditPage />);
+  });
+}
+
+async function unmount(): Promise<void> {
+  await act(async () => {
+    root?.unmount();
+  });
+  root = null;
+  container?.remove();
+  container = null;
+}
+
+afterEach(async () => {
+  await unmount();
   vi.clearAllMocks();
 });
 
 describe('AuditPage - wire-shape contract (T-F3)', () => {
-  it('renders rows when useAuditLog resolves with {rows, total}', () => {
+  it('renders rows when useAuditLog resolves with {rows, total}', async () => {
     mockedUseAuditLog.mockReturnValue({
       data: {
         rows: [
@@ -69,7 +102,8 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
       error: null,
     } as never);
 
-    const html = renderToStaticMarkup(<AuditPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     // Action column entries render
     expect(html).toContain('lead.transition');
     expect(html).toContain('booking.approve');
@@ -80,13 +114,11 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
     expect(html).toContain('Lead');
     expect(html).toContain('Booking');
     // Before → After column renders the transition summary.
-    // react-dom/server escapes the JSON quotes to &quot; on output, so
-    // we match on the rendered, HTML-encoded form rather than the raw JSON.
     expect(html).toMatch(/(state|status).*NEW/);
     expect(html).toMatch(/(state|status).*CONTACTED/);
   });
 
-  it('renders ModulePending when the query has an error', () => {
+  it('renders ModulePending when the query has an error', async () => {
     const apiError = new Error('API 500: Internal Server Error');
     mockedUseAuditLog.mockReturnValue({
       data: undefined,
@@ -94,20 +126,22 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
       error: apiError,
     } as never);
 
-    const html = renderToStaticMarkup(<AuditPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     expect(html).toContain('failed to load');
     expect(html).toContain('API 500: Internal Server Error');
     expect(html).not.toContain('No audit entries yet');
   });
 
-  it('renders the friendly empty state when the list resolves with zero rows', () => {
+  it('renders the friendly empty state when the list resolves with zero rows', async () => {
     mockedUseAuditLog.mockReturnValue({
       data: { rows: [], total: 0 },
       isLoading: false,
       error: null,
     } as never);
 
-    const html = renderToStaticMarkup(<AuditPage />);
+    await mount();
+    const html = container?.innerHTML ?? '';
     expect(html).toContain('No audit entries yet.');
     expect(html).toMatch(/data-qa="audit-empty"/);
   });
