@@ -320,3 +320,70 @@ describe('changePassword - missing Account row', () => {
     expect(mocks.userUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
+  function makeTeamService() {
+    const teamFindFirst = vi.fn();
+    const teamFindUnique = vi.fn();
+    const userFindMany = vi.fn();
+    const fakeClient = {
+      team: {
+        findFirst: teamFindFirst,
+        findUnique: teamFindUnique,
+      },
+      user: {
+        findMany: userFindMany,
+      },
+    } as never;
+    const prismaService = { $client: fakeClient } as never;
+    return {
+      service: new UsersService(prismaService),
+      mocks: { teamFindFirst, teamFindUnique, userFindMany },
+    };
+  }
+
+  it('ADMIN sees all users (no team filter)', async () => {
+    const { service, mocks } = makeTeamService();
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(adminActor);
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
+  });
+
+  it('MANAGER resolves their team via Team.managerId and lists its members', async () => {
+    const { service, mocks } = makeTeamService();
+    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
+    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(managerActor);
+    expect(mocks.teamFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { managerId: 'mgr-1' } }),
+    );
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { OR: [{ teamId: 'team-mgr' }, { id: 'mgr-1' }] },
+      }),
+    );
+  });
+
+  it('TELECALLER sees their team + the team manager (so they can loop the manager)', async () => {
+    const { service, mocks } = makeTeamService();
+    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(telecallerActor);
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { OR: [{ teamId: 'team-tc' }, { id: 'mgr-1' }] },
+      }),
+    );
+  });
+
+  it('returns [] when the actor has no team', async () => {
+    const { service, mocks } = makeTeamService();
+    const noTeamActor: Actor = { ...telecallerActor, teamId: null };
+    const result = await service.teamMembers(noTeamActor);
+    expect(result).toEqual([]);
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+  });
+});

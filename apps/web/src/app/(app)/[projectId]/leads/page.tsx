@@ -132,10 +132,11 @@ function LeadInboxPageInner() {
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   // Server-side sort (T-SRVPG): the DataTable sorts client-side over the
   // loaded page, which is wrong under server pagination. The page passes
-  // the sort column + direction to the API. Default: most recent activity
-  // (updatedAt desc) - matches the overdue-first default ordering.
-  const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name'>('updatedAt');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // the sort column + direction to the API. Default: NO sort (undefined) -
+  // the server returns its natural/default ordering (overdue-first) until
+  // the user explicitly picks a column.
+  const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name' | undefined>(undefined);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc' | undefined>(undefined);
 
   const filter = {
     projectId: projectId ?? undefined,
@@ -360,7 +361,7 @@ function DeleteConfirmDialog({
           'This permanently removes the lead, its chat history, activities, and visits. This action cannot be undone.',
       }}
       cancelButtonText="Cancel"
-      confirmButtonText={pending ? 'Deleting…' : 'Delete lead'}
+      confirmButtonText={pending ? 'Deleting...' : 'Delete lead'}
       confirmButtonProps={{
         variant: 'destructive',
         disabled: pending,
@@ -399,8 +400,8 @@ function LeadTable({
   pageSize: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
-  sortBy: 'updatedAt' | 'createdAt' | 'name';
-  sortDir: 'asc' | 'desc';
+  sortBy: 'updatedAt' | 'createdAt' | 'name' | undefined;
+  sortDir: 'asc' | 'desc' | undefined;
   onSortChange: (by: 'updatedAt' | 'createdAt' | 'name', dir: 'asc' | 'desc') => void;
   selectedStates: string[];
   onStatesChange: (states: string[]) => void;
@@ -543,8 +544,9 @@ function LeadTable({
       // The DataTable's built-in sorting is client-side over the loaded
       // page, which is wrong under server pagination - so we drive it
       // through the controlled `sorting`/`onSortingChange` props and
-      // refetch with the new sortBy/sortDir.
-      sorting={[{ id: sortBy, desc: sortDir === 'desc' }]}
+      // refetch with the new sortBy/sortDir. Empty array = no sort
+      // (server default ordering) until the user picks a column.
+      sorting={sortBy !== undefined ? [{ id: sortBy, desc: sortDir === 'desc' }] : []}
       onSortingChange={(next) => {
         const s = next[0];
         if (s && (s.id === 'updatedAt' || s.id === 'createdAt' || s.id === 'name')) {
@@ -556,7 +558,7 @@ function LeadTable({
       // create button is the toolbar's right-side content.
       search={{
         accessorKey: ['name', 'phone'],
-        placeholder: 'Search by name or phone…',
+        placeholder: 'Search by name or phone...',
         searchValue: search,
         onSearchValueChange: onSearchChange,
         className: 'ml-2'

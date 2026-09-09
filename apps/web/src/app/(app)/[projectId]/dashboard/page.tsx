@@ -27,6 +27,7 @@
 import { Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { ChartCard } from '@/components/shared/ChartCard';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -55,8 +56,19 @@ function useActiveProjectId(): string | null {
 
 export default function DashboardPage() {
   const { user, isPending: sessionPending } = useSessionUser();
+  const [mounted, setMounted] = useState(false);
 
-  if (sessionPending) {
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // dashboard → "Hydration failed because the server rendered HTML didn't
+  // match the client." Render the skeleton for the first client paint too,
+  // then swap after mount (same pattern as app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sessionPending) {
     return <Skeleton variant="user" className="py-24" />;
   }
 

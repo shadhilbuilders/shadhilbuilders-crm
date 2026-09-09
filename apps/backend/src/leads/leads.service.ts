@@ -342,6 +342,45 @@ export class LeadsService {
   }
 
   /**
+   * GET /api/leads/badge?projectId= - count of NEW leads the actor can see
+   * in the given project. Powers the sidebar "Leads" badge (autoplan
+   * 2026-09-09): a lead leaves NEW the moment anyone works it, so the
+   * badge naturally clears as leads get attention - no explicit
+   * viewed-tracking needed.
+   *
+   * Role-scoped exactly like the list (TELECALLER/SALES_EXEC own leads,
+   * MANAGER team, ADMIN/OWNER all) via the same `listConditions` helper.
+   * Project-scoped via the `projectId` filter. Counts ALL NEW leads in the
+   * project regardless of age (not just the last 24h).
+   */
+  async badgeCount(
+    actor: JwtPayload,
+    projectId: string | undefined,
+  ): Promise<{ newLeads: number }> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const conditions = await this.listConditions(
+          tx as unknown as PrismaClient,
+          actor,
+          { projectId } as LeadFilterDto,
+        );
+        conditions.push(Prisma.sql`"state" = 'NEW'`);
+        const whereSql =
+          conditions.length > 0
+            ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+            : Prisma.empty;
+
+        const [count] = await tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+          SELECT COUNT(*) AS c FROM "Lead" ${whereSql}
+        `);
+        return { newLeads: Number(count?.c ?? 0) };
+      },
+    );
+  }
+
+  /**
    * GET /api/leads/:id - full lead detail row (Lead Detail page, Wireframe #5).
    *
    * Runs inside withRlsContext so the actor's role/team scoping applies

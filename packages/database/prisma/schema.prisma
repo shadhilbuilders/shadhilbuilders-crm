@@ -96,6 +96,20 @@ enum MessageChannel {
   IN_APP
 }
 
+/**
+ * Thread discriminator. CUSTOMER = the 1:1 staff↔customer thread
+ * (IN = customer→staff, OUT = staff→customer, may enqueue WhatsApp).
+ * INTERNAL = staff-only notes on the lead thread (always OUT/staff-authored,
+ * never enqueues WhatsApp, team-scoped via the parent Lead's RLS).
+ * Kept as a column (not a separate table) so internal notes reuse the
+ * Message RLS, SSE, and pane. A future targeted mention can add a
+ * recipientId column without touching this enum.
+ */
+enum MessageKind {
+  CUSTOMER
+  INTERNAL
+}
+
 enum BookingStatus {
   HOLD
   TOKEN
@@ -436,6 +450,7 @@ model Message {
   userId     String? // null = inbound from customer
   direction  MessageDirection
   channel    MessageChannel
+  kind       MessageKind      @default(CUSTOMER)
   body       String           @db.Text
   mediaUrl   String?
   externalId String? // WhatsApp message id (for dedupe / status sync)

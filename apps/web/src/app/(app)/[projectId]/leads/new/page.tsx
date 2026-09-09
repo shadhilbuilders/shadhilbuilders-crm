@@ -24,6 +24,7 @@ import { useParams } from 'next/navigation';
 
 import { useCreateLead } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
+import { LEAD_SOURCES, labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PhoneSchema } from '@shadhil/api-types';
@@ -36,22 +37,16 @@ const createLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').trim().max(120),
   phone: PhoneSchema,
   email: z.email().optional(),
-  source: z.enum(['Landing site', 'Meta ads', 'Walk-in', 'Referral', '99acres', 'Magicbricks', 'Housing.com', 'Other']),
+  source: z.enum(LEAD_SOURCES),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
 });
 
 type CreateLeadSchema = z.infer<typeof createLeadSchema>;
 
-const LEAD_SOURCE_OPTIONS = [
-  { value: 'Landing site', label: 'Landing site' },
-  { value: 'Meta ads', label: 'Meta ads' },
-  { value: 'Walk-in', label: 'Walk-in' },
-  { value: 'Referral', label: 'Referral' },
-  { value: '99acres', label: '99acres' },
-  { value: 'Magicbricks', label: 'Magicbricks' },
-  { value: 'Housing.com', label: 'Housing.com' },
-  { value: 'Other', label: 'Other' },
-];
+const LEAD_SOURCE_OPTIONS = LEAD_SOURCES.map((value) => ({
+  value,
+  label: labelFor('source', value),
+}));
 
 export default function NewLeadPage() {
   const router = useRouter();
@@ -65,7 +60,7 @@ export default function NewLeadPage() {
       name: '',
       phone: '',
       email: '',
-      source: 'Landing site',
+      source: 'LANDING',
       notes: '',
     },
     mode: 'onSubmit',
@@ -125,7 +120,7 @@ export default function NewLeadPage() {
       <Form
         form={form}
         onSubmit={onSubmit}
-        submitText={createLead.isPending ? 'Saving…' : 'Create lead'}
+        submitText={createLead.isPending ? 'Saving...' : 'Create lead'}
         submitButtonProps={{ disabled: createLead.isPending }}
         actionClassName='justify-end'
         resetText='Cancel'

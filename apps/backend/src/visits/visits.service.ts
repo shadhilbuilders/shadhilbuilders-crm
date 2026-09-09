@@ -363,7 +363,7 @@ export class VisitsService {
         // 1. EXACT replay (visit already has status+outcome equal to the
         //    replayed outcome, i.e. the write already landed): no-op -
         //    return the current row untouched and audit the replay
-        //    ATTEMPT (reason says "Idempotent replay … - no state
+        //    ATTEMPT (reason says "Idempotent replay ... - no state
         //    change"). The response is indistinguishable from the first
         //    write, so the caller's replay classification (2xx → prune
         //    from queue) converges. Without this the replay re-runs the

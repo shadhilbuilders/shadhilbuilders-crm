@@ -160,14 +160,14 @@ function EditLeadForm({ lead }: { lead: LeadData }) {
       <Form
         form={form}
         onSubmit={onSave}
-        submitText={updateLead.isPending ? 'Saving…' : 'Save'}
+        submitText={updateLead.isPending ? 'Saving...' : 'Save'}
         submitButtonProps={{
           size: 'sm',
           disabled: updateLead.isPending,
           'data-qa': 'edit-lead-save',
         }}
         actionClassName="justify-end col-span-2"
-        className="grid grid-cols-2 gap-2"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 space-y-2 sm:gap-x-4"
         hideResetButton
         fields={[
           {
@@ -275,14 +275,14 @@ function TransitionLeadForm({
           ))}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm">
             Move from <LeadStatusBadge status={status} /> to{' '}
             <LeadStatusBadge status={toState} />
           </div>
 
           {requiresReason ? (
-            <div>
+            <div className="flex flex-col gap-2">
               <Label htmlFor={`reason-${leadId}-${toState}`}>
                 Reason <span className="text-destructive">*</span>
               </Label>
@@ -298,7 +298,7 @@ function TransitionLeadForm({
             </div>
           ) : null}
 
-          <div>
+          <div className="flex flex-col gap-2">
             <Label htmlFor={`notes-${leadId}-${toState}`}>Notes (optional)</Label>
             <Textarea
               id={`notes-${leadId}-${toState}`}

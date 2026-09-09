@@ -110,7 +110,7 @@ Floating action button (only on /leads + /leads/[id], role-gated):
 | **Sidebar nav (mobile Sheet)** | Sheet open transition | n/a | n/a | n/a | n/a |
 | **Sidebar nav active state** | n/a | n/a | n/a | bg-sidebar-accent ring | n/a |
 | **UserMenu popover** | n/a | "Session expired" → /login | retry | name + role | n/a |
-| **ChartCard: Pipeline funnel** | `ModulePending` "Loading funnel…" | "No leads this week. Add a lead to start your funnel." + CTA | retry | real bars | "Showing 3 of 12" |
+| **ChartCard: Pipeline funnel** | `ModulePending` "Loading funnel..." | "No leads this week. Add a lead to start your funnel." + CTA | retry | real bars | "Showing 3 of 12" |
 | **ChartCard: Visits/week (bar)** | skeleton | "No visits scheduled this week." | retry | real bars | "Past 7 days" |
 | **ChartCard: Lead status (pie)** | skeleton | "No leads yet - start by adding one." | retry | real pie | n/a |
 | **ChartCard: Audit timeline** | skeleton | "No recent activity." | retry | real timeline | n/a |
@@ -173,7 +173,7 @@ Opens app. Sidebar shows "Admin" group with Users + Audit. Dashboard adds an ext
 
 ### 7.2 New shared components
 
-- **`apps/web/src/components/shared/ChartCard.tsx`** - wrapper around `Chart` + `ModulePending`-aware fallback. Props API: `<ChartCard title="…" description="…" query={…}>{(data) => <BarChart …/>}</ChartCard>`. Renders loading skeleton / empty / error / success states identically to `ModulePending`. Saves the engineer from re-implementing the state machine per chart.
+- **`apps/web/src/components/shared/ChartCard.tsx`** - wrapper around `Chart` + `ModulePending`-aware fallback. Props API: `<ChartCard title="..." description="..." query={...}>{(data) => <BarChart .../>}</ChartCard>`. Renders loading skeleton / empty / error / success states identically to `ModulePending`. Saves the engineer from re-implementing the state machine per chart.
 - **`apps/web/src/components/shared/FloatingActionButton.tsx`** - role-gated, mobile-only, fixed bottom-right with safe-area-inset. Props: `<FloatingActionButton href="/leads/new" icon={<LuPlus />}>Add lead</FloatingActionButton>`.
 
 ### 7.3 Component placement summary
@@ -391,7 +391,7 @@ The user's follow-up ask: "add proper skeleton loading as well." All10 expansion
   - Surfaced by: CEO cherry-pick D1 + Section 11 design review
   - Files: `apps/web/src/components/shared/SkeletonContainer.tsx` (new)
   - Verify: fade fires on `isLoading→loaded`; respects `prefers-reduced-motion`
-- [ ] **T18 (P1, human: ~30min / CC: ~10min)** - `ModulePending.tsx` - Replace isLoading text "Loading…" with appropriate Skeleton variant (table/list); keep existing state machine
+- [ ] **T18 (P1, human: ~30min / CC: ~10min)** - `ModulePending.tsx` - Replace isLoading text "Loading..." with appropriate Skeleton variant (table/list); keep existing state machine
   - Surfaced by: CEO Section 1 [P1] skeleton state collision + D3 cherry-pick
   - Files: `apps/web/src/components/shared/ModulePending.tsx`
   - Verify: when `isLoading`, render Skeleton; when `error`, render Empty (regression)
@@ -427,10 +427,10 @@ The user's follow-up ask: "add proper skeleton loading as well." All10 expansion
   - Surfaced by: CEO Section 6 test diagram (12 gaps)
   - Files: `apps/web/src/components/shared/skeleton.test.ts` (new), `apps/web/src/components/shared/skeleton-container.test.ts` (new)
   - Verify: `pnpm --filter @shadhil/web test` green; 4 variants × 5 assertions = 20 test cases
-- [ ] **T27 (P2, human: ~45min / CC: ~15min)** - Per-page wiring - Replace text Loading… in 7 sites: `/leads` (line 88), `/visits` (line 119), `/users` (line 88), `/notifications` (line 68), `/audit` (line 68), `/leads/[id]` (line 30), `(app)/page.tsx` (line 30); each renders matching Skeleton variant
+- [ ] **T27 (P2, human: ~45min / CC: ~15min)** - Per-page wiring - Replace text Loading... in 7 sites: `/leads` (line 88), `/visits` (line 119), `/users` (line 88), `/notifications` (line 68), `/audit` (line 68), `/leads/[id]` (line 30), `(app)/page.tsx` (line 30); each renders matching Skeleton variant
   - Surfaced by: CEO Section 6 regression coverage
   - Files: 7 page files in `apps/web/src/app/(app)/`
-  - Verify: no `Loading…` text remains in source (grep)
+  - Verify: no `Loading...` text remains in source (grep)
 
 ### CEO Re-Review additions (pre-implementation gate, T28-T35)
 
@@ -473,7 +473,7 @@ The user's gate: re-review all new changes in this session before implementation
 
 User explicitly asked to bring back the 3 previously-deferred items. P2 polish each; fit PR3 (single-line shipping).
 
-- [ ] **T36 (P2, human: ~5min / CC: ~2min)** - `loading.tsx` for /login - Add Next.js per-route `loading.tsx` for `/login`; renders `<Loading variant="spinner" label="Signing in…" />` via `@paalstack/react-ui` so the login page never shows a blank wall during the auth round-trip
+- [ ] **T36 (P2, human: ~5min / CC: ~2min)** - `loading.tsx` for /login - Add Next.js per-route `loading.tsx` for `/login`; renders `<Loading variant="spinner" label="Signing in..." />` via `@paalstack/react-ui` so the login page never shows a blank wall during the auth round-trip
   - Surfaced by: Re-review NOT-in-scope bring-back-in: D1 user-picked (login default loading)
   - Files: `apps/web/src/app/login/loading.tsx` (new)
   - Verify: hard-reload `/login` shows spinner immediately; replaced by real form when JS hydrates
@@ -524,7 +524,7 @@ Full findings are baked into §11 task list. Summary:
 
 ## 14. CEO Review Findings (2026-09-03, /plan-ceo-review)
 
-Mode: **SELECTIVE EXPANSION** (user's verbatim: "add proper skeleton loading as well" → feature enhancement on existing system). Vision: shape-matched skeletons that cross-fade to real content over 200ms; non-technical user never sees "Loading…" text. CEO plan persisted to `~/.gstack/projects/shadhilbuilders-crm/ceo-plans/2026-09-03-crm-app-shell-redesign.md`.
+Mode: **SELECTIVE EXPANSION** (user's verbatim: "add proper skeleton loading as well" → feature enhancement on existing system). Vision: shape-matched skeletons that cross-fade to real content over 200ms; non-technical user never sees "Loading..." text. CEO plan persisted to `~/.gstack/projects/shadhilbuilders-crm/ceo-plans/2026-09-03-crm-app-shell-redesign.md`.
 
 ### Scope decisions (SELECTIVE EXPANSION cherry-picks)
 
@@ -532,7 +532,7 @@ Mode: **SELECTIVE EXPANSION** (user's verbatim: "add proper skeleton loading as 
 |---|---|---|
 | Skeleton-to-real cross-fade (200ms) | ACCEPTED | The "alive UI" feel vs skeletons popping out |
 | KPI strip shimmer-once pulse | ACCEPTED | Same delight story; differentiates data arrival |
-| Skeleton vs ModulePending single source of truth | ACCEPTED | Kill the text "Loading…" everywhere |
+| Skeleton vs ModulePending single source of truth | ACCEPTED | Kill the text "Loading..." everywhere |
 | Offline-aware skeletons (pair with offline-queue) | ACCEPTED | User chose all-in |
 | 4 dedicated skeleton files | REJECTED → 1 generic with variants | DRY collapse (1D) |
 | Session-loading uses UserSkeleton | ACCEPTED | 1C |

@@ -16,7 +16,7 @@ import {
   TypographyP,
 } from '@paalstack/react-ui';
 import { LuPlus } from '@paalstack/react-icons/lu';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   useChangeUserRole,
@@ -42,8 +42,19 @@ export default function UsersPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const usersQuery = useUsers();
   const [createOpen, setCreateOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (sessionPending) {
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML shows the skeleton while hydration swaps it for the real
+  // page → "Hydration failed because the server rendered HTML didn't match
+  // the client." Render the skeleton for the first client paint too, then
+  // swap after mount (same pattern as app-header.tsx).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sessionPending) {
     return <Skeleton variant="user" className="py-24" />;
   }
   if (user === null || !canManageUsers(user.role)) {
@@ -262,7 +273,7 @@ function CreateUserForm({
           Cancel
         </Button>
         <Button type="submit" disabled={createUser.isPending}>
-          {createUser.isPending ? 'Creating…' : 'Create user'}
+          {createUser.isPending ? 'Creating...' : 'Create user'}
         </Button>
       </div>
     </form>

@@ -89,6 +89,15 @@ export type MessageDirection = z.infer<typeof MessageDirectionSchema>;
 export const MessageChannelSchema = z.enum(['WHATSAPP', 'IN_APP']);
 export type MessageChannel = z.infer<typeof MessageChannelSchema>;
 
+/**
+ * Thread discriminator. CUSTOMER = staff<->customer (IN/OUT, may enqueue
+ * WhatsApp). INTERNAL = staff-only note on the lead thread (always OUT,
+ * never enqueues WhatsApp). Defaults to CUSTOMER so existing callers
+ * (webhook, BFF) keep working unchanged.
+ */
+export const MessageKindSchema = z.enum(['CUSTOMER', 'INTERNAL']);
+export type MessageKind = z.infer<typeof MessageKindSchema>;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Bookings module
 // ────────────────────────────────────────────────────────────────────────────

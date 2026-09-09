@@ -22,6 +22,7 @@ import type {
   LeadActivity,
   LeadDetail,
   LeadStateTransitionDto,
+  RescheduleVisitDto,
   SendMessageDto,
   UpdateLeadDto,
   UpdateVisitOutcomeDto,
@@ -158,6 +159,23 @@ export function useLeadsEnvelope(filter: LeadFilterInput = {}): LeadsEnvelope | 
     }
   }
   return null;
+}
+
+/**
+ * GET /api/leads/badge?projectId= - count of NEW leads the actor can see
+ * in the given project. Powers the sidebar "Leads" badge. A lead leaves
+ * NEW the moment anyone works it, so the badge clears as leads get
+ * attention. Project-scoped via `projectId`; role-scoped server-side.
+ */
+export function useNewLeadsBadge(projectId: string | null) {
+  return useQuery({
+    queryKey: ['leads', 'badge', projectId] as const,
+    enabled: projectId !== null && projectId.length > 0,
+    queryFn: ({ signal }) =>
+      api<{ newLeads: number }>(`/leads/badge${qs({ projectId })}`, { signal }),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function useLead(id: string | null) {
@@ -365,15 +383,37 @@ export function useUpdateVisitOutcome(visitId: string | null) {
   });
 }
 
+/**
+ * Reschedule a site visit (drag-and-drop on the calendar). PATCH
+ * /api/visits/:id/reschedule - the old visit is marked RESCHEDULED and a
+ * new row carries `rescheduledFromId`. The server enforces `scheduledFor`
+ * must be in the future.
+ */
+export function useRescheduleVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RescheduleVisitDto) =>
+      api<unknown>(`/visits/${body.visitId}/reschedule`, {
+        method: 'PATCH',
+        json: body,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['visits'] });
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Chat (contract: packages/api-types/src/chat.ts)
 // ---------------------------------------------------------------------------
 
-export function useMessages(leadId: string | null) {
+export function useMessages(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') {
   return useQuery({
-    queryKey: ['chat', leadId] as const,
+    queryKey: ['chat', leadId, kind] as const,
     enabled: leadId !== null && leadId.length > 0,
-    queryFn: ({ signal }) => api<unknown[]>(`/chat/${leadId as string}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<unknown[]>(`/chat/${leadId as string}?kind=${kind}`, { signal }),
   });
 }
 
@@ -381,23 +421,23 @@ export function useMessages(leadId: string | null) {
 // send-triggered refetch only. Mount inside the lead detail page; the
 // subscription invalidates the chat query whenever a new Message row
 // appears (inbound WhatsApp, another staff member, or the customer).
-export function useMessagesRealtime(leadId: string | null): void {
+export function useMessagesRealtime(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER'): void {
   const queryClient = useQueryClient();
   useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {
-    void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
+    void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
   });
 }
 
-export function useSendMessage(leadId: string) {
+export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: string) =>
       api<unknown>('/chat/send', {
         method: 'POST',
-        json: { leadId, body, channel: 'IN_APP' } satisfies SendMessageDto,
+        json: { leadId, body, channel: 'IN_APP', kind } satisfies SendMessageDto,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
     },
   });
 }

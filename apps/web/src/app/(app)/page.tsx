@@ -1,7 +1,7 @@
 'use client';
 
 // Authenticated `/` is not a work surface. Dashboard, leads, visits,
-// inventory, bookings, and notifications live under `/{projectId}/…`.
+// inventory, bookings, and notifications live under `/{projectId}/...`.
 // Bounce to the role-appropriate dashboard (decision in
 // lib/dashboard-redirect.ts):
 //   - Admin/owner → /overview (cross-project command center)

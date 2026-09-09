@@ -18,10 +18,12 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  MessageKindSchema,
   SendMessageDtoSchema,
   type SendMessageDto,
 } from '@shadhil/api-types';
@@ -56,19 +58,26 @@ export class ChatController {
   @Get(':leadId')
   @ApiOperation({
     summary:
-      'List messages for a lead (chronological). RLS-scoped via parent Lead team/owner.',
+      'List messages for a lead (chronological). RLS-scoped via parent Lead team/owner. `kind` filters to a thread (default CUSTOMER).',
   })
   async list(
     @Req() req: AuthedRequest,
     @Param('leadId') leadId: string,
+    @Query('kind') kind?: string,
   ): Promise<MessageListResult> {
     if (!ChatController.CUID_RE.test(leadId)) {
       throw new BadRequestException(`Invalid leadId: ${leadId}`);
     }
+    // Validate the kind query param (default CUSTOMER). A bad value is a
+    // 400, not a silent fall-through to CUSTOMER.
+    const parsed = MessageKindSchema.safeParse(kind ?? 'CUSTOMER');
+    if (!parsed.success) {
+      throw new BadRequestException(`Invalid kind: ${kind}`);
+    }
     // Hard cap 200 to mirror MessageFilterDtoSchema's max; the page
     // only ever sends the default 50 but a misconfigured BFF could
     // ask for more.
-    return this.chat.list(req.user!, leadId, undefined, 200);
+    return this.chat.list(req.user!, leadId, undefined, 200, parsed.data);
   }
 
   @Post('send')

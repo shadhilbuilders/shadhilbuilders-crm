@@ -34,6 +34,36 @@ export function useUsers() {
   });
 }
 
+/**
+ * GET /api/users/team - the actor's team + manager, for the chat mention
+ * picker. Unlike `useUsers` (staff→self only), this returns the whole team
+ * so a telecaller can see + mention their manager and teammates.
+ */
+export function useTeamMembers() {
+  return useQuery({
+    queryKey: ['users', 'team'] as const,
+    queryFn: ({ signal }) => api<BackendCreatedUser[]>('/users/team', { signal }),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * GET /api/users/project/:projectId/sales-execs - SALES_EXEC staff linked
+ * to a project, for the schedule-visit exec picker. Server-scoped by role:
+ * MANAGER → own team's execs; ADMIN/OWNER → all project execs.
+ */
+export function useProjectSalesExecs(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['users', 'project', projectId, 'sales-execs'] as const,
+    enabled: projectId !== undefined && projectId.length > 0,
+    queryFn: ({ signal }) =>
+      api<BackendCreatedUser[]>(`/users/project/${projectId as string}/sales-execs`, { signal }),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({

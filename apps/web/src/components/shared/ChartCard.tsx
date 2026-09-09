@@ -41,7 +41,7 @@
 //   │  empty       │   → render <Empty title="No data" /> via ModulePending
 //   └──────────────┘
 //
-// T19 (PR2) replaces the ModulePending "Loading title…" text with the
+// T19 (PR2) replaces the ModulePending "Loading title..." text with the
 // shape-matched Skeleton variant. This file is unchanged by T19 - it
 // already passes `isLoading` to ModulePending, and ModulePending is the
 // single point that knows how to render a "module loading" state.

@@ -38,7 +38,7 @@ export default function LoginLoading() {
       <Skeleton variant="card" className="[&>div]:h-11 [&>div]:rounded-md" />
       <Skeleton variant="card" className="mt-2 [&>div]:h-11 [&>div]:rounded-md" />
       <p className="text-muted-foreground text-center text-sm">
-        Signing in…
+        Signing in...
       </p>
     </div>
   );

@@ -35,7 +35,7 @@ notification bell):
 
 | State | Color | Label |
 |---|---|---|
-| connecting | amber | "Reconnecting…" (during reconnect) |
+| connecting | amber | "Reconnecting..." (during reconnect) |
 | open | green | nothing (hidden when connected) |
 | closed | red | "Offline" (after retry exhaustion) |
 
@@ -78,7 +78,7 @@ already have partial coverage; the rest are stretch.)
 
 `ModulePending` is the error / not-yet-built state. It takes
 `error: unknown` (any caught error from react-query) and renders
-a "failed to load: …" card. Pages that depend on unbuilt modules
+a "failed to load: ..." card. Pages that depend on unbuilt modules
 also use this as a no-data placeholder.
 
 ## Pattern: query → state mapping

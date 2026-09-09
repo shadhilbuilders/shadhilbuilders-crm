@@ -27,7 +27,7 @@ export const queue = createMutationQueue();
 type QueueState = {
   items: Mutation[];
   // Last phase emitted by the queue. UI can react (e.g. show a "Syncing
-  // 3 items…" toast while phase === 'replaying').
+  // 3 items..." toast while phase === 'replaying').
   phase: 'idle' | 'enqueued' | 'replaying' | 'replayed' | 'pruned';
   // Bumped on every state change so non-React listeners (the SW
   // message handler) can react without subscribing to the store.

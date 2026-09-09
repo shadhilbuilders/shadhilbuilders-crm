@@ -62,7 +62,7 @@ describe('ModulePending - loading state', () => {
           skeletonVariant={variant}
         />,
       );
-      // Loading must NEVER contain "Loading…" text (PR3 bring-back).
+      // Loading must NEVER contain "Loading..." text (PR3 bring-back).
       expect(html).not.toMatch(/Loading[^<]*\.\.\./);
       // aria-busy=true is required for screen readers.
       expect(html).toMatch(/aria-busy="true"/);

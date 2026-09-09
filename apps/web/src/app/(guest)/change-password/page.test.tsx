@@ -38,9 +38,9 @@ describe('ChangePasswordPage - session-pending skeleton', () => {
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('Loading change password');
     // It uses the shared Skeleton shapes (multiple shimmer boxes), not
-    // a plain "Loading…" paragraph.
+    // a plain "Loading..." paragraph.
     expect(html).toContain('data-skeleton-variant=');
-    expect(html).not.toContain('Loading…');
+    expect(html).not.toContain('Loading...');
   });
 
   it('skeleton mirrors the real form geometry (3 field rows + button row)', () => {

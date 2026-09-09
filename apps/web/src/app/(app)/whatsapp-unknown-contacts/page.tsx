@@ -272,7 +272,7 @@ function Row({
             onClick={() => onSpam(row)}
             data-qa="wa-unknown-spam"
           >
-            {isSpamming ? 'Marking…' : 'Mark as Spam'}
+            {isSpamming ? 'Marking...' : 'Mark as Spam'}
           </Button>
         </div>
       ) : null}

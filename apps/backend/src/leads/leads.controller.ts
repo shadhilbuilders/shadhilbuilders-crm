@@ -125,6 +125,26 @@ export class LeadsController {
     return this.leads.list(req.user!, parseFilter(query));
   }
 
+  @Get('badge')
+  @ApiOperation({
+    summary:
+      'Count NEW leads the actor can see in a project (sidebar badge). Role-scoped like the inbox; project-scoped via ?projectId=.',
+  })
+  async badge(
+    @Req() req: AuthedRequest,
+    @Query('projectId') projectId?: string,
+  ): Promise<{ newLeads: number }> {
+    // projectId is optional (a null/absent value means "all projects the
+    // actor can see"). Validate format when present.
+    if (projectId !== undefined && projectId.length > 0) {
+      const idSchema = z.cuid2();
+      if (!idSchema.safeParse(projectId).success) {
+        throw new BadRequestException(`projectId "${projectId}" is not a valid id`);
+      }
+    }
+    return this.leads.badgeCount(req.user!, projectId);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary:

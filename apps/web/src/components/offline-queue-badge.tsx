@@ -62,7 +62,7 @@ export const OfflineQueueBadge = () => {
         }
         // Replay through the BFF (`/api/bff/*`): the route handler reads
         // the better-auth session cookie, mints the HS256 JWT, and
-        // proxies to the backend with `Authorization: Bearer …`. The
+        // proxies to the backend with `Authorization: Bearer ...`. The
         // old `/api/backend` rewrite target had two defects (found
         // during T-D4): it dropped the global `api` prefix (404) and
         // carried no auth (the JWT guard requires Bearer). Page-side

@@ -147,7 +147,7 @@ export default function NewBookingPage() {
       <Form
         form={form}
         onSubmit={onSubmit}
-        submitText={createBooking.isPending ? 'Saving…' : 'Create booking'}
+        submitText={createBooking.isPending ? 'Saving...' : 'Create booking'}
         submitButtonProps={{ disabled: createBooking.isPending }}
         resetButtonProps={{
           children: 'Cancel',

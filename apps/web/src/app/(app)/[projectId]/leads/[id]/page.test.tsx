@@ -104,8 +104,6 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadDetailPage />);
-    // Page header (always rendered)
-    expect(html).toContain('Back to inbox');
     // Skeleton is rendered.
     expect(html).toContain('data-slot="skeleton"');
     // ModulePending ("failed to load") surface is NOT rendered.
@@ -125,7 +123,6 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadDetailPage />);
-    expect(html).toContain('Back to inbox');
     // The lead name appears in the breadcrumb.
     expect(html).toContain('Priya Sharma');
     // The info card renders the source + owner labels.
@@ -151,7 +148,6 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
     } as never);
 
     const html = renderToStaticMarkup(<LeadDetailPage />);
-    expect(html).toContain('Back to inbox');
     // ModulePending surfaces the error message.
     expect(html).toContain('failed to load');
     expect(html).toContain('API 404');

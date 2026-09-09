@@ -43,7 +43,7 @@ the frontend. The monorepo root README covers the system as a whole.
 ### App pages (`src/app/(app)/` - authenticated route group)
 
 The auth gate is `src/proxy.ts` (Next 16's renamed middleware): cookieless
-visitors bounce to `/login?next=…`; everything under `(app)/` requires a
+visitors bounce to `/login?next=...`; everything under `(app)/` requires a
 better-auth session cookie.
 
 | Route | What it is | Data source |
