@@ -61,7 +61,9 @@ export const SignupDtoSchema = z.object({
   // Not `.cuid()`: seed teams use readable ids like `seed-team-<userId>`,
   // so any non-empty short string is accepted (validation of existence
   // happens in the service).
-  teamId: z.string().trim().min(1).max(64).optional(),
+  teamId: z.string({
+    error: 'Team ID is required',
+  }).trim().min(1).max(64).optional(),
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 

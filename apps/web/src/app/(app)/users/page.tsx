@@ -20,6 +20,7 @@
 import {
   AlertDialog,
   Button,
+  Combobox,
   DataTable,
   Dialog,
   DropdownMenuContent,
@@ -905,7 +906,6 @@ function CreateUserForm({
       email: '',
       password: '',
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
-      teamId: '',
     },
     mode: 'onSubmit',
   });
@@ -1011,13 +1011,23 @@ function CreateUserForm({
     selectedRole === 'TELECALLER' || selectedRole === 'SALES_EXEC';
   if (showTeamField && isStaffRole) {
     fields.push({
-      type: 'select',
+      type: 'custom',
       name: 'teamId',
       label: 'Team',
       required: true,
-      placeholder: teamsLoading ? 'Loading teams...' : 'Select a team',
-      options: teams.map((team) => ({ value: team.id, label: team.name })),
-      selectProps: { 'data-qa': 'create-user-team' },
+      render: ({ field }) => (
+        <Combobox
+          {...field}
+          value={field.value ?? ''}
+          options={teams.map((team) => ({ value: team.id, label: team.name }))}
+          placeholder={teamsLoading ? 'Loading teams...' : 'Search and select a team...'}
+          data-qa="create-user-team"
+          selectOptionAsValue
+          onValueChange={(value) => {
+            field.onChange(value ?? undefined);
+          }}
+        />
+      ),
     });
   }
 

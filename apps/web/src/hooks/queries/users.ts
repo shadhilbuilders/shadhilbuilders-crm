@@ -98,6 +98,9 @@ export function useCreateUser() {
       api<BackendCreatedUser>('/users', { method: 'POST', json: input }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+      // Creating a MANAGER auto-creates their team server-side, so the team
+      // list the create dialog's Combobox reads must be refreshed too.
+      void queryClient.invalidateQueries({ queryKey: ['teams'] });
     },
   });
 }
