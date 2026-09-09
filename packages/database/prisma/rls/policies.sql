@@ -209,6 +209,17 @@ CREATE POLICY message_insert_team ON "Message"
     )
   );
 
+-- T-CHAT-ADMIN-INSERT (2026-09-09): allow ADMIN (and OWNER, downcast to
+-- ADMIN by withRlsContext) to INSERT a Message into ANY lead's thread.
+-- Seed ADMIN/OWNER have teamId=null, so app.user_team_id is '' (empty)
+-- and the team-equality policy above would reject the insert. Mirrors
+-- lead_insert_admin (2026-09-08). Postgres OR's overlapping FOR INSERT
+-- policies, so MANAGER still gets team-equality enforcement; only ADMIN
+-- bypasses it.
+CREATE POLICY message_insert_admin ON "Message"
+  FOR INSERT
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
 -- ── Booking (team-scoped via lead) ─────────────────────────────────────────
 ALTER TABLE "Booking" ENABLE ROW LEVEL SECURITY;
 
