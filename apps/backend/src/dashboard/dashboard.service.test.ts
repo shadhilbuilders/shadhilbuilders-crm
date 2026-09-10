@@ -338,6 +338,8 @@ describe('DashboardService.getOverviewStats', () => {
       { status: 'WON', count: 1 },
     ]);
     expect(stats.visitsThisWeek).toHaveLength(7);
-    expect(stats.auditTimeline).toHaveLength(7);
+    // auditTimeline is the 90-day series backing the /overview interactive
+    // area chart (7d/30d/90d ranges are filtered client-side).
+    expect(stats.auditTimeline).toHaveLength(90);
   });
 });

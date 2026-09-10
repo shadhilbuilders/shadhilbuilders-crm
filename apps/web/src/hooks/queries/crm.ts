@@ -588,7 +588,13 @@ export type AuditListResult = {
 };
 
 export function useAuditLog(
-  params: { action?: string; from?: string; to?: string; limit?: number } = {},
+  params: {
+    action?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
 ) {
   return useQuery({
     queryKey: ['audit', params] as const,
@@ -599,6 +605,7 @@ export function useAuditLog(
           from: params.from,
           to: params.to,
           limit: params.limit,
+          offset: params.offset,
         })}`,
         { signal },
       ),

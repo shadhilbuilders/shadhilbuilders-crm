@@ -191,6 +191,27 @@ export function useLinkProjectMember(projectId: string | undefined) {
   });
 }
 
+/**
+ * POST /api/projects/:id/members - link a user to a project chosen at
+ * mutation time (the roster's "Link to project" dialog picks the project
+ * per-open, so the projectId can't be fixed at hook creation).
+ */
+export function useLinkProjectMemberToProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, userId }: { projectId: string; userId: string }) =>
+      api<ProjectMemberRow>(`/projects/${projectId}/members`, {
+        method: 'POST',
+        json: { userId },
+      }),
+    onSuccess: (_data, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: PROJECT_MEMBERS_KEY(projectId),
+      });
+    },
+  });
+}
+
 /** DELETE /api/projects/:id/members/:userId - unlink a user. */
 export function useUnlinkProjectMember(projectId: string | undefined) {
   const queryClient = useQueryClient();

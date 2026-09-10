@@ -394,6 +394,12 @@ export class DashboardService {
         const sevenDaysAgo = new Date(now);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
         sevenDaysAgo.setHours(0, 0, 0, 0);
+        // 90-day window for the audit-timeline area chart (the /overview
+        // interactive chart offers 7d/30d/90d ranges; the backend returns the
+        // full 90-day series zero-filled and the client filters by range).
+        const ninetyDaysAgo = new Date(now);
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
+        ninetyDaysAgo.setHours(0, 0, 0, 0);
         const twentyFourHoursAgo = new Date(now);
         twentyFourHoursAgo.setHours(now.getHours() - 24);
 
@@ -421,7 +427,7 @@ export class DashboardService {
             this.visitsThisWeekBuckets(txClient, {}, weekStart),
             txClient.auditLog.groupBy({
               by: ['createdAt'],
-              where: { createdAt: { gte: sevenDaysAgo } },
+              where: { createdAt: { gte: ninetyDaysAgo } },
               _count: { _all: true },
             }),
           ]);
@@ -450,8 +456,8 @@ export class DashboardService {
               key: isoDay(new Date(g.createdAt)),
               count: g._count._all,
             })),
-            sevenDaysAgo,
-            7,
+            ninetyDaysAgo,
+            90,
           ),
         };
       },

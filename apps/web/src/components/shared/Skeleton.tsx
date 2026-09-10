@@ -46,6 +46,7 @@ export type SkeletonVariant =
   | 'user'
   | 'users'
   | 'projectSwitcher'
+  | 'overview'
   | 'text';
 
 /** T34: when `variant="chart"`, this prop selects the inside-shape
@@ -98,6 +99,17 @@ export const SKELETON_SHAPES = {
     icon: 'h-8 w-8',
     lines: 2,
     chevron: 'h-4 w-4',
+  },
+  // Overview command-center KPI cards (2026-09-10): 4 card-shaped
+  // placeholders matching OverviewSectionCards - each with a description
+  // label, a large value, a badge action, and a footer line.
+  overview: {
+    count: 4,
+    card: 'rounded-xl ring-1 ring-foreground/10',
+    label: 'h-3 w-20',
+    value: 'h-8 w-24',
+    badge: 'h-5 w-16',
+    footer: 'h-3 w-3/4',
   },
   text: { count: 3, shape: 'h-4 w-full' },
 } as const;
@@ -349,6 +361,46 @@ export function Skeleton({
             <LibSkeleton
               className={`${SKELETON_SHAPES.projectSwitcher.chevron} ml-auto shrink-0`}
             />
+          </div>
+        );
+
+      case 'overview':
+        // Overview command-center KPI cards (2026-09-10): 4 card-shaped
+        // placeholders matching OverviewSectionCards. Each card mirrors the
+        // real layout - description label, large value, badge action, and a
+        // footer line - so the skeleton is a faithful shape-match, not a
+        // generic grid.
+        return (
+          <div
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            data-qa="skeleton-overview"
+          >
+            {Array.from({ length: SKELETON_SHAPES.overview.count }).map(
+              (_, index) => (
+                <div
+                  key={index}
+                  className={`bg-card flex flex-col gap-4 p-4 ${SKELETON_SHAPES.overview.card}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-2">
+                      <LibSkeleton
+                        className={SKELETON_SHAPES.overview.label}
+                      />
+                      <LibSkeleton
+                        className={SKELETON_SHAPES.overview.value}
+                      />
+                    </div>
+                    <LibSkeleton
+                      className={`${SKELETON_SHAPES.overview.badge} rounded-full`}
+                    />
+                  </div>
+                  <div className="mt-auto space-y-2">
+                    <LibSkeleton className={SKELETON_SHAPES.overview.footer} />
+                    <LibSkeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ),
+            )}
           </div>
         );
 

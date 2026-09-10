@@ -10,6 +10,7 @@
 // Delete → DELETE /api/projects/:id (OWNER only; 409 when bookings exist).
 
 import {
+  AlertDialog,
   Button,
   Combobox,
   Form,
@@ -37,6 +38,8 @@ import {
   type ProjectListItem,
   type ProjectMemberRow,
 } from '@/hooks/queries';
+import { api, qs, type Role } from '@/apis/client';
+import { isLinkableStaffRole } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
 
 // ---------------------------------------------------------------------------
@@ -306,10 +309,11 @@ function ProjectMemberItem({
 }: {
   project: ProjectListItem;
   member: ProjectMemberRow;
-  /** MANAGER/ADMIN/OWNER → unlink enabled; staff (TELECALLER/SALES_EXEC) → view only. */
+  /** When true the caller allows link/unlink (staff page: ADMIN/OWNER only; admin Projects dialog: canManageMembers). */
   canManage: boolean;
 }) {
   const unlinkMember = useUnlinkProjectMember(project.id);
+  const [confirming, setConfirming] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
 
   function handleUnlink() {
@@ -321,36 +325,60 @@ function ProjectMemberItem({
       onError: (error: unknown) => {
         toast.error(error instanceof Error ? error.message : 'Remove failed');
       },
-      onSettled: () => setUnlinking(false),
+      onSettled: () => {
+        setUnlinking(false);
+        setConfirming(false);
+      },
     });
   }
 
   return (
-    <Item
-      variant="outline"
-      size="sm"
-      title={member.name}
-      description={`${labelFor('role', member.role)} · ${member.email}${
-        member.isLeadOwner ? ' · via leads' : ''
-      }`}
-      actions={
-        canManage ? (
-          <Button
-            type="button"
-            variant="ghost"
-            color="danger"
-            size="sm"
-            onClick={handleUnlink}
-            disabled={unlinking}
-            isLoading={unlinking}
-            loadingText="Unlinking..."
-            data-qa={`project-member-unlink-${member.userId}`}
-          >
-            Unlink
-          </Button>
-        ) : null
-      }
-    />
+    <>
+      <Item
+        variant="outline"
+        size="sm"
+        title={member.name}
+        description={`${labelFor('role', member.role)} · ${member.email}${
+          member.isLeadOwner ? ' · via leads' : ''
+        }`}
+        actions={
+          canManage ? (
+            <Button
+              type="button"
+              variant="ghost"
+              color="danger"
+              size="sm"
+              onClick={() => setConfirming(true)}
+              disabled={unlinking}
+              isLoading={unlinking}
+              loadingText="Unlinking..."
+              data-qa={`project-member-unlink-${member.userId}`}
+            >
+              Unlink
+            </Button>
+          ) : null
+        }
+      />
+      <AlertDialog
+        open={confirming}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(false);
+        }}
+        trigger={null}
+        header={{
+          title: `Unlink ${member.name} from ${project.name}?`,
+          description: `This removes ${member.name}'s explicit assignment to ${project.name}. They can still be re-linked later.`,
+        }}
+        cancelButtonText="Cancel"
+        confirmButtonText={unlinking ? 'Unlinking...' : 'Unlink'}
+        confirmButtonProps={{
+          variant: 'destructive',
+          disabled: unlinking,
+        }}
+        onConfirm={handleUnlink}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   );
 }
 
@@ -368,37 +396,63 @@ export function ProjectMembersBody({
   project,
   canManage,
   onDone,
+  embedded = false,
 }: {
   project: ProjectListItem;
-  /** MANAGER/ADMIN/OWNER → can link/unlink members; staff (TELECALLER/SALES_EXEC) → view only. */
+  /** true → caller allows link/unlink; false → Items only (read-only). */
   canManage: boolean;
   onDone: () => void;
+  /**
+   * Staff page mode (/[projectId]/staff): no max-height scroll and no Done
+   * button - the page itself owns layout. Omit (or false) for the "Manage
+   * staff" dialog, which applies the max-h + Done button.
+   */
+  embedded?: boolean;
 }) {
   const membersQuery = useProjectMembers(project.id);
   const linkMember = useLinkProjectMember(project.id);
 
-  // All candidate users the admin could link - staff roles only (you can't
-  // link an ADMIN/OWNER's "work" on a project in this model).
-  const usersQuery = useUsers({ limit: 200 });
   const members = membersQuery.data ?? [];
   const memberIds = useMemo(
     () => new Set(members.map((m) => m.userId)),
     [members],
   );
 
-  // Candidates = staff users not already a member of this project.
-  const candidates = useMemo(() => {
-    const rows = usersQuery.data?.rows ?? [];
-    return rows
-      .filter(
-        (u) =>
-          !memberIds.has(u.id) &&
-          (u.role === 'TELECALLER' ||
-            u.role === 'SALES_EXEC' ||
-            u.role === 'MANAGER'),
-      )
-      .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
-  }, [usersQuery.data, memberIds]);
+  // Default list shown on open (no typing yet): first 10 staff, excluding
+  // users already linked to this project. The Combobox shows these as
+  // `options` when the input is empty, then switches to `fetchOptions`
+  // results once the user types.
+  const defaultUsersQuery = useUsers({ limit: 10 });
+  const defaultOptions = useMemo(
+    () =>
+      (defaultUsersQuery.data?.rows ?? [])
+        .filter(
+          (u) => !memberIds.has(u.id) && isLinkableStaffRole(u.role),
+        )
+        .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+    [defaultUsersQuery.data, memberIds],
+  );
+
+  // Server-driven autosuggestion: fetch staff matching the typed query
+  // (default 10 results), excluding users already linked to this project.
+  // The Combobox's `fetchOptions` fires on each keystroke (debounced
+  // internally); we hit GET /api/users?search=&limit=10 server-side.
+  const fetchStaff = useMemo(
+    () =>
+      async (query: string): Promise<Array<{ value: string; label: string }>> => {
+        const q = query.trim();
+        if (q.length === 0) return [];
+        const res = await api<{ rows: Array<{ id: string; name: string; email: string; role: Role }> }>(
+          `/users${qs({ search: q, limit: 10 })}`,
+        );
+        return (res.rows ?? [])
+          .filter(
+            (u) => !memberIds.has(u.id) && isLinkableStaffRole(u.role),
+          )
+          .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
+      },
+    [memberIds],
+  );
 
   // Link picker is a <Form> with a native 'combobox' field (autoplan
   // 2026-09-10). Selecting a user and submitting links them; on success the
@@ -431,13 +485,12 @@ export function ProjectMembersBody({
           <Combobox
             value={(field.value as string | undefined) ?? ''}
             onValueChange={(v) => field.onChange(v ?? '')}
-            options={candidates}
-            placeholder={
-              candidates.length === 0
-                ? 'No more users to link'
-                : 'Search staff to link...'
-            }
-            disabled={candidates.length === 0}
+            options={defaultOptions}
+            fetchOptions={fetchStaff}
+            fetchDebounce={300}
+            placeholder="Search staff to link..."
+            loadingMessage="Searching staff..."
+            emptyOptionMessage="No matching staff."
             selectOptionAsValue
             className="min-w-0 flex-1"
             data-qa="project-member-picker"
@@ -445,11 +498,7 @@ export function ProjectMembersBody({
           <Button
             type="submit"
             form="link-member-form"
-            disabled={
-              !field.value ||
-              linkMember.isPending ||
-              candidates.length === 0
-            }
+            disabled={!field.value || linkMember.isPending}
             isLoading={linkMember.isPending}
             loadingText="Linking..."
             data-qa="project-member-link"
@@ -492,7 +541,13 @@ export function ProjectMembersBody({
           No staff linked to this project yet.
         </TypographyP>
       ) : (
-        <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+        <div
+          className={
+            embedded
+              ? 'space-y-3'
+              : 'max-h-72 space-y-3 overflow-y-auto pr-1'
+          }
+        >
           <ItemGroup className="gap-3">
             {members.map((member) => (
               <ProjectMemberItem
@@ -506,11 +561,14 @@ export function ProjectMembersBody({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="outline" onClick={onDone}>
-          Done
-        </Button>
-      </div>
+      {/* Done button - dialog only; the embedded staff page owns its layout */}
+      {!embedded ? (
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="outline" onClick={onDone}>
+            Done
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -60,6 +60,7 @@ describe('lib/nav', () => {
         '/dashboard',
         '/leads',
         '/visits',
+        '/staff',
         '/inventory',
         '/bookings',
         '/notifications',
@@ -73,29 +74,30 @@ describe('lib/nav', () => {
         '/dashboard',
         '/leads',
         '/visits',
+        '/staff',
         '/inventory',
         '/bookings',
         '/notifications',
       ]);
     });
 
-    it('TELECALLER does not see the per-project Teams surface (admin+manager only)', () => {
+    it('TELECALLER does not see the org Teams surface (admin/owner only)', () => {
       expect(getVisibleNav('TELECALLER').map((i) => i.href)).not.toContain(
         '/teams',
       );
     });
 
-    it('SALES_EXEC does not see the per-project Teams surface', () => {
+    it('SALES_EXEC does not see the org Teams surface', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).not.toContain(
         '/teams',
       );
     });
 
-    it('MANAGER sees the per-project Teams surface (canManageUsers)', () => {
-      expect(getVisibleNav('MANAGER').map((i) => i.href)).toContain('/teams');
+    it('MANAGER does NOT see the org Teams surface (admin/owner only)', () => {
+      expect(getVisibleNav('MANAGER').map((i) => i.href)).not.toContain('/teams');
     });
 
-    it('ADMIN sees the per-project Teams surface', () => {
+    it('ADMIN sees the org Teams surface (admin/owner)', () => {
       expect(getVisibleNav('ADMIN').map((i) => i.href)).toContain('/teams');
     });
 

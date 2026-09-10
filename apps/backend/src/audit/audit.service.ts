@@ -76,7 +76,13 @@ export class AuditService {
         if (dto.userId !== undefined) where['userId'] = dto.userId;
         if (dto.entityType !== undefined) where['entityType'] = dto.entityType;
         if (dto.entityId !== undefined) where['entityId'] = dto.entityId;
-        if (dto.action !== undefined) where['action'] = dto.action;
+        if (dto.action !== undefined) {
+          // Multi-select actions arrive as an array (WHERE action IN (...));
+          // a single action stays an exact match.
+          where['action'] = Array.isArray(dto.action)
+            ? { in: dto.action }
+            : dto.action;
+        }
         if (dto.from !== undefined || dto.to !== undefined) {
           where['createdAt'] = {
             ...(dto.from !== undefined ? { gte: new Date(dto.from) } : {}),

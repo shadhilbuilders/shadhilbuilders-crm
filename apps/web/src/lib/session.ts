@@ -39,14 +39,20 @@ export function isAdminLike(role: Role | undefined): boolean {
   return role === 'ADMIN' || role === 'OWNER';
 }
 
-/** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
-export function canManageProjectMembers(role: Role | undefined): boolean {
-  return isAdminLike(role) || role === 'MANAGER';
-}
-
 /** Manager: manages a team - sees team pipeline, approval queue. */
 export function isManager(role: Role | undefined): boolean {
   return role === 'MANAGER';
+}
+
+/**
+ * Roles that can be linked to a project as working staff (TELECALLER /
+ * SALES_EXEC / MANAGER). ADMIN/OWNER are excluded - you can't link an
+ * admin/owner's "work" on a project in this model.
+ */
+export function isLinkableStaffRole(role: Role | undefined): boolean {
+  return (
+    role === 'TELECALLER' || role === 'SALES_EXEC' || role === 'MANAGER'
+  );
 }
 
 /** Cross-role lead moves are ADMIN/OWNER/MANAGER only. */

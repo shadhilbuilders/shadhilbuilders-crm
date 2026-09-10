@@ -6,7 +6,7 @@
 // ADMIN/OWNER surface (mirrors users/page.tsx guard shape):
 //   - Create project      → POST /api/projects        (ADMIN/OWNER)
 //   - Edit / rename       → PATCH /api/projects/:id   (ADMIN/OWNER)
-//   - Manage staff        → ProjectMembersBody        (MANAGER/ADMIN/OWNER)
+//   - Manage staff        → ProjectMembersBody        (ADMIN/OWNER; MANAGER sees Items view-only)
 //   - Delete              → DELETE /api/projects/:id  (ADMIN/OWNER, soft)
 //
 // Server-driven (T-PROJ-SRVPG): the list is SORTED + SEARCHED + PAGINATED on
@@ -55,7 +55,6 @@ import {
 } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
 import {
-  canManageProjectMembers,
   canManageUsers,
   isAdminLike,
   useSessionUser,
@@ -123,8 +122,9 @@ export default function ProjectsPage() {
   }
 
   // Soft-delete projects + member management (autoplan 2026-09-09 / -10).
+  // Member link/unlink is ADMIN/OWNER only (mirrors /[projectId]/staff).
   const canDelete = isAdminLike(user.role);
-  const canManageMembers = canManageProjectMembers(user.role);
+  const canManageMembers = isAdminLike(user.role);
 
   const projects = Array.isArray(projectsQuery.data?.projects)
     ? projectsQuery.data.projects
@@ -245,7 +245,7 @@ export default function ProjectsPage() {
 /**
  * In-app row-actions menu for a project row (Edit / Manage staff / Delete),
  * gated by the actor's role. Edit is ADMIN/OWNER, Manage staff is
- * MANAGER/ADMIN/OWNER, Delete is ADMIN/OWNER (soft). Uses the published
+ * ADMIN/OWNER (MANAGER sees View staff read-only), Delete is ADMIN/OWNER (soft). Uses the published
  * DropdownMenu primitives + Tooltip (the shipped DataTableActionItem has no
  * disabled/disabledReason field) - same approach as users/UserRowActions.
  */

@@ -87,7 +87,7 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
             id: 'a-2',
             userId: 'u2',
             userName: 'Manager',
-            action: 'booking.approve',
+            action: 'booking.transition',
             entityType: 'Booking',
             entityId: 'book-456',
             before: { status: 'TOKEN' },
@@ -104,9 +104,9 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
 
     await mount();
     const html = container?.innerHTML ?? '';
-    // Action column entries render
-    expect(html).toContain('lead.transition');
-    expect(html).toContain('booking.approve');
+    // Action column entries render (friendly labels, not raw action keys)
+    expect(html).toContain('Lead transition');
+    expect(html).toContain('Booking transition');
     // User column shows userName (priority over userId)
     expect(html).toContain('Owner');
     expect(html).toContain('Manager');

@@ -25,7 +25,7 @@
 // admin-facing flow is low-volume and PUSH from the inbound webhook
 // is an obvious next step but out of scope for this ticket).
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button, Card, CardContent, toast } from '@paalstack/react-ui';
 import Link from 'next/link';
@@ -47,6 +47,7 @@ import {
 import type { WhatsappUnknownContactRow } from '@/hooks/queries/whatsapp-unknown-contacts';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
+import { LuArrowDown } from '@paalstack/react-icons/lu';
 
 // ---------------------------------------------------------------------------
 // Tab filter
@@ -68,18 +69,47 @@ export default function WhatsappUnknownContactsPage() {
   const [tab, setTab] = useState<StatusTab>('PENDING');
   const [convertTarget, setConvertTarget] =
     useState<WhatsappUnknownContactRow | null>(null);
+  // Cursor pagination: accumulate rows across pages. `nextCursor` is null
+  // when there are no more rows. Reset the accumulation whenever the tab
+  // changes (each tab is its own queue).
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [accumulated, setAccumulated] = useState<WhatsappUnknownContactRow[]>(
+    [],
+  );
 
   const listQuery = useWaUnknownContacts({
     status: tab,
-    limit: 50,
+    limit: 25,
+    ...(cursor !== null ? { cursor } : {}),
   });
   const markSpam = useMarkWaUnknownSpam();
   const { data: projects } = useProjects();
   const defaultProjectId = pickDefaultProject(projects ?? [])?.id ?? null;
 
-  const rows = listQuery.data?.rows ?? [];
+  // Merge the latest fetched page into the accumulated list. When the tab
+  // changes (or the cursor resets), start fresh from the first page.
+  const rows = useMemo(() => {
+    const page = listQuery.data?.rows ?? [];
+    if (cursor === null) return page;
+    const seen = new Set(accumulated.map((r) => r.id));
+    return [...accumulated, ...page.filter((r) => !seen.has(r.id))];
+  }, [listQuery.data, cursor, accumulated]);
   const total = listQuery.data?.total ?? 0;
+  const nextCursor = listQuery.data?.nextCursor ?? null;
   const isPendingTab = tab === 'PENDING';
+
+  function switchTab(next: StatusTab) {
+    setTab(next);
+    setCursor(null);
+    setAccumulated([]);
+  }
+
+  function loadMore() {
+    if (nextCursor !== null) {
+      setAccumulated(rows);
+      setCursor(nextCursor);
+    }
+  }
 
   function handleSpam(row: WhatsappUnknownContactRow) {
     markSpam.mutate(
@@ -107,8 +137,6 @@ export default function WhatsappUnknownContactsPage() {
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="min-h-11"
             disabled={listQuery.isFetching}
             onClick={() => void listQuery.refetch()}
             data-qa="wa-unknown-refresh"
@@ -123,9 +151,7 @@ export default function WhatsappUnknownContactsPage() {
           <Button
             key={item.value}
             variant={tab === item.value ? 'default' : 'outline'}
-            size="sm"
-            className="min-h-11"
-            onClick={() => setTab(item.value)}
+            onClick={() => switchTab(item.value)}
             aria-pressed={tab === item.value}
             data-qa={`wa-unknown-tab-${item.value.toLowerCase()}`}
           >
@@ -172,6 +198,24 @@ export default function WhatsappUnknownContactsPage() {
           ))}
         </ul>
       )}
+
+      {nextCursor !== null ? (
+        <div className="flex justify-center pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={listQuery.isFetching}
+            onClick={loadMore}
+            data-qa="wa-unknown-load-more"
+            isLoading={listQuery.isFetching}
+            loadingText='Loading...'
+            leftIcon={<LuArrowDown className="size-4" />}
+          >
+            Load more
+          </Button>
+        </div>
+      ) : null}
 
       <WhatsappUnknownContactConvertModal
         contact={convertTarget}
@@ -256,8 +300,6 @@ function Row({
           <Button
             type="button"
             variant="default"
-            size="sm"
-            className="min-h-11"
             onClick={() => onConvert(row)}
             data-qa="wa-unknown-convert"
           >
@@ -266,8 +308,6 @@ function Row({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="min-h-11"
             disabled={isSpamming}
             onClick={() => onSpam(row)}
             data-qa="wa-unknown-spam"
