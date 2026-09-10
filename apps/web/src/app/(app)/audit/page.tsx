@@ -143,10 +143,10 @@ export default function AuditPage() {
         subtitle="Every login, lead view, state transition, message, call, and consent change. 7-year retention (RERA)."
         action={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="min-h-11" disabled>
+            <Button variant="outline" disabled>
               Export CSV
             </Button>
-            <Button variant="outline" size="sm" className="min-h-11" disabled>
+            <Button variant="outline" disabled>
               Export JSON
             </Button>
           </div>
