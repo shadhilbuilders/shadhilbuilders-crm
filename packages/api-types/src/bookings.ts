@@ -18,7 +18,7 @@ export const CreateBookingDtoSchema = z.object({
   amount: z
     .number()
     .positive()
-    .max(100_000_000_00, 'Amount too large (cap ₹100 Cr)'),
+    .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)'),
   tokenAmount: z.number().positive().optional(),
   notes: z.string().trim().max(2000).optional(),
 });

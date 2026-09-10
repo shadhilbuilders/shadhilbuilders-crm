@@ -60,7 +60,14 @@ function NewBookingPageInner() {
   // T-ProjectSwitch: the booking form lives under the URL project.
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
-  const leadsQuery = useLeads({ limit: 200, projectId: projectId ?? undefined });
+  const leadsQuery = useLeads({
+    limit: 200,
+    projectId: projectId ?? undefined,
+    // A booking is initiated from a lead in NEGOTIATION (matches the
+    // empty-state copy). Filter server-side so the picker only offers
+    // bookable leads.
+    state: ['NEGOTIATION'],
+  });
   // Inventory picker: AVAILABLE units in the active project.
   const unitsQuery = useInventoryUnits({
     projectId: projectId ?? undefined,

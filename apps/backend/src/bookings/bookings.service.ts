@@ -45,10 +45,8 @@ import { NotificationsService } from '../notifications/notifications.service';
  * BookingFilterDto's row contract; the web app already imports this
  * shape in apps/web/src/hooks/queries/crm.ts (useBookings).
  *
- * NOTE: `notes` is referenced in the CreateBookingDto but NOT a
- * column on the Booking model - the service accepts dto.notes
- * silently (matching the leads pattern; adding the column is a
- * schema PR, out of scope for Pass 1).
+ * `notes` is a real column on the Booking model (added 2026-09-10,
+ * migration 20260910120000_booking_notes) and is persisted on create.
  */
 export interface BookingRow {
   id: string;
@@ -62,6 +60,7 @@ export interface BookingRow {
   status: BookingStatus;
   approvedById: string | null;
   approvedByName: string | null;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +168,7 @@ export class BookingsService {
               tokenAmount: true,
               status: true,
               approvedById: true,
+              notes: true,
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
@@ -193,9 +193,62 @@ export class BookingsService {
             status: r.status,
             approvedById: r.approvedById,
             approvedByName: r.approvedBy?.name ?? null,
+            notes: r.notes,
             createdAt: r.createdAt.toISOString(),
             updatedAt: r.updatedAt.toISOString(),
           })),
+        };
+      },
+    );
+  }
+
+  /**
+   * GET /api/bookings/:id - single booking (approval page). Role-scoped
+   * by the same RLS policies as list; a booking the actor cannot see
+   * 404s (findUnique returns null under RLS).
+   */
+  async findOne(actor: JwtPayload, bookingId: string): Promise<BookingRow> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const row = await (tx as unknown as PrismaClient).booking.findUnique({
+          where: { id: bookingId },
+          select: {
+            id: true,
+            leadId: true,
+            unitId: true,
+            userId: true,
+            amount: true,
+            tokenAmount: true,
+            status: true,
+            approvedById: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+            lead: { select: { name: true } },
+            user: { select: { name: true } },
+            approvedBy: { select: { name: true } },
+          },
+        });
+        if (row === null) {
+          throw new NotFoundException(`Booking ${bookingId} not found`);
+        }
+        return {
+          id: row.id,
+          leadId: row.leadId,
+          leadName: row.lead.name,
+          unitId: row.unitId,
+          userId: row.userId,
+          userName: row.user.name,
+          amount: row.amount.toString(),
+          tokenAmount: row.tokenAmount?.toString() ?? null,
+          status: row.status,
+          approvedById: row.approvedById,
+          approvedByName: row.approvedBy?.name ?? null,
+          notes: row.notes,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
         };
       },
     );
@@ -239,6 +292,7 @@ export class BookingsService {
             ...(dto.tokenAmount !== undefined
               ? { tokenAmount: dto.tokenAmount.toFixed(2) }
               : {}),
+            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
             status: 'HOLD',
           },
           select: {
@@ -250,6 +304,7 @@ export class BookingsService {
             tokenAmount: true,
             status: true,
             approvedById: true,
+            notes: true,
             createdAt: true,
             updatedAt: true,
             lead: { select: { name: true } },
@@ -302,6 +357,7 @@ export class BookingsService {
           status: created.status,
           approvedById: created.approvedById,
           approvedByName: created.approvedBy?.name ?? null,
+          notes: created.notes,
           createdAt: created.createdAt.toISOString(),
           updatedAt: created.updatedAt.toISOString(),
         };
@@ -335,6 +391,7 @@ export class BookingsService {
               amount: true,
               tokenAmount: true,
               approvedById: true,
+              notes: true,
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
@@ -381,6 +438,7 @@ export class BookingsService {
             tokenAmount: true,
             status: true,
             approvedById: true,
+            notes: true,
             createdAt: true,
             updatedAt: true,
             lead: { select: { name: true } },
@@ -451,6 +509,7 @@ export class BookingsService {
           status: updated.status,
           approvedById: updated.approvedById,
           approvedByName: updated.approvedBy?.name ?? null,
+          notes: updated.notes,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
