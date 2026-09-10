@@ -450,20 +450,59 @@ export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = '
 // reads `.data` as the row array.
 // ---------------------------------------------------------------------------
 
-export function useBookings(
-  params: { status?: string; projectId?: string } = {},
-) {
+export type BookingFilterInput = {
+  status?: string[];
+  projectId?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function useBookings(filter: BookingFilterInput = {}) {
   return useQuery({
-    queryKey: ['bookings', params] as const,
+    queryKey: ['bookings', filter] as const,
     queryFn: ({ signal }) =>
       api<WithRows<unknown>>(
-        `/bookings${qs({ status: params.status, projectId: params.projectId })}`,
+        `/bookings${qs({
+          status: filter.status?.join(','),
+          projectId: filter.projectId,
+          search: filter.search,
+          limit: filter.limit,
+          offset: filter.offset,
+        })}`,
         { signal },
       ),
     select: unwrapRows<unknown>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
+}
+
+/** Read the raw `{ total, rows }` envelope for the SAME key useBookings
+ *  caches under (server pagination needs `total`). */
+export function useBookingsEnvelope(filter: BookingFilterInput = {}): number {
+  const query = useQuery({
+    queryKey: ['bookings', filter] as const,
+    queryFn: ({ signal }) =>
+      api<unknown>(
+        `/bookings${qs({
+          status: filter.status?.join(','),
+          projectId: filter.projectId,
+          search: filter.search,
+          limit: filter.limit,
+          offset: filter.offset,
+        })}`,
+        { signal },
+      ),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
+  const raw = query.data;
+  if (raw !== null && typeof raw === 'object') {
+    const total = (raw as { total?: unknown }).total;
+    if (typeof total === 'number') return total;
+  }
+  return 0;
 }
 
 /** Single booking (approval page). Role-scoped; 404s when the actor can't see it. */

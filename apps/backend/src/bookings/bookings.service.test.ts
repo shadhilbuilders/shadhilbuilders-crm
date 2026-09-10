@@ -451,4 +451,51 @@ describe('list - role-scoped query with status filter', () => {
       }),
     );
   });
+
+  it('passes search through to the parent Lead name/phone filter', async () => {
+    const { service, client } = makeService();
+    client.booking.findMany.mockResolvedValue([]);
+    client.booking.count.mockResolvedValue(0);
+    await service.list(makeActor(), {
+      search: 'priya',
+      limit: 10,
+      offset: 0,
+    });
+    expect(client.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          lead: expect.objectContaining({
+            OR: [
+              { name: { contains: 'priya', mode: 'insensitive' } },
+              { phone: { contains: 'priya' } },
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('merges search with staff role scoping (TELECALLER)', async () => {
+    const { service, client } = makeService();
+    client.booking.findMany.mockResolvedValue([]);
+    client.booking.count.mockResolvedValue(0);
+    await service.list(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
+      search: 'priya',
+      limit: 10,
+      offset: 0,
+    });
+    expect(client.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          lead: expect.objectContaining({
+            ownerId: 'tc-1',
+            OR: [
+              { name: { contains: 'priya', mode: 'insensitive' } },
+              { phone: { contains: 'priya' } },
+            ],
+          }),
+        }),
+      }),
+    );
+  });
 });

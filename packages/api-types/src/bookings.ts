@@ -57,6 +57,9 @@ export const BookingFilterDtoSchema = z.object({
     .union([BookingStatusSchema, z.array(BookingStatusSchema)])
     .optional(),
   approvedById: z.string().cuid().optional(),
+  // Server-side search over the parent Lead's name/phone (the booking has
+  // no name of its own). Mirrors the leads D9 contract (≥2 chars).
+  search: z.string().trim().max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });

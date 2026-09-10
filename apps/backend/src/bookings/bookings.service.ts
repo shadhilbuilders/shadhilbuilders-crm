@@ -139,18 +139,36 @@ export class BookingsService {
             ? { in: dto.status }
             : dto.status;
         }
+        // Server-side search over the parent Lead's name/phone (the
+        // booking has no name of its own). Mirrors the leads D9 contract.
+        if (dto.search !== undefined && dto.search.length > 0) {
+          where['lead'] = {
+            ...(where['lead'] as object | undefined),
+            OR: [
+              { name: { contains: dto.search, mode: 'insensitive' } },
+              { phone: { contains: dto.search } },
+            ],
+          };
+        }
 
         // Role scoping via parent Lead. The booking policies already
         // JOIN to Lead - the role-scoped lane just narrows the `where`
-        // further for staff.
+        // further for staff. Merge with any existing lead filter (search,
+        // projectId) so staff search still applies.
         if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-          where['lead'] = { ownerId: actor.sub };
+          where['lead'] = {
+            ...(where['lead'] as object | undefined),
+            ownerId: actor.sub,
+          };
         } else if (actor.role === 'MANAGER') {
           const team = await (tx as unknown as PrismaClient).team.findFirst({
             where: { managerId: actor.sub },
             select: { id: true },
           });
-          where['lead'] = { teamId: team?.id ?? '__no_team__' };
+          where['lead'] = {
+            ...(where['lead'] as object | undefined),
+            teamId: team?.id ?? '__no_team__',
+          };
         }
 
         const [rows, total] = await Promise.all([

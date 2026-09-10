@@ -1,29 +1,45 @@
 'use client';
 
-// Bookings Pipeline (Wireframe #9): list of bookings with status filter,
-// row deep-links back to the parent lead. Status enum is mapped via the
-// shared labels.ts (T-F1 + standing rule 3) so we never leak raw enum
-// strings to the UI.
+// Bookings Pipeline (Wireframe #9) - REBUILT on the @paalstack/react-ui
+// DataTable (T-BOOK, 2026-09-10) with SERVER pagination + server-driven
+// filters, mirroring the leads/inventory/users pages.
 //
-// Backend (T-BOOK, Pass 1) returns BookingListResult = { total, rows }.
-// useBookings unwraps the rows (T-F1).
-import { Button } from '@paalstack/react-ui';
+//   DataTable toolbar (storybook `ToolbarWithRightSideContent` pattern):
+//     - search lives IN the toolbar, server-side (D9) - wired to useBookings
+//       search param via onSearchValueChange (≥2 chars hits the API, debounced
+//       300ms via useDebouncedValue).
+//     - the "+ New booking" button is the toolbar's right-side content
+//       (role-gated: hidden for TELECALLER).
+//     - status filter is a server-driven MultiSelect (toolbar left side) -
+//       the DataTable's built-in facet filter is client-side over the loaded
+//       page, which is wrong under server pagination. Selection feeds the
+//       `status` query param.
+//   Pagination: SERVER-side. The page passes `total`/`currentPage`/
+//     `onPageChange`/`onPageSizeChange` to the DataTable; each page change
+//     refetches `{ limit, offset }` from the API.
+//   Columns: Lead (link back to parent) → Status (Badge) → Amount → Token →
+//     Created → Owner / Approval.
+//   Row actions: View (link to parent lead) + Review approval (link to
+//     /bookings/[id], MANAGER/ADMIN only, TOKEN status).
+import { Badge, Button, DataTable, MultiSelect, TypographyP } from '@paalstack/react-ui';
+import type { DataTableColumnDef } from '@paalstack/react-ui';
+import { useDebouncedValue } from '@paalstack/react-hooks';
 import { LuPlus } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
-import { useParams } from 'next/navigation';
-
-import { useBookings, useLeads } from '@/hooks/queries/crm';
+import { useBookings, useBookingsEnvelope } from '@/hooks/queries/crm';
 import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser, canApproveBookings } from '@/lib/session';
+import { canApproveBookings, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
+
+const DEFAULT_PAGE_SIZE = 10;
 
 type BookingRow = {
   id: string;
@@ -39,24 +55,14 @@ type BookingRow = {
   updatedAt?: string;
 };
 
-// Filter chips: All + every BookingStatus value. The "All" tab
-// sends no status param; selecting a specific status narrows the
-// server query. Backend re-validates the param via
-// BookingFilterDtoSchema - out-of-enum values throw 400 (handled
-// by the api() client's ApiError → page renders ModulePending).
-const STATUS_FILTERS: { value: BookingStatus | 'ALL'; label: string }[] = [
-  { value: 'ALL', label: 'All' },
-  ...BOOKING_STATUSES.map((s) => ({ value: s, label: labelFor('booking', s) })),
-];
-
-// Status → Tailwind badge colour. Tinted backgrounds match the
-// other status badges in the app (LeadStatusBadge / VisitPanel).
-const STATUS_BADGE_CLASS: Record<BookingStatus, string> = {
-  HOLD: 'bg-amber-100 text-amber-900',
-  TOKEN: 'bg-blue-100 text-blue-900',
-  APPROVED: 'bg-green-100 text-green-900',
-  REJECTED: 'bg-red-100 text-red-900',
-  CANCELLED: 'bg-gray-100 text-gray-700',
+// Status → Badge semantic variant (user-mandated: use Badge, not hand-rolled
+// spans). Maps to theme tokens so colors stay consistent + dark-mode aware.
+const STATUS_BADGE_VARIANT: Record<BookingStatus, 'success' | 'warning' | 'info' | 'destructive' | 'muted'> = {
+  HOLD: 'warning',
+  TOKEN: 'info',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
+  CANCELLED: 'muted',
 };
 
 function isBookingStatus(value: string): value is BookingStatus {
@@ -67,43 +73,44 @@ function formatMoney(value: string | undefined): string {
   if (value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
-  // Backend sends numbers as strings (Prisma Decimal serialises to
-  // string over JSON). Format via the shared currencyIntl (₹, en-IN).
   return currencyIntl.format(num);
 }
 
 export default function BookingsPage() {
-  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'ALL'>('ALL');
   const { user } = useSessionUser();
-  // T-ProjectSwitch: scope bookings + the lead-name lookup to the URL project.
   const params = useParams<{ projectId: string }>();
-  const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
-  const bookingsQuery = useBookings({
-    ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
-    projectId,
-  });
-  const leadsQuery = useLeads({ limit: 200, projectId });
+  const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
   const isOnline = useOnlineStatus();
 
-  const rows = bookingsQuery.data ?? [];
+  // Server-driven status filter (T-SRVPG): the DataTable's built-in facet
+  // filter is client-side over the loaded page, which is wrong under server
+  // pagination. A MultiSelect in the toolbar feeds the `status` query param.
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  // Server-side search (D9): the toolbar search input feeds the `search`
+  // query param (≥2 chars hits the API). Debounced 300ms so the API isn't
+  // hit on every keystroke.
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const serverSearch =
+    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
+  // Server-side pagination (T-SRVPG): page is 1-indexed (the DataTable
+  // Pagination is 1-indexed); offset = (page - 1) * pageSize.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  // Build a leadId → lead.name lookup so the list renders the lead's
-  // friendly name even when the booking row omits leadName (some
-  // legacy payloads only carry leadId). Falls back to the raw leadId
-  // when nothing matches.
-  const leadNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    const list = leadsQuery.data;
-    if (Array.isArray(list)) {
-      for (const r of list) {
-        const row = r as { id?: string; name?: string };
-        if (typeof row.id === 'string' && typeof row.name === 'string') {
-          map.set(row.id, row.name);
-        }
-      }
-    }
-    return map;
-  }, [leadsQuery.data]);
+  const filter = {
+    projectId: projectId ?? undefined,
+    status: statusFilter.length > 0 ? statusFilter : undefined,
+    search: serverSearch,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  } as const;
+
+  const bookingsQuery = useBookings(filter);
+  const total = useBookingsEnvelope(filter);
+  const rows = Array.isArray(bookingsQuery.data)
+    ? (bookingsQuery.data as BookingRow[])
+    : [];
 
   const canCreate =
     user !== null &&
@@ -111,6 +118,124 @@ export default function BookingsPage() {
       user.role === 'OWNER' ||
       user.role === 'MANAGER' ||
       user.role === 'SALES_EXEC');
+  const canApprove = canApproveBookings(user?.role);
+
+  const isFiltered = statusFilter.length > 0 || serverSearch !== undefined;
+
+  const statusOptions = useMemo(
+    () =>
+      BOOKING_STATUSES.map((s) => ({
+        value: s,
+        label: labelFor('booking', s),
+      })),
+    [],
+  );
+
+  const columns = useMemo<DataTableColumnDef<BookingRow>[]>(
+    () => [
+      {
+        accessorKey: 'leadName',
+        header: 'Lead',
+        cell: ({ row }) => {
+          const leadId = typeof row.original.leadId === 'string' ? row.original.leadId : '';
+          const leadName =
+            typeof row.original.leadName === 'string' && row.original.leadName.length > 0
+              ? row.original.leadName
+              : '-';
+          return leadId.length > 0 ? (
+            <Link
+              href={projectHref(projectId, `/leads/${leadId}`)}
+              className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
+            >
+              {leadName}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground text-sm">{leadName}</span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => {
+          const status = row.original.status ?? '';
+          const variant = isBookingStatus(status)
+            ? STATUS_BADGE_VARIANT[status]
+            : 'muted';
+          return (
+            <Badge variant={variant} data-qa="booking-status-badge">
+              {isBookingStatus(status) ? labelFor('booking', status) : status || '-'}
+            </Badge>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'amount',
+        header: 'Amount',
+        cell: ({ row }) => (
+          <span className="text-sm tabular-nums">{formatMoney(row.original.amount)}</span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'tokenAmount',
+        header: 'Token',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {formatMoney(row.original.tokenAmount ?? undefined)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'createdAt',
+        header: 'Created',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {typeof row.original.createdAt === 'string'
+              ? dateIntl.formatDate(row.original.createdAt)
+              : '-'}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'userName',
+        header: 'Owner / Approval',
+        cell: ({ row }) => {
+          const owner =
+            typeof row.original.userName === 'string' && row.original.userName.length > 0
+              ? row.original.userName
+              : null;
+          const approver =
+            typeof row.original.approvedByName === 'string' &&
+            row.original.approvedByName.length > 0
+              ? row.original.approvedByName
+              : null;
+          const status = row.original.status ?? '';
+          return (
+            <div className="text-muted-foreground text-xs">
+              {owner !== null ? <span>Owner: {owner}</span> : null}
+              {approver !== null ? <span className="block">Approved by: {approver}</span> : null}
+              {canApprove && status === 'TOKEN' ? (
+                <Link
+                  href={projectHref(projectId, `/bookings/${row.original.id}`)}
+                  className="mt-1 inline-block font-medium text-blue-700 underline-offset-4 hover:underline"
+                  data-qa="approve-booking-link"
+                >
+                  Review approval →
+                </Link>
+              ) : null}
+            </div>
+          );
+        },
+        enableSorting: false,
+      },
+    ],
+    [projectId, canApprove],
+  );
 
   return (
     <div className="space-y-6">
@@ -121,7 +246,7 @@ export default function BookingsPage() {
         action={
           canCreate ? (
             <Button asChild size="sm" className="min-h-11" data-qa="new-booking-button">
-              <Link href={projectHref(projectId ?? null, '/bookings/new')}>
+              <Link href={projectHref(projectId, '/bookings/new')}>
                 <LuPlus className="mr-1 h-4 w-4" /> New booking
               </Link>
             </Button>
@@ -129,190 +254,113 @@ export default function BookingsPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {STATUS_FILTERS.map((item) => (
-          <Button
-            key={item.value}
-            variant={statusFilter === item.value ? 'default' : 'outline'}
-            size="sm"
-            className="min-h-11"
-            onClick={() => setStatusFilter(item.value)}
-          >
-            {item.label}
-          </Button>
-        ))}
-      </div>
-
       {bookingsQuery.isLoading ? (
         <Skeleton variant="table" isOffline={!isOnline} />
-      ) : rows.length > 0 ? (
-        <BookingTable
-          rows={rows as BookingRow[]}
-          leadNameById={leadNameById}
-          canApprove={canApproveBookings(user?.role)}
-          projectId={projectId ?? null}
-        />
+      ) : bookingsQuery.error !== null && bookingsQuery.error !== undefined ? (
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
+        >
+          <p className="text-sm font-medium">Couldn&apos;t load the bookings.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {bookingsQuery.error instanceof Error
+              ? bookingsQuery.error.message
+              : 'Unexpected error.'}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            onClick={() => void bookingsQuery.refetch()}
+            data-qa="bookings-retry-button"
+          >
+            Try again
+          </Button>
+        </div>
       ) : (
-        <BookingsEmpty
-          filter={statusFilter}
-          error={bookingsQuery.error}
-          canCreate={canCreate}
+        <DataTable
+          columns={columns}
+          rows={rows}
+          // Search is server-side (onSearchValueChange → API). The DataTable's
+          // built-in client-side global filter is redundant here - make it a
+          // no-op so it never hides rows over the already-filtered page.
+          globalFilterFn={() => true}
+          search={{
+            accessorKey: ['leadName', 'userName'],
+            placeholder: 'Search by lead or owner...',
+            searchValue: search,
+            onSearchValueChange: (next) => {
+              setSearch(next);
+              setPage(1); // a new search starts back at page 1
+            },
+            className: 'ml-2',
+          }}
+          toolbarLeftSideContent={
+            <MultiSelect
+              options={statusOptions}
+              selectedValues={statusFilter}
+              onSelectedValueChange={(next) => {
+                setStatusFilter(next as string[]);
+                setPage(1); // a new filter starts back at page 1
+              }}
+              placeholder="Filter by status"
+              maxSelectedBadges={2}
+              triggerProps={{
+                size: 'sm',
+                variant: 'outline',
+                className: 'min-w-48 max-w-96',
+              }}
+              contentProps={{ className: 'min-w-56 max-w-96' }}
+              className="w-full"
+              data-qa="bookings-status-filter"
+            />
+          }
+          toolbarRightSideContent={
+            canCreate ? (
+              <Button asChild>
+                <Link href={projectHref(projectId, '/bookings/new')} data-qa="new-booking-button">
+                  <LuPlus className="size-4" />
+                  New booking
+                </Link>
+              </Button>
+            ) : null
+          }
+          showPagination
+          paginationProps={{
+            total,
+            currentPage: page,
+            onPageChange: setPage,
+            pageSize,
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              setPage(1);
+            },
+            showTotalResults: true,
+            showOnlyIfTotalGreaterThanPageSize: true,
+          }}
+          emptyContent={
+            isFiltered ? (
+              <div className="rounded-lg p-10 text-center space-y-1">
+                <TypographyP className="text-xl font-medium">
+                  No bookings match this search.
+                </TypographyP>
+                <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+                  Try clearing a filter or check the spelling.
+                </TypographyP>
+              </div>
+            ) : (
+              <div className="rounded-lg p-10 text-center space-y-1" data-qa="bookings-empty">
+                <TypographyP className="text-xl font-medium">No bookings yet.</TypographyP>
+                <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+                  {canCreate
+                    ? 'Start a new booking from a lead in NEGOTIATION.'
+                    : 'Bookings appear here as soon as sales execs initiate them.'}
+                </TypographyP>
+              </div>
+            )
+          }
+          tableContainerClassName="rounded-lg border"
         />
       )}
-    </div>
-  );
-}
-
-function BookingTable({
-  rows,
-  leadNameById,
-  canApprove,
-  projectId,
-}: {
-  rows: BookingRow[];
-  leadNameById: Map<string, string>;
-  canApprove: boolean;
-  projectId: string | null;
-}) {
-  return (
-    <div className="border-border overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-border bg-muted/40 border-b text-left">
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Lead
-            </th>
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Status
-            </th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase sm:table-cell">
-              Amount
-            </th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase sm:table-cell">
-              Token
-            </th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase md:table-cell">
-              Created
-            </th>
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Owner / Approval
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const id = typeof row.id === 'string' ? row.id : `b-${index}`;
-            const leadId = typeof row.leadId === 'string' ? row.leadId : '';
-            const leadName =
-              (typeof row.leadName === 'string' && row.leadName.length > 0
-                ? row.leadName
-                : leadId.length > 0
-                  ? leadNameById.get(leadId)
-                  : undefined) ?? '-';
-            const status = typeof row.status === 'string' ? row.status : '';
-            const badgeClass = isBookingStatus(status)
-              ? STATUS_BADGE_CLASS[status]
-              : 'bg-gray-100 text-gray-700';
-            return (
-              <tr
-                key={id}
-                className="border-border hover:bg-muted/30 border-b last:border-b-0"
-              >
-                <td className="px-4 py-2.5">
-                  {leadId.length > 0 ? (
-                    <Link
-                      href={projectHref(projectId, `/leads/${leadId}`)}
-                      className="font-medium underline-offset-4 hover:underline"
-                    >
-                      {leadName}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">{leadName}</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
-                    data-qa="booking-status-badge"
-                  >
-                    {isBookingStatus(status) ? labelFor('booking', status) : status || '-'}
-                  </span>
-                </td>
-                <td className="hidden px-4 py-2.5 tabular-nums sm:table-cell">
-                  {formatMoney(row.amount)}
-                </td>
-                <td className="hidden px-4 py-2.5 tabular-nums sm:table-cell">
-                  {formatMoney(row.tokenAmount ?? undefined)}
-                </td>
-                <td className="text-muted-foreground hidden px-4 py-2.5 tabular-nums md:table-cell">
-                  {typeof row.createdAt === 'string'
-                    ? dateIntl.formatDate(row.createdAt)
-                    : '-'}
-                </td>
-                <td className="text-muted-foreground px-4 py-2.5 text-xs">
-                  {typeof row.userName === 'string' && row.userName.length > 0 ? (
-                    <span>Owner: {row.userName}</span>
-                  ) : null}
-                  {typeof row.approvedByName === 'string' && row.approvedByName.length > 0 ? (
-                    <span className="ml-2 block">
-                      Approved by: {row.approvedByName}
-                    </span>
-                  ) : null}
-                  {canApprove && status === 'TOKEN' ? (
-                    <Link
-                      href={projectHref(projectId, `/bookings/${id}`)}
-                      className="mt-1 inline-block font-medium text-blue-700 underline-offset-4 hover:underline"
-                      data-qa="approve-booking-link"
-                    >
-                      Review approval →
-                    </Link>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function BookingsEmpty({
-  filter,
-  error,
-  canCreate,
-}: {
-  filter: BookingStatus | 'ALL';
-  error: unknown;
-  canCreate: boolean;
-}) {
-  if (error !== null && error !== undefined) {
-    return (
-      <ModulePending
-        title="Booking Pipeline"
-        description="HOLD → TOKEN → APPROVED with manager approval gating. The bookings module ships with the demo."
-        error={error}
-      />
-    );
-  }
-  const isFiltered = filter !== 'ALL';
-  return (
-    <div
-      className="border-border rounded-lg border p-10 text-center"
-      data-qa="bookings-empty"
-    >
-      <p className="text-sm font-medium">
-        {isFiltered
-          ? `No bookings in "${labelFor('booking', filter)}" status.`
-          : 'No bookings yet.'}
-      </p>
-      <p className="text-muted-foreground mt-1 text-xs">
-        {isFiltered
-          ? 'Try clearing the status filter.'
-          : canCreate
-            ? 'Start a new booking from a lead in NEGOTIATION.'
-            : 'Bookings appear here as soon as sales execs initiate them.'}
-      </p>
     </div>
   );
 }
