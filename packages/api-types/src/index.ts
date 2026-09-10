@@ -17,6 +17,7 @@ export * from './visits';
 export * from './chat';
 export * from './bookings';
 export * from './reminders';
+export * from './teams';
 export * from './notifications';
 export * from './audit';
 export * from './webhooks';

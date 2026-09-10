@@ -27,18 +27,16 @@ import { ChartCard } from '@/components/shared/ChartCard';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 import type { Role } from '@/apis/client';
-import { useAuditLog, useVisits } from '@/hooks/queries/crm';
+import { useVisits } from '@/hooks/queries/crm';
 import { useDashboardOverview } from '@/hooks/queries/dashboard';
 import { PipelineFunnelChart } from '@/components/charts/PipelineFunnelChart';
 import { VisitsThisWeekChart } from '@/components/charts/VisitsThisWeekChart';
+import { OverviewAuditAreaChart } from '@/components/charts/OverviewAuditAreaChart';
+import { OverviewSectionCards } from '@/components/dashboard/overview-section-cards';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
 import { commandCenterRedirectTarget } from '@/lib/dashboard-redirect';
-import {
-  AuditTimeline,
-  KpiStrip,
-  SectionCard,
-} from '@/components/dashboard/dashboard-shared';
+import { SectionCard } from '@/components/dashboard/dashboard-shared';
 
 export default function AdminDashboardPage() {
   const { user, isPending: sessionPending } = useSessionUser();
@@ -55,12 +53,15 @@ export default function AdminDashboardPage() {
     setMounted(true);
   }, []);
 
-  if (!mounted || sessionPending) return <Skeleton variant="user" className="py-24" />;
+  if (!mounted || sessionPending) return <Skeleton variant="overview" className="py-4" />;
   if (user === null) {
     return (
       <div className="py-24 text-center text-sm">
         Session expired.{' '}
-        <Link href="/login" className="underline">Sign in again</Link>.
+        <Link href="/login" className="underline">
+          Sign in again
+        </Link>
+        .
       </div>
     );
   }
@@ -105,7 +106,6 @@ function AdminDashboard({
   const overviewQuery = useDashboardOverview();
   const visitsQuery = useVisits({ limit: 200 });
   const auditVisible = canViewAudit(role);
-  const auditQuery = useAuditLog({ limit: 200 });
   const overview = overviewQuery.data;
   const overviewLoading = overviewQuery.isLoading;
   const overviewError = overviewQuery.error;
@@ -121,37 +121,10 @@ function AdminDashboard({
       </div>
 
       {overviewLoading ? (
-        <Skeleton variant="kpi" aria-label="Loading overview KPIs" />
-      ) : (
-        <KpiStrip
-          items={[
-            {
-              label: 'Total leads',
-              value: overview ? String(overview.kpis.totalLeads) : '-',
-              sub: 'all teams',
-            },
-            {
-              label: 'Reassignments (7d)',
-              value: overview ? String(overview.kpis.reassignments7d) : '-',
-              sub: 'ownership changes',
-            },
-            {
-              label: 'Audit events (24h)',
-              value: overview ? String(overview.kpis.auditEvents24h) : '-',
-              sub: 'system activity',
-            },
-            {
-              label: 'Users by role',
-              value: overview
-                ? overview.kpis.usersByRole
-                    .map((u) => `${u.role}: ${u.count}`)
-                    .join(' · ')
-                : '-',
-              sub: auditVisible ? 'manage in Users' : undefined,
-            },
-          ]}
-        />
-      )}
+        <Skeleton variant="overview" aria-label="Loading overview KPIs" />
+      ) : overview ? (
+        <OverviewSectionCards overview={overview} />
+      ) : null}
 
       {overviewError !== null && overviewError !== undefined ? (
         <div
@@ -172,11 +145,7 @@ function AdminDashboard({
           default project exists. */}
       <SectionCard
         title="Cross-team pipeline"
-        moreHref={
-          defaultProjectId !== null
-            ? projectHref(defaultProjectId, '/leads')
-            : undefined
-        }
+        moreHref={defaultProjectId !== null ? projectHref(defaultProjectId, '/leads') : undefined}
       >
         <ChartCard
           title="Lead pipeline (all teams)"
@@ -189,11 +158,7 @@ function AdminDashboard({
 
       <SectionCard
         title="Visits this week"
-        moreHref={
-          defaultProjectId !== null
-            ? projectHref(defaultProjectId, '/visits')
-            : undefined
-        }
+        moreHref={defaultProjectId !== null ? projectHref(defaultProjectId, '/visits') : undefined}
       >
         <ChartCard
           title="Visits this week"
@@ -205,14 +170,8 @@ function AdminDashboard({
       </SectionCard>
 
       {auditVisible ? (
-        <SectionCard title="Audit activity (last 7 days)" moreHref="/audit">
-          <ChartCard
-            title="Audit timeline"
-            description="Audit events bucketed by day, admin-class only."
-            query={auditQuery}
-          >
-            {(data) => <AuditTimeline data={data} />}
-          </ChartCard>
+        <SectionCard title="Audit activity" moreHref="/audit">
+          <OverviewAuditAreaChart data={overviewQuery.data?.auditTimeline} />
         </SectionCard>
       ) : null}
     </div>

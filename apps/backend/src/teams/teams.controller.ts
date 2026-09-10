@@ -5,12 +5,13 @@
 // scoping, and any future writes (e.g. POST /api/teams to create a
 // new team) would add DTO parsing here using a shared Zod schema
 // from @shadhil/api-types.
-import { Controller, Get, Inject, Req } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
+import type { TeamDetail, TeamListItem } from '@shadhil/api-types';
 
-import { TeamsService, type TeamListItem } from './teams.service';
+import { TeamsService } from './teams.service';
 
 @ApiTags('teams')
 @ApiBearerAuth('jwt')
@@ -35,5 +36,23 @@ export class TeamsController {
   })
   async list(@Req() req: AuthedRequest): Promise<TeamListItem[]> {
     return this.teams.list(req.user!);
+  }
+
+  /**
+   * GET /api/teams/:id
+   *
+   * The ADMIN/OWNER org-Teams roster: team info + manager + members each
+   * with their project assignments. ADMIN/OWNER only (service gate).
+   */
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Get a team roster (manager + members w/ project assignments). ADMIN/OWNER only.',
+  })
+  async getOne(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<TeamDetail> {
+    return this.teams.getTeam(req.user!, id);
   }
 }

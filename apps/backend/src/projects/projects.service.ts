@@ -414,8 +414,30 @@ export class ProjectsService {
         if (project === null) {
           throw new NotFoundException(`Project ${projectId} not found.`);
         }
+        // Fetch the member's identity for a readable audit reason.
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { name: true, email: true },
+        });
         await tx.projectMember.deleteMany({
           where: { projectId, userId },
+        });
+        // HIGH-STAKES audit (AGENTS.md A2/G-1): removing a staff member's
+        // project access is written in the SAME tx as the delete.
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'project.member.unlink',
+            entityType: 'Project',
+            entityId: projectId,
+            before: {
+              userId,
+              name: user?.name ?? null,
+              email: user?.email ?? null,
+              projectName: project.name,
+            },
+            reason: `project.member.unlink by ${actor.email} (${actor.role})`,
+          },
         });
         return { ok: true };
       },

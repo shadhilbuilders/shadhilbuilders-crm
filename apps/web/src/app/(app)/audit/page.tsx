@@ -1,43 +1,101 @@
 'use client';
 
-// Audit Log - Admin view (Wireframes #11): sortable table with
-// date/user/action/entity filters. Audit module (T-AUDIT, Pass 1)
-// returns `{ total, rows }` - useAuditLog unwraps (T-F1).
-import { Button } from '@paalstack/react-ui';
-import { useEffect, useState } from 'react';
+// Audit Log - Admin view (Wireframes #11). Rebuilt on the @paalstack/react-ui
+// DataTable (2026-09-10) to match the users/projects/leads table pattern:
+//   - SERVER-side pagination (T-SRVPG): the page passes total/currentPage/
+//     onPageChange/onPageSizeChange; each page change refetches { limit,
+//     offset } from the API.
+//   - Action filter is a server-driven MultiSelect in the toolbar (mirrors
+//     the leads status filter) - the backend applies WHERE action IN (...).
+//   - Columns: Timestamp → User → Action → Entity → Before → After.
+// Audit module (T-AUDIT) returns `{ total, rows }` - useAuditLog unwraps.
+import {
+  Button,
+  Combobox,
+  DataTable,
+  Heading,
+  Loading,
+  TypographyP,
+} from '@paalstack/react-ui';
+import type { DataTableColumnDef } from '@paalstack/react-ui';
+import { useEffect, useMemo, useState } from 'react';
 
-import { Heading, TypographyP } from '@paalstack/react-ui';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
-import { useAuditLog } from '@/hooks/queries/crm';
-import { useAuditLogRealtime } from '@/hooks/queries/crm';
+import { useAuditLog, useAuditLogRealtime } from '@/hooks/queries/crm';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 
-// Filter chips - only the ones the backend actually filters on
-// (AuditLogQueryDtoSchema supports userId / entityType / entityId /
-// action / from / to / limit / offset). The legacy placeholder list
-// was decoration; we narrow it to actions that the writer layer
-// already emits (per the audit interceptor + service-level writes).
-const FILTER_ACTIONS = [
-  'lead.transition',
-  'lead.reassign',
-  'user.created',
-  'role.changed',
-  'visit.log',
-  'booking.approve',
-  'booking.transition',
-  'notification.markRead',
-  'auth.login',
-] as const;
+// Filter actions - every action the backend actually writes (auditLog.create
+// call sites across the services). Each entry maps the raw action string to a
+// friendly label shown in the filter combobox and the Action column.
+const FILTER_ACTIONS: Record<string, string> = {
+  // Leads
+  'lead.create': 'Lead created',
+  'lead.update': 'Lead updated',
+  'lead.transition': 'Lead transition',
+  'lead.reassign': 'Lead reassigned',
+  'lead.assigned': 'Lead assigned',
+  'lead.delete': 'Lead deleted',
+  // Users
+  'user.create': 'User created',
+  'user.update': 'User updated',
+  'user.changeRole': 'Role changed',
+  'user.delete': 'User deleted',
+  'user.changePassword': 'Password changed',
+  // Visits
+  'visit.create': 'Visit created',
+  'visit.outcome': 'Visit outcome',
+  'visit.reschedule': 'Visit rescheduled',
+  // Bookings
+  'booking.create': 'Booking created',
+  'booking.transition': 'Booking transition',
+  // Notifications
+  'notification.markRead': 'Notification read',
+  'notification.emit': 'Notification sent',
+  // Chat
+  'chat.send': 'Message sent',
+  // Projects
+  'project.create': 'Project created',
+  'project.update': 'Project updated',
+  'project.delete': 'Project deleted',
+  'project.member.unlink': 'Member unlinked',
+  // Auth
+  'auth.login': 'Login',
+};
+
+function actionLabel(action: string): string {
+  return FILTER_ACTIONS[action] ?? action;
+}
+
+type AuditRow = {
+  id: string;
+  userId: string | null;
+  userName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+  createdAt: string;
+};
+
+const DEFAULT_PAGE_SIZE = 25;
 
 export default function AuditPage() {
-  const [actionFilter, setActionFilter] = useState<string | null>(null);
+  const [actionFilter, setActionFilter] = useState<string[]>([]);
+  // Server-side pagination (T-SRVPG, mirrors users): page is 1-indexed;
+  // offset = (page - 1) * pageSize.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   const auditQuery = useAuditLog({
-    limit: 50,
-    ...(actionFilter !== null ? { action: actionFilter } : {}),
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    ...(actionFilter.length > 0 ? { action: actionFilter.join(',') } : {}),
   });
   // T-E2 (Week 6): live audit stream - new rows (from lead transitions,
   // bookings, logins) stream in via SSE and invalidate the list.
@@ -60,7 +118,7 @@ export default function AuditPage() {
   }, []);
 
   if (!mounted || sessionPending) {
-    return <Skeleton variant="user" className="py-24" />;
+    return <Skeleton variant="users" className="py-4" />;
   }
   if (user === null || !canViewAudit(user.role)) {
     return (
@@ -73,7 +131,8 @@ export default function AuditPage() {
     );
   }
 
-  const rows = auditQuery.data?.rows ?? [];
+  const rows = (auditQuery.data?.rows ?? []) as AuditRow[];
+  const total = auditQuery.data?.total ?? 0;
 
   return (
     <div className="space-y-6">
@@ -93,90 +152,188 @@ export default function AuditPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          variant={actionFilter === null ? 'default' : 'outline'}
-          size="sm"
-          className="min-h-11"
-          onClick={() => setActionFilter(null)}
-        >
-          All actions
-        </Button>
-        {FILTER_ACTIONS.map((action) => (
-          <Button
-            key={action}
-            variant={actionFilter === action ? 'default' : 'outline'}
-            size="sm"
-            className="min-h-11"
-            onClick={() => setActionFilter(action)}
-          >
-            {action}
-          </Button>
-        ))}
-      </div>
-
       {auditQuery.isLoading ? (
         <Skeleton variant="table" isOffline={!isOnline} />
-      ) : rows.length > 0 ? (
-        <AuditTable rows={rows as Record<string, unknown>[]} />
-      ) : (
-        <AuditEmpty
-          filter={actionFilter}
+      ) : auditQuery.error !== null && auditQuery.error !== undefined ? (
+        <ModulePending
+          title="Audit log"
+          description="Append-only action ledger with before/after payloads, filterable and exportable for RERA inspection (Wireframe #11)."
           error={auditQuery.error}
-          total={auditQuery.data?.total ?? 0}
+        />
+      ) : (
+        <AuditTable
+          rows={rows}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          isFetching={auditQuery.isFetching}
+          actionFilter={actionFilter}
+          onActionFilterChange={(actions) => {
+            setActionFilter(actions);
+            setPage(1); // a new filter starts back at page 1
+          }}
         />
       )}
     </div>
   );
 }
 
-function AuditTable({ rows }: { rows: Record<string, unknown>[] }) {
+function AuditTable({
+  rows,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  isFetching,
+  actionFilter,
+  onActionFilterChange,
+}: {
+  rows: AuditRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  isFetching: boolean;
+  actionFilter: string[];
+  onActionFilterChange: (actions: string[]) => void;
+}) {
+  const actionOptions = useMemo(
+    () =>
+      Object.entries(FILTER_ACTIONS).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    [],
+  );
+
+  const columns = useMemo<DataTableColumnDef<AuditRow>[]>(
+    () => [
+      {
+        accessorKey: 'createdAt',
+        header: 'Timestamp',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {new Date(row.original.createdAt).toLocaleString('en-IN')}
+          </span>
+        ),
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'userName',
+        header: 'User',
+        cell: ({ row }) => (
+          <span className="text-sm font-medium">
+            {row.original.userName?.length
+              ? row.original.userName
+              : row.original.userId ?? '-'}
+          </span>
+        ),
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'action',
+        header: 'Action',
+        cell: ({ row }) => {
+          const label = actionLabel(row.original.action);
+          const isMapped = label !== row.original.action;
+          return (
+            <div className="min-w-40">
+              <span className="text-sm font-medium">{label}</span>
+              {isMapped ? (
+                <span className="text-muted-foreground block font-mono text-xs">
+                  {row.original.action}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'entityType',
+        header: 'Entity',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {row.original.entityType}
+            {row.original.entityId ? ` · ${row.original.entityId}` : ''}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'before',
+        header: 'Before → After',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground block max-w-80 font-mono text-xs">
+            {formatBeforeAfter(row.original.before, row.original.after)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+    ],
+    [],
+  );
+
   return (
-    <div className="border-border overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-border bg-muted/40 border-b text-left">
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">Timestamp</th>
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">User</th>
-            <th className="px-4 py-2.5 text-xs font-medium tracking-wide uppercase">Action</th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase sm:table-cell">Entity</th>
-            <th className="hidden px-4 py-2.5 text-xs font-medium tracking-wide uppercase md:table-cell">Before → After</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const id = typeof row.id === 'string' ? row.id : `r-${index}`;
-            return (
-              <tr key={id} className="border-border border-b last:border-b-0">
-                <td className="px-4 py-2.5 tabular-nums">
-                  {typeof row.createdAt === 'string'
-                    ? new Date(row.createdAt).toLocaleString('en-IN')
-                    : '-'}
-                </td>
-                <td className="px-4 py-2.5">
-                  {typeof row.userName === 'string' && row.userName.length > 0
-                    ? row.userName
-                    : typeof row.userId === 'string'
-                      ? row.userId
-                      : '-'}
-                </td>
-                <td className="px-4 py-2.5 font-mono text-xs">
-                  {String(row.action ?? '-')}
-                </td>
-                <td className="text-muted-foreground hidden px-4 py-2.5 sm:table-cell">
-                  {String(row.entityType ?? '-')}
-                  {row.entityId !== undefined && row.entityId !== null
-                    ? ` · ${String(row.entityId)}`
-                    : ''}
-                </td>
-                <td className="text-muted-foreground hidden max-w-[20rem] px-4 py-2.5 font-mono text-xs md:table-cell">
-                  {formatBeforeAfter(row.before, row.after)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      <DataTable
+        columns={columns}
+        rows={rows}
+        showPagination
+        paginationProps={{
+          total,
+          currentPage: page,
+          onPageChange,
+          pageSize,
+          onPageSizeChange,
+          pageSizeOptions: [10, 25, 50],
+          showTotalResults: true,
+          showOnlyIfTotalGreaterThanPageSize: true,
+        }}
+        isLoading={isFetching}
+        loadingContent={<Loading content="Loading audit log..." />}
+        toolbarLeftSideContent={
+          <Combobox
+            multiple
+            value={actionFilter}
+            onValueChange={(next) =>
+              onActionFilterChange((next as string[]) ?? [])
+            }
+            options={actionOptions}
+            placeholder="Filter by action"
+            selectOptionAsValue
+            className="min-w-48 max-w-96"
+            data-qa="audit-action-filter"
+          />
+        }
+        emptyContent={
+          <div
+            className="rounded-lg p-10 text-center space-y-1"
+            data-qa="audit-empty"
+          >
+            <TypographyP className="text-xl font-medium">
+              {actionFilter.length > 0
+                ? 'No audit entries match these filters.'
+                : total === 0
+                  ? 'No audit entries yet.'
+                  : 'No entries match these filters.'}
+            </TypographyP>
+            <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+              {actionFilter.length > 0
+                ? 'Try clearing the action filter.'
+                : 'Audit rows are written by every mutation in the system - they appear here as the activity happens.'}
+            </TypographyP>
+          </div>
+        }
+        tableContainerClassName="rounded-lg border"
+      />
     </div>
   );
 }
@@ -195,47 +352,4 @@ function summarise(value: unknown): string | null {
   const json = JSON.stringify(value);
   if (json === undefined) return null;
   return json.length > 80 ? `${json.slice(0, 77)}...` : json;
-}
-
-function AuditEmpty({
-  filter,
-  error,
-  total,
-}: {
-  filter: string | null;
-  error: unknown;
-  total: number;
-}) {
-  // The error branch surfaces ModulePending (its 404/501 detection
-  // distinguishes "module not built" from "module failed"); the empty
-  // branch renders an honest message - both copy respects the
-  // audit-trail-is-7-year-retained invariant (no data lies here).
-  if (error !== null && error !== undefined) {
-    return (
-      <ModulePending
-        title="Audit log"
-        description="Append-only action ledger with before/after payloads, filterable and exportable for RERA inspection (Wireframe #11)."
-        error={error}
-      />
-    );
-  }
-  return (
-    <div
-      className="border-border rounded-lg border p-10 text-center"
-      data-qa="audit-empty"
-    >
-      <p className="text-sm font-medium">
-        {filter !== null
-          ? `No audit entries for "${filter}".`
-          : total === 0
-            ? 'No audit entries yet.'
-            : 'No entries match these filters.'}
-      </p>
-      <p className="text-muted-foreground mt-1 text-xs">
-        {filter !== null
-          ? 'Try clearing the action filter.'
-          : 'Audit rows are written by every mutation in the system - they appear here as the activity happens.'}
-      </p>
-    </div>
-  );
 }

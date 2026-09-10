@@ -1,21 +1,21 @@
 'use client';
 
-// Per-project Teams page - manage the working staff linked to THIS project.
+// Per-project Staff page - manage the working staff linked to THIS project.
 //
-// Lives under the active project (/[projectId]/teams) so it switches with
+// Lives under the active project (/[projectId]/staff) so it switches with
 // the project switcher and is a work-surface route. Reuses ProjectMembersBody
 // (the same link/unlink UI as the admin Projects page's "Manage staff"
 // dialog) so there's exactly one member-management surface.
 import { useParams } from 'next/navigation';
 
 import { useProjects } from '@/hooks/queries';
-import { canManageProjectMembers, useSessionUser } from '@/lib/session';
+import { isAdminLike, useSessionUser } from '@/lib/session';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ProjectMembersBody } from '@/components/projects/project-form-bodies';
 import { PageHeader } from '@/components/shared/PageHeader';
 
-export default function ProjectTeamsPage() {
+export default function ProjectStaffPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const params = useParams<{ projectId: string }>();
   const projectId =
@@ -23,9 +23,9 @@ export default function ProjectTeamsPage() {
   const { data: projects } = useProjects();
   const project = projects?.find((p) => p.id === projectId) ?? null;
 
-  // MANAGER/ADMIN/OWNER can link/unlink members; staff (TELECALLER/SALES_EXEC)
-  // are view-only on this project's workspace.
-  const canManage = canManageProjectMembers(user?.role);
+  // Staff page is viewable by EVERYONE (any authenticated role sees member
+  // items). Only ADMIN/OWNER can link/unlink; others see Items read-only.
+  const canManage = isAdminLike(user?.role);
 
   if (sessionPending || projectId === null) {
     return <Skeleton variant="users" className="py-24" />;
@@ -34,8 +34,8 @@ export default function ProjectTeamsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Teams"
-        breadcrumb={[{ label: 'Work' }, { label: 'Teams' }]}
+        title="Staff"
+        breadcrumb={[{ label: 'Work' }, { label: 'Staff' }]}
         subtitle={
           project !== null
             ? `Staff linked to ${project.name}.`
@@ -56,6 +56,7 @@ export default function ProjectTeamsPage() {
             }
           }
           canManage={canManage}
+          embedded
           onDone={() => {}}
         />
       </div>

@@ -91,6 +91,25 @@ describe('Skeleton', () => {
       expect(html).toContain('h-32 w-full rounded-lg');
     });
 
+    it('overview renders 4 card-shaped placeholders (T32 pin)', () => {
+      const html = renderToStaticMarkup(<Skeleton variant="overview" />);
+      expect(html).toContain('data-qa="skeleton-overview"');
+      // 4 cards, each with a label + value + badge + 2 footer lines.
+      const cards = html.match(/bg-card flex flex-col gap-4 p-4/g);
+      expect(cards?.length ?? 0).toBe(SKELETON_SHAPES.overview.count);
+      // Each card has a label (h-3 w-20) and value (h-8 w-24).
+      expect(html.match(/h-3 w-20/g)?.length ?? 0).toBe(
+        SKELETON_SHAPES.overview.count,
+      );
+      expect(html.match(/h-8 w-24/g)?.length ?? 0).toBe(
+        SKELETON_SHAPES.overview.count,
+      );
+      // Each card has a badge (h-5 w-16 rounded-full).
+      expect(html.match(/h-5 w-16 rounded-full/g)?.length ?? 0).toBe(
+        SKELETON_SHAPES.overview.count,
+      );
+    });
+
     it('text renders 3 h-4 lines (default count)', () => {
       const html = renderToStaticMarkup(<Skeleton variant="text" />);
       // The library's SkeletonContainer wraps each line. Count the
@@ -163,6 +182,7 @@ describe('Skeleton', () => {
         'card',
         'user',
         'projectSwitcher',
+        'overview',
         'text',
       ] as const;
       for (const variant of variants) {

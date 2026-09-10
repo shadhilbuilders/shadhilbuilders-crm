@@ -127,13 +127,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'leadCount',
   },
+  { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
-    href: '/teams',
-    label: 'Teams',
+    href: '/staff',
+    label: 'Staff',
     icon: LuUsersRound,
     group: 'work',
   },
-  { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
     href: '/inventory',
     label: 'Inventory',
@@ -157,7 +157,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'unreadNotifications',
   },
-  // ── admin group (role-gated by canManageUsers / canViewAudit) ─────────
+  // ── admin group (role-gated by canManageUsers / canViewAudit / isAdminLike) ─
   // Admin/owner command center (dashboard split, 2026-09-08). Cross-project
   // overview at the top-level /overview - NOT project-scoped, so it resolves
   // unscoped via `navItemHref` (scoped:false). Distinct from the work
@@ -174,6 +174,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/projects',
     label: 'Projects',
     icon: LuFolderKanban,
+    group: 'admin',
+  },
+  // Org Teams (ADMIN/OWNER only). /teams + /teams/[teamId] - a manager uses
+  // the per-project staff surfaces, not every team.
+  {
+    href: '/teams',
+    label: 'Teams',
+    icon: LuUsersRound,
     group: 'admin',
   },
   {
@@ -206,16 +214,18 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   const items: NavItem[] = [];
   for (const item of NAV_ITEMS) {
     if (item.group === 'work') {
-      // Per-project Teams manages staff - admin + manager only (backend
-      // member writes are ADMIN/OWNER; MANAGER can read). Staff roles don't
-      // see it as a work surface.
-      if (item.href === '/teams' && !canManageUsers(role)) continue;
+      // Per-project Staff (/[projectId]/staff) is viewable by EVERY
+      // authenticated role (anyone can see the member items); only
+      // ADMIN/OWNER can link/unlink (the page gates that via isAdminLike).
       items.push(item);
       continue;
     }
     // group === 'admin'
     if (item.href === '/users' && canManageUsers(role)) items.push(item);
     else if (item.href === '/projects' && canManageUsers(role)) items.push(item);
+    // Org Teams is ADMIN/OWNER ONLY (a manager uses the per-project staff
+    // surfaces, not every team).
+    else if (item.href === '/teams' && isAdminLike(role)) items.push(item);
     else if (item.href === '/audit' && canViewAudit(role)) items.push(item);
     else if (
       item.href === '/whatsapp-unknown-contacts' &&
@@ -315,7 +325,7 @@ export const PROJECT_SCOPED_PATHS = new Set([
   '/bookings',
   '/notifications',
   '/dashboard',
-  '/teams',
+  '/staff',
 ]);
 
 export function isProjectScopedNavPath(href: string): boolean {

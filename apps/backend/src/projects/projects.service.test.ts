@@ -533,7 +533,7 @@ describe('ProjectsService.unlinkMember', () => {
     txCapture.current = makeTx({});
   });
 
-  it('ADMIN unlinks a user; returns ok', async () => {
+  it('ADMIN unlinks a user; returns ok and writes an audit log in the same tx', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
     const tx = txCapture.current!;
     const result = await svc.unlinkMember(adminActor, 'proj-metro', 'u-exec');
@@ -541,6 +541,12 @@ describe('ProjectsService.unlinkMember', () => {
     expect(tx.projectMember.deleteMany).toHaveBeenCalledWith({
       where: { projectId: 'proj-metro', userId: 'u-exec' },
     });
+    // HIGH-STAKES audit (AGENTS.md A2/G-1): removal is audited in the same tx.
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'project.member.unlink' }),
+      }),
+    );
   });
 
   it('MANAGER can unlink a member (member-write is manager+ admin-class)', async () => {

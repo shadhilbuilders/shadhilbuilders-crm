@@ -21,7 +21,6 @@ import {
   Get,
   Inject,
   Param,
-  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -113,7 +112,7 @@ export class WhatsappUnknownContactsController {
   })
   async convert(
     @Req() req: AuthedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ConvertUnknownContactResult> {
     const dto: ConvertUnknownContactDto = parseBody(
@@ -132,7 +131,7 @@ export class WhatsappUnknownContactsController {
   })
   async spam(
     @Req() req: AuthedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
   ): Promise<SpamUnknownContactResult> {
     return this.service.markSpam(req.user!, id);
   }

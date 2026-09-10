@@ -27,7 +27,9 @@ const sourceSchema = z.string().trim().min(1).max(80);
  * pick the owner.
  */
 export const CreateLeadDtoSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: z.string({
+    error: 'Name is required',
+  }).trim().min(1).max(120),
   phone: PhoneSchema,
   email: z
     .email()

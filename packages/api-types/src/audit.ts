@@ -14,7 +14,7 @@ export const AuditLogQueryDtoSchema = z.object({
   userId: z.string().cuid().optional(),
   entityType: z.string().optional(),
   entityId: z.string().cuid().optional(),
-  action: z.string().optional(),
+  action: z.union([z.string(), z.array(z.string())]).optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   limit: z.number().int().min(1).max(200).default(50),

@@ -69,10 +69,26 @@ export class AuditController {
       typeof query['offset'] === 'string'
         ? Number.parseInt(query['offset'], 10)
         : undefined;
+    // The frontend joins multi-select actions with a comma
+    // (`action=lead.transition,booking.approve`). Split before schema
+    // validation so the service can apply WHERE action IN (...).
+    const actionRaw = query['action'];
+    let action: string | string[] | undefined;
+    if (typeof actionRaw === 'string') {
+      const parts = actionRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      action = parts.length > 1 ? parts : parts[0];
+      if (parts.length === 0) action = undefined;
+    } else if (Array.isArray(actionRaw)) {
+      action = actionRaw.filter((v): v is string => typeof v === 'string');
+    }
     const dto: AuditLogQueryDto = parseBody(
       AuditLogQueryDtoSchema,
       {
         ...query,
+        action,
         limit,
         offset,
       },

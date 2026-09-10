@@ -72,7 +72,7 @@ import {
   ToggleGroup,
   toast,
 } from '@paalstack/react-ui';
-import { LuArrowUp } from '@paalstack/react-icons/lu';
+import { LuArrowUp, LuLock, LuMessageSquare } from '@paalstack/react-icons/lu';
 import { useMemo, useRef, useState } from 'react';
 
 import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
@@ -396,7 +396,7 @@ export function LeadChatPane({
             <div className="flex h-full items-center justify-center">
               <Empty
                 className="p-6"
-                media={isInternal ? '🔒' : '💬'}
+                media={isInternal ? <LuLock className="size-full" /> : <LuMessageSquare className="size-full" />}
                 mediaVariant="icon"
                 title={isInternal ? 'No internal notes yet' : 'No messages yet'}
                 description={

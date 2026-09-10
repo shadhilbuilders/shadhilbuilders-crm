@@ -44,6 +44,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import z from 'zod';
 
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
@@ -55,7 +57,11 @@ import {
 } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
 
-import type { ConvertUnknownContactDto, WhatsappUnknownContactRow } from '@shadhil/api-types';
+import {
+  CreateLeadDtoSchema,
+  type ConvertUnknownContactDto,
+  type WhatsappUnknownContactRow,
+} from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -72,11 +78,22 @@ type WhatsappUnknownContactConvertModalProps = {
   onOpenChange: (next: boolean) => void;
 };
 
-type ConvertFormValues = {
-  name: string;
-  email: string;
-  notes: string;
-};
+type ConvertFormValues = z.infer<typeof ConvertFormSchema>;
+
+// Form schema derived from the server's CreateLeadDtoSchema (zod skill
+// perf-reuse-schemas): pick the fields the admin edits in this modal. The
+// server re-validates the full DTO on submit - this is the client-side
+// mirror so errors surface inline before the request.
+//
+// Email/notes are optional, but the form sends '' for an empty optional
+// field. z.email()/z.string().min(1) reject '' - .optional() only allows
+// undefined, not empty string. So we accept '' as "not provided" via a
+// union with z.literal(''); buildConvertBody omits empty values.
+const ConvertFormSchema = CreateLeadDtoSchema.pick({ name: true, notes: true }).extend({
+  email: z
+    .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
+    .optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Pure helpers (extracted for testability + reusable across the form body
@@ -123,10 +140,10 @@ export function buildConvertBody(
     phone: contact.phoneE164,
     source: 'WHATSAPP',
     ...(projectId !== undefined ? { projectId } : {}),
-    ...(values.email.trim().length > 0
+    ...(values.email !== undefined && values.email.trim().length > 0
       ? { email: values.email.trim().toLowerCase() }
       : {}),
-    ...(values.notes.trim().length > 0
+    ...(values.notes !== undefined && values.notes.trim().length > 0
       ? { notes: values.notes.trim() }
       : {}),
   };
@@ -160,6 +177,7 @@ export function ConvertFormBody({
   const handleSubmit = onSubmit ?? (() => undefined);
 
   const form = useForm<ConvertFormValues>({
+    resolver: zodResolver(ConvertFormSchema),
     defaultValues: {
       name: '',
       email: '',
