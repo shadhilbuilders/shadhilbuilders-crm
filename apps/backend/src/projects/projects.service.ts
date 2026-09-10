@@ -23,22 +23,25 @@
 // Every write emits an AuditLog row inside the same withRlsContext
 // transaction (mirrors leads.service.ts createInTransaction).
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { withRlsContext } from '@shadhil/database';
+import { withRlsContext, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreateProjectDto,
+  LinkProjectMemberDto,
+  ProjectFilterDto,
   ProjectListResult,
+  ProjectMemberRow,
   ProjectRow,
-  PrismaClient,
   UpdateProjectDto,
 } from './projects.types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import {
+  canManageProjectMembers,
+  isAdminClass,
+} from '../users/roles';
 
-export type { ProjectRow, ProjectListResult } from './projects.types';
-
-/** Admin-class roles for create/update (JWT-level check). */
-const ADMIN_CLASS = new Set(['ADMIN', 'OWNER']);
+export type { ProjectRow, ProjectListResult, ProjectMemberRow } from './projects.types';
 
 /**
  * Derive a URL-safe slug from a project name. Exported for direct unit
@@ -53,10 +56,6 @@ export function slugifyProjectName(name: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
   return base.length > 0 ? base : 'project';
-}
-
-function isAdminClass(role: string): boolean {
-  return ADMIN_CLASS.has(role);
 }
 
 @Injectable()
@@ -76,14 +75,78 @@ export class ProjectsService {
    * List every project, oldest first. The FIRST row is the default active
    * project (seed creates Shadhil Metro Heights first). No membership
    * narrowing: the registry is shared operational data for all roles.
+   *
+   * Optional `filter` drives server-side search + pagination (mirrors the
+   * users list). When omitted, returns the FULL registry (backward-compatible;
+   * the sidebar switcher calls with no params).
    */
-  async list(actor: JwtPayload): Promise<ProjectListResult> {
+  async list(
+    actor: JwtPayload,
+    filter: ProjectFilterDto = {},
+  ): Promise<ProjectListResult> {
+    if (filter.limit === undefined || filter.offset === undefined) {
+      // Backward-compatible full-registry path (switcher, no params).
+      return this.listAll(actor);
+    }
+    // Server-side search (mirrors leads/users): case-insensitive match on
+    // name or slug (a project has no email), debounced at the UI.
+    const where: { deletedAt: null; OR?: Array<Record<string, unknown>> } = {
+      deletedAt: null,
+    };
+    if (filter.search !== undefined && filter.search.length > 0) {
+      where.OR = [
+        { name: { contains: filter.search, mode: 'insensitive' } },
+        { slug: { contains: filter.search, mode: 'insensitive' } },
+      ];
+    }
+    // Server-source pagination: skip/take from limit/offset (T-PROJ-SRVPG).
+    const [rows, total] = await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      (tx) =>
+        Promise.all([
+          tx.project.findMany({
+            where,
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              address: true,
+              reraNumber: true,
+              cmdaNumber: true,
+              createdAt: true,
+            },
+            skip: filter.offset,
+            take: filter.limit,
+          }),
+          tx.project.count({ where }),
+        ]),
+    );
+    return {
+      total,
+      projects: rows.map((r) => ({
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        address: r.address,
+        reraNumber: r.reraNumber,
+        cmdaNumber: r.cmdaNumber,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Full-registry path (no filter): every active project, oldest first. */
+  private async listAll(actor: JwtPayload): Promise<ProjectListResult> {
     return withRlsContext(
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
       async (tx) => {
         const [rows, total] = await Promise.all([
           tx.project.findMany({
+            // T-SOFT-DELETE: only active projects appear in the registry/switcher.
+            where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
             select: {
               id: true,
@@ -95,7 +158,7 @@ export class ProjectsService {
               createdAt: true,
             },
           }),
-          tx.project.count(),
+          tx.project.count({ where: { deletedAt: null } }),
         ]);
         return {
           total,
@@ -219,14 +282,15 @@ export class ProjectsService {
   }
 
   /**
-   * Delete a project. OWNER only (JWT guard - the RLS layer cannot see
-   * the real role). Refuses when Bookings exist under the project's
-   * units (409) - bookings are irreversible commercial records.
-   * Lead.projectId SetNulls via the FK, so leads are NOT a blocker.
+   * Delete a project (SOFT delete, autoplan 2026-09-09). ADMIN + OWNER only.
+   * Sets Project.deletedAt instead of DELETE: the project + its phases/units
+   * stay in the DB (audit/history preserved) but it's hidden from the
+   * registry, switcher, and per-project staff page. Refuses when Bookings
+   * exist under the project's units (409 - commercial records preserved).
    */
   async remove(actor: JwtPayload, id: string): Promise<{ id: string }> {
-    if (actor.role !== 'OWNER') {
-      throw new ForbiddenException('Only the OWNER can delete projects.');
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException('Only ADMIN or OWNER can delete projects.');
     }
     return withRlsContext(
       this.client,
@@ -249,7 +313,11 @@ export class ProjectsService {
               'Move or delete the bookings before deleting the project.',
           );
         }
-        await tx.project.delete({ where: { id } });
+        // Soft delete: stamp deletedAt (keep phases/units/leads in the DB).
+        await tx.project.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
@@ -261,12 +329,188 @@ export class ProjectsService {
               slug: existing.slug,
               leadCount: existing._count.leads,
             },
-            reason: `project.delete by ${actor.email} (${actor.role})`,
+            reason: `project.delete (soft) by ${actor.email} (${actor.role})`,
           },
         });
         return { id };
       },
     );
+  }
+
+  /**
+   * POST /api/projects/:id/members - link an existing user to a project.
+   * ADMIN/OWNER only. The per-project role defaults to the user's current
+   * role; the caller may not override it here (role is set from User.role so
+   * a SALES_EXEC linked to two projects is a SALES_EXEC on both — per-project
+   * role overrides are out of scope for v1).
+   */
+  async addMember(
+    actor: JwtPayload,
+    projectId: string,
+    dto: LinkProjectMemberDto,
+  ): Promise<ProjectMemberRow> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException('Only MANAGER, ADMIN or OWNER can link members.');
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const project = await tx.project.findUnique({
+          where: { id: projectId },
+        });
+        if (project === null) {
+          throw new NotFoundException(`Project ${projectId} not found.`);
+        }
+        const user = await tx.user.findUnique({
+          where: { id: dto.userId },
+          select: { id: true, name: true, email: true, role: true },
+        });
+        if (user === null) {
+          throw new NotFoundException(`User ${dto.userId} not found.`);
+        }
+        const member = await tx.projectMember.upsert({
+          where: {
+            projectId_userId: { projectId, userId: dto.userId },
+          },
+          update: { role: user.role },
+          create: {
+            projectId,
+            userId: dto.userId,
+            role: user.role,
+          },
+        });
+        // Provenance: an EXPLICIT member is not inferred from lead ownership.
+        const isLeadOwner =
+          (await tx.lead.count({
+            where: { projectId, ownerId: dto.userId },
+          })) > 0;
+        return this.toMemberRow(member, user.name, user.email, user.role, isLeadOwner);
+      },
+    );
+  }
+
+  /**
+   * DELETE /api/projects/:id/members/:userId - unlink a user from a project.
+   * MANAGER/ADMIN/OWNER only. Removes the explicit ProjectMember row only;
+   * the user may still own leads in the project (so they'd remain in a
+   * lead-owner-derived union).
+   */
+  async unlinkMember(
+    actor: JwtPayload,
+    projectId: string,
+    userId: string,
+  ): Promise<{ ok: true }> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException('Only MANAGER, ADMIN or OWNER can unlink members.');
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const project = await tx.project.findUnique({
+          where: { id: projectId },
+        });
+        if (project === null) {
+          throw new NotFoundException(`Project ${projectId} not found.`);
+        }
+        await tx.projectMember.deleteMany({
+          where: { projectId, userId },
+        });
+        return { ok: true };
+      },
+    );
+  }
+
+  /**
+   * GET /api/projects/:id/members - the effective staff list = EXPLICIT
+   * ProjectMember rows UNION lead-owners (additive, never regresses). Each
+   * row carries `isLeadOwner` provenance so the UI can mark inferred members.
+   * Roles are joined from User.role (authoritative single role).
+   */
+  async listMembers(
+    actor: JwtPayload,
+    projectId: string,
+  ): Promise<ProjectMemberRow[]> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const project = await tx.project.findUnique({
+          where: { id: projectId },
+        });
+        if (project === null) {
+          throw new NotFoundException(`Project ${projectId} not found.`);
+        }
+        const [members, ownerIds] = await Promise.all([
+          tx.projectMember.findMany({
+            where: { projectId },
+            include: { user: { select: { id: true, name: true, email: true, role: true } } },
+          }),
+          // Distinct lead-owners in this project (the additive half).
+          tx.lead.findMany({
+            where: { projectId },
+            select: { ownerId: true },
+            distinct: ['ownerId'],
+          }).then((rows) => rows.map((r) => r.ownerId)),
+        ]);
+        const ownerIdSet = new Set(ownerIds);
+
+        // Build the union, keyed by userId to dedupe explicit∩lead-owner.
+        const byUser = new Map<string, ProjectMemberRow>();
+        for (const m of members) {
+          byUser.set(m.userId, {
+            projectId,
+            userId: m.userId,
+            name: m.user.name,
+            email: m.user.email,
+            role: m.user.role,
+            assignedAt: m.assignedAt.toISOString(),
+            isLeadOwner: ownerIdSet.has(m.userId),
+          });
+        }
+        // Lead-owners who aren't explicit members appear too (additive).
+        const missingOwnerIds = ownerIds.filter((id) => !byUser.has(id));
+        if (missingOwnerIds.length > 0) {
+          const owners = await tx.user.findMany({
+            where: { id: { in: missingOwnerIds } },
+            select: { id: true, name: true, email: true, role: true },
+          });
+          for (const o of owners) {
+            byUser.set(o.id, {
+              projectId,
+              userId: o.id,
+              name: o.name,
+              email: o.email,
+              role: o.role,
+              assignedAt: new Date().toISOString(),
+              isLeadOwner: true,
+            });
+          }
+        }
+        const rows = [...byUser.values()];
+        rows.sort((a, b) => a.name.localeCompare(b.name));
+        return rows;
+      },
+    );
+  }
+
+  private toMemberRow(
+    m: { assignedAt: Date },
+    name: string,
+    email: string,
+    role: string,
+    isLeadOwner: boolean,
+  ): ProjectMemberRow {
+    return {
+      projectId: (m as unknown as { projectId: string }).projectId,
+      userId: (m as unknown as { userId: string }).userId,
+      name,
+      email,
+      role,
+      assignedAt: m.assignedAt.toISOString(),
+      isLeadOwner,
+    };
   }
 
   /** Slug uniqueness with a -2 / -3 suffix on collision (create only). */

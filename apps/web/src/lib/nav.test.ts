@@ -64,6 +64,7 @@ describe('lib/nav', () => {
         '/bookings',
         '/notifications',
       ]);
+      expect(items.map((i) => i.href)).not.toContain('/projects');
     });
 
     it('SALES_EXEC sees only the work group (no admin items)', () => {
@@ -78,11 +79,36 @@ describe('lib/nav', () => {
       ]);
     });
 
+    it('TELECALLER does not see the per-project Teams surface (admin+manager only)', () => {
+      expect(getVisibleNav('TELECALLER').map((i) => i.href)).not.toContain(
+        '/teams',
+      );
+    });
+
+    it('SALES_EXEC does not see the per-project Teams surface', () => {
+      expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).not.toContain(
+        '/teams',
+      );
+    });
+
+    it('MANAGER sees the per-project Teams surface (canManageUsers)', () => {
+      expect(getVisibleNav('MANAGER').map((i) => i.href)).toContain('/teams');
+    });
+
+    it('ADMIN sees the per-project Teams surface', () => {
+      expect(getVisibleNav('ADMIN').map((i) => i.href)).toContain('/teams');
+    });
+
     it('MANAGER sees work + Users (canManageUsers), no Audit (canViewAudit denied)', () => {
       const items = getVisibleNav('MANAGER');
       const hrefs = items.map((i) => i.href);
       expect(hrefs).toContain('/users');
       expect(hrefs).not.toContain('/audit');
+    });
+
+    it('MANAGER sees Projects (canManageUsers, project registry surface)', () => {
+      const items = getVisibleNav('MANAGER');
+      expect(items.map((i) => i.href)).toContain('/projects');
     });
 
     it('MANAGER also sees WA Unknown (canConvertWhatsappUnknownContact)', () => {

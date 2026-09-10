@@ -404,32 +404,32 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     };
   }
 
-  it('ADMIN with no filter → no role WHERE clause, default limit/offset', async () => {
+  it('ADMIN with no filter → base deletedAt filter + default limit/offset', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
     await service.list(adminActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {}, skip: 0, take: 50 }),
+      expect.objectContaining({ where: { deletedAt: null }, skip: 0, take: 50 }),
     );
     expect(mocks.userCount).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({ where: { deletedAt: null } }),
     );
   });
 
-  it('ADMIN with a single role → WHERE role IN ([role])', async () => {
+  it('ADMIN with a single role → deletedAt + WHERE role IN ([role])', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
     await service.list(adminActor, { role: 'SALES_EXEC', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { role: { in: ['SALES_EXEC'] } },
+        where: { deletedAt: null, role: { in: ['SALES_EXEC'] } },
       }),
     );
   });
 
-  it('ADMIN with multiple roles → WHERE role IN ([...])', async () => {
+  it('ADMIN with multiple roles → deletedAt + WHERE role IN ([...])', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
@@ -440,7 +440,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { role: { in: ['SALES_EXEC', 'TELECALLER'] } },
+        where: { deletedAt: null, role: { in: ['SALES_EXEC', 'TELECALLER'] } },
       }),
     );
   });
@@ -453,7 +453,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     await service.list(managerActor, { role: 'TELECALLER', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { teamId: 'team-mgr', role: { in: ['TELECALLER'] } },
+        where: { deletedAt: null, teamId: 'team-mgr', role: { in: ['TELECALLER'] } },
       }),
     );
   });
@@ -476,6 +476,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          deletedAt: null,
           OR: [
             { name: { contains: 'priya', mode: 'insensitive' } },
             { email: { contains: 'priya', mode: 'insensitive' } },
@@ -498,6 +499,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          deletedAt: null,
           role: { in: ['SALES_EXEC'] },
           OR: [
             { name: { contains: 'priya', mode: 'insensitive' } },
@@ -654,21 +656,32 @@ describe('update - PATCH /api/users/:id (hierarchy-gated)', () => {
   });
 });
 
-describe('remove - DELETE /api/users/:id (hierarchy-gated)', () => {
-  it('ADMIN deletes a SALES_EXEC → deletes account + user + writes audit', async () => {
+describe('remove - DELETE /api/users/:id (SOFT delete, admin/owner only)', () => {
+  it('ADMIN soft-deletes a SALES_EXEC → stamps deletedAt, keeps account, writes audit', async () => {
     const { service, mocks } = makeManageService();
     const result = await service.remove(adminActor, 'u-priya');
     expect(result).toEqual({ ok: true });
-    expect(mocks.accountDeleteMany).toHaveBeenCalledWith({
-      where: { accountId: 'u-priya' },
-    });
-    expect(mocks.userDelete).toHaveBeenCalledWith({
-      where: { id: 'u-priya' },
-    });
+    // Soft delete: it updates the user (sets deletedAt), NOT a hard delete
+    // and NOT a credential-account delete.
+    expect(mocks.accountDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.userDelete).not.toHaveBeenCalled();
+    expect(mocks.userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'u-priya' },
+        data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+      }),
+    );
     expect(mocks.auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ action: 'user.delete' }),
       }),
+    );
+  });
+
+  it('MANAGER deleting is rejected with 403 (admin/owner only)', async () => {
+    const { service } = makeManageService();
+    await expect(service.remove(managerActor, 'u-priya')).rejects.toThrow(
+      'Only ADMIN or OWNER can delete users',
     );
   });
 
@@ -687,18 +700,18 @@ describe('remove - DELETE /api/users/:id (hierarchy-gated)', () => {
     );
   });
 
-  it('MANAGER deleting an ADMIN → 403 (does not outrank)', async () => {
+  it('ADMIN deleting the OWNER → 403 (OWNER is protected)', async () => {
     const { service } = makeManageService({
       target: {
-        id: 'u-admin',
-        email: 'admin@x',
-        name: 'Admin',
-        role: 'ADMIN',
+        id: 'u-owner',
+        email: 'owner@x',
+        name: 'Owner',
+        role: 'OWNER',
         teamId: null,
       },
     });
-    await expect(service.remove(managerActor, 'u-admin')).rejects.toThrow(
-      'MANAGER cannot delete a ADMIN user',
+    await expect(service.remove(adminActor, 'u-owner')).rejects.toThrow(
+      'The OWNER cannot be deleted',
     );
   });
 

@@ -22,6 +22,16 @@ const RANK: Record<Role, number> = {
 
 export const OWNER: Role = 'OWNER';
 
+/** ADMIN or OWNER (the "admin class"). Soft-deletes + project deletes use this. */
+export function isAdminClass(role: Role): boolean {
+  return role === 'ADMIN' || role === 'OWNER';
+}
+
+/** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
+export function canManageProjectMembers(role: Role): boolean {
+  return isAdminClass(role) || role === 'MANAGER';
+}
+
 /** True when the actor's rank is strictly above the target role's rank. */
 export function outranks(actor: Role, target: Role): boolean {
   return RANK[actor] > RANK[target];
