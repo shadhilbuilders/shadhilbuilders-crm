@@ -76,8 +76,6 @@ export default function NotificationsPage() {
         action={
           <Button
             variant="outline"
-            size="sm"
-            className="min-h-11"
             disabled={markRead.isPending || unread === 0}
             onClick={() => markRead.mutate([])}
             data-qa="mark-all-read"
@@ -95,8 +93,6 @@ export default function NotificationsPage() {
             variant={
               item.enabled && filter === item.value ? 'default' : 'outline'
             }
-            size="sm"
-            className="min-h-11"
             disabled={!item.enabled}
             onClick={() => {
               if (item.enabled) setFilter(item.value);
