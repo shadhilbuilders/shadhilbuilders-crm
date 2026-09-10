@@ -76,11 +76,16 @@ export class BookingsController {
     @Query() query: Record<string, unknown>,
   ): Promise<BookingListResult> {
     // NestJS @Query gives string | string[] | undefined; coerce
-    // status to a string-or-array before safeParse.
+    // status to a string-or-array before safeParse. The frontend joins
+    // multi-select statuses with a comma (`status=HOLD,TOKEN`) - split
+    // before schema validation, a literal "HOLD,TOKEN" is not a valid
+    // single BookingStatus enum value (mirrors the inventory controller).
     const statusRaw = query['status'];
     let status: string | string[] | undefined;
     if (typeof statusRaw === 'string') {
-      status = statusRaw;
+      const parts = statusRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      status = parts.length > 1 ? parts : parts[0];
+      if (parts.length === 0) status = undefined;
     } else if (Array.isArray(statusRaw)) {
       status = statusRaw.filter((v): v is string => typeof v === 'string');
     }
