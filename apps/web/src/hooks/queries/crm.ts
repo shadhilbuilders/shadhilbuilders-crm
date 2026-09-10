@@ -23,6 +23,7 @@ import type {
   LeadDetail,
   LeadStateTransitionDto,
   RescheduleVisitDto,
+  UpdateBookingDto,
   SendMessageDto,
   UpdateLeadDto,
   UpdateVisitOutcomeDto,
@@ -552,6 +553,34 @@ export function useUpdateBooking() {
     onSuccess: (_data, args) => {
       void queryClient.invalidateQueries({ queryKey: ['bookings'] });
       void queryClient.invalidateQueries({ queryKey: ['bookings', args.id] });
+    },
+  });
+}
+
+/** Edit the editable booking fields (amount / tokenAmount / notes). */
+export function useEditBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; body: UpdateBookingDto }) =>
+      api<unknown>(`/bookings/${args.id}`, {
+        method: 'PUT',
+        json: args.body,
+      }),
+    onSuccess: (_data, args) => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      void queryClient.invalidateQueries({ queryKey: ['bookings', args.id] });
+    },
+  });
+}
+
+/** Delete a booking. ADMIN/OWNER only (backend enforces). */
+export function useDeleteBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<{ id: string }>(`/bookings/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
 }

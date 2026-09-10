@@ -20,6 +20,7 @@
 // APPROVED we set it to actor.sub if the actor is MANAGER/ADMIN.
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -35,10 +36,12 @@ import type {
   BookingFilterDto,
   BookingTransitionDto,
   CreateBookingDto,
+  UpdateBookingDto,
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isAdminClass } from '../users/roles';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -531,6 +534,198 @@ export class BookingsService {
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
+      },
+    );
+  }
+
+  /**
+   * PATCH /api/bookings/:id - edit the editable booking fields
+   * (amount / tokenAmount / notes). Status changes go through
+   * /transition. Role-gated: ADMIN/OWNER/MANAGER can edit any booking
+   * they can see; TELECALLER/SALES_EXEC can edit only their own
+   * (the RLS write policy already scopes by parent Lead owner/team).
+   */
+  async update(
+    actor: JwtPayload,
+    bookingId: string,
+    dto: UpdateBookingDto,
+  ): Promise<BookingRow> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const existing = await (tx as unknown as PrismaClient).booking.findUnique(
+          {
+            where: { id: bookingId },
+            select: {
+              id: true,
+              status: true,
+              leadId: true,
+              unitId: true,
+              userId: true,
+              amount: true,
+              tokenAmount: true,
+              approvedById: true,
+              notes: true,
+              createdAt: true,
+              updatedAt: true,
+              lead: { select: { name: true } },
+              user: { select: { name: true } },
+              approvedBy: { select: { name: true } },
+            },
+          },
+        );
+        if (existing === null) {
+          throw new NotFoundException(`Booking ${bookingId} not found`);
+        }
+
+        const data: Record<string, unknown> = {};
+        if (dto.amount !== undefined) data['amount'] = dto.amount.toFixed(2);
+        if (dto.tokenAmount !== undefined) {
+          data['tokenAmount'] =
+            dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
+        }
+        if (dto.notes !== undefined) data['notes'] = dto.notes;
+
+        const updated = await (tx as unknown as PrismaClient).booking.update({
+          where: { id: bookingId },
+          data,
+          select: {
+            id: true,
+            leadId: true,
+            unitId: true,
+            userId: true,
+            amount: true,
+            tokenAmount: true,
+            status: true,
+            approvedById: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+            lead: { select: { name: true } },
+            user: { select: { name: true } },
+            approvedBy: { select: { name: true } },
+          },
+        });
+
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'booking.update',
+            entityType: 'Booking',
+            entityId: updated.id,
+            before: {
+              amount: existing.amount.toString(),
+              tokenAmount: existing.tokenAmount?.toString() ?? null,
+              notes: existing.notes,
+            },
+            after: {
+              amount: updated.amount.toString(),
+              tokenAmount: updated.tokenAmount?.toString() ?? null,
+              notes: updated.notes,
+            },
+            reason: `Booking ${updated.id} updated by ${actor.email} (${actor.role})`,
+          },
+        });
+
+        return {
+          id: updated.id,
+          leadId: updated.leadId,
+          leadName: updated.lead.name,
+          unitId: updated.unitId,
+          userId: updated.userId,
+          userName: updated.user.name,
+          amount: updated.amount.toString(),
+          tokenAmount: updated.tokenAmount?.toString() ?? null,
+          status: updated.status,
+          approvedById: updated.approvedById,
+          approvedByName: updated.approvedBy?.name ?? null,
+          notes: updated.notes,
+          createdAt: updated.createdAt.toISOString(),
+          updatedAt: updated.updatedAt.toISOString(),
+        };
+      },
+    );
+  }
+
+  /**
+   * DELETE /api/bookings/:id - remove a booking. Role-gated: ADMIN/OWNER
+   * only (mirrors the inventory unit delete). Frees the unit back to
+   * AVAILABLE when no OTHER active booking (HOLD/TOKEN/APPROVED) still
+   * references it. Audit row records the deleted booking's details.
+   */
+  async delete(actor: JwtPayload, bookingId: string): Promise<{ id: string }> {
+    if (!isAdminClass(actor.role)) {
+      throw new ForbiddenException(
+        `Only ADMIN/OWNER can delete a booking (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const existing = await (tx as unknown as PrismaClient).booking.findUnique(
+          {
+            where: { id: bookingId },
+            select: {
+              id: true,
+              leadId: true,
+              unitId: true,
+              userId: true,
+              amount: true,
+              tokenAmount: true,
+              status: true,
+              approvedById: true,
+              notes: true,
+              createdAt: true,
+              updatedAt: true,
+              lead: { select: { name: true } },
+              user: { select: { name: true } },
+              approvedBy: { select: { name: true } },
+            },
+          },
+        );
+        if (existing === null) {
+          throw new NotFoundException(`Booking ${bookingId} not found`);
+        }
+
+        await (tx as unknown as PrismaClient).booking.delete({
+          where: { id: bookingId },
+        });
+
+        // T-INV-SYNC: freeing the unit back to AVAILABLE, but only when
+        // no OTHER active booking still references it.
+        const otherActive = await (tx as unknown as PrismaClient).booking.count({
+          where: {
+            unitId: existing.unitId,
+            id: { not: bookingId },
+            status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
+          },
+        });
+        if (otherActive === 0) {
+          await (tx as unknown as PrismaClient).unit.update({
+            where: { id: existing.unitId },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'booking.delete',
+            entityType: 'Booking',
+            entityId: bookingId,
+            before: {
+              leadId: existing.leadId,
+              unitId: existing.unitId,
+              amount: existing.amount.toString(),
+              status: existing.status,
+            },
+            reason: `Booking ${bookingId} deleted by ${actor.email} (${actor.role})`,
+          },
+        });
+
+        return { id: bookingId };
       },
     );
   }

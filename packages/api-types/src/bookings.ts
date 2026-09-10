@@ -25,6 +25,24 @@ export const CreateBookingDtoSchema = z.object({
 export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
 
 /**
+ * PATCH /api/bookings/:id - edit the editable booking fields.
+ * leadId/unitId/status/userId/approvedById are NOT editable here:
+ *   - status changes go through /transition (state machine)
+ *   - unit/lead reassignment is out of scope for v1
+ * Editable: amount / tokenAmount / notes.
+ */
+export const UpdateBookingDtoSchema = z.object({
+  amount: z
+    .number()
+    .positive()
+    .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
+    .optional(),
+  tokenAmount: z.number().positive().nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+export type UpdateBookingDto = z.infer<typeof UpdateBookingDtoSchema>;
+
+/**
  * POST /api/bookings/:id/approve - Manager approves or rejects.
  * `approved: false` requires a reason (audit + customer follow-up).
  */

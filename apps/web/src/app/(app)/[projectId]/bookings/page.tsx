@@ -21,21 +21,23 @@
 //     Created → Owner / Approval.
 //   Row actions: View (link to parent lead) + Review approval (link to
 //     /bookings/[id], MANAGER/ADMIN only, TOKEN status).
-import { Badge, Button, DataTable, MultiSelect, TypographyP } from '@paalstack/react-ui';
+import { AlertDialog, Badge, Button, DataTable, DataTableRowActions, MultiSelect, TypographyP, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import { LuPlus } from '@paalstack/react-icons/lu';
+import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { z } from 'zod';
 
+import { BookingEditDialog } from '@/components/bookings/BookingEditDialog';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
-import { useBookings, useBookingsEnvelope } from '@/hooks/queries/crm';
+import { useBookings, useBookingsEnvelope, useDeleteBooking } from '@/hooks/queries/crm';
 import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
-import { canApproveBookings, useSessionUser } from '@/lib/session';
+import { canApproveBookings, isAdminLike, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 
@@ -51,9 +53,26 @@ type BookingRow = {
   tokenAmount?: string | null;
   status?: string;
   approvedByName?: string | null;
+  notes?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
+
+// Zod schema for DataTableRowActions (it parses row.original with it).
+const bookingRowSchema = z.object({
+  id: z.string(),
+  leadId: z.string().optional(),
+  leadName: z.string().optional(),
+  unitId: z.string().optional(),
+  userName: z.string().optional(),
+  amount: z.string().optional(),
+  tokenAmount: z.string().nullable().optional(),
+  status: z.string().optional(),
+  approvedByName: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+}) as unknown as Parameters<typeof DataTableRowActions>[0]['rowSchema'];
 
 // Status → Badge semantic variant (user-mandated: use Badge, not hand-rolled
 // spans). Maps to theme tokens so colors stay consistent + dark-mode aware.
@@ -119,8 +138,17 @@ export default function BookingsPage() {
       user.role === 'MANAGER' ||
       user.role === 'SALES_EXEC');
   const canApprove = canApproveBookings(user?.role);
+  // Delete: ADMIN/OWNER only (mirrors the inventory unit delete). Edit is
+  // available to everyone who can see the row - the backend RLS write
+  // policy already scopes staff (TELECALLER/SALES_EXEC) to their own
+  // bookings via the parent Lead owner.
+  const canDelete = user !== null && isAdminLike(user.role);
 
   const isFiltered = statusFilter.length > 0 || serverSearch !== undefined;
+
+  const [editTarget, setEditTarget] = useState<BookingRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BookingRow | null>(null);
+  const deleteBooking = useDeleteBooking();
 
   const statusOptions = useMemo(
     () =>
@@ -143,12 +171,14 @@ export default function BookingsPage() {
               ? row.original.leadName
               : '-';
           return leadId.length > 0 ? (
-            <Link
+            <Button
+              as={Link}
+              variant="link"
               href={projectHref(projectId, `/leads/${leadId}`)}
-              className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
+              className="text-link"
             >
               {leadName}
-            </Link>
+            </Button>
           ) : (
             <span className="text-muted-foreground text-sm">{leadName}</span>
           );
@@ -233,8 +263,26 @@ export default function BookingsPage() {
         },
         enableSorting: false,
       },
+      {
+        id: 'actions',
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => (
+          <div className="text-right">
+            <DataTableRowActions
+              row={row}
+              rowSchema={bookingRowSchema}
+              actionItems={[
+                { label: 'Edit', value: 'edit', icon: LuPencil, onClick: () => setEditTarget(row.original) },
+                { label: 'Delete', value: 'delete', icon: LuTrash2, onClick: () => setDeleteTarget(row.original) },
+              ].filter((item) => item.value !== 'delete' || canDelete)}
+            />
+          </div>
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
     ],
-    [projectId, canApprove],
+    [projectId, canApprove, canDelete],
   );
 
   return (
@@ -245,10 +293,8 @@ export default function BookingsPage() {
         subtitle="HOLD → TOKEN → APPROVED. Manager approval is the gating step."
         action={
           canCreate ? (
-            <Button asChild size="sm" className="min-h-11" data-qa="new-booking-button">
-              <Link href={projectHref(projectId, '/bookings/new')}>
-                <LuPlus className="mr-1 h-4 w-4" /> New booking
-              </Link>
+            <Button as={Link} href={projectHref(projectId, '/bookings/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-booking-button">
+              New booking
             </Button>
           ) : null
         }
@@ -314,16 +360,6 @@ export default function BookingsPage() {
               data-qa="bookings-status-filter"
             />
           }
-          toolbarRightSideContent={
-            canCreate ? (
-              <Button asChild>
-                <Link href={projectHref(projectId, '/bookings/new')} data-qa="new-booking-button">
-                  <LuPlus className="size-4" />
-                  New booking
-                </Link>
-              </Button>
-            ) : null
-          }
           showPagination
           paginationProps={{
             total,
@@ -361,6 +397,69 @@ export default function BookingsPage() {
           tableContainerClassName="rounded-lg border"
         />
       )}
+
+      <BookingEditDialog
+        booking={editTarget}
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      />
+
+      <DeleteConfirmDialog
+        target={deleteTarget}
+        pending={deleteBooking.isPending}
+        onConfirm={() => {
+          if (deleteTarget === null) return;
+          deleteBooking.mutate(deleteTarget.id, {
+            onSuccess: () => {
+              setDeleteTarget(null);
+            },
+            onError: (error) => {
+              const msg = error instanceof Error ? error.message : 'Delete failed';
+              toast.error(msg);
+            },
+          });
+        }}
+        onCancel={() => {
+          setDeleteTarget(null);
+        }}
+      />
     </div>
+  );
+}
+
+function DeleteConfirmDialog({
+  target,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  target: BookingRow | null;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AlertDialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+      trigger={null}
+      header={{
+        title: `Delete booking${target?.leadName ? ` for ${target.leadName}` : ''}?`,
+        description:
+          'This permanently removes the booking and frees the unit back to available (if no other active booking references it). This action cannot be undone.',
+      }}
+      cancelButtonText="Cancel"
+      confirmButtonText={pending ? 'Deleting...' : 'Delete booking'}
+      confirmButtonProps={{
+        variant: 'destructive',
+        disabled: pending,
+      }}
+      onConfirm={() => onConfirm()}
+      onCancel={() => onCancel()}
+    />
   );
 }

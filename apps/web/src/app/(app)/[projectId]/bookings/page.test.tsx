@@ -16,6 +16,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/queries/crm', () => ({
   useBookings: vi.fn(),
   useBookingsEnvelope: vi.fn(() => 0),
+  useDeleteBooking: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+  })),
+  useEditBooking: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+  })),
 }));
 
 vi.mock('@/hooks/use-online-status', () => ({
@@ -33,6 +41,9 @@ vi.mock('@/lib/session', () => ({
   })),
   canApproveBookings: vi.fn((role: string | undefined) =>
     role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+  ),
+  isAdminLike: vi.fn((role: string | undefined) =>
+    role === 'ADMIN' || role === 'OWNER',
   ),
 }));
 
