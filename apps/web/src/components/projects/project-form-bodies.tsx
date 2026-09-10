@@ -451,11 +451,11 @@ export function ProjectMembersBody({
               candidates.length === 0
             }
             isLoading={linkMember.isPending}
-            loadingText="..."
+            loadingText="Linking..."
             data-qa="project-member-link"
             className="shrink-0"
           >
-            Add
+            Link
           </Button>
         </div>
       ),
