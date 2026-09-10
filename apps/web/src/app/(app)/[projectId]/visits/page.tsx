@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { useParams } from 'next/navigation';
 
 import { useVisits } from '@/hooks/queries/crm';
+import { dateIntl } from '@/lib/format';
 import { canScheduleVisits, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -78,11 +79,7 @@ export default function VisitsPage() {
         subtitle={
           <>
             Week of{' '}
-            {weekStart.toLocaleDateString('en-IN', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
+            {dateIntl.format(weekStart, 'd MMM yyyy')}
           </>
         }
         action={

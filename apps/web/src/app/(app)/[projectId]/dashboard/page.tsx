@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { useBookings, useLeads, useVisits } from '@/hooks/queries/crm';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
+import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 
 import { PipelineFunnelChart } from '@/components/charts/PipelineFunnelChart';
@@ -277,11 +278,7 @@ function formatMoney(value: string | undefined): string {
   if (value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(num);
+  return currencyIntl.format(num);
 }
 
 function BookingsOnHoldTable({
@@ -390,7 +387,7 @@ function BookingsOnHoldTable({
                 </td>
                 <td className="text-muted-foreground hidden px-4 py-2.5 tabular-nums md:table-cell">
                   {typeof row.createdAt === 'string'
-                    ? new Date(row.createdAt).toLocaleDateString('en-IN')
+                    ? dateIntl.formatDate(row.createdAt)
                     : '-'}
                 </td>
               </tr>

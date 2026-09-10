@@ -77,6 +77,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
 import { useTeamMembers } from '@/hooks/queries/users';
+import { dateIntl } from '@/lib/format';
 import { useSessionUser } from '@/lib/session';
 
 type Direction = 'IN' | 'OUT';
@@ -103,12 +104,7 @@ function formatMessageTime(value: string | undefined): string {
   if (value === undefined) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    day: '2-digit',
-    month: 'short',
-  });
+  return dateIntl.formatDateTime(value);
 }
 
 /** Initials for the avatar fallback (e.g. "Asha T." → "AT"). */
@@ -167,11 +163,7 @@ export function separatorLabel(iso: string | undefined, now: Date = new Date()):
   if (group === 'Older') {
     const date = new Date(iso as string);
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
+      return dateIntl.format(date, 'd MMM yyyy');
     }
   }
   return group;

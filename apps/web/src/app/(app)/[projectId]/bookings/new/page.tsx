@@ -9,24 +9,27 @@
 // flow.
 //
 // Lead picker is data-driven via useLeads (the same pattern as
-// ScheduleVisitDialog). Unit ID is required by the DTO but the
-// Inventory module is not yet wired - so we accept a free-text
-// cuid input. When the inventory module ships this becomes a
-// picker driven by InventoryUnit.status='AVAILABLE'.
+// ScheduleVisitDialog). Unit picker is data-driven via useInventoryUnits
+// (AVAILABLE units in the active project) - the inventory module is live
+// (2026-09-10). A `?unitId=` query param pre-fills the picker (deep-link
+// from the inventory detail sheet).
 //
 // We use the props-API Form (data-driven `fields` array) per
 // the canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
+import { Suspense } from 'react';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
 
 import { useParams } from 'next/navigation';
 
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
+import { useInventoryUnits } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
 
 import { PageHeader } from '@/components/shared/PageHeader';
+import { Skeleton } from '@/components/shared/Skeleton';
 
 type CreateBookingFormValues = {
   leadId: string;
@@ -38,21 +41,39 @@ type CreateBookingFormValues = {
 
 type CreatedBooking = { id: string; leadId?: string };
 
-// cuid regex (matches api-types CreateBookingDto)
-const CUID_RE = /^c[a-z0-9]{20,}$/i;
-
 export default function NewBookingPage() {
+  // useSearchParams() must be inside a Suspense boundary (Next.js App
+  // Router requirement - same pattern as the leads page) or the client
+  // render throws a hydration mismatch. The fallback is a shape-matched
+  // form skeleton so the page never flashes blank while the search
+  // params resolve.
+  return (
+    <Suspense fallback={<Skeleton variant="text" count={6} />}>
+      <NewBookingPageInner />
+    </Suspense>
+  );
+}
+
+function NewBookingPageInner() {
   const router = useRouter();
   const createBooking = useCreateBooking();
   // T-ProjectSwitch: the booking form lives under the URL project.
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
   const leadsQuery = useLeads({ limit: 200, projectId: projectId ?? undefined });
+  // Inventory picker: AVAILABLE units in the active project.
+  const unitsQuery = useInventoryUnits({
+    projectId: projectId ?? undefined,
+    status: ['AVAILABLE'],
+    limit: 200,
+  });
+  const searchParams = useSearchParams();
+  const unitParam = searchParams.get('unitId') ?? '';
 
   const form = useForm<CreateBookingFormValues>({
     defaultValues: {
       leadId: '',
-      unitId: '',
+      unitId: unitParam,
       amount: '',
       tokenAmount: '',
       notes: '',
@@ -73,13 +94,24 @@ export default function NewBookingPage() {
     );
   })();
 
+  const unitOptions = (() => {
+    const rows = unitsQuery.data;
+    if (rows === undefined || !Array.isArray(rows)) return [];
+    return (rows as Array<{ id: string; unitNumber?: string; bhk?: number }>).map(
+      (row) => ({
+        value: row.id,
+        label: `${row.unitNumber ?? 'Unit'}${typeof row.bhk === 'number' ? ` · ${row.bhk} BHK` : ''}`,
+      }),
+    );
+  })();
+
   function onSubmit(values: CreateBookingFormValues) {
     if (values.leadId.length === 0) {
       toast.error('Pick a lead');
       return;
     }
-    if (!CUID_RE.test(values.unitId)) {
-      toast.error('Unit id must be a cuid');
+    if (values.unitId.length === 0) {
+      toast.error('Pick a unit');
       return;
     }
     const amount = Number(values.amount);
@@ -166,14 +198,15 @@ export default function NewBookingPage() {
             options: leadOptions,
           },
           {
-            type: 'input',
+            type: 'select',
             name: 'unitId',
-            label: 'Unit ID',
+            label: 'Unit',
             required: true,
-            placeholder: 'cxxxxxxxxxxxxxxxxxxxxxxx',
+            placeholder: 'Pick an available unit',
+            options: unitOptions,
             description:
-              'Cuid of the inventory unit. Inventory picker ships in Week 6.',
-            inputProps: {
+              'Available units in this project. A booking holds the unit.',
+            selectProps: {
               'data-qa': 'booking-unit-id',
             },
           },

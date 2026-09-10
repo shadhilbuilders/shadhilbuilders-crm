@@ -16,6 +16,7 @@ export * from './projects';
 export * from './visits';
 export * from './chat';
 export * from './bookings';
+export * from './inventory';
 export * from './reminders';
 export * from './teams';
 export * from './notifications';

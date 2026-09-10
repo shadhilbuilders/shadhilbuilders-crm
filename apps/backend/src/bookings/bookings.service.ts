@@ -258,6 +258,13 @@ export class BookingsService {
           },
         });
 
+        // T-INV-SYNC: a new booking holds the unit - the inventory grid
+        // must reflect it immediately (AVAILABLE → HOLD).
+        await (tx as unknown as PrismaClient).unit.update({
+          where: { id: dto.unitId },
+          data: { status: 'HOLD' },
+        });
+
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
@@ -381,6 +388,31 @@ export class BookingsService {
             approvedBy: { select: { name: true } },
           },
         });
+
+        // T-INV-SYNC: keep the inventory grid truthful as the booking
+        // advances. APPROVED → unit SOLD. CANCELLED/REJECTED → unit back
+        // to AVAILABLE, but only when no OTHER active booking (HOLD/TOKEN/
+        // APPROVED) still references the unit.
+        if (dto.toStatus === 'APPROVED') {
+          await (tx as unknown as PrismaClient).unit.update({
+            where: { id: updated.unitId },
+            data: { status: 'SOLD' },
+          });
+        } else if (dto.toStatus === 'CANCELLED' || dto.toStatus === 'REJECTED') {
+          const otherActive = await (tx as unknown as PrismaClient).booking.count({
+            where: {
+              unitId: updated.unitId,
+              id: { not: bookingId },
+              status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
+            },
+          });
+          if (otherActive === 0) {
+            await (tx as unknown as PrismaClient).unit.update({
+              where: { id: updated.unitId },
+              data: { status: 'AVAILABLE' },
+            });
+          }
+        }
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {

@@ -269,6 +269,96 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ legacy fake project-teams removed');
 
+  // ── Demo inventory - phases + units for Metro Heights (DESIGN.md module 4) ─
+  // Realistic villa inventory so the grid renders live. Phases use FIXED,
+  // pre-generated cuid2 ids (T-PROJID-CUID2 pattern - the same shape the app
+  // generates at runtime; CreateUnitDtoSchema requires phaseId to be a cuid).
+  // Units are upserted by the (phaseId, unitNumber) unique key. Statuses are
+  // mixed so the AVAILABLE/HOLD/TOKEN/SOLD filters all show data.
+  //
+  // Legacy cleanup: the first inventory seed used readable `seed-phase-metro-*`
+  // ids which are NOT valid cuids - a create-unit form would reject them with
+  // "invalid cuid". Remove those rows (and their units) so re-seeding is
+  // idempotent and no non-cuid phase id survives.
+  await prisma.unit.deleteMany({
+    where: { phaseId: { startsWith: 'seed-phase-metro-' } },
+  });
+  await prisma.phase.deleteMany({
+    where: { id: { startsWith: 'seed-phase-metro-' } },
+  });
+
+  const phaseDefs = [
+    { id: 'zpn4utpch0ncq4esh46cl4ug', name: 'Phase A' },
+    { id: 's4pd095o2ll58e8ujhe7yfap', name: 'Phase B' },
+    { id: 'dkegmcasqq0ts5mzw6vjxpq1', name: 'Phase C' },
+  ] as const;
+  const phases: { id: string; name: string }[] = [];
+  for (const p of phaseDefs) {
+    const phase = await prisma.phase.upsert({
+      where: { id: p.id },
+      update: { name: p.name },
+      create: { id: p.id, projectId: metroHeights.id, name: p.name },
+    });
+    phases.push(phase);
+  }
+
+  // (phaseId, unitNumber) → { bhk, facing, sqft, price, status }
+  const unitDefs: Array<{
+    phaseId: string;
+    unitNumber: string;
+    bhk: number;
+    facing: string;
+    sqft: number;
+    price: number;
+    status: 'AVAILABLE' | 'HOLD' | 'TOKEN' | 'SOLD';
+  }> = [
+    // Phase A - 2 BHK
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000, status: 'AVAILABLE' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000, status: 'AVAILABLE' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000, status: 'HOLD' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000, status: 'SOLD' },
+    // Phase A - 3 BHK
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000, status: 'AVAILABLE' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000, status: 'TOKEN' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000, status: 'AVAILABLE' },
+    // Phase B - 3 BHK
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000, status: 'AVAILABLE' },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000, status: 'HOLD' },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000, status: 'AVAILABLE' },
+    // Phase B - 4 BHK
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000, status: 'AVAILABLE' },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000, status: 'SOLD' },
+    // Phase C - 2 BHK
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000, status: 'AVAILABLE' },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000, status: 'AVAILABLE' },
+    // Phase C - 3 BHK
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000, status: 'TOKEN' },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000, status: 'AVAILABLE' },
+  ];
+  for (const u of unitDefs) {
+    await prisma.unit.upsert({
+      where: { phaseId_unitNumber: { phaseId: u.phaseId, unitNumber: u.unitNumber } },
+      update: {
+        bhk: u.bhk,
+        facing: u.facing,
+        sqft: u.sqft,
+        price: u.price.toFixed(2),
+        status: u.status,
+      },
+      create: {
+        phaseId: u.phaseId,
+        unitNumber: u.unitNumber,
+        bhk: u.bhk,
+        facing: u.facing,
+        sqft: u.sqft,
+        price: u.price.toFixed(2),
+        status: u.status,
+      },
+    });
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`);
+
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec created/updated');
   // eslint-disable-next-line no-console

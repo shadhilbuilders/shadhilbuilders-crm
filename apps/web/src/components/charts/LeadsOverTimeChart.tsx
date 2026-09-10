@@ -20,6 +20,7 @@ import {
 import { Area, AreaChart, XAxis, YAxis } from 'recharts';
 
 import { ChartTooltipWithSkeleton } from '@/components/shared/ChartTooltipWithSkeleton';
+import { dateIntl } from '@/lib/format';
 
 type LeadsOverTimePoint = { date: string; count: number };
 
@@ -27,7 +28,7 @@ type LeadsOverTimePoint = { date: string; count: number };
 export function formatDayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+  return dateIntl.format(d, 'EEE d');
 }
 
 const LEADS_OVER_TIME_CONFIG = {

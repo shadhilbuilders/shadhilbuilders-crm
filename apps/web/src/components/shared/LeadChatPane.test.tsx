@@ -248,8 +248,8 @@ describe('withDateSeparators - date grouping (WIREFRAMES.md:334)', () => {
       | { label: string }
       | undefined;
     expect(older).toBeDefined();
-    // 2026-09-01 → "1 Sept 2026"
-    expect(older!.label).toContain('Sept');
+    // 2026-09-01 → "1 Sep 2026" (date-fns MMM = "Sep")
+    expect(older!.label).toContain('Sep');
     expect(older!.label).not.toBe('Older');
   });
 

@@ -36,7 +36,7 @@ function makeService(): {
       update: ReturnType<typeof vi.fn>;
     };
     lead: { findUnique: ReturnType<typeof vi.fn> };
-    unit: { findUnique: ReturnType<typeof vi.fn> };
+    unit: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     team: { findFirst: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
   };
@@ -54,7 +54,7 @@ function makeService(): {
       update: vi.fn(),
     },
     lead: { findUnique: vi.fn() },
-    unit: { findUnique: vi.fn() },
+    unit: { findUnique: vi.fn(), update: vi.fn() },
     team: { findFirst: vi.fn() },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   };
@@ -123,6 +123,13 @@ describe('create - start a new booking in HOLD state', () => {
           status: 'HOLD',
           userId: 'mgr-1',
         }),
+      }),
+    );
+    // T-INV-SYNC: creating a booking holds the unit.
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'unit-1' },
+        data: { status: 'HOLD' },
       }),
     );
     expect(client.auditLog.create).toHaveBeenCalledWith(
@@ -262,6 +269,13 @@ describe('transition - advance booking state', () => {
     expect(client.booking.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ approvedById: 'mgr-1' }),
+      }),
+    );
+    // T-INV-SYNC: approving a booking marks the unit SOLD.
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'unit-1' },
+        data: { status: 'SOLD' },
       }),
     );
   });

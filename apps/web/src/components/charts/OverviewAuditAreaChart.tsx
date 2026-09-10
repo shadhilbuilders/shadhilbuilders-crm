@@ -31,6 +31,7 @@ import {
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts';
 
 import { useMediaQuery } from '@paalstack/react-hooks';
+import { dateIntl } from '@/lib/format';
 
 type AuditTimelinePoint = { date: string; count: number };
 
@@ -50,7 +51,7 @@ const AUDIT_CONFIG = {
 function formatDayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return dateIntl.format(d, 'MMM d');
 }
 
 export type OverviewAuditAreaChartProps = {
