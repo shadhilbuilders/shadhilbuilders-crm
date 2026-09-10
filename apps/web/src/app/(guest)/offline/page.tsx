@@ -8,6 +8,7 @@ import { LuCloudOff } from '@paalstack/react-icons/lu';
 import { get, keys } from 'idb-keyval';
 
 import { rqCacheStore, RQ_CACHE_KEY } from '@shadhil/offline-store';
+import { dateIntl } from '@/lib/format';
 
 // T-ProjectSwitch: work-surface links on the offline page point at the
 // DEFAULT project (Metro Heights). The registry is read from the offline
@@ -106,10 +107,7 @@ const OfflinePage = () => {
   // State B: cached view available
   const leadHref = state.leadHref;
   const lastSynced = state.lastSyncedAt
-    ? new Date(state.lastSyncedAt).toLocaleString('en-IN', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
+    ? dateIntl.formatDateTime(state.lastSyncedAt)
     : 'recently';
 
   return (

@@ -16,6 +16,9 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
   // T-ProjectSwitch: the page reads the URL project id.
   useParams: () => ({ projectId: 'proj-test-1' }),
+  // The page reads ?unitId= to pre-fill the unit picker (deep-link from
+  // the inventory detail sheet). Mocked to not suspend during SSR.
+  useSearchParams: () => ({ get: () => null }),
 }));
 
 vi.mock('@/hooks/queries/crm', () => ({
@@ -27,6 +30,15 @@ vi.mock('@/hooks/queries/crm', () => ({
     data: [
       { id: 'lead-1', name: 'Priya Sharma', status: 'NEGOTIATION' },
       { id: 'lead-2', name: 'Rajesh Kumar', status: 'WON' },
+    ],
+  })),
+}));
+
+vi.mock('@/hooks/queries/inventory', () => ({
+  useInventoryUnits: vi.fn(() => ({
+    data: [
+      { id: 'unit-1', unitNumber: 'A-101', bhk: 3 },
+      { id: 'unit-2', unitNumber: 'B-201', bhk: 4 },
     ],
   })),
 }));
@@ -46,7 +58,7 @@ describe('NewBookingPage - props-API Form surface (T-F4)', () => {
 
     // Field labels for the props-API form (rendered via <Label>)
     expect(html).toContain('Lead');
-    expect(html).toContain('Unit ID');
+    expect(html).toContain('Unit');
     expect(html).toContain('Total amount (₹)');
     expect(html).toContain('Token amount (₹, optional)');
     expect(html).toContain('Notes');
@@ -66,9 +78,12 @@ describe('NewBookingPage - props-API Form surface (T-F4)', () => {
     expect(html).toMatch(/data-qa="select-trigger"/);
     expect(html).toContain('Pick a lead');
 
-    // Test IDs from the field inputProps - proves the props-API
-    // forwarded the data-qa attribute correctly (regression canary)
-    expect(html).toMatch(/data-qa="booking-unit-id"/);
+    // Test IDs from the field props - proves the props-API
+    // forwarded the data-qa attribute correctly (regression canary).
+    // The unit field is a Select (its trigger hardcodes
+    // data-qa="select-trigger"), so we assert on the field wrapper
+    // data-qa="form-field-unitId" instead of a custom trigger id.
+    expect(html).toMatch(/data-qa="form-field-unitId"/);
     expect(html).toMatch(/data-qa="booking-amount"/);
     expect(html).toMatch(/data-qa="booking-token-amount"/);
 

@@ -21,6 +21,9 @@ import {
   CreateProjectDtoSchema,
   UpdateProjectDtoSchema,
   ProjectFilterDtoSchema,
+  CreateUnitDtoSchema,
+  UpdateUnitDtoSchema,
+  UnitFilterDtoSchema,
 } from '../src';
 
 describe('@shadhil/api-types - enums', () => {
@@ -359,5 +362,85 @@ describe('@shadhil/api-types - change-password (T-S page + zod validation)', () 
     expect(() =>
       ChangePasswordDtoSchema.parse({ oldPassword: 'x', newPassword: 'short' }),
     ).toThrow();
+  });
+});
+
+describe('@shadhil/api-types - inventory DTOs', () => {
+  // Phase.id is a real cuid2 (T-PROJID-CUID2) - the seeded Metro Heights
+  // phase ids are cuid2. The create DTO requires a valid cuid2 phaseId.
+  const PHASE_ID = 'zpn4utpch0ncq4esh46cl4ug';
+
+  it('CreateUnitDto accepts a valid unit (facing/sqft optional)', () => {
+    const r = CreateUnitDtoSchema.parse({
+      phaseId: PHASE_ID,
+      unitNumber: 'A-101',
+      bhk: 3,
+      facing: 'North',
+      sqft: 1450,
+      price: 5_000_000,
+    });
+    expect(r.unitNumber).toBe('A-101');
+    expect(r.price).toBe(5_000_000);
+  });
+
+  it('CreateUnitDto rejects a non-positive price', () => {
+    expect(() =>
+      CreateUnitDtoSchema.parse({
+        phaseId: PHASE_ID,
+        unitNumber: 'A-101',
+        bhk: 3,
+        price: 0,
+      }),
+    ).toThrow();
+  });
+
+  it('CreateUnitDto rejects bhk outside 1-10', () => {
+    expect(() =>
+      CreateUnitDtoSchema.parse({
+        phaseId: PHASE_ID,
+        unitNumber: 'A-101',
+        bhk: 0,
+        price: 1,
+      }),
+    ).toThrow();
+  });
+
+  it('CreateUnitDto rejects a readable (non-cuid2) phase id', () => {
+    expect(() =>
+      CreateUnitDtoSchema.parse({
+        phaseId: 'seed-phase-metro-a',
+        unitNumber: 'A-101',
+        bhk: 3,
+        price: 1,
+      }),
+    ).toThrow(/cuid2/i);
+  });
+
+  it('UpdateUnitDto accepts a partial update (status flip)', () => {
+    const r = UpdateUnitDtoSchema.parse({ status: 'SOLD' });
+    expect(r.status).toBe('SOLD');
+  });
+
+  it('UpdateUnitDto accepts explicit null to clear facing', () => {
+    const r = UpdateUnitDtoSchema.parse({ facing: null });
+    expect(r.facing).toBeNull();
+  });
+
+  it('UnitFilterDto accepts the seeded Metro Heights project id (cuid2)', () => {
+    const r = UnitFilterDtoSchema.parse({
+      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+    });
+    expect(r.projectId).toBe('oe6g1xkagiisnn4oeefpdyhk');
+  });
+
+  it('UnitFilterDto accepts a status array', () => {
+    const r = UnitFilterDtoSchema.parse({ status: ['AVAILABLE', 'HOLD'] });
+    expect(r.status).toEqual(['AVAILABLE', 'HOLD']);
+  });
+
+  it('UnitFilterDto rejects a readable (non-cuid2) project id', () => {
+    expect(() =>
+      UnitFilterDtoSchema.parse({ projectId: 'seed-project-metro-heights' }),
+    ).toThrow(/cuid2/i);
   });
 });

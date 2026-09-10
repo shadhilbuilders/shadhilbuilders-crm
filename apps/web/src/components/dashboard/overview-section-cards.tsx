@@ -24,6 +24,7 @@ import {
 import { LuActivity, LuTrendingUp, LuUsersRound } from '@paalstack/react-icons/lu';
 
 import type { DashboardOverviewStats } from '@shadhil/api-types';
+import { numberIntl } from '@/lib/format';
 import { labelFor } from '@/lib/labels';
 
 export type OverviewSectionCardsProps = {
@@ -48,7 +49,7 @@ export function OverviewSectionCards({ overview }: OverviewSectionCardsProps) {
         <CardHeader>
           <CardDescription>Total leads</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {kpis.totalLeads.toLocaleString()}
+            {numberIntl.format(kpis.totalLeads)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -69,7 +70,7 @@ export function OverviewSectionCards({ overview }: OverviewSectionCardsProps) {
         <CardHeader>
           <CardDescription>Reassignments (7d)</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {kpis.reassignments7d.toLocaleString()}
+            {numberIntl.format(kpis.reassignments7d)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -90,7 +91,7 @@ export function OverviewSectionCards({ overview }: OverviewSectionCardsProps) {
         <CardHeader>
           <CardDescription>Audit events (24h)</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {kpis.auditEvents24h.toLocaleString()}
+            {numberIntl.format(kpis.auditEvents24h)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -111,7 +112,7 @@ export function OverviewSectionCards({ overview }: OverviewSectionCardsProps) {
         <CardHeader>
           <CardDescription>Users by role</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {totalUsers.toLocaleString()}
+            {numberIntl.format(totalUsers)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">

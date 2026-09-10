@@ -18,6 +18,7 @@ import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useParams } from 'next/navigation';
 
 import { useBookings, useLeads } from '@/hooks/queries/crm';
+import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser, canApproveBookings } from '@/lib/session';
@@ -67,12 +68,8 @@ function formatMoney(value: string | undefined): string {
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   // Backend sends numbers as strings (Prisma Decimal serialises to
-  // string over JSON). Format as Indian-rupee compact: ₹1.2L style.
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(num);
+  // string over JSON). Format via the shared currencyIntl (₹, en-IN).
+  return currencyIntl.format(num);
 }
 
 export default function BookingsPage() {
@@ -249,7 +246,7 @@ function BookingTable({
                 </td>
                 <td className="text-muted-foreground hidden px-4 py-2.5 tabular-nums md:table-cell">
                   {typeof row.createdAt === 'string'
-                    ? new Date(row.createdAt).toLocaleDateString('en-IN')
+                    ? dateIntl.formatDate(row.createdAt)
                     : '-'}
                 </td>
                 <td className="text-muted-foreground px-4 py-2.5 text-xs">

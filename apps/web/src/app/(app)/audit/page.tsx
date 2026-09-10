@@ -24,6 +24,7 @@ import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useAuditLog, useAuditLogRealtime } from '@/hooks/queries/crm';
+import { dateIntl } from '@/lib/format';
 import { canViewAudit, useSessionUser } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -220,7 +221,7 @@ function AuditTable({
         header: 'Timestamp',
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm tabular-nums">
-            {new Date(row.original.createdAt).toLocaleString('en-IN')}
+            {dateIntl.formatDateTime(row.original.createdAt)}
           </span>
         ),
         enableSorting: true,

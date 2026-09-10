@@ -19,6 +19,7 @@ import {
 import { useParams } from 'next/navigation';
 
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
+import { dateIntl } from '@/lib/format';
 
 // T-F2 keeps the filter tabs honest: only ALL + UNREAD are wired to
 // backend query params; the others stay visible (matches the locked
@@ -143,7 +144,7 @@ export default function NotificationsPage() {
                   </p>
                   <p className="text-muted-foreground mt-1 text-[10px] tracking-wide uppercase">
                     {typeof row.createdAt === 'string'
-                      ? new Date(row.createdAt).toLocaleString('en-IN')
+                      ? dateIntl.formatDateTime(row.createdAt)
                       : ''}
                     {typeof row.type === 'string' && row.type.length > 0
                       ? ` · ${row.type}`

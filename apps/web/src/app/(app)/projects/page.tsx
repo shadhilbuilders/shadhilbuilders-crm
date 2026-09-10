@@ -54,6 +54,7 @@ import {
   type ProjectsFilter,
 } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
+import { dateIntl } from '@/lib/format';
 import {
   canManageUsers,
   isAdminLike,
@@ -446,7 +447,7 @@ function ProjectTable({
         header: 'Created',
         cell: ({ row }) => (
           <span className="text-muted-foreground hidden text-sm lg:table-cell">
-            {new Date(row.original.createdAt).toLocaleDateString()}
+            {dateIntl.formatDate(row.original.createdAt)}
           </span>
         ),
         enableSorting: false,

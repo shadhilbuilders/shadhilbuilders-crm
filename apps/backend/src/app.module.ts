@@ -14,6 +14,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { VisitsModule } from './visits/visits.module';
 import { ChatModule } from './chat/chat.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushModule } from './push/push.module';
@@ -57,6 +58,7 @@ import { AlertsModule } from './alerts/alerts.module';
     VisitsModule,
     ChatModule,
     BookingsModule,
+    InventoryModule,
     RemindersModule,
     NotificationsModule,
     PushModule,

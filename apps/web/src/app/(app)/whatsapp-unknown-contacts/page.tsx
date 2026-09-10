@@ -46,6 +46,7 @@ import {
 
 import type { WhatsappUnknownContactRow } from '@/hooks/queries/whatsapp-unknown-contacts';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
+import { dateIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { LuArrowDown } from '@paalstack/react-icons/lu';
 
@@ -354,10 +355,5 @@ function EmptyState({ tab }: { tab: StatusTab }) {
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return dateIntl.formatDateTime(iso);
 }
