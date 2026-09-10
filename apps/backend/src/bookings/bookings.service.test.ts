@@ -86,6 +86,44 @@ describe('legalNextStates - booking state machine', () => {
   });
 });
 
+// ─── findOne - single booking (approval page) ─────────────────────────
+
+describe('findOne - single booking', () => {
+  it('returns the booking row when it exists', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: { toString: () => '100000.00' },
+      status: 'TOKEN',
+      approvedById: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    const result = await service.findOne(makeActor(), 'b-1');
+    expect(result.id).toBe('b-1');
+    expect(result.leadName).toBe('Lead 1');
+    expect(result.userName).toBe('TC 1');
+    expect(result.amount).toBe('5000000.00');
+    expect(result.status).toBe('TOKEN');
+  });
+
+  it('returns 404 when the booking does not exist', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(null);
+    await expect(service.findOne(makeActor(), 'missing')).rejects.toThrow(
+      /Booking missing not found/,
+    );
+  });
+});
+
 // ─── create - happy path + 404s ──────────────────────────────────────
 
 describe('create - start a new booking in HOLD state', () => {

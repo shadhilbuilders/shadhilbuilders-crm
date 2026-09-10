@@ -515,6 +515,7 @@ model Booking {
   status       BookingStatus @default(HOLD)
   tokenAmount  Decimal?      @db.Decimal(12, 2)
   approvedById String?
+  notes        String?       @db.Text
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 

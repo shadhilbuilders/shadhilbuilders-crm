@@ -466,6 +466,15 @@ export function useBookings(
   });
 }
 
+/** Single booking (approval page). Role-scoped; 404s when the actor can't see it. */
+export function useBooking(id: string | null) {
+  return useQuery({
+    queryKey: ['bookings', id] as const,
+    enabled: id !== null && id.length > 0,
+    queryFn: ({ signal }) => api<unknown>(`/bookings/${id as string}`, { signal }),
+  });
+}
+
 /**
  * Create a new booking in HOLD state. Invalidates the bookings list and
  * the parent lead's caches on success.
@@ -501,8 +510,9 @@ export function useUpdateBooking() {
         method: 'PATCH',
         json: args.body,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, args) => {
       void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      void queryClient.invalidateQueries({ queryKey: ['bookings', args.id] });
     },
   });
 }

@@ -115,6 +115,21 @@ export class BookingsController {
     return this.bookings.create(req.user!, dto);
   }
 
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Get a single booking (approval page). Role-scoped by the same RLS policies as list; a booking the actor cannot see 404s.',
+  })
+  async findOne(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<BookingRow> {
+    if (!CUID_RE.test(id)) {
+      throw new BadRequestException(`Invalid booking id: ${id}`);
+    }
+    return this.bookings.findOne(req.user!, id);
+  }
+
   @Patch(':id')
   @ApiOperation({
     summary:
