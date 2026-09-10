@@ -34,6 +34,7 @@ function makeService(): {
       create: ReturnType<typeof vi.fn>;
       findUnique: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
     };
     lead: { findUnique: ReturnType<typeof vi.fn> };
     unit: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
@@ -52,6 +53,7 @@ function makeService(): {
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
     },
     lead: { findUnique: vi.fn() },
     unit: { findUnique: vi.fn(), update: vi.fn() },
@@ -497,5 +499,177 @@ describe('list - role-scoped query with status filter', () => {
         }),
       }),
     );
+  });
+});
+
+// ─── update - edit editable fields + audit row ────────────────────────
+
+describe('update - edit booking fields', () => {
+  function bookingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: { toString: () => '100000.00' },
+      status: 'HOLD',
+      approvedById: null,
+      notes: 'old note',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+      ...overrides,
+    };
+  }
+
+  it('updates amount/tokenAmount/notes and writes an audit row', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.update.mockResolvedValue(
+      bookingRow({
+        amount: { toString: () => '6000000.00' },
+        tokenAmount: { toString: () => '200000.00' },
+        notes: 'new note',
+      }),
+    );
+
+    const result = await service.update(makeActor(), 'b-1', {
+      amount: 6_000_000,
+      tokenAmount: 200_000,
+      notes: 'new note',
+    });
+
+    expect(result.amount).toBe('6000000.00');
+    expect(result.tokenAmount).toBe('200000.00');
+    expect(result.notes).toBe('new note');
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'b-1' },
+        data: expect.objectContaining({
+          amount: '6000000.00',
+          tokenAmount: '200000.00',
+          notes: 'new note',
+        }),
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'booking.update',
+          entityType: 'Booking',
+          before: expect.objectContaining({ amount: '5000000.00' }),
+          after: expect.objectContaining({ amount: '6000000.00' }),
+        }),
+      }),
+    );
+  });
+
+  it('clears tokenAmount when null is passed', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.update.mockResolvedValue(
+      bookingRow({ tokenAmount: null, notes: 'old note' }),
+    );
+
+    await service.update(makeActor(), 'b-1', { tokenAmount: null });
+
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tokenAmount: null }),
+      }),
+    );
+  });
+
+  it('returns 404 when the booking does not exist', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(null);
+    await expect(
+      service.update(makeActor(), 'missing', { amount: 1 }),
+    ).rejects.toThrow(/Booking missing not found/);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─── delete - admin-only + unit free + audit row ─────────────────────
+
+describe('delete - remove a booking (ADMIN/OWNER only)', () => {
+  function bookingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      status: 'HOLD',
+      approvedById: null,
+      notes: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+      ...overrides,
+    };
+  }
+
+  it('deletes the booking and frees the unit when no other active booking', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.delete.mockResolvedValue({ id: 'b-1' });
+    client.booking.count.mockResolvedValue(0);
+
+    const result = await service.delete(makeActor({ role: 'ADMIN' }), 'b-1');
+
+    expect(result).toEqual({ id: 'b-1' });
+    expect(client.booking.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'b-1' } }),
+    );
+    // Unit freed back to AVAILABLE.
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'unit-1' },
+        data: { status: 'AVAILABLE' },
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'booking.delete',
+          entityType: 'Booking',
+        }),
+      }),
+    );
+  });
+
+  it('does NOT free the unit when another active booking references it', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.delete.mockResolvedValue({ id: 'b-1' });
+    client.booking.count.mockResolvedValue(1);
+
+    await service.delete(makeActor({ role: 'ADMIN' }), 'b-1');
+
+    expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects TELECALLER (not ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.delete(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), 'b-1'),
+    ).rejects.toThrow(/Only ADMIN\/OWNER/);
+    expect(client.booking.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the booking does not exist', async () => {
+    const { service, client } = makeService();
+    client.booking.findUnique.mockResolvedValue(null);
+    await expect(
+      service.delete(makeActor({ role: 'ADMIN' }), 'missing'),
+    ).rejects.toThrow(/Booking missing not found/);
+    expect(client.booking.delete).not.toHaveBeenCalled();
   });
 });

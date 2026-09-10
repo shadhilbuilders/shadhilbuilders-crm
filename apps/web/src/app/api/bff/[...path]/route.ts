@@ -41,6 +41,13 @@ export async function PATCH(
   return forward(request, ctx);
 }
 
+export async function PUT(
+  request: NextRequest,
+  ctx: RouteContext<'/api/bff/[...path]'>,
+) {
+  return forward(request, ctx);
+}
+
 export async function DELETE(
   request: NextRequest,
   ctx: RouteContext<'/api/bff/[...path]'>,

@@ -17,11 +17,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -30,9 +32,11 @@ import {
   BookingFilterDtoSchema,
   BookingTransitionDtoSchema,
   CreateBookingDtoSchema,
+  UpdateBookingDtoSchema,
   type BookingFilterDto,
   type BookingTransitionDto,
   type CreateBookingDto,
+  type UpdateBookingDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
 
@@ -153,5 +157,37 @@ export class BookingsController {
       body,
     );
     return this.bookings.transition(req.user!, id, dto);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary:
+      'Edit the editable booking fields (amount / tokenAmount / notes). Status changes go through PATCH /bookings/:id.',
+  })
+  async update(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<BookingRow> {
+    if (!CUID_RE.test(id)) {
+      throw new BadRequestException(`Invalid booking id: ${id}`);
+    }
+    const dto: UpdateBookingDto = parseBody(UpdateBookingDtoSchema, body);
+    return this.bookings.update(req.user!, id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary:
+      'Delete a booking. ADMIN/OWNER only. Frees the unit back to AVAILABLE when no other active booking references it.',
+  })
+  async remove(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<{ id: string }> {
+    if (!CUID_RE.test(id)) {
+      throw new BadRequestException(`Invalid booking id: ${id}`);
+    }
+    return this.bookings.delete(req.user!, id);
   }
 }
