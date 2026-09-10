@@ -108,7 +108,7 @@ function ManagerDashboard({ name }: { name: string }) {
   const leadsQuery = useLeads({ limit: 200, projectId: projectId ?? undefined });
   const visitsQuery = useVisits({ projectId: projectId ?? undefined });
   const bookingsQuery = useBookings({
-    status: 'HOLD',
+    status: ['HOLD'],
     projectId: projectId ?? undefined,
   });
 

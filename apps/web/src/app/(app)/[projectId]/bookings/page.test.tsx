@@ -1,8 +1,8 @@
-// T-F4 - BookingsPage wire-shape contract.
+// T-BOOK - BookingsPage wire-shape contract (DataTable rebuild).
 //
-// Pins: rows render when useBookings resolves with an array (the
-// T-F1 select unwrap); ModulePending surfaces on error; the
-// friendly empty state shows when the list resolves empty.
+// Pins: rows render when useBookings resolves with the unwrapped row array;
+// the retryable error state shows on error; the friendly empty state shows
+// when the list resolves empty.
 //
 // Uses renderToStaticMarkup per the standing rule (apps/web has no
 // @testing-library/react).
@@ -15,11 +15,15 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/queries/crm', () => ({
   useBookings: vi.fn(),
-  useLeads: vi.fn(() => ({ data: [] })),
+  useBookingsEnvelope: vi.fn(() => 0),
 }));
 
 vi.mock('@/hooks/use-online-status', () => ({
   useOnlineStatus: vi.fn(() => true),
+}));
+
+vi.mock('@paalstack/react-hooks', () => ({
+  useDebouncedValue: (value: string) => [value, () => {}],
 }));
 
 vi.mock('@/lib/session', () => ({
@@ -41,7 +45,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('BookingsPage - wire-shape contract (T-F4)', () => {
+describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
   it('renders rows when useBookings resolves with the unwrapped row array', () => {
     mockedUseBookings.mockReturnValue({
       data: [
@@ -97,7 +101,7 @@ describe('BookingsPage - wire-shape contract (T-F4)', () => {
     expect(html).toMatch(/data-qa="booking-status-badge"/);
   });
 
-  it('renders ModulePending when the query has an error', () => {
+  it('renders the retryable error state when the query has an error', () => {
     const apiError = new Error('API 500: Internal Server Error');
     mockedUseBookings.mockReturnValue({
       data: undefined,
@@ -106,8 +110,9 @@ describe('BookingsPage - wire-shape contract (T-F4)', () => {
     } as never);
 
     const html = renderToStaticMarkup(<BookingsPage />);
-    expect(html).toContain('failed to load');
+    expect(html).toContain('Couldn&#x27;t load the bookings.');
     expect(html).toContain('API 500: Internal Server Error');
+    expect(html).toMatch(/data-qa="bookings-retry-button"/);
     expect(html).not.toContain('No bookings yet');
   });
 
