@@ -317,6 +317,9 @@ function UserRowActions({
   const isSelf = target.id === selfId;
   const outranksTarget = outranks(actorRole, target.role);
 
+  // Soft-delete is ADMIN/OWNER only (autoplan 2026-09-09).
+  const canDelete = isAdminLike(actorRole);
+
   // Reason an action is disabled (shown in the hover tooltip).
   const reason = (action: string): string | undefined => {
     if (isSelf) return `You can't ${action} your own user`;
@@ -327,7 +330,12 @@ function UserRowActions({
 
   const editReason = reason('edit');
   const roleReason = reason('change the role of');
-  const deleteReason = reason('delete');
+  // Delete: only ADMIN/OWNER may soft-delete (and never the OWNER / self).
+  const deleteReason = !canDelete
+    ? "Only ADMIN or OWNER can delete users"
+    : target.role === 'OWNER'
+      ? "You can't delete the OWNER"
+      : reason('delete');
 
   type ActionItem = {
     label: string;
@@ -732,7 +740,7 @@ function DeleteUserDialog({
       header={{
         title: `Delete ${target?.name ?? 'user'}?`,
         description:
-          'This permanently removes the user and their sign-in access. This action cannot be undone.',
+          'This soft-deletes the user: they can no longer sign in and are hidden from every list. Their account is kept (not permanently erased).',
       }}
       cancelButtonText="Cancel"
       confirmButtonText={deleteUser.isPending ? 'Deleting...' : 'Delete user'}
@@ -744,7 +752,7 @@ function DeleteUserDialog({
         if (target === null) return;
         deleteUser.mutate(target.id, {
           onSuccess: () => {
-            toast.success(`User ${target.name} deleted`);
+            toast.success(`User ${target.name} soft-deleted`);
             onClose();
           },
           onError: (error) => {

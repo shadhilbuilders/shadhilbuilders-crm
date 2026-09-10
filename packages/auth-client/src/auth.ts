@@ -126,6 +126,28 @@ export const auth: any = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
 
+  // T-SOFT-DELETE (2026-09-09): block sign-in for soft-deleted users.
+  // A deleted user has User.deletedAt set; better-auth's email/password
+  // sign-in would otherwise create a session for them. The canonical
+  // better-auth pattern for "banned/deleted users can't sign in" is a
+  // `databaseHooks.session.create.before` hook that returns false to
+  // reject the session (the core types even cite it for banned users).
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { deletedAt: true },
+          });
+          // Soft-deleted user → do not issue a session (reject sign-in).
+          if (user?.deletedAt) return false;
+          return void 0;
+        },
+      },
+    },
+  },
+
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh once per day

@@ -29,12 +29,13 @@
 //   │   ├── Header: logo + brand
 //   │   ├── Content
 //   │   │   ├── Group "Work"
-//   │   │   │   ├── Dashboard        (no badge)
-//   │   │   │   ├── Leads            (badge: lead count)
-//   │   │   │   ├── Visits           (no badge)
-//   │   │   │   ├── Inventory        (no badge)
-//   │   │   │   ├── Bookings         (no badge - T-F5, T-BOOK backend)
-//   │   │   │   └── Notifications    (badge: unread count)
+//   │   │   ├── Dashboard        (no badge)
+//   │   │   ├── Leads            (badge: lead count)
+//   │   │   ├── Teams            (per-project staff, admin+manager)
+//   │   │   ├── Visits           (no badge)
+//   │   │   ├── Inventory        (no badge)
+//   │   │   ├── Bookings         (no badge - T-F5, T-BOOK backend)
+//   │   │   └── Notifications    (badge: unread count)
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
 //   │   │       ├── Users          [canManageUsers]
@@ -56,8 +57,10 @@ import {
   LuBell,
   LuShieldCheck,
   LuUserCog,
+  LuUsersRound,
   LuHandshake,
   LuMessageCircleQuestion,
+  LuFolderKanban,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -124,6 +127,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'leadCount',
   },
+  {
+    href: '/teams',
+    label: 'Teams',
+    icon: LuUsersRound,
+    group: 'work',
+  },
   { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
     href: '/inventory',
@@ -162,6 +171,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: '/users', label: 'Users', icon: LuUserCog, group: 'admin' },
   {
+    href: '/projects',
+    label: 'Projects',
+    icon: LuFolderKanban,
+    group: 'admin',
+  },
+  {
     href: '/audit',
     label: 'Audit',
     icon: LuShieldCheck,
@@ -191,11 +206,16 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   const items: NavItem[] = [];
   for (const item of NAV_ITEMS) {
     if (item.group === 'work') {
+      // Per-project Teams manages staff - admin + manager only (backend
+      // member writes are ADMIN/OWNER; MANAGER can read). Staff roles don't
+      // see it as a work surface.
+      if (item.href === '/teams' && !canManageUsers(role)) continue;
       items.push(item);
       continue;
     }
     // group === 'admin'
     if (item.href === '/users' && canManageUsers(role)) items.push(item);
+    else if (item.href === '/projects' && canManageUsers(role)) items.push(item);
     else if (item.href === '/audit' && canViewAudit(role)) items.push(item);
     else if (
       item.href === '/whatsapp-unknown-contacts' &&
@@ -295,6 +315,7 @@ export const PROJECT_SCOPED_PATHS = new Set([
   '/bookings',
   '/notifications',
   '/dashboard',
+  '/teams',
 ]);
 
 export function isProjectScopedNavPath(href: string): boolean {

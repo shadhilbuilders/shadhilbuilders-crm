@@ -18,6 +18,9 @@ import {
   PaginationDtoSchema,
   ChangePasswordDtoSchema,
   ChangePasswordFormSchema,
+  CreateProjectDtoSchema,
+  UpdateProjectDtoSchema,
+  ProjectFilterDtoSchema,
 } from '../src';
 
 describe('@shadhil/api-types - enums', () => {
@@ -117,6 +120,48 @@ describe('@shadhil/api-types - lead DTOs', () => {
         projectId: 'seed-project-metro-heights',
       }),
     ).toThrow(/cuid2/i);
+  });
+});
+
+describe('@shadhil/api-types - project DTOs', () => {
+  it('CreateProjectDto accepts valid project (RERA/CMDA optional)', () => {
+    const r = CreateProjectDtoSchema.parse({
+      name: 'Shadhil Skyline Towers',
+      address: 'Whitefield, Bengaluru',
+      reraNumber: 'TN/02/2024/0001',
+      cmdaNumber: 'PP/2024/BLR/123',
+    });
+    expect(r.name).toBe('Shadhil Skyline Towers');
+  });
+
+  it('CreateProjectDto rejects empty name', () => {
+    expect(() =>
+      CreateProjectDtoSchema.parse({ name: '  ', address: 'City' }),
+    ).toThrow();
+  });
+
+  // Regression (2026-09-10): the edit form sends `null` to CLEAR an optional
+  // compliance field (reraNumber/cmdaNumber). The schema must accept it -
+  // `.partial()` alone does NOT (it omits `.nullable()`).
+  it('UpdateProjectDto accepts explicit null to clear rera/cmda', () => {
+    const r = UpdateProjectDtoSchema.parse({
+      reraNumber: null,
+      cmdaNumber: null,
+    });
+    expect(r.reraNumber).toBeNull();
+    expect(r.cmdaNumber).toBeNull();
+  });
+
+  it('UpdateProjectDto accepts partial string updates', () => {
+    const r = UpdateProjectDtoSchema.parse({ name: 'Renamed', reraNumber: 'X' });
+    expect(r.name).toBe('Renamed');
+    expect(r.reraNumber).toBe('X');
+  });
+
+  it('UpdateProjectDto rejects a number for reraNumber', () => {
+    expect(() =>
+      UpdateProjectDtoSchema.parse({ reraNumber: 12345 }),
+    ).toThrow();
   });
 });
 

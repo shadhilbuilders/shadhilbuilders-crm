@@ -12,12 +12,13 @@
 // on success so the switcher reflects the change immediately.
 
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { api } from '@/apis/client';
+import { api, qs } from '@/apis/client';
 
 export type ProjectListItem = {
   id: string;
@@ -64,6 +65,46 @@ export function useProjects() {
   });
 }
 
+export type ProjectsFilter = {
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type ProjectsListResult = {
+  projects: ProjectListItem[];
+  total: number;
+};
+
+/**
+ * GET /api/projects?search=&limit=&offset= - server-side search + pagination
+ * for the Projects admin table (mirrors useUsers). The sidebar switcher keeps
+ * using `useProjects` (full registry, no params); this hook is scoped to the
+ * admin page's table.
+ */
+export function useProjectsTable(filter: ProjectsFilter = {}) {
+  return useQuery({
+    queryKey: [
+      'projects',
+      'list',
+      filter.search ?? '',
+      filter.limit,
+      filter.offset,
+    ],
+    queryFn: ({ signal }) =>
+      api<ProjectsListResult>(
+        `/projects${qs({
+          search: filter.search,
+          limit: filter.limit,
+          offset: filter.offset,
+        })}`,
+        { signal },
+      ),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -99,6 +140,69 @@ export function useDeleteProject() {
       api<{ id: string }>(`/projects/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
+    },
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ProjectMember - explicit staff↔project assignment (autoplan 2026-09-09)
+// ────────────────────────────────────────────────────────────────────────────
+
+export type ProjectMemberRow = {
+  projectId: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  assignedAt: string;
+  isLeadOwner: boolean;
+};
+
+const PROJECT_MEMBERS_KEY = (projectId: string) =>
+  ['projects', 'members', projectId] as const;
+
+/** GET /api/projects/:id/members - effective staff (explicit UNION lead-owners). */
+export function useProjectMembers(projectId: string | undefined) {
+  return useQuery({
+    queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
+    enabled: projectId !== undefined && projectId.length > 0,
+    queryFn: ({ signal }) =>
+      api<ProjectMemberRow[]>(`/projects/${projectId as string}/members`, {
+        signal,
+      }),
+    staleTime: 30_000,
+  });
+}
+
+/** POST /api/projects/:id/members - link an existing user to a project. */
+export function useLinkProjectMember(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<ProjectMemberRow>(`/projects/${projectId as string}/members`, {
+        method: 'POST',
+        json: { userId },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
+      });
+    },
+  });
+}
+
+/** DELETE /api/projects/:id/members/:userId - unlink a user. */
+export function useUnlinkProjectMember(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<{ ok: true }>(`/projects/${projectId as string}/members/${userId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
+      });
     },
   });
 }

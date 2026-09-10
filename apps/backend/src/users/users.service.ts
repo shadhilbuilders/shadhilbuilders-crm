@@ -28,7 +28,7 @@ import { withRlsContext, type Role, type PrismaClient } from '@shadhil/database'
 import type { JwtPayload } from '@shadhil/auth';
 import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
-import { assertCanCreateRole, assertCanChangeRole, outranks, OWNER } from './roles';
+import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 export interface CreatedUser {
@@ -322,21 +322,29 @@ export class UsersService {
   }
 
   /**
-   * DELETE /api/users/:id - remove a user (autoplan 2026-09-09).
-   * Hierarchy-gated: the actor must strictly outrank the target (no
-   * self-delete, OWNER protected). Also deletes the credential Account row
-   * so the user can't sign in.
+   * DELETE /api/users/:id - SOFT delete a user (autoplan 2026-09-09).
+   * ADMIN/OWNER only. Sets User.deletedAt (no hard delete): the account row
+   * is kept so audit/history survive, but the user cannot sign in and is
+   * hidden from every list/picker. No self-delete; OWNER is protected.
    */
   async remove(
     actor: JwtPayload,
     targetUserId: string,
   ): Promise<{ ok: true }> {
-    // 1. Target must exist.
+    // 0. Admin/owner only.
+    if (!isAdminClass(actor.role)) {
+      throw new ForbiddenException('Only ADMIN or OWNER can delete users.');
+    }
+
+    // 1. Target must exist + not already deleted + not OWNER.
     const target = await this.client.user.findUnique({
       where: { id: targetUserId },
     });
     if (!target) {
       throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+    if (target.role === OWNER) {
+      throw new ForbiddenException('The OWNER cannot be deleted.');
     }
 
     // 2. No self-delete.
@@ -344,22 +352,13 @@ export class UsersService {
       throw new ForbiddenException('You cannot delete your own user');
     }
 
-    // 3. Hierarchy: actor must strictly outrank the target. OWNER is
-    //    protected (nobody outranks it).
-    if (!outranks(actor.role, target.role as Role)) {
-      throw new ForbiddenException(
-        `${actor.role} cannot delete a ${target.role} user`,
-      );
-    }
-
-    // 4. Delete the credential Account row (so the user can't sign in),
-    //    then the User row. Bare client (auth tables have no RLS).
-    await this.client.account.deleteMany({
-      where: { accountId: target.id },
+    // 3. Soft delete: stamp deletedAt (keep the account row).
+    await this.client.user.update({
+      where: { id: target.id },
+      data: { deletedAt: new Date() },
     });
-    await this.client.user.delete({ where: { id: target.id } });
 
-    // 5. Audit row in the actor's RLS context.
+    // 4. Audit row in the actor's RLS context.
     await withRlsContext(
       this.client,
       { userId: actor.sub, role: actor.role, teamId: actor.teamId },
@@ -371,7 +370,7 @@ export class UsersService {
             entityType: 'User',
             entityId: target.id,
             before: { name: target.name, email: target.email, role: target.role },
-            reason: `user.delete by ${actor.email} (${actor.role})`,
+            reason: `user.delete (soft) by ${actor.email} (${actor.role})`,
           },
         });
       },
@@ -489,19 +488,19 @@ export class UsersService {
   }
 
   async list(actor: JwtPayload, filter: UserFilterDto = { limit: 50, offset: 0 }): Promise<UserListResult> {
-    // Manager scoping resolves TEAM.managerId, same as create() - the JWT
+    // Team scoping resolves TEAM.managerId, same as create() - the JWT
     // teamId claim is unreliable for managers (seed keeps it null).
-    // OWNER and ADMIN see all.
+    // OWNER and ADMIN see all. All scopes exclude soft-deleted users.
     let where: Record<string, unknown>;
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
-      where = {};
+      where = { deletedAt: null };
     } else if (actor.role === 'MANAGER') {
       const team = await this.client.team.findFirst({
         where: { managerId: actor.sub },
       });
-      where = { teamId: team?.id ?? '__none__' };
+      where = { deletedAt: null, teamId: team?.id ?? '__none__' };
     } else {
-      where = { id: actor.sub };
+      where = { deletedAt: null, id: actor.sub };
     }
 
     // Server-driven role filter (autoplan 2026-09-09): the UI's MultiSelect

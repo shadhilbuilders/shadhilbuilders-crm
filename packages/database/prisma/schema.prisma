@@ -180,6 +180,11 @@ model User {
   phone         String?
   role          Role     @default(TELECALLER)
   teamId        String?
+  // T-SOFT-DELETE (2026-09-09): soft-delete sentinel. NULL = active; set =
+  // the user is soft-deleted (blocked from sign-in, hidden from all lists).
+  // ADMIN/OWNER only. Hard-delete is removed - the account row is kept so
+  // audit/session history survives; login rejects deletedAt <> null.
+  deletedAt     DateTime?
   // T-S hardening (2026-09-04): a placeholder-password gate.
   // Seeded users (owner/admin/manager/telecaller/sales_exec) keep
   // mustChangePassword=true until they complete /change-password.
@@ -206,6 +211,7 @@ model User {
   siteVisits        SiteVisit[]
   bookingsCreated   Booking[]          @relation("BookingCreatedBy")
   bookingsApproved  Booking[]          @relation("BookingApprovedBy")
+  projectMembers    ProjectMember[]    @relation("ProjectMemberUser")
   pushSubscriptions PushSubscription[]
   pushNotifications PushNotification[]
   auditLogs         AuditLog[]
@@ -302,11 +308,41 @@ model Project {
   reraNumber String?
   cmdaNumber String?
   createdAt  DateTime @default(now())
+  // T-SOFT-DELETE (2026-09-09): NULL = active; set = soft-deleted (hidden
+  // from registry/switcher/staff page). ADMIN + OWNER only.
+  deletedAt  DateTime?
 
-  phases Phase[]
-  leads  Lead[]
+  phases  Phase[]
+  leads   Lead[]
+  members ProjectMember[]
 
   @@index([slug])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4b. ProjectMember (explicit staff↔project assignment)
+// ────────────────────────────────────────────────────────────────────────────
+// Authoritative "who works on a project" join. A user can be a member of many
+// projects (one row per project+user; composite PK). The per-project `role`
+// lets the same person hold a different role on different projects.
+//
+// Semantics (autoplan 2026-09-09, client-confirmed "both"):
+//   - EXPLICIT assignment is the source for linking people to projects.
+//   - The effective staff list for a project = explicit ProjectMember rows
+//     UNION lead-owners (from Lead.projectId) — additive, never regresses.
+//   - Migration backfills ProjectMember from existing Lead owners so no one
+//     disappears on first deploy.
+model ProjectMember {
+  projectId  String
+  userId     String
+  role       Role
+  assignedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation("ProjectMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
