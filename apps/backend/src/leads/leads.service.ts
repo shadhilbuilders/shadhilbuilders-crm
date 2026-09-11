@@ -31,7 +31,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext,
+  withRlsContext, rlsContextFrom,
   Prisma,
   type PrismaClient,
   type Role,
@@ -284,7 +284,7 @@ export class LeadsService {
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const conditions = await this.listConditions(
           tx as unknown as PrismaClient,
@@ -360,7 +360,7 @@ export class LeadsService {
   ): Promise<{ newLeads: number }> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const conditions = await this.listConditions(
           tx as unknown as PrismaClient,
@@ -393,7 +393,7 @@ export class LeadsService {
   async findOne(actor: JwtPayload, leadId: string): Promise<LeadDetail> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const row = await tx.lead.findUnique({
           where: { id: leadId },
@@ -450,7 +450,7 @@ export class LeadsService {
   async activities(actor: JwtPayload, leadId: string): Promise<LeadActivity[]> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const lead = await tx.lead.findUnique({
           where: { id: leadId },
@@ -509,7 +509,7 @@ export class LeadsService {
     // create logic. Returns LeadRow (the list-page projection).
     const created = await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       (tx) => this._createWithClient(actor, dto, tx as unknown as PrismaClient),
     );
     // Notify the assigned owner that a new lead landed in their queue.
@@ -716,6 +716,7 @@ export class LeadsService {
         ownerId: ownerId,
         ownerType: this.ownerTypeForRole(actor.role),
         teamId,
+        organizationId: actor.organizationId,
       },
       select: {
         id: true,
@@ -746,6 +747,7 @@ export class LeadsService {
     await client.auditLog.create({
       data: {
         userId: actor.sub,
+        organizationId: actor.organizationId,
         action: 'lead.assigned',
         entityType: 'Lead',
         entityId: created.id,
@@ -765,6 +767,7 @@ export class LeadsService {
     await client.auditLog.create({
       data: {
         userId: actor.sub,
+        organizationId: actor.organizationId,
         action: 'lead.create',
         entityType: 'Lead',
         entityId: created.id,
@@ -913,7 +916,7 @@ export class LeadsService {
   ): Promise<LeadRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // 1. Fetch the lead WITH its current owner + team so the
         //    role/team checks don't have to be re-issued in tx.
@@ -1045,6 +1048,7 @@ export class LeadsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'lead.reassign',
             entityType: 'Lead',
             entityId: updated.id,
@@ -1103,7 +1107,7 @@ export class LeadsService {
   ): Promise<LeadRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // 1. Fetch the lead + current owner/team.
         const existing = await tx.lead.findUnique({
@@ -1194,6 +1198,7 @@ export class LeadsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: isNoOp ? 'lead.co_owner.noop' : 'lead.co_owner',
             entityType: 'Lead',
             entityId: updated.id,
@@ -1230,7 +1235,7 @@ export class LeadsService {
   ): Promise<LeadRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.lead.findUnique({
           where: { id: leadId },
@@ -1280,6 +1285,7 @@ export class LeadsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'lead.update',
             entityType: 'Lead',
             entityId: updated.id,
@@ -1323,7 +1329,7 @@ export class LeadsService {
   ): Promise<LeadRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.lead.findUnique({
           where: { id: dto.leadId },
@@ -1395,6 +1401,7 @@ export class LeadsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'lead.transition',
             entityType: 'Lead',
             entityId: updated.id,
@@ -1466,7 +1473,7 @@ export class LeadsService {
 
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // Full row first: it becomes the audit before-snapshot AND the
         // 0-rows classifier (was it ever there? was it blocked?).
@@ -1538,6 +1545,7 @@ export class LeadsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'lead.delete',
             entityType: 'Lead',
             entityId: leadId,

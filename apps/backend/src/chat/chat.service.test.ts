@@ -16,6 +16,7 @@ function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
     email: 'tc@shadhilbuilders.in',
     role: 'TELECALLER',
     teamId: 'team-tc',
+    organizationId: 'org_bootstrap',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',

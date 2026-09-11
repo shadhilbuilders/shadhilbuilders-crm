@@ -61,11 +61,40 @@ export interface RlsContext {
   role: Role;
   /** null/undefined for ADMIN without an assigned team. */
   teamId: string | null;
+  /** T-ORG: the tenant the actor belongs to. Drives app.user_org_id so
+   *  every org-scoped policy gates on it. */
+  organizationId: string;
 }
 
 export type RlsTx = Parameters<
   Parameters<PrismaClient['$transaction']>[0]
 >[0];
+
+/**
+ * T-ORG (eng review Finding 4): single source of truth for deriving an
+ * RlsContext from a JWT payload / actor. Every withRlsContext call site
+ * should use this so adding an org dimension is one edit here, not ~50
+ * scattered literal edits (DRY / AGENTS.md single-source-of-truth).
+ *
+ * Parameter is structural (not the auth-client JwtPayload type) so the
+ * database package doesn't need to import from auth-client (which would
+ * create a package cycle: auth-client imports @shadhil/database for prisma).
+ */
+export interface RlsActorLike {
+  sub: string;
+  role: Role;
+  teamId: string | null;
+  organizationId?: string | null;
+}
+
+export function rlsContextFrom(actor: RlsActorLike): RlsContext {
+  return {
+    userId: actor.sub,
+    role: actor.role,
+    teamId: actor.teamId ?? null,
+    organizationId: actor.organizationId ?? '',
+  };
+}
 
 const ROLES: readonly string[] = [
   'OWNER',
@@ -119,15 +148,24 @@ export async function withRlsContext<T>(
   const rlsRole =
     ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
   const teamValue = ctx.teamId ?? '';
+  // T-ORG: the org value always travels as-is (never downcast). An actor
+  // without an org is a fail-closed state; the policies use
+  // current_setting('app.user_org_id', true) which yields NULL here and
+  // matches nothing.
+  const orgValue = ctx.organizationId;
 
   if (!ROLES.includes(ctx.role)) {
     throw new Error(`withRlsContext: role "${ctx.role}" is not a valid Role enum value`);
+  }
+  if (typeof ctx.organizationId !== 'string' || ctx.organizationId.length === 0) {
+    throw new Error(`withRlsContext: organizationId is required (got "${ctx.organizationId}")`);
   }
 
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
     await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
     await tx.$executeRawUnsafe(`SET LOCAL app.user_team_id = ${sqlLiteral(teamValue)}`);
+    await tx.$executeRawUnsafe(`SET LOCAL app.user_org_id = ${sqlLiteral(orgValue)}`);
 
     return fn(tx as unknown as RlsTx);
   });

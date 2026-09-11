@@ -20,6 +20,7 @@ import {
 } from '@nestjs/common';
 import {
   withRlsContext,
+  rlsContextFrom,
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
@@ -70,7 +71,7 @@ export class AuditService {
   ): Promise<AuditListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (dto.userId !== undefined) where['userId'] = dto.userId;

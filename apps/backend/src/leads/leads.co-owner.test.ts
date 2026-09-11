@@ -48,12 +48,14 @@ const SE_A_ID = `test-coowner-seA-${RUN_TAG}`;
 const LEAD_ID = `test-coowner-lead-${RUN_TAG}`;
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
+// Every business row now carries organizationId (T-ORG multitenancy).
+const ORG = 'org_bootstrap';
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID, organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -66,6 +68,7 @@ function actorFor(
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
     teamId: overrides.teamId,
+    organizationId: 'org_bootstrap',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -78,12 +81,20 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_A_ID },
       update: {},
-      create: { id: TEAM_A_ID, name: `CoOwner Test Team A ${RUN_TAG}` },
+      create: {
+        id: TEAM_A_ID,
+        name: `CoOwner Test Team A ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
     await db.team.upsert({
       where: { id: TEAM_B_ID },
       update: {},
-      create: { id: TEAM_B_ID, name: `CoOwner Test Team B ${RUN_TAG}` },
+      create: {
+        id: TEAM_B_ID,
+        name: `CoOwner Test Team B ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
 
     await db.user.upsert({
@@ -95,6 +106,7 @@ beforeAll(async () => {
         name: 'CoOwner Test Admin',
         role: 'ADMIN',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -107,6 +119,7 @@ beforeAll(async () => {
         name: 'CoOwner Test Manager A',
         role: 'MANAGER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -119,6 +132,7 @@ beforeAll(async () => {
         name: 'CoOwner Test TC A',
         role: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -131,6 +145,7 @@ beforeAll(async () => {
         name: 'CoOwner Test TC A2',
         role: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -143,6 +158,7 @@ beforeAll(async () => {
         name: 'CoOwner Test TC B',
         role: 'TELECALLER',
         teamId: TEAM_B_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -155,6 +171,7 @@ beforeAll(async () => {
         name: 'CoOwner Test SE A',
         role: 'SALES_EXEC',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -173,6 +190,7 @@ beforeAll(async () => {
         ownerId: TC_A_ID,
         ownerType: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
       },
     });
   });

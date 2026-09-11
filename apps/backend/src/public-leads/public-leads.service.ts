@@ -79,6 +79,7 @@ export class PublicLeadsService {
       sub: fallbackOwnerId,
       role: 'ADMIN',
       teamId: null,
+      organizationId: 'org_bootstrap',
       email: 'landing@shadhilbuilders.in',
       // iat/exp/iss are unused by create(); fill with inert values so the
       // payload satisfies the JwtPayload shape.
