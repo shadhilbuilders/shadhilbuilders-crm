@@ -58,12 +58,9 @@ export const SignupDtoSchema = z.object({
   password: passwordSchema,
   name: nameSchema,
   role: RoleSchema.default('TELECALLER'),
-  // Not `.cuid()`: seed teams use readable ids like `seed-team-<userId>`,
-  // so any non-empty short string is accepted (validation of existence
-  // happens in the service).
-  teamId: z.string({
-    error: 'Team ID is required',
-  }).trim().min(1).max(64).optional(),
+  // Team ids are cuid2 - validate strictly (validation of existence happens
+  // in the service).
+  teamId: z.cuid2().optional(),
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 

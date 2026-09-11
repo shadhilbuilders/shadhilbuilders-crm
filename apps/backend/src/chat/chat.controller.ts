@@ -52,8 +52,9 @@ export class ChatController {
     @Inject(ChatService) private readonly chat: ChatService,
   ) {}
 
-  // cuid regex (matches packages/api-types/src/chat.ts:MessageFilterDtoSchema)
-  private static readonly CUID_RE = /^c[a-z0-9]{20,}$/i;
+  // Lead ids are cuid2 - validate strictly (a `c`-only regex rejects real
+  // cuid2 ids that don't start with 'c').
+  private static readonly CUID_RE = z.cuid2();
 
   @Get(':leadId')
   @ApiOperation({
@@ -65,7 +66,7 @@ export class ChatController {
     @Param('leadId') leadId: string,
     @Query('kind') kind?: string,
   ): Promise<MessageListResult> {
-    if (!ChatController.CUID_RE.test(leadId)) {
+    if (!ChatController.CUID_RE.safeParse(leadId).success) {
       throw new BadRequestException(`Invalid leadId: ${leadId}`);
     }
     // Validate the kind query param (default CUSTOMER). A bad value is a

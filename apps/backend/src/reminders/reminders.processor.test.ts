@@ -62,9 +62,9 @@ async function adminSeed<T>(
   return withRlsContext(
     prisma,
     {
-      userId: 'test-reminder-admin',
+      userId: 'zhp69koimlj4hqorl1skmpsq',
       role: 'ADMIN',
-      teamId: 'test-reminder-team',
+      teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
@@ -78,15 +78,16 @@ async function seedDueReminder(label: string): Promise<string> {
   if (prisma === null) throw new Error('prisma missing');
   // We need a lead + user for the FK. We use adminSeed so the
   // fixture inserts go through the admin policy bypass.
-  const id = `test-reminder-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Hyphen-free base36 id (satisfies z.cuid2()'s [0-9a-z]+ regex, unique per test).
+  const id = `${label}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   await adminSeed(async (db) => {
     // Ensure the admin actor's user row exists (FK target for the
     // reminder's userId below).
     await db.user.upsert({
-      where: { id: 'test-reminder-admin' },
+      where: { id: 'zhp69koimlj4hqorl1skmpsq' },
       update: {},
       create: {
-        id: 'test-reminder-admin',
+        id: 'zhp69koimlj4hqorl1skmpsq',
         email: 'test-reminder-admin@x',
         name: 'test-reminder-admin',
         role: 'ADMIN',
@@ -94,10 +95,10 @@ async function seedDueReminder(label: string): Promise<string> {
       },
     });
     await db.user.upsert({
-      where: { id: 'test-reminder-manager' },
+      where: { id: 'dyamh3gezek1ag5wh8xn9ib5' },
       update: {},
       create: {
-        id: 'test-reminder-manager',
+        id: 'dyamh3gezek1ag5wh8xn9ib5',
         email: 'test-reminder-manager@x',
         name: 'test-reminder-manager',
         role: 'MANAGER',
@@ -105,30 +106,30 @@ async function seedDueReminder(label: string): Promise<string> {
       },
     });
     await db.team.upsert({
-      where: { id: 'test-reminder-team' },
+      where: { id: 'yxt9evh7y5x9pkpxl61ywbyl' },
       update: {},
-      create: { id: 'test-reminder-team', name: 'Test Team', managerId: 'test-reminder-manager' },
+      create: { id: 'yxt9evh7y5x9pkpxl61ywbyl', name: 'Test Team', managerId: 'dyamh3gezek1ag5wh8xn9ib5' },
     });
     const project = await db.project.upsert({
-      where: { id: 'test-reminder-project' },
+      where: { id: 'wqvswgk5n0ucvq8l1ydva3d7' },
       update: {},
       create: {
-        id: 'test-reminder-project',
+        id: 'wqvswgk5n0ucvq8l1ydva3d7',
         name: 'Test Project',
-        slug: 'test-reminder-project',
+        slug: 'wqvswgk5n0ucvq8l1ydva3d7',
         address: '123 Test',
       },
     });
     const phase = await db.phase.upsert({
-      where: { id: 'test-reminder-phase' },
+      where: { id: 'otvkiihv4ai322i63rhfek4z' },
       update: {},
-      create: { id: 'test-reminder-phase', projectId: project.id, name: 'Test Phase' },
+      create: { id: 'otvkiihv4ai322i63rhfek4z', projectId: project.id, name: 'Test Phase' },
     });
     await db.unit.upsert({
       where: { phaseId_unitNumber: { phaseId: phase.id, unitNumber: 'T-001' } },
       update: {},
       create: {
-        id: 'test-reminder-unit',
+        id: 'fm4z7bxv5z678ye32ek0zrns',
         phaseId: phase.id,
         unitNumber: 'T-001',
         bhk: 3,
@@ -136,34 +137,34 @@ async function seedDueReminder(label: string): Promise<string> {
       },
     });
     await db.lead.upsert({
-      where: { id: 'test-reminder-lead' },
+      where: { id: 'qiurlpko8u0914y4k1eb8y3h' },
       update: {
         state: 'NEW',
-        teamId: 'test-reminder-team',
-        ownerId: 'test-reminder-manager',
+        teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
+        ownerId: 'dyamh3gezek1ag5wh8xn9ib5',
         ownerType: 'MANAGER',
       },
       create: {
-        id: 'test-reminder-lead',
+        id: 'qiurlpko8u0914y4k1eb8y3h',
         name: 'Test Reminder Lead',
         phone: '9900000099',
         state: 'NEW',
-        teamId: 'test-reminder-team',
-        ownerId: 'test-reminder-manager',
+        teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
+        ownerId: 'dyamh3gezek1ag5wh8xn9ib5',
         ownerType: 'MANAGER',
       },
     });
     await db.reminder.create({
       data: {
         id,
-        leadId: 'test-reminder-lead',
+        leadId: 'qiurlpko8u0914y4k1eb8y3h',
         // Owner = the admin actor. The reminder_write_owner policy
         // is FOR ALL WITH CHECK userId = app.user_id; matching the
         // userId to the admin actor's id satisfies the WITH CHECK.
         // The cron's own claim will use claimedBy = replicaId, not
         // this userId, so this doesn't conflict with the production
         // ownership model.
-        userId: 'test-reminder-admin',
+        userId: 'zhp69koimlj4hqorl1skmpsq',
         type: 'PRE_VISIT_STAFF',
         status: 'SCHEDULED',
         scheduledFor: new Date(Date.now() - 60_000), // 1 minute ago - due

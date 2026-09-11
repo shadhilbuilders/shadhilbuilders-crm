@@ -86,8 +86,9 @@ function parseFilter(query: Record<string, unknown>): ProjectFilterDto {
 
 // Project id format: real cuid2 (T-PROJID-CUID2, 2026-09-08) - the same
 // shape the app generates at runtime. The [projectId] URL segment and every
-// DTO pin it to z.cuid2().
-const ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+// DTO pin it to z.cuid2(); validate strictly here too so a non-cuid2 id
+// (e.g. `fixture-project-a`) is rejected rather than silently accepted.
+const ID_RE = z.cuid2();
 
 @ApiTags('projects')
 @ApiBearerAuth('jwt')
@@ -132,7 +133,7 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ProjectRow> {
-    if (!ID_RE.test(id)) {
+    if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
     const dto: UpdateProjectDto = parseBody(UpdateProjectDtoSchema, body);
@@ -148,7 +149,7 @@ export class ProjectsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<{ id: string }> {
-    if (!ID_RE.test(id)) {
+    if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
     return this.projects.remove(req.user!, id);
@@ -163,7 +164,7 @@ export class ProjectsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<ProjectMemberRow[]> {
-    if (!ID_RE.test(id)) {
+    if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
     return this.projects.listMembers(req.user!, id);
@@ -179,7 +180,7 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ProjectMemberRow> {
-    if (!ID_RE.test(id)) {
+    if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
     const dto: LinkProjectMemberDto = parseBody(
@@ -199,7 +200,7 @@ export class ProjectsController {
     @Param('id') id: string,
     @Param('userId') userId: string,
   ): Promise<{ ok: true }> {
-    if (!ID_RE.test(id) || !ID_RE.test(userId)) {
+    if (!ID_RE.safeParse(id).success || !ID_RE.safeParse(userId).success) {
       throw new BadRequestException(`Invalid id: ${id}/${userId}`);
     }
     return this.projects.unlinkMember(req.user!, id, userId);
