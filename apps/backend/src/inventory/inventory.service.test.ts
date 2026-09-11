@@ -562,6 +562,22 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
     ).rejects.toThrow(/Unit missing not found/);
     expect(client.unit.update).not.toHaveBeenCalled();
   });
+
+  it('returns 409 when the new unitNumber collides in the phase', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.unit.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`phaseId`,`unitNumber`)',
+        { code: 'P2002', clientVersion: '7.10.0' },
+      ),
+    );
+
+    await expect(
+      service.update(makeActor(), 'unit-1', { unitNumber: 'A-102' }),
+    ).rejects.toThrow(/already exists in this phase/);
+    expect(client.auditLog.create).not.toHaveBeenCalled();
+  });
 });
 
 // ─── delete - admin-only + booking guard + audit row ─────────────────

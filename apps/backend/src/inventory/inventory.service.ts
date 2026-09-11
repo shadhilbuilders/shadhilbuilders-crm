@@ -683,21 +683,31 @@ export class InventoryService {
         if (dto.price !== undefined) data['price'] = dto.price.toFixed(2);
         if (dto.status !== undefined) data['status'] = dto.status;
 
-        const updated = await (tx as unknown as PrismaClient).unit.update({
-          where: { id: unitId },
-          data,
-          select: {
-            id: true,
-            phaseId: true,
-            unitNumber: true,
-            bhk: true,
-            facing: true,
-            sqft: true,
-            price: true,
-            status: true,
-            createdAt: true,
-          },
-        });
+        let updated;
+        try {
+          updated = await (tx as unknown as PrismaClient).unit.update({
+            where: { id: unitId },
+            data,
+            select: {
+              id: true,
+              phaseId: true,
+              unitNumber: true,
+              bhk: true,
+              facing: true,
+              sqft: true,
+              price: true,
+              status: true,
+              createdAt: true,
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw new ConflictException(
+              `Unit ${dto.unitNumber ?? existing.unitNumber} already exists in this phase`,
+            );
+          }
+          throw err;
+        }
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
