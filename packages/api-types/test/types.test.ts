@@ -438,13 +438,13 @@ describe('@shadhil/api-types - inventory DTOs', () => {
     expect(r.status).toEqual(['AVAILABLE', 'HOLD']);
   });
 
-  it('UnitFilterDto accepts a readable (non-cuid2) project id', () => {
-    // Project.id is a plain string (cuid() default, but seed data uses
-    // slug-like ids e.g. 'test-reminder-project'). The filter must accept
-    // them or the whole list 400s on those projects.
-    const r = UnitFilterDtoSchema.parse({
-      projectId: 'seed-project-metro-heights',
-    });
-    expect(r.projectId).toBe('seed-project-metro-heights');
+  it('UnitFilterDto rejects a non-cuid2 project id', () => {
+    // cuid2-only contract (2026-09-11): slug/readable seed ids were purged,
+    // so a non-cuid2 projectId is a 400, not silently accepted.
+    expect(() =>
+      UnitFilterDtoSchema.parse({
+        projectId: 'seed-project-metro-heights',
+      }),
+    ).toThrow();
   });
 });
