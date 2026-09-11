@@ -22,6 +22,7 @@ import { Button } from '@paalstack/react-ui';
 
 import type { Role } from '@/apis/client';
 import {
+  activeOrgIdFromPathname,
   activeProjectIdFromPathname,
   projectHref,
   stripProjectSegment,
@@ -101,8 +102,9 @@ export function FloatingActionButton({
 }: FloatingActionButtonProps) {
   const pathname = usePathname();
   const online = useOnlineStatus();
+  const orgId = activeOrgIdFromPathname(pathname);
   const projectId = activeProjectIdFromPathname(pathname);
-  const resolvedHref = href ?? projectHref(projectId, '/leads/new');
+  const resolvedHref = href ?? projectHref(orgId, projectId, '/leads/new');
 
   if (!shouldShowFab(role, pathname, online)) return null;
 
