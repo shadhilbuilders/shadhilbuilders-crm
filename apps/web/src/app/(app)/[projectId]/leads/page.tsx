@@ -40,6 +40,7 @@ import { z } from 'zod';
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
+import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
 
 import {
   useDeleteLead,
@@ -47,7 +48,7 @@ import {
   useLeadsEnvelope,
 } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
-import { canDeleteLeads, useSessionUser } from '@/lib/session';
+import { canDeleteLeads, canReassign, useSessionUser } from '@/lib/session';
 import { isOverdue, LEAD_STATES } from '@/lib/leads';
 import { labelFor } from '@/lib/labels';
 
@@ -61,6 +62,7 @@ type LeadRow = {
   status?: string;
   source?: string;
   ownerName?: string;
+  ownerId?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -77,6 +79,7 @@ const leadRowSchema = z.object({
   status: z.string().optional(),
   source: z.string().optional(),
   ownerName: z.string().optional(),
+  ownerId: z.string().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 }) as unknown as Parameters<typeof DataTableRowActions>[0]['rowSchema'];
@@ -157,12 +160,14 @@ function LeadInboxPageInner() {
   const newTodayCount = envelope?.newTodayCount ?? 0;
 
   const canDelete = user !== null && canDeleteLeads(user.role);
+  const canAssign = user !== null && canReassign(user.role);
   const staffLane =
     user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC');
   const canCreate = user !== null && user.role !== 'TELECALLER';
 
   const [editTarget, setEditTarget] = useState<LeadRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeadRow | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<LeadRow | null>(null);
   const deleteLead = useDeleteLead(deleteTarget?.id ?? null);
 
   function syncUrl(nextQ: string) {
@@ -292,6 +297,14 @@ function LeadInboxPageInner() {
           onDelete={(row) => {
             setDeleteTarget(row);
           }}
+          onReassign={(row) => {
+            setReassignTarget(row);
+          }}
+          onView={(row) => {
+            if (projectId === null) return;
+            void router.push(projectHref(projectId, `/leads/${row.id}`));
+          }}
+          canAssign={canAssign}
         />
       ) : null}
 
@@ -331,6 +344,19 @@ function LeadInboxPageInner() {
         }}
         onCancel={() => {
           setDeleteTarget(null);
+        }}
+      />
+
+      <LeadReassignDialog
+        lead={
+          reassignTarget === null
+            ? null
+            : { id: reassignTarget.id, name: reassignTarget.name }
+        }
+        currentOwnerId={reassignTarget?.ownerId ?? ''}
+        open={reassignTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setReassignTarget(null);
         }}
       />
     </div>
@@ -387,12 +413,15 @@ function LeadTable({
   onStatesChange,
   projectId,
   canDelete,
+  canAssign,
   canCreate,
   isFiltered,
   search,
   onSearchChange,
   onEdit,
   onDelete,
+  onReassign,
+  onView,
 }: {
   rows: LeadRow[];
   total: number;
@@ -407,12 +436,15 @@ function LeadTable({
   onStatesChange: (states: string[]) => void;
   projectId: string | null;
   canDelete: boolean;
+  canAssign: boolean;
   canCreate: boolean;
   isFiltered: boolean;
   search: string;
   onSearchChange: (next: string) => void;
   onEdit: (row: LeadRow) => void;
   onDelete: (row: LeadRow) => void;
+  onReassign: (row: LeadRow) => void;
+  onView: (row: LeadRow) => void;
 }) {
   const columns = useMemo<DataTableColumnDef<LeadRow>[]>(
     () => [
@@ -506,10 +538,15 @@ function LeadTable({
               row={row}
               rowSchema={leadRowSchema}
               actionItems={[
-                { label: 'View', value: 'view' },
+                { label: 'View', value: 'view', onClick: () => onView(row.original) },
                 { label: 'Edit', value: 'edit', onClick: () => onEdit(row.original) },
+                { label: 'Assign', value: 'assign', onClick: () => onReassign(row.original) },
                 { label: 'Delete', value: 'delete', onClick: () => onDelete(row.original) },
-              ].filter((item) => item.value !== 'delete' || canDelete)}
+              ].filter(
+                (item) =>
+                  (item.value !== 'assign' || canAssign) &&
+                  (item.value !== 'delete' || canDelete),
+              )}
             />
           </div>
         ),
@@ -517,7 +554,7 @@ function LeadTable({
         enableHiding: false,
       },
     ],
-    [projectId, canDelete, onEdit, onDelete],
+    [projectId, canDelete, canAssign, onEdit, onDelete, onReassign, onView],
   );
 
   const statusOptions = useMemo(

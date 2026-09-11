@@ -42,7 +42,9 @@ import {
 import type { UpdateLeadDto, LeadStateTransitionDto } from '@shadhil/api-types';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
+import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
 import { useTransitionLead, useUpdateLead } from '@/hooks/queries/crm';
+import { canReassign, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
 
 /**
@@ -78,25 +80,50 @@ type LeadData = {
   name?: string;
   email?: string | null;
   status?: string;
+  ownerId?: string;
 };
 
 export function LeadActionPanel({ lead }: { lead: LeadData }) {
   const status = typeof lead.status === 'string' ? lead.status : 'NEW';
   const outgoing = TRANSITIONS[status] ?? [];
+  const { user } = useSessionUser();
+  const canAssign = user !== null && canReassign(user.role);
+  const [reassignOpen, setReassignOpen] = useState(false);
 
   return (
-    <Card data-qa="lead-action-panel">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Actions
-          <LeadStatusBadge status={status} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <EditLeadForm lead={lead} />
-        <TransitionLeadForm leadId={lead.id} outgoing={outgoing} status={status} />
-      </CardContent>
-    </Card>
+    <>
+      <Card data-qa="lead-action-panel">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Actions
+            <LeadStatusBadge status={status} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <EditLeadForm lead={lead} />
+          <TransitionLeadForm leadId={lead.id} outgoing={outgoing} status={status} />
+          {canAssign ? (
+            <div className="flex justify-end border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setReassignOpen(true)}
+                data-qa="lead-reassign-open"
+              >
+                Assign to...
+              </Button>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+      <LeadReassignDialog
+        lead={{ id: lead.id, name: lead.name ?? 'lead' }}
+        currentOwnerId={lead.ownerId ?? ''}
+        open={reassignOpen}
+        onOpenChange={setReassignOpen}
+      />
+    </>
   );
 }
 
