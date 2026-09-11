@@ -155,16 +155,25 @@ export class WhatsAppClient {
   ) {}
 
   /** Factory from env vars. Throws if any required var is missing -
-   *  we want the failure to be loud at module init, not on first send. */
+   *  we want the failure to be loud at module init, not on first send.
+   *
+   *  Accepts BOTH the legacy `WA_*` names and the newer `WHATSAPP_*`
+   *  names (the test creds use WHATSAPP_*). `WHATSAPP_*` wins when both
+   *  are set; otherwise `WA_*` falls back. */
   static fromEnv(env: NodeJS.ProcessEnv = process.env): WhatsAppClient {
-    const accessToken = env.WA_ACCESS_TOKEN;
-    const phoneNumberId = env.WA_PHONE_NUMBER_ID;
+    const accessToken = env.WHATSAPP_ACCESS_TOKEN ?? env.WA_ACCESS_TOKEN;
+    const phoneNumberId =
+      env.WHATSAPP_PHONE_NUMBER_ID ?? env.WA_PHONE_NUMBER_ID;
     const templateLanguage = env.WA_TEMPLATE_LANGUAGE ?? 'en';
     if (!accessToken) {
-      throw new Error('WA_ACCESS_TOKEN not configured');
+      throw new Error(
+        'WHATSAPP_ACCESS_TOKEN (or WA_ACCESS_TOKEN) not configured',
+      );
     }
     if (!phoneNumberId) {
-      throw new Error('WA_PHONE_NUMBER_ID not configured');
+      throw new Error(
+        'WHATSAPP_PHONE_NUMBER_ID (or WA_PHONE_NUMBER_ID) not configured',
+      );
     }
     return new WhatsAppClient(accessToken, phoneNumberId, templateLanguage);
   }

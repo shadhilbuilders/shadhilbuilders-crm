@@ -56,6 +56,7 @@ async function adminSeed<T>(
       userId: TEST_USER_ID,
       role: 'ADMIN',
       teamId: TEST_TEAM_ID,
+      organizationId: 'org_bootstrap',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
@@ -67,7 +68,7 @@ async function ensureFixtures(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'Outbound Cron Test Team' },
+      create: { id: TEST_TEAM_ID, name: 'Outbound Cron Test Team', organizationId: 'org_bootstrap' },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -78,6 +79,7 @@ async function ensureFixtures(): Promise<void> {
         name: 'Outbound Cron Test',
         role: 'ADMIN',
         teamId: TEST_TEAM_ID,
+        organizationId: 'org_bootstrap',
       },
     });
     // Lead with a per-test unique phone. The `phone` field has a
@@ -99,6 +101,7 @@ async function ensureFixtures(): Promise<void> {
         teamId: TEST_TEAM_ID,
         ownerId: TEST_USER_ID,
         ownerType: 'ADMIN',
+        organizationId: 'org_bootstrap',
       },
     });
   });
@@ -121,6 +124,7 @@ async function seedOutbound(
         direction: 'OUT',
         channel: 'WHATSAPP',
         body: 'test outbound message body',
+        organizationId: 'org_bootstrap',
       },
     });
     await db.outboundMessage.create({
@@ -137,6 +141,7 @@ async function seedOutbound(
           ? { lastAttemptAt: opts.lastAttemptAt }
           : {}),
         ...(opts.wamid !== undefined ? { wamid: opts.wamid } : {}),
+        organizationId: 'org_bootstrap',
       },
     });
   });
