@@ -44,6 +44,7 @@ import {
 } from '@shadhil/api-types';
 import {
   prisma as barePrisma,
+  rlsContextFrom,
   type PrismaClient,
   withRlsContext,
 } from '@shadhil/database';
@@ -166,7 +167,12 @@ export class FeedbacksService {
 
     const id = await withRlsContext(
       this.client,
-      { userId: 'public-api', role: 'PUBLIC_API', teamId: '' },
+      {
+        userId: 'public-api',
+        role: 'PUBLIC_API',
+        teamId: '',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
       async (tx) => {
         // Raw INSERT, not typed `tx.feedback.create` - Prisma 7's typed API
         // path has an RLS interaction quirk with non-user service-marker
@@ -213,7 +219,7 @@ export class FeedbacksService {
 
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (status !== undefined) where.status = status;
@@ -265,7 +271,7 @@ export class FeedbacksService {
   ): Promise<UpdateFeedbackResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).feedback.findUnique({
           where: { id },

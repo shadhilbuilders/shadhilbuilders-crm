@@ -11,6 +11,7 @@
 // break the request path. Every external call is wrapped in try/catch.
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  rlsContextFrom,
   withRlsContext,
   type PrismaClient,
 } from '@shadhil/database';
@@ -62,12 +63,13 @@ export class PushService {
   ): Promise<{ ok: true }> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         await (tx as unknown as PrismaClient).pushSubscription.upsert({
           where: { endpoint: dto.endpoint },
           create: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             endpoint: dto.endpoint,
             p256dh: dto.p256dh,
             auth: dto.auth,
@@ -101,7 +103,7 @@ export class PushService {
     if (!this.enabled) return 0;
     return withRlsContext(
       this.client,
-      { userId, role: 'TELECALLER', teamId: null },
+      { userId, role: 'TELECALLER', teamId: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         const subs = await (tx as unknown as PrismaClient).pushSubscription.findMany({
           where: { userId, platform: 'WEB' },
@@ -130,6 +132,7 @@ export class PushService {
       await client.pushNotification.create({
         data: {
           userId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           type: 'web',
           payload,
           status: 'DELIVERED',

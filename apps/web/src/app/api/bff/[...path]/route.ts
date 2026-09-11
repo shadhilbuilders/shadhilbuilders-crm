@@ -90,7 +90,15 @@ async function forward(
     where: { token: sessionToken },
     select: {
       expiresAt: true,
-      user: { select: { id: true, role: true, teamId: true, email: true } },
+      user: {
+        select: {
+          id: true,
+          role: true,
+          teamId: true,
+          organizationId: true,
+          email: true,
+        },
+      },
     },
   });
   if (session === null || session.expiresAt.getTime() <= Date.now()) {
@@ -101,6 +109,7 @@ async function forward(
     sub: session.user.id,
     role: session.user.role,
     teamId: session.user.teamId,
+    organizationId: session.user.organizationId,
     email: session.user.email,
   });
 

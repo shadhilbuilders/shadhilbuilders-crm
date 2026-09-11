@@ -151,6 +151,17 @@ function makeTx(overrides: {
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
+    rlsContextFrom: vi.fn((actor: {
+      sub: string;
+      role: string;
+      teamId: string | null;
+      organizationId?: string | null;
+    }) => ({
+      userId: actor.sub,
+      role: actor.role,
+      teamId: actor.teamId,
+      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+    })),
     Prisma: {
       raw: (sql: string) => sql,
     },
@@ -171,6 +182,7 @@ const ownerActor: JwtPayload = {
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
   teamId: null,
+  organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',

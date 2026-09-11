@@ -194,6 +194,17 @@ function makeTx(overrides: {
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
+    rlsContextFrom: vi.fn((actor: {
+      sub: string;
+      role: string;
+      teamId: string | null;
+      organizationId?: string | null;
+    }) => ({
+      userId: actor.sub,
+      role: actor.role,
+      teamId: actor.teamId,
+      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+    })),
     withRlsContext: vi.fn(
       async (
         _client: unknown,
@@ -212,6 +223,7 @@ const ownerActor: JwtPayload = {
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
   teamId: null,
+  organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',
@@ -276,6 +288,7 @@ describe('ProjectsService.list', () => {
       userId: 'tc-1',
       role: 'TELECALLER',
       teamId: 'team-1',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     });
   });
 
@@ -337,8 +350,18 @@ describe('ProjectsService.create', () => {
     expect(tx.projectOption.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
-          { projectId: 'proj-new', type: 'FACING', value: 'North' },
-          { projectId: 'proj-new', type: 'BHK', value: '3' },
+          {
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+            projectId: 'proj-new',
+            type: 'FACING',
+            value: 'North',
+          },
+          {
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+            projectId: 'proj-new',
+            type: 'BHK',
+            value: '3',
+          },
         ]),
       }),
     );
@@ -349,8 +372,13 @@ describe('ProjectsService.create', () => {
     const tx = txCapture.current!;
     // Make the first slug lookup find a clash.
     tx.project.findUnique = vi.fn(async (args: MockArgs) => {
-      const where = (args.where ?? {}) as { slug?: string };
-      if (where.slug === 'shadhil-skyline-towers') {
+      const where = (args.where ?? {}) as {
+        slug?: string;
+        organizationId_slug?: { organizationId?: string; slug?: string };
+      };
+      const slug =
+        where.organizationId_slug?.slug ?? where.slug;
+      if (slug === 'shadhil-skyline-towers') {
         return {
           id: 'existing',
           slug: 'shadhil-skyline-towers',

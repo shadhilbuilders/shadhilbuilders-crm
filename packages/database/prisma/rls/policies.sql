@@ -1,16 +1,25 @@
 -- ────────────────────────────────────────────────────────────────────────────
 -- Shadhil Builders CRM - Row-Level Security policies
 -- ────────────────────────────────────────────────────────────────────────────
--- All policies key off three session variables, set per-request via
+-- All policies key off four session variables, set per-request via
 -- withRlsContext() in src/rls.ts:
 --
---   app.user_id      cuid of the authenticated user
---   app.user_role    ADMIN | MANAGER | SALES_EXEC | TELECALLER
---   app.user_team_id cuid of the user's team (null for ADMIN with no team)
+--   app.user_id       cuid of the authenticated user
+--   app.user_role     ADMIN | MANAGER | SALES_EXEC | TELECALLER
+--   app.user_team_id  cuid of the user's team (null for ADMIN with no team)
+--   app.user_org_id   cuid of the organization the actor belongs to
+--
+-- T-ORG (2026-09-11): EVERY policy is now org-scoped. A user can never see
+-- or touch another org's rows because every policy ALSO requires
+--
+--     "<Table>"."organizationId" = current_setting('app.user_org_id', true)
 --
 -- These are intentionally read with current_setting('app.<x>', true) so a
 -- missing setting returns NULL (rather than throwing) - the policies then
--- evaluate NULL comparisons safely (no rows match).
+-- evaluate NULL comparisons safely (no rows match). In particular a NULL
+-- app.user_org_id yields NULL = 'x' which is never true (fail-closed).
+-- On WhatsappUnknownContact (organizationId is NULLABLE) the system keeps
+-- org-less rows visible via `"organizationId" IS NULL OR ... = app.user_org_id`.
 --
 -- ENG REVIEW A5: POOL_MODE must be 'session' for SET LOCAL to persist
 -- across the transaction. Boot-check.ts fails startup otherwise.
@@ -27,6 +36,30 @@
 -- ── Lead ───────────────────────────────────────────────────────────────────
 ALTER TABLE "Lead" ENABLE ROW LEVEL SECURITY;
 
+-- ── Organization (tenant axis) ──────────────────────────────────────────────
+-- T-ORG (2026-09-11): the Organization table must NOT be world-readable.
+-- A user sees ONLY the org row they belong to (app.user_org_id == Organization.id).
+-- CRON_SERVICE gets an org-scoped bypass for system reads (webhook ingest,
+-- seed verification) mirroring the lead/team CRON conventions.
+ALTER TABLE "Organization" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY org_select_own ON "Organization"
+  FOR SELECT
+  USING (
+    "id" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY org_cron_service_all ON "Organization"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "id" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "id" = current_setting('app.user_org_id', true)
+  );
+
 CREATE POLICY lead_select_telecaller ON "Lead"
   FOR SELECT
   USING (
@@ -35,6 +68,7 @@ CREATE POLICY lead_select_telecaller ON "Lead"
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
     )
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 CREATE POLICY lead_select_manager ON "Lead"
@@ -42,17 +76,22 @@ CREATE POLICY lead_select_manager ON "Lead"
   USING (
     current_setting('app.user_role', true) = 'MANAGER'
     AND "teamId" = current_setting('app.user_team_id', true)
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 CREATE POLICY lead_select_admin ON "Lead"
   FOR SELECT
-  USING (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY lead_insert_telecaller ON "Lead"
   FOR INSERT
   WITH CHECK (
     current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER', 'ADMIN')
     AND "teamId" = current_setting('app.user_team_id', true)
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 -- T-TEAMLESS-CREATE (2026-09-08): allow ADMIN (and OWNER, downcast to ADMIN
@@ -65,7 +104,10 @@ CREATE POLICY lead_insert_telecaller ON "Lead"
 -- team-equality enforcement; only ADMIN bypasses it.
 CREATE POLICY lead_insert_admin ON "Lead"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY lead_update_telecaller ON "Lead"
   FOR UPDATE
@@ -75,6 +117,7 @@ CREATE POLICY lead_update_telecaller ON "Lead"
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
     )
+    AND "organizationId" = current_setting('app.user_org_id', true)
   )
   WITH CHECK (
     current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
@@ -82,6 +125,7 @@ CREATE POLICY lead_update_telecaller ON "Lead"
       "ownerId" = current_setting('app.user_id', true)
       OR "coOwnerId" = current_setting('app.user_id', true)
     )
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 CREATE POLICY lead_update_manager ON "Lead"
@@ -89,30 +133,43 @@ CREATE POLICY lead_update_manager ON "Lead"
   USING (
     current_setting('app.user_role', true) = 'MANAGER'
     AND "teamId" = current_setting('app.user_team_id', true)
+    AND "organizationId" = current_setting('app.user_org_id', true)
   )
   WITH CHECK (
     current_setting('app.user_role', true) = 'MANAGER'
     AND "teamId" = current_setting('app.user_team_id', true)
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 CREATE POLICY lead_update_admin ON "Lead"
   FOR UPDATE
-  USING (current_setting('app.user_role', true) = 'ADMIN')
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY lead_delete_admin ON "Lead"
   FOR DELETE
-  USING (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
--- ── Activity (scoped via its parent Lead) ──────────────────────────────────
+-- ── Activity (scoped via its parent Lead + denormalized org) ───────────────
 ALTER TABLE "Activity" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY activity_select_team ON "Activity"
   FOR SELECT
   USING (
-    EXISTS (
+    "Activity"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Activity"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
@@ -129,9 +186,11 @@ CREATE POLICY activity_select_team ON "Activity"
 CREATE POLICY activity_insert_team ON "Activity"
   FOR INSERT
   WITH CHECK (
-    EXISTS (
+    "Activity"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Activity"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -144,15 +203,17 @@ CREATE POLICY activity_insert_team ON "Activity"
     )
   );
 
--- ── SiteVisit (team-scoped via lead) ───────────────────────────────────────
+-- ── SiteVisit (team-scoped via lead + denormalized org) ────────────────────
 ALTER TABLE "SiteVisit" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY site_visit_select_team ON "SiteVisit"
   FOR SELECT
   USING (
-    EXISTS (
+    "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "SiteVisit"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
@@ -169,9 +230,11 @@ CREATE POLICY site_visit_select_team ON "SiteVisit"
 CREATE POLICY site_visit_write_team ON "SiteVisit"
   FOR ALL
   USING (
-    EXISTS (
+    "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "SiteVisit"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -184,9 +247,11 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
     )
   )
   WITH CHECK (
-    EXISTS (
+    "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "SiteVisit"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -208,17 +273,22 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
 -- team-equality enforcement, TELECALLER/SALES_EXEC still gate on ownerId.
 CREATE POLICY site_visit_insert_admin ON "SiteVisit"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
--- ── Message (team-scoped via lead) ─────────────────────────────────────────
+-- ── Message (team-scoped via lead + denormalized org) ───────────────────────
 ALTER TABLE "Message" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY message_select_team ON "Message"
   FOR SELECT
   USING (
-    EXISTS (
+    "Message"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Message"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
@@ -235,9 +305,11 @@ CREATE POLICY message_select_team ON "Message"
 CREATE POLICY message_insert_team ON "Message"
   FOR INSERT
   WITH CHECK (
-    EXISTS (
+    "Message"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Message"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -259,17 +331,22 @@ CREATE POLICY message_insert_team ON "Message"
 -- bypasses it.
 CREATE POLICY message_insert_admin ON "Message"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
--- ── Booking (team-scoped via lead) ─────────────────────────────────────────
+-- ── Booking (team-scoped via lead + denormalized org) ───────────────────────
 ALTER TABLE "Booking" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY booking_select_team ON "Booking"
   FOR SELECT
   USING (
-    EXISTS (
+    "Booking"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Booking"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
@@ -286,9 +363,11 @@ CREATE POLICY booking_select_team ON "Booking"
 CREATE POLICY booking_write_team ON "Booking"
   FOR ALL
   USING (
-    EXISTS (
+    "Booking"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Booking"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -301,9 +380,11 @@ CREATE POLICY booking_write_team ON "Booking"
     )
   )
   WITH CHECK (
-    EXISTS (
+    "Booking"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Booking"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -326,8 +407,14 @@ CREATE POLICY booking_write_team ON "Booking"
 -- team-equality enforcement, TELECALLER/SALES_EXEC still gate on ownerId.
 CREATE POLICY booking_write_admin ON "Booking"
   FOR ALL
-  USING (current_setting('app.user_role', true) = 'ADMIN')
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 -- ── Reminder (ownerId-scoped; team visibility for managers) ─────────────────
 ALTER TABLE "Reminder" ENABLE ROW LEVEL SECURITY;
@@ -335,15 +422,24 @@ ALTER TABLE "Reminder" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY reminder_select_owner ON "Reminder"
   FOR SELECT
   USING (
-    "userId" = current_setting('app.user_id', true)
-    OR current_setting('app.user_role', true) = 'ADMIN'
-    OR current_setting('app.user_role', true) = 'MANAGER'
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      "userId" = current_setting('app.user_id', true)
+      OR current_setting('app.user_role', true) = 'ADMIN'
+      OR current_setting('app.user_role', true) = 'MANAGER'
+    )
   );
 
 CREATE POLICY reminder_write_owner ON "Reminder"
   FOR ALL
-  USING ("userId" = current_setting('app.user_id', true))
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 -- T-CRONS (2026-09-07): explicit service-account policy so the reminder
 -- cron (role=CRON_SERVICE) can claim any row regardless of owner. The
@@ -366,18 +462,24 @@ CREATE POLICY reminder_cron_service ON "Reminder"
   FOR ALL
   TO shadhil_app
   USING (
-    (
-      current_setting('app.user_role', true) = 'CRON_SERVICE'
-      AND current_setting('app.user_id', true) = 'cron-service'
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      (
+        current_setting('app.user_role', true) = 'CRON_SERVICE'
+        AND current_setting('app.user_id', true) = 'cron-service'
+      )
+      OR "userId" = current_setting('app.user_id', true)
     )
-    OR "userId" = current_setting('app.user_id', true)
   )
   WITH CHECK (
-    (
-      current_setting('app.user_role', true) = 'CRON_SERVICE'
-      AND current_setting('app.user_id', true) = 'cron-service'
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      (
+        current_setting('app.user_role', true) = 'CRON_SERVICE'
+        AND current_setting('app.user_id', true) = 'cron-service'
+      )
+      OR "userId" = current_setting('app.user_id', true)
     )
-    OR "userId" = current_setting('app.user_id', true)
   );
 
 -- ── Notification (only owner) ──────────────────────────────────────────────
@@ -385,94 +487,142 @@ ALTER TABLE "Notification" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY notification_select_owner ON "Notification"
   FOR SELECT
-  USING ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY notification_update_owner ON "Notification"
   FOR UPDATE
-  USING ("userId" = current_setting('app.user_id', true))
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY notification_delete_owner ON "Notification"
   FOR DELETE
-  USING ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY notification_insert_owner ON "Notification"
   FOR INSERT
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 -- ── PushSubscription (only owner) ─────────────────────────────────────────
 ALTER TABLE "PushSubscription" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY push_subscription_select_owner ON "PushSubscription"
   FOR SELECT
-  USING ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY push_subscription_insert_owner ON "PushSubscription"
   FOR INSERT
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY push_subscription_update_owner ON "PushSubscription"
   FOR UPDATE
-  USING ("userId" = current_setting('app.user_id', true))
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY push_subscription_delete_owner ON "PushSubscription"
   FOR DELETE
-  USING ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 -- ── PushNotification (only owner) ──────────────────────────────────────────
 ALTER TABLE "PushNotification" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY push_notification_select_owner ON "PushNotification"
   FOR SELECT
-  USING ("userId" = current_setting('app.user_id', true));
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
 CREATE POLICY push_notification_insert_owner ON "PushNotification"
   FOR INSERT
-  WITH CHECK ("userId" = current_setting('app.user_id', true));
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
 
--- ── AuditLog (admin sees all; others see their own) ────────────────────────
+-- ── AuditLog (admin sees all in org; others see their own) ─────────────────
 ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY auditlog_select_admin_or_owner ON "AuditLog"
   FOR SELECT
   USING (
-    current_setting('app.user_role', true) = 'ADMIN'
-    OR "userId" = current_setting('app.user_id', true)
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR "userId" = current_setting('app.user_id', true)
+    )
   );
 
 CREATE POLICY auditlog_insert_any_authenticated ON "AuditLog"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_id', true) IS NOT NULL);
+  WITH CHECK (
+    current_setting('app.user_id', true) IS NOT NULL
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
--- ── Consent (admin sees all; others see leads they own) ────────────────────
+-- ── Consent (admin sees all in org; others see leads they own) ─────────────
 ALTER TABLE "Consent" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY consent_select_admin_or_owner ON "Consent"
   FOR SELECT
   USING (
-    current_setting('app.user_role', true) = 'ADMIN'
-    OR EXISTS (
-      SELECT 1 FROM "Lead" l
-      WHERE l.id = "Consent"."leadId"
-        AND (
-          (current_setting('app.user_role', true) = 'MANAGER'
-           AND l."teamId" = current_setting('app.user_team_id', true))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
-              AND (
-                l."ownerId" = current_setting('app.user_id', true)
-                OR l."coOwnerId" = current_setting('app.user_id', true)
-              ))
-        )
+    "Consent"."organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR EXISTS (
+        SELECT 1 FROM "Lead" l
+        WHERE l.id = "Consent"."leadId"
+          AND l."organizationId" = current_setting('app.user_org_id', true)
+          AND (
+            (current_setting('app.user_role', true) = 'MANAGER'
+             AND l."teamId" = current_setting('app.user_team_id', true))
+            OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+                AND (
+                  l."ownerId" = current_setting('app.user_id', true)
+                  OR l."coOwnerId" = current_setting('app.user_id', true)
+                ))
+          )
+      )
     )
   );
 
 CREATE POLICY consent_insert_owner ON "Consent"
   FOR INSERT
   WITH CHECK (
-    EXISTS (
+    "Consent"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
       SELECT 1 FROM "Lead" l
       WHERE l.id = "Consent"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
           (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
            AND l."teamId" = current_setting('app.user_team_id', true))
@@ -491,9 +641,9 @@ CREATE POLICY consent_insert_owner ON "Consent"
 -- The rules table is server-side state consulted by the engine at lead-
 -- creation time (apps/backend/src/leads/leads.service.ts::create). Every
 -- MANAGER needs to SELECT their team's rules so the engine can evaluate
--- them; ADMIN/OWNER see everything. No INSERT/UPDATE/DELETE policies -
--- rule management is an admin-class concern, exercised today via the
--- seed/bootstrap path (DIRECT_DATABASE_URL bypasses RLS) and tomorrow
+-- them; ADMIN/OWNER see everything in the org. No INSERT/UPDATE/DELETE
+-- policies - rule management is an admin-class concern, exercised today via
+-- the seed/bootstrap path (DIRECT_DATABASE_URL bypasses RLS) and tomorrow
 -- via a dedicated admin endpoint with its own RLS-friendly write path.
 -- Until that endpoint ships, INSERT/UPDATE/DELETE return zero rows
 -- (DEFAULT DENY) on the pooled role.
@@ -502,11 +652,14 @@ ALTER TABLE "ManagerAssignmentRule" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
   FOR SELECT
   USING (
-    (
-      current_setting('app.user_role', true) = 'MANAGER'
-      AND "teamId" = current_setting('app.user_team_id', true)
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      (
+        current_setting('app.user_role', true) = 'MANAGER'
+        AND "teamId" = current_setting('app.user_team_id', true)
+      )
+      OR current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
     )
-    OR current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
   );
 -- ────────────────────────────────────────────────────────────────────────────
 -- AR-1 (2026-08-31): FORCE ROW LEVEL SECURITY.
@@ -524,7 +677,7 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'ProjectOption','WhatsappUnknownContact'
+    'ProjectOption','WhatsappUnknownContact','Organization'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -555,7 +708,7 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'ProjectOption','WhatsappUnknownContact'
+    'ProjectOption','WhatsappUnknownContact','Organization'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);
@@ -590,24 +743,70 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON "WhatsappUnknownContact" TO shadhil_app;
 ALTER TABLE "WebhookEvent" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WhatsappUnknownContact" ENABLE ROW LEVEL SECURITY;
 
+-- CRON_SERVICE is a system role with no real user/org; withRlsContext sets
+-- app.user_org_id to the target org ('ceid01lpfe1esm8jwsxid41k28' in the single-org
+-- deploy) so these bypasses stay org-scoped.
 CREATE POLICY webhook_cron_service_all ON "WebhookEvent"
   FOR ALL
-  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
-  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY webhook_select_admin ON "WebhookEvent"
   FOR SELECT
-  USING (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR current_setting('app.user_role', true) = 'OWNER'
+    )
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- Outbound delivery feed: ADMIN/OWNER SELECT for the integrations
+-- whatsapp-delivery page (2026-09-11). Without this, only CRON_SERVICE
+-- (outbound_cron_service_select) can read OutboundMessage, so the ops feed
+-- would return zero rows for staff. Org-scoped like the cron policy.
+CREATE POLICY outbound_select_admin ON "OutboundMessage"
+  FOR SELECT
+  USING (
+    (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR current_setting('app.user_role', true) = 'OWNER'
+    )
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY webhook_update_admin ON "WebhookEvent"
   FOR UPDATE
-  USING (current_setting('app.user_role', true) = 'ADMIN')
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
+-- WhatsappUnknownContact.organizationId is NULLABLE (eng review Finding 3) -
+-- org-less rows (legacy / pre-org) are kept visible to the system with
+-- `"organizationId" IS NULL OR "organizationId" = app.user_org_id`, while
+-- rows owned by a DIFFERENT org are never visible. This is the multi-org-safe
+-- form: NULL rows belong to no org, so they cannot leak across tenants.
 CREATE POLICY wa_unknown_cron_service_all ON "WhatsappUnknownContact"
   FOR ALL
-  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
-  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
+  );
 
 -- Admin-class (ADMIN/OWNER/MANAGER) can see and update the follow-up
 -- queue. The WhatsappUnknownContact table has no teamId column -
@@ -618,15 +817,18 @@ CREATE POLICY wa_unknown_select_admin_class ON "WhatsappUnknownContact"
   FOR SELECT
   USING (
     current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
   );
 
 CREATE POLICY wa_unknown_update_admin_class ON "WhatsappUnknownContact"
   FOR UPDATE
   USING (
     current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
   )
   WITH CHECK (
     current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
   );
 
 -- T-E2b follow-up (2026-09-05): INSERT bypass for admin-class so
@@ -638,6 +840,7 @@ CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
   FOR INSERT
   WITH CHECK (
     current_setting('app.user_role', true) IN ('ADMIN', 'OWNER', 'MANAGER')
+    AND ("organizationId" IS NULL OR "organizationId" = current_setting('app.user_org_id', true))
   );
 
 -- ────────────────────────────────────────────────────────────────────
@@ -671,11 +874,17 @@ CREATE POLICY wa_unknown_insert_admin_class ON "WhatsappUnknownContact"
 -- policy (outbound_delete_admin) is for operator cleanup.
 CREATE POLICY outbound_cron_service_select ON "OutboundMessage"
   FOR SELECT
-  USING (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY outbound_cron_service_insert ON "OutboundMessage"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 -- ────────────────────────────────────────────────────────────────────
 -- Message INSERT bypass for CRON_SERVICE
@@ -693,7 +902,10 @@ CREATE POLICY outbound_cron_service_insert ON "OutboundMessage"
 -- policy (the Message row is visible to the lead's team only).
 CREATE POLICY message_insert_cron_service ON "Message"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 -- Message DELETE bypass for ADMIN/CRON_SERVICE (cleanup paths,
 -- e.g. test fixtures, manual purges). Without this, the bare
@@ -704,8 +916,11 @@ CREATE POLICY message_insert_cron_service ON "Message"
 CREATE POLICY message_delete_admin_or_cron ON "Message"
   FOR DELETE
   USING (
-    current_setting('app.user_role', true) = 'ADMIN'
-    OR current_setting('app.user_role', true) = 'CRON_SERVICE'
+    (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR current_setting('app.user_role', true) = 'CRON_SERVICE'
+    )
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 -- OutboundMessage status updates from the WhatsApp status webhook
@@ -715,8 +930,14 @@ CREATE POLICY message_delete_admin_or_cron ON "Message"
 -- the system. Add a CRON_SERVICE bypass.
 CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
   FOR UPDATE
-  USING (current_setting('app.user_role', true) = 'CRON_SERVICE')
-  WITH CHECK (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 -- The inbound handler also needs to SELECT the Lead (to look it
 -- up by phoneE164) and SELECT the existing WhatsappUnknownContact
@@ -729,7 +950,10 @@ CREATE POLICY outbound_update_cron_service ON "OutboundMessage"
 -- policy, so staff still only see messages for leads they own.
 CREATE POLICY lead_select_cron_service ON "Lead"
   FOR SELECT
-  USING (current_setting('app.user_role', true) = 'CRON_SERVICE');
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 -- WhatsappUnknownContact SELECT for the upsert: the existing
 -- cron_service_all policy already covers this (FOR ALL = all
@@ -739,7 +963,8 @@ CREATE POLICY lead_select_cron_service ON "Lead"
 -- ENABLE + policies landed in migration 20260905203000 (previously the
 -- table had FORCE without ENABLE and zero policies - RLS was a no-op).
 -- SELECT is open to every authenticated role (the sidebar switcher needs
--- the registry; RERA/CMDA are public-record fields). Writes are
+-- the registry; RERA/CMDA are public-record fields) - but STILL org-gated
+-- so an actor only sees their own org's projects. Writes are
 -- ADMIN-class; OWNER-only delete is enforced ABOVE this layer in
 -- ProjectsService (withRlsContext downcasts OWNER→ADMIN, so the GUC
 -- cannot distinguish them - the service's JWT role check is the precise
@@ -751,17 +976,30 @@ CREATE POLICY project_select_any_authenticated ON "Project"
   USING (
     current_setting('app.user_role', true) IN
       ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 CREATE POLICY project_insert_admin ON "Project"
   FOR INSERT
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY project_update_admin ON "Project"
   FOR UPDATE
-  USING (current_setting('app.user_role', true) = 'ADMIN')
-  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
 
 CREATE POLICY project_delete_admin ON "Project"
   FOR DELETE
-  USING (current_setting('app.user_role', true) = 'ADMIN');
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );

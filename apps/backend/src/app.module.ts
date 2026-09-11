@@ -10,6 +10,7 @@ import { PlaceholderGateModule } from './auth/placeholder-gate.middleware';
 import { UsersModule } from './users/users.module';
 import { LeadsModule } from './leads/leads.module';
 import { TeamsModule } from './teams/teams.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { ProjectsModule } from './projects/projects.module';
 import { VisitsModule } from './visits/visits.module';
 import { ChatModule } from './chat/chat.module';
@@ -25,6 +26,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whatsapp-unknown-contacts.module';
 import { FeedbacksModule } from './feedbacks/feedbacks.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { PublicLeadsModule } from './public-leads/public-leads.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -54,6 +56,7 @@ import { AlertsModule } from './alerts/alerts.module';
     BetterAuthMiddlewareModule,
     LeadsModule,
     TeamsModule,
+    OrganizationsModule,
     // T-ProjectSwitch: real project registry CRUD (GET feeds the sidebar
     // switcher; POST/PATCH admin-class; DELETE owner-only).
     ProjectsModule,
@@ -81,6 +84,9 @@ import { AlertsModule } from './alerts/alerts.module';
     // (API-key-gated submit) register. It needs no other module imports -
     // FeedbacksService only uses the global PrismaService.
     FeedbacksModule,
+    // Integrations: read-only ops telemetry feeds (webhook events + WA
+    // delivery). ADMIN/OWNER only; needs no other module imports.
+    IntegrationsModule,
     // Public leads (landing-page enquiries → real Leads). Depends on
     // LeadsModule (PublicLeadsService → LeadsService.create) and reuses the
     // ApiKeyGuard with LEADS_API_KEY. Registers POST /api/public/leads.

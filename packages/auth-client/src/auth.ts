@@ -63,6 +63,21 @@ export const auth: any = betterAuth({
         defaultValue: null,
         input: false,
       },
+      // T-ORG (2026-09-11, eng review A4): Organization is the tenant axis.
+      // It is a NOT NULL column with no DB default, so like `role` (B4a), a
+      // bare better-auth signup insert would be rejected by Prisma. Declare
+      // it as an additionalField with a server-side default so every
+      // better-auth-created user lands in the bootstrap org. The jwt()
+      // plugin embeds additionalFields into the token's `user` claim, which
+      // is what `verifyJwt` (packages/auth-client/src/jwt.ts) reads and now
+      // REQUIRES fail-closed. Real multi-org signup-to-org routing is the
+      // deferred org-bootstrap TODO.
+      organizationId: {
+        type: 'string',
+        required: false,
+        defaultValue: 'ceid01lpfe1esm8jwsxid41k28',
+        input: false,
+      },
     },
   },
 

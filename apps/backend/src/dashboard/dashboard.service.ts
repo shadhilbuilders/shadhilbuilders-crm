@@ -19,7 +19,7 @@
 // Every query runs inside ONE withRlsContext so the RLS session vars are set
 // once and all aggregates see the same role-scoped view (AGENTS.md mandatory).
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
-import { Prisma, withRlsContext, type PrismaClient, type Role } from '@shadhil/database';
+import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient, type Role } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   DashboardOverviewStats,
@@ -121,7 +121,7 @@ export class DashboardService {
   ): Promise<DashboardStats> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const txClient = tx as unknown as PrismaClient;
         const leadWhere = await this.leadWhere(txClient, actor, query.projectId);
@@ -386,7 +386,7 @@ export class DashboardService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const txClient = tx as unknown as PrismaClient;
         const now = new Date();

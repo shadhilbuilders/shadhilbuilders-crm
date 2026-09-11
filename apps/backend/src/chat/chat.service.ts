@@ -26,7 +26,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext,
+  withRlsContext, rlsContextFrom,
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
@@ -96,7 +96,7 @@ export class ChatService {
   ): Promise<MessageListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // Verify the lead exists under the actor's scope - a
         // non-visible lead returns 0 messages anyway (the JOIN-based
@@ -172,7 +172,7 @@ export class ChatService {
     const kind: 'CUSTOMER' | 'INTERNAL' = dto.kind ?? 'CUSTOMER';
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // RLS-scoped lead check. message_insert_team gates via the
         // parent Lead's team/owner - a non-visible lead surfaces as
@@ -196,6 +196,7 @@ export class ChatService {
         const created = await (tx as unknown as PrismaClient).message.create({
           data: {
             leadId: dto.leadId,
+            organizationId: actor.organizationId,
             userId: actor.sub,
             direction: 'OUT',
             channel: dto.channel ?? 'IN_APP',
@@ -218,6 +219,7 @@ export class ChatService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'chat.send',
             entityType: 'Message',
             entityId: created.id,
