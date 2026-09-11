@@ -27,7 +27,7 @@ import { useDebouncedValue } from '@paalstack/react-hooks';
 import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 
 import { BookingEditDialog } from '@/components/bookings/BookingEditDialog';
@@ -101,6 +101,17 @@ export default function BookingsPage() {
   const projectId = typeof params?.projectId === 'string' ? params.projectId : null;
   const isOnline = useOnlineStatus();
 
+  // Better-auth's useSession resolves from the cookie synchronously on the
+  // client but reports isPending=true during SSR. Without this gate the
+  // server HTML renders no action (user=null) while hydration swaps in the
+  // "New booking" button → "Hydration failed because the server rendered
+  // HTML didn't match the client." Render the action only after mount
+  // (same pattern as the inventory / users pages).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Server-driven status filter (T-SRVPG): the DataTable's built-in facet
   // filter is client-side over the loaded page, which is wrong under server
   // pagination. A MultiSelect in the toolbar feeds the `status` query param.
@@ -132,17 +143,18 @@ export default function BookingsPage() {
     : [];
 
   const canCreate =
+    mounted &&
     user !== null &&
     (user.role === 'ADMIN' ||
       user.role === 'OWNER' ||
       user.role === 'MANAGER' ||
       user.role === 'SALES_EXEC');
-  const canApprove = canApproveBookings(user?.role);
+  const canApprove = mounted && canApproveBookings(user?.role);
   // Delete: ADMIN/OWNER only (mirrors the inventory unit delete). Edit is
   // available to everyone who can see the row - the backend RLS write
   // policy already scopes staff (TELECALLER/SALES_EXEC) to their own
   // bookings via the parent Lead owner.
-  const canDelete = user !== null && isAdminLike(user.role);
+  const canDelete = mounted && user !== null && isAdminLike(user.role);
 
   const isFiltered = statusFilter.length > 0 || serverSearch !== undefined;
 
@@ -477,21 +489,21 @@ function BookingPipeline() {
     { icon: LuBadgeCheck, label: 'Approved' },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <span className="flex flex-wrap items-center gap-1.5">
       {stages.map((stage, index) => (
         <span key={stage.label} className="flex items-center gap-1.5">
           {index > 0 ? (
-            <LuArrowRight className="text-muted-foreground/50 size-3.5" aria-hidden />
+            <LuArrowRight className="text-muted-foreground/50 size-4" aria-hidden />
           ) : null}
-          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-            <stage.icon className="size-3.5" aria-hidden />
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-sm">
+            <stage.icon className="size-4" aria-hidden />
             {stage.label}
           </span>
         </span>
       ))}
-      <span className="text-muted-foreground/70 ml-1 text-xs">
+      <span className="text-muted-foreground ml-1 text-sm">
         · Manager approval is the gating step
       </span>
-    </div>
+    </span>
   );
 }
