@@ -15,6 +15,7 @@ import {
   Delete,
   Get,
   Inject,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -109,6 +110,26 @@ export class ProjectsController {
     @Query() query: Record<string, unknown>,
   ): Promise<ProjectListResult> {
     return this.projects.list(req.user!, parseFilter(query));
+  }
+
+  @Get('by-slug/:slug')
+  @ApiOperation({
+    summary:
+      'Resolve a project by slug within the actor\'s org (for the ' +
+      '[projectSlug] URL segment). Returns the project id + slug so the ' +
+      'page can key id-based hooks/APIs.',
+  })
+  async bySlug(
+    @Req() req: AuthedRequest,
+    @Param('slug') slug: string,
+  ): Promise<{ id: string; slug: string; name: string }> {
+    const project = await this.projects.findBySlug(req.user!, slug);
+    if (project === null) {
+      throw new NotFoundException(
+        'Project not found in your organization or not accessible',
+      );
+    }
+    return project;
   }
 
   @Post()

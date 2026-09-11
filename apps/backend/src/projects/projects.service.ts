@@ -23,7 +23,7 @@
 // Every write emits an AuditLog row inside the same withRlsContext
 // transaction (mirrors leads.service.ts createInTransaction).
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { withRlsContext, type PrismaClient } from '@shadhil/database';
+import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreateProjectDto,
@@ -102,7 +102,7 @@ export class ProjectsService {
     // Server-source pagination: skip/take from limit/offset (T-PROJ-SRVPG).
     const [rows, total] = await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       (tx) =>
         Promise.all([
           tx.project.findMany({
@@ -141,7 +141,7 @@ export class ProjectsService {
   private async listAll(actor: JwtPayload): Promise<ProjectListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const [rows, total] = await Promise.all([
           tx.project.findMany({
@@ -176,6 +176,33 @@ export class ProjectsService {
     );
   }
 
+  /**
+   * Resolve a project by slug within the actor's org. This backs the
+   * slug-based URL scheme: the project layout receives `projectSlug` from
+   * the URL and resolves it to the project id (which the page then uses
+   * for id-keyed hooks/APIs).
+   *
+   * Scoped to the actor's organization via their JWT `organizationId`,
+   * combined with the `@@unique([organizationId, slug])` index. RLS is a
+   * second wall. Returns null when the project is missing or soft-deleted.
+   */
+  async findBySlug(
+    actor: JwtPayload,
+    slug: string,
+  ): Promise<{ id: string; slug: string; name: string } | null> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const row = await tx.project.findFirst({
+        where: {
+          organizationId: actor.organizationId,
+          slug,
+          deletedAt: null,
+        },
+        select: { id: true, slug: true, name: true },
+      });
+      return row ?? null;
+    });
+  }
+
   /** Create a project. ADMIN/OWNER only. Slug derived from name. */
   async create(actor: JwtPayload, dto: CreateProjectDto): Promise<ProjectRow> {
     if (!isAdminClass(actor.role)) {
@@ -185,11 +212,12 @@ export class ProjectsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const slug = await this.uniqueSlug(
           tx as unknown as PrismaClient,
           slugifyProjectName(dto.name),
+          actor.organizationId,
         );
         const created = await tx.project.create({
           data: {
@@ -198,6 +226,7 @@ export class ProjectsService {
             address: dto.address ?? null,
             reraNumber: dto.reraNumber ?? null,
             cmdaNumber: dto.cmdaNumber ?? null,
+            organizationId: actor.organizationId,
           },
         });
         // Auto-seed the default facing/BHK option sets so a new project's
@@ -205,21 +234,22 @@ export class ProjectsService {
         // editable/removable later on the phases page).
         await tx.projectOption.createMany({
           data: [
-            { projectId: created.id, type: 'FACING', value: 'North' },
-            { projectId: created.id, type: 'FACING', value: 'South' },
-            { projectId: created.id, type: 'FACING', value: 'East' },
-            { projectId: created.id, type: 'FACING', value: 'West' },
-            { projectId: created.id, type: 'BHK', value: '1' },
-            { projectId: created.id, type: 'BHK', value: '2' },
-            { projectId: created.id, type: 'BHK', value: '3' },
-            { projectId: created.id, type: 'BHK', value: '4' },
-            { projectId: created.id, type: 'BHK', value: '5' },
+            { projectId: created.id, type: 'FACING', value: 'North', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'FACING', value: 'South', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'FACING', value: 'East', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'FACING', value: 'West', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'BHK', value: '1', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'BHK', value: '2', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'BHK', value: '3', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'BHK', value: '4', organizationId: actor.organizationId },
+            { projectId: created.id, type: 'BHK', value: '5', organizationId: actor.organizationId },
           ],
         });
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             action: 'project.create',
+            organizationId: actor.organizationId,
             entityType: 'Project',
             entityId: created.id,
             after: {
@@ -252,7 +282,7 @@ export class ProjectsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.project.findUnique({ where: { id } });
         if (existing === null) {
@@ -275,6 +305,7 @@ export class ProjectsService {
           data: {
             userId: actor.sub,
             action: 'project.update',
+            organizationId: actor.organizationId,
             entityType: 'Project',
             entityId: id,
             before: {
@@ -310,7 +341,7 @@ export class ProjectsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.project.findUnique({
           where: { id },
@@ -338,6 +369,7 @@ export class ProjectsService {
           data: {
             userId: actor.sub,
             action: 'project.delete',
+            organizationId: actor.organizationId,
             entityType: 'Project',
             entityId: id,
             before: {
@@ -370,7 +402,7 @@ export class ProjectsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const project = await tx.project.findUnique({
           where: { id: projectId },
@@ -394,6 +426,7 @@ export class ProjectsService {
             projectId,
             userId: dto.userId,
             role: user.role,
+            organizationId: actor.organizationId,
           },
         });
         // Provenance: an EXPLICIT member is not inferred from lead ownership.
@@ -422,7 +455,7 @@ export class ProjectsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const project = await tx.project.findUnique({
           where: { id: projectId },
@@ -444,6 +477,7 @@ export class ProjectsService {
           data: {
             userId: actor.sub,
             action: 'project.member.unlink',
+            organizationId: actor.organizationId,
             entityType: 'Project',
             entityId: projectId,
             before: {
@@ -472,7 +506,7 @@ export class ProjectsService {
   ): Promise<ProjectMemberRow[]> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const project = await tx.project.findUnique({
           where: { id: projectId },
@@ -560,14 +594,17 @@ export class ProjectsService {
       '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
     >,
     base: string,
+    organizationId: string,
   ): Promise<string> {
     let candidate = base;
     let n = 1;
     // Bounded loop: slug has a 64-char column limit in practice; the
     // suffix keeps us well under it for realistic collision counts.
+    // T-ORG: slug uniqueness is now per-organization (composite
+    // @@unique([organizationId, slug])), so the lookup carries the org.
     while (n < 100) {
       const clash = await tx.project.findUnique({
-        where: { slug: candidate },
+        where: { organizationId_slug: { organizationId, slug: candidate } },
         select: { id: true },
       });
       if (clash === null) return candidate;
