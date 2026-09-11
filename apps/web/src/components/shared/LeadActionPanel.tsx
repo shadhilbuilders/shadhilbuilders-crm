@@ -22,7 +22,7 @@
 // helpers that don't belong in the page file itself (Next.js 16's page
 // module allow-list is strict).
 
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -43,9 +43,23 @@ import type { UpdateLeadDto, LeadStateTransitionDto } from '@shadhil/api-types';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
+import { LeadCoOwnerDialog } from '@/components/leads/LeadCoOwnerDialog';
 import { useTransitionLead, useUpdateLead } from '@/hooks/queries/crm';
 import { canReassign, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
+import {
+  LuBookOpen,
+  LuCalendarCheck,
+  LuCalendarPlus,
+  LuCalendarX2,
+  LuCircleX,
+  LuHandshake,
+  LuMapPin,
+  LuPhoneIncoming,
+  LuRotateCcw,
+  LuSnowflake,
+  LuTrophy,
+} from '@paalstack/react-icons/lu';
 
 /**
  * Local mirror of the backend Model C transition table. Mirrored here
@@ -75,12 +89,35 @@ const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
 
 const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'COLD']);
 
+/**
+ * A semantic icon for each lead state, used on the transition buttons so a
+ * user can scan the actions without reading every label. Keys mirror the
+ * backend-state machine state names (leads.state-machine.ts).
+ */
+const STATE_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>>> = {
+  // Forward motions
+  CONTACTED: LuPhoneIncoming, // first contact / follow-up call
+  VISIT_REQUESTED: LuCalendarPlus, // ask to schedule
+  VISIT_SCHEDULED: LuCalendarCheck, // confirmed slot
+  VISITED: LuMapPin, // on-site visit
+  NEGOTIATION: LuHandshake, // deal negotiation
+  BOOKING_INITIATED: LuBookOpen, // booking opened
+  WON: LuTrophy, // closed-won
+  // Rejection / pause
+  COLD: LuSnowflake, // deprioritized
+  LOST: LuCircleX, // closed-lost
+  // Re-engagement loop
+  RESCHEDULED: LuRotateCcw, // reschedule visit
+  NO_SHOW: LuCalendarX2, // missed appointment
+};
+
 type LeadData = {
   id: string;
   name?: string;
   email?: string | null;
   status?: string;
   ownerId?: string;
+  coOwnerId?: string | null;
 };
 
 export function LeadActionPanel({ lead }: { lead: LeadData }) {
@@ -89,6 +126,7 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
   const { user } = useSessionUser();
   const canAssign = user !== null && canReassign(user.role);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
 
   return (
     <>
@@ -103,7 +141,7 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
           <EditLeadForm lead={lead} />
           <TransitionLeadForm leadId={lead.id} outgoing={outgoing} status={status} />
           {canAssign ? (
-            <div className="flex justify-end border-t pt-4">
+            <div className="flex justify-end gap-2 border-t pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -112,6 +150,15 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
                 data-qa="lead-reassign-open"
               >
                 Assign to...
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCoOwnerOpen(true)}
+                data-qa="lead-co-owner-open"
+              >
+                Co-owner...
               </Button>
             </div>
           ) : null}
@@ -122,6 +169,12 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
         currentOwnerId={lead.ownerId ?? ''}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
+      />
+      <LeadCoOwnerDialog
+        lead={{ id: lead.id, name: lead.name ?? 'lead', ownerId: lead.ownerId ?? '' }}
+        currentCoOwnerId={lead.coOwnerId ?? null}
+        open={coOwnerOpen}
+        onOpenChange={setCoOwnerOpen}
       />
     </>
   );
@@ -280,6 +333,8 @@ function TransitionLeadForm({
     });
   }
 
+  const ConfirmIcon = toState !== null ? STATE_ICONS[toState] : undefined;
+
   return (
     <div className="space-y-2 border-t pt-4">
       <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
@@ -288,18 +343,23 @@ function TransitionLeadForm({
 
       {toState === null ? (
         <div className="flex flex-wrap gap-2">
-          {outgoing.map((target) => (
-            <Button
-              key={target}
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setToState(target)}
-              data-qa={`transition-to-${target}`}
-            >
-              → {labelFor('lead', target)}
-            </Button>
-          ))}
+          {outgoing.map((target) => {
+            const Icon = STATE_ICONS[target];
+            return (
+              <Button
+                key={target}
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setToState(target)}
+                data-qa={`transition-to-${target}`}
+                className="gap-1.5"
+              >
+                {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                {labelFor('lead', target)}
+              </Button>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-4">
@@ -359,7 +419,16 @@ function TransitionLeadForm({
               disabled={transitionLead.isPending}
               data-qa="transition-confirm"
             >
-              {transitionLead.isPending ? 'Saving…' : `Confirm → ${labelFor('lead', toState)}`}
+              {transitionLead.isPending ? (
+                'Saving…'
+              ) : (
+                <>
+                  {ConfirmIcon ? (
+                    <ConfirmIcon className="h-4 w-4" aria-hidden="true" />
+                  ) : null}
+                  <span>Confirm {labelFor('lead', toState)}</span>
+                </>
+              )}
             </Button>
           </div>
         </div>

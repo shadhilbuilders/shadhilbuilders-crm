@@ -30,6 +30,7 @@ import {
   LeadFilterDtoSchema,
   LeadStateTransitionDtoSchema,
   ReassignLeadDtoSchema,
+  SetLeadCoOwnerDtoSchema,
   UpdateLeadDtoSchema,
   type CreateLeadDto,
   type LeadActivity,
@@ -37,6 +38,7 @@ import {
   type LeadFilterDto,
   type LeadStateTransitionDto,
   type ReassignLeadDto,
+  type SetLeadCoOwnerDto,
   type UpdateLeadDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
@@ -241,6 +243,26 @@ export class LeadsController {
     }
     const dto: ReassignLeadDto = parsed;
     return this.leads.reassign(req.user!, dto);
+  }
+
+  @Patch(':id/co-owner')
+  @ApiOperation({
+    summary:
+      'Set or clear a lead co-owner (Plan §18 D2/D3 follow-up). Allowed for ADMIN (any team) and MANAGER (same team); coOwnerId=null clears. Mirrors reassign permission + audit transaction.',
+  })
+  async setCoOwner(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<LeadRow> {
+    const parsed = parseBody(SetLeadCoOwnerDtoSchema, body);
+    if (parsed.leadId !== id) {
+      throw new BadRequestException(
+        'leadId in body does not match URL id',
+      );
+    }
+    const dto: SetLeadCoOwnerDto = parsed;
+    return this.leads.setCoOwner(req.user!, dto);
   }
 
   @Delete(':id')

@@ -27,6 +27,7 @@ import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import { useForm } from 'react-hook-form';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 const FORM_ID = 'lead-edit-form';
 
@@ -97,17 +98,18 @@ export function LeadEditFormBody({
           },
         },
         {
-          type: 'input',
+          type: 'custom',
           name: 'phone',
           label: 'Phone',
           required: true,
-          inputType: 'tel',
-          placeholder: 'Enter phone number',
-          description: 'Indian numbers: 10 digits, optional +91 prefix.',
-          inputProps: {
-            inputMode: 'numeric',
-            'data-qa': 'lead-edit-phone',
-          },
+          description: '10-digit mobile number. +91 is added automatically.',
+          render: ({ field }) => (
+            <PhoneNumberInput
+              {...field}
+              placeholder="Enter phone number"
+              data-qa="lead-edit-phone"
+            />
+          ),
         },
         {
           type: 'input',

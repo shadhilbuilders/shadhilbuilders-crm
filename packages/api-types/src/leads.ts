@@ -31,11 +31,11 @@ export const CreateLeadDtoSchema = z.object({
     error: 'Name is required',
   }).trim().min(1).max(120),
   phone: PhoneSchema,
+  // Email is optional but .optional() only allows undefined/missing, not
+  // ''. Several clients (new-lead form, landing mirror) may send ''
+  // for a blank optional field, so accept '' as "not provided" too.
   email: z
-    .email()
-    .trim()
-    .toLowerCase()
-    .max(254)
+    .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
     .optional(),
   source: sourceSchema,
   projectId: z.cuid2().optional(),
@@ -57,11 +57,7 @@ export const UpdateLeadDtoSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   phone: PhoneSchema.optional(),
   email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email()
-    .max(254)
+    .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
     .nullable()
     .optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
@@ -97,6 +93,22 @@ export const ReassignLeadDtoSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 export type ReassignLeadDto = z.infer<typeof ReassignLeadDtoSchema>;
+
+/**
+ * PATCH /api/leads/:id/co-owner - set or clear the lead's co-owner.
+ * `coOwnerId` is the new co-owner id, or null to clear. The reason is
+ * mandatory (audit + manager visibility), mirroring reassign.
+ *
+ * Permission is the same as reassign: MANAGER may set a same-team co-owner;
+ * ADMIN/OWNER may set any (cross-team). The co-owner must be an assignable
+ * role (TELECALLER/SALES_EXEC/MANAGER) and cannot be the lead's owner.
+ */
+export const SetLeadCoOwnerDtoSchema = z.object({
+  leadId: z.string().cuid2(),
+  coOwnerId: z.string().cuid2().nullable(),
+  reason: z.string().trim().min(1).max(500),
+});
+export type SetLeadCoOwnerDto = z.infer<typeof SetLeadCoOwnerDtoSchema>;
 
 /**
  * Query filter for GET /api/leads - the Lead Inbox. `state` accepts an array

@@ -1417,4 +1417,100 @@ describe('Feedback - public submit + admin triage RLS', () => {
       expect(updated.status).toBe('REVIEWED');
     },
   );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Co-owner RLS widening (2026-09-11, option B):
+  //   - TELECALLER/SALES_EXEC who is the lead's CO-OWNER (not the owner)
+  //     can SELECT + UPDATE the lead (view + work).
+  //   - A staff member who is neither owner nor co-owner still cannot.
+  //
+  // Seeds a dedicated co-owner fixture row: leadCoOwned owned by teleA,
+  // co-owned by execA (same team). execA must now see/update it despite
+  // not being the owner; teleB (other team, no ownership tie) cannot.
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'co-owner: SELECT + UPDATE a lead they co-own, not the owner',
+    { timeout: 30_000 },
+    async () => {
+      const fixture = await buildFixture();
+      const coLeadId = `test-coowner-rls-${Date.now()}`;
+
+      // Seed: lead owned by teleA, co-owned by execA (both via admin).
+      await withRlsContext(prisma, {
+        userId: fixture.managerAId,
+        role: 'ADMIN',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          lead: {
+            create: (a: {
+              data: {
+                id: string; name: string; phone: string; state: string;
+                ownerId: string; ownerType: string; teamId: string; coOwnerId: string;
+              };
+            }) => Promise<unknown>;
+          };
+        }).lead.create({
+          data: {
+            id: coLeadId,
+            name: 'Co-owned fixture lead',
+            phone: `91${(1000000000 + Math.floor(Math.random() * 8999999999))}`,
+            state: 'NEW',
+            ownerId: fixture.teleAId,
+            ownerType: 'TELECALLER',
+            teamId: fixture.teamAId,
+            coOwnerId: fixture.execAId,
+          },
+        }),
+      );
+
+      // execA (co-owner) can SELECT it.
+      const coOwnerSelect = await withRlsContext(prisma, {
+        userId: fixture.execAId,
+        role: 'SALES_EXEC',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          lead: { findUnique: (a: { where: { id: string } }) => Promise<unknown | null> };
+        }).lead.findUnique({ where: { id: coLeadId } }),
+      );
+      expect(coOwnerSelect).not.toBeNull();
+
+      // execA (co-owner) can UPDATE it (e.g. a transition writes state).
+      const coOwnerUpdate = await withRlsContext(prisma, {
+        userId: fixture.execAId,
+        role: 'SALES_EXEC',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          lead: { update: (a: { where: { id: string }; data: { state: string } }) => Promise<unknown> };
+        }).lead.update({ where: { id: coLeadId }, data: { state: 'CONTACTED' } }),
+      );
+      expect(coOwnerUpdate).not.toBeNull();
+
+      // teleB (unrelated user, other team, neither owner nor co-owner)
+      // cannot SELECT it -> null (RLS hides the row).
+      const strangerSelect = await withRlsContext(prisma, {
+        userId: fixture.teleBId,
+        role: 'TELECALLER',
+        teamId: fixture.teamBId,
+      }, async (tx) =>
+        (tx as unknown as {
+          lead: { findUnique: (a: { where: { id: string } }) => Promise<unknown | null> };
+        }).lead.findUnique({ where: { id: coLeadId } }),
+      );
+      expect(strangerSelect).toBeNull();
+
+      // Cleanup.
+      await withRlsContext(prisma, {
+        userId: fixture.managerAId,
+        role: 'ADMIN',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          lead: { deleteMany: (a: { where: { id: string } }) => Promise<unknown> };
+        }).lead.deleteMany({ where: { id: coLeadId } }),
+      );
+    },
+  );
+
 });

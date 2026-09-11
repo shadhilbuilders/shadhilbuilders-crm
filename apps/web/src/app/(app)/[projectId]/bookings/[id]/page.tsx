@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Label, Textarea, toast } from '@paalstack/react-ui';
+import { LuArrowRight } from '@paalstack/react-icons/lu';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -347,7 +348,12 @@ function BookingActions({
                   ? 'Saving…'
                   : toStatus === 'APPROVED'
                     ? 'Confirm approval'
-                    : `Confirm → ${labelFor('booking', toStatus)}`}
+                    : (
+                        <>
+                          <LuArrowRight className="h-4 w-4" aria-hidden="true" />
+                          Confirm {labelFor('booking', toStatus)}
+                        </>
+                      )}
               </Button>
             </div>
           </div>
