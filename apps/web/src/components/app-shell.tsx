@@ -64,11 +64,12 @@ import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
+import { useOrgSlug } from '@/lib/tenant-context';
 import {
-  activeProjectIdFromPathname,
+  activeOrgSlugFromPathname,
+  activeProjectSlugFromPathname,
   getVisibleNav,
   isNavItemActive,
-  isProjectScopedNavPath,
   navItemHref,
   stripProjectSegment as stripProjectSegmentForNav,
   NAV_ITEMS,
@@ -86,17 +87,28 @@ import {
 export function AppShell() {
   // T37: close the mobile Sheet whenever the route changes.
   useNavSync();
-  // T-ProjectSwitch: the active project is the URL's first segment on
-  // work surfaces (/proj-1/leads). Computed here once and passed down
-  // to the switcher slot + nav groups so every link resolves against it.
+  // T-ProjectSwitch: the active project is the URL's [projectSlug] on work
+  // surfaces (/[orgSlug]/projects/metro-heights/leads). The tenant provider
+  // from the server layout supplies the resolved org; fall back to parsing
+  // the pathname when not under a provider.
   const pathname = usePathname();
-  const pathProjectId = activeProjectIdFromPathname(pathname);
+  const ctxOrgSlug = useOrgSlug();
+  const pathOrgSlug = activeOrgSlugFromPathname(pathname);
+  const pathProjectSlug = activeProjectSlugFromPathname(pathname);
   const { data: projects } = useProjects();
-  // Work-surface hrefs always need a project id (pages live under
-  // /{projectId}/dashboard, /{projectId}/leads, ...). On unscoped routes
-  // (/users, /audit) fall back to the default registry project.
+  // Work-surface hrefs always need a project slug (pages live under
+  // /projects/[projectSlug]/dashboard, ...). On unscoped routes (/users,
+  // /audit) fall back to the default registry project's slug.
+  const activeOrgSlug = ctxOrgSlug ?? pathOrgSlug ?? null;
+  const activeProjectSlug =
+    pathProjectSlug ?? pickDefaultProject(projects ?? [])?.slug ?? null;
+  // useNavBadge needs the project ID (badge counts are id-keyed API calls).
+  // Resolve it from the slug against the registry so the badge hook gets a
+  // real id (fall back to the default project's id).
   const activeProjectId =
-    pathProjectId ?? pickDefaultProject(projects ?? [])?.id ?? null;
+    projects?.find((p) => p.slug === activeProjectSlug)?.id ??
+    pickDefaultProject(projects ?? [])?.id ??
+    null;
   // T-Sidebar07: collapsed state drives the logo swap (wide lockup ↔
   // square brand icon). Read from the sidebar context.
   const { state: sidebarState } = useSidebar();
@@ -116,7 +128,8 @@ export function AppShell() {
           <Link
             href={navItemHref(
               { href: '/overview', scoped: false },
-              activeProjectId,
+              activeOrgSlug,
+              activeProjectSlug,
             )}
             className="inline-flex h-10 shrink-0 items-center overflow-hidden text-primary"
             aria-label="Shadhil CRM home"
@@ -140,11 +153,14 @@ export function AppShell() {
             dropdown (display-only for now - see project-switcher.tsx).
             Hidden until the session resolves so the collapsed rail
             doesn't flash an empty switcher. */}
-        <SidebarSwitcherSlot activeProjectId={activeProjectId} />
+        <SidebarSwitcherSlot
+          activeProjectSlug={activeProjectSlug}
+          activeOrgSlug={activeOrgSlug}
+        />
       </SidebarHeader>
       <SidebarContent className="min-w-0 overflow-x-hidden">
-        <WorkNavGroup activeProjectId={activeProjectId} />
-        <AdminNavGroup activeProjectId={activeProjectId} />
+        <WorkNavGroup activeProjectId={activeProjectId} activeProjectSlug={activeProjectSlug} activeOrgSlug={activeOrgSlug} />
+        <AdminNavGroup activeProjectId={activeProjectId} activeProjectSlug={activeProjectSlug} activeOrgSlug={activeOrgSlug} />
       </SidebarContent>
       {/* Separator between the work/admin nav groups and the footer
           (UserMenu + sign out). */}
@@ -172,18 +188,20 @@ export function AppShell() {
 // ---------------------------------------------------------------------------
 
 function SidebarSwitcherSlot({
-  activeProjectId,
+  activeProjectSlug,
+  activeOrgSlug,
 }: {
-  activeProjectId: string | null;
+  activeProjectSlug: string | null;
+  activeOrgSlug: string | null;
 }) {
   const { user } = useSessionUser();
   const { data: projects, isPending: projectsPending } = useProjects();
   // M2 (eng-corrected): on the cross-project /overview command center, the
   // switcher must NOT imply a project scope. Scope the null to the switcher
-  // ONLY - the shared activeProjectId (passed to the nav groups) stays intact
-  // so work nav hrefs keep resolving correctly.
+  // ONLY - the shared activeProjectSlug (passed to the nav groups) stays
+  // intact so work nav hrefs keep resolving correctly.
   const pathname = usePathname();
-  const isCommandCenter = pathname === '/overview';
+  const isCommandCenter = pathname === `/${activeOrgSlug ?? ''}/overview`;
 
   // Show skeleton while projects are loading
     if (projectsPending) {
@@ -206,7 +224,8 @@ function SidebarSwitcherSlot({
   return (
     <ProjectSwitcher
       projects={projects ?? []}
-      activeProjectId={isCommandCenter ? null : activeProjectId}
+      activeProjectSlug={isCommandCenter ? null : activeProjectSlug}
+      activeOrgSlug={activeOrgSlug}
       canManageProjects={canManageProjects}
     />
   );
@@ -245,8 +264,12 @@ export function SidebarToggleButton({ className }: { className?: string }) {
 
 function WorkNavGroup({
   activeProjectId,
+  activeProjectSlug,
+  activeOrgSlug,
 }: {
   activeProjectId: string | null;
+  activeProjectSlug: string | null;
+  activeOrgSlug: string | null;
 }) {
   const pathname = usePathname();
   const { user } = useSessionUser();
@@ -264,6 +287,8 @@ function WorkNavGroup({
             item={item}
             pathname={pathname}
             activeProjectId={activeProjectId}
+            activeProjectSlug={activeProjectSlug}
+            activeOrgSlug={activeOrgSlug}
           />
         ))}
       </SidebarMenu>
@@ -279,8 +304,12 @@ function WorkNavGroup({
 
 function AdminNavGroup({
   activeProjectId,
+  activeProjectSlug,
+  activeOrgSlug,
 }: {
   activeProjectId: string | null;
+  activeProjectSlug: string | null;
+  activeOrgSlug: string | null;
 }) {
   const pathname = usePathname();
   const { user } = useSessionUser();
@@ -324,6 +353,8 @@ function AdminNavGroup({
               item={item}
               pathname={pathname}
               activeProjectId={activeProjectId}
+              activeProjectSlug={activeProjectSlug}
+              activeOrgSlug={activeOrgSlug}
             />
           ))}
         </SidebarMenu>
@@ -341,27 +372,23 @@ function NavMenuItem({
   item,
   pathname,
   activeProjectId,
+  activeProjectSlug,
+  activeOrgSlug,
 }: {
   item: NavItem;
   pathname: string;
   activeProjectId: string | null;
+  activeProjectSlug: string | null;
+  activeOrgSlug: string | null;
 }) {
   const badge = useNavBadge(item.badgeKey, activeProjectId);
   // T-ProjectSwitch: work-surface hrefs resolve under the active project
-  // (/proj-1/leads). Active-state strips the project segment back to the
-  // template so /proj-1/leads/abc still highlights Leads. Unscoped items
-  // (/, /users, /audit, and the admin /overview command center via
-  // scoped:false) keep template behavior.
-  const href = navItemHref(item, activeProjectId);
-  const scoped = item.scoped === false ? false : isProjectScopedNavPath(item.href);
-  const active = scoped
-    ? isNavItemActive(
-        item.href,
-        activeProjectId === null
-          ? pathname
-          : stripProjectSegmentForNav(pathname),
-      )
-    : isNavItemActive(item.href, pathname);
+  // slug (/shadhil-builders/projects/metro-heights/leads). Active-state
+  // strips the org+project prefix back to the template so .../leads/abc
+  // still highlights Leads. Unscoped items (/users, /audit, /overview via
+  // scoped:false) resolve under just the org slug.
+  const href = navItemHref(item, activeOrgSlug, activeProjectSlug);
+  const active = isNavItemActive(item.href, stripProjectSegmentForNav(pathname));
   const Icon = item.icon;
   return (
     <SidebarMenuItem>

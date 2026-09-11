@@ -36,6 +36,7 @@ export type SessionUser = {
   email: string;
   role: Role;
   teamId: string | null;
+  organizationId: string | null;
 };
 
 const ROLE_VALUES: readonly string[] = STAFF_ROLES;
@@ -57,13 +58,15 @@ export function sessionUserFromSession(session: unknown): SessionUser | null {
   if (user === null) return null;
   const id = typeof user.id === 'string' ? user.id : null;
   if (id === null) return null;
-  const nested = (user.teamId ?? top.teamId ?? null) as unknown;
+  const nestedTeam = (user.teamId ?? top.teamId ?? null) as unknown;
+  const nestedOrg = (user.organizationId ?? top.organizationId ?? null) as unknown;
   return {
     id,
     name: typeof user.name === 'string' ? user.name : '',
     email: typeof user.email === 'string' ? user.email : '',
     role: normalizeRole(user.role),
-    teamId: typeof nested === 'string' ? nested : null,
+    teamId: typeof nestedTeam === 'string' ? nestedTeam : null,
+    organizationId: typeof nestedOrg === 'string' ? nestedOrg : null,
   };
 }
 

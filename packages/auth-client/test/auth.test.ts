@@ -53,6 +53,7 @@ describe('@shadhil/auth - JWT helpers', () => {
       sub: 'user_123',
       role: 'MANAGER',
       teamId: 'team_1',
+      organizationId: 'org_1',
       email: 'mgr@example.com',
     });
     const payload = await verifyJwt(token);
@@ -70,6 +71,7 @@ describe('@shadhil/auth - JWT helpers', () => {
       // lowercase legacy claim - normalized to enum at verify time
       role: 'manager' as never,
       teamId: 'team_1',
+      organizationId: 'org_1',
       email: 'mgr@example.com',
     });
     const payload = await verifyJwt(token);
@@ -79,7 +81,9 @@ describe('@shadhil/auth - JWT helpers', () => {
   it('verifyJwt REJECTS tokens lacking a role claim (AR-2 - no silent defaults)', async () => {
     process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
     const { SignJWT } = await import('jose');
-    const token = await new SignJWT({ user: { teamId: 'team_1', email: 'x@y.com' } })
+    const token = await new SignJWT({
+      user: { teamId: 'team_1', organizationId: 'org_1', email: 'x@y.com' },
+    })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject('user_123')
       .setIssuer('shadhil-crm')
@@ -98,6 +102,7 @@ describe('@shadhil/auth - JWT helpers', () => {
       sub: 'user_123',
       role: 'SUPERUSER' as never,
       teamId: null,
+      organizationId: 'org_1',
       email: 'a@b.com',
     });
     const { verifyJwt } = await import('../src/jwt');
@@ -111,6 +116,7 @@ describe('@shadhil/auth - JWT helpers', () => {
       sub: 'user_123',
       role: 'ADMIN',
       teamId: null,
+      organizationId: 'org_1',
       email: 'a@b.com',
     });
     process.env.BETTER_AUTH_SECRET = 'b'.repeat(32);

@@ -25,7 +25,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, withRlsContext, type PrismaClient } from '@shadhil/database';
+import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreatePhaseDto,
@@ -75,7 +75,7 @@ export class InventoryService {
   ): Promise<UnitListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (dto.projectId !== undefined) {
@@ -144,7 +144,7 @@ export class InventoryService {
   async findOne(actor: JwtPayload, unitId: string): Promise<UnitRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const unit = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: unitId },
@@ -191,7 +191,7 @@ export class InventoryService {
   async phases(actor: JwtPayload, projectId?: string): Promise<PhaseRow[]> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (projectId !== undefined) where['projectId'] = projectId;
@@ -232,7 +232,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const project = await (tx as unknown as PrismaClient).project.findUnique({
           where: { id: dto.projectId },
@@ -242,12 +242,13 @@ export class InventoryService {
           throw new NotFoundException(`Project ${dto.projectId} not found`);
         }
         const created = await (tx as unknown as PrismaClient).phase.create({
-          data: { projectId: dto.projectId, name: dto.name },
+          data: { projectId: dto.projectId, name: dto.name, organizationId: actor.organizationId },
           select: { id: true, projectId: true, name: true },
         });
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.phase.create',
             entityType: 'Phase',
             entityId: created.id,
@@ -276,7 +277,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).phase.findUnique({
           where: { id: phaseId },
@@ -295,6 +296,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.phase.update',
             entityType: 'Phase',
             entityId: phaseId,
@@ -326,7 +328,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).phase.findUnique({
           where: { id: phaseId },
@@ -350,6 +352,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.phase.delete',
             entityType: 'Phase',
             entityId: phaseId,
@@ -373,7 +376,7 @@ export class InventoryService {
   ): Promise<ProjectOptionRow[]> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const rows = await (tx as unknown as PrismaClient).projectOption.findMany({
           where: {
@@ -429,7 +432,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const project = await (tx as unknown as PrismaClient).project.findUnique({
           where: { id: dto.projectId },
@@ -441,7 +444,7 @@ export class InventoryService {
         let created;
         try {
           created = await (tx as unknown as PrismaClient).projectOption.create({
-            data: { projectId: dto.projectId, type: dto.type, value: dto.value },
+            data: { projectId: dto.projectId, type: dto.type, value: dto.value, organizationId: actor.organizationId },
             select: { id: true, projectId: true, type: true, value: true, createdAt: true },
           });
         } catch (err) {
@@ -455,6 +458,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.option.create',
             entityType: 'ProjectOption',
             entityId: created.id,
@@ -493,7 +497,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).projectOption.findUnique({
           where: { id: optionId },
@@ -529,6 +533,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.option.delete',
             entityType: 'ProjectOption',
             entityId: optionId,
@@ -557,7 +562,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const phase = await (tx as unknown as PrismaClient).phase.findUnique({
           where: { id: dto.phaseId },
@@ -572,6 +577,7 @@ export class InventoryService {
           created = await (tx as unknown as PrismaClient).unit.create({
             data: {
               phaseId: dto.phaseId,
+              organizationId: actor.organizationId,
               unitNumber: dto.unitNumber,
               bhk: dto.bhk,
               facing: dto.facing ?? null,
@@ -604,6 +610,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.unit.create',
             entityType: 'Unit',
             entityId: created.id,
@@ -652,7 +659,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: unitId },
@@ -712,6 +719,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.unit.update',
             entityType: 'Unit',
             entityId: updated.id,
@@ -768,7 +776,7 @@ export class InventoryService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: unitId },
@@ -806,6 +814,7 @@ export class InventoryService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'inventory.unit.delete',
             entityType: 'Unit',
             entityId: unitId,

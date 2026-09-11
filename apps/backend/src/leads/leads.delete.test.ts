@@ -55,6 +55,8 @@ const UNIT_ID = `test-del-unit-${RUN_TAG}`;
 
 const ALL_LEAD_IDS = [LEAD_OK, LEAD_WON, LEAD_BOOKED, LEAD_CONVERTED];
 const ALL_USER_IDS = [ADMIN_ID, TC_ID, MGR_ID, SE_ID];
+// Every business row now carries organizationId (T-ORG multitenancy).
+const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 
 // Phone must be unique per run AND per rapid re-run: RUN_TAG's leading
 // digits are Date.now(), so slice(0,7) collides when two runs land in
@@ -70,7 +72,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   // team (the reassign.test.ts pattern does the same).
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -91,6 +93,7 @@ function actorFor(
     email: `${sub}@test.local`,
     role,
     teamId: role === 'ADMIN' ? null : TEAM_ID,
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -107,7 +110,11 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_ID },
       update: {},
-      create: { id: TEAM_ID, name: `Delete Test Team ${RUN_TAG}` },
+      create: {
+        id: TEAM_ID,
+        name: `Delete Test Team ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
 
     for (const [id, role] of [
@@ -125,6 +132,7 @@ beforeAll(async () => {
           name: `Delete Test ${role}`,
           role,
           teamId: TEAM_ID,
+          organizationId: ORG,
           mustChangePassword: false,
         },
       });
@@ -137,6 +145,7 @@ beforeAll(async () => {
       teamId: TEAM_ID,
       ownerId: TC_ID,
       ownerType: 'TELECALLER' as const,
+      organizationId: ORG,
     };
 
     await db.lead.upsert({
@@ -183,12 +192,18 @@ beforeAll(async () => {
         name: `Delete Test Project ${RUN_TAG}`,
         slug: `delete-test-${RUN_TAG}`,
         address: 'Test address',
+        organizationId: ORG,
       },
     });
     await db.phase.upsert({
       where: { id: PHASE_ID },
       update: {},
-      create: { id: PHASE_ID, projectId: PROJECT_ID, name: 'Phase 1' },
+      create: {
+        id: PHASE_ID,
+        projectId: PROJECT_ID,
+        name: 'Phase 1',
+        organizationId: ORG,
+      },
     });
     await db.unit.upsert({
       where: { id: UNIT_ID },
@@ -199,6 +214,7 @@ beforeAll(async () => {
         unitNumber: `A-${RUN_TAG.slice(0, 6)}`,
         bhk: 3,
         price: 12000000,
+        organizationId: ORG,
       },
     });
     const existing = await db.booking.findFirst({
@@ -213,6 +229,7 @@ beforeAll(async () => {
           status: 'TOKEN',
           amount: 12000000,
           tokenAmount: 100000,
+          organizationId: ORG,
         },
       });
     }

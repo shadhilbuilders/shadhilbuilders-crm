@@ -62,6 +62,8 @@ import {
   LuMessageCircleQuestion,
   LuFolderKanban,
   LuMessageSquareText,
+  LuSatellite,
+  LuSend,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -170,12 +172,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'admin',
     scoped: false,
   },
-  { href: '/users', label: 'Users', icon: LuUserCog, group: 'admin' },
+  { href: '/users', label: 'Users', icon: LuUserCog, group: 'admin', scoped: false },
   {
     href: '/projects',
     label: 'Projects',
     icon: LuFolderKanban,
     group: 'admin',
+    scoped: false,
   },
   // Org Teams (ADMIN/OWNER only). /teams + /teams/[teamId] - a manager uses
   // the per-project staff surfaces, not every team.
@@ -184,12 +187,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Teams',
     icon: LuUsersRound,
     group: 'admin',
+    scoped: false,
   },
   {
     href: '/audit',
     label: 'Audit',
     icon: LuShieldCheck,
     group: 'admin',
+    scoped: false,
   },
   // T-E2b follow-up queue - admin + manager only (DESIGN.md §4 + plan
   // §11 T-E2b). Telecaller / SalesExec never triage raw inbound from
@@ -200,6 +205,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'WA Unknown',
     icon: LuMessageCircleQuestion,
     group: 'admin',
+    scoped: false,
   },
   // Feedback triage - ADMIN/OWNER only. Public submissions from the landing
   // page land in the CRM DB; this is the admin surface to read + triage them.
@@ -208,6 +214,24 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Feedback',
     icon: LuMessageSquareText,
     group: 'admin',
+    scoped: false,
+  },
+  // Integration telemetry - ADMIN/OWNER only (2026-09-11). Read-only ops
+  // feeds for the WhatsApp/Meta webhook pipeline: raw inbound webhook events
+  // and outbound message delivery status.
+  {
+    href: '/webhooks',
+    label: 'Webhooks',
+    icon: LuSatellite,
+    group: 'admin',
+    scoped: false,
+  },
+  {
+    href: '/whatsapp-delivery',
+    label: 'WA Delivery',
+    icon: LuSend,
+    group: 'admin',
+    scoped: false,
   },
 ] as const;
 
@@ -244,6 +268,13 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
     // Feedback triage is ADMIN/OWNER only - a Manager never reads
     // public customer feedback (operational team scoped to their sales).
     else if (item.href === '/feedback' && canViewAudit(role)) items.push(item);
+    // Integration telemetry (webhook events + WA delivery) is ADMIN/OWNER
+    // only - ops feeds, mirrors the audit gate.
+    else if (
+      (item.href === '/webhooks' || item.href === '/whatsapp-delivery') &&
+      isAdminLike(role)
+    )
+      items.push(item);
     // Admin/owner command center (dashboard split). Admin-only: the
     // cross-project overview is an executive surface, unlike Users which is
     // admin+manager (operational). MANAGER sees a Users-only admin group.
@@ -322,14 +353,23 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Project-scoped route helpers (T-ProjectSwitch, 2026-09-05)
+// Org + project-scoped route helpers (slug-based URL scheme, 2026-09-11)
 // ---------------------------------------------------------------------------
-// Work surfaces live under the active project: /{projectId}/leads,
-// /{projectId}/visits, ... The first URL path segment is the project id.
-// NAV_ITEMS hrefs stay TEMPLATE paths ('/leads'); consumers call
-// `projectHref(activeProjectId, item.href)` to resolve the real URL.
+// The public URL uses SLUGS for identity:
+//   `/[orgSlug]/<orgPage>`                 (org-level: overview, users,
+//                                             teams, audit, feedback,
+//                                             whatsapp-unknown-contacts,
+//                                             projects registry)
+//   `/[orgSlug]/projects/[projectSlug]/<surface>` (project work surfaces:
+//                                             dashboard, leads, visits,
+//                                             inventory, bookings,
+//                                             notifications, staff)
+// NAV_ITEMS hrefs stay TEMPLATE paths ('/leads', '/overview', ...); the
+// consumers call the helpers below with the active org slug (+ project slug
+// for work surfaces) to resolve the real URL. The RESOLVED tenant ids travel
+// separately (lib/tenant-context) for id-keyed API hooks.
 
-/** Nav hrefs whose pages are scoped to the active project (URL segment 1). */
+/** Nav hrefs whose pages are scoped to the active project (project work). */
 export const PROJECT_SCOPED_PATHS = new Set([
   '/leads',
   '/visits',
@@ -347,72 +387,107 @@ export function isProjectScopedNavPath(href: string): boolean {
 }
 
 /**
- * Resolve a nav template path against the active project.
- * `/leads` + `proj-1` → `/proj-1/leads`; nested templates
- * (`/leads/abc`) prefix the same way. Unscoped paths (`/`, `/users`)
- * pass through unchanged. `activeProjectId === null` keeps the template
- * (caller decides whether to render a disabled state).
+ * Resolve a project work-surface template path against the active org +
+ * project slug. `/leads` + (`shadhil-builders`, `metro-heights`) →
+ * `/shadhil-builders/projects/metro-heights/leads`; nested templates
+ * (`/leads/abc`) prefix the same way. When either slug is null the template
+ * is returned unchanged (caller decides whether to render a disabled state).
  */
 export function projectHref(
-  activeProjectId: string | null,
+  orgSlug: string | null,
+  projectSlug: string | null,
   templateHref: string,
 ): string {
-  if (activeProjectId === null || !isProjectScopedNavPath(templateHref)) {
+  if (
+    orgSlug === null ||
+    projectSlug === null ||
+    !isProjectScopedNavPath(templateHref)
+  ) {
     return templateHref;
   }
-  return `/${activeProjectId}${templateHref}`;
+  return `/${orgSlug}/projects/${projectSlug}${templateHref}`;
 }
 
 /**
- * Resolve a nav item against the active project, honoring its `scoped`
- * flag. Scoped items (work surfaces) prefix the project id; unscoped
- * items (admin `/overview` command center) pass through unchanged.
+ * Resolve an org-level page template path against the active org slug.
+ * `/overview` + `shadhil-builders` → `/shadhil-builders/overview`; nested
+ * (`/teams/abc`) prefixes the same way. `orgSlug === null` keeps the
+ * template (caller decides).
+ */
+export function orgHref(orgSlug: string | null, templateHref: string): string {
+  if (orgSlug === null) return templateHref;
+  return `/${orgSlug}${templateHref}`;
+}
+
+/**
+ * Resolve a nav item against the active org (+project for work surfaces),
+ * honoring its `scoped` flag. Scoped items (work surfaces) prefix the
+ * project slug under `/projects`; unscoped items (org-level `/overview`,
+ * `/users`, ...) prefix just the org slug.
  */
 export function navItemHref(
   item: Pick<NavItem, 'href' | 'scoped'>,
-  activeProjectId: string | null,
+  orgSlug: string | null,
+  projectSlug: string | null,
 ): string {
-  if (item.scoped === false) return item.href;
-  return projectHref(activeProjectId, item.href);
+  if (item.scoped === false) return orgHref(orgSlug, item.href);
+  return projectHref(orgSlug, projectSlug, item.href);
 }
 
 /**
- * Extract the active project id from a work-surface pathname (first
- * segment when it is NOT a top-level template path). Returns null on
- * `/`, `/users`, `/audit`, `/login`, etc.
+ * Extract the active org slug from an authenticated pathname (URL segment 1
+ * after `/`). Returns null on `/`, `/login`, `/change-password`, etc.
  */
-export function activeProjectIdFromPathname(
-  pathname: string,
-  navTemplates: readonly string[] = [...PROJECT_SCOPED_PATHS],
-): string | null {
+export function activeOrgSlugFromPathname(pathname: string): string | null {
   const segments = pathname.split('/').filter(Boolean);
   if (segments.length === 0) return null;
-  const first = `/${segments[0]}`;
-  // Known top-level app routes never carry a project segment. Anything
-  // else that is not a work-surface template IS treated as a project id
-  // (the [projectId] dynamic segment is the fallback matcher).
-  const TOP_LEVEL_ROUTES = [
-    ...navTemplates,
-    '/',
-    '/login',
-    '/change-password',
-    '/users',
-    '/audit',
-    '/projects',
-    '/overview',
-    '/whatsapp-unknown-contacts',
-    '/feedback',
-  ];
-  if (TOP_LEVEL_ROUTES.includes(first)) return null;
   return segments[0] ?? null;
 }
 
-/** Strip the project segment: /proj-1/leads/abc → /leads/abc. */
+/**
+ * Extract the active project slug from a project work-surface pathname
+ * (`/shadhil-builders/projects/metro-heights/leads` → `metro-heights`).
+ * Returns null when the path is NOT under `/projects/<slug>` (org-level
+ * pages, `/`, `/login`).
+ */
+export function activeProjectSlugFromPathname(pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  // Shape: [orgSlug, 'projects', projectSlug, ...surface]
+  const projectSlug = segments[2];
+  if (
+    segments.length >= 3 &&
+    segments[1] === 'projects' &&
+    typeof projectSlug === 'string' &&
+    projectSlug.length > 0
+  ) {
+    return projectSlug;
+  }
+  return null;
+}
+
+/**
+ * Strip the org + project prefix from an authenticated work-surface path:
+ * `/shadhil-builders/projects/metro-heights/leads/abc` → `/leads/abc`. Used
+ * by active-route matching against NAV_ITEMS templates.
+ */
 export function stripProjectSegment(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
-  if (segments.length <= 1) return '/';
-  return `/${segments.slice(1).join('/')}`;
+  // [orgSlug, 'projects', projectSlug, ...surface] → drop first three, keep surface.
+  if (segments.length >= 3 && segments[1] === 'projects') {
+    return `/${segments.slice(3).join('/')}`;
+  }
+  // Org-level page under /[orgSlug]: [orgSlug, ...rest] → drop first.
+  if (segments.length >= 1) {
+    return `/${segments.slice(1).join('/')}`;
+  }
+  return '/';
 }
+
+// Backward-compat aliases (the previous id-based names). The URL is now
+// slug-based, so these are deprecated; kept only until all call sites are
+// migrated (see task plan). Prefer the activeOrgSlug/activeProjectSlug forms.
+export const activeOrgIdFromPathname = activeOrgSlugFromPathname;
+export const activeProjectIdFromPathname = activeProjectSlugFromPathname;
 
 // ---------------------------------------------------------------------------
 // Mobile nav sync (T37 - closes the sidebar Sheet on route change)

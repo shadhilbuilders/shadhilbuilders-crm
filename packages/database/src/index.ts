@@ -69,7 +69,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Re-export boot-time utilities (eng review A5: POOL_MODE check)
 export { verifyPoolMode, PoolModeError } from './boot-check';
-export { withRlsContext } from './rls';
+export { withRlsContext, rlsContextFrom } from './rls';
 export type { RlsContext, RlsTx } from './rls';
 export type { PrismaClient } from './generated/prisma/client';
 // Prisma namespace (Prisma.sql / Prisma.join / Prisma.raw / Prisma.empty) for

@@ -3,12 +3,14 @@
 // ProjectSwitcher - sidebar-07 pattern, adapted for shadhil-crm.
 //
 // T-ProjectSwitch (2026-09-05): REAL project switching. The dropdown rows
-// are Project-table rows (GET /api/projects); clicking one navigates to
-// /{projectId}/{currentSection} - the first URL segment IS the active
-// project. Work surfaces (dashboard, leads, visits, inventory, bookings,
+// are Project-table rows (GET /api/projects); clicking one navigates to the
+// SAME work surface under the new project's SLUG:
+//   /[orgSlug]/projects/[projectSlug]/<surface>
+// Work surfaces (dashboard, leads, visits, inventory, bookings,
 // notifications) live under that segment and every list query filters by
-// it. Selection is URL-owned: no localStorage, no context - the URL is
-// the source of truth (shareable, back/forward safe).
+// the resolved project id (context). Selection is URL-owned: no
+// localStorage, no context - the URL is the source of truth (shareable,
+// back/forward safe).
 //
 // Default project (when the URL carries none): the product-locked
 // primary project (slug 'shadhil-metro-heights'), falling back to the
@@ -16,7 +18,8 @@
 //
 // Manage projects (create / rename / edit): admin-class surface inside
 // the dropdown footer (ProjectsManageDialog). Delete is owner-only and
-// guarded server-side (409 when bookings exist).
+// guarded server-side (409 when bookings exist). The manage entry lands on
+// `/[orgSlug]/projects` (the registry).
 //
 // Honest state contract: the dropdown is always openable, even when
 // the projects list is empty (the BE module might not be wired, the
@@ -44,7 +47,7 @@ import {
 } from '@paalstack/react-ui';
 import { LuBuilding2, LuChevronsUpDown, LuPlus } from '@paalstack/react-icons/lu';
 
-import { PROJECT_SCOPED_PATHS, projectHref } from '@/lib/nav';
+import { projectHref } from '@/lib/nav';
 
 export type ProjectListItem = {
   id: string;
@@ -58,12 +61,15 @@ export type ProjectListItem = {
 
 export function ProjectSwitcher({
   projects,
-  activeProjectId,
+  activeProjectSlug,
+  activeOrgSlug,
   canManageProjects,
 }: {
   projects: ProjectListItem[];
-  /** The project id from the URL's first segment. */
-  activeProjectId: string | null;
+  /** The active project slug from the URL's /projects/<slug> segment. */
+  activeProjectSlug: string | null;
+  /** The active org slug from the URL's first segment. */
+  activeOrgSlug: string | null;
   /** ADMIN/OWNER only - shows the manage-projects dialog entry. */
   canManageProjects: boolean;
 }) {
@@ -72,22 +78,19 @@ export function ProjectSwitcher({
   const pathname = usePathname();
 
   const active =
-    projects.find((p) => p.id === activeProjectId) ?? projects[0] ?? null;
+    projects.find((p) => p.slug === activeProjectSlug) ?? projects[0] ?? null;
 
-  // Determine the current work surface from the pathname
-  // e.g., /proj-1/visits/abc -> /visits
+  // Determine the current work surface from the pathname.
+  // Slug scheme: /[orgSlug]/projects/[projectSlug]/<surface>. The work
+  // surface is segment 3 (/.../leads/abc -> /leads). Fall back to /dashboard.
   const currentWorkSurface = (() => {
     const segments = pathname.split('/').filter(Boolean);
     if (segments.length === 0) return '/dashboard';
-    // If we're on a project-scoped path, the second segment is the work surface
-    if (activeProjectId && segments.length >= 2) {
-      return `/${segments[1]}`;
+    // A project work surface: segments = [orgSlug, 'projects', projectSlug, surface, ...]
+    if (segments.length >= 3 && segments[1] === 'projects') {
+      return `/${segments[3] ?? 'dashboard'}`;
     }
-    // If no project active but on a known work surface
-    const knownWorkSurfaces = Array.from(PROJECT_SCOPED_PATHS);
-    if (knownWorkSurfaces.includes(`/${segments[0]}`)) {
-      return `/${segments[0]}`;
-    }
+    // On an org-level page without a project, stay on dashboard.
     return '/dashboard';
   })();
 
@@ -139,13 +142,16 @@ export function ProjectSwitcher({
                 <DropdownMenuItem
                   key={project.id}
                   data-qa="project-switcher-item"
-                  data-active={project.id === activeProjectId}
+                  data-active={project.id === active?.id}
                   className="data-[active=true]:bg-accent data-[active=true]:text-accent-foreground cursor-pointer gap-2 p-2"
                   onClick={() => {
-                    // Real switching: the first URL segment IS the active
-                    // project. Navigate to the SAME work surface under the
-                    // new project (dashboard included).
-                    const targetHref = projectHref(project.id, currentWorkSurface);
+                    // Switch: navigate to the SAME work surface under the
+                    // new project's slug, within the active org's slug.
+                    const targetHref = projectHref(
+                      activeOrgSlug,
+                      project.slug,
+                      currentWorkSurface,
+                    );
                     router.push(targetHref);
                   }}
                 >
@@ -153,7 +159,7 @@ export function ProjectSwitcher({
                     <LuBuilding2 className="size-3.5 shrink-0" />
                   </div>
                   {project.name}
-                  {project.id === activeProjectId ? (
+                  {project.id === active?.id ? (
                     <span
                       aria-hidden
                       className="text-muted-foreground ml-auto text-xs"
@@ -171,7 +177,11 @@ export function ProjectSwitcher({
                   data-qa="project-switcher-manage"
                   className="cursor-pointer gap-2 p-2"
                   onClick={() => {
-                    router.push('/projects');
+                    router.push(
+                      activeOrgSlug
+                        ? `/${activeOrgSlug}/projects`
+                        : '/projects',
+                    );
                   }}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">

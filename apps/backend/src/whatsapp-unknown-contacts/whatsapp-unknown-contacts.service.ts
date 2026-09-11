@@ -43,7 +43,7 @@ import {
   type WhatsappUnknownContactStatus,
   CreateLeadDtoSchema,
 } from '@shadhil/api-types';
-import { prisma as barePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
+import { prisma as barePrisma, type PrismaClient, withRlsContext, rlsContextFrom } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 
@@ -139,7 +139,7 @@ export class WhatsappUnknownContactsService {
 
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // Build the cursor predicate: rows STRICTLY OLDER than the
         // (createdAt, id) tuple we last returned. We use (createdAt, id)
@@ -211,7 +211,7 @@ export class WhatsappUnknownContactsService {
 
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // Lock the contact row so a concurrent convert/spam on the
         // same contact is serialized. findUnique + status check
@@ -304,7 +304,7 @@ export class WhatsappUnknownContactsService {
   ): Promise<SpamUnknownContactResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique(
           { where: { id: contactId }, select: { id: true, status: true } },

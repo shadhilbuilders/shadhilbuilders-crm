@@ -289,6 +289,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
             userId: 'cron-service',
             role: 'CRON_SERVICE',
             teamId: null,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           },
           async (tx) =>
             (tx as unknown as PrismaClient).reminder.updateMany({
@@ -319,6 +320,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
             userId: 'cron-service',
             role: 'CRON_SERVICE',
             teamId: null,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           },
           async (tx) =>
             (tx as unknown as PrismaClient).reminder.findMany({
@@ -346,6 +348,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                 userId: 'cron-service',
                 role: 'CRON_SERVICE',
                 teamId: null,
+                organizationId: 'ceid01lpfe1esm8jwsxid41k28',
               },
               async (tx) =>
                 (tx as unknown as PrismaClient).reminder.update({
@@ -373,6 +376,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                 userId: 'cron-service',
                 role: 'CRON_SERVICE',
                 teamId: null,
+                organizationId: 'ceid01lpfe1esm8jwsxid41k28',
               },
               async (tx) =>
                 (tx as unknown as PrismaClient).reminder.update({

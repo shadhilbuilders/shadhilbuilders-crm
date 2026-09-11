@@ -25,7 +25,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext,
+  withRlsContext, rlsContextFrom,
   type PrismaClient,
   type VisitStatus,
 } from '@shadhil/database';
@@ -112,7 +112,7 @@ export class VisitsService {
   async list(actor: JwtPayload, dto: VisitFilterDto): Promise<VisitListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
 
@@ -200,7 +200,7 @@ export class VisitsService {
   async create(actor: JwtPayload, dto: CreateSiteVisitDto): Promise<VisitRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // Verify the lead exists + RLS-gated read of the parent.
         const lead = await tx.lead.findUnique({
@@ -248,6 +248,7 @@ export class VisitsService {
         const created = await tx.siteVisit.create({
           data: {
             leadId: dto.leadId,
+            organizationId: actor.organizationId,
             userId,
             scheduledFor: new Date(dto.scheduledFor),
             status: 'SCHEDULED',
@@ -282,6 +283,7 @@ export class VisitsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'visit.create',
             entityType: 'SiteVisit',
             entityId: created.id,
@@ -339,7 +341,7 @@ export class VisitsService {
   ): Promise<VisitRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.siteVisit.findUnique({
           where: { id: visitId },
@@ -401,6 +403,7 @@ export class VisitsService {
           await tx.auditLog.create({
             data: {
               userId: actor.sub,
+              organizationId: actor.organizationId,
               action: 'visit.outcome',
               entityType: 'SiteVisit',
               entityId: current.id,
@@ -484,6 +487,7 @@ export class VisitsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'visit.outcome',
             entityType: 'SiteVisit',
             entityId: updated.id,
@@ -521,7 +525,7 @@ export class VisitsService {
   ): Promise<VisitRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await tx.siteVisit.findUnique({
           where: { id: visitId },
@@ -555,6 +559,7 @@ export class VisitsService {
         const created = await tx.siteVisit.create({
           data: {
             leadId: existing.leadId,
+            organizationId: actor.organizationId,
             userId,
             scheduledFor: new Date(dto.scheduledFor),
             status: 'SCHEDULED',
@@ -580,6 +585,7 @@ export class VisitsService {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'visit.reschedule',
             entityType: 'SiteVisit',
             entityId: created.id,

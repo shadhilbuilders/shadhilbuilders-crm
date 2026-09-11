@@ -1,14 +1,20 @@
-// Project-scoped route helpers - T-ProjectSwitch (2026-09-05).
+// Org + project-scoped route helpers - SLUG-based URL scheme (2026-09-11).
+// URL shape: /[orgSlug]/overview ... ; /[orgSlug]/projects/[projectSlug]/leads
 import { describe, expect, it } from 'vitest';
 
 import {
-  activeProjectIdFromPathname,
+  activeOrgSlugFromPathname,
+  activeProjectSlugFromPathname,
   isNavItemActive,
   isProjectScopedNavPath,
   navItemHref,
+  orgHref,
   projectHref,
   stripProjectSegment,
 } from './nav';
+
+const ORG = 'shadhil-builders';
+const PROJ = 'shadhil-metro-heights';
 
 describe('isProjectScopedNavPath', () => {
   it('marks the work surfaces as project-scoped', () => {
@@ -29,96 +35,158 @@ describe('isProjectScopedNavPath', () => {
     expect(isProjectScopedNavPath('/bookings/new')).toBe(true);
   });
 
-  it('keeps users/audit/home unscoped', () => {
-    for (const href of ['/', '/users', '/audit', '/whatsapp-unknown-contacts']) {
+  it('keeps org-level pages unscoped', () => {
+    for (const href of ['/', '/users', '/audit', '/overview', '/projects', '/whatsapp-unknown-contacts']) {
       expect(isProjectScopedNavPath(href)).toBe(false);
     }
   });
 });
 
 describe('projectHref', () => {
-  it('resolves scoped paths under the active project', () => {
-    expect(projectHref('proj-1', '/leads')).toBe('/proj-1/leads');
-    expect(projectHref('proj-1', '/visits')).toBe('/proj-1/visits');
-    expect(projectHref('proj-1', '/dashboard')).toBe('/proj-1/dashboard');
-    expect(projectHref('proj-1', '/leads/abc')).toBe('/proj-1/leads/abc');
+  it('resolves scoped paths under org + project slug', () => {
+    expect(projectHref(ORG, PROJ, '/leads')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/leads',
+    );
+    expect(projectHref(ORG, PROJ, '/visits')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/visits',
+    );
+    expect(projectHref(ORG, PROJ, '/dashboard')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/dashboard',
+    );
+    expect(projectHref(ORG, PROJ, '/leads/abc')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/leads/abc',
+    );
   });
 
-  it('passes unscoped paths through unchanged', () => {
-    expect(projectHref('proj-1', '/')).toBe('/');
-    expect(projectHref('proj-1', '/users')).toBe('/users');
+  it('keeps the template when org or project is missing', () => {
+    expect(projectHref(null, PROJ, '/leads')).toBe('/leads');
+    expect(projectHref(ORG, null, '/leads')).toBe('/leads');
+    expect(projectHref(null, null, '/leads')).toBe('/leads');
+  });
+});
+
+describe('orgHref', () => {
+  it('prefixes the org slug for org-level pages', () => {
+    expect(orgHref(ORG, '/overview')).toBe('/shadhil-builders/overview');
+    expect(orgHref(ORG, '/users')).toBe('/shadhil-builders/users');
+    expect(orgHref(ORG, '/teams/abc')).toBe('/shadhil-builders/teams/abc');
   });
 
-  it('keeps the template when no project is active', () => {
-    expect(projectHref(null, '/leads')).toBe('/leads');
+  it('keeps the template when org is missing', () => {
+    expect(orgHref(null, '/overview')).toBe('/overview');
   });
 });
 
 describe('navItemHref', () => {
-  it('resolves scoped items under the active project', () => {
-    expect(navItemHref({ href: '/leads' }, 'proj-1')).toBe('/proj-1/leads');
-    expect(navItemHref({ href: '/dashboard' }, 'proj-1')).toBe('/proj-1/dashboard');
-  });
-
-  it('passes unscoped items (scoped:false) through unchanged', () => {
-    expect(navItemHref({ href: '/overview', scoped: false }, 'proj-1')).toBe(
-      '/overview',
+  it('resolves scoped items under org + project slug', () => {
+    expect(navItemHref({ href: '/leads' }, ORG, PROJ)).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/leads',
     );
-    expect(navItemHref({ href: '/overview', scoped: false }, null)).toBe(
-      '/overview',
+    expect(navItemHref({ href: '/dashboard' }, ORG, PROJ)).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/dashboard',
     );
   });
 
-  it('keeps the template for scoped items when no project is active', () => {
-    expect(navItemHref({ href: '/leads' }, null)).toBe('/leads');
+  it('resolves unscoped items (scoped:false) under just the org slug', () => {
+    expect(navItemHref({ href: '/overview', scoped: false }, ORG, PROJ)).toBe(
+      '/shadhil-builders/overview',
+    );
+    expect(navItemHref({ href: '/overview', scoped: false }, ORG, null)).toBe(
+      '/shadhil-builders/overview',
+    );
+    expect(navItemHref({ href: '/overview', scoped: false }, null, null)).toBe(
+      '/overview',
+    );
   });
 });
 
-describe('activeProjectIdFromPathname', () => {
-  it('extracts the first segment on work surfaces', () => {
-    expect(activeProjectIdFromPathname('/proj-1/leads')).toBe('proj-1');
+describe('activeOrgSlugFromPathname', () => {
+  it('extracts the org slug from /<orgSlug> paths', () => {
+    expect(activeOrgSlugFromPathname('/shadhil-builders/overview')).toBe(ORG);
     expect(
-      activeProjectIdFromPathname('/proj-1/leads/abc123'),
-    ).toBe('proj-1');
+      activeOrgSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+    ).toBe(ORG);
   });
 
-  it('returns null on top-level routes', () => {
-    expect(activeProjectIdFromPathname('/')).toBeNull();
-    expect(activeProjectIdFromPathname('/users')).toBeNull();
-    expect(activeProjectIdFromPathname('/leads')).toBeNull();
-    expect(activeProjectIdFromPathname('/login')).toBeNull();
+  it('returns null on bare / and auth routes', () => {
+    expect(activeOrgSlugFromPathname('/')).toBeNull();
+    expect(activeOrgSlugFromPathname('/login')).toBe('login');
+  });
+});
+
+describe('activeProjectSlugFromPathname', () => {
+  it('extracts the project slug at /<orgSlug>/projects/<projectSlug>', () => {
+    expect(
+      activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+    ).toBe(PROJ);
+    expect(
+      activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads/abc123'),
+    ).toBe(PROJ);
+    expect(
+      activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/dashboard'),
+    ).toBe(PROJ);
+  });
+
+  it('returns null on org-level and top-level routes', () => {
+    expect(activeProjectSlugFromPathname('/')).toBeNull();
+    expect(activeProjectSlugFromPathname('/shadhil-builders/overview')).toBeNull();
+    expect(activeProjectSlugFromPathname('/shadhil-builders/users')).toBeNull();
+    expect(activeProjectSlugFromPathname('/login')).toBeNull();
   });
 });
 
 describe('stripProjectSegment', () => {
-  it('strips the project segment', () => {
-    expect(stripProjectSegment('/proj-1/leads')).toBe('/leads');
-    expect(stripProjectSegment('/proj-1/leads/abc')).toBe('/leads/abc');
+  it('strips the org + project prefix from work surfaces', () => {
+    expect(
+      stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+    ).toBe('/leads');
+    expect(
+      stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads/abc'),
+    ).toBe('/leads/abc');
   });
 
-  it('returns / for single-segment paths', () => {
-    expect(stripProjectSegment('/proj-1')).toBe('/');
+  it('strips the org prefix from org-level pages', () => {
+    expect(stripProjectSegment('/shadhil-builders/overview')).toBe('/overview');
+    expect(stripProjectSegment('/shadhil-builders/users')).toBe('/users');
+    expect(stripProjectSegment('/shadhil-builders')).toBe('/');
+  });
+
+  it('returns / for bare paths', () => {
     expect(stripProjectSegment('/')).toBe('/');
   });
 });
 
-describe('isNavItemActive with project segments (integration)', () => {
-  it('highlights Leads on /proj-1/leads and /proj-1/leads/abc', () => {
-    const stripped = stripProjectSegment('/proj-1/leads/abc');
-    expect(isNavItemActive('/leads', stripped)).toBe(true);
-    const inbox = stripProjectSegment('/proj-1/leads');
-    expect(isNavItemActive('/leads', inbox)).toBe(true);
+describe('isNavItemActive with org+project segments (integration)', () => {
+  it('highlights Leads on /[orgSlug]/projects/[projectSlug]/leads and .../leads/abc', () => {
+    expect(
+      isNavItemActive(
+        '/leads',
+        stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads/abc'),
+      ),
+    ).toBe(true);
+    expect(
+      isNavItemActive(
+        '/leads',
+        stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+      ),
+    ).toBe(true);
   });
 
   it('does not highlight Dashboard on other project work surfaces', () => {
     expect(
-      isNavItemActive('/dashboard', stripProjectSegment('/proj-1/leads')),
+      isNavItemActive(
+        '/dashboard',
+        stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+      ),
     ).toBe(false);
   });
 
-  it('highlights Dashboard on /proj-1/dashboard', () => {
+  it('highlights Dashboard on /[orgSlug]/projects/[projectSlug]/dashboard', () => {
     expect(
-      isNavItemActive('/dashboard', stripProjectSegment('/proj-1/dashboard')),
+      isNavItemActive(
+        '/dashboard',
+        stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/dashboard'),
+      ),
     ).toBe(true);
   });
 });

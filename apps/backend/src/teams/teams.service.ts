@@ -12,7 +12,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { withRlsContext } from '@shadhil/database';
+import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { PrismaClient } from '@shadhil/database';
 import type { TeamDetail, TeamListItem, TeamMemberProject } from '@shadhil/api-types';
@@ -37,7 +37,7 @@ export class TeamsService {
   async list(actor: JwtPayload): Promise<TeamListItem[]> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         // OWNER/ADMIN oversee every team (mirrors the leads scoping
         // convention - role lane, not membership). MANAGER/TELECALLER/
@@ -99,7 +99,7 @@ export class TeamsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const team = await tx.team.findUnique({
           where: { id },

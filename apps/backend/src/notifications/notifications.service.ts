@@ -28,6 +28,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
+  rlsContextFrom,
   withRlsContext,
   type PrismaClient,
 } from '@shadhil/database';
@@ -87,7 +88,7 @@ export class NotificationsService {
   ): Promise<NotificationListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (dto.unreadOnly) where['read'] = false;
@@ -163,7 +164,7 @@ export class NotificationsService {
   ): Promise<{ updated: number }> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {
           userId: actor.sub,
@@ -185,6 +186,7 @@ export class NotificationsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'notification.markRead',
             entityType: 'Notification',
             entityId: 'batch',
@@ -232,11 +234,12 @@ export class NotificationsService {
     }
     return withRlsContext(
       this.client,
-      { userId: recipientSub, role: 'TELECALLER', teamId: null },
+      { userId: recipientSub, role: 'TELECALLER', teamId: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         const created = await (tx as unknown as PrismaClient).notification.create({
           data: {
             userId: recipientSub,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             type: payload.type,
             title: payload.title,
             body: payload.body,
@@ -257,6 +260,7 @@ export class NotificationsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: recipientSub,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             action: 'notification.emit',
             entityType: 'Notification',
             entityId: created.id,

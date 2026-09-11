@@ -65,6 +65,7 @@ async function adminSeed<T>(
       userId: 'zhp69koimlj4hqorl1skmpsq',
       role: 'ADMIN',
       teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
@@ -92,6 +93,7 @@ async function seedDueReminder(label: string): Promise<string> {
         name: 'test-reminder-admin',
         role: 'ADMIN',
         emailVerified: true,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     await db.user.upsert({
@@ -103,12 +105,13 @@ async function seedDueReminder(label: string): Promise<string> {
         name: 'test-reminder-manager',
         role: 'MANAGER',
         emailVerified: true,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     await db.team.upsert({
       where: { id: 'yxt9evh7y5x9pkpxl61ywbyl' },
       update: {},
-      create: { id: 'yxt9evh7y5x9pkpxl61ywbyl', name: 'Test Team', managerId: 'dyamh3gezek1ag5wh8xn9ib5' },
+      create: { id: 'yxt9evh7y5x9pkpxl61ywbyl', name: 'Test Team', managerId: 'dyamh3gezek1ag5wh8xn9ib5', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     const project = await db.project.upsert({
       where: { id: 'wqvswgk5n0ucvq8l1ydva3d7' },
@@ -118,12 +121,13 @@ async function seedDueReminder(label: string): Promise<string> {
         name: 'Test Project',
         slug: 'wqvswgk5n0ucvq8l1ydva3d7',
         address: '123 Test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     const phase = await db.phase.upsert({
       where: { id: 'otvkiihv4ai322i63rhfek4z' },
       update: {},
-      create: { id: 'otvkiihv4ai322i63rhfek4z', projectId: project.id, name: 'Test Phase' },
+      create: { id: 'otvkiihv4ai322i63rhfek4z', projectId: project.id, name: 'Test Phase', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     await db.unit.upsert({
       where: { phaseId_unitNumber: { phaseId: phase.id, unitNumber: 'T-001' } },
@@ -134,6 +138,7 @@ async function seedDueReminder(label: string): Promise<string> {
         unitNumber: 'T-001',
         bhk: 3,
         price: '10000000.00',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     await db.lead.upsert({
@@ -152,6 +157,7 @@ async function seedDueReminder(label: string): Promise<string> {
         teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
         ownerId: 'dyamh3gezek1ag5wh8xn9ib5',
         ownerType: 'MANAGER',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     await db.reminder.create({
@@ -168,6 +174,7 @@ async function seedDueReminder(label: string): Promise<string> {
         type: 'PRE_VISIT_STAFF',
         status: 'SCHEDULED',
         scheduledFor: new Date(Date.now() - 60_000), // 1 minute ago - due
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   });

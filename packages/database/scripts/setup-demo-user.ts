@@ -33,6 +33,9 @@ const DEMO_NAME = 'Demo Manager';
 // Fixed cuid2 team id for the demo user's team (cuid2-only contract -
 // a hyphenated `demo-team` id would be rejected by the API's z.cuid2()).
 const DEMO_TEAM_ID = 'v31x9c35h91d9ciqcn6bo4dz';
+// T-ORG: demo user + all demo rows belong to the bootstrap org (matches the
+// org the migration seeds - ceid01lpfe1esm8jwsxid41k28 / Shadhil Builders).
+const DEMO_ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
 
 function hash(pw: string): string {
   const salt = randomBytes(16).toString('hex');
@@ -63,6 +66,7 @@ async function main() {
       email: DEMO_EMAIL,
       name: DEMO_NAME,
       role: 'MANAGER',
+      organizationId: DEMO_ORG_ID,
       emailVerified: true,
       mustChangePassword: false,
     },
@@ -86,6 +90,7 @@ async function main() {
       id: DEMO_TEAM_ID,
       name: 'Demo Team',
       managerId: demoUser.id,
+      organizationId: DEMO_ORG_ID,
     },
   });
 
@@ -175,6 +180,7 @@ async function main() {
     await prisma.message.create({
       data: {
         leadId: lead.id,
+        organizationId: DEMO_ORG_ID,
         userId: direction === 'OUT' ? demoUser.id : null,
         direction,
         channel,
@@ -190,6 +196,7 @@ async function main() {
     data: [
       {
         userId: demoUser.id,
+        organizationId: DEMO_ORG_ID,
         type: 'lead.assigned',
         title: `New lead: ${demoLeads[0]?.name ?? 'Unassigned'}`,
         body: 'Assigned to you by the system. Review and respond within 24h.',
@@ -198,6 +205,7 @@ async function main() {
       },
       {
         userId: demoUser.id,
+        organizationId: DEMO_ORG_ID,
         type: 'visit.scheduled',
         title: 'Visit confirmed for tomorrow',
         body: `${demoLeads[1]?.name ?? 'Lead'} confirmed the site visit at 10:00 AM.`,
@@ -206,6 +214,7 @@ async function main() {
       },
       {
         userId: demoUser.id,
+        organizationId: DEMO_ORG_ID,
         type: 'booking.requested',
         title: 'Token request received',
         body: `${demoLeads[2]?.name ?? 'Lead'} requested a token for Unit A-1201.`,
@@ -222,6 +231,7 @@ async function main() {
       data: [
         {
           leadId: wonLead.id,
+          organizationId: DEMO_ORG_ID,
           unitId,
           userId: demoUser.id,
           amount: '7500000.00',
@@ -231,6 +241,7 @@ async function main() {
         },
         {
           leadId: wonLead.id,
+          organizationId: DEMO_ORG_ID,
           unitId,
           userId: demoUser.id,
           amount: '1200000.00',

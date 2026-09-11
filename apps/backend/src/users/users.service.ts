@@ -24,7 +24,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { withRlsContext, type Role, type PrismaClient } from '@shadhil/database';
+import { withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
@@ -105,6 +105,7 @@ export class UsersService {
         role: dto.role,
         teamId: teamId,
         emailVerified: false,
+        organizationId: actor.organizationId,
       },
     });
 
@@ -118,6 +119,7 @@ export class UsersService {
           data: {
             name: `${dto.name}'s Team`,
             managerId: created.id,
+            organizationId: actor.organizationId,
           },
         });
         await this.client.user.update({
@@ -130,12 +132,13 @@ export class UsersService {
       // Audit row - the only write inside an RLS transaction.
       await withRlsContext(
         this.client,
-        { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+        rlsContextFrom(actor),
         async (tx) => {
           await tx.auditLog.create({
             data: {
               userId: actor.sub,
               action: 'user.create',
+              organizationId: actor.organizationId,
               entityType: 'User',
               entityId: created.id,
               after: {
@@ -211,7 +214,7 @@ export class UsersService {
       });
       if (!existing) {
         const team = await this.client.team.create({
-          data: { name: `${target.name}'s Team`, managerId: target.id },
+          data: { name: `${target.name}'s Team`, managerId: target.id, organizationId: actor.organizationId },
         });
         teamId = team.id;
       }
@@ -226,12 +229,13 @@ export class UsersService {
     //    ADMIN there - rls.ts).
     await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             action: 'user.changeRole',
+            organizationId: actor.organizationId,
             entityType: 'User',
             entityId: target.id,
             before: { role: target.role },
@@ -296,12 +300,13 @@ export class UsersService {
     // 5. Audit row in the actor's RLS context.
     await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             action: 'user.update',
+            organizationId: actor.organizationId,
             entityType: 'User',
             entityId: target.id,
             before: { name: target.name, email: target.email },
@@ -361,12 +366,13 @@ export class UsersService {
     // 4. Audit row in the actor's RLS context.
     await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             action: 'user.delete',
+            organizationId: actor.organizationId,
             entityType: 'User',
             entityId: target.id,
             before: { name: target.name, email: target.email, role: target.role },
@@ -468,12 +474,13 @@ export class UsersService {
     // admits the insert (it gates on app.user_id).
     await withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             action: 'user.changePassword',
+            organizationId: actor.organizationId,
             entityType: 'User',
             entityId: target.id,
             before: { mustChangePassword: target.mustChangePassword },
