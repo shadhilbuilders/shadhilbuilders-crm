@@ -34,7 +34,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: 'org_bootstrap' },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -45,7 +45,7 @@ function actorFor(userId: string, role: 'ADMIN' | 'SALES_EXEC'): JwtPayload {
     email: `${userId}@example.com`,
     role,
     teamId: TEAM_ID,
-    organizationId: 'org_bootstrap',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -73,7 +73,7 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
         ownerId: SE_ID,
         ownerType: 'SALES_EXEC',
         teamId: TEAM_ID,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     await db.siteVisit.create({
@@ -83,7 +83,7 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
         userId: SE_ID,
         scheduledFor: new Date(),
         status: 'SCHEDULED',
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   });
@@ -130,7 +130,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       await db.team.upsert({
         where: { id: TEAM_ID },
         update: {},
-        create: { id: TEAM_ID, name: 'VOC Test Team', organizationId: 'org_bootstrap' },
+        create: { id: TEAM_ID, name: 'VOC Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       });
       await db.user.upsert({
         where: { id: ADMIN_ID },
@@ -142,7 +142,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
           role: 'ADMIN',
           teamId: TEAM_ID,
           mustChangePassword: false,
-          organizationId: 'org_bootstrap',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
       await db.user.upsert({
@@ -155,7 +155,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
           role: 'SALES_EXEC',
           teamId: TEAM_ID,
           mustChangePassword: false,
-          organizationId: 'org_bootstrap',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
     });

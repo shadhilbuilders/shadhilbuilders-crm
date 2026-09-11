@@ -171,7 +171,7 @@ export class FeedbacksService {
         userId: 'public-api',
         role: 'PUBLIC_API',
         teamId: '',
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
       async (tx) => {
         // Raw INSERT, not typed `tx.feedback.create` - Prisma 7's typed API

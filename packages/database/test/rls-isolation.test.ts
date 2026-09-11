@@ -144,7 +144,7 @@ async function buildFixture(): Promise<Fixture> {
         role: u.role,
         teamId: null,
         emailVerified: true,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   }
@@ -152,12 +152,12 @@ async function buildFixture(): Promise<Fixture> {
   await adminPrisma.team.upsert({
     where: { id: teamAId },
     update: { managerId: managerAId, name: 'Fixture A' },
-    create: { id: teamAId, name: 'Fixture A', managerId: managerAId, organizationId: 'org_bootstrap' },
+    create: { id: teamAId, name: 'Fixture A', managerId: managerAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
   await adminPrisma.team.upsert({
     where: { id: teamBId },
     update: { managerId: managerBId, name: 'Fixture B' },
-    create: { id: teamBId, name: 'Fixture B', managerId: managerBId, organizationId: 'org_bootstrap' },
+    create: { id: teamBId, name: 'Fixture B', managerId: managerBId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
 
   // ── ManagerAssignmentRule rows for the T-ARM-SCHEMA 129-130 cases.
@@ -179,7 +179,7 @@ async function buildFixture(): Promise<Fixture> {
       targetUserId: teleAId,
       active: true,
       priority: 10,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.managerAssignmentRule.upsert({
@@ -198,7 +198,7 @@ async function buildFixture(): Promise<Fixture> {
       targetUserId: teleBId,
       active: true,
       priority: 10,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -230,7 +230,7 @@ async function buildFixture(): Promise<Fixture> {
       name: 'Fixture Project A',
       slug: 'u83jbfz0bm340q1qaj17xoe3',
       address: '123 Fixture A',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.project.upsert({
@@ -241,18 +241,18 @@ async function buildFixture(): Promise<Fixture> {
       name: 'Fixture Project B',
       slug: 'h0wgdy2d32ax3eyl0r55db5e',
       address: '123 Fixture B',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.phase.upsert({
     where: { id: phaseAId },
     update: {},
-    create: { id: phaseAId, projectId: projectAId, name: 'Phase A', organizationId: 'org_bootstrap' },
+    create: { id: phaseAId, projectId: projectAId, name: 'Phase A', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
   await adminPrisma.phase.upsert({
     where: { id: phaseBId },
     update: {},
-    create: { id: phaseBId, projectId: projectBId, name: 'Phase B', organizationId: 'org_bootstrap' },
+    create: { id: phaseBId, projectId: projectBId, name: 'Phase B', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
   await adminPrisma.unit.upsert({
     where: { phaseId_unitNumber: { phaseId: phaseAId, unitNumber: 'FA-001' } },
@@ -263,7 +263,7 @@ async function buildFixture(): Promise<Fixture> {
       unitNumber: 'FA-001',
       bhk: 3,
       price: '10000000.00',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.unit.upsert({
@@ -275,7 +275,7 @@ async function buildFixture(): Promise<Fixture> {
       unitNumber: 'FB-001',
       bhk: 3,
       price: '10000000.00',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -291,7 +291,7 @@ async function buildFixture(): Promise<Fixture> {
       teamId: teamAId,
       ownerId: teleAId,
       ownerType: 'TELECALLER',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.lead.upsert({
@@ -305,7 +305,7 @@ async function buildFixture(): Promise<Fixture> {
       teamId: teamBId,
       ownerId: teleBId,
       ownerType: 'TELECALLER',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -316,12 +316,12 @@ async function buildFixture(): Promise<Fixture> {
   await adminPrisma.activity.upsert({
     where: { id: activityAId },
     update: {},
-    create: { id: activityAId, leadId: leadAId, userId: teleAId, type: 'NOTE', body: 'a', organizationId: 'org_bootstrap' },
+    create: { id: activityAId, leadId: leadAId, userId: teleAId, type: 'NOTE', body: 'a', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
   await adminPrisma.activity.upsert({
     where: { id: activityBId },
     update: {},
-    create: { id: activityBId, leadId: leadBId, userId: teleBId, type: 'NOTE', body: 'b', organizationId: 'org_bootstrap' },
+    create: { id: activityBId, leadId: leadBId, userId: teleBId, type: 'NOTE', body: 'b', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
   });
 
   const visitAId = 'n39whq9xc5symadmlvcj4ft8';
@@ -336,7 +336,7 @@ async function buildFixture(): Promise<Fixture> {
       userId: execAId,
       scheduledFor: future,
       status: 'SCHEDULED',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.siteVisit.upsert({
@@ -348,7 +348,7 @@ async function buildFixture(): Promise<Fixture> {
       userId: execBId,
       scheduledFor: future,
       status: 'SCHEDULED',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -364,7 +364,7 @@ async function buildFixture(): Promise<Fixture> {
       direction: 'OUT',
       channel: 'WHATSAPP',
       body: 'a',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.message.upsert({
@@ -377,7 +377,7 @@ async function buildFixture(): Promise<Fixture> {
       direction: 'OUT',
       channel: 'WHATSAPP',
       body: 'b',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -393,7 +393,7 @@ async function buildFixture(): Promise<Fixture> {
       userId: execAId,
       amount: '100000.00',
       status: 'HOLD',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.booking.upsert({
@@ -406,7 +406,7 @@ async function buildFixture(): Promise<Fixture> {
       userId: execBId,
       amount: '100000.00',
       status: 'HOLD',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -422,7 +422,7 @@ async function buildFixture(): Promise<Fixture> {
       type: 'PRE_VISIT_STAFF',
       status: 'SCHEDULED',
       scheduledFor: future,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.reminder.upsert({
@@ -435,7 +435,7 @@ async function buildFixture(): Promise<Fixture> {
       type: 'PRE_VISIT_STAFF',
       status: 'SCHEDULED',
       scheduledFor: future,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -450,7 +450,7 @@ async function buildFixture(): Promise<Fixture> {
       type: 'lead.assigned',
       title: 'A',
       body: 'a',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.notification.upsert({
@@ -462,7 +462,7 @@ async function buildFixture(): Promise<Fixture> {
       type: 'lead.assigned',
       title: 'B',
       body: 'b',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -477,7 +477,7 @@ async function buildFixture(): Promise<Fixture> {
       action: 'fixture.a',
       entityType: 'Lead',
       entityId: leadAId,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.auditLog.upsert({
@@ -489,7 +489,7 @@ async function buildFixture(): Promise<Fixture> {
       action: 'fixture.b',
       entityType: 'Lead',
       entityId: leadBId,
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
 
@@ -523,13 +523,13 @@ async function buildFixture(): Promise<Fixture> {
 function ctxFor(role: Role, fixture: Fixture): RlsContext {
   switch (role) {
     case 'ADMIN':
-      return { userId: fixture.managerAId, role: 'ADMIN', teamId: fixture.teamAId, organizationId: 'org_bootstrap' };
+      return { userId: fixture.managerAId, role: 'ADMIN', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'MANAGER':
-      return { userId: fixture.managerAId, role: 'MANAGER', teamId: fixture.teamAId, organizationId: 'org_bootstrap' };
+      return { userId: fixture.managerAId, role: 'MANAGER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'SALES_EXEC':
-      return { userId: fixture.execAId, role: 'SALES_EXEC', teamId: fixture.teamAId, organizationId: 'org_bootstrap' };
+      return { userId: fixture.execAId, role: 'SALES_EXEC', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'TELECALLER':
-      return { userId: fixture.teleAId, role: 'TELECALLER', teamId: fixture.teamAId, organizationId: 'org_bootstrap' };
+      return { userId: fixture.teleAId, role: 'TELECALLER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
   }
 }
 
@@ -867,7 +867,7 @@ async function runCase(
               userId: ctx.userId,
               type: 'NOTE',
               body: 'matrix-test',
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'SiteVisit') {
@@ -877,7 +877,7 @@ async function runCase(
               userId: ctx.userId,
               scheduledFor: new Date(now.getTime() + 86400000),
               status: 'SCHEDULED',
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'Message') {
@@ -888,7 +888,7 @@ async function runCase(
               direction: 'OUT',
               channel: 'IN_APP',
               body: 'matrix-test',
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'Booking') {
@@ -899,7 +899,7 @@ async function runCase(
               userId: ctx.userId,
               amount: '1.00',
               status: 'HOLD',
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'Reminder') {
@@ -910,7 +910,7 @@ async function runCase(
               type: 'PRE_VISIT_STAFF',
               status: 'SCHEDULED',
               scheduledFor: new Date(now.getTime() + 86400000),
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'Notification') {
@@ -920,7 +920,7 @@ async function runCase(
               type: 'matrix.test',
               title: 'matrix',
               body: 'matrix-test',
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'AuditLog') {
@@ -930,7 +930,7 @@ async function runCase(
               action: 'matrix.test',
               entityType: 'Test',
               entityId: fixture.leadAId,
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } else if (table === 'Lead') {
@@ -941,7 +941,7 @@ async function runCase(
               state: 'NEW',
               teamId: ctx.teamId ?? '',
               ownerId: ctx.userId,
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
               // roleFromCtx is widened to include CRON_SERVICE for the
               // T-CRONS standalone cases; this path runs only for the
               // 4×8×4 matrix's real user roles, so cast down to the
@@ -1138,7 +1138,7 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
         teamId: null,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const result = await withRlsContext(prisma, cronCtx, async (tx) => {
         try {
@@ -1171,7 +1171,7 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
         teamId: null,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, cronCtx, async (tx) =>
         (tx as unknown as {
@@ -1201,7 +1201,7 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
           userId: fixture.managerAId, // a real user from fixture
           role: 'CRON_SERVICE', // <-- the impersonation attempt
           teamId: null,
-          organizationId: 'org_bootstrap',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         };
         const result = await withRlsContext(prisma, ctx, async (tx) => {
           try {
@@ -1261,7 +1261,7 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
         userId: fixture.managerAId,
         role: 'MANAGER',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, managerCtx, async (tx) =>
         (
@@ -1291,7 +1291,7 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
         userId: fixture.teleAId,
         role: 'TELECALLER',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, tcCtx, async (tx) =>
         (
@@ -1335,7 +1335,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
       userId: 'public-api',
       role: 'PUBLIC_API',
       teamId: '',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     }, async (tx) => {
       // Raw INSERT - typed `feedback.create` hits the Prisma 7 typed-API
       // RLS quirk with non-user service-marker roles (42501 even with the
@@ -1348,7 +1348,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
       }).$executeRawUnsafe(
         `INSERT INTO "Feedback" (id, "organizationId", name, rating, status, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, 'NEW', NOW(), NOW())`,
         id,
-        'org_bootstrap',
+        'ceid01lpfe1esm8jwsxid41k28',
         'RLS fixture',
         3,
       );
@@ -1369,13 +1369,13 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const freshId = `fb_rls_ins_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       // If the policy were missing, the insert would 42501 and this throws.
       await expect(
-        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', teamId: '', organizationId: 'org_bootstrap' }, async (tx) =>
+        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }, async (tx) =>
           (tx as unknown as {
             $executeRawUnsafe: (sql: string, ...p: unknown[]) => Promise<unknown>;
           }).$executeRawUnsafe(
             `INSERT INTO "Feedback" (id, "organizationId", name, rating, status, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, 'NEW', NOW(), NOW())`,
             freshId,
-            'org_bootstrap',
+            'ceid01lpfe1esm8jwsxid41k28',
             'RLS fixture reinsert',
             3,
           ),
@@ -1394,7 +1394,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: 'public-api',
         role: 'PUBLIC_API',
         teamId: '',
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           feedback: { findMany: () => Promise<Array<{ id: string }>> };
@@ -1412,7 +1412,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.managerAId,
         role: 'MANAGER',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           feedback: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
@@ -1430,7 +1430,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           feedback: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string; status: string }>> };
@@ -1449,7 +1449,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           feedback: { update: (a: { where: { id: string }; data: { status: string } }) => Promise<{ status: string }> };
@@ -1480,7 +1480,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.managerAId,
         role: 'ADMIN',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           lead: {
@@ -1502,7 +1502,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
             ownerType: 'TELECALLER',
             teamId: fixture.teamAId,
             coOwnerId: fixture.execAId,
-            organizationId: 'org_bootstrap',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           },
         }),
       );
@@ -1512,7 +1512,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           lead: { findUnique: (a: { where: { id: string } }) => Promise<unknown | null> };
@@ -1525,7 +1525,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           lead: { update: (a: { where: { id: string }; data: { state: string } }) => Promise<unknown> };
@@ -1539,7 +1539,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.teleBId,
         role: 'TELECALLER',
         teamId: fixture.teamBId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           lead: { findUnique: (a: { where: { id: string } }) => Promise<unknown | null> };
@@ -1552,7 +1552,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
         userId: fixture.managerAId,
         role: 'ADMIN',
         teamId: fixture.teamAId,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
           lead: { deleteMany: (a: { where: { id: string } }) => Promise<unknown> };

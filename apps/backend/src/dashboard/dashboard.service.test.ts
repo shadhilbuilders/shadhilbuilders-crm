@@ -160,7 +160,7 @@ vi.mock('@shadhil/database', () => {
       userId: actor.sub,
       role: actor.role,
       teamId: actor.teamId,
-      organizationId: actor.organizationId ?? 'org_bootstrap',
+      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     Prisma: {
       raw: (sql: string) => sql,
@@ -182,7 +182,7 @@ const ownerActor: JwtPayload = {
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
   teamId: null,
-  organizationId: 'org_bootstrap',
+  organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',

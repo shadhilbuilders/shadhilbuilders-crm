@@ -34,8 +34,8 @@ const DEMO_NAME = 'Demo Manager';
 // a hyphenated `demo-team` id would be rejected by the API's z.cuid2()).
 const DEMO_TEAM_ID = 'v31x9c35h91d9ciqcn6bo4dz';
 // T-ORG: demo user + all demo rows belong to the bootstrap org (matches the
-// org the migration seeds - org_bootstrap / Shadhil Builders).
-const DEMO_ORG_ID = 'org_bootstrap';
+// org the migration seeds - ceid01lpfe1esm8jwsxid41k28 / Shadhil Builders).
+const DEMO_ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
 
 function hash(pw: string): string {
   const salt = randomBytes(16).toString('hex');

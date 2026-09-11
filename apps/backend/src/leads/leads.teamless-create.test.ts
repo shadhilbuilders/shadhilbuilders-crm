@@ -41,7 +41,7 @@ const ADMIN_ID = `test-teamless-admin-${RUN_TAG}`;
 let OWNER_ID = '';
 const LEAD_IDS: string[] = [];
 // Every business row now carries organizationId (T-ORG multitenancy).
-const ORG = 'org_bootstrap';
+const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 
 async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -63,7 +63,7 @@ function teamlessActor(
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
     teamId: null, // <-- the bug: seeded ADMIN/OWNER have no teamId
-    organizationId: 'org_bootstrap',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',

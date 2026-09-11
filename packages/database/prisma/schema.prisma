@@ -192,7 +192,7 @@ enum FeedbackStatus {
 // would destroy tenant history). Orgs are soft-lifecycle; deletion is a
 // deliberate destructive admin op.
 model Organization {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid(2))
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())

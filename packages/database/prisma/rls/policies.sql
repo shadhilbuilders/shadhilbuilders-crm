@@ -744,7 +744,7 @@ ALTER TABLE "WebhookEvent" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WhatsappUnknownContact" ENABLE ROW LEVEL SECURITY;
 
 -- CRON_SERVICE is a system role with no real user/org; withRlsContext sets
--- app.user_org_id to the target org ('org_bootstrap' in the single-org
+-- app.user_org_id to the target org ('ceid01lpfe1esm8jwsxid41k28' in the single-org
 -- deploy) so these bypasses stay org-scoped.
 CREATE POLICY webhook_cron_service_all ON "WebhookEvent"
   FOR ALL

@@ -43,7 +43,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'org_bootstrap' },
+    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       // T-E2b diagnostic: verify the RLS context is actually set
       const role = await tx.$queryRawUnsafe<Array<{ v: string }>>(
@@ -62,7 +62,7 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'WA Test Team', organizationId: 'org_bootstrap' },
+      create: { id: TEST_TEAM_ID, name: 'WA Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     // Upsert user (staff)
     await db.user.upsert({
@@ -75,7 +75,7 @@ beforeAll(async () => {
         role: 'MANAGER',
         teamId: TEST_TEAM_ID,
         mustChangePassword: false,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
     // Upsert lead. The phone must be unique per test run (Lead has a
@@ -94,7 +94,7 @@ beforeAll(async () => {
         ownerId: TEST_USER_ID,
         ownerType: 'MANAGER',
         teamId: TEST_TEAM_ID,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   });
@@ -143,7 +143,7 @@ const outboundStub = {
 
 const actor: JwtPayload = {
   sub: TEST_USER_ID,
-  organizationId: 'org_bootstrap',
+  organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   email: 'wa-staff@example.com',
   role: 'MANAGER',
   teamId: TEST_TEAM_ID,
@@ -175,7 +175,7 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     if (prisma === null) throw new Error('prisma missing');
     const message = await withRlsContext(
       prisma,
-      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'org_bootstrap' },
+      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => (tx as unknown as PrismaClient).message.findUnique({ where: { id: result.id } }),
     );
     expect(message).not.toBeNull();

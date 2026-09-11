@@ -128,7 +128,11 @@ export const SEED_RULE_IDS = [
 // cuid1 default). The Account credential row keys off User.id, so it
 // follows automatically.
 export const SEED_OWNER_ID = 'oet70k7svsjrta4480fnyenx';
-export const SEED_ORG_ID = 'org_bootstrap';
+// T-ORG (2026-09-11): SEED_ORG_ID must be a VALID cuid2 (z.cuid2). The
+// bootstrap org drives every org_* RLS policy comparison, and API DTOs /
+// issueJwt validate organizationId as cuid2 - so the org id can no longer be
+// the plaintext 'ceid01lpfe1esm8jwsxid41k28' (which failed z.cuid2()).
+export const SEED_ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
 export const SEED_ADMIN_ID = 'b2djb8x7jpk8702v8o83rl6s';
 export const SEED_MANAGER_ID = 'jhl2a7l1x7d7bes0jf7ktkhw';
 export const SEED_TELECALLER_ID = 'bscdnl31d81fmwioebupnmwr';

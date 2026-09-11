@@ -42,7 +42,7 @@ const LEAD_ID = `test-detail-lead-${RUN_TAG}`;
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
 // Every business row now carries organizationId (T-ORG multitenancy).
-const ORG = 'org_bootstrap';
+const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -59,7 +59,7 @@ function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'rol
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
     teamId: overrides.teamId,
-    organizationId: 'org_bootstrap',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',

@@ -75,7 +75,7 @@ export const auth: any = betterAuth({
       organizationId: {
         type: 'string',
         required: false,
-        defaultValue: 'org_bootstrap',
+        defaultValue: 'ceid01lpfe1esm8jwsxid41k28',
         input: false,
       },
     },
