@@ -24,7 +24,7 @@
 import { AlertDialog, Badge, Button, DataTable, DataTableRowActions, MultiSelect, TypographyP, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
+import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -290,7 +290,7 @@ export default function BookingsPage() {
       <PageHeader
         title="Bookings"
         breadcrumb={[{ label: 'Work' }, { label: 'Bookings' }]}
-        subtitle="HOLD → TOKEN → APPROVED. Manager approval is the gating step."
+        subtitle={<BookingPipeline />}
         action={
           canCreate ? (
             <Button as={Link} href={projectHref(projectId, '/bookings/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-booking-button">
@@ -461,5 +461,37 @@ function DeleteConfirmDialog({
       onConfirm={() => onConfirm()}
       onCancel={() => onCancel()}
     />
+  );
+}
+
+/**
+ * Visual booking-lifecycle indicator for the page header. Replaces the
+ * plain "HOLD → TOKEN → APPROVED" text with an icon-per-stage flow:
+ *   HOLD (clock) → TOKEN (coins) → APPROVED (badge-check)
+ * with a muted "Manager approval is the gating step" caption.
+ */
+function BookingPipeline() {
+  const stages = [
+    { icon: LuClock, label: 'On hold' },
+    { icon: LuCoins, label: 'Token received' },
+    { icon: LuBadgeCheck, label: 'Approved' },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {stages.map((stage, index) => (
+        <span key={stage.label} className="flex items-center gap-1.5">
+          {index > 0 ? (
+            <LuArrowRight className="text-muted-foreground/50 size-3.5" aria-hidden />
+          ) : null}
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+            <stage.icon className="size-3.5" aria-hidden />
+            {stage.label}
+          </span>
+        </span>
+      ))}
+      <span className="text-muted-foreground/70 ml-1 text-xs">
+        · Manager approval is the gating step
+      </span>
+    </div>
   );
 }
