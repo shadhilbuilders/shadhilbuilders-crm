@@ -174,7 +174,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
           // policy.
           const updated = await withRlsContext(
             this.prismaService.$client,
-            { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '' },
+            { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'org_bootstrap' },
             async (tx) =>
               (tx as unknown as PrismaClient).outboundMessage.findUnique({
                 where: { id: row.id },
