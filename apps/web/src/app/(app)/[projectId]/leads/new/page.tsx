@@ -27,6 +27,7 @@ import { projectHref } from '@/lib/nav';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { PhoneSchema } from '@shadhil/api-types';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -36,7 +37,11 @@ type CreatedLead = { id: string };
 const createLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').trim().max(120),
   phone: PhoneSchema,
-  email: z.email().optional(),
+  // Email is optional. The form defaults it to '' (empty string) - but
+  // .optional() only allows undefined/missing, not ''. So accept '' as
+  // "not provided" via a union with z.literal('') (mirrors the convert
+  // modal). onSubmit omits empty values from the payload.
+  email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
   source: z.enum(LEAD_SOURCES),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
 });
@@ -143,16 +148,18 @@ export default function NewLeadPage() {
             },
           },
           {
-            type: 'input',
+            type: 'custom',
             name: 'phone',
             label: 'Phone',
-            placeholder: '9876543210',
             required: true,
-            description: 'Indian numbers: 10 digits, no spaces or dashes.',
-            inputProps: {
-              inputMode: 'numeric',
-              'data-qa': 'lead-phone',
-            },
+            description: '10-digit mobile number. +91 is added automatically.',
+            render: ({ field }) => (
+              <PhoneNumberInput
+                {...field}
+                placeholder="9876543210"
+                data-qa="lead-phone"
+              />
+            ),
           },
           {
             type: 'input',

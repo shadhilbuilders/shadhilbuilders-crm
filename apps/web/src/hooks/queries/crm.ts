@@ -28,6 +28,7 @@ import type {
   UpdateLeadDto,
   UpdateVisitOutcomeDto,
   ReassignLeadDto,
+  SetLeadCoOwnerDto,
 } from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
@@ -324,6 +325,38 @@ export function useReassignLead() {
         void queryClient.invalidateQueries({ queryKey: ['lead', row.id] });
         void queryClient.invalidateQueries({
           queryKey: ['lead', row.id, 'activities'],
+        });
+      }
+    },
+  });
+}
+
+/**
+ * Set or clear a lead's co-owner. Server enforces the same role + team
+ * guards as reassign (MANAGER same-team / ADMIN-OWNER any), inside one
+ * withRlsContext transaction + audit row. SetLeadCoOwnerDto =
+ * { leadId, coOwnerId (nullable = clear), reason (mandatory) }.
+ *
+ * Cache: invalidate the detail row (coOwnerName shown on the detail page).
+ */
+export function useSetLeadCoOwner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetLeadCoOwnerDto) =>
+      api<{ id: string; ownerId: string; ownerName: string | null }>(
+        `/leads/${body.leadId}/co-owner`,
+        { method: 'PATCH', json: body },
+      ),
+    onSuccess: (row) => {
+      // useLead/useLeadActivities read keys as `['leads', id]` (plural).
+      // Invalidate the broad `['leads']` prefix (matches the detail +
+      // inbox list) and the specific detail/activities keys so the new
+      // co-owner appears immediately without a refresh.
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (row?.id) {
+        void queryClient.invalidateQueries({ queryKey: ['leads', row.id] });
+        void queryClient.invalidateQueries({
+          queryKey: ['leads', row.id, 'activities'],
         });
       }
     },

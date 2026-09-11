@@ -90,6 +90,33 @@ describe('@shadhil/api-types - lead DTOs', () => {
       CreateLeadDtoSchema.parse({ name: 'x', phone: '123', source: 'Meta' }),
     ).toThrow();
   });
+  it('CreateLeadDto accepts empty-string email (optional, blank = not provided)', () => {
+    const r = CreateLeadDtoSchema.parse({
+      name: 'Priya',
+      phone: '9876543210',
+      source: 'Google',
+      email: '',
+    });
+    expect(r.email).toBe('');
+  });
+  it('CreateLeadDto accepts missing email (optional)', () => {
+    const r = CreateLeadDtoSchema.parse({
+      name: 'Priya',
+      phone: '9876543210',
+      source: 'Google',
+    });
+    expect(r.email).toBeUndefined();
+  });
+  it('CreateLeadDto rejects an invalid non-empty email', () => {
+    expect(() =>
+      CreateLeadDtoSchema.parse({
+        name: 'Priya',
+        phone: '9876543210',
+        source: 'Google',
+        email: 'not-an-email',
+      }),
+    ).toThrow();
+  });
   it('CreateLeadDto rejects empty name', () => {
     expect(() =>
       CreateLeadDtoSchema.parse({ name: '  ', phone: '9876543210', source: 'Meta' }),

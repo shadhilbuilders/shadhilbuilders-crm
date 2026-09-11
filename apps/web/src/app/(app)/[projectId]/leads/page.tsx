@@ -453,12 +453,14 @@ function LeadTable({
         header: 'Name',
         cell: ({ row }) => (
           <div className="min-w-45">
-            <Link
+            <Button
+              as={Link}
+              variant='link'
               href={projectHref(projectId, `/leads/${row.original.id}`)}
-              className="min-h-11 text-sm font-medium underline-offset-4 hover:underline"
+              className="text-link"
             >
               {row.original.name}
-            </Link>
+            </Button>
             {typeof row.original.phone === 'string' &&
             row.original.phone.length > 0 ? (
               <span className="text-muted-foreground block text-xs">

@@ -44,6 +44,7 @@ import type {
   LeadFilterDto,
   LeadStateTransitionDto,
   ReassignLeadDto,
+  SetLeadCoOwnerDto,
   UpdateLeadDto,
 } from '@shadhil/api-types';
 
@@ -708,7 +709,8 @@ export class LeadsService {
       data: {
         name: dto.name,
         phone: dto.phone,
-        email: dto.email ?? null,
+        email:
+          dto.email && dto.email.trim().length > 0 ? dto.email : null,
         source: dto.source,
         projectId: dto.projectId ?? null,
         ownerId: ownerId,
@@ -1086,6 +1088,137 @@ export class LeadsService {
   }
 
   /**
+   * PATCH /api/leads/:id/co-owner - set or clear the lead's co-owner.
+   * Mirrors reassign's permission + audit-tx shape.
+   *
+   *   - MANAGER: same-team co-owner only.
+   *   - ADMIN/OWNER: any assignable user (cross-team).
+   *   - coOwnerId = null clears the co-owner.
+   *   - The co-owner must be an assignable role (TELECALLER/SALES_EXEC/
+   *     MANAGER) and cannot be the lead's owner.
+   */
+  async setCoOwner(
+    actor: JwtPayload,
+    dto: SetLeadCoOwnerDto,
+  ): Promise<LeadRow> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        // 1. Fetch the lead + current owner/team.
+        const existing = await tx.lead.findUnique({
+          where: { id: dto.leadId },
+          select: {
+            id: true,
+            ownerId: true,
+            ownerType: true,
+            teamId: true,
+            state: true,
+            coOwnerId: true,
+            name: true,
+            phone: true,
+            source: true,
+            createdAt: true,
+            owner: { select: { name: true } },
+          },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`Lead ${dto.leadId} not found`);
+        }
+
+        // 2. Actor can set a co-owner on this lead at all?
+        if (
+          actor.role !== 'ADMIN' &&
+          actor.role !== 'OWNER' &&
+          !(actor.role === 'MANAGER' && actor.teamId === existing.teamId)
+        ) {
+          throw new ForbiddenException(
+            'You cannot assign a co-owner to this lead',
+          );
+        }
+
+        // 3. Resolve + validate the target (or clear).
+        let newCoOwnerId: string | null = null;
+        if (dto.coOwnerId !== null) {
+          const target = await tx.user.findUnique({
+            where: { id: dto.coOwnerId },
+            select: { id: true, role: true, teamId: true },
+          });
+          if (target === null) {
+            throw new NotFoundException(
+              `Co-owner user ${dto.coOwnerId} not found`,
+            );
+          }
+          // MANAGER may only co-own within their own team.
+          if (actor.role === 'MANAGER' && target.teamId !== actor.teamId) {
+            throw new ForbiddenException(
+              'Manager can only assign a co-owner in their own team',
+            );
+          }
+          // Co-owner must be an assignable role (can work the lead). The
+          // owner + manager lane both hold here for co-ownership.
+          if (!canUserBeAssignedTo(target) && target.role !== 'MANAGER') {
+            throw new BadRequestException(
+              `User's role ${target.role} cannot be a lead co-owner`,
+            );
+          }
+          // Cannot co-own your own lead.
+          if (target.id === existing.ownerId) {
+            throw new BadRequestException(
+              'The lead owner cannot also be the co-owner',
+            );
+          }
+          newCoOwnerId = target.id;
+        }
+
+        // 4. Update + audit in one transaction. A no-op (unchanged
+        //    co-owner) is still recorded for the audit trail.
+        const isNoOp = existing.coOwnerId === newCoOwnerId;
+
+        const updated = await tx.lead.update({
+          where: { id: existing.id },
+          data: { coOwnerId: newCoOwnerId },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            state: true,
+            source: true,
+            ownerId: true,
+            coOwnerId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: isNoOp ? 'lead.co_owner.noop' : 'lead.co_owner',
+            entityType: 'Lead',
+            entityId: updated.id,
+            before: { coOwnerId: existing.coOwnerId },
+            after: { coOwnerId: updated.coOwnerId },
+            reason: dto.reason,
+          },
+        });
+
+        return {
+          id: updated.id,
+          name: updated.name,
+          phone: updated.phone,
+          status: updated.state,
+          source: updated.source,
+          ownerId: updated.ownerId,
+          ownerName: existing.owner?.name ?? null,
+          createdAt: updated.createdAt.toISOString(),
+          updatedAt: updated.updatedAt.toISOString(),
+        };
+      },
+    );
+  }
+
+  /**
    * PATCH /api/leads/:id - mutable fields only. State transitions go
    * through the dedicated transition endpoint so the state-machine guard
    * always runs.
@@ -1104,6 +1237,7 @@ export class LeadsService {
           select: {
             id: true,
             ownerId: true,
+            coOwnerId: true,
             teamId: true,
             name: true,
             email: true,
@@ -1118,15 +1252,16 @@ export class LeadsService {
           throw new NotFoundException(`Lead ${leadId} not found`);
         }
 
-        // Role lane: staff can only edit their own leads; manager can edit
-        // any lead in their team; admin/owner can edit any.
-        this.assertCanEditLead(actor, existing.ownerId, existing.teamId);
+        // Role lane: staff can only edit their own leads (or ones they
+        // co-own); manager can edit any lead in their team; admin/owner
+        // can edit any.
+        this.assertCanEditLead(actor, existing.ownerId, existing.coOwnerId, existing.teamId);
 
         const updated = await tx.lead.update({
           where: { id: leadId },
           data: {
             ...(dto.name !== undefined ? { name: dto.name } : {}),
-            ...(dto.email !== undefined ? { email: dto.email } : {}),
+            ...(dto.email !== undefined ? { email: dto.email && dto.email.trim().length > 0 ? dto.email : null } : {}),
             ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
           },
           select: {
@@ -1441,12 +1576,15 @@ export class LeadsService {
   private assertCanEditLead(
     actor: JwtPayload,
     ownerId: string,
+    coOwnerId: string | null | undefined,
     teamId: string,
   ): void {
     if (actor.role === 'ADMIN' || actor.role === 'OWNER') return;
     if (actor.role === 'MANAGER' && actor.teamId === teamId) return;
     if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-      if (actor.sub === ownerId) return;
+      // Owner or co-owner of the lead can edit it (option B: co-owner
+      // gets full view + work).
+      if (actor.sub === ownerId || actor.sub === coOwnerId) return;
     }
     throw new ForbiddenException('You cannot edit this lead');
   }

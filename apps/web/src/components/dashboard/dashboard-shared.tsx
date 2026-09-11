@@ -9,6 +9,8 @@
 
 import Link from 'next/link';
 
+import { LuArrowRight } from '@paalstack/react-icons/lu';
+
 import { LEAD_STATUSES, labelFor } from '@/lib/labels';
 
 // ---------------------------------------------------------------------------
@@ -82,7 +84,8 @@ export function SectionCard({
             href={moreHref}
             className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center px-2 text-sm"
           >
-            See all →
+            See all
+            <LuArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         ) : null}
       </div>
