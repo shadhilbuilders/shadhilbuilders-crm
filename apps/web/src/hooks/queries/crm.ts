@@ -27,6 +27,7 @@ import type {
   SendMessageDto,
   UpdateLeadDto,
   UpdateVisitOutcomeDto,
+  ReassignLeadDto,
 } from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
@@ -293,6 +294,37 @@ export function useDeleteLead(leadId: string | null) {
       void queryClient.invalidateQueries({ queryKey: ['leads'] });
       if (leadId !== null) {
         void queryClient.removeQueries({ queryKey: ['lead', leadId] });
+      }
+    },
+  });
+}
+
+/**
+ * Manually reassign a lead to another staff member. Server enforces role +
+ * team + state-lane guards inside one withRlsContext transaction:
+ *   - MANAGER can reassign leads in their own team to a teammate.
+ *   - ADMIN/OWNER can reassign to any user (cross-team).
+ * ReassignLeadDto = { leadId, targetUserId, reason } - the reason is
+ * mandatory (audit + manager visibility).
+ *
+ * Cache semantics: invalidate the lead list (owner changed → the inbox
+ * re-slices by owner) and the detail row (ownerName updated).
+ */
+export function useReassignLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReassignLeadDto) =>
+      api<{ id: string; ownerId: string; ownerName: string | null }>(
+        `/leads/${body.leadId}/reassign`,
+        { method: 'POST', json: body },
+      ),
+    onSuccess: (row) => {
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (row?.id) {
+        void queryClient.invalidateQueries({ queryKey: ['lead', row.id] });
+        void queryClient.invalidateQueries({
+          queryKey: ['lead', row.id, 'activities'],
+        });
       }
     },
   });

@@ -46,6 +46,16 @@ vi.mock('@/lib/session', () => ({
     isPending: false,
   })),
   canDeleteLeads: (role: string) => role === 'ADMIN' || role === 'OWNER',
+  canReassign: (role: string) =>
+    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+}));
+
+// Mock the reassign dialog (jsdom portal rule - it calls useMutation /
+// useQueryClient which would throw without a QueryClientProvider; the detail
+// page test mocks LeadActionPanel the same way). The dialog's open/close
+// behavior and its combobox fetch are covered by the dialog's own test.
+vi.mock('@/components/leads/LeadReassignDialog', () => ({
+  LeadReassignDialog: () => null,
 }));
 
 import LeadInboxPage from './page';
