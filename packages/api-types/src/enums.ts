@@ -165,6 +165,21 @@ export type ConsentType = z.infer<typeof ConsentTypeSchema>;
 export const WebhookSourceSchema = z.enum(['WHATSAPP', 'FREJUN']);
 export type WebhookSource = z.infer<typeof WebhookSourceSchema>;
 
+/** Outbound WhatsApp message delivery status (via the status webhook). */
+export const OutboundStatusSchema = z.enum([
+  'PENDING',
+  'SENDING',
+  'SENT',
+  'DELIVERED',
+  'READ',
+  'FAILED',
+]);
+export type OutboundStatus = z.infer<typeof OutboundStatusSchema>;
+
+/** Outbound send mechanism. */
+export const OutboundSendTypeSchema = z.enum(['FREEFORM', 'TEMPLATE']);
+export type OutboundSendType = z.infer<typeof OutboundSendTypeSchema>;
+
 // ────────────────────────────────────────────────────────────────────
 // T-E2b follow-up queue (Week 7 admin UI)
 // ────────────────────────────────────────────────────────────────────
