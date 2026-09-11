@@ -19,6 +19,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Suspense } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import z from 'zod';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
 
@@ -31,13 +33,33 @@ import { projectHref } from '@/lib/nav';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 
-type CreateBookingFormValues = {
-  leadId: string;
-  unitId: string;
-  amount: string;
-  tokenAmount: string;
-  notes: string;
-};
+// Client-side mirror of CreateBookingDto (packages/api-types/src/bookings.ts).
+// Numeric fields are kept as strings in the form and coerced on submit
+// (the codebase pattern - avoids the z.coerce type issue). The server
+// re-validates with the canonical DTO.
+const createBookingSchema = z.object({
+  leadId: z.string().min(1, 'Pick a lead'),
+  unitId: z.string().min(1, 'Pick a unit'),
+  amount: z
+    .string()
+    .min(1, 'Amount is required')
+    .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
+      message: 'Amount must be a positive number',
+    })
+    .refine((v) => Number(v) <= 1_000_000_000, {
+      message: 'Amount too large (cap ₹100 Cr)',
+    }),
+  tokenAmount: z
+    .string()
+    .optional()
+    .refine(
+      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
+      { message: 'Token amount must be a positive number' },
+    ),
+  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+});
+
+type CreateBookingSchema = z.infer<typeof createBookingSchema>;
 
 type CreatedBooking = { id: string; leadId?: string };
 
@@ -77,7 +99,8 @@ function NewBookingPageInner() {
   const searchParams = useSearchParams();
   const unitParam = searchParams.get('unitId') ?? '';
 
-  const form = useForm<CreateBookingFormValues>({
+  const form = useForm<CreateBookingSchema>({
+    resolver: zodResolver(createBookingSchema),
     defaultValues: {
       leadId: '',
       unitId: unitParam,
@@ -112,28 +135,12 @@ function NewBookingPageInner() {
     );
   })();
 
-  function onSubmit(values: CreateBookingFormValues) {
-    if (values.leadId.length === 0) {
-      toast.error('Pick a lead');
-      return;
-    }
-    if (values.unitId.length === 0) {
-      toast.error('Pick a unit');
-      return;
-    }
+  function onSubmit(values: CreateBookingSchema) {
+    // zodResolver already validated leadId/unitId/amount/tokenAmount.
     const amount = Number(values.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Amount must be a positive number');
-      return;
-    }
     let tokenAmount: number | undefined;
-    if (values.tokenAmount.trim().length > 0) {
-      const parsed = Number(values.tokenAmount);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast.error('Token amount must be a positive number');
-        return;
-      }
-      tokenAmount = parsed;
+    if (values.tokenAmount !== undefined && values.tokenAmount.trim().length > 0) {
+      tokenAmount = Number(values.tokenAmount);
     }
 
     const payload: {
@@ -148,7 +155,7 @@ function NewBookingPageInner() {
       amount,
     };
     if (tokenAmount !== undefined) payload.tokenAmount = tokenAmount;
-    if (values.notes.trim().length > 0) {
+    if (values.notes !== undefined && values.notes.trim().length > 0) {
       payload.notes = values.notes.trim();
     }
 

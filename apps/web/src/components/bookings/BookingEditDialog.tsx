@@ -16,6 +16,8 @@
 // kept as strings in the form and converted in onSubmit (the codebase
 // pattern - avoids the z.coerce type issue).
 import { useEffect } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import z from 'zod';
 
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import { useForm } from 'react-hook-form';
@@ -24,11 +26,30 @@ import { useEditBooking } from '@/hooks/queries/crm';
 
 const FORM_ID = 'booking-edit-form';
 
-type BookingEditFormValues = {
-  amount: string;
-  tokenAmount: string;
-  notes: string;
-};
+// Client-side mirror of UpdateBookingDto (packages/api-types/src/bookings.ts).
+// Numeric fields are kept as strings in the form and coerced on submit.
+// The server re-validates with the canonical DTO.
+const editBookingSchema = z.object({
+  amount: z
+    .string()
+    .min(1, 'Amount is required')
+    .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
+      message: 'Amount must be a positive number',
+    })
+    .refine((v) => Number(v) <= 1_000_000_000, {
+      message: 'Amount too large (cap ₹100 Cr)',
+    }),
+  tokenAmount: z
+    .string()
+    .optional()
+    .refine(
+      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
+      { message: 'Token amount must be a positive number' },
+    ),
+  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+});
+
+type EditBookingSchema = z.infer<typeof editBookingSchema>;
 
 /** Minimal booking shape the dialog needs (from the grid row). */
 export type BookingEditTarget = {
@@ -57,9 +78,10 @@ export function BookingEditFormBody({
   onSubmit,
 }: {
   booking: BookingEditTarget;
-  onSubmit: (values: BookingEditFormValues) => void;
+  onSubmit: (values: EditBookingSchema) => void;
 }) {
-  const form = useForm<BookingEditFormValues>({
+  const form = useForm<EditBookingSchema>({
+    resolver: zodResolver(editBookingSchema),
     defaultValues: {
       amount: booking.amount ?? '',
       tokenAmount: booking.tokenAmount ?? '',
@@ -128,7 +150,8 @@ export function BookingEditDialog({
   const editBooking = useEditBooking();
   const pending = editBooking.isPending;
 
-  const form = useForm<BookingEditFormValues>({
+  const form = useForm<EditBookingSchema>({
+    resolver: zodResolver(editBookingSchema),
     defaultValues: {
       amount: booking?.amount ?? '',
       tokenAmount: booking?.tokenAmount ?? '',
@@ -152,20 +175,12 @@ export function BookingEditDialog({
   if (booking === null) return null;
   const target = booking;
 
-  function handleSubmit(values: BookingEditFormValues) {
+  function handleSubmit(values: EditBookingSchema) {
+    // zodResolver already validated amount/tokenAmount.
     const amount = Number(values.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Amount must be a positive number');
-      return;
-    }
     let tokenAmount: number | null | undefined;
     if (values.tokenAmount !== undefined && values.tokenAmount.trim().length > 0) {
-      const parsed = Number(values.tokenAmount);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast.error('Token amount must be a positive number');
-        return;
-      }
-      tokenAmount = parsed;
+      tokenAmount = Number(values.tokenAmount);
     } else {
       // Blank token amount clears it (nullable in the DTO).
       tokenAmount = null;
