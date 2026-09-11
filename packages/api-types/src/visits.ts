@@ -62,8 +62,9 @@ export type RescheduleVisitDto = z.infer<typeof RescheduleVisitDtoSchema>;
 export const VisitFilterDtoSchema = z.object({
   leadId: z.string().cuid().optional(),
   salesExecId: z.string().cuid().optional(),
-  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08).
-  projectId: z.cuid2().optional(),
+  // Project.id is a plain string (cuid() default, but seed data uses
+  // slug-like ids). Accept any non-empty string - NOT z.cuid2().
+  projectId: z.string().min(1).optional(),
   status: z.union([VisitStatusSchema, z.array(VisitStatusSchema)]).optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),

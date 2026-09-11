@@ -22,7 +22,9 @@ import { z } from 'zod';
  * and every other filter pin to. Optional: omit for cross-project stats.
  */
 export const DashboardStatsQuerySchema = z.object({
-  projectId: z.cuid2().optional(),
+  // Project.id is a plain string (cuid() default, but seed data uses
+  // slug-like ids). Accept any non-empty string - NOT z.cuid2().
+  projectId: z.string().min(1).optional(),
 });
 export type DashboardStatsQuery = z.infer<typeof DashboardStatsQuerySchema>;
 
