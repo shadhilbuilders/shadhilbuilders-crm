@@ -11,10 +11,10 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { useProjects } from '@/hooks/queries';
-import { Skeleton } from '@/components/shared/Skeleton';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { rootRedirectTarget } from '@/lib/dashboard-redirect';
+import { Loading } from '@paalstack/react-ui';
 
 export default function AppHomePage() {
   const router = useRouter();
@@ -41,5 +41,7 @@ export default function AppHomePage() {
     }
   }, [isPending, sessionPending, projects, user, router, orgSlug]);
 
-  return <Skeleton variant="overview" className="py-4" />;
+  return  <div className="flex min-h-[60vh] w-full items-center justify-center">
+        <Loading content="Loading workspace..." spinnerProps={{ size: 'lg' }} />
+  </div>;
 }
