@@ -29,7 +29,7 @@ import {
 } from '@paalstack/react-ui';
 import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SidebarToggleButton } from '@/components/app-shell';
@@ -38,10 +38,8 @@ import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
-import {
-  activeProjectIdFromPathname,
-  projectHref,
-} from '@/lib/nav';
+import { projectHref } from '@/lib/nav';
+import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import { useNotifications } from '@/hooks/queries/crm';
 
@@ -128,8 +126,9 @@ export function AppHeader() {
 // ---------------------------------------------------------------------------
 
 function NotificationBell() {
-  const pathname = usePathname();
   const { data: projects } = useProjects();
+  const orgSlug = useOrgSlug();
+  const projectSlugCtx = useProjectSlug();
   const query = useNotifications({ unreadOnly: true });
   const count = Array.isArray(query.data) ? query.data.length : 0;
   // Mounted gate: on SSR (and the first client paint) useProjects hasn't
@@ -143,11 +142,13 @@ function NotificationBell() {
     setMounted(true);
   }, []);
   const projectId = mounted
-    ? (activeProjectIdFromPathname(pathname) ??
-      pickDefaultProject(projects ?? [])?.id ??
-      null)
+    ? (projectSlugCtx ?? pickDefaultProject(projects ?? [])?.slug ?? null)
     : null;
-  const href = projectHref(projectId, '/notifications');
+  const href = projectHref(
+    mounted ? orgSlug : null,
+    projectId,
+    '/notifications',
+  );
   return (
     <Button
       variant="ghost"

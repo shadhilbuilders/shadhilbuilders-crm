@@ -8,6 +8,7 @@
 import { Badge, Button, Sheet } from '@paalstack/react-ui';
 import { LuArrowRight } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 
 import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
@@ -52,6 +53,7 @@ export function UnitDetailSheet({
   onOpenChange: (open: boolean) => void;
   projectId: string | null;
 }) {
+  const { orgId } = useParams<{ orgId: string }>();
   const { user } = useSessionUser();
   const canBook =
     user !== null &&
@@ -80,7 +82,7 @@ export function UnitDetailSheet({
       footer={{
         primaryAction:
           canBook && isAvailable ? (
-            <Button as={Link} href={`${projectHref(projectId, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`} rightIcon={<LuArrowRight className="size-4" />} data-qa="unit-book-button">
+            <Button as={Link} href={`${projectHref(orgId, projectId, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`} rightIcon={<LuArrowRight className="size-4" />} data-qa="unit-book-button">
               Create booking
             </Button>
           ) : null,

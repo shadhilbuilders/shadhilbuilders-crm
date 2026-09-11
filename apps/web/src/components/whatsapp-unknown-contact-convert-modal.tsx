@@ -76,6 +76,8 @@ type WhatsappUnknownContactConvertModalProps = {
   open: boolean;
   /** Setter - the modal controls its own open state via this callback. */
   onOpenChange: (next: boolean) => void;
+  /** Active org id (from the /[orgId] route) for the post-convert navigation. */
+  orgId: string;
 };
 
 type ConvertFormValues = z.infer<typeof ConvertFormSchema>;
@@ -259,6 +261,7 @@ export function WhatsappUnknownContactConvertModal({
   contact,
   open,
   onOpenChange,
+  orgId,
 }: WhatsappUnknownContactConvertModalProps) {
   const router = useRouter();
   const convert = useConvertWaUnknownContact();
@@ -288,7 +291,7 @@ export function WhatsappUnknownContactConvertModal({
           onOpenChange(false);
           if (typeof newLeadId === 'string' && newLeadId.length > 0) {
             void router.push(
-              projectHref(defaultProject?.id ?? null, `/leads/${newLeadId}`),
+              projectHref(orgId, defaultProject?.id ?? null, `/leads/${newLeadId}`),
             );
           }
         },
