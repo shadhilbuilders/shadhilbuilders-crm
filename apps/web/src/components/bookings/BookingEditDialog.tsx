@@ -7,10 +7,11 @@
 //   - status changes go through the transition flow (PATCH /bookings/:id)
 //   - unit/lead reassignment is out of scope for v1
 //
-// Two-API convention: props API `<Dialog open onOpenChange header footer>`
-// wraps a separately-exported `BookingEditFormBody` - the named export is
-// the repo's Dialog/jsdom rule (Base UI portals render empty under
-// renderToStaticMarkup, so tests target the body, not the portal).
+// ONE form instance: the Dialog owns the single `useForm` (it needs
+// `form.reset` on open + `handleSubmit`). `BookingEditFormBody` is a pure
+// presentational component that receives the `form` as a prop - it's
+// exported separately so tests can render the fields without the Dialog
+// portal (Base UI portals render empty under renderToStaticMarkup).
 //
 // Form is the props-API Form (data-driven `fields`); numeric fields are
 // kept as strings in the form and converted in onSubmit (the codebase
@@ -20,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import z from 'zod';
 
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
-import { useForm } from 'react-hook-form';
+import { useForm, type UseFormReturn } from 'react-hook-form';
 
 import { useEditBooking } from '@/hooks/queries/crm';
 
@@ -68,28 +69,18 @@ export type BookingEditDialogProps = {
 };
 
 /**
- * The form body, exported for tests (jsdom portal rule: render THIS
- * with renderToStaticMarkup; the Dialog shell + footer are covered by
- * the parent's render flow). Owns only the form markup - the mutation
- * lives in the Dialog shell so the footer can read isPending.
+ * Pure form-body markup, exported for tests (jsdom portal rule: render THIS
+ * with renderToStaticMarkup; the Dialog shell + footer are covered by the
+ * parent's render flow). Receives the single `form` instance owned by the
+ * Dialog - it does NOT create its own.
  */
 export function BookingEditFormBody({
-  booking,
+  form,
   onSubmit,
 }: {
-  booking: BookingEditTarget;
+  form: UseFormReturn<EditBookingSchema>;
   onSubmit: (values: EditBookingSchema) => void;
 }) {
-  const form = useForm<EditBookingSchema>({
-    resolver: zodResolver(editBookingSchema),
-    defaultValues: {
-      amount: booking.amount ?? '',
-      tokenAmount: booking.tokenAmount ?? '',
-      notes: booking.notes ?? '',
-    },
-    mode: 'onSubmit',
-  });
-
   return (
     <Form
       id={FORM_ID}
@@ -139,7 +130,8 @@ export function BookingEditFormBody({
 
 /**
  * Controlled edit dialog. `booking === null` renders nothing (the grid
- * holds the currently-editing row in state; null = closed).
+ * holds the currently-editing row in state; null = closed). Owns the
+ * single `useForm` instance.
  */
 export function BookingEditDialog({
   booking,
@@ -244,7 +236,7 @@ export function BookingEditDialog({
         </div>
       }
     >
-      <BookingEditFormBody booking={booking} onSubmit={handleSubmit} />
+      <BookingEditFormBody form={form} onSubmit={handleSubmit} />
     </Dialog>
   );
 }

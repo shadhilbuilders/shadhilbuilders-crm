@@ -2,26 +2,34 @@
 //
 // Pins: the props-API Form renders all editable fields (Total amount,
 // Token amount, Notes); the form body is exported separately so tests
-// can render it without the Dialog portal (jsdom rule).
+// can render it without the Dialog portal (jsdom rule). It receives the
+// single `form` instance owned by the Dialog.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import z from 'zod';
 
 import { BookingEditFormBody } from './BookingEditDialog';
 
+const schema = z.object({
+  amount: z.string(),
+  tokenAmount: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+function TestForm() {
+  const form = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: { amount: '7500000', tokenAmount: '500000', notes: 'some note' },
+    mode: 'onSubmit',
+  });
+  return <BookingEditFormBody form={form} onSubmit={() => {}} />;
+}
+
 describe('BookingEditFormBody - props-API Form surface (T-BOOK)', () => {
   it('renders all editable fields with the props-API <Form>', () => {
-    const html = renderToStaticMarkup(
-      <BookingEditFormBody
-        booking={{
-          id: 'b-1',
-          leadName: 'Priya Sharma',
-          amount: '7500000',
-          tokenAmount: '500000',
-          notes: 'some note',
-        }}
-        onSubmit={() => {}}
-      />,
-    );
+    const html = renderToStaticMarkup(<TestForm />);
 
     expect(html).toContain('Total amount (₹)');
     expect(html).toContain('Token amount (₹, optional)');
