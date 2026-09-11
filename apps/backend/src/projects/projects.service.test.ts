@@ -203,7 +203,7 @@ vi.mock('@shadhil/database', () => {
       userId: actor.sub,
       role: actor.role,
       teamId: actor.teamId,
-      organizationId: actor.organizationId ?? 'org_bootstrap',
+      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     withRlsContext: vi.fn(
       async (
@@ -223,7 +223,7 @@ const ownerActor: JwtPayload = {
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
   teamId: null,
-  organizationId: 'org_bootstrap',
+  organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',
@@ -288,7 +288,7 @@ describe('ProjectsService.list', () => {
       userId: 'tc-1',
       role: 'TELECALLER',
       teamId: 'team-1',
-      organizationId: 'org_bootstrap',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     });
   });
 
@@ -351,13 +351,13 @@ describe('ProjectsService.create', () => {
       expect.objectContaining({
         data: expect.arrayContaining([
           {
-            organizationId: 'org_bootstrap',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             projectId: 'proj-new',
             type: 'FACING',
             value: 'North',
           },
           {
-            organizationId: 'org_bootstrap',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             projectId: 'proj-new',
             type: 'BHK',
             value: '3',

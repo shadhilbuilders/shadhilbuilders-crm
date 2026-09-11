@@ -103,7 +103,7 @@ export class PushService {
     if (!this.enabled) return 0;
     return withRlsContext(
       this.client,
-      { userId, role: 'TELECALLER', teamId: null, organizationId: 'org_bootstrap' },
+      { userId, role: 'TELECALLER', teamId: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         const subs = await (tx as unknown as PrismaClient).pushSubscription.findMany({
           where: { userId, platform: 'WEB' },
@@ -132,7 +132,7 @@ export class PushService {
       await client.pushNotification.create({
         data: {
           userId,
-          organizationId: 'org_bootstrap',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           type: 'web',
           payload,
           status: 'DELIVERED',

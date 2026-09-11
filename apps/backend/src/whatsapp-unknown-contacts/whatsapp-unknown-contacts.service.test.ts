@@ -26,7 +26,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'org_bootstrap' },
+    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -38,7 +38,7 @@ async function ensureFixtures(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'WA-UC Test Team', organizationId: 'org_bootstrap' },
+      create: { id: TEST_TEAM_ID, name: 'WA-UC Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -50,7 +50,7 @@ async function ensureFixtures(): Promise<void> {
         role: 'ADMIN',
         teamId: TEST_TEAM_ID,
         mustChangePassword: false,
-        organizationId: 'org_bootstrap',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
   });
@@ -62,7 +62,7 @@ function makeAdminActor(): JwtPayload {
     email: 'wa-uc-admin@example.com',
     role: 'ADMIN',
     teamId: TEST_TEAM_ID,
-    organizationId: 'org_bootstrap',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',

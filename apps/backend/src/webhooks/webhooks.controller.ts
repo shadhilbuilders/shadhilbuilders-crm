@@ -224,7 +224,7 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'org_bootstrap' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         const updated = await tx.$executeRawUnsafe(
           `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
@@ -275,7 +275,7 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'org_bootstrap' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         // 1) Dedup via WebhookEvent.externalId unique constraint.
         // If the same Meta event arrives twice (Meta retries), the
@@ -286,7 +286,7 @@ export class WebhooksController {
               source: 'WHATSAPP',
               externalId,
               payload: message as object,
-              organizationId: 'org_bootstrap',
+              organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
           });
         } catch (e) {
@@ -315,7 +315,7 @@ export class WebhooksController {
             await tx.$executeRawUnsafe(
               `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, NOW())`,
               msgId,
-              'org_bootstrap',
+              'ceid01lpfe1esm8jwsxid41k28',
               lead.id,
               body!,
               externalId,

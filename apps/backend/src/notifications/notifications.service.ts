@@ -234,12 +234,12 @@ export class NotificationsService {
     }
     return withRlsContext(
       this.client,
-      { userId: recipientSub, role: 'TELECALLER', teamId: null, organizationId: 'org_bootstrap' },
+      { userId: recipientSub, role: 'TELECALLER', teamId: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) => {
         const created = await (tx as unknown as PrismaClient).notification.create({
           data: {
             userId: recipientSub,
-            organizationId: 'org_bootstrap',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             type: payload.type,
             title: payload.title,
             body: payload.body,
@@ -260,7 +260,7 @@ export class NotificationsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: recipientSub,
-            organizationId: 'org_bootstrap',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             action: 'notification.emit',
             entityType: 'Notification',
             entityId: created.id,

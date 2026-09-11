@@ -56,7 +56,7 @@ const UNIT_ID = `test-del-unit-${RUN_TAG}`;
 const ALL_LEAD_IDS = [LEAD_OK, LEAD_WON, LEAD_BOOKED, LEAD_CONVERTED];
 const ALL_USER_IDS = [ADMIN_ID, TC_ID, MGR_ID, SE_ID];
 // Every business row now carries organizationId (T-ORG multitenancy).
-const ORG = 'org_bootstrap';
+const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 
 // Phone must be unique per run AND per rapid re-run: RUN_TAG's leading
 // digits are Date.now(), so slice(0,7) collides when two runs land in
@@ -93,7 +93,7 @@ function actorFor(
     email: `${sub}@test.local`,
     role,
     teamId: role === 'ADMIN' ? null : TEAM_ID,
-    organizationId: 'org_bootstrap',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
