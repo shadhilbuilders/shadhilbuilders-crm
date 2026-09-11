@@ -600,7 +600,7 @@ export type NotificationsListResult = {
 };
 
 export function useNotifications(
-  params: { unreadOnly?: boolean; projectId?: string } = {},
+  params: { unreadOnly?: boolean; projectId?: string; typePrefix?: string } = {},
 ) {
   return useQuery({
     queryKey: ['notifications', params] as const,
@@ -609,6 +609,7 @@ export function useNotifications(
         `/notifications${qs({
           unreadOnly: params.unreadOnly,
           projectId: params.projectId,
+          typePrefix: params.typePrefix,
         })}`,
         { signal },
       ),

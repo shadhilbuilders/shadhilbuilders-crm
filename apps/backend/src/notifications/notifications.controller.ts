@@ -83,6 +83,10 @@ export class NotificationsController {
       {
         unreadOnly,
         type: typeof query['type'] === 'string' ? query['type'] : undefined,
+        typePrefix:
+          typeof query['typePrefix'] === 'string'
+            ? query['typePrefix']
+            : undefined,
         // T-ProjectSwitch: filter notifications by the active project
         // (resolved through Notification.lead.projectId in the service).
         projectId:

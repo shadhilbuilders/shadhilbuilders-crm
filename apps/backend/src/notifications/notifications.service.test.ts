@@ -100,6 +100,25 @@ describe('list - current-user inbox', () => {
       }),
     );
   });
+
+  it('filters by typePrefix (e.g. lead → lead.*)', async () => {
+    const { service, client } = makeService();
+    client.notification.findMany.mockResolvedValue([]);
+    client.notification.count.mockResolvedValue(0);
+    await service.list(makeActor(), {
+      typePrefix: 'lead',
+      unreadOnly: false,
+      limit: 50,
+      offset: 0,
+    });
+    expect(client.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: { startsWith: 'lead' },
+        }),
+      }),
+    );
+  });
 });
 
 describe('markRead - batch update + audit row', () => {
