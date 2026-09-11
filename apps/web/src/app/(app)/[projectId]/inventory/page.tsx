@@ -433,6 +433,7 @@ export default function InventoryPage() {
           if (deleteTarget === null) return;
           deleteUnit.mutate(deleteTarget.id, {
             onSuccess: () => {
+              toast.success(`Unit ${deleteTarget.unitNumber} deleted`);
               setDeleteTarget(null);
             },
             onError: (error) => {
