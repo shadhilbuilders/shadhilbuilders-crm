@@ -24,6 +24,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whatsapp-unknown-contacts.module';
+import { FeedbacksModule } from './feedbacks/feedbacks.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -74,6 +75,11 @@ import { AlertsModule } from './alerts/alerts.module';
     // (in a future iteration) trigger an outbound reply; today it
     // just creates a Lead via LeadsService.
     WhatsappUnknownContactsModule,
+    // Feedback (public landing-page submissions + admin triage). Imported
+    // here so both @Controller('feedback') (admin) and @Controller('public')
+    // (API-key-gated submit) register. It needs no other module imports -
+    // FeedbacksService only uses the global PrismaService.
+    FeedbacksModule,
     // T-E2b systematic-failure alert: Telegram channel send when
     // the outbound cron sees N consecutive all-failed ticks.
     // @Global() so WhatsappModule's OutboundCronService can inject

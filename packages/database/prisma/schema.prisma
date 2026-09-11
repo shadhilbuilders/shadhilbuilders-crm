@@ -172,6 +172,12 @@ enum WebhookSource {
   FREJUN
 }
 
+enum FeedbackStatus {
+  NEW
+  REVIEWED
+  ARCHIVED
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // 1. User (better-auth shape + business relations)
 // ────────────────────────────────────────────────────────────────────────────
@@ -700,7 +706,42 @@ model Consent {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 18. WebhookEvent (WhatsApp / FreJun inbound; idempotent via externalId)
+// 18. Feedback (public submissions from the landing page)
+// ────────────────────────────────────────────────────────────────────────────
+// Customer feedback submitted via the landing page (app/feedback). The
+// landing page calls POST /api/public/feedback (a public, API-key-gated
+// endpoint) so feedback now lands in the CRM database instead of Supabase.
+// The table is deliberately STANDALONE - no FK to User/Lead/Project:
+//   1. The submitter is a site visitor, not a staff user; we never want
+//      a required team/owner column or cascade behaviour here.
+//   2. `project` is a free-form display string (the landing's project slug,
+//      e.g. "shadhil-metro-heights"), not a Project id. Keeping it a plain
+//      string lets the landing page evolve its own catalogue without a
+//      migration here.
+//   rating is 1-5 (Int), validated by the public DTO AND the DB CHECK.
+//   status drives the admin triage surface (NEW -> REVIEWED -> ARCHIVED).
+//   ipAddress / userAgent are captured server-side for abuse analysis; they
+//   are NOT part of the public request body (clients can't spoof them).
+model Feedback {
+  id         String         @id @default(cuid())
+  name       String?
+  phone      String?
+  rating     Int
+  project    String?
+  message    String?        @db.Text
+  page       String?
+  userAgent  String?
+  ipAddress  String?
+  status     FeedbackStatus @default(NEW)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([rating])
+}
+
+
 // ────────────────────────────────────────────────────────────────────────────
 
 model WebhookEvent {

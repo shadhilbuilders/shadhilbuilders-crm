@@ -218,6 +218,21 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
   TELECALLER: 'Telecaller',
 };
 
+/**
+ * Feedback triage-status values per the Prisma `Feedback.status` enum
+ * (NEW/REVIEWED/ARCHIVED). The admin feedback page renders these via
+ * `labelFor('feedback', ...)`. Added 2026-09-11 alongside the feedback
+ * admin page + public submit API.
+ */
+export const FEEDBACK_STATUSES = ['NEW', 'REVIEWED', 'ARCHIVED'] as const;
+export type FeedbackStatusLabel = (typeof FEEDBACK_STATUSES)[number];
+
+const FEEDBACK_STATUS_LABELS: Record<FeedbackStatusLabel, string> = {
+  NEW: 'New',
+  REVIEWED: 'Reviewed',
+  ARCHIVED: 'Archived',
+};
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -232,7 +247,7 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
  * failing assertion so the label table gets updated before merge.
  */
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role',
+  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role' | 'feedback',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -252,6 +267,9 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'role') {
     const mapped = (ROLE_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'feedback') {
+    const mapped = (FEEDBACK_STATUS_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];

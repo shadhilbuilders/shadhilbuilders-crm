@@ -36,6 +36,12 @@ export interface BootEnv {
   TELEGRAM_BOT_NAME: string;
   TELEGRAM_ALERT_THRESHOLD: number;
   TELEGRAM_ALERT_COOLDOWN_MS: number;
+
+  // Feedback public-submit API key (required). Guards POST /api/public/feedback
+  // via ApiKeyGuard (constant-time header compare). Fail-fast on absence
+  // (T-G8): without it the public endpoint would refuse to boot rather than
+  // silently accept any/no key.
+  FEEDBACK_API_KEY: string;
 }
 
 export class BootEnvError extends Error {
@@ -127,6 +133,8 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     );
   }
 
+  const FEEDBACK_API_KEY = required('FEEDBACK_API_KEY', 16) ?? '';
+
   const rawApiPort = env['API_PORT'];
   const API_PORT = rawApiPort === undefined ? 8080 : Number.parseInt(rawApiPort, 10);
   if (!Number.isFinite(API_PORT) || API_PORT <= 0) {
@@ -164,5 +172,6 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
         : 'ShadhilCRMAlertsBot',
     TELEGRAM_ALERT_THRESHOLD,
     TELEGRAM_ALERT_COOLDOWN_MS,
+    FEEDBACK_API_KEY,
   };
 }

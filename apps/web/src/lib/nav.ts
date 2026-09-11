@@ -61,6 +61,7 @@ import {
   LuHandshake,
   LuMessageCircleQuestion,
   LuFolderKanban,
+  LuMessageSquareText,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -200,6 +201,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LuMessageCircleQuestion,
     group: 'admin',
   },
+  // Feedback triage - ADMIN/OWNER only. Public submissions from the landing
+  // page land in the CRM DB; this is the admin surface to read + triage them.
+  {
+    href: '/feedback',
+    label: 'Feedback',
+    icon: LuMessageSquareText,
+    group: 'admin',
+  },
 ] as const;
 
 /**
@@ -232,6 +241,9 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
       canConvertWhatsappUnknownContact(role)
     )
       items.push(item);
+    // Feedback triage is ADMIN/OWNER only - a Manager never reads
+    // public customer feedback (operational team scoped to their sales).
+    else if (item.href === '/feedback' && canViewAudit(role)) items.push(item);
     // Admin/owner command center (dashboard split). Admin-only: the
     // cross-project overview is an executive surface, unlike Users which is
     // admin+manager (operational). MANAGER sees a Users-only admin group.
@@ -389,6 +401,7 @@ export function activeProjectIdFromPathname(
     '/projects',
     '/overview',
     '/whatsapp-unknown-contacts',
+    '/feedback',
   ];
   if (TOP_LEVEL_ROUTES.includes(first)) return null;
   return segments[0] ?? null;

@@ -87,6 +87,8 @@ async function bootstrap(): Promise<void> {
     .addTag('notifications', 'In-app inbox + push delivery')
     .addTag('audit', 'Audit log queries')
     .addTag('webhooks', 'WhatsApp + FreJun inbound')
+    .addTag('feedback', 'Public feedback submissions + admin triage')
+    .addTag('public', 'Public API-key-gated endpoints (landing page)')
     .addTag('realtime', 'SSE streams')
     .build();
 

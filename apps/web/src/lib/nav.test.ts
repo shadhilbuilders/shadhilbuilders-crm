@@ -119,6 +119,24 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/whatsapp-unknown-contacts');
     });
 
+    it('ADMIN sees the Feedback triage surface (admin-class)', () => {
+      expect(getVisibleNav('ADMIN').map((i) => i.href)).toContain('/feedback');
+    });
+
+    it('OWNER sees the Feedback triage surface (admin-class)', () => {
+      expect(getVisibleNav('OWNER').map((i) => i.href)).toContain('/feedback');
+    });
+
+    it('MANAGER does NOT see Feedback (admin/owner-only triage)', () => {
+      expect(getVisibleNav('MANAGER').map((i) => i.href)).not.toContain('/feedback');
+    });
+
+    it('TELECALLER does NOT see Feedback (admin/owner-only triage)', () => {
+      expect(getVisibleNav('TELECALLER').map((i) => i.href)).not.toContain(
+        '/feedback',
+      );
+    });
+
     it('ADMIN sees work + Users + Audit', () => {
       const items = getVisibleNav('ADMIN');
       const hrefs = items.map((i) => i.href);
