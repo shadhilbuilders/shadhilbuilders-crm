@@ -30,6 +30,9 @@ const prisma: PrismaClient = new PrismaClient({
 const DEMO_EMAIL = 'demo@shadhilbuilders.in';
 const DEMO_PASSWORD = 'demo123';
 const DEMO_NAME = 'Demo Manager';
+// Fixed cuid2 team id for the demo user's team (cuid2-only contract -
+// a hyphenated `demo-team` id would be rejected by the API's z.cuid2()).
+const DEMO_TEAM_ID = 'v31x9c35h91d9ciqcn6bo4dz';
 
 function hash(pw: string): string {
   const salt = randomBytes(16).toString('hex');
@@ -77,10 +80,10 @@ async function main() {
   // backend's perspective, and listWhere narrows to '__no_team__'
   // (zero rows).
   const demoTeam = await prisma.team.upsert({
-    where: { id: 'demo-team' },
+    where: { id: DEMO_TEAM_ID },
     update: { name: 'Demo Team', managerId: demoUser.id },
     create: {
-      id: 'demo-team',
+      id: DEMO_TEAM_ID,
       name: 'Demo Team',
       managerId: demoUser.id,
     },
