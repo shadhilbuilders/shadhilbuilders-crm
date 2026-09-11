@@ -56,12 +56,14 @@ const LEAD_ID = `test-reassign-lead-${RUN_TAG}`;
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
 const TEST_AUDIT_KEYS: string[] = [];
+// Every business row now carries organizationId (T-ORG multitenancy).
+const ORG = 'org_bootstrap';
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID, organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -72,6 +74,7 @@ function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'rol
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
     teamId: overrides.teamId,
+    organizationId: 'org_bootstrap',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -85,12 +88,20 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_A_ID },
       update: {},
-      create: { id: TEAM_A_ID, name: `Reassign Test Team A ${RUN_TAG}` },
+      create: {
+        id: TEAM_A_ID,
+        name: `Reassign Test Team A ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
     await db.team.upsert({
       where: { id: TEAM_B_ID },
       update: {},
-      create: { id: TEAM_B_ID, name: `Reassign Test Team B ${RUN_TAG}` },
+      create: {
+        id: TEAM_B_ID,
+        name: `Reassign Test Team B ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
 
     // ADMIN (cross-team, used for seeding + as a reassigner).
@@ -103,6 +114,7 @@ beforeAll(async () => {
         name: 'Reassign Test Admin',
         role: 'ADMIN',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -116,6 +128,7 @@ beforeAll(async () => {
         name: 'Reassign Test Manager A',
         role: 'MANAGER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -129,6 +142,7 @@ beforeAll(async () => {
         name: 'Reassign Test TC A',
         role: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -142,6 +156,7 @@ beforeAll(async () => {
         name: 'Reassign Test TC A2',
         role: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -155,6 +170,7 @@ beforeAll(async () => {
         name: 'Reassign Test TC B',
         role: 'TELECALLER',
         teamId: TEAM_B_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -168,6 +184,7 @@ beforeAll(async () => {
         name: 'Reassign Test SE A',
         role: 'SALES_EXEC',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -183,6 +200,7 @@ beforeAll(async () => {
         name: 'Reassign Test SE Owner',
         role: 'SALES_EXEC',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -197,6 +215,7 @@ beforeAll(async () => {
         name: 'Reassign Test TC A2 (alt)',
         role: 'TELECALLER',
         teamId: TEAM_A_ID,
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });
@@ -219,6 +238,7 @@ beforeAll(async () => {
         teamId: TEAM_A_ID,
         ownerId: TC_A_ID,
         ownerType: 'TELECALLER',
+        organizationId: ORG,
       },
     });
   });

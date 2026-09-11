@@ -46,7 +46,7 @@ async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   // (the teamless admin), whose JWT carries teamId=null.
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: 'org_bootstrap' },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -57,6 +57,7 @@ function teamlessActor(): JwtPayload {
     email: `${ADMIN_ID}@test.local`,
     role: 'ADMIN',
     teamId: null, // <-- the bug: seeded ADMIN/OWNER have no teamId
+    organizationId: 'org_bootstrap',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -81,7 +82,7 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_ID },
       update: {},
-      create: { id: TEAM_ID, name: `Chat Admin Test Team ${RUN_TAG}` },
+      create: { id: TEAM_ID, name: `Chat Admin Test Team ${RUN_TAG}`, organizationId: 'org_bootstrap' },
     });
     await db.user.upsert({
       where: { id: ADMIN_ID },
@@ -92,6 +93,7 @@ beforeAll(async () => {
         name: 'Chat Admin',
         role: 'ADMIN',
         mustChangePassword: false,
+        organizationId: 'org_bootstrap',
       },
     });
     const uniquePhone = `9199${RUN_TAG.replace(/\D/g, '').slice(-8)}`;
@@ -108,6 +110,7 @@ beforeAll(async () => {
         teamId: TEAM_ID,
         ownerId: ADMIN_ID,
         ownerType: 'ADMIN',
+        organizationId: 'org_bootstrap',
       },
     });
   });

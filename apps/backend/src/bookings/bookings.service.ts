@@ -27,7 +27,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext,
+  withRlsContext, rlsContextFrom,
   type BookingStatus,
   type PrismaClient,
 } from '@shadhil/database';
@@ -124,7 +124,7 @@ export class BookingsService {
   ): Promise<BookingListResult> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
         if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
@@ -231,7 +231,7 @@ export class BookingsService {
   async findOne(actor: JwtPayload, bookingId: string): Promise<BookingRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const row = await (tx as unknown as PrismaClient).booking.findUnique({
           where: { id: bookingId },
@@ -286,7 +286,7 @@ export class BookingsService {
   ): Promise<BookingRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: dto.leadId },
@@ -306,6 +306,7 @@ export class BookingsService {
         const created = await (tx as unknown as PrismaClient).booking.create({
           data: {
             leadId: dto.leadId,
+            organizationId: actor.organizationId,
             unitId: dto.unitId,
             userId: actor.sub,
             // Prisma Decimal - pass as a string to avoid float drift.
@@ -344,6 +345,7 @@ export class BookingsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'booking.create',
             entityType: 'Booking',
             entityId: created.id,
@@ -398,7 +400,7 @@ export class BookingsService {
   ): Promise<BookingRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).booking.findUnique(
           {
@@ -496,6 +498,7 @@ export class BookingsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'booking.transition',
             entityType: 'Booking',
             entityId: updated.id,
@@ -552,7 +555,7 @@ export class BookingsService {
   ): Promise<BookingRow> {
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).booking.findUnique(
           {
@@ -611,6 +614,7 @@ export class BookingsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'booking.update',
             entityType: 'Booking',
             entityId: updated.id,
@@ -662,7 +666,7 @@ export class BookingsService {
     }
     return withRlsContext(
       this.client,
-      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      rlsContextFrom(actor),
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).booking.findUnique(
           {
@@ -712,6 +716,7 @@ export class BookingsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: actor.sub,
+            organizationId: actor.organizationId,
             action: 'booking.delete',
             entityType: 'Booking',
             entityId: bookingId,

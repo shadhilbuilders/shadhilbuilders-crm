@@ -40,6 +40,8 @@ const ADMIN_ID = `test-teamless-admin-${RUN_TAG}`;
 // unique index forbids creating a second). Resolved in beforeAll.
 let OWNER_ID = '';
 const LEAD_IDS: string[] = [];
+// Every business row now carries organizationId (T-ORG multitenancy).
+const ORG = 'org_bootstrap';
 
 async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -48,7 +50,7 @@ async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   // (the teamless admin/owner), whose JWT carries teamId=null.
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID },
+    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -61,6 +63,7 @@ function teamlessActor(
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
     teamId: null, // <-- the bug: seeded ADMIN/OWNER have no teamId
+    organizationId: 'org_bootstrap',
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -76,7 +79,11 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_ID },
       update: {},
-      create: { id: TEAM_ID, name: `Teamless Create Test Team ${RUN_TAG}` },
+      create: {
+        id: TEAM_ID,
+        name: `Teamless Create Test Team ${RUN_TAG}`,
+        organizationId: ORG,
+      },
     });
     // ADMIN user (no teamId - like seed) for the actor-under-test row +
     // RLS write path.
@@ -88,6 +95,7 @@ beforeAll(async () => {
         email: `${ADMIN_ID}@test.local`,
         name: 'Teamless Admin',
         role: 'ADMIN',
+        organizationId: ORG,
         mustChangePassword: false,
       },
     });

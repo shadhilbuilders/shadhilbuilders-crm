@@ -80,6 +80,17 @@ vi.mock('@shadhil/database', () => {
   };
   return {
     prisma: {},
+    rlsContextFrom: vi.fn((actor: {
+      sub: string;
+      role: string;
+      teamId: string | null;
+      organizationId?: string | null;
+    }) => ({
+      userId: actor.sub,
+      role: actor.role,
+      teamId: actor.teamId,
+      organizationId: actor.organizationId ?? 'org_bootstrap',
+    })),
     withRlsContext: vi.fn(
       async (
         _client: unknown,
@@ -101,6 +112,7 @@ const ownerActor: JwtPayload = {
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
   teamId: 'team-construction',
+  organizationId: 'org_bootstrap',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',
@@ -111,6 +123,7 @@ const managerActor: JwtPayload = {
   email: 'mgr@shadhilbuilders.in',
   role: 'MANAGER',
   teamId: 'team-construction',
+  organizationId: 'org_bootstrap',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',
@@ -121,6 +134,7 @@ const telecallerActor: JwtPayload = {
   email: 'telecaller@shadhilbuilders.in',
   role: 'TELECALLER',
   teamId: 'team-construction',
+  organizationId: 'org_bootstrap',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
   iss: 'shadhil-bff',
@@ -142,6 +156,7 @@ describe('TeamsService.list', () => {
       userId: 'owner-1',
       role: 'OWNER',
       teamId: 'team-construction',
+      organizationId: 'org_bootstrap',
     });
   });
 

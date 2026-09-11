@@ -51,6 +51,7 @@ async function adminSeed<T>(
       userId: TEST_USER_ID,
       role: 'ADMIN',
       teamId: TEST_TEAM_ID,
+      organizationId: 'org_bootstrap',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
@@ -62,7 +63,7 @@ async function ensureUser(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'Realtime Ticket Test Team' },
+      create: { id: TEST_TEAM_ID, name: 'Realtime Ticket Test Team', organizationId: 'org_bootstrap' },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -73,6 +74,7 @@ async function ensureUser(): Promise<void> {
         name: 'Realtime Ticket Test',
         role: 'ADMIN',
         teamId: TEST_TEAM_ID,
+        organizationId: 'org_bootstrap',
       },
     });
   });
@@ -91,6 +93,7 @@ async function seedTicket(opts: {
         userId: TEST_USER_ID,
         channel: opts.channel,
         expiresAt: opts.expiresAt,
+        organizationId: 'org_bootstrap',
       },
     });
   });

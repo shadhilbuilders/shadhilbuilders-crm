@@ -33,6 +33,12 @@ export type JwtPayload = {
   sub: string; // user id
   role: Role;
   teamId: string | null;
+  // T-ORG: the tenant the user belongs to. Required - verifyJwt rejects a
+  // token without it (fail-closed, mirror of the AR-2 role gate). Without
+  // this every RLS policy would see app.user_org_id = '' and scope to zero
+  // rows (or, worse, if the token lacks it and something defaults it, leak
+  // across orgs).
+  organizationId: string;
   email: string;
   iat: number;
   exp: number;
@@ -79,20 +85,33 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
     throw new Error('JWT missing sub claim');
   }
 
-  // better-auth's jwt() plugin puts role/teamId in the `user` object.
-  // Accept both flat (role at top level) and nested (user.role) shapes so
-  // tokens issued by issueJwt and tokens issued by better-auth itself both
-  // round-trip cleanly.
+  // better-auth's jwt() plugin puts role/teamId/organizationId in the
+  // `user` object. Accept both flat (role at top level) and nested
+  // (user.role) shapes so tokens issued by issueJwt and tokens issued by
+  // better-auth itself both round-trip cleanly.
   const top = payload as Record<string, unknown>;
-  const nested = (top.user as { role?: string; teamId?: string | null; email?: string } | undefined) ?? undefined;
+  const nested =
+    (top.user as
+      | { role?: string; teamId?: string | null; organizationId?: string; email?: string }
+      | undefined) ?? undefined;
   const roleRaw = (top.role as string | undefined) ?? nested?.role;
   const teamRaw = (top.teamId as string | null | undefined) ?? nested?.teamId ?? null;
+  const orgRaw = (top.organizationId as string | undefined) ?? nested?.organizationId;
   const emailRaw = (top.email as string | undefined) ?? nested?.email ?? '';
+
+  // T-ORG: fail closed. A token without an organizationId must be rejected
+  // outright - there is no safe default (every policy keys off it). This is
+  // the single most load-bearing cutover point: a stale token minted before
+  // org existed must hard-fail, never silently fall open.
+  if (typeof orgRaw !== 'string' || orgRaw.length === 0) {
+    throw new Error('JWT missing organizationId claim');
+  }
 
   return {
     sub: payload.sub,
     role: parseRole(roleRaw),
     teamId: teamRaw ?? null,
+    organizationId: orgRaw,
     email: emailRaw,
     iat: payload.iat ?? 0,
     exp: payload.exp ?? 0,
@@ -113,12 +132,13 @@ export async function issueJwt(
   expiresInSec = 60 * 60 * 24 * 7,
 ): Promise<string> {
   const { SignJWT } = await import('jose');
-  const { sub, role, teamId, email } = payload;
+  const { sub, role, teamId, organizationId, email } = payload;
   return await new SignJWT({
     role,
     teamId,
+    organizationId,
     email,
-    user: { role, teamId, email },
+    user: { role, teamId, organizationId, email },
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(sub)

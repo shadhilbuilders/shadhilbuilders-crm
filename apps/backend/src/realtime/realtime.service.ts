@@ -25,7 +25,7 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   type PrismaClient,
-  withRlsContext,
+  withRlsContext, rlsContextFrom,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { MintTicketDto, MintTicketResponse } from '@shadhil/api-types';
@@ -116,7 +116,7 @@ export class RealtimeService {
     if (parsed.kind === 'chat') {
       const allowed = await withRlsContext(
         this.client,
-        { userId: actor.sub, role: actor.role, teamId: actor.teamId ?? null },
+        rlsContextFrom(actor),
         async (tx) => {
           const lead = await tx.lead.findUnique({ where: { id: parsed.leadId }, select: { id: true } });
           return lead !== null;
@@ -135,6 +135,7 @@ export class RealtimeService {
         userId: actor.sub,
         channel: dto.channel,
         expiresAt,
+        organizationId: actor.organizationId,
       },
       select: { id: true, expiresAt: true },
     });
