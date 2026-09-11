@@ -42,6 +42,18 @@ export interface BootEnv {
   // (T-G8): without it the public endpoint would refuse to boot rather than
   // silently accept any/no key.
   FEEDBACK_API_KEY: string;
+
+  // Public-leads API key (required). Guards POST /api/public/leads (landing
+  // enquiries → CRM Leads) independently from FEEDBACK_API_KEY so the two
+  // can be rotated separately. The landing page's CRM_FEEDBACK_URL/... must
+  // hold the same value.
+  LEADS_API_KEY: string;
+  // Destination owner for a landing enquiry when the manager-assignment
+  // engine matches no rule and the team has no default assignee. Must be a
+  // real staff user id (TELECALLER/SALES_EXEC/MANAGER). NOT gated at boot -
+  // it's a DB-dependent id, so the service throws a clear 400 if it's unset
+  // (a missing id shouldn't take the whole API down; only the leads route).
+  LEADS_FALLBACK_OWNER_ID?: string;
 }
 
 export class BootEnvError extends Error {
@@ -134,6 +146,12 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
   }
 
   const FEEDBACK_API_KEY = required('FEEDBACK_API_KEY', 16) ?? '';
+  const LEADS_API_KEY = required('LEADS_API_KEY', 16) ?? '';
+  const LEADS_FALLBACK_OWNER_ID_raw = env['LEADS_FALLBACK_OWNER_ID'];
+  const LEADS_FALLBACK_OWNER_ID =
+    LEADS_FALLBACK_OWNER_ID_raw !== undefined && LEADS_FALLBACK_OWNER_ID_raw !== ''
+      ? LEADS_FALLBACK_OWNER_ID_raw
+      : undefined;
 
   const rawApiPort = env['API_PORT'];
   const API_PORT = rawApiPort === undefined ? 8080 : Number.parseInt(rawApiPort, 10);
@@ -173,5 +191,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     TELEGRAM_ALERT_THRESHOLD,
     TELEGRAM_ALERT_COOLDOWN_MS,
     FEEDBACK_API_KEY,
+    LEADS_API_KEY,
+    LEADS_FALLBACK_OWNER_ID,
   };
 }

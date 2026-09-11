@@ -25,6 +25,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whatsapp-unknown-contacts.module';
 import { FeedbacksModule } from './feedbacks/feedbacks.module';
+import { PublicLeadsModule } from './public-leads/public-leads.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -80,6 +81,10 @@ import { AlertsModule } from './alerts/alerts.module';
     // (API-key-gated submit) register. It needs no other module imports -
     // FeedbacksService only uses the global PrismaService.
     FeedbacksModule,
+    // Public leads (landing-page enquiries → real Leads). Depends on
+    // LeadsModule (PublicLeadsService → LeadsService.create) and reuses the
+    // ApiKeyGuard with LEADS_API_KEY. Registers POST /api/public/leads.
+    PublicLeadsModule,
     // T-E2b systematic-failure alert: Telegram channel send when
     // the outbound cron sees N consecutive all-failed ticks.
     // @Global() so WhatsappModule's OutboundCronService can inject
