@@ -29,7 +29,7 @@
 // setup.ts `DATABASE_AVAILABLE` guard SKIPs - and with
 // RLS_MATRIX_REQUIRED=true the suite HARD-FAILS at startup instead.
 // CI is wired at .github/workflows/ci.yml:rls-matrix.
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import { prisma } from '../src/index';
@@ -999,11 +999,12 @@ async function runCase(
   });
 }
 
-function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' | 'CRON_SERVICE' {
+function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' | 'CRON_SERVICE' | 'PUBLIC_API' {
   // The matrix only tests the 4 RLS-visible roles. OWNER travels as
   // ADMIN at the RLS layer (rls.ts:50), so the type is narrowed to
   // exclude it here. CRON_SERVICE appears only in T-CRONS' standalone
-  // cases (outside the 4×8×4 matrix).
+  // cases (outside the 4×8×4 matrix). PUBLIC_API is the feedback
+  // submit-only service marker (insert-only on Feedback).
   if (ctx.role === 'OWNER') return 'ADMIN';
   return ctx.role;
 }
@@ -1273,6 +1274,147 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
         }),
       );
       expect(rows.length).toBe(0);
+    },
+  );
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Feedback (2026-09-11) - public submit + admin triage RLS.
+// ────────────────────────────────────────────────────────────────────────────
+// Feedback is a STANDALONE table (no teamId/leadId scope): the landing page
+// writes it as the PUBLIC_API service marker, and only ADMIN/OWNER can read
+// or mutate it. Five cases pin the policy set end-to-end:
+//   (a) PUBLIC_API can INSERT (feedback_insert_public_api)
+//   (b) PUBLIC_API cannot SELECT (insert-only - no read policy)
+//   (c) MANAGER cannot SELECT (feedback_select_admin excludes managers)
+//   (d) ADMIN can SELECT (feedback_select_admin)
+//   (e) ADMIN can UPDATE status NEW -> REVIEWED (feedback_update_admin)
+describe('Feedback - public submit + admin triage RLS', () => {
+  let fixture: Fixture;
+  let insertedId: string;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+    // Seed one row as PUBLIC_API so the read tests have something to scope.
+    insertedId = await withRlsContext(prisma, {
+      userId: 'public-api',
+      role: 'PUBLIC_API',
+      teamId: '',
+    }, async (tx) => {
+      // Raw INSERT - typed `feedback.create` hits the Prisma 7 typed-API
+      // RLS quirk with non-user service-marker roles (42501 even with the
+      // GUC set); a parameterized raw INSERT succeeds (see the shadhil-crm
+      // skill "Prisma 7 typed-API RLS bypass quirk" and the feedback
+      // service's publicSubmit).
+      const id = `fb_rls_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await (tx as unknown as {
+        $executeRawUnsafe: (sql: string, ...p: unknown[]) => Promise<unknown>;
+      }).$executeRawUnsafe(
+        `INSERT INTO "Feedback" (id, name, rating, status, "createdAt", "updatedAt") VALUES ($1, $2, $3, 'NEW', NOW(), NOW())`,
+        id,
+        'RLS fixture',
+        3,
+      );
+      return id;
+    });
+  }, 30_000);
+
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    // Cleanup as the bypass owner role (adminPrisma) so RLS can't block it.
+    await adminPrisma.feedback.deleteMany({ where: { id: insertedId } });
+  });
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'PUBLIC_API can INSERT a feedback row (public submit)',
+    { timeout: 30_000 },
+    async () => {
+      const freshId = `fb_rls_ins_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // If the policy were missing, the insert would 42501 and this throws.
+      await expect(
+        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', teamId: '' }, async (tx) =>
+          (tx as unknown as {
+            $executeRawUnsafe: (sql: string, ...p: unknown[]) => Promise<unknown>;
+          }).$executeRawUnsafe(
+            `INSERT INTO "Feedback" (id, name, rating, status, "createdAt", "updatedAt") VALUES ($1, $2, $3, 'NEW', NOW(), NOW())`,
+            freshId,
+            'RLS fixture reinsert',
+            3,
+          ),
+        ),
+      ).resolves.toBeDefined();
+      // Clean the fresh row as the bypass owner role.
+      await adminPrisma.feedback.deleteMany({ where: { id: freshId } });
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'PUBLIC_API cannot SELECT feedback (insert-only role)',
+    { timeout: 30_000 },
+    async () => {
+      const rows = await withRlsContext(prisma, {
+        userId: 'public-api',
+        role: 'PUBLIC_API',
+        teamId: '',
+      }, async (tx) =>
+        (tx as unknown as {
+          feedback: { findMany: () => Promise<Array<{ id: string }>> };
+        }).feedback.findMany(),
+      );
+      expect(rows.length).toBe(0); // no SELECT policy for PUBLIC_API -> 0 rows
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'MANAGER cannot SELECT feedback (admin-only read)',
+    { timeout: 30_000 },
+    async () => {
+      const rows = await withRlsContext(prisma, {
+        userId: fixture.managerAId,
+        role: 'MANAGER',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          feedback: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+        }).feedback.findMany({ where: { id: insertedId } }),
+      );
+      expect(rows.length).toBe(0);
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'ADMIN can SELECT feedback (admin read)',
+    { timeout: 30_000 },
+    async () => {
+      const rows = await withRlsContext(prisma, {
+        userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
+        role: 'ADMIN',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          feedback: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string; status: string }>> };
+        }).feedback.findMany({ where: { id: insertedId } }),
+      );
+      expect(rows.length).toBe(1);
+      expect(rows[0]?.status).toBe('NEW');
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'ADMIN can UPDATE feedback status NEW -> REVIEWED',
+    { timeout: 30_000 },
+    async () => {
+      const updated = await withRlsContext(prisma, {
+        userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
+        role: 'ADMIN',
+        teamId: fixture.teamAId,
+      }, async (tx) =>
+        (tx as unknown as {
+          feedback: { update: (a: { where: { id: string }; data: { status: string } }) => Promise<{ status: string }> };
+        }).feedback.update({ where: { id: insertedId }, data: { status: 'REVIEWED' } }),
+      );
+      expect(updated.status).toBe('REVIEWED');
     },
   );
 });

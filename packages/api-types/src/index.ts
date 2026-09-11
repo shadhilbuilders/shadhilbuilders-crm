@@ -23,6 +23,7 @@ export * from './notifications';
 export * from './audit';
 export * from './webhooks';
 export * from './whatsapp-unknown-contacts';
+export * from './feedback';
 export * from './dashboard';
 export * from './common';
 export * from './realtime';

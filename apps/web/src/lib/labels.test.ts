@@ -17,6 +17,7 @@ import {
   LEAD_SOURCES,
   ACTIVITY_TYPES,
   ROLES,
+  FEEDBACK_STATUSES,
   type LeadStatus,
   type VisitOutcome,
   type InventoryStatus,
@@ -24,6 +25,7 @@ import {
   type LeadSource,
   type ActivityType,
   type RoleLabel,
+  type FeedbackStatusLabel,
 } from '@/lib/labels';
 
 describe('lib/labels', () => {
@@ -194,6 +196,26 @@ describe('lib/labels', () => {
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('role', enumValue)).toBe(expected);
+      }
+    });
+  });
+
+  describe('FEEDBACK_STATUSES - every feedback status has a friendly label', () => {
+    it.each(FEEDBACK_STATUSES)('%s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('feedback', value);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(value);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('contains the explicit feedback mappings', () => {
+      const expectations: Record<FeedbackStatusLabel, string> = {
+        NEW: 'New',
+        REVIEWED: 'Reviewed',
+        ARCHIVED: 'Archived',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('feedback', enumValue)).toBe(expected);
       }
     });
   });

@@ -41,13 +41,20 @@ import type { PrismaClient } from './generated/prisma/client';
 // NOT-NULL gate on audit inserts. See
 // packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
 // for the policy and known-runtime-bugs.md Bug 8 for context.
+//
+// PUBLIC_API is the anonymous public-endpoint marker (feedback submit).
+// Like CRON_SERVICE it is a GUC-only marker, not a Prisma enum / JWT
+// claim. It has INSERT-only RLS power on the Feedback table
+// (feedback_insert_public_api) and CANNOT read/mutate anything else.
+// The public endpoint sets it via withRlsContext.
 export type Role =
   | 'OWNER'
   | 'ADMIN'
   | 'MANAGER'
   | 'SALES_EXEC'
   | 'TELECALLER'
-  | 'CRON_SERVICE';
+  | 'CRON_SERVICE'
+  | 'PUBLIC_API';
 
 export interface RlsContext {
   userId: string;
@@ -67,6 +74,7 @@ const ROLES: readonly string[] = [
   'SALES_EXEC',
   'TELECALLER',
   'CRON_SERVICE',
+  'PUBLIC_API',
 ];
 
 /**

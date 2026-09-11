@@ -184,6 +184,18 @@ export type WhatsappUnknownContactStatus = z.infer<
   typeof WhatsappUnknownContactStatusSchema
 >;
 
+// ────────────────────────────────────────────────────────────────────
+// Feedback (public submissions, 2026-09-11)
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Triage state of a public feedback submission. NEW is the untouched
+ * inbox; REVIEWED is acknowledged; ARCHIVED is done. Mirrors the landing
+ * page's old Supabase `status` column ("new" | "reviewed" | "archived").
+ */
+export const FeedbackStatusSchema = z.enum(['NEW', 'REVIEWED', 'ARCHIVED']);
+export type FeedbackStatus = z.infer<typeof FeedbackStatusSchema>;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Convenience union - every enum schema, exported for runtime validation.
 // ────────────────────────────────────────────────────────────────────────────
@@ -205,4 +217,5 @@ export const ALL_ENUM_SCHEMAS = {
   ConsentType: ConsentTypeSchema,
   WebhookSource: WebhookSourceSchema,
   WhatsappUnknownContactStatus: WhatsappUnknownContactStatusSchema,
+  FeedbackStatus: FeedbackStatusSchema,
 };
