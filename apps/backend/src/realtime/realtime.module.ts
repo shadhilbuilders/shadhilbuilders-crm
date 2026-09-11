@@ -9,7 +9,7 @@
 // framework layer entirely. The ticket mint stays in Nest because it
 // fits the existing JWT-auth + service-injection pattern.
 
-import { Body, Controller, Inject, Module, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Inject, Module, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import type { MintTicketDto, MintTicketResponse } from '@shadhil/api-types';
@@ -43,9 +43,10 @@ export class RealtimeTicketController {
       typeof raw.channel !== 'string' ||
       raw.channel.length === 0
     ) {
-      const err = new Error('body.channel must be a non-empty string');
-      (err as Error & { status?: number }).status = 400;
-      throw err;
+      // Must throw a real HttpException: a bare Error with a .status is
+      // not mapped by Nest's default exception filter -> surfaces as 500
+      // instead of 400 (found via API smoke test).
+      throw new BadRequestException('body.channel must be a non-empty string');
     }
     return this.realtime.mintTicket(req.user!, { channel: raw.channel });
   }
