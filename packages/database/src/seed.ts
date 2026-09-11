@@ -128,6 +128,7 @@ export const SEED_RULE_IDS = [
 // cuid1 default). The Account credential row keys off User.id, so it
 // follows automatically.
 export const SEED_OWNER_ID = 'oet70k7svsjrta4480fnyenx';
+export const SEED_ORG_ID = 'org_bootstrap';
 export const SEED_ADMIN_ID = 'b2djb8x7jpk8702v8o83rl6s';
 export const SEED_MANAGER_ID = 'jhl2a7l1x7d7bes0jf7ktkhw';
 export const SEED_TELECALLER_ID = 'bscdnl31d81fmwioebupnmwr';
@@ -155,6 +156,7 @@ async function upsertUser(
       name: user.name,
       role,
       teamId,
+      organizationId: SEED_ORG_ID,
       emailVerified: true,
       // T-S hardening (2026-09-04, Week 5): the 5 seed placeholders
       // carry mustChangePassword=true so the post-login /change-password
@@ -207,6 +209,7 @@ async function main() {
       id: SEED_TEAM_ID,
       name: `${manager.name}'s Team`,
       managerId: managerUser.id,
+      organizationId: SEED_ORG_ID,
     },
   });
 
@@ -246,6 +249,7 @@ async function main() {
       id: SEED_PROJECT_METRO_ID,
       name: 'Shadhil Metro Heights',
       slug: 'shadhil-metro-heights',
+      organizationId: SEED_ORG_ID,
       address: 'Metro Heights, Chennai, Tamil Nadu (placeholder address)',
       // RERA/CMDA numbers are still open inputs (sign-off doc §Inputs);
       // left null until the client supplies the certificate values.
@@ -271,6 +275,7 @@ async function main() {
         id: p.id,
         name: p.name,
         slug: p.slug,
+        organizationId: SEED_ORG_ID,
         address: 'Upcoming project (placeholder address)',
       },
     });
@@ -322,7 +327,7 @@ async function main() {
     const phase = await prisma.phase.upsert({
       where: { id: p.id },
       update: { name: p.name },
-      create: { id: p.id, projectId: metroHeights.id, name: p.name },
+      create: { id: p.id, projectId: metroHeights.id, organizationId: SEED_ORG_ID, name: p.name },
     });
     phases.push(phase);
   }
@@ -334,15 +339,15 @@ async function main() {
   // unique key.
   await prisma.projectOption.createMany({
     data: [
-      { projectId: metroHeights.id, type: 'FACING', value: 'North' },
-      { projectId: metroHeights.id, type: 'FACING', value: 'South' },
-      { projectId: metroHeights.id, type: 'FACING', value: 'East' },
-      { projectId: metroHeights.id, type: 'FACING', value: 'West' },
-      { projectId: metroHeights.id, type: 'BHK', value: '1' },
-      { projectId: metroHeights.id, type: 'BHK', value: '2' },
-      { projectId: metroHeights.id, type: 'BHK', value: '3' },
-      { projectId: metroHeights.id, type: 'BHK', value: '4' },
-      { projectId: metroHeights.id, type: 'BHK', value: '5' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'FACING', value: 'North' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'FACING', value: 'South' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'FACING', value: 'East' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'FACING', value: 'West' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'BHK', value: '1' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'BHK', value: '2' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'BHK', value: '3' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'BHK', value: '4' },
+      { projectId: metroHeights.id, organizationId: SEED_ORG_ID, type: 'BHK', value: '5' },
     ],
     skipDuplicates: true,
   });
@@ -392,6 +397,7 @@ async function main() {
       },
       create: {
         phaseId: u.phaseId,
+        organizationId: SEED_ORG_ID,
         unitNumber: u.unitNumber,
         bhk: u.bhk,
         facing: u.facing,
@@ -446,6 +452,7 @@ async function main() {
         ownerId: telecallerUser.id,
         ownerType: 'TELECALLER',
         teamId: team.id,
+        organizationId: SEED_ORG_ID,
         projectId: metroHeights.id,
       },
     });
@@ -495,6 +502,7 @@ async function main() {
       create: {
         id: ruleId,
         teamId: team.id,
+        organizationId: SEED_ORG_ID,
         source: r.source,
         priority: r.priority,
         targetUserId: target.id,
