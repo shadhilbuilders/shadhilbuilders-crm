@@ -210,7 +210,7 @@ export function BookingEditDialog({
         <div className="flex w-full justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={pending}
             data-qa="booking-edit-cancel"
