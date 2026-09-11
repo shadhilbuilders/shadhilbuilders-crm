@@ -28,10 +28,12 @@ import { useParams } from 'next/navigation';
 
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
 import { useInventoryUnits } from '@/hooks/queries/inventory';
+import { labelFor } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { LuArrowLeft } from '@paalstack/react-icons/lu';
 
 // Client-side mirror of CreateBookingDto (packages/api-types/src/bookings.ts).
 // Numeric fields are kept as strings in the form and coerced on submit
@@ -118,7 +120,9 @@ function NewBookingPageInner() {
       (row) => ({
         value: row.id,
         label: `${row.name ?? 'Lead'}${
-          typeof row.status === 'string' ? ` (${row.status})` : ''
+          typeof row.status === 'string' && row.status.length > 0
+            ? ` (${labelFor('lead', row.status)})`
+            : ''
         }`,
       }),
     );
@@ -195,32 +199,38 @@ function NewBookingPageInner() {
         onSubmit={onSubmit}
         submitText={createBooking.isPending ? 'Saving...' : 'Create booking'}
         submitButtonProps={{ disabled: createBooking.isPending }}
-        resetButtonProps={{
-          children: 'Cancel',
-          onClick: () => {
-            form.reset();
-            void router.push(projectHref(projectId, '/bookings'));
-          },
+        actionClassName='justify-end'
+        resetText="Cancel"
+        onReset={() => {
+          form.reset();
+          void router.push(projectHref(projectId, '/bookings'));
         }}
         fields={[
           {
-            type: 'select',
+            type: 'combobox',
             name: 'leadId',
             label: 'Lead',
             required: true,
-            placeholder: 'Pick a lead',
             options: leadOptions,
+            placeholder: 'Search a lead...',
+            comboboxProps: {
+              emptyOptionMessage: 'No bookable leads found',
+              selectOptionAsValue: true,
+              'data-qa': 'booking-lead-id',
+            },
           },
           {
-            type: 'select',
+            type: 'combobox',
             name: 'unitId',
             label: 'Unit',
             required: true,
-            placeholder: 'Pick an available unit',
             options: unitOptions,
+            placeholder: 'Search an available unit...',
             description:
               'Available units in this project. A booking holds the unit.',
-            selectProps: {
+            comboboxProps: {
+              emptyOptionMessage: 'No available units in this project',
+              selectOptionAsValue: true,
               'data-qa': 'booking-unit-id',
             },
           },
@@ -231,6 +241,7 @@ function NewBookingPageInner() {
             required: true,
             inputType: 'number',
             description: 'Booking value in rupees (cap ₹100 Cr).',
+            placeholder: 'Enter amount here...',
             inputProps: {
               min: 1,
               step: 1,
@@ -243,6 +254,7 @@ function NewBookingPageInner() {
             label: 'Token amount (₹, optional)',
             inputType: 'number',
             description: 'Optional. Booking starts in HOLD if zero / blank.',
+            placeholder: 'Enter token amount here...',
             inputProps: {
               min: 0,
               step: 1,
@@ -253,6 +265,8 @@ function NewBookingPageInner() {
             type: 'textarea',
             name: 'notes',
             label: 'Notes',
+            description: 'Optional. Max 2000 characters.',
+            placeholder: 'Enter notes here...',
             textareaProps: { rows: 3, maxLength: 2000 },
           },
         ]}
@@ -264,8 +278,9 @@ function NewBookingPageInner() {
           variant="ghost"
           size="sm"
           onClick={() => void router.push(projectHref(projectId, '/bookings'))}
+          leftIcon={<LuArrowLeft className="size-4" aria-hidden />}
         >
-          ← Back to bookings
+          Back to bookings
         </Button>
       </div>
     </div>

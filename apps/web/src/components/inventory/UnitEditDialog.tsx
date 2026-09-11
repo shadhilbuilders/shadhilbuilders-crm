@@ -263,7 +263,7 @@ export function UnitEditDialog({
         <div className="flex w-full justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={pending}
             data-qa="unit-edit-cancel"

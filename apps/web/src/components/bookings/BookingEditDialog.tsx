@@ -99,6 +99,7 @@ export function BookingEditFormBody({
           required: true,
           inputType: 'number',
           description: 'Booking value in rupees (cap ₹100 Cr).',
+          placeholder: 'Enter amount here...',
           inputProps: {
             min: 1,
             step: 1,
@@ -111,6 +112,7 @@ export function BookingEditFormBody({
           label: 'Token amount (₹, optional)',
           inputType: 'number',
           description: 'Leave blank to clear the token amount.',
+          placeholder: 'Enter token amount here...',
           inputProps: {
             min: 0,
             step: 1,
@@ -121,6 +123,8 @@ export function BookingEditFormBody({
           type: 'textarea',
           name: 'notes',
           label: 'Notes',
+          description: 'Optional. Max 2000 characters.',
+          placeholder: 'Enter notes here...',
           textareaProps: { rows: 3, maxLength: 2000, 'data-qa': 'booking-edit-notes' },
         },
       ]}

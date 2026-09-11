@@ -68,22 +68,17 @@ describe('NewBookingPage - props-API Form surface (T-F4)', () => {
     // The reset button (props API - defaults to "Reset")
     expect(html).toMatch(/data-qa="form-reset-button"/);
 
-    // Lead options are wired to the props-API select. The Select
-    // component renders a closed button trigger in SSR (options live
-    // in a popover, not in static markup). We verify the leadId
-    // select field is present and the trigger placeholder is the
-    // expected 'Pick a lead' string. The actual option list is
-    // verified by the source-side useLeads mock returning two rows.
+    // Lead/Unit options are wired to the props-API combobox. The Combobox
+    // renders a closed input trigger in SSR (options live in a popover,
+    // not in static markup). We verify the field wrappers + combobox
+    // containers are present and the placeholder text lands. The actual
+    // option list is verified by the source-side useLeads /
+    // useInventoryUnits mocks.
     expect(html).toMatch(/data-qa="form-field-leadId"/);
-    expect(html).toMatch(/data-qa="select-trigger"/);
-    expect(html).toContain('Pick a lead');
-
-    // Test IDs from the field props - proves the props-API
-    // forwarded the data-qa attribute correctly (regression canary).
-    // The unit field is a Select (its trigger hardcodes
-    // data-qa="select-trigger"), so we assert on the field wrapper
-    // data-qa="form-field-unitId" instead of a custom trigger id.
+    expect(html).toMatch(/data-qa="combobox-container"/);
+    expect(html).toContain('Search a lead...');
     expect(html).toMatch(/data-qa="form-field-unitId"/);
+    expect(html).toContain('Search an available unit...');
     expect(html).toMatch(/data-qa="booking-amount"/);
     expect(html).toMatch(/data-qa="booking-token-amount"/);
 
