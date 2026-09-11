@@ -53,7 +53,7 @@ export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
  * @unique); the service maps the violation to a 409 with what/why/fix.
  */
 export const UpdateLeadDtoSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().cuid2(),
   name: z.string().trim().min(1).max(120).optional(),
   phone: PhoneSchema.optional(),
   email: z
@@ -76,7 +76,7 @@ export type UpdateLeadDto = z.infer<typeof UpdateLeadDtoSchema>;
  * `reason` is required when transitioning to LOST or COLD (audit).
  */
 export const LeadStateTransitionDtoSchema = z.object({
-  leadId: z.string().cuid(),
+  leadId: z.string().cuid2(),
   toState: LeadStateSchema,
   reason: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -92,8 +92,8 @@ export type LeadStateTransitionDto = z.infer<
  * the new owner's role permits owning leads at the current state.
  */
 export const ReassignLeadDtoSchema = z.object({
-  leadId: z.string().cuid(),
-  targetUserId: z.string().cuid(),
+  leadId: z.string().cuid2(),
+  targetUserId: z.string().cuid2(),
   reason: z.string().trim().min(1).max(500),
 });
 export type ReassignLeadDto = z.infer<typeof ReassignLeadDtoSchema>;
@@ -107,7 +107,7 @@ export const LeadFilterDtoSchema = z.object({
   state: z
     .union([LeadStateSchema, z.array(LeadStateSchema)])
     .optional(),
-  ownerId: z.string().cuid().optional(),
+  ownerId: z.string().cuid2().optional(),
   teamId: z.cuid2().optional(),
   // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
   // so filter strictly - a non-cuid2 value is a 400, not a silent pass.
@@ -130,7 +130,7 @@ export type LeadFilterDto = z.infer<typeof LeadFilterDtoSchema>;
  * separate internal writer - clients never POST them directly.
  */
 export const CreateActivityDtoSchema = z.object({
-  leadId: z.string().cuid(),
+  leadId: z.string().cuid2(),
   type: ActivityTypeSchema,
   body: z.string().trim().min(1).max(4000),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -144,16 +144,16 @@ export type CreateActivityDto = z.infer<typeof CreateActivityDtoSchema>;
  * staff see everything about a lead in one place.
  */
 export const LeadDetailSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().cuid2(),
   name: z.string(),
   phone: z.string(),
   email: z.string().nullable(),
   source: z.string().nullable(),
   status: LeadStateSchema,
-  ownerId: z.string().cuid(),
+  ownerId: z.string().cuid2(),
   ownerName: z.string().nullable(),
   ownerType: LeadOwnerTypeSchema,
-  coOwnerId: z.string().cuid().nullable(),
+  coOwnerId: z.string().cuid2().nullable(),
   coOwnerName: z.string().nullable(),
   teamId: z.string(),
   projectId: z.string().nullable(),
@@ -168,7 +168,7 @@ export type LeadDetail = z.infer<typeof LeadDetailSchema>;
  * name joined in so the UI can render "First call (Asha)" per Wireframe #5.
  */
 export const LeadActivitySchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().cuid2(),
   type: ActivityTypeSchema,
   body: z.string(),
   createdAt: z.string(),

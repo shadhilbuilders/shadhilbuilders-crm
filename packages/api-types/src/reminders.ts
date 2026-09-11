@@ -15,8 +15,8 @@ import { ReminderTypeSchema, ReminderStatusSchema } from './enums';
  * services; this endpoint exists for manual override.
  */
 export const CreateReminderDtoSchema = z.object({
-  leadId: z.string().cuid(),
-  userId: z.string().cuid(),
+  leadId: z.string().cuid2(),
+  userId: z.string().cuid2(),
   type: ReminderTypeSchema,
   scheduledFor: z
     .string()
@@ -41,8 +41,8 @@ export type CancelReminderDto = z.infer<typeof CancelReminderDtoSchema>;
  * GET /api/reminders query filter.
  */
 export const ReminderFilterDtoSchema = z.object({
-  userId: z.string().cuid().optional(),
-  leadId: z.string().cuid().optional(),
+  userId: z.string().cuid2().optional(),
+  leadId: z.string().cuid2().optional(),
   type: z.union([ReminderTypeSchema, z.array(ReminderTypeSchema)]).optional(),
   status: z
     .union([ReminderStatusSchema, z.array(ReminderStatusSchema)])

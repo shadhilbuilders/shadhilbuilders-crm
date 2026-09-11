@@ -154,7 +154,7 @@ export class LeadsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<LeadDetail> {
-    const idSchema = z.string().cuid();
+    const idSchema = z.string().cuid2();
     if (!idSchema.safeParse(id).success) {
       throw new BadRequestException(`Lead id "${id}" is not a valid id`);
     }
@@ -170,7 +170,7 @@ export class LeadsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<LeadActivity[]> {
-    const idSchema = z.string().cuid();
+    const idSchema = z.string().cuid2();
     if (!idSchema.safeParse(id).success) {
       throw new BadRequestException(`Lead id "${id}" is not a valid id`);
     }
@@ -255,7 +255,7 @@ export class LeadsController {
     // URL-authoritative param check (eng review: unvalidated param was a
     // LOW finding). Cuid format pins "this is a lead id" before the DB
     // round trip; a mismatch is a client bug, not a "not found".
-    const idSchema = z.string().cuid();
+    const idSchema = z.string().cuid2();
     if (!idSchema.safeParse(id).success) {
       throw new BadRequestException(`Lead id "${id}" is not a valid id`);
     }

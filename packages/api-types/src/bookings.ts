@@ -13,8 +13,8 @@ import { BookingStatusSchema } from './enums';
  * Sales Exec initiates. Manager approves later via /approve.
  */
 export const CreateBookingDtoSchema = z.object({
-  leadId: z.string().cuid(),
-  unitId: z.string().cuid(),
+  leadId: z.string().cuid2(),
+  unitId: z.string().cuid2(),
   amount: z
     .number()
     .positive()
@@ -66,15 +66,15 @@ export type BookingTransitionDto = z.infer<typeof BookingTransitionDtoSchema>;
  * GET /api/bookings query filter.
  */
 export const BookingFilterDtoSchema = z.object({
-  leadId: z.string().cuid().optional(),
-  unitId: z.string().cuid().optional(),
+  leadId: z.string().cuid2().optional(),
+  unitId: z.string().cuid2().optional(),
   // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
   // so filter strictly - a non-cuid2 value is a 400.
   projectId: z.cuid2().optional(),
   status: z
     .union([BookingStatusSchema, z.array(BookingStatusSchema)])
     .optional(),
-  approvedById: z.string().cuid().optional(),
+  approvedById: z.string().cuid2().optional(),
   // Server-side search over the parent Lead's name/phone (the booking has
   // no name of its own). Mirrors the leads D9 contract (≥2 chars).
   search: z.string().trim().max(120).optional(),

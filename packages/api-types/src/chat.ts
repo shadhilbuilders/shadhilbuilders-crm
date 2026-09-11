@@ -21,7 +21,7 @@ import {
  * WhatsApp; the customer never sees it).
  */
 export const SendMessageDtoSchema = z.object({
-  leadId: z.string().cuid(),
+  leadId: z.string().cuid2(),
   body: z.string().trim().min(1).max(4000),
   channel: MessageChannelSchema.optional(),
   kind: MessageKindSchema.optional(),
@@ -35,7 +35,7 @@ export type SendMessageDto = z.infer<typeof SendMessageDtoSchema>;
  * `kind` filters to a single thread (default: CUSTOMER).
  */
 export const MessageFilterDtoSchema = z.object({
-  leadId: z.string().cuid(),
+  leadId: z.string().cuid2(),
   since: z.string().datetime({ offset: true }).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   kind: MessageKindSchema.optional(),
@@ -47,8 +47,8 @@ export type MessageFilterDto = z.infer<typeof MessageFilterDtoSchema>;
  * `id` is the SSE event-id (eng review A9 - Last-Event-ID resume).
  */
 export const MessageEventSchema = z.object({
-  id: z.string().cuid(),
-  leadId: z.string().cuid(),
+  id: z.string().cuid2(),
+  leadId: z.string().cuid2(),
   direction: MessageDirectionSchema,
   channel: MessageChannelSchema,
   kind: MessageKindSchema.optional(),

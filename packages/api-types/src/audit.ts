@@ -11,9 +11,9 @@ import { z } from 'zod';
  * GET /api/audit query filter. Used by Admin/Manager to inspect activity.
  */
 export const AuditLogQueryDtoSchema = z.object({
-  userId: z.string().cuid().optional(),
+  userId: z.string().cuid2().optional(),
   entityType: z.string().optional(),
-  entityId: z.string().cuid().optional(),
+  entityId: z.string().cuid2().optional(),
   action: z.union([z.string(), z.array(z.string())]).optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
@@ -27,10 +27,10 @@ export type AuditLogQueryDto = z.infer<typeof AuditLogQueryDtoSchema>;
  * AuditInterceptor (or service-level prisma.$transaction) fills these in.
  */
 export const AuditEntryDtoSchema = z.object({
-  userId: z.string().cuid(),
+  userId: z.string().cuid2(),
   action: z.string().min(1).max(200),
   entityType: z.string().min(1).max(80),
-  entityId: z.string().cuid().optional(),
+  entityId: z.string().cuid2().optional(),
   before: z.record(z.string(), z.unknown()).optional(),
   after: z.record(z.string(), z.unknown()).optional(),
   reason: z.string().max(500).optional(),
