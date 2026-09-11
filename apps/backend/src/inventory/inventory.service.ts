@@ -567,29 +567,39 @@ export class InventoryService {
           throw new NotFoundException(`Phase ${dto.phaseId} not found`);
         }
 
-        const created = await (tx as unknown as PrismaClient).unit.create({
-          data: {
-            phaseId: dto.phaseId,
-            unitNumber: dto.unitNumber,
-            bhk: dto.bhk,
-            facing: dto.facing ?? null,
-            sqft: dto.sqft ?? null,
-            // Prisma Decimal - pass as a string to avoid float drift.
-            price: dto.price.toFixed(2),
-            status: dto.status ?? 'AVAILABLE',
-          },
-          select: {
-            id: true,
-            phaseId: true,
-            unitNumber: true,
-            bhk: true,
-            facing: true,
-            sqft: true,
-            price: true,
-            status: true,
-            createdAt: true,
-          },
-        });
+        let created;
+        try {
+          created = await (tx as unknown as PrismaClient).unit.create({
+            data: {
+              phaseId: dto.phaseId,
+              unitNumber: dto.unitNumber,
+              bhk: dto.bhk,
+              facing: dto.facing ?? null,
+              sqft: dto.sqft ?? null,
+              // Prisma Decimal - pass as a string to avoid float drift.
+              price: dto.price.toFixed(2),
+              status: dto.status ?? 'AVAILABLE',
+            },
+            select: {
+              id: true,
+              phaseId: true,
+              unitNumber: true,
+              bhk: true,
+              facing: true,
+              sqft: true,
+              price: true,
+              status: true,
+              createdAt: true,
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw new ConflictException(
+              `Unit ${dto.unitNumber} already exists in this phase`,
+            );
+          }
+          throw err;
+        }
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {

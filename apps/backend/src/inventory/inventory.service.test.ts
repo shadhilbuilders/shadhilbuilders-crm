@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
+import { Prisma } from '@shadhil/database';
 
 import { InventoryService } from './inventory.service';
 
@@ -480,6 +481,32 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       }),
     ).rejects.toThrow(/Phase missing not found/);
     expect(client.unit.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the unit number already exists in the phase', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({
+      id: 'phase-1',
+      name: 'Phase A',
+      projectId: 'proj-1',
+      project: { name: 'Metro Heights' },
+    });
+    client.unit.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`phaseId`,`unitNumber`)',
+        { code: 'P2002', clientVersion: '7.10.0' },
+      ),
+    );
+
+    await expect(
+      service.create(makeActor(), {
+        phaseId: 'phase-1',
+        unitNumber: 'A-101',
+        bhk: 3,
+        price: 1,
+      }),
+    ).rejects.toThrow(/already exists in this phase/);
+    expect(client.auditLog.create).not.toHaveBeenCalled();
   });
 });
 
