@@ -144,9 +144,9 @@ export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
  *   exp:    expires-at (epoch seconds)
  */
 export const JwtPayloadSchema = z.object({
-  sub: z.string().cuid(),
+  sub: z.string().cuid2(),
   role: RoleSchema,
-  teamId: z.string().cuid().nullable().optional(),
+  teamId: z.string().cuid2().nullable().optional(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
 });

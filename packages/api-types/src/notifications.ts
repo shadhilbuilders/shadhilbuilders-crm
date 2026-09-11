@@ -12,7 +12,7 @@ import { z } from 'zod';
  * Empty array = mark all as read.
  */
 export const MarkReadDtoSchema = z.object({
-  notificationIds: z.array(z.string().cuid()).default([]),
+  notificationIds: z.array(z.string().cuid2()).default([]),
 });
 export type MarkReadDto = z.infer<typeof MarkReadDtoSchema>;
 
@@ -38,11 +38,11 @@ export type NotificationFilterDto = z.infer<typeof NotificationFilterDtoSchema>;
  * SSE event shape for the notifications channel.
  */
 export const NotificationEventSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().cuid2(),
   type: z.string(),
   title: z.string(),
   body: z.string(),
-  leadId: z.string().cuid().nullable().optional(),
+  leadId: z.string().cuid2().nullable().optional(),
   read: z.boolean().default(false),
   createdAt: z.string().datetime({ offset: true }),
 });

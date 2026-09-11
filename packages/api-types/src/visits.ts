@@ -13,14 +13,14 @@ import { VisitStatusSchema } from './enums';
  * VISIT_REQUESTED or VISIT_SCHEDULED state; the service enforces this.
  */
 export const CreateSiteVisitDtoSchema = z.object({
-  leadId: z.string().cuid(),
+  leadId: z.string().cuid2(),
   scheduledFor: z
     .string()
     .datetime({ offset: true })
     .refine((iso: string) => new Date(iso).getTime() > Date.now(), {
       message: 'scheduledFor must be in the future',
     }),
-  salesExecId: z.string().cuid().optional(),
+  salesExecId: z.string().cuid2().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
 export type CreateSiteVisitDto = z.infer<typeof CreateSiteVisitDtoSchema>;
@@ -32,7 +32,7 @@ export type CreateSiteVisitDto = z.infer<typeof CreateSiteVisitDtoSchema>;
  * RESCHEDULED → spawns a new SiteVisit row).
  */
 export const UpdateVisitOutcomeDtoSchema = z.object({
-  visitId: z.string().cuid(),
+  visitId: z.string().cuid2(),
   outcome: VisitStatusSchema,
   notes: z.string().trim().max(2000).optional(),
 });
@@ -44,14 +44,14 @@ export type UpdateVisitOutcomeDto = z.infer<typeof UpdateVisitOutcomeDtoSchema>;
  * one carries `rescheduledFromId`.
  */
 export const RescheduleVisitDtoSchema = z.object({
-  visitId: z.string().cuid(),
+  visitId: z.string().cuid2(),
   scheduledFor: z
     .string()
     .datetime({ offset: true })
     .refine((iso: string) => new Date(iso).getTime() > Date.now(), {
       message: 'scheduledFor must be in the future',
     }),
-  salesExecId: z.string().cuid().optional(),
+  salesExecId: z.string().cuid2().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
 export type RescheduleVisitDto = z.infer<typeof RescheduleVisitDtoSchema>;
@@ -60,8 +60,8 @@ export type RescheduleVisitDto = z.infer<typeof RescheduleVisitDtoSchema>;
  * GET /api/visits query filter - for the Visit Calendar view.
  */
 export const VisitFilterDtoSchema = z.object({
-  leadId: z.string().cuid().optional(),
-  salesExecId: z.string().cuid().optional(),
+  leadId: z.string().cuid2().optional(),
+  salesExecId: z.string().cuid2().optional(),
   // Project.id is a plain string (cuid() default, but seed data uses
   // slug-like ids). Accept any non-empty string - NOT z.cuid2().
   projectId: z.string().min(1).optional(),

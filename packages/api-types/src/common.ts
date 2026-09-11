@@ -15,7 +15,7 @@ export const PaginationDtoSchema = z.object({
 export type PaginationDto = z.infer<typeof PaginationDtoSchema>;
 
 /** Cuid path param. */
-export const IdParamDtoSchema = z.object({ id: z.string().cuid() });
+export const IdParamDtoSchema = z.object({ id: z.string().cuid2() });
 export type IdParamDto = z.infer<typeof IdParamDtoSchema>;
 
 /**

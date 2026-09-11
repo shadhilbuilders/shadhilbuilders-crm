@@ -44,7 +44,7 @@ export type MintTicketDto = z.infer<typeof MintTicketDtoSchema>;
  * an ISO datetime so the client can refresh before expiry.
  */
 export const MintTicketResponseSchema = z.object({
-  ticket: z.string().cuid(),
+  ticket: z.string().cuid2(),
   channel: z.string(),
   expiresAt: z.string().datetime({ offset: true }),
 });
@@ -81,7 +81,7 @@ export function parseChannel(raw: string): RealtimeChannel | null {
  * userName join (the SSE consumer can join locally if needed).
  */
 export const AuditEventSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().cuid2(),
   userId: z.string().nullable(),
   action: z.string(),
   entityType: z.string(),
