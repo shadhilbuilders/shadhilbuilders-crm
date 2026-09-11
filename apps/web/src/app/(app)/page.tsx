@@ -39,5 +39,5 @@ export default function AppHomePage() {
     }
   }, [isPending, sessionPending, projects, user, router]);
 
-  return <Skeleton variant="user" className="py-24" />;
+  return <Skeleton variant="overview" className="py-4" />;
 }

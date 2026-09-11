@@ -70,7 +70,7 @@ export default function DashboardPage() {
   }, []);
 
   if (!mounted || sessionPending) {
-    return <Skeleton variant="user" className="py-24" />;
+    return <Skeleton variant="overview" className="py-4" />;
   }
 
   if (user === null) {
