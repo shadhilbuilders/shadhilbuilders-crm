@@ -1,20 +1,22 @@
-// Public API-key guard - authenticates the anonymous feedback endpoint.
+// Public API-key guard - authenticates anonymous public endpoints (feedback,
+// leads) that the landing page calls (a server, not a browser with a JWT).
+// The standard JwtAuthGuard with @Public() opts them out of JWT auth and
+// this guard validates the `x-api-key` header against a configured env var.
 //
-// POST /api/public/feedback is reachable by the landing page (a server, not
-// a browser with a JWT), so the standard JwtAuthGuard with @Public() opts it
-// out of JWT auth and this guard instead validates the `x-api-key` header
-// against the FEEDBACK_API_KEY env var.
+// Usage: each public endpoint uses a DIFFERENT key (independent rotation).
+//   - feedback:  @UseGuards(new ApiKeyGuard('FEEDBACK_API_KEY'))
+//   - leads:      @UseGuards(new ApiKeyGuard('LEADS_API_KEY'))
 //
 // Security notes:
 //   - Constant-time compare (crypto.timingSafeEqual) so a timing side
 //     channel can't be used to probe the key byte-by-byte.
-//   - The key is REQUIRED at boot: boot-env.ts fails startup if
-//     FEEDBACK_API_KEY is missing (T-G8 fail-fast), so this guard never
-//     compares against a blank default that would accept empty keys.
-//   - This guard only protects the @Public() feedback route; every other
-//     route still goes through the global JwtAuthGuard. A future public
-//     endpoint with a different key must use its own guard (keys are not
-//     shared - see boot-env FEEDBACK_API_KEY comment).
+//   - The key is REQUIRED at boot: boot-env.ts fails startup if the env var
+//     is missing (T-G8 fail-fast), so this guard never compares against a
+//     blank default that would accept empty keys.
+//   - This guard only protects the @Public() routes; every other route still
+//     goes through the global JwtAuthGuard.
+//   - An env var name is passed at construction (not read from the class)
+//     so one guard serves every public endpoint without a switch statement.
 import {
   CanActivate,
   ExecutionContext,
@@ -26,12 +28,14 @@ import type { Request } from 'express';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
+  constructor(private readonly envVar: string) {}
+
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
     const header = req.headers['x-api-key'];
     const provided = Array.isArray(header) ? header[0] : header;
 
-    const expected = process.env['FEEDBACK_API_KEY'];
+    const expected = process.env[this.envVar];
     if (expected === undefined || expected === '') {
       // Unreachable via boot-env fail-fast; kept as a defensive fail-closed.
       throw new UnauthorizedException('API key auth is not configured');
@@ -60,5 +64,11 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid x-api-key');
     }
     return true;
+  }
+}
+// Backward-compatible alias: feedback uses FEEDBACK_API_KEY by default.
+export class FeedbackApiKeyGuard extends ApiKeyGuard {
+  constructor() {
+    super('FEEDBACK_API_KEY');
   }
 }

@@ -135,7 +135,7 @@ export class FeedbackPublicController {
   ) {}
 
   @Public()
-  @UseGuards(ApiKeyGuard)
+  @UseGuards(new ApiKeyGuard('FEEDBACK_API_KEY'))
   @Post('feedback')
   @ApiOperation({
     summary:
