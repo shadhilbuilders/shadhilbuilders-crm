@@ -109,9 +109,11 @@ export const LeadFilterDtoSchema = z.object({
     .optional(),
   ownerId: z.string().cuid().optional(),
   teamId: z.string().trim().min(1).max(64).optional(),
-  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08) - the URL
-  // segment and every filter pin it to cuid2.
-  projectId: z.cuid2().optional(),
+  // Project.id is a plain string (cuid() default, but seed data uses
+  // slug-like ids e.g. 'test-reminder-project'). Accept any non-empty
+  // string - NOT z.cuid2(), which rejects slug ids and 400s the whole
+  // list on those projects.
+  projectId: z.string().min(1).optional(),
   search: z.string().trim().min(1).max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),

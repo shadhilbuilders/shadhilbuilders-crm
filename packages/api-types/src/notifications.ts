@@ -26,9 +26,9 @@ export const NotificationFilterDtoSchema = z.object({
   // lead.transition, lead.reassigned). Enables the Leads/Bookings/Visits
   // filter tabs, which each span multiple concrete types.
   typePrefix: z.string().optional(),
-  // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08). Resolved
-  // through Notification.lead.projectId on the server.
-  projectId: z.cuid2().optional(),
+  // Project.id is a plain string (cuid() default, but seed data uses
+  // slug-like ids). Accept any non-empty string - NOT z.cuid2().
+  projectId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
