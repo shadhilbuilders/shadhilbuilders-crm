@@ -277,6 +277,19 @@ CREATE POLICY booking_write_team ON "Booking"
     )
   );
 
+-- T-BOOKING-ADMIN-WRITE (2026-09-11): allow ADMIN (and OWNER, which
+-- downcasts to ADMIN at the RLS layer) to create/update/delete a Booking
+-- for ANY lead. Mirrors the site_visit_insert_admin / message_insert_admin /
+-- lead_insert_admin bypasses already shipped for the other via-lead tables.
+-- The seed ADMIN/OWNER carry teamId=null -> app.user_team_id='' -> the
+-- booking_write_team USING/WITH CHECK (l.teamId = '') rejects admin writes.
+-- Postgres OR's overlapping FOR ALL policies: MANAGER still gets
+-- team-equality enforcement, TELECALLER/SALES_EXEC still gate on ownerId.
+CREATE POLICY booking_write_admin ON "Booking"
+  FOR ALL
+  USING (current_setting('app.user_role', true) = 'ADMIN')
+  WITH CHECK (current_setting('app.user_role', true) = 'ADMIN');
+
 -- ── Reminder (ownerId-scoped; team visibility for managers) ─────────────────
 ALTER TABLE "Reminder" ENABLE ROW LEVEL SECURITY;
 
