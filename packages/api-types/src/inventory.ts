@@ -50,10 +50,10 @@ export type UnitListResult = z.infer<typeof UnitListResultSchema>;
  * cuid2 (T-PROJID-CUID2, 2026-09-08).
  */
 export const UnitFilterDtoSchema = z.object({
-  // Project.id is a plain string (cuid() default, but seed data uses
-  // slug-like ids). Accept any non-empty string - NOT z.cuid2().
-  projectId: z.string().min(1).optional(),
-  phaseId: z.string().cuid().optional(),
+  // Project.id and Phase.id are real cuid2 at runtime + in the seed
+  // (T-PROJID-CUID2). Validate strictly.
+  projectId: z.cuid2().optional(),
+  phaseId: z.cuid2().optional(),
   bhk: z.number().int().min(1).max(10).optional(),
   facing: z.string().trim().min(1).max(40).optional(),
   status: z
