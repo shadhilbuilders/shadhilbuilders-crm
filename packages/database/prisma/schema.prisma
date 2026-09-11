@@ -179,6 +179,54 @@ enum FeedbackStatus {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// 0. Organization (multi-tenant tenant axis)
+// ────────────────────────────────────────────────────────────────────────────
+// T-ORG (2026-09-11, eng review): Organization is the tenant boundary. A
+// strict two-level hierarchy: an Organization contains Teams which contain
+// Users/Leads. Every business row carries `organizationId` (denormalized on
+// child rows so RLS policies compare a column, not a join). The OWNER role
+// now means "org owner" - one per org (partial unique index organizations'
+// owner, migration 20260911...), replacing the global one_owner.
+//
+// onDelete: Restrict - an org with live data cannot be deleted (cascade
+// would destroy tenant history). Orgs are soft-lifecycle; deletion is a
+// deliberate destructive admin op.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                    User[]
+  teams                    Team[]
+  projects                 Project[]
+  phases                   Phase[]
+  units                    Unit[]
+  leads                    Lead[]
+  activities               Activity[]
+  siteVisits               SiteVisit[]
+  messages                 Message[]
+  bookings                 Booking[]
+  reminders                Reminder[]
+  notifications            Notification[]
+  pushSubscriptions        PushSubscription[]
+  pushNotifications        PushNotification[]
+  auditLogs                AuditLog[]
+  consents                 Consent[]
+  feedbacks                Feedback[]
+  webhookEvents            WebhookEvent[]
+  outboundMessages         OutboundMessage[]
+  whatsappUnknownContacts  WhatsappUnknownContact[]
+  streamTickets            StreamTicket[]
+  projectMembers           ProjectMember[]
+  projectOptions           ProjectOption[]
+  managerAssignmentRules   ManagerAssignmentRule[]
+
+  @@index([slug])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // 1. User (better-auth shape + business relations)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -191,6 +239,10 @@ model User {
   phone         String?
   role          Role     @default(TELECALLER)
   teamId        String?
+  // T-ORG: every user belongs to exactly one organization (the tenant).
+  // Teams nest under the org; `teamId` remains nullable (an ADMIN or a
+  // user not yet assigned to a team still belongs to their org).
+  organizationId String
   // T-SOFT-DELETE (2026-09-09): soft-delete sentinel. NULL = active; set =
   // the user is soft-deleted (blocked from sign-in, hidden from all lists).
   // ADMIN/OWNER only. Hard-delete is removed - the account row is kept so
@@ -210,6 +262,7 @@ model User {
   accounts Account[]
 
   // business relations
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   team              Team?              @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
   managedTeams      Team[]             @relation("TeamManager")
   defaultAssigneeOf Team[]             @relation("TeamDefaultAssignee")
@@ -229,6 +282,7 @@ model User {
   streamTickets     StreamTicket[]
 
   @@index([teamId])
+  @@index([organizationId])
   @@index([role])
   @@index([email])
   banned         Boolean?
@@ -246,6 +300,9 @@ model Team {
   id                String   @id @default(cuid())
   name              String
   managerId         String?
+  // T-ORG: teams nest inside an organization (tenant). Referential
+  // integrity guarantees a team can't span orgs.
+  organizationId    String
   // T-ARM-SCHEMA (2026-09-04): per-team fallback assignee. The
   // ManagerAssignmentRule engine falls back to this user when no
   // rule matches the lead's criteria. The target must still be
@@ -257,12 +314,14 @@ model Team {
 
   manager         User?                   @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
   defaultAssignee User?                   @relation("TeamDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   members         User[]                  @relation("TeamMembers")
   leads           Lead[]
   assignmentRules ManagerAssignmentRule[]
 
   @@index([managerId])
   @@index([defaultAssigneeId])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -272,6 +331,7 @@ model Team {
 model ManagerAssignmentRule {
   id           String   @id @default(cuid())
   teamId       String
+  organizationId String
   source       String // e.g. "meta_ads", "website", "referral"
   targetUserId String
   // T-ARM-SCHEMA (2026-09-04, Plan §18 D2): priority-ordered routing.
@@ -295,6 +355,7 @@ model ManagerAssignmentRule {
   createdAt    DateTime @default(now())
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // Composite unique - the previous [teamId, source] constraint forced
   // one rule per (team, source). The widened constraint lets a team
@@ -303,6 +364,7 @@ model ManagerAssignmentRule {
   // project B" both coexist).
   @@unique([teamId, source, priority, projectId, phaseId, language, region], name: "teamId_source_priority_projectId_phaseId_language_region")
   @@index([teamId])
+  @@index([organizationId])
   @@index([targetUserId])
   @@index([priority])
 }
@@ -314,7 +376,12 @@ model ManagerAssignmentRule {
 model Project {
   id         String   @id @default(cuid())
   name       String
-  slug       String   @unique
+  // T-ORG: slug uniqueness is now per-org (two orgs may each have a
+  // "shadhil-metro-heights"). The old global `slug @unique` is replaced
+  // by the composite @@unique([organizationId, slug]) below.
+  slug       String
+  // T-ORG: tenant axis.
+  organizationId String
   address    String
   reraNumber String?
   cmdaNumber String?
@@ -323,12 +390,15 @@ model Project {
   // from registry/switcher/staff page). ADMIN + OWNER only.
   deletedAt  DateTime?
 
-  phases      Phase[]
-  leads       Lead[]
-  members     ProjectMember[]
+  phases     Phase[]
+  leads      Lead[]
+  members    ProjectMember[]
   projectOptions ProjectOption[]
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@unique([organizationId, slug])
   @@index([slug])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -347,14 +417,18 @@ model Project {
 model ProjectMember {
   projectId  String
   userId     String
+  // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
+  organizationId String
   role       Role
   assignedAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation("ProjectMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@id([projectId, userId])
   @@index([userId])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -364,13 +438,17 @@ model ProjectMember {
 model Phase {
   id        String   @id @default(cuid())
   projectId String
+  // T-ORG: denormalized tenant axis.
+  organizationId String
   name      String
   createdAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units   Unit[]
 
   @@index([projectId])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -389,14 +467,18 @@ model Phase {
 model ProjectOption {
   id        String   @id @default(cuid())
   projectId String
+  // T-ORG: denormalized tenant axis.
+  organizationId String
   type      ProjectOptionType
   value     String
   createdAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, type, value])
   @@index([projectId, type])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -406,6 +488,8 @@ model ProjectOption {
 model Unit {
   id         String     @id @default(cuid())
   phaseId    String
+  // T-ORG: denormalized tenant axis.
+  organizationId String
   unitNumber String
   bhk        Int
   facing     String?
@@ -415,10 +499,12 @@ model Unit {
   createdAt  DateTime   @default(now())
 
   phase    Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bookings Booking[]
 
   @@unique([phaseId, unitNumber])
   @@index([phaseId])
+  @@index([organizationId])
   @@index([status])
 }
 
@@ -445,6 +531,9 @@ model Lead {
   ownerType LeadOwnerType
   coOwnerId String?
   teamId    String
+  // T-ORG: tenant axis (denormalized to every lead-scoped child too, so
+  // RLS on child tables compares a column, not a join to Lead).
+  organizationId String
   projectId String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -452,6 +541,7 @@ model Lead {
   owner      User        @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   coOwner    User?       @relation("LeadCoOwner", fields: [coOwnerId], references: [id], onDelete: SetNull)
   team       Team        @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   activities Activity[]
   visits     SiteVisit[]
@@ -464,6 +554,7 @@ model Lead {
   @@index([ownerId])
   @@index([coOwnerId])
   @@index([teamId])
+  @@index([organizationId])
   @@index([state])
   @@index([projectId])
   @@index([createdAt])
@@ -476,15 +567,19 @@ model Lead {
 model Activity {
   id        String       @id @default(cuid())
   leadId    String
+  // T-ORG: denormalized from parent Lead (RLS compares a column, no join).
+  organizationId String
   userId    String
   type      ActivityType
   body      String       @db.Text
   createdAt DateTime     @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([userId])
   @@index([type])
   @@index([createdAt])
@@ -497,6 +592,8 @@ model Activity {
 model SiteVisit {
   id           String      @id @default(cuid())
   leadId       String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   userId       String
   scheduledFor DateTime
   status       VisitStatus @default(SCHEDULED)
@@ -506,9 +603,11 @@ model SiteVisit {
   updatedAt    DateTime    @updatedAt
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([userId])
   @@index([scheduledFor])
   @@index([status])
@@ -521,6 +620,8 @@ model SiteVisit {
 model Message {
   id         String           @id @default(cuid())
   leadId     String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   userId     String? // null = inbound from customer
   direction  MessageDirection
   channel    MessageChannel
@@ -531,10 +632,12 @@ model Message {
   createdAt  DateTime         @default(now())
 
   lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   outbound OutboundMessage?
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([userId])
   @@index([channel, createdAt])
   @@index([externalId])
@@ -548,6 +651,8 @@ model Booking {
   id           String        @id @default(cuid())
   leadId       String
   unitId       String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   userId       String // who created the booking
   amount       Decimal       @db.Decimal(12, 2)
   status       BookingStatus @default(HOLD)
@@ -559,10 +664,12 @@ model Booking {
 
   lead       Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   unit       Unit  @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user       User  @relation("BookingCreatedBy", fields: [userId], references: [id], onDelete: Restrict)
   approvedBy User? @relation("BookingApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([unitId])
   @@index([userId])
   @@index([status])
@@ -575,6 +682,8 @@ model Booking {
 model Reminder {
   id           String         @id @default(cuid())
   leadId       String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   userId       String
   type         ReminderType
   status       ReminderStatus @default(SCHEDULED)
@@ -592,9 +701,11 @@ model Reminder {
   createdAt    DateTime       @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([userId])
   @@index([status])
   @@index([scheduledFor])
@@ -608,6 +719,8 @@ model Reminder {
 model Notification {
   id        String   @id @default(cuid())
   userId    String
+  // T-ORG: denormalized from the owning User.
+  organizationId String
   type      String // free-form: "lead.assigned", "visit.scheduled", etc.
   title     String
   body      String   @db.Text
@@ -616,8 +729,10 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
+  @@index([organizationId])
   @@index([userId, createdAt])
 }
 
@@ -628,6 +743,8 @@ model Notification {
 model PushSubscription {
   id        String       @id @default(cuid())
   userId    String
+  // T-ORG: denormalized from the owning User.
+  organizationId String
   endpoint  String       @unique
   p256dh    String
   auth      String
@@ -635,8 +752,10 @@ model PushSubscription {
   createdAt DateTime     @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -646,6 +765,8 @@ model PushSubscription {
 model PushNotification {
   id        String     @id @default(cuid())
   userId    String
+  // T-ORG: denormalized from the owning User.
+  organizationId String
   type      String
   payload   Json
   status    PushStatus @default(PENDING)
@@ -654,8 +775,10 @@ model PushNotification {
   createdAt DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([organizationId])
   @@index([status])
   @@index([createdAt])
 }
@@ -667,6 +790,9 @@ model PushNotification {
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
+  // T-ORG: denormalized from the acting User. Audit rows are org-scoped so
+  // an admin only sees their own org's audit trail.
+  organizationId String
   action     String // "lead.update", "booking.approve", etc.
   entityType String
   entityId   String
@@ -678,8 +804,10 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@index([userId])
+  @@index([organizationId])
   @@index([entityType, entityId])
   @@index([action])
   @@index([createdAt])
@@ -692,6 +820,8 @@ model AuditLog {
 model Consent {
   id          String      @id @default(cuid())
   leadId      String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   consentType ConsentType
   granted     Boolean
   grantedAt   DateTime
@@ -700,8 +830,10 @@ model Consent {
   createdAt   DateTime    @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([organizationId])
   @@index([consentType])
 }
 
@@ -726,6 +858,10 @@ model Feedback {
   id         String         @id @default(cuid())
   name       String?
   phone      String?
+  // T-ORG: public submissions resolve their org from the API key at the
+  // public feedback endpoint. Required (NOT NULL) - every feedback row
+  // belongs to the org that owns the submitting landing property.
+  organizationId String
   rating     Int
   project    String?
   message    String?        @db.Text
@@ -736,7 +872,10 @@ model Feedback {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([status])
+  @@index([organizationId])
   @@index([createdAt])
   @@index([rating])
 }
@@ -747,6 +886,9 @@ model Feedback {
 model WebhookEvent {
   id          String        @id @default(cuid())
   source      WebhookSource
+  // T-ORG: webhook payloads carry their org (resolved from the WhatsApp
+  // business number at ingest). An org-less webhook is rejected.
+  organizationId String
   externalId  String        @unique
   payload     Json
   processed   Boolean       @default(false)
@@ -754,7 +896,10 @@ model WebhookEvent {
   error       String?       @db.Text
   createdAt   DateTime      @default(now())
 
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([source])
+  @@index([organizationId])
   @@index([processed])
 }
 
@@ -782,6 +927,8 @@ model OutboundMessage {
   // a chat retract - not implemented yet but the schema supports it).
   messageId       String    @unique
   leadId          String
+  // T-ORG: denormalized from parent Lead.
+  organizationId String
   // Send type: FREEFORM (within 24h of lead's last inbound) or TEMPLATE
   // (after 24h, or for proactive outreach like the visit_followup and
   // visit_reminder templates). Recorded for analytics - "how much of our
@@ -810,9 +957,11 @@ model OutboundMessage {
 
   message         Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
   lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([status, lastAttemptAt])  // cron scan: PENDING rows that aren't being retried too soon
   @@index([leadId])
+  @@index([organizationId])
   @@index([wamid])
 }
 
@@ -943,13 +1092,21 @@ model Jwks {
 model StreamTicket {
   id        String   @id @default(cuid())
   userId    String
+  // T-ORG (eng review Finding 2): the ticket carries the org at mint
+  // time. The SSE consumer compares ticket.orgId to the requested
+  // channel's org and rejects a cross-org ticket before opening the
+  // stream - this is what prevents cross-tenant SSE leakage via the
+  // bare-client fetchers.
+  organizationId String
   channel   String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([organizationId])
   @@index([expiresAt])
 }
 
@@ -973,6 +1130,10 @@ model StreamTicket {
 model WhatsappUnknownContact {
   id               String                          @id @default(cuid())
   phoneE164        String                          @unique
+  // T-ORG: this is the ONE intentionally-nullable org column (eng review
+  // Finding 3, option A). An unknown inbound has no org until a staff
+  // member resolves/converts it. PENDING/SPAM rows may be org-less.
+  organizationId   String?
   firstMessageAt   DateTime
   lastMessageAt    DateTime
   messageCount     Int                             @default(1)
@@ -985,6 +1146,9 @@ model WhatsappUnknownContact {
   createdAt        DateTime                        @default(now())
   updatedAt        DateTime                        @updatedAt
 
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
   @@index([status])
   @@index([lastMessageAt])
 }
