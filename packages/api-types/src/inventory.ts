@@ -14,7 +14,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { UnitStatusSchema } from './enums';
+import { ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
 
 /**
  * Row shape for GET /api/inventory/units. `price` is a string (Prisma
@@ -108,3 +108,60 @@ export const PhaseRowSchema = z.object({
   unitCount: z.number().int().min(0),
 });
 export type PhaseRow = z.infer<typeof PhaseRowSchema>;
+
+/**
+ * POST /api/inventory/phases body. A phase belongs to a project and has
+ * a display name. MANAGER/ADMIN/OWNER only (service guard).
+ */
+export const CreatePhaseDtoSchema = z.object({
+  // Project.id is a plain string (cuid() default, but seed data uses
+  // slug-like ids) - accept any non-empty string, NOT z.cuid2().
+  projectId: z.string().min(1),
+  name: z.string().trim().min(1, 'Phase name is required').max(80),
+});
+export type CreatePhaseDto = z.infer<typeof CreatePhaseDtoSchema>;
+
+/**
+ * PATCH /api/inventory/phases/:id body - partial. Only `name` is
+ * editable (a phase's project is its identity anchor).
+ */
+export const UpdatePhaseDtoSchema = z.object({
+  name: z.string().trim().min(1, 'Phase name is required').max(80).optional(),
+});
+export type UpdatePhaseDto = z.infer<typeof UpdatePhaseDtoSchema>;
+
+/**
+ * Row shape for GET /api/inventory/options. `value` is the free-form
+ * stored string ('North', '1', ...).
+ */
+export const ProjectOptionRowSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  type: ProjectOptionTypeSchema,
+  value: z.string(),
+  /** Units in this project currently using this option value. */
+  unitCount: z.number().int().min(0),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type ProjectOptionRow = z.infer<typeof ProjectOptionRowSchema>;
+
+/**
+ * GET /api/inventory/options query filter. `projectId` filters to a
+ * project; `type` optionally narrows to FACING or BHK.
+ */
+export const ProjectOptionFilterDtoSchema = z.object({
+  projectId: z.string().min(1),
+  type: ProjectOptionTypeSchema.optional(),
+});
+export type ProjectOptionFilterDto = z.infer<typeof ProjectOptionFilterDtoSchema>;
+
+/**
+ * POST /api/inventory/options body. Adds a value to a project's option
+ * set. MANAGER/ADMIN/OWNER only (service guard).
+ */
+export const CreateProjectOptionDtoSchema = z.object({
+  projectId: z.string().min(1),
+  type: ProjectOptionTypeSchema,
+  value: z.string().trim().min(1, 'Value is required').max(40),
+});
+export type CreateProjectOptionDto = z.infer<typeof CreateProjectOptionDtoSchema>;

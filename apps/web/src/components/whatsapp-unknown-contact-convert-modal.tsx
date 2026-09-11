@@ -312,6 +312,7 @@ export function WhatsappUnknownContactConvertModal({
       trigger={null}
       open={open}
       onOpenChange={onOpenChange}
+      contentClassName='sm:max-w-md'
       header={{ title: 'Convert to lead', description }}
       footer={
         <div className="flex w-full justify-end gap-2">

@@ -38,7 +38,17 @@ function makeService(): {
     phase: {
       findMany: ReturnType<typeof vi.fn>;
       findUnique: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
     };
+    projectOption: {
+      findMany: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+    };
+    project: { findUnique: ReturnType<typeof vi.fn> };
     booking: { count: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
   };
@@ -59,7 +69,17 @@ function makeService(): {
     phase: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
+    projectOption: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+    },
+    project: { findUnique: vi.fn() },
     booking: { count: vi.fn() },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   };
@@ -186,6 +206,200 @@ describe('phases - list phases with unit counts', () => {
     expect(client.phase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { projectId: 'proj-1' } }),
     );
+  });
+});
+
+// ─── createPhase - manager+ + audit row ───────────────────────────────
+
+describe('createPhase - new phase (MANAGER/ADMIN/OWNER only)', () => {
+  it('creates the phase and writes an audit row', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    client.phase.create.mockResolvedValue({
+      id: 'phase-9',
+      projectId: 'proj-1',
+      name: 'Phase D',
+    });
+
+    const result = await service.createPhase(makeActor(), {
+      projectId: 'proj-1',
+      name: 'Phase D',
+    });
+
+    expect(result).toEqual({
+      id: 'phase-9',
+      projectId: 'proj-1',
+      name: 'Phase D',
+      unitCount: 0,
+    });
+    expect(client.phase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ projectId: 'proj-1', name: 'Phase D' }),
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'inventory.phase.create',
+          entityType: 'Phase',
+        }),
+      }),
+    );
+  });
+
+  it('allows MANAGER (not just ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    client.phase.create.mockResolvedValue({
+      id: 'phase-9',
+      projectId: 'proj-1',
+      name: 'Phase D',
+    });
+    await expect(
+      service.createPhase(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), {
+        projectId: 'proj-1',
+        name: 'Phase D',
+      }),
+    ).resolves.toMatchObject({ name: 'Phase D' });
+  });
+
+  it('rejects TELECALLER (not MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.createPhase(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
+        projectId: 'proj-1',
+        name: 'Phase D',
+      }),
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER/);
+    expect(client.phase.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the project does not exist', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue(null);
+    await expect(
+      service.createPhase(makeActor(), { projectId: 'missing', name: 'Phase D' }),
+    ).rejects.toThrow(/Project missing not found/);
+    expect(client.phase.create).not.toHaveBeenCalled();
+  });
+});
+
+// ─── updatePhase - manager+ + audit row ───────────────────────────────
+
+describe('updatePhase - rename a phase (MANAGER/ADMIN/OWNER only)', () => {
+  it('renames the phase and writes an audit row with before/after', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({
+      id: 'phase-1',
+      projectId: 'proj-1',
+      name: 'Phase A',
+    });
+    client.phase.update.mockResolvedValue({
+      id: 'phase-1',
+      projectId: 'proj-1',
+      name: 'Phase Alpha',
+    });
+
+    const result = await service.updatePhase(makeActor(), 'phase-1', {
+      name: 'Phase Alpha',
+    });
+
+    expect(result).toMatchObject({ name: 'Phase Alpha' });
+    expect(client.phase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ name: 'Phase Alpha' }),
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'inventory.phase.update',
+          before: expect.objectContaining({ name: 'Phase A' }),
+          after: expect.objectContaining({ name: 'Phase Alpha' }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects TELECALLER (not MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.updatePhase(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), 'phase-1', {
+        name: 'Phase Alpha',
+      }),
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER/);
+    expect(client.phase.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the phase does not exist', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue(null);
+    await expect(
+      service.updatePhase(makeActor(), 'missing', { name: 'Phase Alpha' }),
+    ).rejects.toThrow(/Phase missing not found/);
+    expect(client.phase.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─── deletePhase - manager+ + unit guard + audit row ──────────────────
+
+describe('deletePhase - remove a phase (MANAGER/ADMIN/OWNER only)', () => {
+  it('deletes the phase and writes an audit row when it has no units', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({
+      id: 'phase-1',
+      projectId: 'proj-1',
+      name: 'Phase A',
+    });
+    client.unit.count.mockResolvedValue(0);
+    client.phase.delete.mockResolvedValue({ id: 'phase-1' });
+
+    const result = await service.deletePhase(makeActor(), 'phase-1');
+
+    expect(result).toEqual({ id: 'phase-1' });
+    expect(client.phase.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'phase-1' } }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'inventory.phase.delete',
+          entityType: 'Phase',
+          before: expect.objectContaining({ name: 'Phase A' }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects TELECALLER (not MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.deletePhase(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), 'phase-1'),
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER/);
+    expect(client.phase.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the phase does not exist', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue(null);
+    await expect(service.deletePhase(makeActor(), 'missing')).rejects.toThrow(
+      /Phase missing not found/,
+    );
+    expect(client.phase.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses (409) when the phase still has units', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({
+      id: 'phase-1',
+      projectId: 'proj-1',
+      name: 'Phase A',
+    });
+    client.unit.count.mockResolvedValue(3);
+    await expect(service.deletePhase(makeActor(), 'phase-1')).rejects.toThrow(
+      /still has 3 unit/,
+    );
+    expect(client.phase.delete).not.toHaveBeenCalled();
   });
 });
 
@@ -398,3 +612,177 @@ describe('delete - remove a unit (ADMIN/OWNER only)', () => {
     expect(client.unit.delete).not.toHaveBeenCalled();
   });
 });
+
+// ─── options - list ─────────────────────────────────────────────────
+
+describe('options - list a project option set', () => {
+  it('returns the project options with real unit counts, narrowed by type', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findMany.mockResolvedValue([
+      { id: 'opt-1', projectId: 'proj-1', type: 'FACING', value: 'North', createdAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    client.unit.count.mockResolvedValue(3);
+    const result = await service.options(makeActor(), { projectId: 'proj-1', type: 'FACING' });
+    expect(result).toEqual([
+      { id: 'opt-1', projectId: 'proj-1', type: 'FACING', value: 'North', unitCount: 3, createdAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    // The count query scopes to units in THIS project using the facing.
+    expect(client.unit.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ facing: 'North' }) }),
+    );
+    expect(client.projectOption.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ projectId: 'proj-1', type: 'FACING' }) }),
+    );
+  });
+
+  it('omits the type filter when none is given', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findMany.mockResolvedValue([]);
+    await service.options(makeActor(), { projectId: 'proj-1' });
+    expect(client.projectOption.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ projectId: 'proj-1' }) }),
+    );
+  });
+});
+
+// ─── createOption - manager+ + audit row ─────────────────────────────
+
+describe('createOption - add a project option (MANAGER/ADMIN/OWNER only)', () => {
+  it('creates the option and writes an audit row', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    client.projectOption.create.mockResolvedValue({
+      id: 'opt-9',
+      projectId: 'proj-1',
+      type: 'FACING',
+      value: 'North-East',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const result = await service.createOption(makeActor(), {
+      projectId: 'proj-1',
+      type: 'FACING',
+      value: 'North-East',
+    });
+    expect(result).toMatchObject({ type: 'FACING', value: 'North-East' });
+    expect(client.projectOption.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ projectId: 'proj-1', type: 'FACING', value: 'North-East' }),
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'inventory.option.create', entityType: 'ProjectOption' }),
+      }),
+    );
+  });
+
+  it('allows MANAGER (not just ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    client.projectOption.create.mockResolvedValue({
+      id: 'opt-9',
+      projectId: 'proj-1',
+      type: 'BHK',
+      value: '4',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    await expect(
+      service.createOption(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), {
+        projectId: 'proj-1',
+        type: 'BHK',
+        value: '4',
+      }),
+    ).resolves.toMatchObject({ value: '4' });
+  });
+
+  it('rejects TELECALLER (not MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.createOption(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
+        projectId: 'proj-1',
+        type: 'FACING',
+        value: 'North',
+      }),
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER/);
+    expect(client.projectOption.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the project does not exist', async () => {
+    const { service, client } = makeService();
+    client.project.findUnique.mockResolvedValue(null);
+    await expect(
+      service.createOption(makeActor(), { projectId: 'missing', type: 'FACING', value: 'North' }),
+    ).rejects.toThrow(/Project missing not found/);
+    expect(client.projectOption.create).not.toHaveBeenCalled();
+  });
+});
+
+// ─── deleteOption - manager+ + in-use guard + audit row ──────────────
+
+describe('deleteOption - remove a project option (MANAGER/ADMIN/OWNER only)', () => {
+  const facingRow = { id: 'opt-1', projectId: 'proj-1', type: 'FACING', value: 'North' };
+  const bhkRow = { id: 'opt-2', projectId: 'proj-1', type: 'BHK', value: '3' };
+
+  it('deletes a facing option when it is not in use and writes an audit row', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findUnique.mockResolvedValue(facingRow);
+    client.unit.count.mockResolvedValue(0);
+    client.projectOption.delete.mockResolvedValue({ id: 'opt-1' });
+    const result = await service.deleteOption(makeActor(), 'opt-1');
+    expect(result).toEqual({ id: 'opt-1' });
+    expect(client.projectOption.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'opt-1' } }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'inventory.option.delete', entityType: 'ProjectOption' }),
+      }),
+    );
+  });
+
+  it('deletes a BHK option when it is not in use', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findUnique.mockResolvedValue(bhkRow);
+    client.unit.count.mockResolvedValue(0);
+    client.projectOption.delete.mockResolvedValue({ id: 'opt-2' });
+    await expect(service.deleteOption(makeActor(), 'opt-2')).resolves.toEqual({ id: 'opt-2' });
+  });
+
+  it('rejects TELECALLER (not MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.deleteOption(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), 'opt-1'),
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER/);
+    expect(client.projectOption.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the option does not exist', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findUnique.mockResolvedValue(null);
+    await expect(service.deleteOption(makeActor(), 'missing')).rejects.toThrow(
+      /ProjectOption missing not found/,
+    );
+    expect(client.projectOption.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses (409) when the facing is in use by a unit in the project', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findUnique.mockResolvedValue(facingRow);
+    client.unit.count.mockResolvedValue(3);
+    await expect(service.deleteOption(makeActor(), 'opt-1')).rejects.toThrow(
+      /Facing "North" is used by 3 unit/,
+    );
+    expect(client.projectOption.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses (409) when the BHK is in use by a unit in the project', async () => {
+    const { service, client } = makeService();
+    client.projectOption.findUnique.mockResolvedValue(bhkRow);
+    client.unit.count.mockResolvedValue(2);
+    await expect(service.deleteOption(makeActor(), 'opt-2')).rejects.toThrow(
+      /BHK 3 is used by 2 unit/,
+    );
+    expect(client.projectOption.delete).not.toHaveBeenCalled();
+  });
+});
+

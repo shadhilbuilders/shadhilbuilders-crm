@@ -302,6 +302,26 @@ async function main() {
     phases.push(phase);
   }
 
+  // ---- Project options - per-project facing/BHK pickers -----------------
+  // Backfill the demo project with the historical defaults so the
+  // inventory pickers (which now read from DB) keep offering the same
+  // values the seed units use. Idempotent via the (projectId, type, value)
+  // unique key.
+  await prisma.projectOption.createMany({
+    data: [
+      { projectId: metroHeights.id, type: 'FACING', value: 'North' },
+      { projectId: metroHeights.id, type: 'FACING', value: 'South' },
+      { projectId: metroHeights.id, type: 'FACING', value: 'East' },
+      { projectId: metroHeights.id, type: 'FACING', value: 'West' },
+      { projectId: metroHeights.id, type: 'BHK', value: '1' },
+      { projectId: metroHeights.id, type: 'BHK', value: '2' },
+      { projectId: metroHeights.id, type: 'BHK', value: '3' },
+      { projectId: metroHeights.id, type: 'BHK', value: '4' },
+      { projectId: metroHeights.id, type: 'BHK', value: '5' },
+    ],
+    skipDuplicates: true,
+  });
+
   // (phaseId, unitNumber) → { bhk, facing, sqft, price, status }
   const unitDefs: Array<{
     phaseId: string;

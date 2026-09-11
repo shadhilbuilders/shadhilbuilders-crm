@@ -116,6 +116,10 @@ export type BookingStatus = z.infer<typeof BookingStatusSchema>;
 export const UnitStatusSchema = z.enum(['AVAILABLE', 'HOLD', 'TOKEN', 'SOLD']);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;
 
+/** Per-project option set discriminator (facing/BHK picker values). */
+export const ProjectOptionTypeSchema = z.enum(['FACING', 'BHK']);
+export type ProjectOptionType = z.infer<typeof ProjectOptionTypeSchema>;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Reminders module
 // ────────────────────────────────────────────────────────────────────────────

@@ -244,7 +244,7 @@ export function ScheduleVisitDialog({
     <Dialog
       trigger={null}
       header={{ title: 'Schedule a site visit' }}
-      contentClassName='sm:max-w-xl'
+      contentClassName='sm:max-w-md'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -125,6 +125,11 @@ enum UnitStatus {
   SOLD
 }
 
+enum ProjectOptionType {
+  FACING
+  BHK
+}
+
 enum ReminderType {
   PRE_VISIT_STAFF
   PRE_VISIT_CUSTOMER
@@ -312,9 +317,10 @@ model Project {
   // from registry/switcher/staff page). ADMIN + OWNER only.
   deletedAt  DateTime?
 
-  phases  Phase[]
-  leads   Lead[]
-  members ProjectMember[]
+  phases      Phase[]
+  leads       Lead[]
+  members     ProjectMember[]
+  projectOptions ProjectOption[]
 
   @@index([slug])
 }
@@ -359,6 +365,32 @@ model Phase {
   units   Unit[]
 
   @@index([projectId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5b. ProjectOption (per-project facing/BHK picker values)
+// ────────────────────────────────────────────────────────────────────────────
+// Per-project option sets that the inventory pickers read from. Facing and
+// BHK were static constants; making them per-project data lets a project
+// define its own facing list and BHK range. One table with a `type`
+// discriminator (FACING | BHK) = one CRUD surface + one RLS policy.
+//
+// `value` is a free-form string ('North', '1', ...); BHK is converted to an
+// int when applied to a Unit. Unique on (projectId, type, value) so a
+// project can't hold duplicate options. A value in use by a unit in the
+// project cannot be deleted (409 - service guard preserves referential
+// integrity across the type-erased string column).
+model ProjectOption {
+  id        String   @id @default(cuid())
+  projectId String
+  type      ProjectOptionType
+  value     String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type, value])
+  @@index([projectId, type])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

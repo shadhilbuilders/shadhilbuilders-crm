@@ -70,6 +70,7 @@ type MockTx = {
     findMany: Mock<(args: MockArgs) => Promise<Array<Record<string, unknown>>>>;
   };
   booking: { count: Mock<() => Promise<number>> };
+  projectOption: { createMany: Mock<(args: MockArgs) => Promise<{ count: number }>> };
   auditLog: { create: Mock<(args: MockArgs) => Promise<unknown>> };
 };
 
@@ -178,6 +179,9 @@ function makeTx(overrides: {
     lead: {
       count: vi.fn(async () => 0),
       findMany: vi.fn(async () => []),
+    },
+    projectOption: {
+      createMany: vi.fn(async () => ({ count: 9 })),
     },
     auditLog: {
       create: vi.fn(async () => ({})),
@@ -327,6 +331,17 @@ describe('ProjectsService.create', () => {
         const audit = (tx.auditLog.create.mock.calls[0]![0] as any);
     expect(audit.data.action).toBe('project.create');
     expect(audit.data.entityType).toBe('Project');
+
+    // The default facing/BHK option set is auto-seeded for the new project
+    // so its inventory pickers are usable immediately.
+    expect(tx.projectOption.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          { projectId: 'proj-new', type: 'FACING', value: 'North' },
+          { projectId: 'proj-new', type: 'BHK', value: '3' },
+        ]),
+      }),
+    );
   });
 
   it('appends a suffix when the slug is taken', async () => {

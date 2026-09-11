@@ -466,7 +466,7 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'WhatsappUnknownContact'
+    'ProjectOption','WhatsappUnknownContact'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -497,7 +497,7 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'WhatsappUnknownContact'
+    'ProjectOption','WhatsappUnknownContact'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);

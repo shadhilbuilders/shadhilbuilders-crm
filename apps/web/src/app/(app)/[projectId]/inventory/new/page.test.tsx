@@ -27,6 +27,14 @@ vi.mock('@/hooks/queries/inventory', () => ({
       { id: 'phase-2', projectId: 'proj-test-1', name: 'Phase B', unitCount: 3 },
     ],
   })),
+  useProjectOptions: vi.fn(() => ({
+    data: [
+      { id: 'o1', projectId: 'proj-test-1', type: 'FACING', value: 'North', unitCount: 4 },
+      { id: 'o2', projectId: 'proj-test-1', type: 'BHK', value: '1', unitCount: 0 },
+      { id: 'o3', projectId: 'proj-test-1', type: 'BHK', value: '2', unitCount: 2 },
+      { id: 'o4', projectId: 'proj-test-1', type: 'BHK', value: '3', unitCount: 5 },
+    ],
+  })),
 }));
 
 import NewUnitPage from './page';
@@ -61,10 +69,15 @@ describe('NewUnitPage - props-API Form surface', () => {
     // Test IDs from the field props - proves the props-API
     // forwarded the data-qa attribute correctly (regression canary).
     expect(html).toMatch(/data-qa="unit-number"/);
-    expect(html).toMatch(/data-qa="unit-bhk"/);
-    expect(html).toMatch(/data-qa="unit-facing"/);
     expect(html).toMatch(/data-qa="unit-sqft"/);
     expect(html).toMatch(/data-qa="unit-price"/);
+
+    // BHK and Facing are Selects (bounded pickers from the shared
+    // constants). The Select trigger hardcodes data-qa="select-trigger"
+    // (custom selectProps.data-qa is dropped), so assert on the field
+    // wrapper data-qa instead.
+    expect(html).toMatch(/data-qa="form-field-bhk"/);
+    expect(html).toMatch(/data-qa="form-field-facing"/);
 
     // Breadcrumb
     expect(html).toContain('New unit');

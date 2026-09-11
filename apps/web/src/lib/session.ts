@@ -45,6 +45,15 @@ export function isManager(role: Role | undefined): boolean {
 }
 
 /**
+ * MANAGER, ADMIN, or OWNER - can manage a project's structure (staff
+ * membership, phases). Mirrors apps/backend/src/users/roles.ts
+ * `canManageProjectMembers`.
+ */
+export function canManageProjectMembers(role: Role | undefined): boolean {
+  return isAdminLike(role) || role === 'MANAGER';
+}
+
+/**
  * Roles that can be linked to a project as working staff (TELECALLER /
  * SALES_EXEC / MANAGER). ADMIN/OWNER are excluded - you can't link an
  * admin/owner's "work" on a project in this model.

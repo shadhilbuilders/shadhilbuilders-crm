@@ -200,6 +200,22 @@ export class ProjectsService {
             cmdaNumber: dto.cmdaNumber ?? null,
           },
         });
+        // Auto-seed the default facing/BHK option sets so a new project's
+        // inventory pickers are immediately usable (the values are still
+        // editable/removable later on the phases page).
+        await tx.projectOption.createMany({
+          data: [
+            { projectId: created.id, type: 'FACING', value: 'North' },
+            { projectId: created.id, type: 'FACING', value: 'South' },
+            { projectId: created.id, type: 'FACING', value: 'East' },
+            { projectId: created.id, type: 'FACING', value: 'West' },
+            { projectId: created.id, type: 'BHK', value: '1' },
+            { projectId: created.id, type: 'BHK', value: '2' },
+            { projectId: created.id, type: 'BHK', value: '3' },
+            { projectId: created.id, type: 'BHK', value: '4' },
+            { projectId: created.id, type: 'BHK', value: '5' },
+          ],
+        });
         await tx.auditLog.create({
           data: {
             userId: actor.sub,

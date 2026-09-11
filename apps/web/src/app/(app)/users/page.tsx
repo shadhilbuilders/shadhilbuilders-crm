@@ -233,6 +233,7 @@ export default function UsersPage() {
               header={{ title: 'Create a user' }}
               open={createOpen}
               onOpenChange={setCreateOpen}
+              contentClassName='sm:max-w-md'
               footer={
                 <div className="flex w-full justify-end gap-2">
                   <Button variant="outline" onClick={() => setCreateOpen(false)}>
@@ -688,6 +689,7 @@ function EditUserDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      contentClassName='sm:max-w-md'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -851,6 +853,7 @@ function ChangeRoleDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      contentClassName='sm:max-w-md'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
