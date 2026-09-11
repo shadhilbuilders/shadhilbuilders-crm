@@ -97,6 +97,21 @@
   cursor: pointer;
 }
 
+/* Chat scroller scrollbar blink (2026-09-11): the shadcn message-scroller
+ * toggles `data-autoscrolling` on/off several times during a send, and the
+ * library's `.data-autoscrolling\:scrollbar-none` utility hides the thin
+ * scrollbar on every toggle -> the scrollbar visibly flaps. Keep it visible
+ * whenever auto-scroll is active so the thumb doesn't blink. Scoped to the
+ * message-scroller viewport the chat pane renders. */
+[data-qa='message-scroller-viewport'][data-autoscrolling] {
+  -ms-overflow-style: auto;
+  scrollbar-width: thin;
+}
+[data-qa='message-scroller-viewport'][data-autoscrolling]::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
 /* T20 (PR3): KpiStrip shimmer-once animation.
  *
  * Fires ONCE on transition from the placeholder "-" to a real number.
