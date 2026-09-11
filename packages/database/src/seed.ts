@@ -121,6 +121,18 @@ export const SEED_RULE_IDS = [
   'ikvpgy4i289xd2o1e4m4brcb',
 ];
 
+// Fixed cuid2 ids for the 5 seed user accounts (owner/admin/manager/
+// telecaller/sales_exec). Generated once with createId() and validated
+// against z.cuid2() - stable so the upsert-by-id stays idempotent and
+// every seeded account carries a real cuid2 (not Prisma's c-prefixed
+// cuid1 default). The Account credential row keys off User.id, so it
+// follows automatically.
+export const SEED_OWNER_ID = 'oet70k7svsjrta4480fnyenx';
+export const SEED_ADMIN_ID = 'b2djb8x7jpk8702v8o83rl6s';
+export const SEED_MANAGER_ID = 'jhl2a7l1x7d7bes0jf7ktkhw';
+export const SEED_TELECALLER_ID = 'bscdnl31d81fmwioebupnmwr';
+export const SEED_SALES_EXEC_ID = 'b7ucheo93987ss7oldrzlazd';
+
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
  * better-auth 1.7 sign-in contract: sign-in.mjs requires
@@ -129,14 +141,16 @@ export const SEED_RULE_IDS = [
  * rotation works.
  */
 async function upsertUser(
+  id: string,
   user: SeedUser,
   role: Role,
   teamId?: string,
 ) {
   const dbUser = await prisma.user.upsert({
-    where: { email: user.email },
+    where: { id },
     update: { role, ...(teamId ? { teamId } : {}) },
     create: {
+      id,
       email: user.email,
       name: user.name,
       role,
@@ -183,7 +197,7 @@ async function main() {
   const salesExec = readSeedUser('SALES_EXEC');
 
   // ── Manager first so we have a teamId ────────────────────────────────────
-  const managerUser = await upsertUser(manager, 'MANAGER');
+  const managerUser = await upsertUser(SEED_MANAGER_ID, manager, 'MANAGER');
 
   // ── Team owned by the manager ────────────────────────────────────────────
   const team = await prisma.team.upsert({
@@ -202,13 +216,13 @@ async function main() {
   // RLS team-scoped queries return 0 rows for them, and the demo inbox
   // renders empty. The original ordering bug means a fresh seed run
   // produces a manager with no team even though the team is created.
-  await upsertUser(manager, 'MANAGER', team.id);
+  await upsertUser(SEED_MANAGER_ID, manager, 'MANAGER', team.id);
 
   // ── Owner (no team), Admin (no team), telecaller + sales exec (team members)
-  await upsertUser(owner, 'OWNER');
-  await upsertUser(admin, 'ADMIN');
-  const telecallerUser = await upsertUser(telecaller, 'TELECALLER', team.id);
-  const salesExecUser = await upsertUser(salesExec, 'SALES_EXEC', team.id);
+  await upsertUser(SEED_OWNER_ID, owner, 'OWNER');
+  await upsertUser(SEED_ADMIN_ID, admin, 'ADMIN');
+  const telecallerUser = await upsertUser(SEED_TELECALLER_ID, telecaller, 'TELECALLER', team.id);
+  const salesExecUser = await upsertUser(SEED_SALES_EXEC_ID, salesExec, 'SALES_EXEC', team.id);
 
   // ── Demo projects - the REAL Project registry (T-ProjectSwitch) ─────────
   // Phase 2 of real project switching: the sidebar switcher reads
