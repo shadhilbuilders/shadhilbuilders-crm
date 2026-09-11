@@ -108,12 +108,10 @@ export const LeadFilterDtoSchema = z.object({
     .union([LeadStateSchema, z.array(LeadStateSchema)])
     .optional(),
   ownerId: z.string().cuid().optional(),
-  teamId: z.string().trim().min(1).max(64).optional(),
-  // Project.id is a plain string (cuid() default, but seed data uses
-  // slug-like ids e.g. 'test-reminder-project'). Accept any non-empty
-  // string - NOT z.cuid2(), which rejects slug ids and 400s the whole
-  // list on those projects.
-  projectId: z.string().min(1).optional(),
+  teamId: z.cuid2().optional(),
+  // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
+  // so filter strictly - a non-cuid2 value is a 400, not a silent pass.
+  projectId: z.cuid2().optional(),
   search: z.string().trim().min(1).max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),

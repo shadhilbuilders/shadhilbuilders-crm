@@ -120,6 +120,6 @@ export type ProjectMemberRow = z.infer<typeof ProjectMemberRowSchema>;
 
 /** POST /api/projects/:id/members body - link an existing user to a project. */
 export const LinkProjectMemberDtoSchema = z.object({
-  userId: z.string().trim().min(1).max(64),
+  userId: z.cuid2(),
 });
 export type LinkProjectMemberDto = z.infer<typeof LinkProjectMemberDtoSchema>;

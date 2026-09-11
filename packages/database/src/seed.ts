@@ -110,6 +110,17 @@ export const SEED_PROJECT_METRO_ID = 'oe6g1xkagiisnn4oeefpdyhk';
 export const SEED_PROJECT_SKYLINE_ID = 'u5ou76r0nsnximp7kwljgrgv';
 export const SEED_PROJECT_LAKEVIEW_ID = 'o0n22ikcbvecgkqqa6rc5aqt';
 
+// Fixed cuid2 ids for the seeded demo team + manager-assignment rules.
+// Generated once with createId() and validated against z.cuid2() - stable
+// so the seed's upsert-by-id stays idempotent (mirrors the project ids).
+export const SEED_TEAM_ID = 'vfm3sd2qgekdrvmc2tm8h4me';
+export const SEED_RULE_IDS = [
+  'e55ymkfrqjnjhwnokgoyvh5l',
+  'qq7ex8m4f9acollfjd6b70qq',
+  'mjsclqqbj6yo651icus0kw2y',
+  'ikvpgy4i289xd2o1e4m4brcb',
+];
+
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
  * better-auth 1.7 sign-in contract: sign-in.mjs requires
@@ -176,10 +187,10 @@ async function main() {
 
   // ── Team owned by the manager ────────────────────────────────────────────
   const team = await prisma.team.upsert({
-    where: { id: `seed-team-${managerUser.id}` },
+    where: { id: SEED_TEAM_ID },
     update: { managerId: managerUser.id, name: `${manager.name}'s Team` },
     create: {
-      id: `seed-team-${managerUser.id}`,
+      id: SEED_TEAM_ID,
       name: `${manager.name}'s Team`,
       managerId: managerUser.id,
     },
@@ -454,10 +465,10 @@ async function main() {
       select: { id: true },
     });
     if (target === null) continue;
-    // Stable composite id so the upsert is idempotent across re-runs.
-    // Real rule creation goes through the future admin endpoint; this
-    // is a seed-time helper.
-    const ruleId = `seed-rule-${team.id}-${r.source}-${r.priority}`;
+    // Stable cuid2 id (SEED_RULE_IDS, index-aligned with `rules`) so the
+    // upsert is idempotent across re-runs. Real rule creation goes through
+    // the future admin endpoint; this is a seed-time helper.
+    const ruleId = SEED_RULE_IDS[i]!;
     await prisma.managerAssignmentRule.upsert({
       where: { id: ruleId },
       update: {

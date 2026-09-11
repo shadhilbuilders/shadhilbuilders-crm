@@ -68,11 +68,9 @@ export type BookingTransitionDto = z.infer<typeof BookingTransitionDtoSchema>;
 export const BookingFilterDtoSchema = z.object({
   leadId: z.string().cuid().optional(),
   unitId: z.string().cuid().optional(),
-  // Project.id is a plain string (cuid() default, but seed data uses
-  // slug-like ids e.g. 'test-reminder-project'). Accept any non-empty
-  // string - NOT z.cuid2(), which rejects slug ids and 400s the whole
-  // list on those projects.
-  projectId: z.string().min(1).optional(),
+  // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
+  // so filter strictly - a non-cuid2 value is a 400.
+  projectId: z.cuid2().optional(),
   status: z
     .union([BookingStatusSchema, z.array(BookingStatusSchema)])
     .optional(),

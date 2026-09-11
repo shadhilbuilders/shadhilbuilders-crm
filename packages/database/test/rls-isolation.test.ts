@@ -111,28 +111,28 @@ type Fixture = {
  * inside `withRlsContext` under the actor's role.
  */
 async function buildFixture(): Promise<Fixture> {
-  const teamAId = 'fixture-team-a';
-  const teamBId = 'fixture-team-b';
-  const managerAId = 'fixture-manager-a';
-  const managerBId = 'fixture-manager-b';
-  const execAId = 'fixture-exec-a';
-  const execBId = 'fixture-exec-b';
-  const teleAId = 'fixture-tele-a';
-  const teleBId = 'fixture-tele-b';
-  const leadAId = 'fixture-lead-a';
-  const leadBId = 'fixture-lead-b';
+  const teamAId = 'vee900fbu1sfhnbtht9da9hh';
+  const teamBId = 'm1afmaqirrc5esc2b8ow68yh';
+  const managerAId = 'wwj8bwawdwawkr0917f0z57u';
+  const managerBId = 'cct80r1jkpgifkiuuynw1ia6';
+  const execAId = 'uv42rckneyqbk06qmf8lgrqf';
+  const execBId = 'gld1nhknojlludec1zzvjeh0';
+  const teleAId = 'iruidos281826frk3qq7q4h0';
+  const teleBId = 'pnortiocadhso3cjg6hcn7jm';
+  const leadAId = 'rjt5pywa28bfk2vlvdhcalmo';
+  const leadBId = 'cwv11nlrutr4bme2uexe861z';
 
   // Build the fixture in dependency order: users first WITHOUT teamId
   // (no FK target yet), then teams (managerId FK to existing users),
   // then UPDATE users to set teamId (User.teamId FK to teams).
   // Three passes break the User.teamId ↔ Team.managerId chicken-and-egg.
   for (const u of [
-    { id: managerAId, role: 'MANAGER' as const, email: 'fixture-manager-a@x' },
-    { id: managerBId, role: 'MANAGER' as const, email: 'fixture-manager-b@x' },
-    { id: execAId, role: 'SALES_EXEC' as const, email: 'fixture-exec-a@x' },
-    { id: execBId, role: 'SALES_EXEC' as const, email: 'fixture-exec-b@x' },
-    { id: teleAId, role: 'TELECALLER' as const, email: 'fixture-tele-a@x' },
-    { id: teleBId, role: 'TELECALLER' as const, email: 'fixture-tele-b@x' },
+    { id: managerAId, role: 'MANAGER' as const, email: 'wwj8bwawdwawkr0917f0z57u@x' },
+    { id: managerBId, role: 'MANAGER' as const, email: 'cct80r1jkpgifkiuuynw1ia6@x' },
+    { id: execAId, role: 'SALES_EXEC' as const, email: 'uv42rckneyqbk06qmf8lgrqf@x' },
+    { id: execBId, role: 'SALES_EXEC' as const, email: 'gld1nhknojlludec1zzvjeh0@x' },
+    { id: teleAId, role: 'TELECALLER' as const, email: 'iruidos281826frk3qq7q4h0@x' },
+    { id: teleBId, role: 'TELECALLER' as const, email: 'pnortiocadhso3cjg6hcn7jm@x' },
   ]) {
     await adminPrisma.user.upsert({
       where: { id: u.id },
@@ -163,7 +163,7 @@ async function buildFixture(): Promise<Fixture> {
   // One rule per team so the SELECT-positive / SELECT-negative
   // assertions have a non-empty fixture to filter against.
   await adminPrisma.managerAssignmentRule.upsert({
-    where: { id: 'fixture-rule-a' },
+    where: { id: 'chwybtujrfytmk7tg1qwnmo6' },
     update: {
       teamId: teamAId,
       source: 'META_AD',
@@ -172,7 +172,7 @@ async function buildFixture(): Promise<Fixture> {
       priority: 10,
     },
     create: {
-      id: 'fixture-rule-a',
+      id: 'chwybtujrfytmk7tg1qwnmo6',
       teamId: teamAId,
       source: 'META_AD',
       targetUserId: teleAId,
@@ -181,7 +181,7 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
   await adminPrisma.managerAssignmentRule.upsert({
-    where: { id: 'fixture-rule-b' },
+    where: { id: 'aj3qmde2ownbm68xak12uack' },
     update: {
       teamId: teamBId,
       source: 'META_AD',
@@ -190,7 +190,7 @@ async function buildFixture(): Promise<Fixture> {
       priority: 10,
     },
     create: {
-      id: 'fixture-rule-b',
+      id: 'aj3qmde2ownbm68xak12uack',
       teamId: teamBId,
       source: 'META_AD',
       targetUserId: teleBId,
@@ -213,19 +213,19 @@ async function buildFixture(): Promise<Fixture> {
   }
 
   // Need a Project + Phase + Unit for Booking - seed minimal versions.
-  const projectAId = 'fixture-project-a';
-  const projectBId = 'fixture-project-b';
-  const phaseAId = 'fixture-phase-a';
-  const phaseBId = 'fixture-phase-b';
-  const unitAId = 'fixture-unit-a';
-  const unitBId = 'fixture-unit-b';
+  const projectAId = 'u83jbfz0bm340q1qaj17xoe3';
+  const projectBId = 'h0wgdy2d32ax3eyl0r55db5e';
+  const phaseAId = 'tkn9o8af2ao2y9h9l1rr8d16';
+  const phaseBId = 'lyevcd8q6ur5rlsxqmcyojr4';
+  const unitAId = 'zmcwmelpek4rd8z6kgnokqyo';
+  const unitBId = 'fmanb1uwzf6i5w9peg783vws';
   await adminPrisma.project.upsert({
     where: { id: projectAId },
     update: {},
     create: {
       id: projectAId,
       name: 'Fixture Project A',
-      slug: 'fixture-project-a',
+      slug: 'u83jbfz0bm340q1qaj17xoe3',
       address: '123 Fixture A',
     },
   });
@@ -235,7 +235,7 @@ async function buildFixture(): Promise<Fixture> {
     create: {
       id: projectBId,
       name: 'Fixture Project B',
-      slug: 'fixture-project-b',
+      slug: 'h0wgdy2d32ax3eyl0r55db5e',
       address: '123 Fixture B',
     },
   });
@@ -302,8 +302,8 @@ async function buildFixture(): Promise<Fixture> {
 
   // Seed one row per table per org. We use deterministic IDs so the
   // fixture can be re-run cleanly.
-  const activityAId = 'fixture-activity-a';
-  const activityBId = 'fixture-activity-b';
+  const activityAId = 'h0t7nq1djabtqjonklb1racn';
+  const activityBId = 'g0xcrjk2lks3ol9ux80xdrkh';
   await adminPrisma.activity.upsert({
     where: { id: activityAId },
     update: {},
@@ -315,8 +315,8 @@ async function buildFixture(): Promise<Fixture> {
     create: { id: activityBId, leadId: leadBId, userId: teleBId, type: 'NOTE', body: 'b' },
   });
 
-  const visitAId = 'fixture-visit-a';
-  const visitBId = 'fixture-visit-b';
+  const visitAId = 'n39whq9xc5symadmlvcj4ft8';
+  const visitBId = 'feedb0ypbbpfb8z2xlih3dn3';
   const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await adminPrisma.siteVisit.upsert({
     where: { id: visitAId },
@@ -341,8 +341,8 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  const messageAId = 'fixture-message-a';
-  const messageBId = 'fixture-message-b';
+  const messageAId = 'pd11y9qbd1s9qistonf2uvdy';
+  const messageBId = 'jewvslcppdlpag7o345mnc6y';
   await adminPrisma.message.upsert({
     where: { id: messageAId },
     update: {},
@@ -368,8 +368,8 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  const bookingAId = 'fixture-booking-a';
-  const bookingBId = 'fixture-booking-b';
+  const bookingAId = 'brf0iyl4ncrfq2ireg1lzufe';
+  const bookingBId = 'm946fspkb2qajejirxgaik0k';
   await adminPrisma.booking.upsert({
     where: { id: bookingAId },
     update: {},
@@ -395,8 +395,8 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  const reminderAId = 'fixture-reminder-a';
-  const reminderBId = 'fixture-reminder-b';
+  const reminderAId = 'mfnn5f7pqacu1y1vbl8xxu5c';
+  const reminderBId = 'bt47yf12jo0wyvu197ggtlrr';
   await adminPrisma.reminder.upsert({
     where: { id: reminderAId },
     update: {},
@@ -422,8 +422,8 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  const notifAId = 'fixture-notif-a';
-  const notifBId = 'fixture-notif-b';
+  const notifAId = 'wnamfhpm9otq0tqmh56nmyce';
+  const notifBId = 'dlsntwe2xn2dobo9xw7pya8g';
   await adminPrisma.notification.upsert({
     where: { id: notifAId },
     update: {},
@@ -447,8 +447,8 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  const auditAId = 'fixture-audit-a';
-  const auditBId = 'fixture-audit-b';
+  const auditAId = 'jzwre57gub87udx46s0wqhs7';
+  const auditBId = 'igl4rbepgo41kmie47yf79vc';
   await adminPrisma.auditLog.upsert({
     where: { id: auditAId },
     update: {},
@@ -871,7 +871,7 @@ async function runCase(
           await tx.booking.create({
             data: {
               leadId: fixture.leadAId,
-              unitId: 'fixture-unit-a',
+              unitId: 'zmcwmelpek4rd8z6kgnokqyo',
               userId: ctx.userId,
               amount: '1.00',
               status: 'HOLD',
@@ -1240,11 +1240,11 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
             };
           }
         ).managerAssignmentRule.findMany({
-          where: { id: { in: ['fixture-rule-a', 'fixture-rule-b'] } },
+          where: { id: { in: ['chwybtujrfytmk7tg1qwnmo6', 'aj3qmde2ownbm68xak12uack'] } },
         }),
       );
       expect(rows.length).toBe(1);
-      expect(rows[0]?.id).toBe('fixture-rule-a');
+      expect(rows[0]?.id).toBe('chwybtujrfytmk7tg1qwnmo6');
       expect(rows[0]?.teamId).toBe(fixture.teamAId);
     },
   );
@@ -1269,7 +1269,7 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
             };
           }
         ).managerAssignmentRule.findMany({
-          where: { id: { in: ['fixture-rule-a', 'fixture-rule-b'] } },
+          where: { id: { in: ['chwybtujrfytmk7tg1qwnmo6', 'aj3qmde2ownbm68xak12uack'] } },
         }),
       );
       expect(rows.length).toBe(0);

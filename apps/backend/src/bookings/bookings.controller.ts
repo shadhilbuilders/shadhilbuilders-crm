@@ -59,8 +59,9 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   return result.data;
 }
 
-// cuid regex (matches api-types bookings.ts)
-const CUID_RE = /^c[a-z0-9]{20,}$/i;
+// Booking ids are cuid2 - validate strictly (a `c`-only regex rejects
+// real cuid2 ids that don't start with 'c', and a lax regex accepts junk).
+const CUID_RE = z.cuid2();
 
 @ApiTags('bookings')
 @ApiBearerAuth('jwt')
@@ -133,7 +134,7 @@ export class BookingsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<BookingRow> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid booking id: ${id}`);
     }
     return this.bookings.findOne(req.user!, id);
@@ -149,7 +150,7 @@ export class BookingsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<BookingRow> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid booking id: ${id}`);
     }
     const dto: BookingTransitionDto = parseBody(
@@ -169,7 +170,7 @@ export class BookingsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<BookingRow> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid booking id: ${id}`);
     }
     const dto: UpdateBookingDto = parseBody(UpdateBookingDtoSchema, body);
@@ -185,7 +186,7 @@ export class BookingsController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<{ id: string }> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid booking id: ${id}`);
     }
     return this.bookings.delete(req.user!, id);
