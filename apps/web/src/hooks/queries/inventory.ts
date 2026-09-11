@@ -13,7 +13,10 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api, qs } from '@/apis/client';
 
 import type {
+  CreatePhaseDto,
+  CreateProjectOptionDto,
   CreateUnitDto,
+  UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
 
@@ -158,6 +161,97 @@ export function useDeleteUnit() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
       void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+    },
+  });
+}
+
+export function useCreatePhase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreatePhaseDto) =>
+      api<PhaseRow>('/inventory/phases', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+    },
+  });
+}
+
+export function useUpdatePhase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; body: UpdatePhaseDto }) =>
+      api<PhaseRow>(`/inventory/phases/${args.id}`, {
+        method: 'PATCH',
+        json: args.body,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+    },
+  });
+}
+
+export function useDeletePhase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<{ id: string }>(`/inventory/phases/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+    },
+  });
+}
+
+export type ProjectOptionRow = {
+  id: string;
+  projectId: string;
+  type: 'FACING' | 'BHK';
+  value: string;
+  unitCount: number;
+  createdAt: string;
+};
+
+/** The active project's option sets, optionally narrowed by type. */
+export function useProjectOptions(
+  projectId: string | undefined,
+  type?: 'FACING' | 'BHK',
+) {
+  return useQuery({
+    queryKey: ['inventory', 'options', projectId ?? '', type ?? ''] as const,
+    queryFn: ({ signal }) =>
+      api<ProjectOptionRow[]>(
+        `/inventory/options${qs({ projectId, type })}`,
+        { signal },
+      ),
+    enabled: projectId !== undefined,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateProjectOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProjectOptionDto) =>
+      api<ProjectOptionRow>('/inventory/options', { method: 'POST', json: body }),
+    onSuccess: (_data, body) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['inventory', 'options', body.projectId],
+      });
+    },
+  });
+}
+
+export function useDeleteProjectOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; projectId: string }) =>
+      api<{ id: string }>(`/inventory/options/${args.id}`, { method: 'DELETE' }),
+    onSuccess: (_data, args) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['inventory', 'options', args.projectId],
+      });
     },
   });
 }

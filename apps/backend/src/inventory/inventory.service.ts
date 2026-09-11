@@ -25,19 +25,27 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { withRlsContext, type PrismaClient } from '@shadhil/database';
+import { Prisma, withRlsContext, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
+  CreatePhaseDto,
+  CreateProjectOptionDto,
   CreateUnitDto,
   PhaseRow,
+  ProjectOptionFilterDto,
+  ProjectOptionRow,
   UnitFilterDto,
   UnitListResult,
   UnitRow,
+  UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
-import { isAdminClass } from '../users/roles';
+import {
+  canManageProjectMembers,
+  isAdminClass,
+} from '../users/roles';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -203,6 +211,336 @@ export class InventoryService {
           name: p.name,
           unitCount: p._count.units,
         }));
+      },
+    );
+  }
+
+  /**
+   * POST /api/inventory/phases - create a phase in a project.
+   * MANAGER/ADMIN/OWNER only (DESIGN.md §4 "Edit projects / units /
+   * inventory" + the manager-write widening). Audit row records the
+   * actor + phase.
+   */
+  async createPhase(
+    actor: JwtPayload,
+    dto: CreatePhaseDto,
+  ): Promise<PhaseRow> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/ADMIN/OWNER can create phases (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const project = await (tx as unknown as PrismaClient).project.findUnique({
+          where: { id: dto.projectId },
+          select: { id: true },
+        });
+        if (project === null) {
+          throw new NotFoundException(`Project ${dto.projectId} not found`);
+        }
+        const created = await (tx as unknown as PrismaClient).phase.create({
+          data: { projectId: dto.projectId, name: dto.name },
+          select: { id: true, projectId: true, name: true },
+        });
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'inventory.phase.create',
+            entityType: 'Phase',
+            entityId: created.id,
+            after: { projectId: created.projectId, name: created.name },
+            reason: `Phase ${created.name} created by ${actor.email} (${actor.role})`,
+          },
+        });
+        return { id: created.id, projectId: created.projectId, name: created.name, unitCount: 0 };
+      },
+    );
+  }
+
+  /**
+   * PATCH /api/inventory/phases/:id - rename a phase. MANAGER/ADMIN/OWNER
+   * only. Audit row with before/after.
+   */
+  async updatePhase(
+    actor: JwtPayload,
+    phaseId: string,
+    dto: UpdatePhaseDto,
+  ): Promise<PhaseRow> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/ADMIN/OWNER can update phases (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const existing = await (tx as unknown as PrismaClient).phase.findUnique({
+          where: { id: phaseId },
+          select: { id: true, projectId: true, name: true },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`Phase ${phaseId} not found`);
+        }
+        const data: Record<string, unknown> = {};
+        if (dto.name !== undefined) data['name'] = dto.name;
+        const updated = await (tx as unknown as PrismaClient).phase.update({
+          where: { id: phaseId },
+          data,
+          select: { id: true, projectId: true, name: true },
+        });
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'inventory.phase.update',
+            entityType: 'Phase',
+            entityId: phaseId,
+            before: { name: existing.name },
+            after: { name: updated.name },
+            reason: `Phase ${existing.name} renamed to ${updated.name} by ${actor.email} (${actor.role})`,
+          },
+        });
+        return { id: updated.id, projectId: updated.projectId, name: updated.name, unitCount: 0 };
+      },
+    );
+  }
+
+  /**
+   * DELETE /api/inventory/phases/:id - remove a phase. MANAGER/ADMIN/OWNER
+   * only. Refuses (409) when the phase still has units - the Unit FK is
+   * Cascade, so a delete would silently drop every unit; the explicit
+   * guard gives the operator a readable reason. Audit row records the
+   * deleted phase.
+   */
+  async deletePhase(
+    actor: JwtPayload,
+    phaseId: string,
+  ): Promise<{ id: string }> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/ADMIN/OWNER can delete phases (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const existing = await (tx as unknown as PrismaClient).phase.findUnique({
+          where: { id: phaseId },
+          select: { id: true, projectId: true, name: true },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`Phase ${phaseId} not found`);
+        }
+        const unitCount = await (tx as unknown as PrismaClient).unit.count({
+          where: { phaseId },
+        });
+        if (unitCount > 0) {
+          throw new ConflictException(
+            `Phase "${existing.name}" still has ${unitCount} unit(s). ` +
+              'Move or delete the units before deleting the phase.',
+          );
+        }
+        await (tx as unknown as PrismaClient).phase.delete({
+          where: { id: phaseId },
+        });
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'inventory.phase.delete',
+            entityType: 'Phase',
+            entityId: phaseId,
+            before: { projectId: existing.projectId, name: existing.name },
+            reason: `Phase ${existing.name} deleted by ${actor.email} (${actor.role})`,
+          },
+        });
+        return { id: phaseId };
+      },
+    );
+  }
+
+  /**
+   * GET /api/inventory/options?projectId=&type= - the project's option
+   * sets (facing/BHK). Every authenticated role can read (the pickers
+   * load them). `type` optionally narrows to a single set.
+   */
+  async options(
+    actor: JwtPayload,
+    dto: ProjectOptionFilterDto,
+  ): Promise<ProjectOptionRow[]> {
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const rows = await (tx as unknown as PrismaClient).projectOption.findMany({
+          where: {
+            projectId: dto.projectId,
+            ...(dto.type !== undefined ? { type: dto.type } : {}),
+          },
+          orderBy: [{ type: 'asc' }, { value: 'asc' }],
+          select: {
+            id: true,
+            projectId: true,
+            type: true,
+            value: true,
+            createdAt: true,
+          },
+        });
+        // Real unit count per option: how many units in this project use
+        // the value. Facing is a string field; BHK is stored as an int.
+        const counts = await Promise.all(
+          rows.map(async (r) => {
+            const where =
+              r.type === 'FACING'
+                ? { facing: r.value, phase: { projectId: r.projectId } }
+                : { bhk: Number(r.value), phase: { projectId: r.projectId } };
+            return (tx as unknown as PrismaClient).unit.count({ where });
+          }),
+        );
+        return rows.map((r, i) => ({
+          id: r.id,
+          projectId: r.projectId,
+          type: r.type,
+          value: r.value,
+          unitCount: counts[i],
+          createdAt: r.createdAt.toISOString(),
+        }));
+      },
+    );
+  }
+
+  /**
+   * POST /api/inventory/options - add a value to a project's option set.
+   * MANAGER/ADMIN/OWNER only. The unique (projectId, type, value) index
+   * guards duplicates (Prisma raises, surfaced as a readable 409 below).
+   * Audit row records the actor + option.
+   */
+  async createOption(
+    actor: JwtPayload,
+    dto: CreateProjectOptionDto,
+  ): Promise<ProjectOptionRow> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/ADMIN/OWNER can add options (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const project = await (tx as unknown as PrismaClient).project.findUnique({
+          where: { id: dto.projectId },
+          select: { id: true },
+        });
+        if (project === null) {
+          throw new NotFoundException(`Project ${dto.projectId} not found`);
+        }
+        let created;
+        try {
+          created = await (tx as unknown as PrismaClient).projectOption.create({
+            data: { projectId: dto.projectId, type: dto.type, value: dto.value },
+            select: { id: true, projectId: true, type: true, value: true, createdAt: true },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw new ConflictException(
+              `Option "${dto.value}" already exists for this project`,
+            );
+          }
+          throw err;
+        }
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'inventory.option.create',
+            entityType: 'ProjectOption',
+            entityId: created.id,
+            after: { projectId: created.projectId, type: created.type, value: created.value },
+            reason: `Option ${created.type}:${created.value} added by ${actor.email} (${actor.role})`,
+          },
+        });
+        return {
+          id: created.id,
+          projectId: created.projectId,
+          type: created.type,
+          value: created.value,
+          unitCount: 0,
+          createdAt: created.createdAt.toISOString(),
+        };
+      },
+    );
+  }
+
+  /**
+   * DELETE /api/inventory/options/:id - remove a value from a project's
+   * option set. MANAGER/ADMIN/OWNER only. Refuses (409) when the value is
+   * in use by a unit in the project (facing matches Unit.facing; BHK
+   * matches Unit.bhk stringified) - the operator must reassign or delete
+   * those units first, otherwise the picker would offer a value that no
+   * longer matches any stored unit. Audit row records the deleted option.
+   */
+  async deleteOption(
+    actor: JwtPayload,
+    optionId: string,
+  ): Promise<{ id: string }> {
+    if (!canManageProjectMembers(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/ADMIN/OWNER can delete options (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(
+      this.client,
+      { userId: actor.sub, role: actor.role, teamId: actor.teamId },
+      async (tx) => {
+        const existing = await (tx as unknown as PrismaClient).projectOption.findUnique({
+          where: { id: optionId },
+          select: { id: true, projectId: true, type: true, value: true },
+        });
+        if (existing === null) {
+          throw new NotFoundException(`ProjectOption ${optionId} not found`);
+        }
+        if (existing.type === 'FACING') {
+          const inUse = await (tx as unknown as PrismaClient).unit.count({
+            where: { facing: existing.value, phase: { projectId: existing.projectId } },
+          });
+          if (inUse > 0) {
+            throw new ConflictException(
+              `Facing "${existing.value}" is used by ${inUse} unit(s) in this project. ` +
+                'Reassign them before removing this option.',
+            );
+          }
+        } else {
+          const inUse = await (tx as unknown as PrismaClient).unit.count({
+            where: { bhk: Number(existing.value), phase: { projectId: existing.projectId } },
+          });
+          if (inUse > 0) {
+            throw new ConflictException(
+              `BHK ${existing.value} is used by ${inUse} unit(s) in this project. ` +
+                'Reassign them before removing this option.',
+            );
+          }
+        }
+        await (tx as unknown as PrismaClient).projectOption.delete({
+          where: { id: optionId },
+        });
+        await (tx as unknown as PrismaClient).auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'inventory.option.delete',
+            entityType: 'ProjectOption',
+            entityId: optionId,
+            before: {
+              projectId: existing.projectId,
+              type: existing.type,
+              value: existing.value,
+            },
+            reason: `Option ${existing.type}:${existing.value} removed by ${actor.email} (${actor.role})`,
+          },
+        });
+        return { id: optionId };
       },
     );
   }

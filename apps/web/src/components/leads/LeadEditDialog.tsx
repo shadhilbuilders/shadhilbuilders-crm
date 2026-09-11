@@ -197,6 +197,7 @@ export function LeadEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      contentClassName='sm:max-w-md'
       header={{ title: 'Edit lead', description: "Edit the lead's name, phone, and email." }}
       footer={
         <div className="flex w-full justify-end gap-2">

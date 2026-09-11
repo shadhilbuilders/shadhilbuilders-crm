@@ -11,27 +11,64 @@
 // the repo's Dialog/jsdom rule (Base UI portals render empty under
 // renderToStaticMarkup, so tests target the body, not the portal).
 //
-// Form is the props-API Form (data-driven `fields`); numeric fields are
-// kept as strings in the form and converted in onSubmit (the codebase
-// pattern - avoids the z.coerce type issue).
-import { useEffect } from 'react';
+// ONE `useForm` instance per dialog (user-mandated): the Dialog shell owns
+// it (it needs form.reset on open + handleSubmit); the body is a pure
+// presentational component that receives `form` as a prop and renders the
+// `<Form>` fields. Validation is zod (zodResolver). Numeric fields are kept
+// as strings in the form and converted in onSubmit (the codebase pattern -
+// avoids the z.coerce type issue).
+import { useEffect, useMemo } from 'react';
+import type { UseFormReturn } from 'react-hook-form';
 
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 
-import { useUpdateUnit } from '@/hooks/queries/inventory';
+import { useUpdateUnit, useProjectOptions } from '@/hooks/queries/inventory';
 import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
 
 const FORM_ID = 'unit-edit-form';
 
-type UnitEditFormValues = {
-  unitNumber: string;
-  bhk: string;
-  facing: string;
-  sqft: string;
-  price: string;
-  status: string;
-};
+const unitEditSchema = z.object({
+  unitNumber: z.string().trim().min(1, 'Unit number is required').max(40),
+  bhk: z
+    .string()
+    .min(1, 'BHK is required')
+    .refine(
+      (v) => {
+        const n = Number(v);
+        return Number.isInteger(n) && n >= 1 && n <= 10;
+      },
+      { message: 'BHK must be a whole number between 1 and 10' },
+    ),
+  facing: z.string().optional(),
+  sqft: z
+    .string()
+    .optional()
+    .refine(
+      (v) => {
+        if (v === undefined || v.trim().length === 0) return true;
+        const n = Number(v);
+        return Number.isInteger(n) && n > 0;
+      },
+      { message: 'Sqft must be a positive number' },
+    ),
+  price: z
+    .string()
+    .min(1, 'Price is required')
+    .refine(
+      (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0;
+      },
+      { message: 'Price must be a positive number' },
+    ),
+  // Status is a string in the form (the Select holds the raw enum value);
+  // the payload casts it to InventoryStatus on submit.
+  status: z.string(),
+});
+type UnitEditFormValues = z.infer<typeof unitEditSchema>;
 
 /** Minimal unit shape the dialog needs (from the grid row). */
 export type UnitEditTarget = {
@@ -49,6 +86,7 @@ export type UnitEditDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
+  projectId: string | null;
 };
 
 const STATUS_OPTIONS = INVENTORY_STATUSES.map((value) => ({
@@ -59,28 +97,22 @@ const STATUS_OPTIONS = INVENTORY_STATUSES.map((value) => ({
 /**
  * The form body, exported for tests (jsdom portal rule: render THIS
  * with renderToStaticMarkup; the Dialog shell + footer are covered by
- * the parent's render flow). Owns only the form markup - the mutation
- * lives in the Dialog shell so the footer can read isPending.
+ * the parent's render flow). Receives the Dialog's single `useForm`
+ * instance as a prop - it does NOT create its own (user-mandated: one
+ * form per dialog). Owns only the form markup; the mutation lives in
+ * the shell.
  */
 export function UnitEditFormBody({
-  unit,
+  form,
   onSubmit,
+  bhkOptions,
+  facingOptions,
 }: {
-  unit: UnitEditTarget;
+  form: UseFormReturn<UnitEditFormValues>;
   onSubmit: (values: UnitEditFormValues) => void;
+  bhkOptions: { value: string; label: string }[];
+  facingOptions: { value: string; label: string }[];
 }) {
-  const form = useForm<UnitEditFormValues>({
-    defaultValues: {
-      unitNumber: unit.unitNumber,
-      bhk: String(unit.bhk),
-      facing: unit.facing ?? '',
-      sqft: unit.sqft !== null ? String(unit.sqft) : '',
-      price: unit.price,
-      status: unit.status,
-    },
-    mode: 'onSubmit',
-  });
-
   return (
     <Form
       id={FORM_ID}
@@ -104,25 +136,22 @@ export function UnitEditFormBody({
           },
         },
         {
-          type: 'input',
+          type: 'select',
           name: 'bhk',
           label: 'BHK',
           required: true,
-          inputType: 'number',
-          inputProps: {
-            min: 1,
-            max: 10,
-            step: 1,
+          options: bhkOptions,
+          selectProps: {
             'data-qa': 'unit-edit-bhk',
           },
         },
         {
-          type: 'input',
+          type: 'select',
           name: 'facing',
           label: 'Facing',
-          placeholder: 'North',
-          inputProps: {
-            maxLength: 40,
+          placeholder: 'Pick a facing',
+          options: facingOptions,
+          selectProps: {
             'data-qa': 'unit-edit-facing',
           },
         },
@@ -165,18 +194,57 @@ export function UnitEditFormBody({
 
 /**
  * Controlled edit dialog. `unit === null` renders nothing (the grid
- * holds the currently-editing row in state; null = closed).
+ * holds the currently-editing row in state; null = closed). Owns the
+ * single `useForm` instance (zod-validated) and the mutation.
  */
 export function UnitEditDialog({
   unit,
   open,
   onOpenChange,
   onSaved,
+  projectId,
 }: UnitEditDialogProps) {
   const updateUnit = useUpdateUnit();
   const pending = updateUnit.isPending;
 
+  // Load the project's option sets for the pickers; merge the current
+  // unit's facing/BHK value into the option list so editing a legacy unit
+  // never silently drops a value that isn't in the project's defined set.
+  const optionsQuery = useProjectOptions(projectId ?? undefined);
+  const dbOptions = optionsQuery.data ?? [];
+
+  const bhkOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: { value: string; label: string }[] = [];
+    const push = (v: string) => {
+      if (!seen.has(v)) {
+        seen.add(v);
+        opts.push({ value: v, label: `${v} BHK` });
+      }
+    };
+    for (const o of dbOptions) if (o.type === 'BHK') push(o.value);
+    if (unit !== null) push(String(unit.bhk));
+    opts.sort((a, b) => Number(a.value) - Number(b.value));
+    return opts;
+  }, [dbOptions, unit]);
+
+  const facingOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: { value: string; label: string }[] = [];
+    const push = (v: string) => {
+      if (!seen.has(v)) {
+        seen.add(v);
+        opts.push({ value: v, label: v });
+      }
+    };
+    for (const o of dbOptions) if (o.type === 'FACING') push(o.value);
+    if (unit !== null && unit.facing !== null) push(unit.facing);
+    opts.sort((a, b) => a.value.localeCompare(b.value));
+    return opts;
+  }, [dbOptions, unit]);
+
   const form = useForm<UnitEditFormValues>({
+    resolver: zodResolver(unitEditSchema),
     defaultValues: {
       unitNumber: unit?.unitNumber ?? '',
       bhk: unit ? String(unit.bhk) : '',
@@ -208,23 +276,10 @@ export function UnitEditDialog({
 
   function handleSubmit(values: UnitEditFormValues) {
     const bhk = Number(values.bhk);
-    if (!Number.isFinite(bhk) || bhk < 1 || bhk > 10) {
-      toast.error('BHK must be a whole number between 1 and 10');
-      return;
-    }
     const price = Number(values.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      toast.error('Price must be a positive number');
-      return;
-    }
     let sqft: number | null | undefined;
     if (values.sqft !== undefined && values.sqft.trim().length > 0) {
-      const parsed = Number(values.sqft);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast.error('Sqft must be a positive number');
-        return;
-      }
-      sqft = parsed;
+      sqft = Number(values.sqft);
     }
 
     const payload = {
@@ -258,6 +313,7 @@ export function UnitEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      contentClassName='sm:max-w-md'
       header={{ title: `Edit unit ${target.unitNumber}`, description: 'Update the unit details.' }}
       footer={
         <div className="flex w-full justify-end gap-2">
@@ -282,7 +338,7 @@ export function UnitEditDialog({
         </div>
       }
     >
-      <UnitEditFormBody unit={unit} onSubmit={handleSubmit} />
+      <UnitEditFormBody form={form} onSubmit={handleSubmit} bhkOptions={bhkOptions} facingOptions={facingOptions} />
     </Dialog>
   );
 }

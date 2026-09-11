@@ -28,12 +28,13 @@ import {
   useInventoryPhases,
   useInventoryUnits,
   useInventoryUnitsEnvelope,
+  useProjectOptions,
   type UnitRow,
 } from '@/hooks/queries/inventory';
 import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser } from '@/lib/session';
+import { useSessionUser, canManageProjectMembers } from '@/lib/session';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 
@@ -101,6 +102,9 @@ export default function InventoryPage() {
   const phasesQuery = useInventoryPhases(projectId ?? undefined);
   const phases = phasesQuery.data ?? [];
 
+  const optionsQuery = useProjectOptions(projectId ?? undefined);
+  const options = optionsQuery.data ?? [];
+
   const filter = {
     projectId: projectId ?? undefined,
     phaseId: phaseFilter !== 'ALL' ? phaseFilter : undefined,
@@ -122,6 +126,11 @@ export default function InventoryPage() {
 
   const canEdit =
     mounted && user !== null && (user.role === 'ADMIN' || user.role === 'OWNER');
+
+  // Phase management (add/rename/delete) is MANAGER/ADMIN/OWNER; the
+  // "Phases" header button is hidden for non-manager roles.
+  const canManagePhases =
+    mounted && user !== null && canManageProjectMembers(user.role);
 
   const isFiltered =
     statusFilter.length > 0 ||
@@ -149,22 +158,21 @@ export default function InventoryPage() {
   const bhkOptions = useMemo(
     () => [
       { value: 'ALL', label: 'All BHK' },
-      { value: '2', label: '2 BHK' },
-      { value: '3', label: '3 BHK' },
-      { value: '4', label: '4 BHK' },
+      ...options
+        .filter((o) => o.type === 'BHK')
+        .map((o) => ({ value: o.value, label: `${o.value} BHK` })),
     ],
-    [],
+    [options],
   );
 
   const facingOptions = useMemo(
     () => [
       { value: 'ALL', label: 'All facings' },
-      { value: 'North', label: 'North' },
-      { value: 'South', label: 'South' },
-      { value: 'East', label: 'East' },
-      { value: 'West', label: 'West' },
+      ...options
+        .filter((o) => o.type === 'FACING')
+        .map((o) => ({ value: o.value, label: o.value })),
     ],
-    [],
+    [options],
   );
 
   const columns = useMemo<DataTableColumnDef<UnitRow>[]>(
@@ -268,11 +276,23 @@ export default function InventoryPage() {
         breadcrumb={[{ label: 'Work' }, { label: 'Inventory' }]}
         subtitle="Villa availability by phase, BHK, and facing."
         action={
-          canEdit ? (
-            <Button as={Link} href={projectHref(projectId, '/inventory/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-unit-button">
-              New unit
-            </Button>
-          ) : null
+          <div className="flex items-center gap-2">
+            {canManagePhases ? (
+              <Button
+                as={Link}
+                href={projectHref(projectId, '/inventory/phases')}
+                variant="outline"
+                data-qa="phases-link-button"
+              >
+                Phases
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <Button as={Link} href={projectHref(projectId, '/inventory/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-unit-button">
+                New unit
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -400,6 +420,7 @@ export default function InventoryPage() {
       <UnitEditDialog
         unit={editTarget}
         open={editTarget !== null}
+        projectId={projectId}
         onOpenChange={(open) => {
           if (!open) setEditTarget(null);
         }}

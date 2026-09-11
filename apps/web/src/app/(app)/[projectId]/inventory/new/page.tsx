@@ -21,7 +21,7 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 
 import { useParams } from 'next/navigation';
 
-import { useCreateUnit, useInventoryPhases } from '@/hooks/queries/inventory';
+import { useCreateUnit, useInventoryPhases, useProjectOptions } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
 import { labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 
@@ -53,10 +53,21 @@ export default function NewUnitPage() {
   const phasesQuery = useInventoryPhases(projectId ?? undefined);
   const phases = phasesQuery.data ?? [];
 
+  const optionsQuery = useProjectOptions(projectId ?? undefined);
+  const options = optionsQuery.data ?? [];
+
   const phaseOptions = phases.map((p) => ({
     value: p.id,
     label: p.name,
   }));
+
+  const bhkOptions = options
+    .filter((o) => o.type === 'BHK')
+    .map((o) => ({ value: o.value, label: `${o.value} BHK` }));
+
+  const facingOptions = options
+    .filter((o) => o.type === 'FACING')
+    .map((o) => ({ value: o.value, label: o.value }));
 
   const form = useForm<CreateUnitSchema>({
     resolver: zodResolver(createUnitSchema),
@@ -170,28 +181,25 @@ export default function NewUnitPage() {
             },
           },
           {
-            type: 'input',
+            type: 'select',
             name: 'bhk',
             label: 'BHK',
-            placeholder: '3',
+            placeholder: 'Pick a BHK',
             required: true,
-            inputType: 'number',
-            description: 'Bedrooms (1-10).',
-            inputProps: {
-              min: 1,
-              max: 10,
-              step: 1,
+            description: 'Bedrooms (1-5).',
+            options: bhkOptions,
+            selectProps: {
               'data-qa': 'unit-bhk',
             },
           },
           {
-            type: 'input',
+            type: 'select',
             name: 'facing',
             label: 'Facing',
-            placeholder: 'North',
+            placeholder: 'Pick a facing',
             description: 'Optional. e.g. North, South, East, West.',
-            inputProps: {
-              maxLength: 40,
+            options: facingOptions,
+            selectProps: {
               'data-qa': 'unit-facing',
             },
           },

@@ -21,6 +21,7 @@ export function EventDetailsDialog({ event, children }: IProps) {
   return (
     <Dialog
       trigger={children}
+      contentClassName='sm:max-w-md'
       header={{ title: event.title }}
       footer={
         <span className="text-muted-foreground text-xs">

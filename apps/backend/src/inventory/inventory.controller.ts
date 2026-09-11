@@ -30,14 +30,23 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  CreatePhaseDtoSchema,
+  CreateProjectOptionDtoSchema,
   CreateUnitDtoSchema,
+  ProjectOptionFilterDtoSchema,
   UnitFilterDtoSchema,
+  UpdatePhaseDtoSchema,
   UpdateUnitDtoSchema,
+  type CreatePhaseDto,
+  type CreateProjectOptionDto,
   type CreateUnitDto,
   type PhaseRow,
+  type ProjectOptionFilterDto,
+  type ProjectOptionRow,
   type UnitFilterDto,
   type UnitListResult,
   type UnitRow,
+  type UpdatePhaseDto,
   type UpdateUnitDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
@@ -57,8 +66,10 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   return result.data;
 }
 
-// cuid regex (matches api-types inventory.ts)
-const CUID_RE = /^c[a-z0-9]{20,}$/i;
+// All entity ids are cuid2 (see T-PROJID-CUID2 / packages/database/src/seed.ts).
+// Validate strictly with z.cuid2() - a relaxed regex would let non-cuid2
+// ids through and defeat the uniqueness/format contract of the API.
+const CUID_RE = z.cuid2();
 
 @ApiTags('inventory')
 @ApiBearerAuth('jwt')
@@ -127,7 +138,7 @@ export class InventoryController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<UnitRow> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid unit id: ${id}`);
     }
     return this.inventory.findOne(req.user!, id);
@@ -143,6 +154,101 @@ export class InventoryController {
     @Query('projectId') projectId?: string,
   ): Promise<PhaseRow[]> {
     return this.inventory.phases(req.user!, projectId);
+  }
+
+  @Post('phases')
+  @ApiOperation({
+    summary:
+      'Create a phase in a project. MANAGER/ADMIN/OWNER only. Audit row records the actor + phase.',
+  })
+  async createPhase(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<PhaseRow> {
+    const dto: CreatePhaseDto = parseBody(CreatePhaseDtoSchema, body);
+    return this.inventory.createPhase(req.user!, dto);
+  }
+
+  @Patch('phases/:id')
+  @ApiOperation({
+    summary:
+      'Rename a phase. MANAGER/ADMIN/OWNER only. Audit row with before/after.',
+  })
+  async updatePhase(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<PhaseRow> {
+    if (!CUID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid phase id: ${id}`);
+    }
+    const dto: UpdatePhaseDto = parseBody(UpdatePhaseDtoSchema, body);
+    return this.inventory.updatePhase(req.user!, id, dto);
+  }
+
+  @Delete('phases/:id')
+  @ApiOperation({
+    summary:
+      'Delete a phase. MANAGER/ADMIN/OWNER only. 409 when the phase still has units. Audit row records the deleted phase.',
+  })
+  async removePhase(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<{ id: string }> {
+    if (!CUID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid phase id: ${id}`);
+    }
+    return this.inventory.deletePhase(req.user!, id);
+  }
+
+  @Get('options')
+  @ApiOperation({
+    summary:
+      'List a project option set (facing/BHK). query: ?projectId=&type=. Every authenticated role can read.',
+  })
+  async options(
+    @Req() req: AuthedRequest,
+    @Query() query: Record<string, unknown>,
+  ): Promise<ProjectOptionRow[]> {
+    const dto: ProjectOptionFilterDto = parseBody(
+      ProjectOptionFilterDtoSchema,
+      {
+        projectId: typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
+        type: typeof query['type'] === 'string' ? query['type'] : undefined,
+      },
+    );
+    return this.inventory.options(req.user!, dto);
+  }
+
+  @Post('options')
+  @ApiOperation({
+    summary:
+      'Add a value to a project option set. MANAGER/ADMIN/OWNER only. Audit row records the actor + option.',
+  })
+  async createOption(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<ProjectOptionRow> {
+    const dto: CreateProjectOptionDto = parseBody(
+      CreateProjectOptionDtoSchema,
+      body,
+    );
+    return this.inventory.createOption(req.user!, dto);
+  }
+
+  @Delete('options/:id')
+  @ApiOperation({
+    summary:
+      'Remove a value from a project option set. MANAGER/ADMIN/OWNER only. 409 when the value is in use by a unit in the project. Audit row records the deleted option.',
+  })
+  async removeOption(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<{ id: string }> {
+    if (!CUID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid option id: ${id}`);
+    }
+    return this.inventory.deleteOption(req.user!, id);
   }
 
   @Post('units')
@@ -168,7 +274,7 @@ export class InventoryController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<UnitRow> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid unit id: ${id}`);
     }
     const dto: UpdateUnitDto = parseBody(UpdateUnitDtoSchema, body);
@@ -184,7 +290,7 @@ export class InventoryController {
     @Req() req: AuthedRequest,
     @Param('id') id: string,
   ): Promise<{ id: string }> {
-    if (!CUID_RE.test(id)) {
+    if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid unit id: ${id}`);
     }
     return this.inventory.delete(req.user!, id);
