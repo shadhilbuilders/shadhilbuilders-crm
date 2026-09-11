@@ -5,7 +5,7 @@
 // unread counter. The notifications REST module (Pass 1) returns
 // `{ total, unread, rows }` - useNotifications unwraps the rows + exposes
 // the counters (T-F1).
-import { Button } from '@paalstack/react-ui';
+import { Box, Button } from '@paalstack/react-ui';
 import { useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
@@ -21,18 +21,17 @@ import { useParams } from 'next/navigation';
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
 
-// T-F2 keeps the filter tabs honest: only ALL + UNREAD are wired to
-// backend query params; the others stay visible (matches the locked
-// wireframe) but are disabled until backend filtering by leadId/bookingId/
-// visitId lands.
+// T-F2: the filter tabs are all wired to backend query params now.
+// ALL/UNREAD use unreadOnly; LEADS/BOOKINGS/VISITS use typePrefix
+// (e.g. 'lead' matches lead.created, lead.transition, lead.reassigned).
 type Filter = 'ALL' | 'UNREAD' | 'LEADS' | 'BOOKINGS' | 'VISITS';
 
-const FILTERS: { value: Filter; label: string; enabled: boolean }[] = [
-  { value: 'ALL', label: 'All', enabled: true },
-  { value: 'UNREAD', label: 'Unread', enabled: true },
-  { value: 'LEADS', label: 'Leads', enabled: false },
-  { value: 'BOOKINGS', label: 'Bookings', enabled: false },
-  { value: 'VISITS', label: 'Visits', enabled: false },
+const FILTERS: { value: Filter; label: string; typePrefix?: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'UNREAD', label: 'Unread' },
+  { value: 'LEADS', label: 'Leads', typePrefix: 'lead' },
+  { value: 'BOOKINGS', label: 'Bookings', typePrefix: 'booking' },
+  { value: 'VISITS', label: 'Visits', typePrefix: 'visit' },
 ];
 
 type NotificationRow = {
@@ -51,8 +50,10 @@ export default function NotificationsPage() {
   // notifications (server resolves through Notification.lead.projectId).
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
+  const activeFilter = FILTERS.find((f) => f.value === filter);
   const notificationsQuery = useNotifications({
     unreadOnly: filter === 'UNREAD',
+    typePrefix: activeFilter?.typePrefix,
     projectId,
   });
   // T-E2 (Week 6): live updates - new notifications stream in via SSE
@@ -90,16 +91,9 @@ export default function NotificationsPage() {
         {FILTERS.map((item) => (
           <Button
             key={item.value}
-            variant={
-              item.enabled && filter === item.value ? 'default' : 'outline'
-            }
-            disabled={!item.enabled}
-            onClick={() => {
-              if (item.enabled) setFilter(item.value);
-            }}
-            aria-label={
-              item.enabled ? undefined : `${item.label} (coming soon)`
-            }
+            variant={filter === item.value ? 'default' : 'outline'}
+            onClick={() => setFilter(item.value)}
+            data-qa={`notifications-filter-${item.value.toLowerCase()}`}
           >
             {item.label}
           </Button>
@@ -113,9 +107,10 @@ export default function NotificationsPage() {
           {rows.map((raw, index) => {
             const row = raw as NotificationRow;
             const isRead = row.read === true;
+            const id = typeof row.id === 'string' ? row.id : null;
             return (
               <li
-                key={typeof row.id === 'string' ? row.id : `n-${index}`}
+                key={id ?? `n-${index}`}
                 className="flex items-start gap-3 px-4 py-3"
                 data-qa="notification-row"
               >
@@ -147,6 +142,18 @@ export default function NotificationsPage() {
                       : ''}
                   </p>
                 </div>
+                {!isRead && id !== null ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={markRead.isPending}
+                    onClick={() => markRead.mutate([id])}
+                    data-qa="mark-read"
+                    className="shrink-0"
+                  >
+                    Mark as read
+                  </Button>
+                ) : null}
               </li>
             );
           })}
@@ -188,24 +195,24 @@ function NotificationsEmpty({
     );
   }
   return (
-    <div
+    <Box
       className="border-border rounded-lg border p-10 text-center"
       data-qa="notifications-empty"
     >
-      <p className="text-sm font-medium">
+      <p className="text-base font-medium">
         {filter === 'UNREAD'
           ? unread === 0
             ? 'No unread notifications.'
             : 'No matches.'
           : 'No notifications yet.'}
       </p>
-      <p className="text-muted-foreground mt-1 text-xs">
+      <p className="text-muted-foreground mt-1 text-sm">
         {filter === 'UNREAD'
           ? 'New leads, handoffs, and reminders land here automatically.'
           : total === 0
             ? 'Trigger events will appear here as soon as they happen.'
             : 'Try switching to the All tab.'}
       </p>
-    </div>
+    </Box>
   );
 }

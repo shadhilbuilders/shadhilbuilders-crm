@@ -22,6 +22,10 @@ export type MarkReadDto = z.infer<typeof MarkReadDtoSchema>;
 export const NotificationFilterDtoSchema = z.object({
   unreadOnly: z.boolean().default(false),
   type: z.string().optional(),
+  // Filter by notification-type prefix (e.g. 'lead' matches lead.created,
+  // lead.transition, lead.reassigned). Enables the Leads/Bookings/Visits
+  // filter tabs, which each span multiple concrete types.
+  typePrefix: z.string().optional(),
   // Project.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08). Resolved
   // through Notification.lead.projectId on the server.
   projectId: z.cuid2().optional(),

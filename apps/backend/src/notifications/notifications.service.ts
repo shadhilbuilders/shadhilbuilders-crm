@@ -92,6 +92,12 @@ export class NotificationsService {
         const where: Record<string, unknown> = {};
         if (dto.unreadOnly) where['read'] = false;
         if (dto.type !== undefined) where['type'] = dto.type;
+        // Prefix filter (e.g. 'lead' → lead.created, lead.transition).
+        // Enables the Leads/Bookings/Visits tabs, which each span multiple
+        // concrete notification types.
+        if (dto.typePrefix !== undefined && dto.typePrefix.length > 0) {
+          where['type'] = { startsWith: dto.typePrefix };
+        }
         // T-ProjectSwitch: scope the inbox to the active project via the
         // related lead. Notification has NO `lead` relation field (only
         // leadId), so resolve the project's lead ids first (RLS-filtered)
