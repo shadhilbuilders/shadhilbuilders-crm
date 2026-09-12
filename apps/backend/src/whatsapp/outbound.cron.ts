@@ -147,7 +147,21 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
       // skipped - see OutboundService.claimPending). We track
       // "skippedBackoff" via the gap between rows-returned and
       // rows-claimed.
-      const batch = await this.outbound.claimPending(this.replicaId, BATCH_SIZE);
+      let batch: Awaited<ReturnType<typeof this.outbound.claimPending>> = [];
+      try {
+        batch = await this.outbound.claimPending(this.replicaId, BATCH_SIZE);
+      } catch (err) {
+        // Isolate a claim failure (e.g. a Prisma interactive-transaction
+        // timeout when the pooled connection stalls at cold start). Log and
+        // continue with an empty batch - the next 5s tick retries. Without
+        // this catch the exception escapes runOnce into the Nest scheduler
+        // and spams the log with a prisma:error + ERROR[Scheduler] pair on
+        // every tick. The batch loop below already isolates per-row errors;
+        // the claim must be isolated too.
+        this.logger.error(
+          `[whatsapp] claimPending failed (retrying next tick): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       tick.claimed = batch.length;
       // Note: claimPending's "ready" filter rejects backoff-window
       // rows before the updateMany, so we don't have a separate
@@ -174,7 +188,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
           // policy.
           const updated = await withRlsContext(
             this.prismaService.$client,
-            { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+            { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
             async (tx) =>
               (tx as unknown as PrismaClient).outboundMessage.findUnique({
                 where: { id: row.id },
