@@ -255,11 +255,12 @@ export class LeadsService {
 
   /**
    * Build the SQL `ORDER BY` clause for the Lead list. Defaults to
-   * overdue-first (NEW + created > 30 min ago float to the top, freshest
-   * first) then most recent activity - Decision 0.2. When the page passes
-   * `sortBy`/`sortDir` (server-side sort, T-SRVPG), that column + direction
-   * wins instead. `sortBy` is whitelisted by the DTO enum so it can never
-   * inject SQL.
+   * NEW-first then most-recent-first: every lead in state NEW floats to the
+   * top (newest NEW first), then the rest by most recent (`createdAt DESC`).
+   * Requested 2026-09-12 - a new/landing lead lands at the very top of the
+   * inbox immediately. When the page passes `sortBy`/`sortDir` (server-side
+   * sort, T-SRVPG), that column + direction wins instead. `sortBy` is
+   * whitelisted by the DTO enum so it can never inject SQL.
    */
   private sortOrderSql(dto: LeadFilterDto): Prisma.Sql {
     if (dto.sortBy !== undefined) {
@@ -269,17 +270,18 @@ export class LeadsService {
       return Prisma.sql`"${Prisma.raw(dto.sortBy)}" ${Prisma.raw(dir)}`;
     }
     return Prisma.sql`
-      (CASE WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0 ELSE 1 END) ASC,
-      "updatedAt" DESC
+      (CASE WHEN "state"='NEW' THEN 0 ELSE 1 END) ASC,
+      "createdAt" DESC
     `;
   }
 
   /**
    * GET /api/leads - the Lead Inbox. Returns the page-shaped result the
-   * UI expects (rows + total + summary counts). Order: overdue-first
-   * (NEW + created > 30 min ago float to the top, freshest first), then
-   * most recent activity - Decision 0.2, now enforced server-side so
-   * pagination returns a consistent order (T-SRVPG).
+   * UI expects (rows + total + summary counts). Order: NEW-status first
+   * (newest NEW at the very top), then the rest by most recent
+   * (`createdAt DESC`) - requested 2026-09-12. When the page passes
+   * `sortBy`, that wins. Enforced server-side so pagination returns a
+   * consistent order (T-SRVPG).
    */
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
     return withRlsContext(
@@ -677,20 +679,30 @@ export class LeadsService {
       return u === null ? null : { id: u.id, role: u.role as TargetUser['role'] };
     };
 
-    const leadAttrs: LeadAttributes = {
-      source: dto.source,
-      projectId: dto.projectId ?? null,
-    };
+    // Public-leads owner override: when the caller (public-leads service,
+    // which validated the id against the org) supplies `assignedOwnerId`,
+    // bypass the engine and assign to that user directly. Engine fallback
+    // still applies for every other path.
+    let ownerId: string;
+    let resolution: ResolverResult | null = null;
+    if (dto.assignedOwnerId !== undefined) {
+      ownerId = dto.assignedOwnerId;
+    } else {
+      const leadAttrs: LeadAttributes = {
+        source: dto.source,
+        projectId: dto.projectId ?? null,
+      };
 
-    const resolution = await this.resolveOwnerFromEngine(
-      rules,
-      teamForEngine,
-      leadAttrs,
-      resolveTarget,
-      actor.sub,
-    );
+      resolution = await this.resolveOwnerFromEngine(
+        rules,
+        teamForEngine,
+        leadAttrs,
+        resolveTarget,
+        actor.sub,
+      );
 
-    const ownerId = resolution.userId;
+      ownerId = resolution.userId;
+    }
 
     // Steps 5+: write Lead + audit log. The `client` is already a
     // tx with RLS context set, so we use it directly - no inner
@@ -734,15 +746,17 @@ export class LeadsService {
     });
 
     const assignmentMetadata =
-      resolution.kind === 'rule'
-        ? {
-            kind: 'rule' as const,
-            ruleId: resolution.ruleId,
-            priority: resolution.priority,
-          }
-        : resolution.kind === 'team-default'
-          ? { kind: 'team-default' as const, teamId }
-          : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
+      resolution === null
+        ? { kind: 'forced-override' as const, ownerId }
+        : resolution.kind === 'rule'
+          ? {
+              kind: 'rule' as const,
+              ruleId: resolution.ruleId,
+              priority: resolution.priority,
+            }
+          : resolution.kind === 'team-default'
+            ? { kind: 'team-default' as const, teamId }
+            : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
 
     await client.auditLog.create({
       data: {
