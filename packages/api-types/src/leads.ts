@@ -25,6 +25,12 @@ const sourceSchema = z.string().trim().min(1).max(80);
  * email and projectId are optional. Owner is assigned by the
  * ManagerAssignmentRule service (IMPLEMENTATION-PLAN §7) - callers do NOT
  * pick the owner.
+ *
+ * The one exception: the PUBLIC leads endpoint may set `assignedOwnerId`
+ * (a validated, org-scoped staff user id) to override engine assignment for
+ * a landing enquiry. It is NOT accepted from ordinary authed clients (the
+ * shared JWT create path ignores it); only the public-leads service, which
+ * validates the id against the target org, sets it. Internal only.
  */
 export const CreateLeadDtoSchema = z.object({
   name: z.string({
@@ -40,6 +46,8 @@ export const CreateLeadDtoSchema = z.object({
   source: sourceSchema,
   projectId: z.cuid2().optional(),
   notes: z.string().trim().max(2000).optional(),
+  // Internal: optional explicit owner override (public-leads only).
+  assignedOwnerId: z.string().cuid2().optional(),
 });
 export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
 

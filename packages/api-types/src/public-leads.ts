@@ -38,6 +38,17 @@ import { z } from 'zod';
  *   not persisted as columns today (Lead has no field for them); they are
  *   ignored for v1. `source` is NOT accepted from the client - the service
  *   forces it to "LANDING".
+ *
+ * Org + project targeting (T-ORG, 2026-09-12):
+ *   - `orgSlug` / `projectSlug` let the landing page target a specific org
+ *     + project. The service resolves slug -> id server-side (the landing
+ *     only knows slugs, never cuids). When omitted, the service falls back
+ *     to PUBLIC_ORG_ID / LEADS_FALLBACK_PROJECT_ID env vars.
+ *   - `ownerId` is OPTIONAL. When present AND valid (a real staff user in
+ *     the resolved org/team), the service uses it as the lead owner
+ *     (bypassing the manager-assignment engine). When absent or invalid,
+ *     the engine assigns as it does today (rule -> team default ->
+ *     LEADS_FALLBACK_OWNER_ID).
  */
 export const PublicCreateLeadDtoSchema = z.object({
   fullName: z
@@ -62,6 +73,11 @@ export const PublicCreateLeadDtoSchema = z.object({
   preferredDate: z.string().trim().max(20).optional().or(z.literal('')),
   preferredTime: z.string().trim().max(20).optional().or(z.literal('')),
   source: z.string().trim().max(80).optional().or(z.literal('')),
+  // Org targeting: the landing passes a SLUG; the service resolves it.
+  orgSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
+  projectSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
+  // Optional direct-owner override (validated against the org/team).
+  ownerId: z.string().trim().min(1).max(120).optional().or(z.literal('')),
 });
 export type PublicCreateLeadDto = z.infer<typeof PublicCreateLeadDtoSchema>;
 
