@@ -111,6 +111,13 @@ export type NavItem = {
    * query layer. Undefined = static item, no badge slot rendered.
    */
   badgeKey?: NavBadgeKey;
+  /**
+   * Optional collapsed-submenu children. When present, the item renders as
+   * a `Collapsible` trigger and its children (`children.map`) render as
+   * `SidebarMenuSub` items (e.g. the WhatsApp submenu: WA Unknown / Webhooks
+   * / WA Delivery). Visibility of the parent follows `getVisibleNav`.
+   */
+  children?: readonly NavItem[];
 };
 
 /** Badge source identifiers. The actual count fetch lives in
@@ -201,11 +208,37 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // unknown numbers - they only see the result (a converted Lead)
   // in the regular Lead Inbox.
   {
-    href: '/whatsapp-unknown-contacts',
-    label: 'WA Unknown',
+    href: '/webhooks',
+    label: 'WhatsApp',
     icon: LuMessageCircleQuestion,
     group: 'admin',
     scoped: false,
+    // WhatsApp-related operational surfaces live under one collapsible
+    // submenu. getVisibleNav renders the parent only when at least one
+    // child is visible (it recursively includes visible children).
+    children: [
+      {
+        href: '/whatsapp-unknown-contacts',
+        label: 'WA Unknown',
+        icon: LuMessageCircleQuestion,
+        group: 'admin',
+        scoped: false,
+      },
+      {
+        href: '/whatsapp-delivery',
+        label: 'WA Delivery',
+        icon: LuSend,
+        group: 'admin',
+        scoped: false,
+      },
+      {
+        href: '/webhooks',
+        label: 'Webhooks',
+        icon: LuSatellite,
+        group: 'admin',
+        scoped: false,
+      },
+    ],
   },
   // Feedback triage - ADMIN/OWNER only. Public submissions from the landing
   // page land in the CRM DB; this is the admin surface to read + triage them.
@@ -213,23 +246,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/feedback',
     label: 'Feedback',
     icon: LuMessageSquareText,
-    group: 'admin',
-    scoped: false,
-  },
-  // Integration telemetry - ADMIN/OWNER only (2026-09-11). Read-only ops
-  // feeds for the WhatsApp/Meta webhook pipeline: raw inbound webhook events
-  // and outbound message delivery status.
-  {
-    href: '/webhooks',
-    label: 'Webhooks',
-    icon: LuSatellite,
-    group: 'admin',
-    scoped: false,
-  },
-  {
-    href: '/whatsapp-delivery',
-    label: 'WA Delivery',
-    icon: LuSend,
     group: 'admin',
     scoped: false,
   },
@@ -254,33 +270,45 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
       continue;
     }
     // group === 'admin'
-    if (item.href === '/users' && canManageUsers(role)) items.push(item);
-    else if (item.href === '/projects' && canManageUsers(role)) items.push(item);
-    // Org Teams is ADMIN/OWNER ONLY (a manager uses the per-project staff
-    // surfaces, not every team).
-    else if (item.href === '/teams' && isAdminLike(role)) items.push(item);
-    else if (item.href === '/audit' && canViewAudit(role)) items.push(item);
-    else if (
-      item.href === '/whatsapp-unknown-contacts' &&
-      canConvertWhatsappUnknownContact(role)
-    )
-      items.push(item);
-    // Feedback triage is ADMIN/OWNER only - a Manager never reads
-    // public customer feedback (operational team scoped to their sales).
-    else if (item.href === '/feedback' && canViewAudit(role)) items.push(item);
-    // Integration telemetry (webhook events + WA delivery) is ADMIN/OWNER
-    // only - ops feeds, mirrors the audit gate.
-    else if (
-      (item.href === '/webhooks' || item.href === '/whatsapp-delivery') &&
-      isAdminLike(role)
-    )
-      items.push(item);
-    // Admin/owner command center (dashboard split). Admin-only: the
-    // cross-project overview is an executive surface, unlike Users which is
-    // admin+manager (operational). MANAGER sees a Users-only admin group.
-    else if (item.href === '/overview' && isAdminLike(role)) items.push(item);
+
+    // Submenu parent (children present): render it only when at least one
+    // child is visible, and carry only the visible children through so the
+    // shell renders exactly what the role may access.
+    if (item.children !== undefined) {
+      const visibleChildren = item.children.filter((c) => isNavItemVisible(c, role));
+      if (visibleChildren.length > 0) {
+        items.push({ ...item, children: visibleChildren });
+      }
+      continue;
+    }
+
+    if (isNavItemVisible(item, role)) items.push(item);
   }
   return items;
+}
+
+/** Per-item admin visibility rule (single source of truth for getVisibleNav). */
+function isNavItemVisible(item: Pick<NavItem, 'href'>, role: Role | undefined): boolean {
+  if (item.href === '/users' && canManageUsers(role)) return true;
+  if (item.href === '/projects' && canManageUsers(role)) return true;
+  // Org Teams is ADMIN/OWNER ONLY (a manager uses the per-project staff
+  // surfaces, not every team).
+  if (item.href === '/teams' && isAdminLike(role)) return true;
+  if (item.href === '/audit' && canViewAudit(role)) return true;
+  if (item.href === '/whatsapp-unknown-contacts' && canConvertWhatsappUnknownContact(role))
+    return true;
+  // Feedback triage is ADMIN/OWNER only - a Manager never reads
+  // public customer feedback (operational team scoped to their sales).
+  if (item.href === '/feedback' && canViewAudit(role)) return true;
+  // Integration telemetry (webhook events + WA delivery) is ADMIN/OWNER
+  // only - ops feeds, mirrors the audit gate.
+  if ((item.href === '/webhooks' || item.href === '/whatsapp-delivery') && isAdminLike(role))
+    return true;
+  // Admin/owner command center (dashboard split). Admin-only: the
+  // cross-project overview is an executive surface, unlike Users which is
+  // admin+manager (operational). MANAGER sees a Users-only admin group.
+  if (item.href === '/overview' && isAdminLike(role)) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------

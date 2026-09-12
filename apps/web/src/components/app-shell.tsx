@@ -44,6 +44,9 @@ import { useEffect, useState } from 'react';
 
 import {
   Button,
+  CollapsibleContent,
+  CollapsibleRoot,
+  CollapsibleTrigger,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -54,11 +57,14 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from '@paalstack/react-ui';
-import { LuPanelLeft } from '@paalstack/react-icons/lu';
+import { LuChevronRight, LuPanelLeft } from '@paalstack/react-icons/lu';
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
@@ -381,6 +387,20 @@ function NavMenuItem({
   activeProjectSlug: string | null;
   activeOrgSlug: string | null;
 }) {
+  // Submenu parent (children present): render a Collapsible whose children
+  // are nested SidebarMenuSub items.
+  if (item.children !== undefined && item.children.length > 0) {
+    return (
+      <NavMenuSubmenu
+        item={item}
+        children={item.children}
+        pathname={pathname}
+        activeOOrgSlug={activeOrgSlug}
+        activeProjectSlug={activeProjectSlug}
+      />
+    );
+  }
+
   const badge = useNavBadge(item.badgeKey, activeProjectId);
   // T-ProjectSwitch: work-surface hrefs resolve under the active project
   // slug (/shadhil-builders/projects/metro-heights/leads). Active-state
@@ -409,6 +429,89 @@ function NavMenuItem({
         <SidebarMenuBadge>{badge}</SidebarMenuBadge>
       ) : null}
     </SidebarMenuItem>
+  );
+}
+
+/**
+ * A collapsible submenu under a sidebar item. `defaultOpen` is captured ONCE
+ * via a useState lazy initializer (any child active on first mount), so we
+ * never pass a changing `defaultOpen` to the uncontrolled Base UI
+ * Collapsible — that triggers its "changing default open state of
+ * uncontrolled Collapsible" warning.
+ */
+function NavMenuSubmenu({
+  item,
+  children,
+  pathname,
+  activeOOrgSlug,
+  activeProjectSlug,
+}: {
+  item: NavItem;
+  children: readonly NavItem[];
+  pathname: string;
+  activeOOrgSlug: string | null;
+  activeProjectSlug: string | null;
+}) {
+  const [defaultOpen] = useState(() =>
+    children.some((c) => isNavItemActive(c.href, stripProjectSegmentForNav(pathname))),
+  );
+  const Icon = item.icon;
+  return (
+    <SidebarMenuItem>
+      <CollapsibleRoot defaultOpen={defaultOpen} className="group/collapsible w-full">
+        <CollapsibleTrigger
+          render={
+            <SidebarMenuButton
+              className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              tooltip={item.label}
+            >
+              <Icon className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <LuChevronRight className="ml-auto size-4 shrink-0 transition-transform duration-200 group-data-open/collapsible:rotate-90" />
+            </SidebarMenuButton>
+          }
+        />
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {children.map((child) => (
+              <SidebarMenuSubItem key={child.href}>
+                <NavMenuSubLink
+                  child={child}
+                  pathname={pathname}
+                  activeOOrgSlug={activeOOrgSlug}
+                  activeProjectSlug={activeProjectSlug}
+                />
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </CollapsibleRoot>
+    </SidebarMenuItem>
+  );
+}
+
+/** A link inside a submenu (rendered by NavMenuItem for `children`). */
+function NavMenuSubLink({
+  child,
+  pathname,
+  activeOOrgSlug,
+  activeProjectSlug,
+}: {
+  child: NavItem;
+  pathname: string;
+  activeOOrgSlug: string | null;
+  activeProjectSlug: string | null;
+}) {
+  const href = navItemHref(child, activeOOrgSlug, activeProjectSlug);
+  const active = isNavItemActive(child.href, stripProjectSegmentForNav(pathname));
+  const Icon = child.icon;
+  return (
+    <SidebarMenuSubButton asChild isActive={active}>
+      <Link href={href} aria-current={active ? 'page' : undefined}>
+        <Icon className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{child.label}</span>
+      </Link>
+    </SidebarMenuSubButton>
   );
 }
 
