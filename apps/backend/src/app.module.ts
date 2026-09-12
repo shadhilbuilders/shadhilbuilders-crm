@@ -89,7 +89,8 @@ import { AlertsModule } from './alerts/alerts.module';
     IntegrationsModule,
     // Public leads (landing-page enquiries → real Leads). Depends on
     // LeadsModule (PublicLeadsService → LeadsService.create) and reuses the
-    // ApiKeyGuard with LEADS_API_KEY. Registers POST /api/public/leads.
+    // ApiKeyGuard with PUBLIC_API_KEY (shared with the feedback endpoint).
+    // Registers POST /api/public/leads.
     PublicLeadsModule,
     // T-E2b systematic-failure alert: Telegram channel send when
     // the outbound cron sees N consecutive all-failed ticks.

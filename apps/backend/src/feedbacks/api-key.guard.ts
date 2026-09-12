@@ -3,9 +3,10 @@
 // The standard JwtAuthGuard with @Public() opts them out of JWT auth and
 // this guard validates the `x-api-key` header against a configured env var.
 //
-// Usage: each public endpoint uses a DIFFERENT key (independent rotation).
-//   - feedback:  @UseGuards(new ApiKeyGuard('FEEDBACK_API_KEY'))
-//   - leads:      @UseGuards(new ApiKeyGuard('LEADS_API_KEY'))
+// Usage: BOTH public endpoints share ONE key (PUBLIC_API_KEY) for simple,
+// consistent config:
+//   - feedback:  @UseGuards(new ApiKeyGuard('PUBLIC_API_KEY'))
+//   - leads:      @UseGuards(new ApiKeyGuard('PUBLIC_API_KEY'))
 //
 // Security notes:
 //   - Constant-time compare (crypto.timingSafeEqual) so a timing side
@@ -66,9 +67,9 @@ export class ApiKeyGuard implements CanActivate {
     return true;
   }
 }
-// Backward-compatible alias: feedback uses FEEDBACK_API_KEY by default.
+// Backward-compatible alias: feedback uses PUBLIC_API_KEY (shared key).
 export class FeedbackApiKeyGuard extends ApiKeyGuard {
   constructor() {
-    super('FEEDBACK_API_KEY');
+    super('PUBLIC_API_KEY');
   }
 }

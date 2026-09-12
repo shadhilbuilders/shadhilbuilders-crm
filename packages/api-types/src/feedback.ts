@@ -6,7 +6,7 @@
 //   POST /api/public/feedback                  (public, API-key-gated)
 //     - the landing page calls this when a visitor submits the feedback
 //       form; feedback now lands in the CRM DB instead of Supabase.
-//     - auth: `x-api-key: <FEEDBACK_API_KEY>` header (constant-time compare).
+//     - auth: `x-api-key: <PUBLIC_API_KEY>` header (constant-time compare).
 //     - body: { name?, phone?, rating (required 1-5), project?, message?,
 //              page? }. ipAddress + userAgent are captured server-side and
 //              are NOT part of the request body.

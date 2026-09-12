@@ -37,17 +37,13 @@ export interface BootEnv {
   TELEGRAM_ALERT_THRESHOLD: number;
   TELEGRAM_ALERT_COOLDOWN_MS: number;
 
-  // Feedback public-submit API key (required). Guards POST /api/public/feedback
-  // via ApiKeyGuard (constant-time header compare). Fail-fast on absence
-  // (T-G8): without it the public endpoint would refuse to boot rather than
+  // Shared public API key (required). Guards BOTH anonymous public endpoints
+  // — POST /api/public/feedback and POST /api/public/leads — via ApiKeyGuard
+  // (constant-time header compare). One key keeps config simple; the landing
+  // page holds the same value in CRM_PUBLIC_API_KEY. Fail-fast on absence
+  // (T-G8): without it the public endpoints would refuse to boot rather than
   // silently accept any/no key.
-  FEEDBACK_API_KEY: string;
-
-  // Public-leads API key (required). Guards POST /api/public/leads (landing
-  // enquiries → CRM Leads) independently from FEEDBACK_API_KEY so the two
-  // can be rotated separately. The landing page's CRM_FEEDBACK_URL/... must
-  // hold the same value.
-  LEADS_API_KEY: string;
+  PUBLIC_API_KEY: string;
   // Destination owner for a landing enquiry when the manager-assignment
   // engine matches no rule and the team has no default assignee. Must be a
   // real staff user id (TELECALLER/SALES_EXEC/MANAGER). NOT gated at boot -
@@ -145,8 +141,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     );
   }
 
-  const FEEDBACK_API_KEY = required('FEEDBACK_API_KEY', 16) ?? '';
-  const LEADS_API_KEY = required('LEADS_API_KEY', 16) ?? '';
+  const PUBLIC_API_KEY = required('PUBLIC_API_KEY', 16) ?? '';
   const LEADS_FALLBACK_OWNER_ID_raw = env['LEADS_FALLBACK_OWNER_ID'];
   const LEADS_FALLBACK_OWNER_ID =
     LEADS_FALLBACK_OWNER_ID_raw !== undefined && LEADS_FALLBACK_OWNER_ID_raw !== ''
@@ -190,8 +185,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
         : 'ShadhilCRMAlertsBot',
     TELEGRAM_ALERT_THRESHOLD,
     TELEGRAM_ALERT_COOLDOWN_MS,
-    FEEDBACK_API_KEY,
-    LEADS_API_KEY,
+    PUBLIC_API_KEY,
     LEADS_FALLBACK_OWNER_ID,
   };
 }

@@ -31,8 +31,7 @@ const VALID_ENV: Record<string, string> = {
   CORS_ORIGINS: 'https://crm.shadhilbuilders.in,http://localhost:3000',
   API_PORT: '8080',
   NODE_ENV: 'production',
-  FEEDBACK_API_KEY: 'k'.repeat(32),
-  LEADS_API_KEY: 'l'.repeat(32),
+  PUBLIC_API_KEY: 'k'.repeat(32),
 };
 
 describe('assertBootEnv - happy path', () => {
@@ -74,8 +73,7 @@ describe('assertBootEnv - missing required vars', () => {
     'JWT_ISSUER',
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
-    'FEEDBACK_API_KEY',
-    'LEADS_API_KEY',
+    'PUBLIC_API_KEY',
   ] as const)('%s: missing → BootEnvError names the var', (name) => {
     const env = { ...VALID_ENV };
     delete env[name];
