@@ -26,7 +26,7 @@ import {
 } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserFilterDto, UserListResult } from '@shadhil/api-types';
+import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
@@ -383,6 +383,180 @@ export class UsersService {
     );
 
     return { ok: true };
+  }
+
+  /**
+   * GET /api/users/:id - the user detail page (users/[userId], autoplan
+   * 2026-09-13). Scope mirrors `list()`: OWNER/ADMIN see anyone; MANAGER
+   * sees their own team's members (+ themselves); staff see only
+   * themselves. `manager` is populated only for TELECALLER/SALES_EXEC
+   * whose team has an assigned manager - MANAGER/ADMIN/OWNER report to
+   * nobody on this surface.
+   */
+  async getUser(actor: JwtPayload, targetUserId: string): Promise<UserDetail> {
+    const target = await this.client.user.findUnique({
+      where: { id: targetUserId, deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        teamId: true,
+        team: {
+          select: {
+            id: true,
+            name: true,
+            manager: { select: { id: true, name: true, email: true } },
+          },
+        },
+        projectMembers: {
+          select: { project: { select: { id: true, name: true } } },
+          orderBy: { project: { name: 'asc' } },
+        },
+      },
+    });
+    if (target === null) {
+      throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+
+    // Scope check - mirrors list()'s role lanes.
+    if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
+      // sees anyone.
+    } else if (actor.role === 'MANAGER') {
+      const team = await this.client.team.findFirst({
+        where: { managerId: actor.sub },
+        select: { id: true },
+      });
+      const inOwnTeam = team !== null && target.teamId === team.id;
+      if (!inOwnTeam && target.id !== actor.sub) {
+        throw new ForbiddenException("You can only view your own team's users");
+      }
+    } else if (target.id !== actor.sub) {
+      throw new ForbiddenException('You can only view your own user');
+    }
+
+    // Manager is a reporting-line concept: only staff (TELECALLER/
+    // SALES_EXEC) report to a manager on this surface.
+    const reportsToManager = target.role === 'TELECALLER' || target.role === 'SALES_EXEC';
+
+    return {
+      id: target.id,
+      email: target.email,
+      name: target.name,
+      role: target.role,
+      teamId: target.teamId,
+      teamName: target.team?.name ?? null,
+      manager:
+        reportsToManager && target.team?.manager
+          ? {
+              id: target.team.manager.id,
+              name: target.team.manager.name,
+              email: target.team.manager.email,
+            }
+          : null,
+      projects: target.projectMembers.map((pm) => ({
+        id: pm.project.id,
+        name: pm.project.name,
+      })),
+    };
+  }
+
+  /**
+   * PATCH /api/users/:id/manager - assign/reassign the manager for a
+   * TELECALLER/SALES_EXEC (autoplan 2026-09-13). "Manager" is a
+   * reporting-line concept derived from `Team.managerId`, so this sets
+   * `User.teamId` to the chosen team. Scope:
+   *   - OWNER/ADMIN: assign to any existing (led) team.
+   *   - MANAGER: only into their OWN team - they can't poach staff into
+   *     another manager's team. In practice `getUser`'s scope check
+   *     already means a MANAGER only reaches this for a user already in
+   *     their own team, but the team-ownership check here is the actual
+   *     gate (belt-and-braces, same pattern as `list()`'s where-clause
+   *     comment).
+   *   - staff: never - `outranks()` fails closed (RANK[staff] never
+   *     exceeds RANK[staff]).
+   */
+  async assignManager(
+    actor: JwtPayload,
+    targetUserId: string,
+    dto: AssignManagerDto,
+  ): Promise<CreatedUser> {
+    const target = await this.client.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) {
+      throw new NotFoundException(`User ${targetUserId} not found`);
+    }
+
+    // 1. Only TELECALLER/SALES_EXEC report to a manager on this surface.
+    if (target.role !== 'TELECALLER' && target.role !== 'SALES_EXEC') {
+      throw new BadRequestException(
+        'Only TELECALLER/SALES_EXEC report to a manager',
+      );
+    }
+
+    // 2. Hierarchy: actor must strictly outrank the target (mirrors
+    //    update()/changeRole() - no self-service).
+    if (!outranks(actor.role, target.role as Role)) {
+      throw new ForbiddenException(
+        `${actor.role} cannot reassign this user's manager`,
+      );
+    }
+
+    // 3. Target team must exist and have a manager - assigning into an
+    //    unled team would make "manager" mean nothing.
+    const team = await this.client.team.findUnique({
+      where: { id: dto.teamId },
+      select: { id: true, name: true, managerId: true },
+    });
+    if (!team) {
+      throw new NotFoundException(`Team ${dto.teamId} not found`);
+    }
+    if (team.managerId === null) {
+      throw new BadRequestException(
+        `Team "${team.name}" has no manager assigned yet`,
+      );
+    }
+
+    // 4. MANAGER scope: only into their own team.
+    if (actor.role === 'MANAGER' && team.managerId !== actor.sub) {
+      throw new ForbiddenException(
+        'Managers can only assign staff into their own team',
+      );
+    }
+
+    const updated = await this.client.user.update({
+      where: { id: target.id },
+      data: { teamId: dto.teamId },
+    });
+
+    // 5. Audit row in the actor's RLS context.
+    await withRlsContext(
+      this.client,
+      rlsContextFrom(actor),
+      async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.assignManager',
+            organizationId: actor.organizationId,
+            entityType: 'User',
+            entityId: target.id,
+            before: { teamId: target.teamId },
+            after: { teamId: dto.teamId },
+            reason: `manager reassigned by ${actor.email} (${actor.role})`,
+          },
+        });
+      },
+    );
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role,
+      teamId: updated.teamId,
+    };
   }
 
   /**

@@ -110,6 +110,38 @@ export const UserListResultSchema = z.object({
 export type UserListResult = z.infer<typeof UserListResultSchema>;
 
 /**
+ * GET /api/users/:id - the user detail page (users/[userId], autoplan
+ * 2026-09-13). `manager` is the team's manager identity, populated only
+ * when the target reports to one (TELECALLER/SALES_EXEC with an assigned
+ * team that has a manager) - null for MANAGER/ADMIN/OWNER or an
+ * unassigned/unmanaged team. `projects` are the target's EXPLICIT
+ * ProjectMember rows (mirrors TeamDetail's project shape, minus the
+ * lead-owner provenance - that's a Teams-roster-only concept).
+ */
+export const UserDetailSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: RoleSchema,
+  teamId: z.string().nullable(),
+  teamName: z.string().nullable(),
+  manager: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+    })
+    .nullable(),
+  projects: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+    }),
+  ),
+});
+export type UserDetail = z.infer<typeof UserDetailSchema>;
+
+/**
  * PATCH /api/users/:id/role - role change (Round 20, rename 21). OWNER
  * can change anyone into anything (except into/out of OWNER); ADMIN can
  * change MANAGER/TELECALLER/SALES_EXEC into MANAGER/TELECALLER/SALES_EXEC;
@@ -132,6 +164,20 @@ export const UpdateUserDtoSchema = z.object({
   email: emailSchema.optional(),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
+
+/**
+ * PATCH /api/users/:id/manager - assign/reassign the manager for a
+ * TELECALLER/SALES_EXEC (autoplan 2026-09-13). A user's "manager" is
+ * derived from `Team.managerId` via `User.teamId`, so this DTO sets
+ * `teamId` to an existing team (which must have a manager for the UI's
+ * concept of "manager" to mean anything, but the server only requires the
+ * team to exist - an unled team is rejected server-side with a clear
+ * message rather than silently no-oping).
+ */
+export const AssignManagerDtoSchema = z.object({
+  teamId: z.string().cuid2(),
+});
+export type AssignManagerDto = z.infer<typeof AssignManagerDtoSchema>;
 
 /**
  * Verified JWT claims. Populated by NestJS after `jose.jwtVerify` on the

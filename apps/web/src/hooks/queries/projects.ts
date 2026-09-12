@@ -220,10 +220,17 @@ export function useUnlinkProjectMember(projectId: string | undefined) {
       api<{ ok: true }>(`/projects/${projectId as string}/members/${userId}`, {
         method: 'DELETE',
       }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
-      });
+    onSuccess: async () => {
+      // An unlink is visible from the project staff list, team roster, and
+      // user project summaries. Await active-query refetches before mutation
+      // success callbacks show confirmation to avoid a stale success state.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['teams'] }),
+        queryClient.invalidateQueries({ queryKey: ['users'] }),
+      ]);
     },
   });
 }

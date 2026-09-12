@@ -420,7 +420,7 @@ function TransitionLeadForm({
               data-qa="transition-confirm"
             >
               {transitionLead.isPending ? (
-                'Saving…'
+                'Saving...'
               ) : (
                 <>
                   {ConfirmIcon ? (

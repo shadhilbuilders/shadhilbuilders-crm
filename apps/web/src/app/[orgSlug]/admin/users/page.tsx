@@ -1,8 +1,11 @@
 'use client';
 
 // Users management - LIVE against apps/backend/src/users (the one built
-// backend module). Role hierarchy (Round 17/20/21, locked):
-//   OWNER ≙ ADMIN on this surface → create any role below admin,
+// backend module). Role hierarchy (Round 17/20/21, locked; creatable-role
+// split below tightened so the UI mirrors roles.ts assertCanCreateRole
+// exactly, RANK: OWNER 4 > ADMIN 3 > MANAGER 2 > TELECALLER/SALES_EXEC 1):
+//   OWNER   → ADMIN / MANAGER / TELECALLER / SALES_EXEC
+//   ADMIN   → MANAGER / TELECALLER / SALES_EXEC
 //   MANAGER → TELECALLER / SALES_EXEC in own team.
 // Guards enforced server-side; the UI mirrors them for fast feedback and
 // shows real API errors (400 = policy rejection) verbatim.
@@ -20,7 +23,6 @@
 import {
   AlertDialog,
   Button,
-  Combobox,
   DataTable,
   Dialog,
   DropdownMenuContent,
@@ -42,15 +44,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   LuEllipsis,
   LuPencil,
-  LuPlus,
   LuTrash2,
   LuUserCog,
 } from '@paalstack/react-icons/lu';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
 
-import { ChangeRoleDtoSchema, CreateUserDtoSchema, UpdateUserDtoSchema } from '@shadhil/api-types';
+import { ChangeRoleDtoSchema, UpdateUserDtoSchema } from '@shadhil/api-types';
 import {
   useChangeUserRole,
   useCreateUser,
@@ -63,17 +65,19 @@ import { useTeams } from '@/hooks/queries/teams';
 import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
 import {
-  canManageUsers,
   isAdminLike,
   outranks,
   useSessionUser,
 } from '@/lib/session';
 
-import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { labelFor } from '@/lib/labels';
+import { orgHref } from '@/lib/nav';
+import { useOrgSlug } from '@/lib/tenant-context';
+import { CreateUserDialog } from './components/CreateUserDialog';
 
+const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
@@ -88,6 +92,7 @@ type UserRow = {
 
 export default function UsersPage() {
   const { user, isPending: sessionPending } = useSessionUser();
+  const orgSlug = useOrgSlug();
   const [roleFilter, setRoleFilter] = useState<Role[]>([]);
   // Server-side search (autoplan 2026-09-09): the toolbar search input feeds
   // the `search` query param (≥2 chars hits the API, mirrors leads D9).
@@ -143,20 +148,26 @@ export default function UsersPage() {
   if (!mounted || sessionPending) {
     return <Skeleton variant="users" className="py-4" />;
   }
-  if (user === null || !canManageUsers(user.role)) {
+  if (user === null || !isAdminLike(user.role)) {
     return (
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          Only admins and managers can manage users.
+          Only owners and admins can manage users.
         </TypographyP>
       </div>
     );
   }
 
-  const creatableRoles = isAdminLike(user.role)
-    ? CREATABLE_FOR_ADMIN
-    : CREATABLE_FOR_MANAGER;
+  // Creatable roles are actor-specific (assertCanCreateRole in
+  // apps/backend/src/users/roles.ts is the server-side source of truth):
+  // OWNER outranks ADMIN too, so only OWNER may create an ADMIN user.
+  const creatableRoles =
+    user.role === 'OWNER'
+      ? CREATABLE_FOR_OWNER
+      : isAdminLike(user.role)
+        ? CREATABLE_FOR_ADMIN
+        : CREATABLE_FOR_MANAGER;
 
   const users = Array.isArray(usersQuery.data?.rows)
     ? usersQuery.data.rows
@@ -172,6 +183,17 @@ export default function UsersPage() {
           isAdminLike(user.role)
             ? 'All users across the organization.'
             : 'Your team members.'
+        }
+        action={
+          <CreateUserDialog
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            creatableRoles={[...creatableRoles]}
+            createUser={createUser}
+            showTeamField={isAdminLike(user.role)}
+            teams={teamsQuery.data ?? []}
+            teamsLoading={teamsQuery.isLoading}
+          />
         }
       />
 
@@ -199,6 +221,7 @@ export default function UsersPage() {
         </div>
       ) : (
         <UserTable
+          orgSlug={orgSlug}
           users={users}
           total={total}
           page={page}
@@ -225,42 +248,15 @@ export default function UsersPage() {
           onDelete={(row) => setDeleteTarget(row)}
           onRoleChange={(row) => setRoleTarget(row)}
           createTrigger={
-            <Dialog
-              trigger={
-                <Button leftIcon={<LuPlus className="h-4 w-4" />}>
-                  Create user
-                </Button>
-              }
-              header={{ title: 'Create a user' }}
+            <CreateUserDialog
               open={createOpen}
               onOpenChange={setCreateOpen}
-              contentClassName='sm:max-w-md'
-              footer={
-                <div className="flex w-full justify-end gap-2">
-                  <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    form="create-user-form"
-                    isLoading={createUser.isPending}
-                    loadingText="Creating..."
-                    data-qa="create-user-submit"
-                  >
-                    Create user
-                  </Button>
-                </div>
-              }
-            >
-              <CreateUserForm
-                creatableRoles={[...creatableRoles]}
-                createUser={createUser}
-                onDone={() => setCreateOpen(false)}
-                showTeamField={isAdminLike(user.role)}
-                teams={teamsQuery.data ?? []}
-                teamsLoading={teamsQuery.isLoading}
-              />
-            </Dialog>
+              creatableRoles={[...creatableRoles]}
+              createUser={createUser}
+              showTeamField={isAdminLike(user.role)}
+              teams={teamsQuery.data ?? []}
+              teamsLoading={teamsQuery.isLoading}
+            />
           }
         />
       )}
@@ -426,6 +422,7 @@ function UserRowActions({
 }
 
 function UserTable({
+  orgSlug,
   users,
   total,
   page,
@@ -444,6 +441,7 @@ function UserTable({
   onRoleChange,
   createTrigger,
 }: {
+  orgSlug: string | null;
   users: BackendCreatedUser[];
   total: number;
   page: number;
@@ -482,7 +480,13 @@ function UserTable({
         header: 'Name',
         cell: ({ row }) => (
           <div className="min-w-45">
-            <span className="text-sm font-medium">{row.original.name}</span>
+            <Link
+              href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
+              className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
+              data-qa={`user-row-link-${row.original.id}`}
+            >
+              {row.original.name}
+            </Link>
             {row.original.id === selfId ? (
               <span className="text-muted-foreground block text-xs">(you)</span>
             ) : null}
@@ -517,13 +521,30 @@ function UserTable({
       {
         accessorKey: 'projects',
         header: 'Projects',
-        cell: ({ row }) => (
-          <span className="text-muted-foreground hidden text-sm md:table-cell">
-            {row.original.projects.length > 0
-              ? row.original.projects.join(', ')
-              : '-'}
-          </span>
-        ),
+        // Shows a COUNT, not the joined name list (autoplan 2026-09-13) -
+        // the list wrapped/clipped for users on many projects. The full
+        // list is still one hover away via a Tooltip.
+        cell: ({ row }) => {
+          const { projects } = row.original;
+          if (projects.length === 0) {
+            return (
+              <span className="text-muted-foreground hidden text-sm md:table-cell">
+                0 projects
+              </span>
+            );
+          }
+          return (
+            <Tooltip
+              content={projects.join(', ')}
+              side="top"
+              trigger={
+                <span className="text-muted-foreground hidden text-sm underline decoration-dotted md:table-cell">
+                  {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+                </span>
+              }
+            />
+          );
+        },
         enableSorting: false,
       },
       {
@@ -543,7 +564,7 @@ function UserTable({
         enableHiding: false,
       },
     ],
-    [selfId, actorRole, onEdit, onDelete, onRoleChange],
+    [orgSlug, selfId, actorRole, onEdit, onDelete, onRoleChange],
   );
 
   const isSearchActive = search.trim().length > 0;
@@ -596,7 +617,6 @@ function UserTable({
             data-qa="users-role-filter"
           />
         }
-        toolbarRightSideContent={createTrigger}
         emptyContent={
           isSearchActive ? (
             <div className="rounded-lg p-10 text-center space-y-1">
@@ -883,176 +903,5 @@ function ChangeRoleDialog({
         fields={fields}
       />
     </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Create form - posts to POST /api/users (server enforces the hierarchy)
-// ---------------------------------------------------------------------------
-
-// Client-side validation IS the server contract: CreateUserDtoSchema in
-// packages/api-types/src/auth.ts (name/email/password rules + role enum).
-// The server re-validates the same shape and surfaces errors verbatim via
-// toast. teamId is optional in the schema but the service REQUIRES it when
-// role is TELECALLER/SALES_EXEC (an admin creating staff without a team =
-// "teamId is required"). The dialog shows the Team field only for staff roles.
-type CreateUserFormValues = z.infer<typeof CreateUserDtoSchema>;
-
-function CreateUserForm({
-  creatableRoles,
-  createUser,
-  onDone,
-  showTeamField,
-  teams,
-  teamsLoading,
-}: {
-  creatableRoles: string[];
-  createUser: ReturnType<typeof useCreateUser>;
-  onDone: () => void;
-  showTeamField: boolean;
-  teams: { id: string; name: string }[];
-  teamsLoading: boolean;
-}) {
-  const form = useForm<CreateUserFormValues>({
-    resolver: zodResolver(CreateUserDtoSchema),
-    defaultValues: {
-      name: '',
-      email: '',
-      password: '',
-      role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
-    },
-    mode: 'onSubmit',
-  });
-
-  // Watch the role so the Team field appears only for staff (and a MANAGER
-  // being created auto-creates its own team, so no team picker needed).
-  const selectedRole = form.watch('role');
-
-  function onSubmit(values: CreateUserFormValues) {
-    // The payload is CreateUserDto-shaped. teamId is sent only when a staff
-    // user is being created (the field is present) - the server auto-creates
-    // a team for MANAGER and requires one for TELECALLER/SALES_EXEC.
-    const payload: {
-      name: string;
-      email: string;
-      password: string;
-      role: Role;
-      teamId?: string;
-    } = {
-      name: values.name,
-      email: values.email,
-      password: values.password,
-      role: values.role,
-    };
-    const needsTeam = values.role === 'TELECALLER' || values.role === 'SALES_EXEC';
-    if (needsTeam) {
-      if (!values.teamId) {
-        toast.error('Please select a team for this user.');
-        return;
-      }
-      payload.teamId = values.teamId;
-    }
-    createUser.mutate(payload, {
-        onSuccess: () => {
-          toast.success(`User ${values.name} created`);
-          onDone();
-        },
-        onError: (error) => {
-          toast.error(error instanceof Error ? error.message : 'Create failed');
-        },
-      },
-    );
-  }
-
-  const fields: FormFieldItemType<CreateUserFormValues>[] = [
-    {
-      type: 'input',
-      name: 'name',
-      label: 'Name',
-      required: true,
-      placeholder: 'Enter name',
-      inputProps: {
-        autoComplete: 'name',
-        'data-qa': 'create-user-name',
-      },
-    },
-    {
-      type: 'input',
-      name: 'email',
-      label: 'Email',
-      required: true,
-      inputType: 'email',
-      placeholder: 'name@shadhilbuilders.in',
-      inputProps: {
-        autoComplete: 'email',
-        'data-qa': 'create-user-email',
-      },
-    },
-    {
-      type: 'custom',
-      name: 'password',
-      label: 'Temporary password',
-      required: true,
-      render: ({ field }) => (
-        <PasswordInput
-          {...field}
-          autoComplete="new-password"
-          placeholder="Minimum 8 characters"
-          maxLength={200}
-          className="min-h-11 w-full text-sm"
-          data-qa="create-user-password"
-        />
-      ),
-    },
-    {
-      type: 'select',
-      name: 'role',
-      label: 'Role',
-      required: true,
-      options: creatableRoles.map((value) => ({
-        value,
-        label: labelFor('role', value),
-      })),
-      selectProps: { 'data-qa': 'create-user-role' },
-    },
-  ];
-
-  // Team field - shown only when creating a STAFF user (TELECALLER/SALES_EXEC)
-  // so the user is linked to a team. The backend rejects staff users without
-  // a teamId; MANAGER auto-creates a team and ADMIN/OWNER users aren't
-  // created with a team here.
-  const isStaffRole =
-    selectedRole === 'TELECALLER' || selectedRole === 'SALES_EXEC';
-  if (showTeamField && isStaffRole) {
-    fields.push({
-      type: 'custom',
-      name: 'teamId',
-      label: 'Team',
-      required: true,
-      render: ({ field }) => (
-        <Combobox
-          {...field}
-          value={field.value ?? ''}
-          options={teams.map((team) => ({ value: team.id, label: team.name }))}
-          placeholder={teamsLoading ? 'Loading teams...' : 'Search and select a team...'}
-          data-qa="create-user-team"
-          selectOptionAsValue
-          onValueChange={(value) => {
-            field.onChange(value ?? undefined);
-          }}
-        />
-      ),
-    });
-  }
-
-  return (
-    <Form
-      id="create-user-form"
-      form={form}
-      onSubmit={onSubmit}
-      hideSubmitButton
-      hideResetButton
-      fields={fields}
-    />
   );
 }

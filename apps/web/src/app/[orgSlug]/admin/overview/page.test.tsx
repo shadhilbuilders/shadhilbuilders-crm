@@ -34,16 +34,14 @@ describe('commandCenterRedirectTarget - /overview guard', () => {
     );
   });
 
-  it('non-admin + empty registry: /[orgSlug]/projects (no loop)', () => {
+  it('non-admin + empty registry: /[orgSlug]/work (no loop into admin)', () => {
     expect(commandCenterRedirectTarget('TELECALLER', [], ORG_SLUG)).toBe(
-      '/shadhil-builders/projects',
+      '/shadhil-builders/work',
     );
   });
 
-  it('falls back to unscoped paths when org slug is missing', () => {
-    expect(commandCenterRedirectTarget('TELECALLER', PROJ, null)).toBe(
-      '/projects',
-    );
-    expect(commandCenterRedirectTarget('TELECALLER', [], null)).toBe('/projects');
+  it('falls back to unscoped /work when org slug is missing', () => {
+    expect(commandCenterRedirectTarget('TELECALLER', PROJ, null)).toBe('/work');
+    expect(commandCenterRedirectTarget('TELECALLER', [], null)).toBe('/work');
   });
 });

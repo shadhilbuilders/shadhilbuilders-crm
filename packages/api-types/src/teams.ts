@@ -77,3 +77,52 @@ export const TeamDetailSchema = z.object({
   members: z.array(TeamMemberRowSchema),
 });
 export type TeamDetail = z.infer<typeof TeamDetailSchema>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Team CRUD + reassign (T-TEAM-CRUD, 2026-09-13)
+// ────────────────────────────────────────────────────────────────────────────
+//   POST   /api/teams                    -> ADMIN/OWNER only
+//   PATCH  /api/teams/:id                -> ADMIN/OWNER only
+//   DELETE /api/teams/:id                -> ADMIN/OWNER only; 409 when the
+//                                            team still has members or an
+//                                            active manager
+//   POST   /api/teams/:id/reassign-members -> ADMIN/OWNER only; omit
+//                                            `userIds` to move every member
+//                                            (bulk one-click), pass ids to
+//                                            move only those members
+
+/**
+ * POST /api/teams body. `managerId` must reference an existing `MANAGER`
+ * user who does not already lead a different (active) team - the service
+ * enforces both, this schema only validates shape.
+ */
+export const CreateTeamDtoSchema = z.object({
+  name: z.string({
+    error: 'Name is required',
+  }).trim().min(1).max(120),
+  managerId: z.cuid2().nullable().optional(),
+});
+export type CreateTeamDto = z.infer<typeof CreateTeamDtoSchema>;
+
+/**
+ * PATCH /api/teams/:id body - partial. Omitted fields keep their value;
+ * explicit `null` for `managerId` clears the manager (required before the
+ * team can be deleted). Mirrors UpdateProjectDto's partial-with-nullable
+ * pattern.
+ */
+export const UpdateTeamDtoSchema = CreateTeamDtoSchema.partial();
+export type UpdateTeamDto = z.infer<typeof UpdateTeamDtoSchema>;
+
+/** DELETE has no body; the id param is validated in the controller. */
+
+/**
+ * POST /api/teams/:id/reassign-members body. Omitting `userIds` reassigns
+ * every current member of the source team (the one-click "reassign all"
+ * action that unblocks delete); a non-empty array reassigns only those
+ * members (the per-member "move to another team" action on the roster).
+ */
+export const ReassignTeamMembersDtoSchema = z.object({
+  targetTeamId: z.cuid2(),
+  userIds: z.array(z.cuid2()).min(1).optional(),
+});
+export type ReassignTeamMembersDto = z.infer<typeof ReassignTeamMembersDtoSchema>;
