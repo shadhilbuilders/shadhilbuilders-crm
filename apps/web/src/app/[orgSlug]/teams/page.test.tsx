@@ -31,6 +31,12 @@ vi.mock('@/lib/session', () => ({
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
 }));
 
+vi.mock('@/lib/tenant-context', () => ({
+  useOrg: () => ({ id: 'org-ceid01', slug: 'shadhil-builders', name: 'Shadhil' }),
+  useOrgSlug: () => 'shadhil-builders',
+  useOrgId: () => 'org-ceid01',
+}));
+
 import TeamsPage from './page';
 
 let container: HTMLDivElement | null = null;
@@ -137,8 +143,9 @@ describe('TeamsPage - org teams list', () => {
     expect(html).toContain('Maya Rao');
     expect(html).toContain('Real Estate Desk');
     expect(html).toContain('No manager assigned');
-    // Links to the roster pages.
+    // Links to the roster pages, prefixed with the active org slug.
     expect(html).toContain('data-qa="team-row-link-t-1"');
+    expect(html).toContain('href="/shadhil-builders/teams/t-1"');
   });
 
   it('error surfaces inline', async () => {
