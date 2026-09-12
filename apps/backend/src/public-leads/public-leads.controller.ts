@@ -5,7 +5,8 @@
 //
 // Auth: @Public() opts out of the global JwtAuthGuard (the landing page is
 // a server, not a browser with a JWT); @UseGuards(ApiKeyGuard) validates the
-// `x-api-key` header against LEADS_API_KEY (constant-time compare).
+// `x-api-key` header against PUBLIC_API_KEY (constant-time compare). Both
+// anonymous public endpoints (feedback + leads) share this single key.
 //
 // The lead is created as a synthetic ADMIN actor (see service) so it routes
 // through the existing manager-assignment engine + lead RLS policies with no
@@ -56,7 +57,7 @@ export class PublicLeadsController {
   ) {}
 
   @Public()
-  @UseGuards(new ApiKeyGuard('LEADS_API_KEY'))
+  @UseGuards(new ApiKeyGuard('PUBLIC_API_KEY'))
   @Post('leads')
   @ApiOperation({
     summary:

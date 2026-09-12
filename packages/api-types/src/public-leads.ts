@@ -9,7 +9,7 @@
 //       auto-assigned by the manager-assignment engine (source=LANDING →
 //       matching rule, or the team's default assignee, or the configured
 //       fallback owner).
-//     - auth: `x-api-key: <LEADS_API_KEY>` header (constant-time compare).
+//     - auth: `x-api-key: <PUBLIC_API_KEY>` header (constant-time compare).
 //     - body: the landing page's EnquiryInput, mapped to a Lead. The
 //       `source` is FORCED to "LANDING" server-side (never trusted from
 //       the client) so analytics / manager routing are correct. `notes`
