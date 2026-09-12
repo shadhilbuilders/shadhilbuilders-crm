@@ -15,7 +15,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { ErrorInternalServer } from '@paalstack/react-ui';
+import { ErrorInternalServer, Loading } from '@paalstack/react-ui';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOrgSlugForId } from '@/hooks/queries/organizations';
@@ -60,5 +60,7 @@ export default function OrgRootRedirectPage() {
     );
   }
 
-  return <Skeleton variant="overview" className="py-4" />;
+  return <div className="flex min-h-[80vh] w-full items-center justify-center">
+  <Loading content="Loading workspace..." className='text-foreground' spinnerProps={{ size: 'lg' }} />
+</div>;
 }

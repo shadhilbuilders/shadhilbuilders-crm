@@ -17,7 +17,23 @@ import {
   getVisibleNav,
   isNavItemActive,
   NAV_ITEMS,
+  type NavItem,
 } from '@/lib/nav';
+
+/**
+ * Flatten a getVisibleNav() result into all hrefs, descending into any
+ * submenu `children`. Lets tests assert a route is visible regardless of
+ * whether it's top-level or nested (e.g. WA Unknown inside the WhatsApp
+ * submenu).
+ */
+function flattenNavHrefs(items: readonly NavItem[]): string[] {
+  const out: string[] = [];
+  for (const item of items) {
+    out.push(item.href);
+    if (item.children !== undefined) out.push(...flattenNavHrefs(item.children));
+  }
+  return out;
+}
 
 describe('lib/nav', () => {
   describe('NAV_ITEMS - the single source of truth', () => {
@@ -113,9 +129,9 @@ describe('lib/nav', () => {
       expect(items.map((i) => i.href)).toContain('/projects');
     });
 
-    it('MANAGER also sees WA Unknown (canConvertWhatsappUnknownContact)', () => {
+    it('MANAGER also sees WA Unknown (canConvertWhatsappUnknownContact, inside the WhatsApp submenu)', () => {
       const items = getVisibleNav('MANAGER');
-      const hrefs = items.map((i) => i.href);
+      const hrefs = flattenNavHrefs(items);
       expect(hrefs).toContain('/whatsapp-unknown-contacts');
     });
 
@@ -161,9 +177,10 @@ describe('lib/nav', () => {
       expect(adminOverview).toBeUndefined();
     });
 
-    it('ADMIN also sees WA Unknown (admin-class)', () => {
+    it('ADMIN also sees WA Unknown (admin-class, inside the WhatsApp submenu)', () => {
       const items = getVisibleNav('ADMIN');
-      expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
+      const hrefs = flattenNavHrefs(items);
+      expect(hrefs).toContain('/whatsapp-unknown-contacts');
     });
 
     it('OWNER sees work + Users + Audit (admin-class)', () => {
@@ -173,9 +190,10 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/audit');
     });
 
-    it('OWNER also sees WA Unknown (admin-class)', () => {
+    it('OWNER also sees WA Unknown (admin-class, inside the WhatsApp submenu)', () => {
       const items = getVisibleNav('OWNER');
-      expect(items.map((i) => i.href)).toContain('/whatsapp-unknown-contacts');
+      const hrefs = flattenNavHrefs(items);
+      expect(hrefs).toContain('/whatsapp-unknown-contacts');
     });
 
     it('OWNER sees the Overview command center (admin-class)', () => {

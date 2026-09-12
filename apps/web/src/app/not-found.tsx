@@ -12,7 +12,7 @@ export default function NotFound(): React.JSX.Element {
       <GuestTopBar />
       <main className="text-ink container mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center px-4 text-center">
         <Heading className="mb-2">Page not found</Heading>
-        <TypographyP className="text-muted-foreground">
+        <TypographyP className="text-muted-foreground mb-2">
           The page you were looking for doesn't exist or has moved.
         </TypographyP>
         <Link href="/">

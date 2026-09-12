@@ -347,8 +347,8 @@ function EmptyState({ tab }: { tab: StatusTab }) {
   return (
     <Card data-qa="wa-unknown-empty">
       <CardContent className="space-y-1 p-10 text-center">
-        <p className="text-sm font-medium">{message}</p>
-        <p className="text-muted-foreground text-xs">{hint}</p>
+        <p className="text-base font-medium">{message}</p>
+        <p className="text-muted-foreground text-sm">{hint}</p>
       </CardContent>
     </Card>
   );
