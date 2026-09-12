@@ -169,7 +169,7 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).not.toContain('data-qa="data-table-row"');
   });
 
-  it('partial: useUsers data renders DataTable rows (name, email, role, team)', async () => {
+  it('partial: useUsers data renders DataTable rows (name, email, role, projects)', async () => {
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
       isPending: false,
@@ -184,6 +184,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             email: 'priya@example.com',
             role: 'SALES_EXEC',
             teamId: 't-1',
+            projects: ['Shadhil Metro Heights'],
           },
           {
             id: 'u-rajesh',
@@ -191,6 +192,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             email: 'rajesh@example.com',
             role: 'TELECALLER',
             teamId: 't-1',
+            projects: ['Shadhil Skyline Towers'],
           },
         ],
         total: 2,
@@ -217,6 +219,9 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).toContain('Priya Sharma');
     expect(html).toContain('priya@example.com');
     expect(html).toContain('Rajesh Kumar');
+    // Project names render (Projects column, comma-joined).
+    expect(html).toContain('Shadhil Metro Heights');
+    expect(html).toContain('Shadhil Skyline Towers');
     // No Skeleton, no "Not authorized".
     expect(html).not.toContain('data-slot="skeleton"');
     expect(html).not.toContain('Not authorized');
@@ -237,6 +242,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             email: 'a@x',
             role: 'ADMIN',
             teamId: null,
+            projects: [],
           },
           {
             id: 'u-priya',
@@ -244,6 +250,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             email: 'priya@example.com',
             role: 'SALES_EXEC',
             teamId: 't-1',
+            projects: ['Shadhil Metro Heights'],
           },
         ],
         total: 2,

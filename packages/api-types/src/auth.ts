@@ -100,6 +100,9 @@ export const UserListResultSchema = z.object({
       name: z.string(),
       role: RoleSchema,
       teamId: z.string().nullable(),
+      // Project names the user is a member of (via ProjectMember), for the
+      // admin Users table (autoplan 2026-09-12). Empty array = no projects.
+      projects: z.array(z.string()),
     }),
   ),
   total: z.number().int().nonnegative(),

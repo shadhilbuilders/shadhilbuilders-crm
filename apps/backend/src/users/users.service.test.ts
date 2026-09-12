@@ -519,12 +519,28 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
   it('returns { rows, total } envelope', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([
-      { id: 'u1', email: 'a@x', name: 'A', role: 'ADMIN', teamId: null },
+      {
+        id: 'u1',
+        email: 'a@x',
+        name: 'A',
+        role: 'ADMIN',
+        teamId: null,
+        projectMembers: [{ project: { name: 'Shadhil Metro Heights' } }],
+      },
     ]);
     mocks.userCount.mockResolvedValue(1);
     const result = await service.list(adminActor, { limit: 50, offset: 0 });
     expect(result).toEqual({
-      rows: [{ id: 'u1', email: 'a@x', name: 'A', role: 'ADMIN', teamId: null }],
+      rows: [
+        {
+          id: 'u1',
+          email: 'a@x',
+          name: 'A',
+          role: 'ADMIN',
+          teamId: null,
+          projects: ['Shadhil Metro Heights'],
+        },
+      ],
       total: 1,
     });
   });

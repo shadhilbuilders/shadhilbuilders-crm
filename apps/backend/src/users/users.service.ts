@@ -544,6 +544,12 @@ export class UsersService {
           name: true,
           role: true,
           teamId: true,
+          // Project names for the admin Users table (autoplan 2026-09-12):
+          // a user's projects come from ProjectMember (many-to-many).
+          projectMembers: {
+            select: { project: { select: { name: true } } },
+            orderBy: { project: { name: 'asc' } },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: filter.offset,
@@ -551,7 +557,17 @@ export class UsersService {
       }),
       this.client.user.count({ where }),
     ]);
-    return { rows, total };
+    return {
+      rows: rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        name: r.name,
+        role: r.role,
+        teamId: r.teamId,
+        projects: r.projectMembers.map((pm) => pm.project.name),
+      })),
+      total,
+    };
   }
 
   /**
