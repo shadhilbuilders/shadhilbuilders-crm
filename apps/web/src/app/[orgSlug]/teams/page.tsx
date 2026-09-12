@@ -19,6 +19,8 @@ import { useEffect } from 'react';
 
 import { useTeams, type TeamListItem } from '@/hooks/queries/teams';
 import { isAdminLike, useSessionUser } from '@/lib/session';
+import { orgHref } from '@/lib/nav';
+import { useOrgSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -27,6 +29,7 @@ export default function TeamsPage() {
   // Hooks MUST all be called unconditionally, before any early return, to
   // keep the hook order stable across renders (React rules of hooks).
   const { user, isPending: sessionPending } = useSessionUser();
+  const orgSlug = useOrgSlug();
   const teams = useTeams();
   const [mounted, setMounted] = useState(false);
 
@@ -83,13 +86,19 @@ export default function TeamsPage() {
           </Button>
         </div>
       ) : (
-        <TeamsTable teams={teams.data ?? []} />
+        <TeamsTable teams={teams.data ?? []} orgSlug={orgSlug} />
       )}
     </div>
   );
 }
 
-function TeamsTable({ teams }: { teams: TeamListItem[] }) {
+function TeamsTable({
+  teams,
+  orgSlug,
+}: {
+  teams: TeamListItem[];
+  orgSlug: string | null;
+}) {
   const columns = useMemo<DataTableColumnDef<TeamListItem>[]>(
     () => [
       {
@@ -97,7 +106,7 @@ function TeamsTable({ teams }: { teams: TeamListItem[] }) {
         header: 'Team',
         cell: ({ row }) => (
           <Link
-            href={`/teams/${row.original.id}`}
+            href={orgHref(orgSlug, `/teams/${row.original.id}`)}
             className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
             data-qa={`team-row-link-${row.original.id}`}
           >

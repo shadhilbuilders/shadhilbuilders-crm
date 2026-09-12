@@ -138,8 +138,8 @@ function LeadInboxPageInner() {
   // Server-side sort (T-SRVPG): the DataTable sorts client-side over the
   // loaded page, which is wrong under server pagination. The page passes
   // the sort column + direction to the API. Default: NO sort (undefined) -
-  // the server returns its natural/default ordering (overdue-first) until
-  // the user explicitly picks a column.
+  // the server returns its natural/default ordering (NEW-status leads first,
+  // then most-recent) until the user explicitly picks a column.
   const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name' | undefined>(undefined);
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | undefined>(undefined);
 
