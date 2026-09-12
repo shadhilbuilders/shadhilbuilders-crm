@@ -254,13 +254,17 @@ export class LeadsService {
   }
 
   /**
-   * Build the SQL `ORDER BY` clause for the Lead list. Defaults to
-   * NEW-first then most-recent-first: every lead in state NEW floats to the
-   * top (newest NEW first), then the rest by most recent (`createdAt DESC`).
-   * Requested 2026-09-12 - a new/landing lead lands at the very top of the
-   * inbox immediately. When the page passes `sortBy`/`sortDir` (server-side
-   * sort, T-SRVPG), that column + direction wins instead. `sortBy` is
-   * whitelisted by the DTO enum so it can never inject SQL.
+   * Build the SQL `ORDER BY` clause for the Lead list. Default priority
+   * buckets (requested 2026-09-12):
+   *   0  OVERDUE   - state NEW AND created >30m ago (past the to-first-touch
+   *                  SLA; unanswered NEW that need immediate attention)
+   *   1  NEW       - state NEW but still within the 30m window (fresh)
+   *   2  everything else
+   * Within each bucket, most-recent-first (`createdAt DESC`) so the latest
+   * lead in that bucket floats up.
+   * When the page passes `sortBy`/`sortDir` (server-side sort, T-SRVPG),
+   * that column + direction wins instead. `sortBy` is whitelisted by the
+   * DTO enum so it can never inject SQL.
    */
   private sortOrderSql(dto: LeadFilterDto): Prisma.Sql {
     if (dto.sortBy !== undefined) {
@@ -270,18 +274,22 @@ export class LeadsService {
       return Prisma.sql`"${Prisma.raw(dto.sortBy)}" ${Prisma.raw(dir)}`;
     }
     return Prisma.sql`
-      (CASE WHEN "state"='NEW' THEN 0 ELSE 1 END) ASC,
+      (CASE
+        WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0
+        WHEN "state"='NEW' THEN 1
+        ELSE 2
+      END) ASC,
       "createdAt" DESC
     `;
   }
 
   /**
    * GET /api/leads - the Lead Inbox. Returns the page-shaped result the
-   * UI expects (rows + total + summary counts). Order: NEW-status first
-   * (newest NEW at the very top), then the rest by most recent
-   * (`createdAt DESC`) - requested 2026-09-12. When the page passes
-   * `sortBy`, that wins. Enforced server-side so pagination returns a
-   * consistent order (T-SRVPG).
+   * UI expects (rows + total + summary counts). Order: overdue NEW leads
+   * first (unanswered >30m), then fresh NEW, then the rest - each bucket
+   * most-recent first (`createdAt DESC`) - requested 2026-09-12. When the
+   * page passes `sortBy`, that wins. Enforced server-side so pagination
+   * returns a consistent order (T-SRVPG).
    */
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
     return withRlsContext(
