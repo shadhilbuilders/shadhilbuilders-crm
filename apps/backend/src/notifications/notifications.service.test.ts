@@ -56,6 +56,7 @@ function makeService(): {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('PUBLIC_ORG_ID', 'ceid01lpfe1esm8jwsxid41k28');
 });
 
 describe('list - current-user inbox', () => {

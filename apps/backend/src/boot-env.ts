@@ -44,6 +44,12 @@ export interface BootEnv {
   // (T-G8): without it the public endpoints would refuse to boot rather than
   // silently accept any/no key.
   PUBLIC_API_KEY: string;
+
+  // Organization ID for anonymous public endpoints (feedback + leads).
+  // Both public writes run under a synthetic RLS context that needs an
+  // organizationId. Required at boot so the app never silently writes to
+  // the wrong tenant. Must be a valid ULID (26 chars) or UUID (36 chars).
+  PUBLIC_ORG_ID: string;
   // Destination owner for a landing enquiry when the manager-assignment
   // engine matches no rule and the team has no default assignee. Must be a
   // real staff user id (TELECALLER/SALES_EXEC/MANAGER). NOT gated at boot -
@@ -142,6 +148,20 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
   }
 
   const PUBLIC_API_KEY = required('PUBLIC_API_KEY', 16) ?? '';
+
+  // PUBLIC_ORG_ID: required; must be a valid ULID (26 chars) or UUID (36
+  // chars). Fail-fast so a wrong/absent tenant id is caught at boot, not by
+  // the first public write silently landing in the wrong org.
+  const rawOrgId = env['PUBLIC_ORG_ID'];
+  const PUBLIC_ORG_ID = rawOrgId ?? '';
+  if (PUBLIC_ORG_ID === '') {
+    issues.push('  - PUBLIC_ORG_ID: missing (required)');
+  } else if (PUBLIC_ORG_ID.length !== 26 && PUBLIC_ORG_ID.length !== 36) {
+    issues.push(
+      `  - PUBLIC_ORG_ID: must be a 26-char ULID or 36-char UUID (got ${PUBLIC_ORG_ID.length} chars)`,
+    );
+  }
+
   const LEADS_FALLBACK_OWNER_ID_raw = env['LEADS_FALLBACK_OWNER_ID'];
   const LEADS_FALLBACK_OWNER_ID =
     LEADS_FALLBACK_OWNER_ID_raw !== undefined && LEADS_FALLBACK_OWNER_ID_raw !== ''
@@ -186,6 +206,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     TELEGRAM_ALERT_THRESHOLD,
     TELEGRAM_ALERT_COOLDOWN_MS,
     PUBLIC_API_KEY,
+    PUBLIC_ORG_ID,
     LEADS_FALLBACK_OWNER_ID,
   };
 }

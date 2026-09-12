@@ -161,12 +161,25 @@ export async function withRlsContext<T>(
     throw new Error(`withRlsContext: organizationId is required (got "${ctx.organizationId}")`);
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_team_id = ${sqlLiteral(teamValue)}`);
-    await tx.$executeRawUnsafe(`SET LOCAL app.user_org_id = ${sqlLiteral(orgValue)}`);
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
+      await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
+      await tx.$executeRawUnsafe(`SET LOCAL app.user_team_id = ${sqlLiteral(teamValue)}`);
+      await tx.$executeRawUnsafe(`SET LOCAL app.user_org_id = ${sqlLiteral(orgValue)}`);
 
-    return fn(tx as unknown as RlsTx);
-  });
+      return fn(tx as unknown as RlsTx);
+    },
+    // Session pooling (pgbouncer, POOL_MODE=session) can make a pooled
+    // connection checkout stall well past Prisma's tight defaults
+    // (maxWait 2s / timeout 5s) when the server pool is busy under cron
+    // load. The result was a noisy "expired transaction ... 5000 ms, however
+    // ~19s passed" prisma:error + ERROR[Scheduler] pair from the outbound /
+    // reminders crons — a pool stall, not slow SQL (the query itself is
+    // sub-ms on an empty/idle table). Raise both so a legitimate checkout
+    // wait doesn't kill the transaction; the query bound (100s floor) is far
+    // beyond any realistic stall. This is the single gate every business
+    // query flows through, so one bump covers all call sites.
+    { maxWait: 10_000, timeout: 30_000 },
+  );
 }

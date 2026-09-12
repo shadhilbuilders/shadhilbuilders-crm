@@ -32,6 +32,7 @@ const VALID_ENV: Record<string, string> = {
   API_PORT: '8080',
   NODE_ENV: 'production',
   PUBLIC_API_KEY: 'k'.repeat(32),
+  PUBLIC_ORG_ID: '01abcd'.padEnd(26, 'x'),
 };
 
 describe('assertBootEnv - happy path', () => {
@@ -74,6 +75,7 @@ describe('assertBootEnv - missing required vars', () => {
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
     'PUBLIC_API_KEY',
+    'PUBLIC_ORG_ID',
   ] as const)('%s: missing → BootEnvError names the var', (name) => {
     const env = { ...VALID_ENV };
     delete env[name];
