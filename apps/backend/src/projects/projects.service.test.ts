@@ -80,6 +80,7 @@ function makeTx(overrides: {
   projectFindUnique?: (args: MockArgs) => MockProjectRow | null | undefined;
   bookingCount?: number;
   leadCount?: number;
+  memberLeadCount?: number;
   findUser?: (args: MockArgs) => Record<string, unknown> | null;
 }): MockTx {
   const projectRows: Record<string, MockProjectRow> = {
@@ -177,7 +178,7 @@ function makeTx(overrides: {
       findMany: vi.fn(async () => []),
     },
     lead: {
-      count: vi.fn(async () => 0),
+      count: vi.fn(async () => overrides.memberLeadCount ?? 0),
       findMany: vi.fn(async () => []),
     },
     projectOption: {
@@ -584,6 +585,12 @@ describe('ProjectsService.unlinkMember', () => {
     expect(tx.projectMember.deleteMany).toHaveBeenCalledWith({
       where: { projectId: 'proj-metro', userId: 'u-exec' },
     });
+    expect(tx.lead.count).toHaveBeenCalledWith({
+      where: {
+        projectId: 'proj-metro',
+        OR: [{ ownerId: 'u-exec' }, { coOwnerId: 'u-exec' }],
+      },
+    });
     // HIGH-STAKES audit (AGENTS.md A2/G-1): removal is audited in the same tx.
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -605,6 +612,37 @@ describe('ProjectsService.unlinkMember', () => {
     await expect(
       svc.unlinkMember(telecallerActor, 'proj-metro', 'u-exec'),
     ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('refuses to unlink a member handling leads until they are reassigned', async () => {
+    txCapture.current = makeTx({ memberLeadCount: 2 });
+    const svc = new ProjectsService({ $client: {} } as never);
+    const tx = txCapture.current!;
+
+    await expect(
+      svc.unlinkMember(adminActor, 'proj-metro', 'u-exec'),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining(
+        'Reassign those leads to another person before unlinking',
+      ),
+    });
+    expect(tx.projectMember.deleteMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('does not report success when no explicit membership exists', async () => {
+    const svc = new ProjectsService({ $client: {} } as never);
+    const tx = txCapture.current!;
+    tx.projectMember.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      svc.unlinkMember(adminActor, 'proj-metro', 'u-exec'),
+    ).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringContaining('is not explicitly linked'),
+    });
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 });
 

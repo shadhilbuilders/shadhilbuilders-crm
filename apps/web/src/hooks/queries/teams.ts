@@ -4,7 +4,12 @@
 // TELECALLER/SALES_EXEC staff to a team (the backend rejects staff users
 // without a teamId). Also powers the ADMIN/OWNER org-Teams pages
 // (/teams list + /teams/[teamId] roster).
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { api } from '@/apis/client';
 
@@ -60,5 +65,84 @@ export function useTeam(id: string | undefined) {
       api<TeamDetail>(`/teams/${id as string}`, { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Team CRUD + reassign (T-TEAM-CRUD, 2026-09-13) - mirrors
+// hooks/queries/projects.ts's useCreateProject/useUpdateProject/
+// useDeleteProject mutations. ADMIN/OWNER only (service-enforced; a
+// non-admin caller sees the 403 verbatim via mutation.error).
+// ────────────────────────────────────────────────────────────────────────────
+
+export type CreateTeamInput = {
+  name: string;
+  managerId?: string | null;
+};
+
+export type UpdateTeamInput = Partial<CreateTeamInput>;
+
+export type ReassignTeamMembersInput = {
+  targetTeamId: string;
+  /** Omit to reassign EVERY current member (the one-click bulk action). */
+  userIds?: string[];
+};
+
+export function useCreateTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateTeamInput) =>
+      api<TeamListItem>('/teams', { method: 'POST', json: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+    },
+  });
+}
+
+export function useUpdateTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...input
+    }: UpdateTeamInput & { id: string }) =>
+      api<TeamListItem>(`/teams/${id}`, { method: 'PATCH', json: input }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, variables.id] });
+    },
+  });
+}
+
+export function useDeleteTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) =>
+      api<{ id: string }>(`/teams/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+    },
+  });
+}
+
+/**
+ * POST /api/teams/:id/reassign-members - move members off a team. Omitting
+ * `userIds` reassigns everyone (the one-click bulk action that unblocks
+ * delete); passing ids reassigns only those members (the per-member "move
+ * to another team" action on the roster page).
+ */
+export function useReassignTeamMembers(teamId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ReassignTeamMembersInput) =>
+      api<{ count: number }>(`/teams/${teamId}/reassign-members`, {
+        method: 'POST',
+        json: input,
+      }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, teamId] });
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, variables.targetTeamId] });
+    },
   });
 }

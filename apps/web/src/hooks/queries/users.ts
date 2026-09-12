@@ -93,6 +93,39 @@ export function useProjectSalesExecs(projectId: string | undefined) {
   });
 }
 
+export type UserDetailProject = {
+  id: string;
+  name: string;
+};
+
+export type BackendUserDetail = {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  teamId: string | null;
+  teamName: string | null;
+  /** Populated only for TELECALLER/SALES_EXEC whose team has a manager. */
+  manager: { id: string; name: string; email: string } | null;
+  projects: UserDetailProject[];
+};
+
+/**
+ * GET /api/users/:id - the user detail page (users/[userId], autoplan
+ * 2026-09-13). Scope mirrors `useUsers`: ADMIN/OWNER see anyone; MANAGER
+ * sees their own team + self; staff see only themselves (server-enforced).
+ */
+export function useUser(id: string | undefined) {
+  return useQuery({
+    queryKey: [...USERS_KEY, id ?? ''],
+    enabled: id !== undefined && id.length > 0,
+    queryFn: ({ signal }) =>
+      api<BackendUserDetail>(`/users/${id as string}`, { signal }),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -139,6 +172,27 @@ export function useUpdateUser() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+    },
+  });
+}
+
+/**
+ * PATCH /api/users/:id/manager - assign/reassign a TELECALLER/SALES_EXEC's
+ * manager (autoplan 2026-09-13), by moving them into the manager's team.
+ * Invalidates the user-detail query too (not just the list) so the
+ * detail page's manager/team panel refreshes immediately.
+ */
+export function useAssignManager() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, teamId }: { id: string; teamId: string }) =>
+      api<BackendCreatedUser>(`/users/${id}/manager`, {
+        method: 'PATCH',
+        json: { teamId },
+      }),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [...USERS_KEY, id] });
     },
   });
 }

@@ -441,9 +441,9 @@ export class ProjectsService {
 
   /**
    * DELETE /api/projects/:id/members/:userId - unlink a user from a project.
-   * MANAGER/ADMIN/OWNER only. Removes the explicit ProjectMember row only;
-   * the user may still own leads in the project (so they'd remain in a
-   * lead-owner-derived union).
+   * MANAGER/ADMIN/OWNER only. Refuses removal while the user owns or co-owns
+   * leads in this project: those leads must be reassigned first so project
+   * access cannot be removed from someone still responsible for its leads.
    */
   async unlinkMember(
     actor: JwtPayload,
@@ -468,9 +468,25 @@ export class ProjectsService {
           where: { id: userId },
           select: { name: true, email: true },
         });
-        await tx.projectMember.deleteMany({
+        const handledLeadCount = await tx.lead.count({
+          where: {
+            projectId,
+            OR: [{ ownerId: userId }, { coOwnerId: userId }],
+          },
+        });
+        if (handledLeadCount > 0) {
+          throw new ConflictException(
+            `${user?.name ?? 'This member'} is handling ${handledLeadCount} lead${handledLeadCount === 1 ? '' : 's'} in ${project.name}. Reassign those leads to another person before unlinking this member.`,
+          );
+        }
+        const removed = await tx.projectMember.deleteMany({
           where: { projectId, userId },
         });
+        if (removed.count === 0) {
+          throw new NotFoundException(
+            `${user?.name ?? 'This user'} is not explicitly linked to ${project.name}.`,
+          );
+        }
         // HIGH-STAKES audit (AGENTS.md A2/G-1): removing a staff member's
         // project access is written in the SAME tx as the delete.
         await tx.auditLog.create({

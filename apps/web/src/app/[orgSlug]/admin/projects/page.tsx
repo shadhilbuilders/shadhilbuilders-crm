@@ -57,7 +57,6 @@ import { projectHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 import {
-  canManageUsers,
   isAdminLike,
   useSessionUser,
 } from '@/lib/session';
@@ -113,7 +112,7 @@ export default function ProjectsPage() {
   if (!mounted || sessionPending) {
     return <Skeleton variant="users" className="py-4" />;
   }
-  if (user === null || !canManageUsers(user.role)) {
+  if (user === null || !isAdminLike(user.role)) {
     return (
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
@@ -143,6 +142,24 @@ export default function ProjectsPage() {
           canDelete
             ? 'Create, rename, and delete the project registry. Deleting a project with bookings is blocked.'
             : 'Create and rename projects. Deleting requires ADMIN or the account owner.'
+        }
+        action={
+          <Dialog
+            trigger={
+              <Button leftIcon={<LuPlus className="h-4 w-4" />}>
+                New project
+              </Button>
+            }
+            header={{ title: 'Create a project' }}
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            contentClassName="sm:max-w-md"
+          >
+            <ProjectFormBody
+              mode="create"
+              onDone={() => setCreateOpen(false)}
+            />
+          </Dialog>
         }
       />
 
@@ -191,24 +208,7 @@ export default function ProjectsPage() {
           onEdit={setEditTarget}
           onMembers={setMembersTarget}
           onDelete={setDeleteTarget}
-          createTrigger={
-            <Dialog
-              trigger={
-                <Button leftIcon={<LuPlus className="h-4 w-4" />}>
-                  New project
-                </Button>
-              }
-              header={{ title: 'Create a project' }}
-              open={createOpen}
-              onOpenChange={setCreateOpen}
-              contentClassName='sm:max-w-md'
-            >
-              <ProjectFormBody
-                mode="create"
-                onDone={() => setCreateOpen(false)}
-              />
-            </Dialog>
-          }
+          onCreate={() => setCreateOpen(true)}
         />
       )}
 
@@ -378,7 +378,7 @@ function ProjectTable({
   onEdit,
   onMembers,
   onDelete,
-  createTrigger,
+  onCreate,
 }: {
   orgSlug: string | null;
   projects: ProjectListItem[];
@@ -395,7 +395,7 @@ function ProjectTable({
   onEdit: (project: ProjectListItem) => void;
   onMembers: (project: ProjectListItem) => void;
   onDelete: (project: ProjectListItem) => void;
-  createTrigger: React.ReactNode;
+  onCreate: () => void;
 }) {
   const router = useRouter();
 
@@ -508,7 +508,6 @@ function ProjectTable({
         }}
         isLoading={isFetching}
         loadingContent={<Loading content="Loading projects..." />}
-        toolbarRightSideContent={createTrigger}
         emptyContent={
           isSearchActive ? (
             <div className="rounded-lg p-10 text-center space-y-1">
@@ -527,7 +526,14 @@ function ProjectTable({
               <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                 Create the first project to get started.
               </TypographyP>
-              <div className="flex justify-center pt-2">{createTrigger}</div>
+              <div className="flex justify-center pt-2">
+                <Button
+                  leftIcon={<LuPlus className="h-4 w-4" />}
+                  onClick={onCreate}
+                >
+                  New project
+                </Button>
+              </div>
             </div>
           )
         }

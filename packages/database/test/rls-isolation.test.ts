@@ -1562,3 +1562,135 @@ describe('Feedback - public submit + admin triage RLS', () => {
   );
 
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Team (T-TEAM-CRUD, 2026-09-13) - the table previously had FORCE ROW LEVEL
+// SECURITY set with zero policies (RLS was a no-op). Mirrors the
+// ManagerAssignmentRule/Feedback bolt-on pattern above rather than the 128
+// matrix, since Team's policy shape (any-authenticated SELECT, ADMIN-only
+// writes, no team-scoping) doesn't fit the parent-Lead-derived TableName
+// union. Five cases pin the new policy set end-to-end:
+//   (a) TELECALLER (any authenticated role) can SELECT a team in their org
+//   (b) TELECALLER cannot INSERT a team (admin-only write)
+//   (c) TELECALLER cannot UPDATE a team (admin-only write)
+//   (d) TELECALLER cannot DELETE a team (admin-only write)
+//   (e) ADMIN can INSERT + UPDATE + DELETE a team (admin-class write)
+describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-only)', () => {
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+  }, 60_000);
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER can SELECT a team in their org (team_select_any_authenticated)',
+    { timeout: 30_000 },
+    async () => {
+      const rows = await withRlsContext(prisma, {
+        userId: fixture.teleAId,
+        role: 'TELECALLER',
+        teamId: fixture.teamAId,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      }, async (tx) =>
+        (tx as unknown as {
+          team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+        }).team.findMany({ where: { id: fixture.teamAId } }),
+      );
+      expect(rows.length).toBe(1);
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot INSERT a team (team_insert_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          teamId: fixture.teamAId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { create: (a: { data: { name: string; organizationId: string } }) => Promise<unknown> };
+          }).team.create({
+            data: { name: 'RLS test team (tele insert)', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+          }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot UPDATE a team (team_update_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          teamId: fixture.teamAId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { update: (a: { where: { id: string }; data: { name: string } }) => Promise<unknown> };
+          }).team.update({ where: { id: fixture.teamAId }, data: { name: 'renamed-by-tele' } }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot DELETE a team (team_delete_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          teamId: fixture.teamAId,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { delete: (a: { where: { id: string } }) => Promise<unknown> };
+          }).team.delete({ where: { id: fixture.teamAId } }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'ADMIN can INSERT + UPDATE + DELETE a team (admin-class write)',
+    { timeout: 30_000 },
+    async () => {
+      const adminCtx: RlsContext = {
+        userId: fixture.managerAId,
+        role: 'ADMIN',
+        teamId: fixture.teamAId,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      };
+      const created = await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { create: (a: { data: { name: string; organizationId: string } }) => Promise<{ id: string }> };
+        }).team.create({
+          data: { name: `RLS test team (admin) ${Date.now()}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        }),
+      );
+      expect(created.id).toBeDefined();
+
+      const updated = await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { update: (a: { where: { id: string }; data: { name: string } }) => Promise<{ name: string }> };
+        }).team.update({ where: { id: created.id }, data: { name: 'renamed-by-admin' } }),
+      );
+      expect(updated.name).toBe('renamed-by-admin');
+
+      await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { delete: (a: { where: { id: string } }) => Promise<unknown> };
+        }).team.delete({ where: { id: created.id } }),
+      );
+    },
+  );
+});

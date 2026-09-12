@@ -350,7 +350,7 @@ function BookingActions({
                 data-qa="booking-confirm"
               >
                 {updateBooking.isPending
-                  ? 'Saving…'
+                  ? 'Saving...'
                   : toStatus === 'APPROVED'
                     ? 'Confirm approval'
                     : (

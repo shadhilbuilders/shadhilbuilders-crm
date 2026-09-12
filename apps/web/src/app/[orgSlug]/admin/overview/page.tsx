@@ -180,7 +180,10 @@ function AdminDashboard({
       </SectionCard>
 
       {auditVisible ? (
-        <SectionCard title="Audit activity" moreHref="/audit">
+        <SectionCard
+          title="Audit activity"
+          moreHref={orgSlug ? `/${orgSlug}/admin/audit` : '/admin/audit'}
+        >
           <OverviewAuditAreaChart data={overviewQuery.data?.auditTimeline} />
         </SectionCard>
       ) : null}

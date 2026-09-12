@@ -52,12 +52,14 @@ vi.mock('@shadhil/database', () => {
             id: 'team-real-estate',
             name: 'Real Estate Desk',
             manager: null,
+            deletedAt: null,
           };
         }
         return {
           id: 'team-construction',
           name: "Manager (placeholder)'s Team",
           manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
+          deletedAt: null,
         };
       }),
     },
@@ -167,8 +169,9 @@ describe('TeamsService.list', () => {
     expect(tx).toBeDefined();
     expect(tx.team.findMany).toHaveBeenCalledTimes(1);
     const args = tx.team.findMany.mock.calls[0]![0];
-    // OWNER is an overseer: no membership filter (sees every project).
-    expect(args.where).toEqual({});
+    // OWNER is an overseer: no membership filter (sees every project),
+    // just the soft-delete exclusion.
+    expect(args.where).toEqual({ deletedAt: null });
     expect(args.select).toMatchObject({
       id: true,
       name: true,
@@ -185,7 +188,7 @@ describe('TeamsService.list', () => {
     await svc.list(telecallerActor);
     const tx = txCapture.current;
     const args = tx.team.findMany.mock.calls[0]![0];
-    expect(args.where).toEqual({ members: { some: { id: 'tc-1' } } });
+    expect(args.where).toEqual({ deletedAt: null, members: { some: { id: 'tc-1' } } });
   });
 
   it('maps to TeamListItem with managerName (null when unassigned)', async () => {

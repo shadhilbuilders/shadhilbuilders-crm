@@ -144,7 +144,24 @@ describe('UsersPage - T-D3 state matrix', () => {
     await mount();
     const html = container?.innerHTML ?? '';
     expect(html).toContain('Not authorized');
-    expect(html).toContain('Only admins and managers');
+    expect(html).toContain('Only owners and admins');
+  });
+
+  it('not authorized: MANAGER sees the "Not authorized" panel', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-m', name: 'Mgr', email: 'm@x', role: 'MANAGER', teamId: 't1' },
+      isPending: false,
+      error: null,
+    });
+    mocks.useUsers.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Not authorized');
   });
 
   it('loading: useUsers isLoading renders <Skeleton> rows', async () => {
@@ -192,7 +209,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             email: 'rajesh@example.com',
             role: 'TELECALLER',
             teamId: 't-1',
-            projects: ['Shadhil Skyline Towers'],
+            projects: ['Shadhil Skyline Towers', 'Shadhil Metro Heights'],
           },
         ],
         total: 2,
@@ -219,9 +236,12 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).toContain('Priya Sharma');
     expect(html).toContain('priya@example.com');
     expect(html).toContain('Rajesh Kumar');
-    // Project names render (Projects column, comma-joined).
-    expect(html).toContain('Shadhil Metro Heights');
-    expect(html).toContain('Shadhil Skyline Towers');
+    // Projects column shows a COUNT (autoplan 2026-09-13), not the joined
+    // name list - the full list is a Tooltip hover-away (content isn't in
+    // the static-mount markup, so it isn't asserted here).
+    expect(html).toContain('1 project');
+    expect(html).toContain('2 projects');
+    expect(html).not.toContain('Shadhil Metro Heights');
     // No Skeleton, no "Not authorized".
     expect(html).not.toContain('data-slot="skeleton"');
     expect(html).not.toContain('Not authorized');

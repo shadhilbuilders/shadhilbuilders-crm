@@ -63,6 +63,11 @@ const FILTER_ACTIONS: Record<string, string> = {
   'project.update': 'Project updated',
   'project.delete': 'Project deleted',
   'project.member.unlink': 'Member unlinked',
+  // Teams
+  'team.create': 'Team created',
+  'team.update': 'Team updated',
+  'team.delete': 'Team deleted',
+  'team.reassign_members': 'Team members reassigned',
   // Auth
   'auth.login': 'Login',
 };

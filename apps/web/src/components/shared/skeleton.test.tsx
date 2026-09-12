@@ -75,6 +75,25 @@ describe('Skeleton', () => {
       expect(html).toContain('h-3 w-20');
     });
 
+    it('navItems renders 5 icon+label rows by default (T32 pin)', () => {
+      const html = renderToStaticMarkup(<Skeleton variant="navItems" />);
+      expect(html).toContain('data-qa="skeleton-nav-items"');
+      const rows = html.match(
+        /<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g,
+      );
+      expect(rows?.length ?? 0).toBe(SKELETON_SHAPES.navItems.count);
+    });
+
+    it('navItems respects the count override', () => {
+      const html = renderToStaticMarkup(
+        <Skeleton variant="navItems" count={3} />,
+      );
+      const rows = html.match(
+        /<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g,
+      );
+      expect(rows?.length ?? 0).toBe(3);
+    });
+
     it('projectSwitcher renders 1 icon + 2 lines + chevron', () => {
       const html = renderToStaticMarkup(
         <Skeleton variant="projectSwitcher" />,
@@ -181,6 +200,7 @@ describe('Skeleton', () => {
         'list',
         'card',
         'user',
+        'navItems',
         'projectSwitcher',
         'overview',
         'text',

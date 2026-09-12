@@ -677,7 +677,8 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'ProjectOption','WhatsappUnknownContact','Organization'
+    'ProjectOption','WhatsappUnknownContact','Organization',
+    'TeamMember','ProjectTeam'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -708,7 +709,8 @@ BEGIN
     'Notification','PushSubscription','PushNotification','AuditLog',
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
-    'ProjectOption','WhatsappUnknownContact','Organization'
+    'ProjectOption','WhatsappUnknownContact','Organization',
+    'TeamMember','ProjectTeam'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);
@@ -1000,6 +1002,116 @@ CREATE POLICY project_update_admin ON "Project"
 CREATE POLICY project_delete_admin ON "Project"
   FOR DELETE
   USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- ── Team (T-TEAM-CRUD, 2026-09-13) ──────────────────────────────────────────
+-- ENABLE + policies land in migration 20260913000000 - previously the
+-- table had FORCE without ENABLE and zero policies, so RLS was a no-op
+-- (Team access was only gated by app code). Mirrors Project's policy shape
+-- exactly. SELECT is open to every authenticated role (the sidebar
+-- TeamSwitcher + create-user dialog need the list) but still org-gated.
+-- Writes are ADMIN-class; OWNER travels as ADMIN at this layer (rls.ts
+-- downcast) - the service is the precise wall (ADMIN/OWNER check +
+-- members/manager delete-guard).
+ALTER TABLE "Team" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY team_select_any_authenticated ON "Team"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY team_insert_admin ON "Team"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY team_update_admin ON "Team"
+  FOR UPDATE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY team_delete_admin ON "Team"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- ── TeamMember / ProjectTeam (T-TEAM-AUTHORITATIVE, 2026-09-13) ─────────────
+-- ENABLE + policies land in migration 20260913010000 - additive expand-phase
+-- tables (see Decision Audit Trail #39 in IMPLEMENTATION-PLAN-v1.md). Both
+-- tables are net-new; there is no legacy policy to migrate.
+--
+-- TeamMember SELECT is intentionally non-recursive (design doc requirement):
+-- own memberships, teams the actor manages (Team.managerId - not a query
+-- back into TeamMember, so no self-reference), or organization ADMIN. It
+-- does NOT let an ordinary team member see who else is on their team via
+-- this policy alone - that "who's on my team" view is a service-layer
+-- concern (TeamAccessService) once the removal-flow endpoints exist; for
+-- now this is the minimum safe SELECT surface for the additive backfill to
+-- be verifiable without opening membership to every authenticated role.
+ALTER TABLE "TeamMember" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY teammember_select_own_or_managed_or_admin ON "TeamMember"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR "userId" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Team" t
+        WHERE t."id" = "TeamMember"."teamId"
+          AND t."managerId" = current_setting('app.user_id', true)
+      )
+    )
+  );
+
+CREATE POLICY teammember_write_admin ON "TeamMember"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- ProjectTeam SELECT mirrors Project/Team's shape exactly: any authenticated
+-- business role, org-gated. Writes are ADMIN-class for now; the eventual
+-- Owner/Admin "Link team" / "Unlink" endpoints (UI3 in the design doc) are
+-- the precise wall above this layer, same pattern as Project/Team.
+ALTER TABLE "ProjectTeam" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY projectteam_select_any_authenticated ON "ProjectTeam"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY projectteam_write_admin ON "ProjectTeam"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
     current_setting('app.user_role', true) = 'ADMIN'
     AND "organizationId" = current_setting('app.user_org_id', true)
   );

@@ -9,9 +9,10 @@
 // the sidebar (`app-shell.tsx`) and the slim topbar (`app-header.tsx`) read
 // from the same shape.
 //
-// Locked decisions (DESIGN.md §4 + plan §3 / §11 / §14):
-//   - "Admin" group renders only for roles that pass `canManageUsers`
-//     (admin-class + manager) and `canViewAudit` (admin-class only).
+// Locked decisions (DESIGN.md §4 + plan §3 / §11 / §14 + Decision #38):
+//   - Detailed Admin nav is OWNER/ADMIN only under `/admin/*`.
+//   - Work nav shows an `Admin` launcher for OWNER/ADMIN; Admin nav shows
+//     a `Work` launcher back to the default project dashboard.
 //   - Friendly labels (D2) are handled separately in `lib/labels.ts`; this
 //     file only owns the nav structure, not display copy for enums.
 //   - Role helpers in `lib/session.ts` are the canonical permission source -
@@ -71,12 +72,7 @@ import { useEffect } from 'react';
 
 import { useSidebar } from '@paalstack/react-ui';
 
-import {
-  canConvertWhatsappUnknownContact,
-  canManageUsers,
-  canViewAudit,
-  isAdminLike,
-} from '@/lib/session';
+import { isAdminLike } from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -167,72 +163,77 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'unreadNotifications',
   },
-  // ── admin group (role-gated by canManageUsers / canViewAudit / isAdminLike) ─
-  // Admin/owner command center (dashboard split, 2026-09-08). Cross-project
-  // overview at the top-level /overview - NOT project-scoped, so it resolves
-  // unscoped via `navItemHref` (scoped:false). Distinct from the work
-  // "Dashboard" item above, which stays /{projectId}/dashboard.
+  // OWNER/ADMIN launcher into /admin/* (hidden for every other role).
   {
-    href: '/overview',
+    href: '/admin',
+    label: 'Admin',
+    icon: LuShieldCheck,
+    group: 'work',
+    scoped: false,
+  },
+  // ── admin group (OWNER/ADMIN only; shown on /admin/* paths) ─
+  // NOTE: the "Go to Work" exit is a standalone link above the group
+  // label (see `app-shell.tsx`'s `AdminNavGroup`), not a NAV_ITEMS entry -
+  // it isn't a page inside the admin namespace, so it doesn't belong in
+  // the role-gated item list that `getVisibleNav` walks.
+  {
+    href: '/admin/overview',
     label: 'Overview',
     icon: LuLayoutDashboard,
     group: 'admin',
     scoped: false,
   },
-  { href: '/users', label: 'Users', icon: LuUserCog, group: 'admin', scoped: false },
   {
-    href: '/projects',
+    href: '/admin/users',
+    label: 'Users',
+    icon: LuUserCog,
+    group: 'admin',
+    scoped: false,
+  },
+  {
+    href: '/admin/projects',
     label: 'Projects',
     icon: LuFolderKanban,
     group: 'admin',
     scoped: false,
   },
-  // Org Teams (ADMIN/OWNER only). /teams + /teams/[teamId] - a manager uses
-  // the per-project staff surfaces, not every team.
   {
-    href: '/teams',
+    href: '/admin/teams',
     label: 'Teams',
     icon: LuUsersRound,
     group: 'admin',
     scoped: false,
   },
   {
-    href: '/audit',
+    href: '/admin/audit',
     label: 'Audit',
     icon: LuShieldCheck,
     group: 'admin',
     scoped: false,
   },
-  // T-E2b follow-up queue - admin + manager only (DESIGN.md §4 + plan
-  // §11 T-E2b). Telecaller / SalesExec never triage raw inbound from
-  // unknown numbers - they only see the result (a converted Lead)
-  // in the regular Lead Inbox.
   {
-    href: '/webhooks',
+    href: '/admin/webhooks',
     label: 'WhatsApp',
     icon: LuMessageCircleQuestion,
     group: 'admin',
     scoped: false,
-    // WhatsApp-related operational surfaces live under one collapsible
-    // submenu. getVisibleNav renders the parent only when at least one
-    // child is visible (it recursively includes visible children).
     children: [
       {
-        href: '/whatsapp-unknown-contacts',
+        href: '/admin/whatsapp-unknown-contacts',
         label: 'WA Unknown',
         icon: LuMessageCircleQuestion,
         group: 'admin',
         scoped: false,
       },
       {
-        href: '/whatsapp-delivery',
+        href: '/admin/whatsapp-delivery',
         label: 'WA Delivery',
         icon: LuSend,
         group: 'admin',
         scoped: false,
       },
       {
-        href: '/webhooks',
+        href: '/admin/webhooks',
         label: 'Webhooks',
         icon: LuSatellite,
         group: 'admin',
@@ -240,10 +241,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
       },
     ],
   },
-  // Feedback triage - ADMIN/OWNER only. Public submissions from the landing
-  // page land in the CRM DB; this is the admin surface to read + triage them.
   {
-    href: '/feedback',
+    href: '/admin/feedback',
     label: 'Feedback',
     icon: LuMessageSquareText,
     group: 'admin',
@@ -263,17 +262,14 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   const items: NavItem[] = [];
   for (const item of NAV_ITEMS) {
     if (item.group === 'work') {
-      // Per-project Staff (/[projectId]/staff) is viewable by EVERY
-      // authenticated role (anyone can see the member items); only
-      // ADMIN/OWNER can link/unlink (the page gates that via isAdminLike).
+      // Per-project Staff is viewable by every authenticated role.
+      // The Admin launcher is OWNER/ADMIN only.
+      if (!isNavItemVisible(item, role)) continue;
       items.push(item);
       continue;
     }
-    // group === 'admin'
+    // group === 'admin' — OWNER/ADMIN only
 
-    // Submenu parent (children present): render it only when at least one
-    // child is visible, and carry only the visible children through so the
-    // shell renders exactly what the role may access.
     if (item.children !== undefined) {
       const visibleChildren = item.children.filter((c) => isNavItemVisible(c, role));
       if (visibleChildren.length > 0) {
@@ -287,28 +283,22 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   return items;
 }
 
-/** Per-item admin visibility rule (single source of truth for getVisibleNav). */
-function isNavItemVisible(item: Pick<NavItem, 'href'>, role: Role | undefined): boolean {
-  if (item.href === '/users' && canManageUsers(role)) return true;
-  if (item.href === '/projects' && canManageUsers(role)) return true;
-  // Org Teams is ADMIN/OWNER ONLY (a manager uses the per-project staff
-  // surfaces, not every team).
-  if (item.href === '/teams' && isAdminLike(role)) return true;
-  if (item.href === '/audit' && canViewAudit(role)) return true;
-  if (item.href === '/whatsapp-unknown-contacts' && canConvertWhatsappUnknownContact(role))
-    return true;
-  // Feedback triage is ADMIN/OWNER only - a Manager never reads
-  // public customer feedback (operational team scoped to their sales).
-  if (item.href === '/feedback' && canViewAudit(role)) return true;
-  // Integration telemetry (webhook events + WA delivery) is ADMIN/OWNER
-  // only - ops feeds, mirrors the audit gate.
-  if ((item.href === '/webhooks' || item.href === '/whatsapp-delivery') && isAdminLike(role))
-    return true;
-  // Admin/owner command center (dashboard split). Admin-only: the
-  // cross-project overview is an executive surface, unlike Users which is
-  // admin+manager (operational). MANAGER sees a Users-only admin group.
-  if (item.href === '/overview' && isAdminLike(role)) return true;
+/** Per-item visibility. Admin namespace + Admin launcher: OWNER/ADMIN only. */
+function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | undefined): boolean {
+  if (item.href === '/admin' || item.href === '/work' || item.href.startsWith('/admin/')) {
+    return isAdminLike(role);
+  }
+  // Remaining work items are visible to every authenticated role (and the
+  // undefined-role SSR default, which matches the previous work-group
+  // always-visible contract).
+  if (item.group === 'work') return true;
   return false;
+}
+
+/** True when the authenticated pathname is under /{orgSlug}/admin. */
+export function isAdminPathname(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean);
+  return segments[1] === 'admin';
 }
 
 // ---------------------------------------------------------------------------
@@ -376,7 +366,9 @@ export function useNavBadge(
  * prefix match so `/leads/abc` still highlights the `Leads` menu item.
  */
 export function isNavItemActive(href: string, pathname: string): boolean {
-  if (href === '/') return pathname === '/';
+  if (href === '/' || href === '/admin' || href === '/work') {
+    return pathname === href;
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -384,15 +376,10 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 // Org + project-scoped route helpers (slug-based URL scheme, 2026-09-11)
 // ---------------------------------------------------------------------------
 // The public URL uses SLUGS for identity:
-//   `/[orgSlug]/<orgPage>`                 (org-level: overview, users,
-//                                             teams, audit, feedback,
-//                                             whatsapp-unknown-contacts,
-//                                             projects registry)
-//   `/[orgSlug]/projects/[projectSlug]/<surface>` (project work surfaces:
-//                                             dashboard, leads, visits,
-//                                             inventory, bookings,
-//                                             notifications, staff)
-// NAV_ITEMS hrefs stay TEMPLATE paths ('/leads', '/overview', ...); the
+//   `/[orgSlug]/admin/<page>`              (admin namespace)
+//   `/[orgSlug]/work`                      (leave-admin landing)
+//   `/[orgSlug]/projects/[projectSlug]/<surface>` (project work surfaces)
+// NAV_ITEMS hrefs stay TEMPLATE paths ('/leads', '/admin/overview', ...); the
 // consumers call the helpers below with the active org slug (+ project slug
 // for work surfaces) to resolve the real URL. The RESOLVED tenant ids travel
 // separately (lib/tenant-context) for id-keyed API hooks.
@@ -438,9 +425,8 @@ export function projectHref(
 
 /**
  * Resolve an org-level page template path against the active org slug.
- * `/overview` + `shadhil-builders` → `/shadhil-builders/overview`; nested
- * (`/teams/abc`) prefixes the same way. `orgSlug === null` keeps the
- * template (caller decides).
+ * `/admin/overview` + `shadhil-builders` → `/shadhil-builders/admin/overview`.
+ * `orgSlug === null` keeps the template (caller decides).
  */
 export function orgHref(orgSlug: string | null, templateHref: string): string {
   if (orgSlug === null) return templateHref;
@@ -450,8 +436,8 @@ export function orgHref(orgSlug: string | null, templateHref: string): string {
 /**
  * Resolve a nav item against the active org (+project for work surfaces),
  * honoring its `scoped` flag. Scoped items (work surfaces) prefix the
- * project slug under `/projects`; unscoped items (org-level `/overview`,
- * `/users`, ...) prefix just the org slug.
+ * project slug under `/projects`; unscoped items (admin `/admin/*`, `/work`)
+ * prefix just the org slug.
  */
 export function navItemHref(
   item: Pick<NavItem, 'href' | 'scoped'>,

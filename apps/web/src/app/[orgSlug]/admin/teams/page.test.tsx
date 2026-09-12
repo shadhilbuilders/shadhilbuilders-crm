@@ -104,7 +104,7 @@ describe('TeamsPage - org teams list', () => {
 
     await mount();
     const html = container?.innerHTML ?? '';
-    expect(html).toContain('Every team across the organization');
+    expect(html).toContain('Deleting a team with members or an active manager is blocked');
     expect(html).toContain('data-slot="skeleton"');
   });
 
@@ -145,7 +145,7 @@ describe('TeamsPage - org teams list', () => {
     expect(html).toContain('No manager assigned');
     // Links to the roster pages, prefixed with the active org slug.
     expect(html).toContain('data-qa="team-row-link-t-1"');
-    expect(html).toContain('href="/shadhil-builders/teams/t-1"');
+    expect(html).toContain('href="/shadhil-builders/admin/teams/t-1"');
   });
 
   it('error surfaces inline', async () => {
@@ -177,5 +177,36 @@ describe('TeamsPage - org teams list', () => {
     await mount();
     const html = container?.innerHTML ?? '';
     expect(html).toContain('No teams yet.');
+  });
+
+  it('renders the New team header action + a row actions menu per team (ADMIN/OWNER surface)', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
+      isPending: false,
+      error: null,
+    });
+    mocks.useTeams.mockReturnValue({
+      data: [
+        {
+          id: 't-1',
+          name: 'Construction Desk',
+          defaultAssigneeId: null,
+          memberCount: 4,
+          managerId: 'mgr-1',
+          managerName: 'Maya Rao',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    // Header action - the create dialog trigger.
+    expect(html).toContain('New team');
+    // Row actions menu (Edit / Reassign all members / Delete), same
+    // ellipsis-trigger shape as ProjectRowActions/UserRowActions.
+    expect(html).toContain('data-qa="team-row-actions"');
+    expect(html).toContain('data-qa="data-table-row-actions-button"');
   });
 });

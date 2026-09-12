@@ -17,9 +17,9 @@
 // first registry row - see pickDefaultProject() in hooks/queries/projects.
 //
 // Manage projects (create / rename / edit): admin-class surface inside
-// the dropdown footer (ProjectsManageDialog). Delete is owner-only and
-// guarded server-side (409 when bookings exist). The manage entry lands on
-// `/[orgSlug]/projects` (the registry).
+// the dropdown footer. Delete is owner-only and guarded server-side
+// (409 when bookings exist). The manage entry lands on
+// `/[orgSlug]/admin/projects` (the registry) and is OWNER/ADMIN only.
 //
 // Honest state contract: the dropdown is always openable, even when
 // the projects list is empty (the BE module might not be wired, the
@@ -179,8 +179,8 @@ export function ProjectSwitcher({
                   onClick={() => {
                     router.push(
                       activeOrgSlug
-                        ? `/${activeOrgSlug}/projects`
-                        : '/projects',
+                        ? `/${activeOrgSlug}/admin/projects`
+                        : '/admin/projects',
                     );
                   }}
                 >

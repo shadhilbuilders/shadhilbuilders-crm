@@ -64,17 +64,19 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@paalstack/react-ui';
-import { LuChevronRight, LuPanelLeft } from '@paalstack/react-icons/lu';
+import { LuArrowLeft, LuChevronRight, LuPanelLeft } from '@paalstack/react-icons/lu';
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import { useOrgSlug } from '@/lib/tenant-context';
+import { workLandingHref } from '@/lib/dashboard-redirect';
 import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
   getVisibleNav,
+  isAdminPathname,
   isNavItemActive,
   navItemHref,
   stripProjectSegment as stripProjectSegmentForNav,
@@ -85,8 +87,7 @@ import {
 } from '@/lib/nav';
 import { Skeleton } from '@/components/shared/Skeleton';
 import {
-  canManageUsers,
-  canViewAudit,
+  isAdminLike,
   useSessionUser,
 } from '@/lib/session';
 
@@ -102,10 +103,8 @@ export function AppShell() {
   const pathOrgSlug = activeOrgSlugFromPathname(pathname);
   const pathProjectSlug = activeProjectSlugFromPathname(pathname);
   const { data: projects } = useProjects();
-  // Work-surface hrefs always need a project slug (pages live under
-  // /projects/[projectSlug]/dashboard, ...). On unscoped routes (/users,
-  // /audit) fall back to the default registry project's slug.
   const activeOrgSlug = ctxOrgSlug ?? pathOrgSlug ?? null;
+  const inAdmin = isAdminPathname(pathname);
   const activeProjectSlug =
     pathProjectSlug ?? pickDefaultProject(projects ?? [])?.slug ?? null;
   // useNavBadge needs the project ID (badge counts are id-keyed API calls).
@@ -132,11 +131,7 @@ export function AppShell() {
               nav items below also use p-2, so the brand and nav share
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
-            href={navItemHref(
-              { href: '/overview', scoped: false },
-              activeOrgSlug,
-              activeProjectSlug,
-            )}
+            href={activeOrgSlug ? `/${activeOrgSlug}` : '/'}
             className="inline-flex h-10 shrink-0 items-center overflow-hidden text-primary"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
@@ -152,21 +147,33 @@ export function AppShell() {
               size and truncates awkwardly next to a 143px chip. Hidden
               entirely - the chip IS the brand. */}
         </div>
-        {/* Separator between the brand chip and the project switcher so
-            the two header sections read as distinct groups. */}
+        {/* Separator between the brand chip and whatever follows it -
+            the project switcher on work routes, or the "Go to Work" link
+            (top of AdminNavGroup) on /admin/* - so the two header
+            sections always read as distinct groups. */}
         <SidebarSeparator />
-        {/* sidebar-07 pattern: below the brand, the project switcher
-            dropdown (display-only for now - see project-switcher.tsx).
-            Hidden until the session resolves so the collapsed rail
-            doesn't flash an empty switcher. */}
-        <SidebarSwitcherSlot
-          activeProjectSlug={activeProjectSlug}
-          activeOrgSlug={activeOrgSlug}
-        />
+        {!inAdmin ? (
+          <SidebarSwitcherSlot
+            activeProjectSlug={activeProjectSlug}
+            activeOrgSlug={activeOrgSlug}
+          />
+        ) : null}
       </SidebarHeader>
       <SidebarContent className="min-w-0 overflow-x-hidden">
-        <WorkNavGroup activeProjectId={activeProjectId} activeProjectSlug={activeProjectSlug} activeOrgSlug={activeOrgSlug} />
-        <AdminNavGroup activeProjectId={activeProjectId} activeProjectSlug={activeProjectSlug} activeOrgSlug={activeOrgSlug} />
+        {inAdmin ? (
+          <AdminNavGroup
+            activeProjectId={activeProjectId}
+            activeProjectSlug={activeProjectSlug}
+            activeOrgSlug={activeOrgSlug}
+            workHref={workLandingHref(activeOrgSlug, projects ?? [])}
+          />
+        ) : (
+          <WorkNavGroup
+            activeProjectId={activeProjectId}
+            activeProjectSlug={activeProjectSlug}
+            activeOrgSlug={activeOrgSlug}
+          />
+        )}
       </SidebarContent>
       {/* Separator between the work/admin nav groups and the footer
           (UserMenu + sign out). */}
@@ -202,15 +209,8 @@ function SidebarSwitcherSlot({
 }) {
   const { user } = useSessionUser();
   const { data: projects, isPending: projectsPending } = useProjects();
-  // M2 (eng-corrected): on the cross-project /overview command center, the
-  // switcher must NOT imply a project scope. Scope the null to the switcher
-  // ONLY - the shared activeProjectSlug (passed to the nav groups) stays
-  // intact so work nav hrefs keep resolving correctly.
-  const pathname = usePathname();
-  const isCommandCenter = pathname === `/${activeOrgSlug ?? ''}/overview`;
 
-  // Show skeleton while projects are loading
-    if (projectsPending) {
+  if (projectsPending) {
       return (
         <SidebarMenu>
           <SidebarMenuItem>
@@ -225,12 +225,12 @@ function SidebarSwitcherSlot({
   // No session yet - render nothing (the nav groups below do the same).
   if (user === null) return null;
 
-  const canManageProjects = user.role === 'ADMIN' || user.role === 'OWNER';
+  const canManageProjects = isAdminLike(user.role);
 
   return (
     <ProjectSwitcher
       projects={projects ?? []}
-      activeProjectSlug={isCommandCenter ? null : activeProjectSlug}
+      activeProjectSlug={activeProjectSlug}
       activeOrgSlug={activeOrgSlug}
       canManageProjects={canManageProjects}
     />
@@ -258,7 +258,7 @@ export function SidebarToggleButton({ className }: { className?: string }) {
       className={`cursor-pointer size-8 shrink-0 ${className ?? ''}`}
       onClick={() => toggleSidebar()}
     >
-      <LuPanelLeft className="size-4.5" />
+      <LuPanelLeft className="size-4-5" />
     </Button>
   );
 }
@@ -278,7 +278,25 @@ function WorkNavGroup({
   activeOrgSlug: string | null;
 }) {
   const pathname = usePathname();
-  const { user } = useSessionUser();
+  const { user, isPending } = useSessionUser();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Session/role still resolving (e.g. alongside a full-page PageLoading
+  // on first load or a redirect) → skeleton rows instead of an empty gap
+  // next to the collapsed nav.
+  if (!mounted || isPending) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupLabel>Work</SidebarGroupLabel>
+        <Skeleton variant="navItems" />
+      </SidebarGroup>
+    );
+  }
+
   const items = getVisibleNav(user?.role).filter(
     (item) => item.group === 'work',
   );
@@ -312,13 +330,15 @@ function AdminNavGroup({
   activeProjectId,
   activeProjectSlug,
   activeOrgSlug,
+  workHref,
 }: {
   activeProjectId: string | null;
   activeProjectSlug: string | null;
   activeOrgSlug: string | null;
+  workHref: string;
 }) {
   const pathname = usePathname();
-  const { user } = useSessionUser();
+  const { user, isPending } = useSessionUser();
   const role = user?.role;
   const [mounted, setMounted] = useState(false);
 
@@ -334,38 +354,68 @@ function AdminNavGroup({
     setMounted(true);
   }, []);
 
+  // Session still resolving → skeleton rows instead of null. This component
+  // only mounts when the pathname is already under /admin, so we know a
+  // real Admin group will land here once the role resolves - a full-page
+  // PageLoading in `children` shouldn't leave the sidebar's Admin section
+  // blank in the meantime.
+  if (!mounted || isPending) {
+    return (
+      <SidebarGroup>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Go to Work">
+              <Link href={workHref} data-qa="sidebar-go-to-work">
+                <LuArrowLeft className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">Go to Work</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarGroupLabel>Admin</SidebarGroupLabel>
+        <Skeleton variant="navItems" count={6} />
+      </SidebarGroup>
+    );
+  }
+
   const items = getVisibleNav(role).filter(
     (item) => item.group === 'admin',
   );
 
-  // Don't render an empty "Admin" group with just a label. Also gate on
-  // `mounted` so SSR and the first client paint agree (both render nothing
-  // until the session resolves).
-  if (!mounted || items.length === 0) return null;
-  // canManageUsers / canViewAudit are the canonical helpers; reference
-  // them so tree-shakers + linters see they're part of the contract.
-  void canManageUsers;
-  void canViewAudit;
+  // Don't render an empty "Admin" group with just a label once the session
+  // has resolved and the user genuinely has no admin items.
+  if (items.length === 0) return null;
 
   return (
-    <>
-      <SidebarSeparator />
-      <SidebarGroup>
-        <SidebarGroupLabel>Admin</SidebarGroupLabel>
-        <SidebarMenu>
-          {items.map((item) => (
-            <NavMenuItem
-              key={item.href}
-              item={item}
-              pathname={pathname}
-              activeProjectId={activeProjectId}
-              activeProjectSlug={activeProjectSlug}
-              activeOrgSlug={activeOrgSlug}
-            />
-          ))}
-        </SidebarMenu>
-      </SidebarGroup>
-    </>
+    <SidebarGroup>
+      {/* Exit-admin affordance: a standalone link, NOT a NAV_ITEMS entry
+          (it isn't a page inside /admin/*, so getVisibleNav shouldn't walk
+          it). Sits above the "Admin" label so it reads as leaving the
+          section, not as one more admin page. */}
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild tooltip="Go to Work">
+            <Link href={workHref} data-qa="sidebar-go-to-work">
+              <LuArrowLeft className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">Go to Work</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <SidebarGroupLabel>Admin</SidebarGroupLabel>
+      <SidebarMenu>
+        {items.map((item) => (
+          <NavMenuItem
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            activeProjectId={activeProjectId}
+            activeProjectSlug={activeProjectSlug}
+            activeOrgSlug={activeOrgSlug}
+          />
+        ))}
+      </SidebarMenu>
+    </SidebarGroup>
   );
 }
 

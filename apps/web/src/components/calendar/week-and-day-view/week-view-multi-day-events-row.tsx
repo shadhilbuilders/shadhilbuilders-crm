@@ -98,9 +98,10 @@ export function WeekViewMultiDayEventsRow({ selectedDate, multiDayEvents }: IPro
               const event = row.find((e) => e.startIndex <= dayIndex && e.endIndex >= dayIndex);
 
               if (!event) {
-                return <div key={`${rowIndex}-${dayIndex}`} className="h-6.5" />;
+                return <div key={`${rowIndex}-${dayIndex}`} className="h-6-5" />;
               }
 
+              // eslint-disable-next-line no-useless-assignment
               let position: 'first' | 'middle' | 'last' | 'none' = 'none';
 
               if (dayIndex === event.startIndex && dayIndex === event.endIndex) {

@@ -19,13 +19,13 @@ describe('rootRedirectTarget - role-aware root redirect', () => {
     expect(rootRedirectTarget(null, PROJ, ORG_SLUG)).toEqual({ kind: 'login' });
   });
 
-  it('ADMIN: /overview (command center)', () => {
+  it('ADMIN: command center', () => {
     expect(rootRedirectTarget({ role: 'ADMIN' }, PROJ, ORG_SLUG)).toEqual({
       kind: 'command-center',
     });
   });
 
-  it('OWNER: /overview (command center)', () => {
+  it('OWNER: command center', () => {
     expect(rootRedirectTarget({ role: 'OWNER' }, PROJ, ORG_SLUG)).toEqual({
       kind: 'command-center',
     });
@@ -45,15 +45,17 @@ describe('rootRedirectTarget - role-aware root redirect', () => {
     });
   });
 
-  it('non-admin with no org slug falls back to /projects (no dead-end URL)', () => {
+  it('non-admin with no org slug falls back to /work', () => {
     expect(rootRedirectTarget({ role: 'MANAGER' } as never, PROJ, null)).toEqual({
-      kind: 'projects',
+      kind: 'work',
+      href: '/work',
     });
   });
 
-  it('non-admin + empty registry: /projects (no loop)', () => {
+  it('non-admin + empty registry: /{orgSlug}/work (no loop into admin)', () => {
     expect(rootRedirectTarget(ORG_USER, [], ORG_SLUG)).toEqual({
-      kind: 'projects',
+      kind: 'work',
+      href: '/shadhil-builders/work',
     });
   });
 });

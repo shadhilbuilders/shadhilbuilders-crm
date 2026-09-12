@@ -37,16 +37,15 @@ function flattenNavHrefs(items: readonly NavItem[]): string[] {
 
 describe('lib/nav', () => {
   describe('NAV_ITEMS - the single source of truth', () => {
-    it('contains exactly one work dashboard entry at /dashboard and one admin Overview at /overview', () => {
+    it('contains exactly one work dashboard entry at /dashboard and one admin Overview at /admin/overview', () => {
       const workDashboards = NAV_ITEMS.filter(
         (item) => item.href === '/dashboard' && item.group === 'work',
       );
       const adminDashboards = NAV_ITEMS.filter(
-        (item) => item.href === '/overview' && item.group === 'admin',
+        (item) => item.href === '/admin/overview' && item.group === 'admin',
       );
       expect(workDashboards).toHaveLength(1);
       expect(adminDashboards).toHaveLength(1);
-      // The admin Overview is unscoped (top-level /overview command center).
       expect(adminDashboards[0]!.scoped).toBe(false);
     });
 
@@ -70,165 +69,74 @@ describe('lib/nav', () => {
   });
 
   describe('getVisibleNav - role gating', () => {
-    it('TELECALLER sees only the work group (no admin items)', () => {
+    const workHrefs = [
+      '/dashboard',
+      '/leads',
+      '/visits',
+      '/staff',
+      '/inventory',
+      '/bookings',
+      '/notifications',
+    ];
+
+    it('TELECALLER sees only the work group (no Admin launcher, no admin items)', () => {
       const items = getVisibleNav('TELECALLER');
-      expect(items.map((i) => i.href)).toEqual([
-        '/dashboard',
-        '/leads',
-        '/visits',
-        '/staff',
-        '/inventory',
-        '/bookings',
-        '/notifications',
-      ]);
-      expect(items.map((i) => i.href)).not.toContain('/projects');
+      expect(items.map((i) => i.href)).toEqual(workHrefs);
+      expect(flattenNavHrefs(items)).not.toContain('/admin');
+      expect(flattenNavHrefs(items)).not.toContain('/admin/users');
     });
 
     it('SALES_EXEC sees only the work group (no admin items)', () => {
-      const items = getVisibleNav('SALES_EXEC');
-      expect(items.map((i) => i.href)).toEqual([
-        '/dashboard',
-        '/leads',
-        '/visits',
-        '/staff',
-        '/inventory',
-        '/bookings',
-        '/notifications',
-      ]);
+      expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
     });
 
-    it('TELECALLER does not see the org Teams surface (admin/owner only)', () => {
-      expect(getVisibleNav('TELECALLER').map((i) => i.href)).not.toContain(
-        '/teams',
-      );
+    it('MANAGER sees only the work group (Users / Projects / WA Unknown are admin-only)', () => {
+      const hrefs = flattenNavHrefs(getVisibleNav('MANAGER'));
+      expect(hrefs).toEqual(workHrefs);
+      expect(hrefs).not.toContain('/admin');
+      expect(hrefs).not.toContain('/admin/users');
+      expect(hrefs).not.toContain('/admin/projects');
+      expect(hrefs).not.toContain('/admin/whatsapp-unknown-contacts');
+      expect(hrefs).not.toContain('/admin/teams');
+      expect(hrefs).not.toContain('/admin/feedback');
     });
 
-    it('SALES_EXEC does not see the org Teams surface', () => {
-      expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).not.toContain(
-        '/teams',
-      );
-    });
-
-    it('MANAGER does NOT see the org Teams surface (admin/owner only)', () => {
-      expect(getVisibleNav('MANAGER').map((i) => i.href)).not.toContain('/teams');
-    });
-
-    it('ADMIN sees the org Teams surface (admin/owner)', () => {
-      expect(getVisibleNav('ADMIN').map((i) => i.href)).toContain('/teams');
-    });
-
-    it('MANAGER sees work + Users (canManageUsers), no Audit (canViewAudit denied)', () => {
-      const items = getVisibleNav('MANAGER');
-      const hrefs = items.map((i) => i.href);
-      expect(hrefs).toContain('/users');
-      expect(hrefs).not.toContain('/audit');
-    });
-
-    it('MANAGER sees Projects (canManageUsers, project registry surface)', () => {
-      const items = getVisibleNav('MANAGER');
-      expect(items.map((i) => i.href)).toContain('/projects');
-    });
-
-    it('MANAGER also sees WA Unknown (canConvertWhatsappUnknownContact, inside the WhatsApp submenu)', () => {
-      const items = getVisibleNav('MANAGER');
-      const hrefs = flattenNavHrefs(items);
-      expect(hrefs).toContain('/whatsapp-unknown-contacts');
-    });
-
-    it('ADMIN sees the Feedback triage surface (admin-class)', () => {
-      expect(getVisibleNav('ADMIN').map((i) => i.href)).toContain('/feedback');
-    });
-
-    it('OWNER sees the Feedback triage surface (admin-class)', () => {
-      expect(getVisibleNav('OWNER').map((i) => i.href)).toContain('/feedback');
-    });
-
-    it('MANAGER does NOT see Feedback (admin/owner-only triage)', () => {
-      expect(getVisibleNav('MANAGER').map((i) => i.href)).not.toContain('/feedback');
-    });
-
-    it('TELECALLER does NOT see Feedback (admin/owner-only triage)', () => {
-      expect(getVisibleNav('TELECALLER').map((i) => i.href)).not.toContain(
-        '/feedback',
-      );
-    });
-
-    it('ADMIN sees work + Users + Audit', () => {
-      const items = getVisibleNav('ADMIN');
-      const hrefs = items.map((i) => i.href);
-      expect(hrefs).toContain('/users');
-      expect(hrefs).toContain('/audit');
-    });
-
-    it('ADMIN sees the Overview command center (admin-only)', () => {
-      const items = getVisibleNav('ADMIN');
-      const overview = items.find((i) => i.href === '/overview' && i.group === 'admin');
-      expect(overview).toBeDefined();
-      expect(overview!.scoped).toBe(false);
-    });
-
-    it('MANAGER sees Users but NOT the Overview command center (Users is admin+manager, Overview is admin-only)', () => {
-      const items = getVisibleNav('MANAGER');
-      const hrefs = items.map((i) => i.href);
-      expect(hrefs).toContain('/users');
-      const adminOverview = items.find(
-        (i) => i.href === '/overview' && i.group === 'admin',
-      );
-      expect(adminOverview).toBeUndefined();
-    });
-
-    it('ADMIN also sees WA Unknown (admin-class, inside the WhatsApp submenu)', () => {
+    it('ADMIN sees the Admin launcher on the work group plus the admin namespace', () => {
       const items = getVisibleNav('ADMIN');
       const hrefs = flattenNavHrefs(items);
-      expect(hrefs).toContain('/whatsapp-unknown-contacts');
+      expect(hrefs).toContain('/admin');
+      expect(hrefs).toContain('/admin/overview');
+      expect(hrefs).toContain('/admin/users');
+      expect(hrefs).toContain('/admin/projects');
+      expect(hrefs).toContain('/admin/teams');
+      expect(hrefs).toContain('/admin/audit');
+      expect(hrefs).toContain('/admin/feedback');
+      expect(hrefs).toContain('/admin/whatsapp-unknown-contacts');
+      const overview = items.find(
+        (i) => i.href === '/admin/overview' && i.group === 'admin',
+      );
+      expect(overview?.scoped).toBe(false);
     });
 
-    it('OWNER sees work + Users + Audit (admin-class)', () => {
-      const items = getVisibleNav('OWNER');
-      const hrefs = items.map((i) => i.href);
-      expect(hrefs).toContain('/users');
-      expect(hrefs).toContain('/audit');
+    it('OWNER sees the Admin launcher and admin namespace (admin-class)', () => {
+      const hrefs = flattenNavHrefs(getVisibleNav('OWNER'));
+      expect(hrefs).toContain('/admin');
+      expect(hrefs).toContain('/admin/overview');
+      expect(hrefs).toContain('/admin/users');
+      expect(hrefs).toContain('/admin/audit');
     });
 
-    it('OWNER also sees WA Unknown (admin-class, inside the WhatsApp submenu)', () => {
-      const items = getVisibleNav('OWNER');
-      const hrefs = flattenNavHrefs(items);
-      expect(hrefs).toContain('/whatsapp-unknown-contacts');
-    });
-
-    it('OWNER sees the Overview command center (admin-class)', () => {
-      const items = getVisibleNav('OWNER');
-      const overview = items.find((i) => i.href === '/overview' && i.group === 'admin');
-      expect(overview).toBeDefined();
-      expect(overview!.scoped).toBe(false);
-    });
-
-    it('TELECALLER does NOT see the Overview command center (admin group)', () => {
+    it('TELECALLER does NOT see the Overview command center', () => {
       const items = getVisibleNav('TELECALLER');
-      const adminOverview = items.find(
-        (i) => i.href === '/overview' && i.group === 'admin',
-      );
-      expect(adminOverview).toBeUndefined();
+      expect(
+        items.find((i) => i.href === '/admin/overview' && i.group === 'admin'),
+      ).toBeUndefined();
     });
 
-    it('TELECALLER does NOT see WA Unknown (raw inbound triage is admin-only)', () => {
-      const items = getVisibleNav('TELECALLER');
-      expect(items.map((i) => i.href)).not.toContain(
-        '/whatsapp-unknown-contacts',
-      );
-    });
-
-    it('SALES_EXEC does NOT see WA Unknown (raw inbound triage is admin-only)', () => {
-      const items = getVisibleNav('SALES_EXEC');
-      expect(items.map((i) => i.href)).not.toContain(
-        '/whatsapp-unknown-contacts',
-      );
-    });
-
-    it('undefined role sees only the work group (safe default)', () => {
+    it('undefined role sees only the work group without Admin (safe default)', () => {
       const items = getVisibleNav(undefined);
-      const adminItems = items.filter((i) => i.group === 'admin');
-      expect(adminItems).toEqual([]);
+      expect(items.filter((i) => i.group === 'admin')).toEqual([]);
+      expect(items.map((i) => i.href)).not.toContain('/admin');
     });
   });
 
@@ -251,10 +159,15 @@ describe('lib/nav', () => {
       expect(isNavItemActive('/visits', '/visit')).toBe(false);
     });
 
-    it('Users (`/users`) is active on `/users` and `/users/*`', () => {
-      expect(isNavItemActive('/users', '/users')).toBe(true);
-      expect(isNavItemActive('/users', '/users/123')).toBe(true);
-      expect(isNavItemActive('/users', '/audit')).toBe(false);
+    it('Users (`/admin/users`) is active on `/admin/users` and nested paths', () => {
+      expect(isNavItemActive('/admin/users', '/admin/users')).toBe(true);
+      expect(isNavItemActive('/admin/users', '/admin/users/123')).toBe(true);
+      expect(isNavItemActive('/admin/users', '/admin/audit')).toBe(false);
+    });
+
+    it('Admin launcher (`/admin`) is exact-only so `/admin/users` does not highlight it', () => {
+      expect(isNavItemActive('/admin', '/admin')).toBe(true);
+      expect(isNavItemActive('/admin', '/admin/users')).toBe(false);
     });
   });
 });
