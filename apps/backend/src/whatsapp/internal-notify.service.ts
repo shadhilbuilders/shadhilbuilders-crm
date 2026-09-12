@@ -4,14 +4,14 @@
 // This is the "internal ops alerting" path (e.g. `internal_enquiry_notification`
 // to the ops team's WhatsApp) vs. the lead-chat outbound path (OutboundMessage
 // outbox, which is lead-keyed and drains via the 5s cron). Internal notify:
-//   - reads the recipient + template from env (`WHATSAPP_RECIPIENT_1`,
-//     `WHATSAPP_INTERNAL_TEMPLATE_NAME`)
+//   - reads the recipient + template from env (`WA_RECIPIENT`,
+//     `WA_INTERNAL_TEMPLATE_NAME`)
 //   - uses the same WhatsAppClient.sendTemplateMessage (graph.facebook.com)
 //   - delivers synchronously (for the smoke-test trigger) and records a
 //     WebhookEvent-free audit line via the logger; it does NOT write an
 //     OutboundMessage row (those are lead-bound via the FK to Message).
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { WHATSAPP_RECIPIENT_1, WHATSAPP_INTERNAL_TEMPLATE_NAME } from './internal-notify.config';
+import { WA_RECIPIENT, WA_INTERNAL_TEMPLATE_NAME } from './internal-notify.config';
 import { WhatsAppClient, WhatsAppSendError } from './whatsapp.client';
 
 export type InternalNotifyResult = {
@@ -38,13 +38,13 @@ export class InternalNotifyService {
   async send(
     parameters: Array<{ type: 'text'; text: string }> = [],
   ): Promise<InternalNotifyResult> {
-    const recipient = WHATSAPP_RECIPIENT_1;
-    const template = WHATSAPP_INTERNAL_TEMPLATE_NAME;
+    const recipient = WA_RECIPIENT;
+    const template = WA_INTERNAL_TEMPLATE_NAME;
     if (!recipient) {
-      throw new Error('WHATSAPP_RECIPIENT_1 not configured');
+      throw new Error('WA_RECIPIENT not configured');
     }
     if (!template) {
-      throw new Error('WHATSAPP_INTERNAL_TEMPLATE_NAME not configured');
+      throw new Error('WA_INTERNAL_TEMPLATE_NAME not configured');
     }
     try {
       const delivery = await this.whatsapp.sendTemplateMessage(

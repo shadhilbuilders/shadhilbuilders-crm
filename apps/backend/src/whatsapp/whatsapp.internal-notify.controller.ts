@@ -1,7 +1,7 @@
 // Internal WhatsApp notification trigger.
 //
 // POST /api/whatsapp/internal-notify - sends the `internal_enquiry_notification`
-// template to the ops/test recipient (env WHATSAPP_RECIPIENT_1). This gives
+// template to the ops/test recipient (env WA_RECIPIENT). This gives
 // the smoke-test path a real endpoint to hit (from a script, curl, or the
 // webhook test) and the delivery/status callback flows back through the
 // WhatsApp webhook.
