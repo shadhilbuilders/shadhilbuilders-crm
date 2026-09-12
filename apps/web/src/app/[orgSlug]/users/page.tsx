@@ -83,6 +83,7 @@ type UserRow = {
   email: string;
   role: Role;
   teamId: string | null;
+  projects: string[];
 };
 
 export default function UsersPage() {
@@ -514,11 +515,13 @@ function UserTable({
         enableSorting: false,
       },
       {
-        accessorKey: 'teamId',
-        header: 'Team',
+        accessorKey: 'projects',
+        header: 'Projects',
         cell: ({ row }) => (
           <span className="text-muted-foreground hidden text-sm md:table-cell">
-            {row.original.teamId ?? '-'}
+            {row.original.projects.length > 0
+              ? row.original.projects.join(', ')
+              : '-'}
           </span>
         ),
         enableSorting: false,

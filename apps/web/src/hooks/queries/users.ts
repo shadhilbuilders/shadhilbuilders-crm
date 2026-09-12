@@ -13,6 +13,8 @@ export type BackendCreatedUser = {
   name: string;
   role: Role;
   teamId: string | null;
+  /** Project names the user is a member of (via ProjectMember). */
+  projects: string[];
 };
 
 export type CreateUserInput = {
