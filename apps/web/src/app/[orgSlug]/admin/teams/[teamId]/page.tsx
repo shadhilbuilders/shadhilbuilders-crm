@@ -47,6 +47,7 @@ import {
   TeamFormBody,
   TeamTargetPicker,
 } from '@/components/teams/team-form-bodies';
+import { TeamMemberRemovalDialog } from '@/components/teams/TeamMemberRemovalDialog';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
@@ -186,6 +187,7 @@ export default function TeamRosterPage() {
         <RosterTable
           orgSlug={orgSlug}
           teamId={team.id}
+          teamName={team.name}
           members={team.members}
           managerId={team.manager?.id ?? null}
         />
@@ -340,21 +342,22 @@ function TeamHeaderActions({
  */
 function MemberCard({
   teamId,
+  teamName,
   member,
   managerId,
 }: {
   teamId: string;
+  teamName: string;
   member: TeamMemberRow;
   managerId: string | null;
 }) {
+  const isManagerRow = member.userId === managerId;
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{member.name}</span>
-          {member.userId === managerId ? (
-            <Badge variant="secondary">Manager</Badge>
-          ) : null}
+          {isManagerRow ? <Badge variant="secondary">Manager</Badge> : null}
         </div>
         <p className="text-muted-foreground text-xs">{member.email}</p>
         <p className="text-muted-foreground text-xs">{labelFor('role', member.role)}</p>
@@ -368,8 +371,48 @@ function MemberCard({
         ) : null}
         <LinkProjectButton teamId={teamId} member={member} />
         <MoveToTeamButton teamId={teamId} member={member} />
+        {/* T-TEAM-AUTHORITATIVE (2026-09-13): "Remove from this team" is a
+            distinct Team Administration action from "Move to team" - it
+            transfers the member's owned/co-owned leads on THIS team to an
+            eligible replacement, then removes the membership. The team's
+            manager row never offers this (manager succession is separate). */}
+        {!isManagerRow ? (
+          <RemoveFromTeamButton teamId={teamId} teamName={teamName} member={member} />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function RemoveFromTeamButton({
+  teamId,
+  teamName,
+  member,
+}: {
+  teamId: string;
+  teamName: string;
+  member: TeamMemberRow;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        color="danger"
+        size="sm"
+        className="h-7 shrink-0 px-2 text-xs"
+        onClick={() => setOpen(true)}
+        data-qa={`team-member-remove-${member.userId}`}
+      >
+        Remove from this team
+      </Button>
+      <TeamMemberRemovalDialog
+        target={{ teamId, teamName, userId: member.userId, userName: member.name }}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
   );
 }
 
@@ -674,11 +717,13 @@ function ProjectUnlink({
 function RosterTable({
   orgSlug,
   teamId,
+  teamName,
   members,
   managerId,
 }: {
   orgSlug: string | null;
   teamId: string;
+  teamName: string;
   members: TeamMemberRow[];
   managerId: string | null;
 }) {
@@ -689,12 +734,17 @@ function RosterTable({
         accessorKey: 'name',
         header: 'Member',
         cell: ({ row }) => (
-          <MemberCard teamId={teamId} member={row.original} managerId={managerId} />
+          <MemberCard
+            teamId={teamId}
+            teamName={teamName}
+            member={row.original}
+            managerId={managerId}
+          />
         ),
         enableSorting: true,
       },
     ],
-    [teamId, managerId],
+    [teamId, teamName, managerId],
   );
 
   return (
