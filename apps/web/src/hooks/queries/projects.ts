@@ -144,96 +144,11 @@ export function useDeleteProject() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// ProjectMember - explicit staff↔project assignment (autoplan 2026-09-09)
-// ────────────────────────────────────────────────────────────────────────────
-
-export type ProjectMemberRow = {
-  projectId: string;
-  userId: string;
-  name: string;
-  email: string;
-  role: string;
-  assignedAt: string;
-  isLeadOwner: boolean;
-};
-
-const PROJECT_MEMBERS_KEY = (projectId: string) =>
-  ['projects', 'members', projectId] as const;
-
-/** GET /api/projects/:id/members - effective staff (explicit UNION lead-owners). */
-export function useProjectMembers(projectId: string | undefined) {
-  return useQuery({
-    queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
-    enabled: projectId !== undefined && projectId.length > 0,
-    queryFn: ({ signal }) =>
-      api<ProjectMemberRow[]>(`/projects/${projectId as string}/members`, {
-        signal,
-      }),
-    staleTime: 30_000,
-  });
-}
-
-/** POST /api/projects/:id/members - link an existing user to a project. */
-export function useLinkProjectMember(projectId: string | undefined) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) =>
-      api<ProjectMemberRow>(`/projects/${projectId as string}/members`, {
-        method: 'POST',
-        json: { userId },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
-      });
-    },
-  });
-}
-
-/**
- * POST /api/projects/:id/members - link a user to a project chosen at
- * mutation time (the roster's "Link to project" dialog picks the project
- * per-open, so the projectId can't be fixed at hook creation).
- */
-export function useLinkProjectMemberToProject() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectId, userId }: { projectId: string; userId: string }) =>
-      api<ProjectMemberRow>(`/projects/${projectId}/members`, {
-        method: 'POST',
-        json: { userId },
-      }),
-    onSuccess: (_data, { projectId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: PROJECT_MEMBERS_KEY(projectId),
-      });
-    },
-  });
-}
-
-/** DELETE /api/projects/:id/members/:userId - unlink a user. */
-export function useUnlinkProjectMember(projectId: string | undefined) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) =>
-      api<{ ok: true }>(`/projects/${projectId as string}/members/${userId}`, {
-        method: 'DELETE',
-      }),
-    onSuccess: async () => {
-      // An unlink is visible from the project staff list, team roster, and
-      // user project summaries. Await active-query refetches before mutation
-      // success callbacks show confirmation to avoid a stale success state.
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: PROJECT_MEMBERS_KEY(projectId ?? ''),
-        }),
-        queryClient.invalidateQueries({ queryKey: ['teams'] }),
-        queryClient.invalidateQueries({ queryKey: ['users'] }),
-      ]);
-    },
-  });
-}
+// ProjectMember (per-user project linking) was RETIRED T-TEAM-AUTHORITATIVE
+// (2026-09-13, clean cutover) - see packages/api-types/src/projects.ts.
+// Project staffing is exclusively team-based now: see
+// hooks/queries/project-teams.ts (useProjectTeams/useLinkProjectTeam/
+// useUnlinkProjectTeam) and components/teams/project-team-list.tsx.
 
 /**
  * The DEFAULT active project: the product-locked primary project

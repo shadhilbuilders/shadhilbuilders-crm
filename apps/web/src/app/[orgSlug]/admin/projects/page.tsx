@@ -6,7 +6,9 @@
 // ADMIN/OWNER surface (mirrors users/page.tsx guard shape):
 //   - Create project      → POST /api/projects        (ADMIN/OWNER)
 //   - Edit / rename       → PATCH /api/projects/:id   (ADMIN/OWNER)
-//   - Manage staff        → ProjectMembersBody        (ADMIN/OWNER; MANAGER sees Items view-only)
+//   - Manage staff        → ProjectTeamList (T-TEAM-AUTHORITATIVE, 2026-09-13:
+//                           replaces the retired per-user ProjectMember
+//                           link/unlink - project staffing is team-based only)
 //   - Delete              → DELETE /api/projects/:id  (ADMIN/OWNER, soft)
 //
 // Server-driven (T-PROJ-SRVPG): the list is SORTED + SEARCHED + PAGINATED on
@@ -65,8 +67,8 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import {
   ProjectDeleteBody,
   ProjectFormBody,
-  ProjectMembersBody,
 } from '@/components/projects/project-form-bodies';
+import { ProjectTeamList } from '@/components/teams/project-team-list';
 import { PageHeader } from '@/components/shared/PageHeader';
 import Link from 'next/link';
 
@@ -224,18 +226,19 @@ export default function ProjectsPage() {
 
       <Dialog
         trigger={<button hidden />}
-        header={{ title: 'Manage staff' }}
+        header={{ title: 'Manage staff', description: membersTarget?.name }}
         open={membersTarget !== null}
         onOpenChange={(open) => {
           if (!open) setMembersTarget(null);
         }}
-        contentClassName="max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-md"
+        contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg"
       >
         {membersTarget !== null ? (
-          <ProjectMembersBody
-            project={membersTarget}
+          <ProjectTeamList
+            projectId={membersTarget.id}
+            projectName={membersTarget.name}
+            projectSlug={membersTarget.slug}
             canManage={canManageMembers}
-            onDone={() => setMembersTarget(null)}
           />
         ) : null}
       </Dialog>

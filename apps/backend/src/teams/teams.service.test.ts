@@ -10,8 +10,9 @@
 //      Maps to TeamListItem with rename _count.members->memberCount AND a
 //      managerName (null when unassigned).
 //   3. getTeam(): ADMIN/OWNER only (403 otherwise); not-found -> 404; returns
-//      manager + members each with their EXPLICIT project assignments UNION
-//      lead-owner projects (isLeadOwner=true => read-only); explicit wins.
+//      manager + a simple member list (userId/name/email/role) - no
+//      per-member `projects` field (ProjectMember, which that used to be
+//      derived from, was retired T-TEAM-AUTHORITATIVE 2026-09-13).
 //
 // Test strategy: stub withRlsContext to invoke the callback with a
 // fake tx that records calls and returns canned rows.
@@ -88,18 +89,17 @@ vi.mock('@shadhil/database', () => {
       findMany: vi.fn(async () => []),
     },
     user: {
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): getTeam() no
+      // longer selects projectMembers/ownedLeads/coOwnedLeads for the
+      // per-member `projects` field - that was ProjectMember-derived and
+      // ProjectMember was retired (project staffing is exclusively
+      // team-based now, via ProjectTeam - see the per-project Staff page).
       findMany: vi.fn(async () => [
         {
           id: 'u-tc',
           name: 'Tele Caller One',
           email: 'tc1@x',
           role: 'TELECALLER',
-          // Explicit member of one project + lead-owner of another.
-          projectMembers: [
-            { project: { id: 'p-1', name: 'Metro' }, role: 'TELECALLER' },
-          ],
-          ownedLeads: [{ project: { id: 'p-1', name: 'Metro' } }, { project: { id: 'p-2', name: 'Skyline' } }],
-          coOwnedLeads: [],
         },
       ]),
     },
@@ -285,7 +285,7 @@ describe('TeamsService.getTeam', () => {
     );
   });
 
-  it('returns manager + members with explicit AND lead-owner project union', async () => {
+  it('returns manager + members (no per-member projects field - retired with ProjectMember)', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.getTeam(ownerActor, 'team-construction');
     expect(result).toEqual({
@@ -298,10 +298,6 @@ describe('TeamsService.getTeam', () => {
           name: 'Tele Caller One',
           email: 'tc1@x',
           role: 'TELECALLER',
-          projects: [
-            { projectId: 'p-1', projectName: 'Metro', role: 'TELECALLER', isLeadOwner: false },
-            { projectId: 'p-2', projectName: 'Skyline', role: 'TELECALLER', isLeadOwner: true },
-          ],
         },
       ],
     });

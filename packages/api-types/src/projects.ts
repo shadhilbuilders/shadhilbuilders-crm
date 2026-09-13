@@ -98,28 +98,13 @@ export type UpdateProjectDto = z.infer<typeof UpdateProjectDtoSchema>;
 /** DELETE has no body; the id param is validated in the controller. */
 
 // ────────────────────────────────────────────────────────────────────────────
-// ProjectMember - explicit staff↔project assignment (autoplan 2026-09-09)
+// ProjectMember (per-user project linking) was RETIRED T-TEAM-AUTHORITATIVE
+// (2026-09-13, clean cutover): projects link to TEAMS only, via ProjectTeam
+// (see team-membership.ts). The design doc explicitly lists "per-user
+// project exceptions or exclusions" as Not in Scope - this schema/endpoint
+// pair (ProjectMemberRowSchema, LinkProjectMemberDtoSchema, GET/POST/DELETE
+// /api/projects/:id/members) was the residual pre-cutover feature that
+// contradicted that. No replacement DTO is needed: staffing a project is
+// exclusively "link/unlink a TEAM" now (ProjectTeamRowSchema/
+// LinkProjectTeamDtoSchema).
 // ────────────────────────────────────────────────────────────────────────────
-
-/**
- * A single staff↔project assignment. `isLeadOwner` tells the UI whether this
- * membership came from EXPLICIT assignment or was backfilled / inferred from
- * an existing lead-owner (projectSalesExecs-style union). The client can show
- * that provenance.
- */
-export const ProjectMemberRowSchema = z.object({
-  projectId: z.string(),
-  userId: z.string(),
-  name: z.string(),
-  email: z.string(),
-  role: z.string(), // RoleSchema
-  assignedAt: z.iso.datetime({ offset: true }),
-  isLeadOwner: z.boolean(),
-});
-export type ProjectMemberRow = z.infer<typeof ProjectMemberRowSchema>;
-
-/** POST /api/projects/:id/members body - link an existing user to a project. */
-export const LinkProjectMemberDtoSchema = z.object({
-  userId: z.cuid2(),
-});
-export type LinkProjectMemberDto = z.infer<typeof LinkProjectMemberDtoSchema>;

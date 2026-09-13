@@ -22,7 +22,6 @@ import type {
   ReassignTeamMembersDto,
   TeamDetail,
   TeamListItem,
-  TeamMemberProject,
   UpdateTeamDto,
 } from '@shadhil/api-types';
 
@@ -110,11 +109,15 @@ export class TeamsService {
    * ADMIN/OWNER only (a MANAGER should use the per-project staff surfaces,
    * not see every team).
    *
-   * Members = User rows whose teamId matches this team (ordered by name),
-   * each with the projects they are an EXPLICIT ProjectMember of (unlinkable
-   * via DELETE /api/projects/:id/members/:userId). `isLeadOwnerOnly` marks a
-   * member who is a lead-owner on a project WITHOUT an explicit ProjectMember
-   * row — the UI shows those as read-only "via leads" rows (Unlink disabled).
+   * Members = User rows whose teamId matches this team (ordered by name).
+   *
+   * T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): per-member `projects`
+   * (the old ProjectMember-derived list) was REMOVED - ProjectMember was
+   * retired (design doc: "per-user project exceptions" are Not in Scope).
+   * "Which projects is this member on" is now purely a function of "which
+   * projects is this member's TEAM linked to" (ProjectTeam), which is the
+   * SAME for every member of the team - see the per-project Staff page
+   * (ProjectTeamList) for that view, rather than duplicating it per-row here.
    */
   async getTeam(actor: JwtPayload, id: string): Promise<TeamDetail> {
     // T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1): ADMIN/OWNER view
@@ -162,23 +165,6 @@ export class TeamsService {
             name: true,
             email: true,
             role: true,
-            // EXPLICIT ProjectMember rows for this user (unlinkable).
-            projectMembers: {
-              select: {
-                project: { select: { id: true, name: true } },
-                role: true,
-              },
-            },
-            // Distinct projects this user is a lead-owner/co-owner of (the
-            // additive/provenance half - these are NOT unlinkable).
-            ownedLeads: {
-              where: { projectId: { not: null } },
-              select: { project: { select: { id: true, name: true } } },
-            },
-            coOwnedLeads: {
-              where: { projectId: { not: null } },
-              select: { project: { select: { id: true, name: true } } },
-            },
           },
         });
 
@@ -192,40 +178,12 @@ export class TeamsService {
                 email: team.manager.email,
               }
             : null,
-          members: members.map((m) => {
-            // EXPLICIT ProjectMember rows (unlinkable).
-            const byProject = new Map<string, TeamMemberProject>();
-            for (const pm of m.projectMembers) {
-              if (byProject.has(pm.project.id)) continue;
-              byProject.set(pm.project.id, {
-                projectId: pm.project.id,
-                projectName: pm.project.name,
-                role: m.role,
-                isLeadOwner: false,
-              });
-            }
-            // UNION with lead-owner/co-owner projects (read-only unless the
-            // member is ALSO an explicit ProjectMember, whose row wins).
-            for (const lead of [...m.ownedLeads, ...m.coOwnedLeads]) {
-              const proj = lead.project;
-              if (!proj || byProject.has(proj.id)) continue;
-              byProject.set(proj.id, {
-                projectId: proj.id,
-                projectName: proj.name,
-                role: m.role,
-                isLeadOwner: true,
-              });
-            }
-            return {
-              userId: m.id,
-              name: m.name,
-              email: m.email,
-              role: m.role,
-              projects: Array.from(byProject.values()).sort((a, b) =>
-                a.projectName.localeCompare(b.projectName),
-              ),
-            };
-          }),
+          members: members.map((m) => ({
+            userId: m.id,
+            name: m.name,
+            email: m.email,
+            role: m.role,
+          })),
         };
       },
     );
