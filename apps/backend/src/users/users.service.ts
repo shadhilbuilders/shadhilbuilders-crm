@@ -52,6 +52,34 @@ export class UsersService {
     return this.prismaService.$client;
   }
 
+  /**
+   * T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolves the single
+   * "display team" for a user's `CreatedUser.teamId`/`UserDetail.teamId`
+   * response field, now that `User.teamId` is gone. A MANAGER's team is
+   * the one they lead (Team.managerId); everyone else's is their first
+   * (oldest-assigned) ordinary TeamMember row, or null if they have none.
+   * This preserves the pre-cutover single-team-per-user CONTRACT for
+   * these legacy response shapes even though the underlying model now
+   * supports multiple TeamMember rows per user.
+   */
+  private async resolveDisplayTeamId(
+    userId: string,
+    role: string,
+  ): Promise<string | null> {
+    if (role === 'MANAGER') {
+      const led = await this.client.team.findFirst({
+        where: { managerId: userId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      });
+      return led?.id ?? null;
+    }
+    const membership = await this.client.teamMember.findFirst({
+      where: { userId },
+      orderBy: { assignedAt: 'asc' },
+    });
+    return membership?.teamId ?? null;
+  }
+
   async create(actor: JwtPayload, dto: CreateUserDto): Promise<CreatedUser> {
     const actorRole = actor.role;
     const actorIsManager = actorRole === 'MANAGER';
@@ -109,14 +137,20 @@ export class UsersService {
       }
     }
 
-    // 4. Create user + credential + (team for new managers) + audit row.
-    //    All pre-audit writes on the bare client; audit inside RLS context.
+    // 4. Create user + credential + (team for new managers) + TeamMember
+    //    row + audit row. All pre-audit writes on the bare client; audit
+    //    inside RLS context.
+    //
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): User.teamId is gone
+    // - TeamMember is the sole membership record now. A TELECALLER/
+    // SALES_EXEC (or a MANAGER's own ordinary membership, if ever given
+    // one through this path) gets a TeamMember row for `teamId` instead of
+    // a scalar column write.
     const created = await this.client.user.create({
       data: {
         email: dto.email,
         name: dto.name,
         role: dto.role,
-        teamId: teamId,
         emailVerified: false,
         organizationId: actor.organizationId,
       },
@@ -126,7 +160,8 @@ export class UsersService {
       await upsertCredentialAccount(this.client, created.id, dto.password);
 
       // Auto-create the team for a new manager (org-owner creating
-      // MANAGER without an explicit teamId).
+      // MANAGER without an explicit teamId). A manager's OWN leadership is
+      // Team.managerId, not a TeamMember row - no membership row needed.
       if (dto.role === 'MANAGER' && actorIsOrgOwner && !dto.teamId) {
         const team = await this.client.team.create({
           data: {
@@ -135,11 +170,18 @@ export class UsersService {
             organizationId: actor.organizationId,
           },
         });
-        await this.client.user.update({
-          where: { id: created.id },
-          data: { teamId: team.id },
-        });
         teamId = team.id;
+      } else if (teamId !== null) {
+        // TELECALLER/SALES_EXEC (or a manager given an explicit team they
+        // don't lead) get an ordinary TeamMember row.
+        await this.client.teamMember.create({
+          data: {
+            userId: created.id,
+            teamId,
+            organizationId: actor.organizationId,
+            assignedById: actor.sub,
+          },
+        });
       }
 
       // Audit row - the only write inside an RLS transaction.
@@ -219,24 +261,27 @@ export class UsersService {
     }
 
     // 5. Promotion to MANAGER: ensure a team exists (consistent with the
-    //    create flow - managers always lead exactly one team).
-    let teamId: string | null = target.teamId;
+    //    create flow - managers always lead exactly one team). A role
+    //    change does NOT touch the target's ordinary TeamMember row(s) -
+    //    that's a separate concern from role/leadership, and the demotion
+    //    guard above already blocks demoting a manager who still leads a
+    //    team, so there's nothing to clean up on the way down either.
     if (dto.role === 'MANAGER' && target.role !== 'MANAGER') {
       const existing = await this.client.team.findFirst({
         where: { managerId: target.id },
       });
       if (!existing) {
-        const team = await this.client.team.create({
+        await this.client.team.create({
           data: { name: `${target.name}'s Team`, managerId: target.id, organizationId: actor.organizationId },
         });
-        teamId = team.id;
       }
     }
 
     const updated = await this.client.user.update({
       where: { id: target.id },
-      data: { role: dto.role, teamId },
+      data: { role: dto.role },
     });
+    const teamId = await this.resolveDisplayTeamId(updated.id, updated.role);
 
     // 6. Audit row in the actor's RLS context (OWNER downcasts to
     //    ADMIN there - rls.ts).
@@ -264,7 +309,7 @@ export class UsersService {
       email: updated.email,
       name: updated.name,
       role: updated.role,
-      teamId: updated.teamId,
+      teamId,
     };
   }
 
@@ -335,7 +380,7 @@ export class UsersService {
       email: updated.email,
       name: updated.name,
       role: updated.role,
-      teamId: updated.teamId,
+      teamId: await this.resolveDisplayTeamId(updated.id, updated.role),
     };
   }
 
@@ -414,28 +459,37 @@ export class UsersService {
         email: true,
         name: true,
         role: true,
-        teamId: true,
-        team: {
-          select: {
-            id: true,
-            name: true,
-            manager: { select: { id: true, name: true, email: true } },
-            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "which
-            // projects" is now "which projects is this user's TEAM linked
-            // to" (ProjectTeam) - ProjectMember (per-user linking) was
-            // retired. Read-only here (linking happens on the project's
-            // Staff page, at the team level, not per-user).
-            projectTeams: {
-              select: { project: { select: { id: true, name: true } } },
-              orderBy: { project: { name: 'asc' } },
-            },
-          },
-        },
       },
     });
     if (target === null) {
       throw new NotFoundException(`User ${targetUserId} not found`);
     }
+
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): User.teamId/the
+    // legacy singular `team` relation are gone - resolve the target's
+    // display team via the same rule as create()/changeRole()
+    // (resolveDisplayTeamId), then fetch that team's manager + linked
+    // projects (ProjectTeam) separately.
+    const teamId = await this.resolveDisplayTeamId(target.id, target.role);
+    const team =
+      teamId !== null
+        ? await this.client.team.findUnique({
+            where: { id: teamId },
+            select: {
+              id: true,
+              name: true,
+              manager: { select: { id: true, name: true, email: true } },
+              // "Which projects" is "which projects is this user's TEAM
+              // linked to" (ProjectTeam) - ProjectMember (per-user
+              // linking) was retired. Read-only here (linking happens on
+              // the project's Staff page, at the team level).
+              projectTeams: {
+                select: { project: { select: { id: true, name: true } } },
+                orderBy: { project: { name: 'asc' } },
+              },
+            },
+          })
+        : null;
 
     // Scope check - mirrors list()'s role lanes.
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
@@ -447,8 +501,7 @@ export class UsersService {
         where: { managerId: actor.sub, deletedAt: null },
         select: { id: true },
       });
-      const inOwnTeam =
-        target.teamId !== null && teams.some((t) => t.id === target.teamId);
+      const inOwnTeam = teamId !== null && teams.some((t) => t.id === teamId);
       if (!inOwnTeam && target.id !== actor.sub) {
         throw new ForbiddenException("You can only view your own team's users");
       }
@@ -465,17 +518,17 @@ export class UsersService {
       email: target.email,
       name: target.name,
       role: target.role,
-      teamId: target.teamId,
-      teamName: target.team?.name ?? null,
+      teamId,
+      teamName: team?.name ?? null,
       manager:
-        reportsToManager && target.team?.manager
+        reportsToManager && team?.manager
           ? {
-              id: target.team.manager.id,
-              name: target.team.manager.name,
-              email: target.team.manager.email,
+              id: team.manager.id,
+              name: team.manager.name,
+              email: team.manager.email,
             }
           : null,
-      projects: (target.team?.projectTeams ?? []).map((pt) => ({
+      projects: (team?.projectTeams ?? []).map((pt) => ({
         id: pt.project.id,
         name: pt.project.name,
       })),
@@ -485,8 +538,9 @@ export class UsersService {
   /**
    * PATCH /api/users/:id/manager - assign/reassign the manager for a
    * TELECALLER/SALES_EXEC (autoplan 2026-09-13). "Manager" is a
-   * reporting-line concept derived from `Team.managerId`, so this sets
-   * `User.teamId` to the chosen team. Scope:
+   * reporting-line concept derived from `Team.managerId`, so this replaces
+   * the target's ordinary TeamMember row(s) with one for the chosen team.
+   * Scope:
    *   - OWNER/ADMIN: assign to any existing (led) team.
    *   - MANAGER: only into their OWN team - they can't poach staff into
    *     another manager's team. In practice `getUser`'s scope check
@@ -546,10 +600,21 @@ export class UsersService {
       );
     }
 
-    const updated = await this.client.user.update({
-      where: { id: target.id },
-      data: { teamId: dto.teamId },
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "assign into this
+    // team" now means "replace their ordinary TeamMember row(s) with one
+    // for the chosen team" - this endpoint models a single-team move for
+    // TELECALLER/SALES_EXEC, mirroring reassignMembers()'s move semantics.
+    const beforeTeamId = await this.resolveDisplayTeamId(target.id, target.role);
+    await this.client.teamMember.deleteMany({ where: { userId: target.id } });
+    await this.client.teamMember.create({
+      data: {
+        userId: target.id,
+        teamId: dto.teamId,
+        organizationId: actor.organizationId,
+        assignedById: actor.sub,
+      },
     });
+    const updated = target;
 
     // 5. Audit row in the actor's RLS context.
     await withRlsContext(
@@ -563,7 +628,7 @@ export class UsersService {
             organizationId: actor.organizationId,
             entityType: 'User',
             entityId: target.id,
-            before: { teamId: target.teamId },
+            before: { teamId: beforeTeamId },
             after: { teamId: dto.teamId },
             reason: `manager reassigned by ${actor.email} (${actor.role})`,
           },
@@ -576,7 +641,7 @@ export class UsersService {
       email: updated.email,
       name: updated.name,
       role: updated.role,
-      teamId: updated.teamId,
+      teamId: dto.teamId,
     };
   }
 
@@ -690,11 +755,12 @@ export class UsersService {
   }
 
   async list(actor: JwtPayload, filter: UserFilterDto = { limit: 50, offset: 0 }): Promise<UserListResult> {
-    // T-TEAM-AUTHORITATIVE (2026-09-13): team scoping resolves EVERY team
-    // via TEAM.managerId (a manager may lead multiple teams), same as
-    // create() - the JWT teamId claim is unreliable for managers (seed
-    // keeps it null). OWNER and ADMIN see all. All scopes exclude
-    // soft-deleted users.
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): team scoping
+    // resolves EVERY team via Team.managerId (a manager may lead multiple
+    // teams) UNION the manager's own TeamMember rows, matching
+    // TeamAccessService.getAccessibleTeamIds. OWNER and ADMIN see all. All
+    // scopes exclude soft-deleted users. Membership is checked via the
+    // TeamMember relation now - User.teamId is gone.
     let where: Record<string, unknown>;
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       where = { deletedAt: null };
@@ -705,7 +771,10 @@ export class UsersService {
       const teamIds = teams.map((t) => t.id);
       where = {
         deletedAt: null,
-        teamId: teamIds.length > 0 ? { in: teamIds } : '__none__',
+        teamMemberships:
+          teamIds.length > 0
+            ? { some: { teamId: { in: teamIds } } }
+            : { some: { teamId: '__none__' } },
       };
     } else {
       where = { deletedAt: null, id: actor.sub };
@@ -744,19 +813,14 @@ export class UsersService {
           email: true,
           name: true,
           role: true,
-          teamId: true,
-          // Project names for the admin Users table (autoplan 2026-09-12).
-          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a user's
-          // projects are now "whichever projects this user's TEAM is
-          // linked to" (ProjectTeam) - ProjectMember (per-user linking)
-          // was retired.
-          team: {
-            select: {
-              projectTeams: {
-                select: { project: { select: { name: true } } },
-                orderBy: { project: { name: 'asc' } },
-              },
-            },
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+          // TeamMember row is this row's "display team" for non-managers
+          // (resolveDisplayTeamId's rule) - a MANAGER's team is resolved
+          // separately below via Team.managerId.
+          teamMemberships: {
+            select: { teamId: true },
+            orderBy: { assignedAt: 'asc' },
+            take: 1,
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -765,14 +829,59 @@ export class UsersService {
       }),
       this.client.user.count({ where }),
     ]);
+
+    // Resolve MANAGER rows' teams via Team.managerId (batched: fetch every
+    // team led by any manager on this page, pick the oldest per manager -
+    // matches resolveDisplayTeamId's single-row rule).
+    const managerIds = rows.filter((r) => r.role === 'MANAGER').map((r) => r.id);
+    const ledTeams =
+      managerIds.length > 0
+        ? await this.client.team.findMany({
+            where: { managerId: { in: managerIds }, deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, managerId: true },
+          })
+        : [];
+    const ledTeamByManagerId = new Map<string, string>();
+    for (const t of ledTeams) {
+      if (t.managerId !== null && !ledTeamByManagerId.has(t.managerId)) {
+        ledTeamByManagerId.set(t.managerId, t.id);
+      }
+    }
+
+    const resolvedTeamIds = rows.map(
+      (r) => (r.role === 'MANAGER' ? ledTeamByManagerId.get(r.id) : r.teamMemberships[0]?.teamId) ?? null,
+    );
+
+    // Project names for the admin Users table (autoplan 2026-09-12).
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a user's projects
+    // are "whichever projects this user's resolved TEAM is linked to"
+    // (ProjectTeam) - ProjectMember (per-user linking) was retired.
+    // Batched: fetch ProjectTeam rows for every resolved team id at once.
+    const uniqueTeamIds = Array.from(new Set(resolvedTeamIds.filter((id): id is string => id !== null)));
+    const projectTeams =
+      uniqueTeamIds.length > 0
+        ? await this.client.projectTeam.findMany({
+            where: { teamId: { in: uniqueTeamIds } },
+            select: { teamId: true, project: { select: { name: true } } },
+            orderBy: { project: { name: 'asc' } },
+          })
+        : [];
+    const projectNamesByTeamId = new Map<string, string[]>();
+    for (const pt of projectTeams) {
+      const list = projectNamesByTeamId.get(pt.teamId) ?? [];
+      list.push(pt.project.name);
+      projectNamesByTeamId.set(pt.teamId, list);
+    }
+
     return {
-      rows: rows.map((r) => ({
+      rows: rows.map((r, i) => ({
         id: r.id,
         email: r.email,
         name: r.name,
         role: r.role,
-        teamId: r.teamId,
-        projects: (r.team?.projectTeams ?? []).map((pt) => pt.project.name),
+        teamId: resolvedTeamIds[i] ?? null,
+        projects: projectNamesByTeamId.get(resolvedTeamIds[i] ?? '') ?? [],
       })),
       total,
     };
@@ -832,11 +941,24 @@ export class UsersService {
         email: true,
         name: true,
         role: true,
-        teamId: true,
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+        // TeamMember row (SALES_EXEC is never a manager, so no
+        // Team.managerId branch needed - see resolveDisplayTeamId).
+        teamMemberships: {
+          select: { teamId: true },
+          orderBy: { assignedAt: 'asc' },
+          take: 1,
+        },
       },
       orderBy: { name: 'asc' },
     });
-    return execs;
+    return execs.map((e) => ({
+      id: e.id,
+      email: e.email,
+      name: e.name,
+      role: e.role,
+      teamId: e.teamMemberships[0]?.teamId ?? null,
+    }));
   }
 
   /**
@@ -854,23 +976,31 @@ export class UsersService {
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       where = {};
     } else {
-      // T-TEAM-AUTHORITATIVE (2026-09-13): resolve EVERY team the actor
-      // is associated with. Managers link via Team.managerId (a manager
-      // may lead multiple teams; the JWT teamId is unreliable for them);
-      // staff carry a single teamId on the JWT.
-      let teamIds: string[] = actor.teamId !== null && actor.teamId !== undefined ? [actor.teamId] : [];
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolve EVERY
+      // team the actor is associated with. Managers link via
+      // Team.managerId (a manager may lead multiple teams); ordinary
+      // staff link via their own TeamMember rows (User.teamId/the JWT
+      // teamId claim are gone - a staff member can now be on multiple
+      // teams too, so this resolves ALL of them, not just one).
+      let teamIds: string[];
       if (actor.role === 'MANAGER') {
         const teams = await this.client.team.findMany({
           where: { managerId: actor.sub, deletedAt: null },
         });
         teamIds = teams.map((t) => t.id);
+      } else {
+        const memberships = await this.client.teamMember.findMany({
+          where: { userId: actor.sub },
+          select: { teamId: true },
+        });
+        teamIds = memberships.map((m) => m.teamId);
       }
       if (teamIds.length === 0) {
         // No team - the actor can only mention themselves.
         return [];
       }
       // Team members + each team's manager (so staff can loop their
-      // manager even though the manager isn't a teamId member).
+      // manager even though the manager isn't a TeamMember row).
       const teams = await this.client.team.findMany({
         where: { id: { in: teamIds } },
         select: { managerId: true },
@@ -879,7 +1009,10 @@ export class UsersService {
         new Set(teams.map((t) => t.managerId).filter((id): id is string => id !== null)),
       );
       where = {
-        OR: [{ teamId: { in: teamIds } }, { id: { in: managerIds.length > 0 ? managerIds : ['__none__'] } }],
+        OR: [
+          { teamMemberships: { some: { teamId: { in: teamIds } } } },
+          { id: { in: managerIds.length > 0 ? managerIds : ['__none__'] } },
+        ],
       };
     }
 
@@ -890,11 +1023,39 @@ export class UsersService {
         email: true,
         name: true,
         role: true,
-        teamId: true,
+        teamMemberships: {
+          select: { teamId: true },
+          orderBy: { assignedAt: 'asc' },
+          take: 1,
+        },
       },
       orderBy: { name: 'asc' },
       take: 200,
     });
-    return users;
+    // Managers resolve their display teamId via Team.managerId (see
+    // resolveDisplayTeamId); everyone else uses their oldest TeamMember row.
+    const managerRows = users.filter((u) => u.role === 'MANAGER');
+    const ledTeams =
+      managerRows.length > 0
+        ? await this.client.team.findMany({
+            where: { managerId: { in: managerRows.map((u) => u.id) }, deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, managerId: true },
+          })
+        : [];
+    const ledTeamByManagerId = new Map<string, string>();
+    for (const t of ledTeams) {
+      if (t.managerId !== null && !ledTeamByManagerId.has(t.managerId)) {
+        ledTeamByManagerId.set(t.managerId, t.id);
+      }
+    }
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      teamId:
+        (u.role === 'MANAGER' ? ledTeamByManagerId.get(u.id) : u.teamMemberships[0]?.teamId) ?? null,
+    }));
   }
 }

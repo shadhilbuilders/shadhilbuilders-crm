@@ -33,7 +33,7 @@ vi.mock('@shadhil/database', () => {
       defaultAssigneeId: 'tc-1',
       managerId: 'mgr-1',
       manager: { name: 'Maya Rao' },
-      _count: { members: 4 },
+      _count: { teamMembers: 4 },
     },
     {
       id: 'team-real-estate',
@@ -41,7 +41,7 @@ vi.mock('@shadhil/database', () => {
       defaultAssigneeId: 'se-1',
       managerId: null,
       manager: null,
-      _count: { members: 2 },
+      _count: { teamMembers: 2 },
     },
   ];
   const tx = {
@@ -81,27 +81,41 @@ vi.mock('@shadhil/database', () => {
         };
       }),
     },
-    // T-TEAM-AUTHORITATIVE (2026-09-13): ordinary-membership source for
-    // TeamAccessService.getOrdinaryMemberTeamIds() - no fixtures in this
-    // suite hold a TeamMember row, so [] everywhere (the legacy
-    // User.teamId/members-relation fallback covers TELECALLER here).
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): dispatches on the
+    // select shape - TeamAccessService.getOrdinaryMemberTeamIds() asks for
+    // `select: { teamId: true }` (no fixtures in this suite hold a
+    // TeamMember row, so [] there); getTeam() asks for
+    // `select: { user: {...} } }` and gets the roster's ordinary members.
     teamMember: {
-      findMany: vi.fn(async () => []),
+      findMany: vi.fn(async (args: { select?: { user?: unknown }; where?: { userId?: string } } = {}) => {
+        if (args.select?.user !== undefined) {
+          return [
+            {
+              user: {
+                id: 'u-tc',
+                name: 'Tele Caller One',
+                email: 'tc1@x',
+                role: 'TELECALLER',
+              },
+            },
+          ];
+        }
+        // TeamAccessService.getOrdinaryMemberTeamIds(userId) shape
+        // (select: { teamId: true }) - the telecaller fixture is an
+        // ordinary member of team-construction via this row.
+        if (args.where?.userId === 'tc-1') {
+          return [{ teamId: 'team-construction' }];
+        }
+        return [];
+      }),
     },
     user: {
-      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): getTeam() no
-      // longer selects projectMembers/ownedLeads/coOwnedLeads for the
-      // per-member `projects` field - that was ProjectMember-derived and
-      // ProjectMember was retired (project staffing is exclusively
-      // team-based now, via ProjectTeam - see the per-project Staff page).
-      findMany: vi.fn(async () => [
-        {
-          id: 'u-tc',
-          name: 'Tele Caller One',
-          email: 'tc1@x',
-          role: 'TELECALLER',
-        },
-      ]),
+      findUnique: vi.fn(async (args: { where: { id: string } }) => {
+        if (args.where.id === 'mgr-1') {
+          return { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x', role: 'MANAGER' };
+        }
+        return null;
+      }),
     },
   };
   return {
@@ -202,7 +216,7 @@ describe('TeamsService.list', () => {
       defaultAssigneeId: true,
       managerId: true,
       manager: { select: { name: true } },
-      _count: { select: { members: true } },
+      _count: { select: { teamMembers: true } },
     });
     expect(args.orderBy).toEqual({ name: 'asc' });
   });

@@ -332,20 +332,30 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
   // lookup that collects each team's manager. Dispatch on the where
   // shape rather than call order (a TELECALLER only ever makes the
   // second call, never the first).
-  function makeTeamService(managedTeams: Array<{ id: string }> = [], teamsById: Array<{ managerId: string | null }> = [{ managerId: 'mgr-1' }]) {
+  function makeTeamService(
+    managedTeams: Array<{ id: string }> = [],
+    teamsById: Array<{ managerId: string | null }> = [{ managerId: 'mgr-1' }],
+    ownTeamMemberships: Array<{ teamId: string }> = [],
+  ) {
     const teamFindMany = vi.fn(
-      async (args: { where: { managerId?: string; id?: { in: string[] } } }) =>
-        'managerId' in args.where ? managedTeams : teamsById,
+      async (args: { where: { managerId?: string; id?: { in: string[] }; deletedAt?: null } }) => {
+        if ('managerId' in args.where) return managedTeams;
+        return teamsById;
+      },
     );
     const userFindMany = vi.fn();
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): non-manager actors
+    // resolve their own teams via TeamMember, not the JWT teamId claim.
+    const teamMemberFindMany = vi.fn().mockResolvedValue(ownTeamMemberships);
     const fakeClient = {
       team: { findMany: teamFindMany },
       user: { findMany: userFindMany },
+      teamMember: { findMany: teamMemberFindMany },
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindMany, userFindMany },
+      mocks: { teamFindMany, userFindMany, teamMemberFindMany },
     };
   }
 
@@ -367,7 +377,12 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: { in: ['team-mgr'] } }, { id: { in: ['mgr-1'] } }] },
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-mgr'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
       }),
     );
   });
@@ -381,26 +396,37 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     await service.teamMembers(managerActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: { in: ['team-a', 'team-b'] } }, { id: { in: ['mgr-1'] } }] },
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-a', 'team-b'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
       }),
     );
   });
 
   it('TELECALLER sees their team + the team manager (so they can loop the manager)', async () => {
-    const { service, mocks } = makeTeamService([], [{ managerId: 'mgr-1' }]);
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via the
+    // telecaller's OWN TeamMember rows, not the JWT teamId claim.
+    const { service, mocks } = makeTeamService([], [{ managerId: 'mgr-1' }], [{ teamId: 'team-tc' }]);
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(telecallerActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: { in: ['team-tc'] } }, { id: { in: ['mgr-1'] } }] },
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-tc'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
       }),
     );
   });
 
   it('returns [] when the actor has no team', async () => {
-    const { service, mocks } = makeTeamService();
-    const noTeamActor: Actor = { ...telecallerActor, teamId: null };
-    const result = await service.teamMembers(noTeamActor);
+    const { service, mocks } = makeTeamService([], [], []);
+    const result = await service.teamMembers(telecallerActor);
     expect(result).toEqual([]);
     expect(mocks.userFindMany).not.toHaveBeenCalled();
   });
@@ -414,14 +440,18 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     const teamFindMany = vi.fn().mockResolvedValue([]);
     const userFindMany = vi.fn();
     const userCount = vi.fn();
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): projects come from
+    // the resolved team's ProjectTeam rows now (ProjectMember retired).
+    const projectTeamFindMany = vi.fn().mockResolvedValue([]);
     const fakeClient = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
+      projectTeam: { findMany: projectTeamFindMany },
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, teamFindMany, userFindMany, userCount },
+      mocks: { teamFindFirst, teamFindMany, userFindMany, userCount, projectTeamFindMany },
     };
   }
 
@@ -474,7 +504,11 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     await service.list(managerActor, { role: 'TELECALLER', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, teamId: { in: ['team-mgr'] }, role: { in: ['TELECALLER'] } },
+        where: {
+          deletedAt: null,
+          teamMemberships: { some: { teamId: { in: ['team-mgr'] } } },
+          role: { in: ['TELECALLER'] },
+        },
       }),
     );
   });
@@ -541,11 +575,13 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
         email: 'a@x',
         name: 'A',
         role: 'ADMIN',
-        teamId: null,
-        team: { projectTeams: [{ project: { name: 'Shadhil Metro Heights' } }] },
+        teamMemberships: [{ teamId: 'team-x' }],
       },
     ]);
     mocks.userCount.mockResolvedValue(1);
+    mocks.projectTeamFindMany.mockResolvedValue([
+      { teamId: 'team-x', project: { name: 'Shadhil Metro Heights' } },
+    ]);
     const result = await service.list(adminActor, { limit: 50, offset: 0 });
     expect(result).toEqual({
       rows: [
@@ -554,7 +590,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
           email: 'a@x',
           name: 'A',
           role: 'ADMIN',
-          teamId: null,
+          teamId: 'team-x',
           projects: ['Shadhil Metro Heights'],
         },
       ],
@@ -603,6 +639,10 @@ function makeManageService(opts: ManageStubOptions = {}) {
   const userDelete = vi.fn().mockResolvedValue({});
   const accountDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
   const auditCreate = vi.fn().mockResolvedValue({});
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): update()'s return
+  // value resolves `teamId` via resolveDisplayTeamId - a non-manager
+  // target (SALES_EXEC fixture default) reads its oldest TeamMember row.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue({ teamId: 't-1' });
   const txMock = {
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
@@ -614,6 +654,7 @@ function makeManageService(opts: ManageStubOptions = {}) {
       delete: userDelete,
     },
     account: { deleteMany: accountDeleteMany },
+    teamMember: { findFirst: teamMemberFindFirst },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
       cb(txMock),
   } as never;

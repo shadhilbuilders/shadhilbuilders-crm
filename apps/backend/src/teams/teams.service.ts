@@ -50,10 +50,10 @@ export class TeamsService {
    * List the teams the actor can see. T-TEAM-AUTHORITATIVE (2026-09-13,
    * design doc UI1): OWNER/ADMIN see every org team; MANAGER sees every
    * team they MANAGE (Team.managerId) UNION every team they're an
-   * ordinary member of (TeamMember/legacy User.teamId, via
-   * TeamAccessService); other staff see only their ordinary-member
-   * team(s). This is what powers BOTH the Admin -> Teams list and the
-   * Work -> My Teams list - same endpoint, role-scoped result.
+   * ordinary member of (TeamMember, via TeamAccessService); other staff
+   * see only their ordinary-member team(s). This is what powers BOTH the
+   * Admin -> Teams list and the Work -> My Teams list - same endpoint,
+   * role-scoped result.
    */
   async list(actor: JwtPayload): Promise<TeamListItem[]> {
     return withRlsContext(
@@ -65,16 +65,13 @@ export class TeamsService {
         if (isOverseer) {
           where = { deletedAt: null };
         } else {
-          const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMember is
+          // the sole membership source now (User.teamId/actor.teamId are
+          // gone) - getAccessibleTeamIds (managed teams UNION TeamMember
+          // rows) is authoritative, no legacy fallback needed.
+          const teamIds = await this.teamAccess.getAccessibleTeamIds(
             tx as never,
             { sub: actor.sub, role: actor.role },
-          );
-          // Legacy fallback (mirrors leads.service.ts's managesLeadTeam
-          // pattern): a staff member's own User.teamId membership, for
-          // accounts not yet reflected in TeamAccessService's sources.
-          const legacyTeamId = actor.teamId ?? undefined;
-          const teamIds = Array.from(
-            new Set([...accessibleTeamIds, ...(legacyTeamId ? [legacyTeamId] : [])]),
           );
           where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
         }
@@ -86,7 +83,7 @@ export class TeamsService {
             defaultAssigneeId: true,
             managerId: true,
             manager: { select: { name: true } },
-            _count: { select: { members: true } },
+            _count: { select: { teamMembers: true } },
           },
           orderBy: { name: 'asc' },
         });
@@ -95,7 +92,7 @@ export class TeamsService {
             id: r.id,
             name: r.name,
             defaultAssigneeId: r.defaultAssigneeId,
-            memberCount: r._count.members,
+            memberCount: r._count.teamMembers,
             managerId: r.managerId,
             managerName: r.manager?.name ?? null,
           }),
@@ -149,24 +146,28 @@ export class TeamsService {
             tx as never,
             { sub: actor.sub, role: actor.role },
           );
-          const canView = accessibleTeamIds.includes(id) || actor.teamId === id;
-          if (!canView) {
+          if (!accessibleTeamIds.includes(id)) {
             throw new ForbiddenException(
               "You can only view a team you manage or belong to.",
             );
           }
         }
 
-        const members = await tx.user.findMany({
-          where: { teamId: id, deletedAt: null },
-          orderBy: { name: 'asc' },
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): membership is
+        // TeamMember rows (Team.managerId, exposed separately as
+        // `manager` below, is a distinct leadership axis - a manager
+        // doesn't necessarily have their own TeamMember row for a team
+        // they lead, matching pre-cutover behavior where the manager
+        // likewise wasn't guaranteed to appear via User.teamId).
+        const teamMembers = await tx.teamMember.findMany({
+          where: { teamId: id, user: { deletedAt: null } },
           select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
+            user: { select: { id: true, name: true, email: true, role: true } },
           },
         });
+        const members = teamMembers
+          .map((tm) => tm.user)
+          .sort((a, b) => a.name.localeCompare(b.name));
 
         return {
           id: team.id,
@@ -287,7 +288,7 @@ export class TeamsService {
                 select: { name: true },
               })
             : Promise.resolve(null),
-          tx.user.count({ where: { teamId: id, deletedAt: null } }),
+          tx.teamMember.count({ where: { teamId: id, user: { deletedAt: null } } }),
         ]);
         return this.toListItem(updated, manager?.name ?? null, memberCount);
       },
@@ -296,14 +297,11 @@ export class TeamsService {
 
   /**
    * DELETE /api/teams/:id - soft delete (T-TEAM-CRUD). ADMIN/OWNER only.
-   * Refuses (409) when the team still has members (User.teamId = id) OR
-   * an active manager (Team.managerId != null) - either would otherwise be
-   * silently orphaned (members via User.teamId onDelete:SetNull; the
-   * manager because every "resolve my team" lookup in users.service.ts
-   * goes through `team.findFirst({ managerId })`, not the manager's own
-   * teamId). The admin must reassign members (bulk or one at a time via
-   * `reassignMembers`) and clear/reassign the manager (via `update`)
-   * before delete succeeds.
+   * Refuses (409) when the team still has members (TeamMember rows) OR an
+   * active manager (Team.managerId != null) - either would otherwise be
+   * silently orphaned. The admin must reassign members (bulk or one at a
+   * time via `reassignMembers`) and clear/reassign the manager (via
+   * `update`) before delete succeeds.
    */
   async remove(actor: JwtPayload, id: string): Promise<{ id: string }> {
     if (!isAdminClass(actor.role)) {
@@ -317,8 +315,8 @@ export class TeamsService {
         if (existing === null || existing.deletedAt !== null) {
           throw new NotFoundException(`Team ${id} not found.`);
         }
-        const memberCount = await tx.user.count({
-          where: { teamId: id, deletedAt: null },
+        const memberCount = await tx.teamMember.count({
+          where: { teamId: id, user: { deletedAt: null } },
         });
         if (memberCount > 0) {
           throw new ConflictException(
@@ -389,19 +387,32 @@ export class TeamsService {
         if (targetTeam === null || targetTeam.deletedAt !== null) {
           throw new NotFoundException(`Team ${dto.targetTeamId} not found.`);
         }
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): moves TeamMember
+        // rows, not User.teamId. This legacy endpoint models a single-team
+        // "move" for staff whose only membership is this source team - each
+        // matching TeamMember row is deleted from the source team and
+        // recreated on the target (rather than added alongside, which
+        // would silently turn a "move" into an unrequested "add").
         const memberWhere =
           dto.userIds !== undefined
-            ? { id: { in: dto.userIds }, teamId: id }
+            ? { userId: { in: dto.userIds }, teamId: id }
             : { teamId: id };
-        const count = await tx.user.count({ where: memberWhere });
-        if (count === 0) {
+        const members = await tx.teamMember.findMany({ where: memberWhere });
+        if (members.length === 0) {
           throw new BadRequestException(
             'No matching members found on this team to reassign.',
           );
         }
-        await tx.user.updateMany({
-          where: memberWhere,
-          data: { teamId: dto.targetTeamId },
+        const count = members.length;
+        await tx.teamMember.deleteMany({ where: memberWhere });
+        await tx.teamMember.createMany({
+          data: members.map((m) => ({
+            userId: m.userId,
+            teamId: dto.targetTeamId,
+            organizationId: m.organizationId,
+            assignedById: actor.sub,
+          })),
+          skipDuplicates: true,
         });
         await tx.auditLog.create({
           data: {

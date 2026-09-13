@@ -65,28 +65,41 @@ function makeService(opts: {
   team?: { id: string; name: string; managerId: string | null } | null;
 }) {
   const userFindUnique = vi.fn().mockResolvedValue(opts.user);
-  const userUpdate = vi.fn().mockImplementation(
-    async ({ where, data }: { where: { id: string }; data: { teamId: string } }) => ({
-      ...(opts.user ?? {}),
-      id: where.id,
-      teamId: data.teamId,
-    }),
-  );
   const teamFindUnique = vi.fn().mockResolvedValue(opts.team ?? null);
   const auditCreate = vi.fn().mockResolvedValue({});
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): assignManager()
+  // replaces the target's ordinary TeamMember row(s) instead of writing
+  // User.teamId - resolveDisplayTeamId(target) reads the "before" value
+  // via teamMember.findFirst (null here: the target's prior team isn't
+  // under test in these fixtures), then deleteMany + create.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue(null);
+  const teamMemberDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
+  const teamMemberCreate = vi.fn().mockResolvedValue({});
   const txMock = {
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
-    user: { findUnique: userFindUnique, update: userUpdate },
+    user: { findUnique: userFindUnique },
     team: { findUnique: teamFindUnique },
+    teamMember: {
+      findFirst: teamMemberFindFirst,
+      deleteMany: teamMemberDeleteMany,
+      create: teamMemberCreate,
+    },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
     service: new UsersService(prismaService),
-    mocks: { userFindUnique, userUpdate, teamFindUnique, auditCreate },
+    mocks: {
+      userFindUnique,
+      teamFindUnique,
+      auditCreate,
+      teamMemberFindFirst,
+      teamMemberDeleteMany,
+      teamMemberCreate,
+    },
   };
 }
 
@@ -121,7 +134,7 @@ describe('assignManager - hierarchy gate', () => {
     await expect(
       service.assignManager(telecallerActor, salesExecTarget.id, { teamId: 'team-2' }),
     ).rejects.toMatchObject({ name: 'ForbiddenException' });
-    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.teamMemberCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -157,16 +170,20 @@ describe('assignManager - ADMIN/OWNER scope', () => {
       teamId: 'team-2',
     });
     expect(result.teamId).toBe('team-2');
-    expect(mocks.userUpdate).toHaveBeenCalledWith({
-      where: { id: salesExecTarget.id },
-      data: { teamId: 'team-2' },
+    expect(mocks.teamMemberDeleteMany).toHaveBeenCalledWith({
+      where: { userId: salesExecTarget.id },
     });
+    expect(mocks.teamMemberCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: salesExecTarget.id, teamId: 'team-2' }),
+      }),
+    );
     expect(mocks.auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'user.assignManager',
           entityId: salesExecTarget.id,
-          before: { teamId: salesExecTarget.teamId },
+          before: { teamId: null },
           after: { teamId: 'team-2' },
         }),
       }),
@@ -210,6 +227,6 @@ describe('assignManager - MANAGER scope', () => {
       name: 'ForbiddenException',
       message: 'Managers can only assign staff into their own team',
     });
-    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.teamMemberCreate).not.toHaveBeenCalled();
   });
 });
