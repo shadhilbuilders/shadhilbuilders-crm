@@ -132,6 +132,9 @@ describe('TeamMemberRemovalDialogBody', () => {
     expect(html).not.toContain('data-qa="team-member-removal-replacement"');
     // Reason is still present and required.
     expect(html).toContain('data-qa="team-member-removal-reason"');
+    // UI5 (a11y/responsive): reason has a visible character count.
+    expect(html).toContain('data-qa="team-member-removal-reason-count"');
+    expect(html).toContain('0/500');
   });
 
   it('affected leads: shows the replacement picker, summary counts, and project breakdown', () => {
@@ -185,5 +188,25 @@ describe('TeamMemberRemovalDialogBody', () => {
       />,
     );
     expect(html).toContain('this cannot be undone');
+  });
+
+  it('replacementFieldError (SELF_REPLACEMENT/TARGET_ROLE_INELIGIBLE/TARGET_NOT_TEAM_MEMBER) renders inline on the replacement field, not a toast', () => {
+    const data: RemovalPreview = {
+      ...basePreview,
+      totalAffectedLeads: 5,
+      ownedCount: 5,
+      eligibleReplacements: [{ userId: 'r-1', name: 'Priya', role: 'TELECALLER', isTeamManager: false }],
+    };
+    const html = renderToStaticMarkup(
+      <TeamMemberRemovalDialogBody
+        preview={previewResult({ data }) as never}
+        staleNotice={false}
+        pending={false}
+        onSubmit={vi.fn()}
+        replacementFieldError="Replacement is not eligible to own this lead state."
+      />,
+    );
+    expect(html).toContain('data-qa="form-error-message-replacementUserId"');
+    expect(html).toContain('Replacement is not eligible to own this lead state.');
   });
 });
