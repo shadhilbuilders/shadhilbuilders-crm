@@ -38,6 +38,8 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TeamAccessService } from '../teams/team-access.service';
+import { isAdminClass } from '../users/roles';
 
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
@@ -76,6 +78,12 @@ export class ChatService {
     @Inject(NotificationsService)
     private readonly notifications?: NotificationsService,
   ) {}
+
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed -
+  // instantiating directly avoids touching every existing test's
+  // `new ChatService(...)` constructor call (same pattern as
+  // leads.service.ts/dashboard.service.ts/etc.).
+  private readonly teamAccess = new TeamAccessService();
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -296,6 +304,27 @@ export class ChatService {
    * mention that can't be resolved is silently skipped so the send always
    * succeeds. This is the "loop the manager and other staff" mechanism.
    *
+   * T-TEAM-AUTHORITATIVE (2026-09-13) multi-team scoping, deliberately
+   * bounded by the `TeamMember` RLS SELECT policy's read boundary
+   * (policies.sql: "intentionally non-recursive... does NOT let an
+   * ordinary team member see who else is on their team via this policy
+   * alone"). Concretely:
+   *   - MANAGER: resolves across EVERY team they manage (multi-team fix -
+   *     `TeamAccessService.getManagedTeamIds` is RLS-safe here because the
+   *     TeamMember policy's `Team.managerId` EXISTS clause already grants a
+   *     manager visibility into every membership row on teams they lead,
+   *     regardless of whose row it is).
+   *   - ADMIN/OWNER: org-wide (unchanged - `actor.teamId` was already
+   *     always null for these roles, so the pre-existing "no team filter"
+   *     fallback already covered every user).
+   *   - Ordinary staff (TELECALLER/SALES_EXEC): kept on the single legacy
+   *     `actor.teamId` scalar filter. A `TeamMember`-based lookup would
+   *     silently resolve to nothing for them - RLS only lets a non-manager
+   *     read their OWN membership row, never a teammate's - so widening
+   *     this to their full multi-team set isn't possible without reversing
+   *     that policy decision. Not a regression: this exactly matches the
+   *     pre-existing behavior for this role class.
+   *
    * Room for future change: a targeted mention (recipientId) can be added
    * here without touching the Message model - the resolution already
    * produces the recipient's userId.
@@ -310,14 +339,25 @@ export class ChatService {
     const names = extractMentionedNames(dto.body);
     if (names.length === 0) return;
 
-    // Resolve mentioned users within the actor's team scope. We query the
-    // team's users directly (not the bare client) so RLS doesn't filter
-    // out teammates the actor can't see via users.list (staff→self only).
-    const teamId = actor.teamId ?? null;
-    const mentioned = await (tx as unknown as PrismaClient).user.findMany({
+    const client = tx as unknown as PrismaClient;
+
+    let teamFilter: Record<string, unknown> = {};
+    if (actor.role === 'MANAGER') {
+      const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+      // A manager with no managed team (config error) resolves nobody,
+      // same as the pre-existing "no team, no mentions" behavior.
+      teamFilter = { teamId: { in: managedTeamIds } };
+    } else if (!isAdminClass(actor.role)) {
+      const teamId = actor.teamId ?? null;
+      teamFilter = teamId !== null ? { teamId } : {};
+    }
+    // ADMIN/OWNER: no team filter (org-wide) - unchanged from before.
+
+    const mentioned = await client.user.findMany({
       where: {
         name: { in: names },
-        ...(teamId !== null ? { teamId } : {}),
+        organizationId: actor.organizationId,
+        ...teamFilter,
       },
       select: { id: true, name: true },
     });
