@@ -163,6 +163,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'unreadNotifications',
   },
+  // T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1): MANAGER-only route,
+  // outside the Admin namespace. Org-level (not project-scoped) - a
+  // manager's teams aren't tied to the currently active project.
+  {
+    href: '/my-teams',
+    label: 'My Teams',
+    icon: LuUsersRound,
+    group: 'work',
+    scoped: false,
+  },
   // OWNER/ADMIN launcher into /admin/* (hidden for every other role).
   {
     href: '/admin',
@@ -283,10 +293,16 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   return items;
 }
 
-/** Per-item visibility. Admin namespace + Admin launcher: OWNER/ADMIN only. */
+/** Per-item visibility. Admin namespace + Admin launcher: OWNER/ADMIN only.
+ *  My Teams: MANAGER only (design doc UI1 - "Managers receive a Work ->
+ *  My Teams route"; other staff don't manage/belong-to teams in a way
+ *  this surface is useful for, and Admin/Owner already use Admin -> Teams). */
 function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | undefined): boolean {
   if (item.href === '/admin' || item.href === '/work' || item.href.startsWith('/admin/')) {
     return isAdminLike(role);
+  }
+  if (item.href === '/my-teams') {
+    return role === 'MANAGER';
   }
   // Remaining work items are visible to every authenticated role (and the
   // undefined-role SSR default, which matches the previous work-group

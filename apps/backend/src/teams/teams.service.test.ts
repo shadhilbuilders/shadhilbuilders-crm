@@ -25,26 +25,43 @@ import type { JwtPayload } from '@shadhil/auth';
 const txCapture: { current: any } = { current: undefined };
 
 vi.mock('@shadhil/database', () => {
+  const allTeamRows = [
+    {
+      id: 'team-construction',
+      name: "Manager (placeholder)'s Team",
+      defaultAssigneeId: 'tc-1',
+      managerId: 'mgr-1',
+      manager: { name: 'Maya Rao' },
+      _count: { members: 4 },
+    },
+    {
+      id: 'team-real-estate',
+      name: 'Real Estate Desk',
+      defaultAssigneeId: 'se-1',
+      managerId: null,
+      manager: null,
+      _count: { members: 2 },
+    },
+  ];
   const tx = {
     team: {
-      findMany: vi.fn(async () => [
-        {
-          id: 'team-construction',
-          name: "Manager (placeholder)'s Team",
-          defaultAssigneeId: 'tc-1',
-          managerId: 'mgr-1',
-          manager: { name: 'Maya Rao' },
-          _count: { members: 4 },
-        },
-        {
-          id: 'team-real-estate',
-          name: 'Real Estate Desk',
-          defaultAssigneeId: 'se-1',
-          managerId: null,
-          manager: null,
-          _count: { members: 2 },
-        },
-      ]),
+      // T-TEAM-AUTHORITATIVE (2026-09-13): dispatch on the where shape so
+      // this one mock serves both TeamAccessService.getManagedTeamIds()
+      // (where: { managerId, deletedAt }, select: { id: true } only) and
+      // TeamsService.list()'s own final query (where: { deletedAt } or
+      // { deletedAt, id: { in } }, with the full select shape).
+      findMany: vi.fn(async (args: { where?: { managerId?: string; id?: { in: string[] } } } = {}) => {
+        const where = args.where ?? {};
+        if (where.managerId !== undefined) {
+          return allTeamRows
+            .filter((t) => t.managerId === where.managerId)
+            .map((t) => ({ id: t.id }));
+        }
+        if (where.id !== undefined) {
+          return allTeamRows.filter((t) => where.id!.in.includes(t.id));
+        }
+        return allTeamRows;
+      }),
       findUnique: vi.fn(async (args: { where: { id: string } }) => {
         if (args.where.id === 'team-missing') return null;
         if (args.where.id === 'team-real-estate') {
@@ -62,6 +79,13 @@ vi.mock('@shadhil/database', () => {
           deletedAt: null,
         };
       }),
+    },
+    // T-TEAM-AUTHORITATIVE (2026-09-13): ordinary-membership source for
+    // TeamAccessService.getOrdinaryMemberTeamIds() - no fixtures in this
+    // suite hold a TeamMember row, so [] everywhere (the legacy
+    // User.teamId/members-relation fallback covers TELECALLER here).
+    teamMember: {
+      findMany: vi.fn(async () => []),
     },
     user: {
       findMany: vi.fn(async () => [
@@ -187,8 +211,21 @@ describe('TeamsService.list', () => {
     const svc = new TeamsService({ $client: {} } as never);
     await svc.list(telecallerActor);
     const tx = txCapture.current;
-    const args = tx.team.findMany.mock.calls[0]![0];
-    expect(args.where).toEqual({ deletedAt: null, members: { some: { id: 'tc-1' } } });
+    // T-TEAM-AUTHORITATIVE (2026-09-13): the LAST team.findMany call is
+    // the final list query - TeamAccessService's own internal
+    // findMany calls happen first.
+    const lastCall = tx.team.findMany.mock.calls.at(-1)![0];
+    expect(lastCall.where).toEqual({ deletedAt: null, id: { in: ['team-construction'] } });
+  });
+
+  it('MANAGER sees the union of teams they manage AND their legacy teamId membership', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    await svc.list(managerActor);
+    const tx = txCapture.current;
+    const lastCall = tx.team.findMany.mock.calls.at(-1)![0];
+    // managerActor manages team-construction (fixture managerId='mgr-1')
+    // AND their own legacy teamId is also team-construction - deduped.
+    expect(lastCall.where).toEqual({ deletedAt: null, id: { in: ['team-construction'] } });
   });
 
   it('maps to TeamListItem with managerName (null when unassigned)', async () => {
@@ -221,13 +258,23 @@ describe('TeamsService.getTeam', () => {
     txCapture.current = undefined;
   });
 
-  it('forbids non-admin roles (ADMIN/OWNER only)', async () => {
+  it('forbids staff roles entirely (TELECALLER/SALES_EXEC cannot view any team roster)', async () => {
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(svc.getTeam(managerActor, 'team-construction')).rejects.toThrow(
-      /ADMIN or OWNER/,
-    );
     await expect(svc.getTeam(telecallerActor, 'team-construction')).rejects.toThrow(
-      /ADMIN or OWNER/,
+      /ADMIN, OWNER, or a MANAGER/,
+    );
+  });
+
+  it('T-TEAM-AUTHORITATIVE: a MANAGER CAN view a team they manage (Work -> My Teams)', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    const result = await svc.getTeam(managerActor, 'team-construction');
+    expect(result.id).toBe('team-construction');
+  });
+
+  it('a MANAGER CANNOT view a team they neither manage nor belong to', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    await expect(svc.getTeam(managerActor, 'team-real-estate')).rejects.toThrow(
+      /only view a team you manage or belong to/,
     );
   });
 

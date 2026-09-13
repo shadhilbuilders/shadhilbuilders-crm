@@ -1,0 +1,171 @@
+'use client';
+
+// Work -> My Teams -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13,
+// design doc UI1). MANAGER-only. Read-only member list; "Remove from this
+// team" is offered ONLY when the viewer manages THIS specific team (not
+// merely an ordinary member of it) - manager succession is a separate,
+// admin-only flow, and an ordinary member has no removal authority over
+// their own teammates. The manager's own row is never removable (pinned
+// with a Manager badge), mirroring the Admin -> Teams roster.
+import { useEffect, useState } from 'react';
+import { Badge, Button, Heading, Loading, TypographyP } from '@paalstack/react-ui';
+import { LuArrowLeft } from '@paalstack/react-icons/lu';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+
+import { useTeam, type TeamMemberRow } from '@/hooks/queries/teams';
+import { TeamMemberRemovalDialog } from '@/components/teams/TeamMemberRemovalDialog';
+import { isAdminLike, useSessionUser } from '@/lib/session';
+import { labelFor } from '@/lib/labels';
+import { orgHref } from '@/lib/nav';
+import { useOrgSlug } from '@/lib/tenant-context';
+
+import { Skeleton } from '@/components/shared/Skeleton';
+import { PageHeader } from '@/components/shared/PageHeader';
+
+export default function MyTeamRosterPage() {
+  const { user, isPending: sessionPending } = useSessionUser();
+  const orgSlug = useOrgSlug();
+  const params = useParams<{ teamId: string }>();
+  const teamId = typeof params?.teamId === 'string' ? params.teamId : null;
+  const teamQuery = useTeam(teamId ?? undefined);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sessionPending || teamId === null) {
+    return <Skeleton variant="users" className="py-4" />;
+  }
+  // Admin/Owner get redirected in spirit to Admin -> Teams (they can still
+  // reach this URL, but the canonical surface for them is the admin
+  // roster - this page's value-add, the Remove-from-team gate, is
+  // MANAGER-specific). Keep it simple: only MANAGER uses this route.
+  if (user === null || (user.role !== 'MANAGER' && !isAdminLike(user.role))) {
+    return (
+      <div className="py-24 text-center text-sm">
+        <Heading className="mb-2">Not authorized</Heading>
+        <TypographyP className="text-muted-foreground">
+          Only managers have a My Teams view.
+        </TypographyP>
+      </div>
+    );
+  }
+
+  const team = teamQuery.data;
+  const isManagerOfThisTeam = team?.manager?.id === user.id;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={team?.name ?? 'Team'}
+        breadcrumb={[
+          { label: 'Work' },
+          { label: 'My Teams', href: orgHref(orgSlug, '/my-teams') },
+          { label: team?.name ?? 'Team' },
+        ]}
+        subtitle={
+          team?.manager
+            ? isManagerOfThisTeam
+              ? 'You manage this team.'
+              : `Managed by ${team.manager.name}.`
+            : 'No manager assigned.'
+        }
+      />
+
+      {teamQuery.isLoading ? (
+        <Skeleton variant="table" />
+      ) : teamQuery.error !== null && teamQuery.error !== undefined ? (
+        <div role="alert" className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center">
+          <p className="text-sm font-medium">Couldn&apos;t load this team.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {teamQuery.error instanceof Error ? teamQuery.error.message : 'Unexpected error.'}
+          </p>
+          <Button variant="outline" className="mt-3" onClick={() => void teamQuery.refetch()}>
+            Try again
+          </Button>
+        </div>
+      ) : team === undefined ? (
+        <Loading content="Loading team..." />
+      ) : team.members.length === 0 ? (
+        <div className="border-border rounded-lg border p-10 text-center text-sm">
+          <TypographyP className="text-xl font-medium">No members in this team.</TypographyP>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {team.members.map((member) => (
+            <MyTeamMemberRow
+              key={member.userId}
+              teamId={team.id}
+              teamName={team.name}
+              member={member}
+              managerId={team.manager?.id ?? null}
+              canRemove={isManagerOfThisTeam}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end pt-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          as={Link}
+          href={orgHref(orgSlug, '/my-teams')}
+          leftIcon={<LuArrowLeft className="size-4" />}
+        >
+          Back to My Teams
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MyTeamMemberRow({
+  teamId,
+  teamName,
+  member,
+  managerId,
+  canRemove,
+}: {
+  teamId: string;
+  teamName: string;
+  member: TeamMemberRow;
+  managerId: string | null;
+  canRemove: boolean;
+}) {
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const isManagerRow = member.userId === managerId;
+
+  return (
+    <div className="border-border flex items-center justify-between gap-2 rounded-lg border p-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{member.name}</span>
+          {isManagerRow ? <Badge variant="secondary">Manager</Badge> : null}
+          <Badge variant="outline">{labelFor('role', member.role)}</Badge>
+        </div>
+        <p className="text-muted-foreground text-xs">{member.email}</p>
+      </div>
+      {canRemove && !isManagerRow ? (
+        <Button
+          type="button"
+          variant="ghost"
+          color="danger"
+          size="sm"
+          onClick={() => setRemoveOpen(true)}
+          data-qa={`my-team-member-remove-${member.userId}`}
+        >
+          Remove from this team
+        </Button>
+      ) : null}
+      <TeamMemberRemovalDialog
+        target={{ teamId, teamName, userId: member.userId, userName: member.name }}
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+      />
+    </div>
+  );
+}
