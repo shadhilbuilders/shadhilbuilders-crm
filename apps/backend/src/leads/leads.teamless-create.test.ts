@@ -50,7 +50,7 @@ async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   // (the teamless admin/owner), whose JWT carries teamId=null.
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -62,7 +62,6 @@ function teamlessActor(
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
-    teamId: null, // <-- the bug: seeded ADMIN/OWNER have no teamId
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,

@@ -107,7 +107,7 @@ export class OutboundService {
   async claimPending(claimantId: string, limit: number): Promise<OutboundMessage[]> {
     return withRlsContext(
       this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         const now = new Date();
         // First, find candidates (rows in PENDING that are not within a
@@ -235,7 +235,7 @@ export class OutboundService {
     // Now do the DB write inside the RLS transaction.
     return withRlsContext(
       this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         const txClient = tx as unknown as PrismaClient;
         if (deliveryResult.ok) {
@@ -272,7 +272,7 @@ export class OutboundService {
   private async leadPhone(leadId: string): Promise<string> {
     const lead = await withRlsContext(
       this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) =>
         (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: leadId },

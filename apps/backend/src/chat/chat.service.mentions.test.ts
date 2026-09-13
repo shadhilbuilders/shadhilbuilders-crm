@@ -51,7 +51,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: null, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -84,13 +84,12 @@ beforeAll(async () => {
     // resolution can only come from Team.managerId (set below).
     await db.user.upsert({
       where: { id: MGR_ID },
-      update: { teamId: TEAM_1_ID, role: 'MANAGER' },
+      update: { role: 'MANAGER' },
       create: {
         id: MGR_ID,
         email: `${MGR_ID}@test.local`,
         name: 'MTM Manager',
         role: 'MANAGER',
-        teamId: TEAM_1_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -101,42 +100,55 @@ beforeAll(async () => {
 
     await db.user.upsert({
       where: { id: TC_1_ID },
-      update: { teamId: TEAM_1_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_1_ID,
         email: `${TC_1_ID}@test.local`,
         name: 'Kiran Rao',
         role: 'TELECALLER',
-        teamId: TEAM_1_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_2_ID },
-      update: { teamId: TEAM_2_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_2_ID,
         email: `${TC_2_ID}@test.local`,
         name: 'Meera Iyer',
         role: 'TELECALLER',
-        teamId: TEAM_2_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: OUTSIDER_ID },
-      update: { teamId: TEAM_3_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: OUTSIDER_ID,
         email: `${OUTSIDER_ID}@test.local`,
         name: 'Zara Khan',
         role: 'TELECALLER',
-        teamId: TEAM_3_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
+    });
+
+    await db.teamMember.upsert({
+      where: { userId_teamId: { userId: TC_1_ID, teamId: TEAM_1_ID } },
+      update: {},
+      create: { userId: TC_1_ID, teamId: TEAM_1_ID, organizationId: ORG },
+    });
+    await db.teamMember.upsert({
+      where: { userId_teamId: { userId: TC_2_ID, teamId: TEAM_2_ID } },
+      update: {},
+      create: { userId: TC_2_ID, teamId: TEAM_2_ID, organizationId: ORG },
+    });
+    await db.teamMember.upsert({
+      where: { userId_teamId: { userId: OUTSIDER_ID, teamId: TEAM_3_ID } },
+      update: {},
+      create: { userId: OUTSIDER_ID, teamId: TEAM_3_ID, organizationId: ORG },
     });
 
     // MGR owns the lead so the Message insert's lead-visibility check
@@ -187,7 +199,6 @@ describe.skipIf(!HAS_DB)('ChatService @mention resolution across a manager\'s mu
     sub: MGR_ID,
     email: `${MGR_ID}@test.local`,
     role: 'MANAGER',
-    teamId: TEAM_1_ID, // deliberately reflects ONLY team 1
     organizationId: ORG,
     iat: 0,
     exp: 0,

@@ -224,7 +224,7 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         const updated = await tx.$executeRawUnsafe(
           `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
@@ -275,7 +275,7 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         // 1) Dedup via WebhookEvent.externalId unique constraint.
         // If the same Meta event arrives twice (Meta retries), the

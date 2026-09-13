@@ -30,7 +30,6 @@ function actor(overrides: Partial<Actor>): Actor {
     sub: 'actor-1',
     email: 'actor@shadhilbuilders.in',
     role: 'ADMIN',
-    teamId: null,
     organizationId: ORG,
     iat: NOW,
     exp: NOW + 3600,
@@ -43,7 +42,7 @@ const ownerActor = actor({ sub: 'owner-1', role: 'OWNER' });
 const adminActor = actor({ sub: 'admin-1', role: 'ADMIN' });
 const managerActor = actor({ sub: 'mgr-1', role: 'MANAGER' });
 const otherManagerActor = actor({ sub: 'mgr-2', role: 'MANAGER' });
-const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER', teamId: 'team-1' });
+const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER'});
 
 type FakeUserRow = {
   id: string;

@@ -47,7 +47,7 @@ beforeAll(async () => {
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       await tx.team.upsert({
         where: { id: TEST_TEAM_ID },
@@ -62,7 +62,6 @@ beforeAll(async () => {
           email: 'wa-handler-admin@test.local',
           name: 'WA Handler Test Admin',
           role: 'ADMIN',
-          teamId: TEST_TEAM_ID,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
@@ -87,7 +86,7 @@ beforeEach(async () => {
 
   await withRlsContext(
     runtimePrisma as unknown as PrismaClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       const lead = await tx.lead.create({
         data: {
@@ -146,7 +145,7 @@ afterAll(async () => {
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       // Find all leads we created in this test session
       const leads = await tx.lead.findMany({
@@ -211,7 +210,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // The Message row was actually written
     const msg = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'MANAGER', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.message.findFirst({
           where: { externalId, leadId: knownLeadId },
@@ -259,7 +258,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // The contact row was created
     const contact = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.whatsappUnknownContact.findUnique({
           where: { phoneE164: unknownPhone },
@@ -296,7 +295,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     });
     const updated = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.whatsappUnknownContact.findUnique({
           where: { phoneE164: unknownPhone },
@@ -337,7 +336,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
 
     const updated = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.outboundMessage.findUnique({
           where: { id: outboundMessageId },
@@ -408,7 +407,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // Only one Message row was created for that externalId
     const messages = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'MANAGER', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.message.findMany({
           where: { externalId, leadId: knownLeadId },

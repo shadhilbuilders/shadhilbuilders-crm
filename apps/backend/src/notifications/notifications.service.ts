@@ -234,7 +234,7 @@ export class NotificationsService {
     }
     return withRlsContext(
       this.client,
-      { userId: recipientSub, role: 'TELECALLER', teamId: null, organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: recipientSub, role: 'TELECALLER', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         const created = await (tx as unknown as PrismaClient).notification.create({
           data: {

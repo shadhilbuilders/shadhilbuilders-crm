@@ -34,7 +34,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -44,7 +44,6 @@ function actorFor(userId: string, role: 'ADMIN' | 'SALES_EXEC'): JwtPayload {
     sub: userId,
     email: `${userId}@example.com`,
     role,
-    teamId: TEAM_ID,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -134,27 +133,34 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       });
       await db.user.upsert({
         where: { id: ADMIN_ID },
-        update: { teamId: TEAM_ID, role: 'ADMIN' },
+        update: { role: 'ADMIN' },
         create: {
           id: ADMIN_ID,
           email: `${ADMIN_ID}@example.com`,
           name: 'VOC Test Admin',
           role: 'ADMIN',
-          teamId: TEAM_ID,
           mustChangePassword: false,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
       await db.user.upsert({
         where: { id: SE_ID },
-        update: { teamId: TEAM_ID, role: 'SALES_EXEC' },
+        update: { role: 'SALES_EXEC' },
         create: {
           id: SE_ID,
           email: `${SE_ID}@example.com`,
           name: 'VOC Test SE',
           role: 'SALES_EXEC',
-          teamId: TEAM_ID,
           mustChangePassword: false,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId: SE_ID, teamId: TEAM_ID } },
+        update: {},
+        create: {
+          userId: SE_ID,
+          teamId: TEAM_ID,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });

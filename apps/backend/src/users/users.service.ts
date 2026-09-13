@@ -199,7 +199,6 @@ export class UsersService {
               after: {
                 email: created.email,
                 role: created.role,
-                teamId: teamId ?? null,
                 createdBy: actor.sub,
               },
               reason: `user.create by ${actor.email} (${actor.role})`,

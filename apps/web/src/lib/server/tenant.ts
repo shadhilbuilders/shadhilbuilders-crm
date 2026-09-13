@@ -69,7 +69,6 @@ async function backendJwt(): Promise<string> {
         select: {
           id: true,
           role: true,
-          teamId: true,
           organizationId: true,
           email: true,
         },
@@ -83,7 +82,6 @@ async function backendJwt(): Promise<string> {
   return issueJwt({
     sub: session.user.id,
     role: session.user.role,
-    teamId: session.user.teamId,
     organizationId: session.user.organizationId,
     email: session.user.email,
   });

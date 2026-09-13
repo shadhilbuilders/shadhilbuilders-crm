@@ -6,12 +6,9 @@
 // returns id + name + (optional) defaultAssigneeId + memberCount,
 // scoped to the current user via the withRlsContext pattern.
 //
-// Why we DON'T return a "current team" field:
-//   The User model has teamId (one team per user). When multi-team
-//   membership lands (User <-> Team many-to-many), the data model
-//   changes and so does this endpoint. Until then, the user's
-//   "active team" is the team they were created with, derived on the
-//   client from useSessionUser().teamId.
+// There is no "current team" scalar: membership is TeamMember
+// (many-to-many) plus Team.managerId. Clients that need a team
+// picker call GET /api/teams.
 
 import { Module } from '@nestjs/common';
 

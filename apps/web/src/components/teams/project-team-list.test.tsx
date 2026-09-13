@@ -155,7 +155,6 @@ describe('ProjectTeamList', () => {
             members: [
               {
                 userId: 'tc-1',
-                teamId: 'team-a',
                 name: 'Priya',
                 email: 'priya@x.in',
                 role: 'TELECALLER',
@@ -164,7 +163,6 @@ describe('ProjectTeamList', () => {
               },
               {
                 userId: 'mgr-a',
-                teamId: 'team-a',
                 name: 'Meera',
                 email: 'meera@x.in',
                 role: 'MANAGER',

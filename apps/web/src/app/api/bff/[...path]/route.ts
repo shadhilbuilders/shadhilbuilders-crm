@@ -94,7 +94,6 @@ async function forward(
         select: {
           id: true,
           role: true,
-          teamId: true,
           organizationId: true,
           email: true,
         },
@@ -108,7 +107,6 @@ async function forward(
   const jwt = await issueJwt({
     sub: session.user.id,
     role: session.user.role,
-    teamId: session.user.teamId,
     organizationId: session.user.organizationId,
     email: session.user.email,
   });
