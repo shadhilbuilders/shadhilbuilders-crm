@@ -94,11 +94,8 @@ async function main() {
     },
   });
 
-  // 1b. Now that the team exists, set the demo user's teamId.
-  await prisma.user.update({
-    where: { id: demoUser.id },
-    data: { teamId: demoTeam.id },
-  });
+  // Leadership is Team.managerId (set on the team upsert above).
+  // No User.teamId write - that column is gone.
 
   // 2. Upsert credential Account (better-auth sign-in contract).
   await prisma.account.upsert({

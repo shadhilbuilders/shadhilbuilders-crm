@@ -48,12 +48,12 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: null, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
 
-function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role' | 'teamId'>): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     email: `${overrides.sub}@test.local`,
     organizationId: ORG,
@@ -93,13 +93,12 @@ beforeAll(async () => {
     // only come from Team.managerId (set below), never the JWT/User.teamId.
     await db.user.upsert({
       where: { id: MGR_ID },
-      update: { teamId: TEAM_1_ID, role: 'MANAGER' },
+      update: { role: 'MANAGER' },
       create: {
         id: MGR_ID,
         email: `${MGR_ID}@test.local`,
         name: 'MMT Manager',
         role: 'MANAGER',
-        teamId: TEAM_1_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -110,26 +109,24 @@ beforeAll(async () => {
 
     await db.user.upsert({
       where: { id: TC_1_ID },
-      update: { teamId: TEAM_1_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_1_ID,
         email: `${TC_1_ID}@test.local`,
         name: 'MMT TC Team1',
         role: 'TELECALLER',
-        teamId: TEAM_1_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_2_ID },
-      update: { teamId: TEAM_2_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_2_ID,
         email: `${TC_2_ID}@test.local`,
         name: 'MMT TC Team2',
         role: 'TELECALLER',
-        teamId: TEAM_2_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -195,7 +192,7 @@ afterAll(async () => {
 
 describe.skipIf(!HAS_DB)('Manager leading multiple teams (design doc fixture #1)', () => {
   const service = new LeadsService(new PrismaService());
-  const managerActor = actorFor({ sub: MGR_ID, role: 'MANAGER', teamId: TEAM_1_ID });
+  const managerActor = actorFor({ sub: MGR_ID, role: 'MANAGER'});
 
   it('list(): the manager sees leads from BOTH teams they manage, not just their own User.teamId', async () => {
     const result = await service.list(managerActor, { limit: 50, offset: 0 });
@@ -208,7 +205,7 @@ describe.skipIf(!HAS_DB)('Manager leading multiple teams (design doc fixture #1)
     if (prisma === null) throw new Error('prisma missing');
     const rows = await withRlsContext(
       prisma,
-      { userId: MGR_ID, role: 'MANAGER', teamId: TEAM_1_ID, organizationId: ORG },
+      { userId: MGR_ID, role: 'MANAGER', organizationId: ORG },
       (tx) => tx.lead.findMany({ where: { id: { in: [LEAD_1_ID, LEAD_2_ID] } }, select: { id: true } }),
     );
     const ids = rows.map((r) => r.id);

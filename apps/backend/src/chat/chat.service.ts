@@ -346,7 +346,16 @@ export class ChatService {
       const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
       // A manager with no managed team (config error) resolves nobody,
       // same as the pre-existing "no team, no mentions" behavior.
-      teamFilter = { teamId: { in: managedTeamIds } };
+      if (managedTeamIds.length === 0) {
+        teamFilter = { id: '__none__' };
+      } else {
+        teamFilter = {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: managedTeamIds } } } },
+            { managedTeams: { some: { id: { in: managedTeamIds } } } },
+          ],
+        };
+      }
     }
     // ADMIN/OWNER and ordinary staff: no team filter (org-wide) - see the
     // doc comment above for why staff can no longer be narrowed further.

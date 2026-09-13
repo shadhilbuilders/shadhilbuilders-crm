@@ -100,7 +100,7 @@ export const UserListResultSchema = z.object({
       name: z.string(),
       role: RoleSchema,
       teamId: z.string().nullable(),
-      // Project names the user is a member of (via ProjectMember), for the
+      // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
     }),
@@ -114,9 +114,8 @@ export type UserListResult = z.infer<typeof UserListResultSchema>;
  * 2026-09-13). `manager` is the team's manager identity, populated only
  * when the target reports to one (TELECALLER/SALES_EXEC with an assigned
  * team that has a manager) - null for MANAGER/ADMIN/OWNER or an
- * unassigned/unmanaged team. `projects` are the target's EXPLICIT
- * ProjectMember rows (mirrors TeamDetail's project shape, minus the
- * lead-owner provenance - that's a Teams-roster-only concept).
+ * unassigned/unmanaged team. `projects` are the projects linked to the
+ * target's team via ProjectTeam.
  */
 export const UserDetailSchema = z.object({
   id: z.string(),
@@ -188,14 +187,15 @@ export type AssignManagerDto = z.infer<typeof AssignManagerDtoSchema>;
  * Contract (symmetric with better-auth JWT bridge, HS256 v1):
  *   sub:    userId (cuid)
  *   role:   Role enum value
- *   teamId: optional team membership (nullable for admins / cross-team managers)
  *   iat:    issued-at (epoch seconds)
  *   exp:    expires-at (epoch seconds)
+ *
+ * Team membership is a TeamMember row, not a JWT claim
+ * (T-TEAM-AUTHORITATIVE 2026-09-13).
  */
 export const JwtPayloadSchema = z.object({
   sub: z.string().cuid2(),
   role: RoleSchema,
-  teamId: z.string().cuid2().nullable().optional(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
 });

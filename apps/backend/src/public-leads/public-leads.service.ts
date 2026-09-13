@@ -55,7 +55,6 @@ import type {
 const SERVICE_CTX = {
   userId: 'cron-service',
   role: 'CRON_SERVICE' as const,
-  teamId: '',
   organizationId: '',
 };
 
@@ -130,7 +129,6 @@ export class PublicLeadsService {
     const actor: JwtPayload = {
       sub: forcedOwnerId ?? fallbackOwnerId,
       role: 'ADMIN',
-      teamId: null,
       organizationId: orgId,
       email: 'landing@shadhilbuilders.in',
       // iat/exp/iss are unused by create(); fill with inert values so the

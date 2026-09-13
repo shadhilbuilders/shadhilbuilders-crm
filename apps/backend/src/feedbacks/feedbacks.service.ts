@@ -12,7 +12,7 @@
 //     feedback_update_admin.
 //
 // RLS context:
-//   - public: { userId: 'public-api', role: 'PUBLIC_API', teamId: '' }.
+//   - public: { userId: 'public-api', role: 'PUBLIC_API'}.
 //     PUBLIC_API is a GUC-only marker (like CRON_SERVICE) - not a Prisma
 //     enum, no JWT claim. It has INSERT-only power on Feedback.
 //   - admin: the actor's real JWT { userId, role, teamId }. OWNER travels
@@ -181,7 +181,6 @@ export class FeedbacksService {
       {
         userId: 'public-api',
         role: 'PUBLIC_API',
-        teamId: '',
         organizationId,
       },
       async (tx) => {

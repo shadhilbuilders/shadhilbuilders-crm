@@ -50,7 +50,6 @@ async function adminSeed<T>(
     {
       userId: TEST_USER_ID,
       role: 'ADMIN',
-      teamId: TEST_TEAM_ID,
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
@@ -73,7 +72,6 @@ async function ensureUser(): Promise<void> {
         email: 'realtime-ticket@test.local',
         name: 'Realtime Ticket Test',
         role: 'ADMIN',
-        teamId: TEST_TEAM_ID,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });

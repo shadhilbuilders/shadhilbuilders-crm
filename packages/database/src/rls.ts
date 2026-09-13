@@ -59,14 +59,6 @@ export type Role =
 export interface RlsContext {
   userId: string;
   role: Role;
-  /**
-   * @deprecated T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): no longer
-   * read by withRlsContext or any RLS policy (see the function doc comment
-   * below). Kept only so existing call sites/tests that build an
-   * RlsContext literal don't need a mechanical edit; new code should not
-   * populate or read this.
-   */
-  teamId?: string | null;
   /** T-ORG: the tenant the actor belongs to. Drives app.user_org_id so
    *  every org-scoped policy gates on it. */
   organizationId: string;
@@ -89,8 +81,6 @@ export type RlsTx = Parameters<
 export interface RlsActorLike {
   sub: string;
   role: Role;
-  /** @deprecated see RlsContext.teamId - unused by withRlsContext/RLS. */
-  teamId: string | null;
   organizationId?: string | null;
 }
 
@@ -98,7 +88,6 @@ export function rlsContextFrom(actor: RlsActorLike): RlsContext {
   return {
     userId: actor.sub,
     role: actor.role,
-    teamId: actor.teamId ?? null,
     organizationId: actor.organizationId ?? '',
   };
 }
@@ -142,9 +131,7 @@ function sqlLiteral(value: string): string {
  * team-scoped policy resolves membership via `TeamMember` (ordinary staff)
  * or `Team.managerId` (managers), both queried directly against
  * app.user_id, which supports multi-team membership (a single-valued GUC
- * never could). `ctx.teamId` is still accepted on `RlsContext` for source
- * compatibility with existing call sites/tests that construct one, but is
- * now unused here.
+ * never could).
  */
 export async function withRlsContext<T>(
   prisma: PrismaClient,

@@ -153,13 +153,12 @@ async function upsertUser(
 ) {
   const dbUser = await prisma.user.upsert({
     where: { id },
-    update: { role, ...(teamId ? { teamId } : {}) },
+    update: { role },
     create: {
       id,
       email: user.email,
       name: user.name,
       role,
-      teamId,
       organizationId: SEED_ORG_ID,
       emailVerified: true,
       // T-S hardening (2026-09-04, Week 5): the 5 seed placeholders
@@ -184,12 +183,9 @@ async function upsertUser(
     },
   });
 
-  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMember is the
-  // read path for "who's on this team" now (team roster, chat @mention
-  // resolution, create-lead team defaulting) - User.teamId above no
-  // longer has any application-code reader, but is kept until the
-  // planned column drop. A MANAGER's own leadership is Team.managerId,
-  // a separate axis - they don't need a TeamMember row for a team they
+  // T-TEAM-AUTHORITATIVE (2026-09-13): TeamMember is the sole
+  // "who's on this team" record. A MANAGER's leadership is
+  // Team.managerId - they don't need a TeamMember row for a team they
   // lead, so this only fires for ordinary (non-manager) team members.
   if (teamId && role !== 'MANAGER') {
     await prisma.teamMember.upsert({
@@ -232,19 +228,16 @@ async function main() {
     },
   });
 
-  // BUG FIX (Day 3 demo prep): the manager was upserted above WITHOUT a
-  // teamId because the team didn't exist yet. Re-upsert with the team id
-  // now that we have one. Without this the manager has teamId=null,
-  // RLS team-scoped queries return 0 rows for them, and the demo inbox
-  // renders empty. The original ordering bug means a fresh seed run
-  // produces a manager with no team even though the team is created.
-  await upsertUser(SEED_MANAGER_ID, manager, 'MANAGER', team.id);
+  // Re-upsert so a re-run refreshes the manager row after the team exists.
+  // Leadership is Team.managerId (set on the team upsert above), not a
+  // TeamMember row.
+  await upsertUser(SEED_MANAGER_ID, manager, 'MANAGER');
 
   // ── Owner (no team), Admin (no team), telecaller + sales exec (team members)
   await upsertUser(SEED_OWNER_ID, owner, 'OWNER');
   await upsertUser(SEED_ADMIN_ID, admin, 'ADMIN');
   const telecallerUser = await upsertUser(SEED_TELECALLER_ID, telecaller, 'TELECALLER', team.id);
-  const salesExecUser = await upsertUser(SEED_SALES_EXEC_ID, salesExec, 'SALES_EXEC', team.id);
+  await upsertUser(SEED_SALES_EXEC_ID, salesExec, 'SALES_EXEC', team.id);
 
   // ── Demo projects - the REAL Project registry (T-ProjectSwitch) ─────────
   // Phase 2 of real project switching: the sidebar switcher reads
@@ -252,11 +245,6 @@ async function main() {
   // Heights is created FIRST so createdAt-ordering makes it the default
   // active project. Lead.projectId points at these rows; demo leads below
   // are attached to Metro Heights.
-  const staffIds = [
-    { id: managerUser.id },
-    { id: telecallerUser.id },
-    { id: salesExecUser.id },
-  ];
   const metroHeights = await prisma.project.upsert({
     where: { id: SEED_PROJECT_METRO_ID },
     update: {
@@ -306,13 +294,23 @@ async function main() {
   await prisma.team.deleteMany({
     where: { id: { in: ['seed-project-skyline', 'seed-project-lakeview'] } },
   });
-  // The live team keeps its members connected (the upsert create above
-  // didn't include telecaller/sales exec on first run; on later runs the
-  // connect is idempotent).
-  await prisma.team.update({
-    where: { id: team.id },
-    data: { members: { connect: staffIds } },
-  });
+  // Staff the seed team onto every demo project so GET /api/projects
+  // (ProjectTeam-scoped for managers) returns the registry.
+  for (const projectId of [
+    SEED_PROJECT_METRO_ID,
+    SEED_PROJECT_SKYLINE_ID,
+    SEED_PROJECT_LAKEVIEW_ID,
+  ]) {
+    await prisma.projectTeam.upsert({
+      where: { projectId_teamId: { projectId, teamId: team.id } },
+      update: {},
+      create: {
+        projectId,
+        teamId: team.id,
+        organizationId: SEED_ORG_ID,
+      },
+    });
+  }
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ project registry: ${metroHeights.name} (default) + 2 upcoming`);
   // eslint-disable-next-line no-console

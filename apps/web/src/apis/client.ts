@@ -48,7 +48,6 @@ export type SessionUser = {
   name: string;
   email: string;
   role: Role;
-  teamId: string | null;
   organizationId: string | null;
 };
 
@@ -61,8 +60,9 @@ function normalizeRole(raw: unknown): Role {
 
 /**
  * Pull the current session user out of a better-auth session payload.
- * `role`/`teamId` ride as additional fields on the user object
+ * `role` rides as an additional field on the user object
  * (@shadhil/auth user.additionalFields) - default to TELECALLER if absent.
+ * Team membership is a TeamMember row, not a session scalar.
  */
 export function sessionUserFromSession(session: unknown): SessionUser | null {
   if (session === null || typeof session !== 'object') return null;
@@ -71,14 +71,12 @@ export function sessionUserFromSession(session: unknown): SessionUser | null {
   if (user === null) return null;
   const id = typeof user.id === 'string' ? user.id : null;
   if (id === null) return null;
-  const nestedTeam = (user.teamId ?? top.teamId ?? null) as unknown;
   const nestedOrg = (user.organizationId ?? top.organizationId ?? null) as unknown;
   return {
     id,
     name: typeof user.name === 'string' ? user.name : '',
     email: typeof user.email === 'string' ? user.email : '',
     role: normalizeRole(user.role),
-    teamId: typeof nestedTeam === 'string' ? nestedTeam : null,
     organizationId: typeof nestedOrg === 'string' ? nestedOrg : null,
   };
 }

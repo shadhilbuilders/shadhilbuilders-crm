@@ -124,8 +124,8 @@ async function buildFixture(): Promise<Fixture> {
 
   // Build the fixture in dependency order: users first WITHOUT teamId
   // (no FK target yet), then teams (managerId FK to existing users),
-  // then UPDATE users to set teamId (User.teamId FK to teams).
-  // Three passes break the User.teamId ↔ Team.managerId chicken-and-egg.
+  // Pass 1: users (no team membership yet). Pass 2: teams with managerId.
+  // Pass 3: TeamMember rows for ordinary staff.
   for (const u of [
     { id: managerAId, role: 'MANAGER' as const, email: 'wwj8bwawdwawkr0917f0z57u@x' },
     { id: managerBId, role: 'MANAGER' as const, email: 'cct80r1jkpgifkiuuynw1ia6@x' },
@@ -136,13 +136,12 @@ async function buildFixture(): Promise<Fixture> {
   ]) {
     await adminPrisma.user.upsert({
       where: { id: u.id },
-      update: { role: u.role, teamId: null },
+      update: { role: u.role },
       create: {
         id: u.id,
         email: u.email,
         name: u.email,
         role: u.role,
-        teamId: null,
         emailVerified: true,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
@@ -202,17 +201,24 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  // Pass 3: now that both ends of the FK exist, set User.teamId.
-  const teamMap: Record<string, string> = {
-    [managerAId]: teamAId,
-    [managerBId]: teamBId,
-    [execAId]: teamAId,
-    [execBId]: teamBId,
-    [teleAId]: teamAId,
-    [teleBId]: teamBId,
-  };
-  for (const [userId, teamId] of Object.entries(teamMap)) {
-    await adminPrisma.user.update({ where: { id: userId }, data: { teamId } });
+  // Pass 3: TeamMember rows for ordinary staff (managers participate
+  // via Team.managerId only).
+  const memberMap: Array<{ userId: string; teamId: string }> = [
+    { userId: execAId, teamId: teamAId },
+    { userId: execBId, teamId: teamBId },
+    { userId: teleAId, teamId: teamAId },
+    { userId: teleBId, teamId: teamBId },
+  ];
+  for (const { userId, teamId } of memberMap) {
+    await adminPrisma.teamMember.upsert({
+      where: { userId_teamId: { userId, teamId } },
+      update: {},
+      create: {
+        userId,
+        teamId,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
   }
 
   // Need a Project + Phase + Unit for Booking - seed minimal versions.
@@ -523,13 +529,13 @@ async function buildFixture(): Promise<Fixture> {
 function ctxFor(role: Role, fixture: Fixture): RlsContext {
   switch (role) {
     case 'ADMIN':
-      return { userId: fixture.managerAId, role: 'ADMIN', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.managerAId, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'MANAGER':
-      return { userId: fixture.managerAId, role: 'MANAGER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.managerAId, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'SALES_EXEC':
-      return { userId: fixture.execAId, role: 'SALES_EXEC', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.execAId, role: 'SALES_EXEC', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'TELECALLER':
-      return { userId: fixture.teleAId, role: 'TELECALLER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.teleAId, role: 'TELECALLER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
   }
 }
 
@@ -939,7 +945,7 @@ async function runCase(
               name: 'matrix-test',
               phone: `99${String(Date.now()).slice(-8)}`,
               state: 'NEW',
-              teamId: ctx.teamId ?? '',
+              teamId: fixture.teamAId,
               ownerId: ctx.userId,
               organizationId: 'ceid01lpfe1esm8jwsxid41k28',
               // roleFromCtx is widened to include CRON_SERVICE for the
@@ -1137,7 +1143,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
       const cronCtx: RlsContext = {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
-        teamId: null,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const result = await withRlsContext(prisma, cronCtx, async (tx) => {
@@ -1170,7 +1175,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
       const cronCtx: RlsContext = {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
-        teamId: null,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, cronCtx, async (tx) =>
@@ -1200,7 +1204,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
         const ctx: RlsContext = {
           userId: fixture.managerAId, // a real user from fixture
           role: 'CRON_SERVICE', // <-- the impersonation attempt
-          teamId: null,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         };
         const result = await withRlsContext(prisma, ctx, async (tx) => {
@@ -1260,7 +1263,6 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
       const managerCtx: RlsContext = {
         userId: fixture.managerAId,
         role: 'MANAGER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, managerCtx, async (tx) =>
@@ -1290,7 +1292,6 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
       const tcCtx: RlsContext = {
         userId: fixture.teleAId,
         role: 'TELECALLER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, tcCtx, async (tx) =>
@@ -1334,7 +1335,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
     insertedId = await withRlsContext(prisma, {
       userId: 'public-api',
       role: 'PUBLIC_API',
-      teamId: '',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     }, async (tx) => {
       // Raw INSERT - typed `feedback.create` hits the Prisma 7 typed-API
@@ -1369,7 +1369,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const freshId = `fb_rls_ins_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       // If the policy were missing, the insert would 42501 and this throws.
       await expect(
-        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }, async (tx) =>
+        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }, async (tx) =>
           (tx as unknown as {
             $executeRawUnsafe: (sql: string, ...p: unknown[]) => Promise<unknown>;
           }).$executeRawUnsafe(
@@ -1393,7 +1393,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: 'public-api',
         role: 'PUBLIC_API',
-        teamId: '',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1411,7 +1410,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'MANAGER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1429,7 +1427,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1448,7 +1445,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const updated = await withRlsContext(prisma, {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1479,7 +1475,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1511,7 +1506,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const coOwnerSelect = await withRlsContext(prisma, {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1524,7 +1518,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const coOwnerUpdate = await withRlsContext(prisma, {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1538,7 +1531,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const strangerSelect = await withRlsContext(prisma, {
         userId: fixture.teleBId,
         role: 'TELECALLER',
-        teamId: fixture.teamBId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1551,7 +1543,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1590,7 +1581,6 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
       const rows = await withRlsContext(prisma, {
         userId: fixture.teleAId,
         role: 'TELECALLER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1609,7 +1599,6 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
         withRlsContext(prisma, {
           userId: fixture.teleAId,
           role: 'TELECALLER',
-          teamId: fixture.teamAId,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         }, async (tx) =>
           (tx as unknown as {
@@ -1630,7 +1619,6 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
         withRlsContext(prisma, {
           userId: fixture.teleAId,
           role: 'TELECALLER',
-          teamId: fixture.teamAId,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         }, async (tx) =>
           (tx as unknown as {
@@ -1649,7 +1637,6 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
         withRlsContext(prisma, {
           userId: fixture.teleAId,
           role: 'TELECALLER',
-          teamId: fixture.teamAId,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         }, async (tx) =>
           (tx as unknown as {
@@ -1667,7 +1654,6 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
       const adminCtx: RlsContext = {
         userId: fixture.managerAId,
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const created = await withRlsContext(prisma, adminCtx, async (tx) =>

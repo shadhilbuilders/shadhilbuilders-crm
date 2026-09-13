@@ -159,7 +159,7 @@ describe('AuditPage - removal batch grouping (UI6)', () => {
     action: 'team.member.remove',
     entityType: 'Team',
     entityId: 'team-a',
-    before: { userId: 'tc-1', teamId: 'team-a' },
+    before: { userId: 'tc-1'},
     after: {
       removedUserId: 'tc-1',
       removedUserName: 'Priya Sharma',

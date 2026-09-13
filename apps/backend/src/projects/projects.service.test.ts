@@ -198,12 +198,10 @@ vi.mock('@shadhil/database', () => {
     rlsContextFrom: vi.fn((actor: {
       sub: string;
       role: string;
-      teamId: string | null;
       organizationId?: string | null;
     }) => ({
       userId: actor.sub,
       role: actor.role,
-      teamId: actor.teamId,
       organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     withRlsContext: vi.fn(
@@ -223,7 +221,6 @@ const ownerActor: JwtPayload = {
   sub: 'owner-1',
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
-  teamId: null,
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
@@ -242,7 +239,6 @@ const managerActor: JwtPayload = {
   sub: 'mgr-1',
   email: 'manager@shadhilbuilders.in',
   role: 'MANAGER',
-  teamId: 'team-1',
 };
 
 const telecallerActor: JwtPayload = {
@@ -250,7 +246,6 @@ const telecallerActor: JwtPayload = {
   sub: 'tc-1',
   email: 'telecaller@shadhilbuilders.in',
   role: 'TELECALLER',
-  teamId: 'team-1',
 };
 
 describe('slugifyProjectName', () => {
@@ -288,7 +283,6 @@ describe('ProjectsService.list', () => {
     expect(ctx).toEqual({
       userId: 'tc-1',
       role: 'TELECALLER',
-      teamId: 'team-1',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     });
   });

@@ -52,14 +52,12 @@ describe('@shadhil/auth - JWT helpers', () => {
     const token = await issueJwt({
       sub: 'user_123',
       role: 'MANAGER',
-      teamId: 'team_1',
       organizationId: 'org_1',
       email: 'mgr@example.com',
     });
     const payload = await verifyJwt(token);
     expect(payload.sub).toBe('user_123');
     expect(payload.role).toBe('MANAGER');
-    expect(payload.teamId).toBe('team_1');
     expect(payload.iss).toBe('shadhil-crm');
   });
 
@@ -70,7 +68,6 @@ describe('@shadhil/auth - JWT helpers', () => {
       sub: 'user_123',
       // lowercase legacy claim - normalized to enum at verify time
       role: 'manager' as never,
-      teamId: 'team_1',
       organizationId: 'org_1',
       email: 'mgr@example.com',
     });
@@ -82,7 +79,7 @@ describe('@shadhil/auth - JWT helpers', () => {
     process.env.BETTER_AUTH_SECRET = 'a'.repeat(32);
     const { SignJWT } = await import('jose');
     const token = await new SignJWT({
-      user: { teamId: 'team_1', organizationId: 'org_1', email: 'x@y.com' },
+      user: { organizationId: 'org_1', email: 'x@y.com' },
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject('user_123')
@@ -101,7 +98,6 @@ describe('@shadhil/auth - JWT helpers', () => {
     const token = await issueJwt({
       sub: 'user_123',
       role: 'SUPERUSER' as never,
-      teamId: null,
       organizationId: 'org_1',
       email: 'a@b.com',
     });
@@ -115,7 +111,6 @@ describe('@shadhil/auth - JWT helpers', () => {
     const token = await issueJwt({
       sub: 'user_123',
       role: 'ADMIN',
-      teamId: null,
       organizationId: 'org_1',
       email: 'a@b.com',
     });

@@ -64,7 +64,6 @@ async function adminSeed<T>(
     {
       userId: 'zhp69koimlj4hqorl1skmpsq',
       role: 'ADMIN',
-      teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
