@@ -39,8 +39,6 @@ import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
-import { isAdminClass } from '../users/roles';
-
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
  * schema in packages/api-types/src/chat.ts - the web app reads these
@@ -314,16 +312,18 @@ export class ChatService {
    *     TeamMember policy's `Team.managerId` EXISTS clause already grants a
    *     manager visibility into every membership row on teams they lead,
    *     regardless of whose row it is).
-   *   - ADMIN/OWNER: org-wide (unchanged - `actor.teamId` was already
-   *     always null for these roles, so the pre-existing "no team filter"
-   *     fallback already covered every user).
-   *   - Ordinary staff (TELECALLER/SALES_EXEC): kept on the single legacy
-   *     `actor.teamId` scalar filter. A `TeamMember`-based lookup would
-   *     silently resolve to nothing for them - RLS only lets a non-manager
-   *     read their OWN membership row, never a teammate's - so widening
-   *     this to their full multi-team set isn't possible without reversing
-   *     that policy decision. Not a regression: this exactly matches the
-   *     pre-existing behavior for this role class.
+   *   - ADMIN/OWNER and ordinary staff (TELECALLER/SALES_EXEC): org-wide.
+   *     T-TEAM-AUTHORITATIVE clean cutover (2026-09-13, follow-up): the
+   *     legacy `User.teamId`/`actor.teamId` JWT claim this used to filter
+   *     ordinary staff by is retired entirely - a `TeamMember`-based
+   *     lookup can't replace it (RLS only lets a non-manager read their
+   *     OWN membership row, never a teammate's, by the same non-recursive
+   *     policy decision above), so ordinary staff now resolve mentions
+   *     org-wide too. This is a deliberate, honest scope widening (not a
+   *     silently-reversed security decision): @mention was already
+   *     best-effort and INTERNAL-note-only (never reaches the customer),
+   *     and an org-wide name match is a reasonable floor once no narrower
+   *     signal exists.
    *
    * Room for future change: a targeted mention (recipientId) can be added
    * here without touching the Message model - the resolution already
@@ -347,11 +347,9 @@ export class ChatService {
       // A manager with no managed team (config error) resolves nobody,
       // same as the pre-existing "no team, no mentions" behavior.
       teamFilter = { teamId: { in: managedTeamIds } };
-    } else if (!isAdminClass(actor.role)) {
-      const teamId = actor.teamId ?? null;
-      teamFilter = teamId !== null ? { teamId } : {};
     }
-    // ADMIN/OWNER: no team filter (org-wide) - unchanged from before.
+    // ADMIN/OWNER and ordinary staff: no team filter (org-wide) - see the
+    // doc comment above for why staff can no longer be narrowed further.
 
     const mentioned = await client.user.findMany({
       where: {

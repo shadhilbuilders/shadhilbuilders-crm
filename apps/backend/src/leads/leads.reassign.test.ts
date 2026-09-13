@@ -225,6 +225,25 @@ beforeAll(async () => {
       },
     });
 
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassign()/
+    // setCoOwner() resolve a target's team via TeamMember rows now (the
+    // legacy User.teamId column set above is no longer read for this) -
+    // give every non-manager fixture user the matching membership.
+    for (const [userId, teamId] of [
+      [TC_A_ID, TEAM_A_ID],
+      [TC_A2_ID, TEAM_A_ID],
+      [TC_B_ID, TEAM_B_ID],
+      [SE_A_ID, TEAM_A_ID],
+      [SE_OWNER_ID, TEAM_A_ID],
+      [SE_A2_ID, TEAM_A_ID],
+    ] as const) {
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId, teamId } },
+        update: {},
+        create: { userId, teamId, organizationId: ORG },
+      });
+    }
+
     // The lead under test - NEW state, telecaller-owned, team A.
     // Phone must be unique; use a per-run suffix.
     await db.lead.upsert({
