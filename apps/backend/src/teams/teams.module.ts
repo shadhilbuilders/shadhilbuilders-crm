@@ -18,12 +18,14 @@ import { Module } from '@nestjs/common';
 import { ProjectTeamsController } from './project-teams.controller';
 import { ProjectTeamsService } from './project-teams.service';
 import { TeamAccessService } from './team-access.service';
+import { TeamMembersController } from './team-members.controller';
+import { TeamMembersService } from './team-members.service';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 
 @Module({
-  controllers: [TeamsController, ProjectTeamsController],
-  providers: [TeamsService, TeamAccessService, ProjectTeamsService],
-  exports: [TeamsService, TeamAccessService, ProjectTeamsService],
+  controllers: [TeamsController, ProjectTeamsController, TeamMembersController],
+  providers: [TeamsService, TeamAccessService, ProjectTeamsService, TeamMembersService],
+  exports: [TeamsService, TeamAccessService, ProjectTeamsService, TeamMembersService],
 })
 export class TeamsModule {}
