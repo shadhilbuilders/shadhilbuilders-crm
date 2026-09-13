@@ -61,10 +61,19 @@ const managerTarget = {
 
 function makeService(opts: {
   user: Record<string, unknown> | null;
-  team?: { id: string; name: string; managerId: string | null } | null;
+  team?: {
+    id: string;
+    name: string;
+    managerId: string | null;
+    deletedAt?: Date | null;
+  } | null;
 }) {
   const userFindUnique = vi.fn().mockResolvedValue(opts.user);
-  const teamFindUnique = vi.fn().mockResolvedValue(opts.team ?? null);
+  // assignManager() treats a soft-deleted team as absent, so default the
+  // fixture team to active unless a test explicitly sets deletedAt.
+  const teamFindUnique = vi.fn().mockResolvedValue(
+    opts.team == null ? null : { deletedAt: null, ...opts.team },
+  );
   const auditCreate = vi.fn().mockResolvedValue({});
   // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): assignManager()
   // replaces the target's ordinary TeamMember row(s) instead of writing
@@ -74,18 +83,44 @@ function makeService(opts: {
   const teamMemberFindFirst = vi.fn().mockResolvedValue(null);
   const teamMemberDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
   const teamMemberCreate = vi.fn().mockResolvedValue({});
+  // SCOPED-MOVE pre/post checks (2026-09-13): assignManager now (a) reads the
+  // target's current memberships, (b) for a MANAGER reads the teams they lead
+  // and deletes only those rows, and (c) re-reads afterwards to assert the set
+  // settled to exactly one team. These mocks model the happy path: the target
+  // is already in the destination's manager's team, delete removes it, and the
+  // create puts it back - so `findMany` returns [] after the delete.
+  const teamMemberFindMany = vi
+    .fn()
+    .mockResolvedValueOnce([{ teamId: opts.team?.id ?? 'team-2' }]) // pre-check
+    .mockResolvedValue([{ teamId: opts.team?.id ?? 'team-2' }]); // post-check
+  const teamFindMany = vi.fn().mockResolvedValue([{ id: opts.team?.id ?? 'team-2' }]);
+  // T-TEAM-AUTHORITATIVE (2026-09-13): assignManager() runs entirely inside
+  // ONE withRlsContext transaction, so every model accessor the method
+  // touches must exist on the `tx` the mock $transaction hands back (not
+  // just on the outer client). `$executeRawUnsafe` is what withRlsContext
+  // uses to SET LOCAL the app.user_* GUCs.
   const txMock = {
+    user: { findUnique: userFindUnique },
+    team: { findUnique: teamFindUnique, findMany: teamFindMany },
+    teamMember: {
+      findFirst: teamMemberFindFirst,
+      findMany: teamMemberFindMany,
+      deleteMany: teamMemberDeleteMany,
+      create: teamMemberCreate,
+    },
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
     user: { findUnique: userFindUnique },
-    team: { findUnique: teamFindUnique },
+    team: { findUnique: teamFindUnique, findMany: teamFindMany },
     teamMember: {
       findFirst: teamMemberFindFirst,
+      findMany: teamMemberFindMany,
       deleteMany: teamMemberDeleteMany,
       create: teamMemberCreate,
     },
+    auditLog: { create: auditCreate },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
