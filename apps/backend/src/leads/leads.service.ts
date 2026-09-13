@@ -589,8 +589,8 @@ export class LeadsService {
    * the supplied `client`.
    *
    * Actually - we run EVERYTHING in one withRlsContext block
-   * because the engine's read of `actor.teamId` is gated by
-   * RLS, and partial reads outside the tx would fail. So if
+   * because the engine's team/rule reads are gated by RLS, and
+   * partial reads outside the tx would fail. So if
    * `client` is a tx, opening another tx via `withRlsContext`
    * would nest. To avoid the nesting problem, we accept a
    * `client` that's expected to ALREADY have RLS set, and skip
@@ -622,8 +622,36 @@ export class LeadsService {
     // Steps 1-4: read team + rules (these run inside the tx so the
     // RLS context is active). The engine reads via `client` which
     // is the tx client when called from createInTransaction.
-    let teamId: string | null = actor.teamId;
-    if (actor.role === 'MANAGER') {
+    //
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): `actor.teamId`
+    // (the JWT claim) is gone - TELECALLER/SALES_EXEC resolve their team
+    // via their own TeamMember rows now, mirroring the MANAGER branch
+    // below: `dto.teamId` picks one explicitly (validated against their
+    // own memberships - lead_insert_telecaller's RLS policy enforces the
+    // same EXISTS(TeamMember) check as a second wall), omitted defaults
+    // to their first (oldest-assigned) team.
+    let teamId: string | null = null;
+    if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
+      const memberships = await client.teamMember.findMany({
+        where: { userId: actor.sub },
+        orderBy: { assignedAt: 'asc' },
+        select: { teamId: true },
+      });
+      const memberTeamIds = memberships.map((m) => m.teamId);
+      if (dto.teamId !== undefined) {
+        if (!memberTeamIds.includes(dto.teamId)) {
+          throw new ForbiddenException(
+            'You are not a member of the requested team - cannot create lead there',
+          );
+        }
+        teamId = dto.teamId;
+      } else {
+        teamId = memberTeamIds[0] ?? null;
+      }
+      if (teamId === null) {
+        throw new ForbiddenException('You are not on any team - cannot create lead');
+      }
+    } else if (actor.role === 'MANAGER') {
       // T-TEAM-AUTHORITATIVE (2026-09-13): a manager may lead multiple
       // teams. `dto.teamId` lets them pick one explicitly; when omitted,
       // default to the FIRST (oldest) team they manage - deterministic
@@ -999,15 +1027,13 @@ export class LeadsService {
         // 2. Actor can reassign this lead at all? Same shape as
         //    assertCanEditLead (TELECALLER/SALES_EXEC cannot move
         //    sideways; MANAGER must manage this lead's team; ADMIN/OWNER
-        //    always). T-TEAM-AUTHORITATIVE: a manager may lead multiple
-        //    teams, so this ALSO checks membership in the FULL DB-backed
-        //    managed-team set (Team.managerId), not just the single
-        //    JWT-carried teamId - `||` keeps the original teamId-equality
-        //    check as a fallback so accounts where Team.managerId was
-        //    never synced (legacy fixtures/data) keep working unchanged.
+        //    always). T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a
+        //    manager may lead multiple teams, checked via the FULL
+        //    DB-backed managed-team set (Team.managerId) - the legacy
+        //    `actor.teamId` equality fallback is gone (User.teamId no
+        //    longer exists).
         const managesLeadTeam = async (teamId: string): Promise<boolean> => {
           if (actor.role !== 'MANAGER') return false;
-          if (actor.teamId === teamId) return true;
           const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
           return managedTeamIds.includes(teamId);
         };
@@ -1021,27 +1047,39 @@ export class LeadsService {
 
         // 3. Target user exists + is in the right team? ADMIN can
         //    move to any user; MANAGER must match one of their teams.
-        const target = await tx.user.findUnique({
-          where: { id: dto.targetUserId },
-          select: {
-            id: true,
-            role: true,
-            teamId: true,
-            name: true,
-          },
-        });
+        //    T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "the right
+        //    team" is resolved via the target's TeamMember rows now
+        //    (User.teamId is gone) - a target can be on multiple teams,
+        //    so a MANAGER's check looks for ANY overlap with their
+        //    managed-team set, and that overlapping team becomes the
+        //    lead's new teamId (below).
+        const [target, targetMemberships] = await Promise.all([
+          tx.user.findUnique({
+            where: { id: dto.targetUserId },
+            select: { id: true, role: true, name: true },
+          }),
+          tx.teamMember.findMany({
+            where: { userId: dto.targetUserId },
+            orderBy: { assignedAt: 'asc' },
+            select: { teamId: true },
+          }),
+        ]);
         if (target === null) {
           throw new NotFoundException(
             `Target user ${dto.targetUserId} not found`,
           );
         }
-        if (
-          actor.role === 'MANAGER' &&
-          (target.teamId === null || !(await managesLeadTeam(target.teamId)))
-        ) {
-          throw new ForbiddenException(
-            'Manager can only reassign to a user in one of their own teams',
-          );
+        const targetTeamIds = targetMemberships.map((m) => m.teamId);
+        let targetTeamId: string | null = targetTeamIds[0] ?? null;
+        if (actor.role === 'MANAGER') {
+          const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
+          const overlap = targetTeamIds.find((id) => managedTeamIds.includes(id));
+          if (overlap === undefined) {
+            throw new ForbiddenException(
+              'Manager can only reassign to a user in one of their own teams',
+            );
+          }
+          targetTeamId = overlap;
         }
 
         // 4. Target user's role can own the lead at its current
@@ -1088,12 +1126,14 @@ export class LeadsService {
         //    "reassign" TODO below for the cleanup pass.)
         //
         //    teamId: Lead.teamId is NOT NULL. If the target user has
-        //    a team, the lead follows them. If the target has no
+        //    a team, the lead follows them (for a MANAGER this is
+        //    specifically the OVERLAPPING team resolved above; for
+        //    ADMIN/OWNER, the target's first team). If the target has no
         //    team (rare - only OWNER, in current data), the lead
         //    keeps its existing teamId. ADMIN is the only role that
         //    can assign to a team-less user (MANAGER is gated by
         //    the team-mismatch check above).
-        const newTeamId = target.teamId ?? existing.teamId;
+        const newTeamId = targetTeamId ?? existing.teamId;
         const updated = await tx.lead.update({
           where: { id: existing.id },
           data: {
@@ -1199,13 +1239,12 @@ export class LeadsService {
         }
 
         // 2. Actor can set a co-owner on this lead at all? T-TEAM-
-        //    AUTHORITATIVE: checks membership in the actor's FULL DB-
-        //    backed managed-team set (a manager may lead multiple teams),
-        //    falling back to the JWT teamId-equality check so accounts
-        //    where Team.managerId was never synced keep working.
+        //    AUTHORITATIVE (2026-09-13 clean cutover): checks membership
+        //    in the actor's FULL DB-backed managed-team set (a manager
+        //    may lead multiple teams) - the legacy `actor.teamId`
+        //    equality fallback is gone (User.teamId no longer exists).
         const managesLeadTeam = async (teamId: string): Promise<boolean> => {
           if (actor.role !== 'MANAGER') return false;
-          if (actor.teamId === teamId) return true;
           const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
           return managedTeamIds.includes(teamId);
         };
@@ -1224,7 +1263,7 @@ export class LeadsService {
         if (dto.coOwnerId !== null) {
           const target = await tx.user.findUnique({
             where: { id: dto.coOwnerId },
-            select: { id: true, role: true, teamId: true },
+            select: { id: true, role: true },
           });
           if (target === null) {
             throw new NotFoundException(
@@ -1232,13 +1271,23 @@ export class LeadsService {
             );
           }
           // MANAGER may only co-own within one of their own teams.
-          if (
-            actor.role === 'MANAGER' &&
-            (target.teamId === null || !(await managesLeadTeam(target.teamId)))
-          ) {
-            throw new ForbiddenException(
-              'Manager can only assign a co-owner in one of their own teams',
-            );
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via
+          // the target's TeamMember rows (User.teamId is gone) - any
+          // overlap with the manager's managed-team set qualifies.
+          if (actor.role === 'MANAGER') {
+            const [managedTeamIds, targetMemberships] = await Promise.all([
+              this.managerTeamIds(tx as unknown as PrismaClient, actor),
+              tx.teamMember.findMany({
+                where: { userId: target.id },
+                select: { teamId: true },
+              }),
+            ]);
+            const hasOverlap = targetMemberships.some((m) => managedTeamIds.includes(m.teamId));
+            if (!hasOverlap) {
+              throw new ForbiddenException(
+                'Manager can only assign a co-owner in one of their own teams',
+              );
+            }
           }
           // Co-owner must be an assignable role (can work the lead). The
           // owner + manager lane both hold here for co-ownership.
@@ -1671,11 +1720,10 @@ export class LeadsService {
   ): Promise<void> {
     if (actor.role === 'ADMIN' || actor.role === 'OWNER') return;
     if (actor.role === 'MANAGER') {
-      // T-TEAM-AUTHORITATIVE: DB-backed managed-team set first (supports
-      // a manager leading multiple teams), falling back to the JWT
-      // teamId-equality check for accounts where Team.managerId was
-      // never synced (legacy fixtures/data).
-      if (actor.teamId === teamId) return;
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): DB-backed
+      // managed-team set (supports a manager leading multiple teams) -
+      // the legacy `actor.teamId` equality fallback is gone (User.teamId
+      // no longer exists).
       const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
       if (managedTeamIds.includes(teamId)) return;
     }

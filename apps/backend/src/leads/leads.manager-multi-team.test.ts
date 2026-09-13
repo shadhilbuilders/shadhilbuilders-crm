@@ -135,6 +135,20 @@ beforeAll(async () => {
       },
     });
 
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassign()/
+    // setCoOwner() resolve a target's team via TeamMember rows now (the
+    // legacy User.teamId column set above is no longer read for this).
+    await db.teamMember.upsert({
+      where: { userId_teamId: { userId: TC_1_ID, teamId: TEAM_1_ID } },
+      update: {},
+      create: { userId: TC_1_ID, teamId: TEAM_1_ID, organizationId: ORG },
+    });
+    await db.teamMember.upsert({
+      where: { userId_teamId: { userId: TC_2_ID, teamId: TEAM_2_ID } },
+      update: {},
+      create: { userId: TC_2_ID, teamId: TEAM_2_ID, organizationId: ORG },
+    });
+
     await db.lead.upsert({
       where: { id: LEAD_1_ID },
       update: { ownerId: TC_1_ID, teamId: TEAM_1_ID },
