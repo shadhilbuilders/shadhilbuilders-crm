@@ -13,13 +13,10 @@
 // transaction), so RLS session vars (`app.user_id`, `app.user_org_id`, ...)
 // stay in scope for the queries this service issues on the caller's behalf.
 //
-// Additive / expand-phase note: this service reads ONLY from the new
-// `TeamMember` / `ProjectTeam` tables (backfilled by migration
-// 20260913010000). It is not yet wired into any existing controller/service
-// - those still read `User.teamId` / `ProjectMember` until the RLS+service
-// cutover phase. Landing this service now (unused) lets that follow-up
-// phase consume a single, already-reviewed access API instead of inlining
-// membership predicates ad hoc.
+// This service reads ONLY from the new `TeamMember` / `ProjectTeam` tables
+// (backfilled by migration 20260913010000) and is now the shared access API
+// every team-scoped controller/service consumes - membership predicates are
+// not inlined ad hoc anywhere else.
 
 import { Injectable } from '@nestjs/common';
 import type { Role, RlsTx } from '@shadhil/database';

@@ -17,9 +17,9 @@
 //
 // Fixture (design doc fixture #1 - "Manager Meera leads Metro Sales and
 // Launch Support"): ONE manager leads TWO teams (Team.managerId set on
-// BOTH); the manager's own User.teamId points to ONLY the first team, so
-// resolving a mention on the SECOND team's teammate can only be satisfied
-// by the new Team.managerId-based path, never the legacy fallback.
+// BOTH); the manager holds no scalar team pointer, so resolving a mention
+// on the SECOND team's teammate can only be satisfied by the
+// Team.managerId-based path (User.teamId was dropped in the cutover).
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 import {

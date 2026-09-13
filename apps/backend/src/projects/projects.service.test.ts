@@ -52,11 +52,6 @@ type MockTx = {
     delete: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
     count: Mock<() => Promise<number>>;
   };
-  projectMember: {
-    upsert: Mock<(args: MockArgs) => Promise<Record<string, unknown>>>;
-    findMany: Mock<(args: MockArgs) => Promise<Array<Record<string, unknown>>>>;
-    deleteMany: Mock<(args: MockArgs) => Promise<{ count: number }>>;
-  };
   user: {
     findUnique: Mock<
       (args: MockArgs) => Promise<Record<string, unknown> | null>
@@ -153,17 +148,6 @@ function makeTx(overrides: {
     },
     booking: {
       count: vi.fn(async () => overrides.bookingCount ?? 0),
-    },
-    projectMember: {
-      upsert: vi.fn(async (args: MockArgs) => ({
-        projectId: 'proj-metro',
-        userId: (args.where as { projectId_userId: { userId: string } })
-          .projectId_userId.userId,
-        role: 'SALES_EXEC',
-        assignedAt: new Date('2026-09-09T00:00:00.000Z'),
-      })),
-      findMany: vi.fn(async () => []),
-      deleteMany: vi.fn(async () => ({ count: 1 })),
     },
     user: {
       findUnique: vi.fn(
