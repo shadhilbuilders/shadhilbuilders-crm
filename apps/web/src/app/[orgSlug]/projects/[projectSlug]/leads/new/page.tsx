@@ -19,10 +19,13 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
+import type { FormFieldItemType } from '@paalstack/react-ui';
 
 import { useCreateLead } from '@/hooks/queries/crm';
+import { useTeams } from '@/hooks/queries/teams';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
+import { useSessionUser } from '@/lib/session';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -32,6 +35,13 @@ import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 type CreatedLead = { id: string };
+
+// Sentinel for "let the backend decide" (mirrors TeamMemberRemovalDialog's
+// NO_REPLACEMENT pattern) - an empty string is not a valid teamId, and
+// z.string() alone can't express "optional but no undefined default" for
+// a Form field bound via react-hook-form (RHF fields need a defined
+// initial value). onSubmit strips this sentinel back out to "omit teamId".
+const NO_TEAM_OVERRIDE = '';
 
 const createLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').trim().max(120),
@@ -43,6 +53,11 @@ const createLeadSchema = z.object({
   email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
   source: z.enum(LEAD_SOURCES),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+  // T-TEAM-AUTHORITATIVE (2026-09-13) follow-up: only rendered/relevant for
+  // a MANAGER who leads more than one team - see the `managedTeams` picker
+  // below. NO_TEAM_OVERRIDE means "let the backend pick" (its existing
+  // oldest-managed-team default, unchanged for everyone else).
+  teamId: z.string(),
 });
 
 type CreateLeadSchema = z.infer<typeof createLeadSchema>;
@@ -60,6 +75,17 @@ export default function NewLeadPage() {
   const projectId = useProjectId();
   const orgSlug = useOrgSlug();
   const projectSlug = useProjectSlug();
+  const { user } = useSessionUser();
+  const teamsQuery = useTeams();
+  // T-TEAM-AUTHORITATIVE (2026-09-13) follow-up: useTeams() returns every
+  // team the actor can ACCESS (managed UNION ordinary membership for a
+  // MANAGER - team-access.service.ts), but leads.service.ts only accepts
+  // a `teamId` the actor MANAGES (Team.managerId === actor.sub) - picking
+  // an ordinary-membership team 403s server-side. Filter to managerId
+  // match so every option in the picker is guaranteed valid.
+  const managedTeams = (teamsQuery.data ?? []).filter(
+    (t) => user?.role === 'MANAGER' && t.managerId === user.id,
+  );
   const form = useForm<CreateLeadSchema>({
     resolver: zodResolver(createLeadSchema),
     defaultValues: {
@@ -68,6 +94,7 @@ export default function NewLeadPage() {
       email: '',
       source: 'LANDING',
       notes: '',
+      teamId: NO_TEAM_OVERRIDE,
     },
     mode: 'onSubmit',
   });
@@ -90,6 +117,7 @@ export default function NewLeadPage() {
         : {}),
       source: values.source.trim(),
       ...(values.notes && values.notes.trim().length > 0 ? { notes: values.notes.trim() } : {}),
+      ...(values.teamId !== NO_TEAM_OVERRIDE ? { teamId: values.teamId } : {}),
     };
 
     createLead.mutate(payload, {
@@ -110,6 +138,88 @@ export default function NewLeadPage() {
       },
     });
   }
+
+  const fields: FormFieldItemType<CreateLeadSchema>[] = [
+    {
+      type: 'input',
+      name: 'name',
+      label: 'Full name',
+      placeholder: 'Priya Sharma',
+      required: true,
+      inputProps: {
+        maxLength: 120,
+        'data-qa': 'lead-name',
+      },
+    },
+    {
+      type: 'custom',
+      name: 'phone',
+      label: 'Phone',
+      required: true,
+      description: '10-digit mobile number. +91 is added automatically.',
+      render: ({ field }) => (
+        <PhoneNumberInput
+          {...field}
+          placeholder="9876543210"
+          data-qa="lead-phone"
+        />
+      ),
+    },
+    {
+      type: 'input',
+      name: 'email',
+      label: 'Email',
+      placeholder: 'priya@example.com',
+      inputType: 'email',
+      description: 'Optional. Used for booking confirmations.',
+      inputProps: {
+        'data-qa': 'lead-email',
+      },
+    },
+    {
+      type: 'select',
+      name: 'source',
+      label: 'Source',
+      placeholder: 'Pick a source',
+      required: true,
+      description: 'Where this lead came from.',
+      options: LEAD_SOURCE_OPTIONS,
+      selectProps: {
+        'data-qa': 'lead-source',
+      },
+    },
+  ];
+
+  // T-TEAM-AUTHORITATIVE (2026-09-13) follow-up: only shown for a MANAGER
+  // who leads MORE THAN ONE team - a single-team manager (the common case)
+  // sees no change, matching the backend's "unchanged behavior for
+  // single-team actors" default.
+  if (managedTeams.length > 1) {
+    fields.push({
+      type: 'select',
+      name: 'teamId',
+      label: 'Team',
+      description: 'Which of your teams does this lead belong to? Defaults to your first team if left unset.',
+      options: [
+        { value: NO_TEAM_OVERRIDE, label: 'Default (first team)' },
+        ...managedTeams.map((t) => ({ value: t.id, label: t.name })),
+      ],
+    });
+  }
+
+  fields.push({
+    type: 'textarea',
+    name: 'notes',
+    label: 'Notes',
+    placeholder:
+      'Referred by her brother (existing client). Looking for 3BHK in Whitefield, ~1.2Cr budget.',
+    description: 'Optional. Anything the sales team should know on first contact.',
+    textareaProps: {
+      maxLength: 2000,
+      rows: 4,
+      'data-qa': 'lead-notes',
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -136,70 +246,7 @@ export default function NewLeadPage() {
             void router.push(projectHref(orgSlug, projectSlug, '/leads'));
           },
         }}
-        fields={[
-          {
-            type: 'input',
-            name: 'name',
-            label: 'Full name',
-            placeholder: 'Priya Sharma',
-            required: true,
-            inputProps: {
-              maxLength: 120,
-              'data-qa': 'lead-name',
-            },
-          },
-          {
-            type: 'custom',
-            name: 'phone',
-            label: 'Phone',
-            required: true,
-            description: '10-digit mobile number. +91 is added automatically.',
-            render: ({ field }) => (
-              <PhoneNumberInput
-                {...field}
-                placeholder="9876543210"
-                data-qa="lead-phone"
-              />
-            ),
-          },
-          {
-            type: 'input',
-            name: 'email',
-            label: 'Email',
-            placeholder: 'priya@example.com',
-            inputType: 'email',
-            description: 'Optional. Used for booking confirmations.',
-            inputProps: {
-              'data-qa': 'lead-email',
-            },
-          },
-          {
-            type: 'select',
-            name: 'source',
-            label: 'Source',
-            placeholder: 'Pick a source',
-            required: true,
-            description: 'Where this lead came from.',
-            options: LEAD_SOURCE_OPTIONS,
-            selectProps: {
-              'data-qa': 'lead-source',
-            },
-          },
-          {
-            type: 'textarea',
-            name: 'notes',
-            label: 'Notes',
-            placeholder:
-              'Referred by her brother (existing client). Looking for 3BHK in Whitefield, ~1.2Cr budget.',
-            description:
-              'Optional. Anything the sales team should know on first contact.',
-            textareaProps: {
-              maxLength: 2000,
-              rows: 4,
-              'data-qa': 'lead-notes',
-            },
-          },
-        ]}
+        fields={fields}
       />
 
       {/* Manual Cancel shortcut in addition to the form's Reset button. */}
