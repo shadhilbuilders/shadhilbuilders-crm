@@ -307,6 +307,7 @@ export class TeamMembersService {
       }
 
       let replacementUserId: string | null = null;
+      let replacementName: string | null = null;
       if (hasReplacement) {
         replacementUserId = dto.replacementUserId as string;
         const candidate = await this.resolveCandidate(t, teamId, team.managerId, replacementUserId);
@@ -316,6 +317,7 @@ export class TeamMembersService {
             `${replacementUserId} is not a member of team ${teamId} and cannot receive these leads.`,
           );
         }
+        replacementName = candidate.name;
         const ownedStates = Array.from(new Set(owned.map((l) => l.state)));
         if (!ownedStates.every((state) => canRoleOwnState(state, candidate.role))) {
           throw new CodedBadRequestException(
@@ -401,10 +403,22 @@ export class TeamMembersService {
 
       await t.teamMember.delete({ where: { userId_teamId: { userId, teamId } } });
 
+      // T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI6): resolve display
+      // names for the Audit page's batch-summary copy ("{member} removed
+      // from {team} · {n} leads transferred to {replacement}") - the audit
+      // payload otherwise carries only ids, which aren't renderable there.
+      const [removedUser, teamRow] = await Promise.all([
+        t.user.findUnique({ where: { id: userId }, select: { name: true } }),
+        t.team.findUnique({ where: { id: teamId }, select: { name: true } }),
+      ]);
+
       const removalAuditPayload = {
         removedUserId: userId,
+        removedUserName: removedUser?.name ?? null,
         teamId,
+        teamName: teamRow?.name ?? null,
         replacementUserId,
+        replacementName,
         transferredLeadCount,
       };
       await t.auditLog.create({
