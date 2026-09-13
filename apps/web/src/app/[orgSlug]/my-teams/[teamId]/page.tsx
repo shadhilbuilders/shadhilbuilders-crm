@@ -8,15 +8,14 @@
 // their own teammates. The manager's own row is never removable (pinned
 // with a Manager badge), mirroring the Admin -> Teams roster.
 import { useEffect, useState } from 'react';
-import { Badge, Button, Heading, Loading, TypographyP } from '@paalstack/react-ui';
+import { Button, Heading, Loading, TypographyP } from '@paalstack/react-ui';
 import { LuArrowLeft } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
-import { useTeam, type TeamMemberRow } from '@/hooks/queries/teams';
-import { TeamMemberRemovalDialog } from '@/components/teams/TeamMemberRemovalDialog';
+import { useTeam } from '@/hooks/queries/teams';
+import { TeamRosterMemberRow } from '@/components/teams/team-roster';
 import { isAdminLike, useSessionUser } from '@/lib/session';
-import { labelFor } from '@/lib/labels';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
 
@@ -95,13 +94,16 @@ export default function MyTeamRosterPage() {
       ) : (
         <div className="space-y-2">
           {team.members.map((member) => (
-            <MyTeamMemberRow
+            <TeamRosterMemberRow
               key={member.userId}
               teamId={team.id}
               teamName={team.name}
               member={member}
               managerId={team.manager?.id ?? null}
+              // Design doc: "member-removal actions appear only on teams
+              // they manage" - per-team, not per-role (see team-roster.tsx).
               canRemove={isManagerOfThisTeam}
+              dataQaPrefix="my-team-member"
             />
           ))}
         </div>
@@ -119,53 +121,6 @@ export default function MyTeamRosterPage() {
           Back to My Teams
         </Button>
       </div>
-    </div>
-  );
-}
-
-function MyTeamMemberRow({
-  teamId,
-  teamName,
-  member,
-  managerId,
-  canRemove,
-}: {
-  teamId: string;
-  teamName: string;
-  member: TeamMemberRow;
-  managerId: string | null;
-  canRemove: boolean;
-}) {
-  const [removeOpen, setRemoveOpen] = useState(false);
-  const isManagerRow = member.userId === managerId;
-
-  return (
-    <div className="border-border flex items-center justify-between gap-2 rounded-lg border p-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{member.name}</span>
-          {isManagerRow ? <Badge variant="secondary">Manager</Badge> : null}
-          <Badge variant="outline">{labelFor('role', member.role)}</Badge>
-        </div>
-        <p className="text-muted-foreground text-xs">{member.email}</p>
-      </div>
-      {canRemove && !isManagerRow ? (
-        <Button
-          type="button"
-          variant="ghost"
-          color="danger"
-          size="sm"
-          onClick={() => setRemoveOpen(true)}
-          data-qa={`my-team-member-remove-${member.userId}`}
-        >
-          Remove from this team
-        </Button>
-      ) : null}
-      <TeamMemberRemovalDialog
-        target={{ teamId, teamName, userId: member.userId, userName: member.name }}
-        open={removeOpen}
-        onOpenChange={setRemoveOpen}
-      />
     </div>
   );
 }

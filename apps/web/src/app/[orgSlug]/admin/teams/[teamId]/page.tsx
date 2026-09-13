@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   AlertDialog,
-  Badge,
   Button,
   Combobox,
   DataTable,
@@ -47,11 +46,10 @@ import {
   TeamFormBody,
   TeamTargetPicker,
 } from '@/components/teams/team-form-bodies';
-import { TeamMemberRemovalDialog } from '@/components/teams/TeamMemberRemovalDialog';
+import { TeamRosterMemberRow } from '@/components/teams/team-roster';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
-import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -336,9 +334,13 @@ function TeamHeaderActions({
 // ---------------------------------------------------------------------------
 
 /**
- * One member row: name/email, role, and the projects they're on. The Unlink
- * action is per-project and only enabled for EXPLICIT members; lead-owner-only
- * projects render a disabled Unlink with a tooltip.
+ * One member row - delegates the manager-pin/Manager-badge/"Remove from
+ * this team" contract to the shared `TeamRosterMemberRow` (design doc UI1:
+ * "Both routes render the same shared roster component"), and supplies the
+ * Admin-only per-project link/unlink chips + "Move to team" via its
+ * `extraActions` slot. The Unlink action is per-project and only enabled
+ * for EXPLICIT members; lead-owner-only projects render a disabled Unlink
+ * with a tooltip.
  */
 function MemberCard({
   teamId,
@@ -353,66 +355,28 @@ function MemberCard({
 }) {
   const isManagerRow = member.userId === managerId;
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{member.name}</span>
-          {isManagerRow ? <Badge variant="secondary">Manager</Badge> : null}
-        </div>
-        <p className="text-muted-foreground text-xs">{member.email}</p>
-        <p className="text-muted-foreground text-xs">{labelFor('role', member.role)}</p>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        {member.projects.map((p) => (
-          <ProjectUnlink key={p.projectId} project={p} member={member} />
-        ))}
-        {member.projects.length === 0 ? (
-          <span className="text-muted-foreground text-xs">Not on any project</span>
-        ) : null}
-        <LinkProjectButton teamId={teamId} member={member} />
-        <MoveToTeamButton teamId={teamId} member={member} />
-        {/* T-TEAM-AUTHORITATIVE (2026-09-13): "Remove from this team" is a
-            distinct Team Administration action from "Move to team" - it
-            transfers the member's owned/co-owned leads on THIS team to an
-            eligible replacement, then removes the membership. The team's
-            manager row never offers this (manager succession is separate). */}
-        {!isManagerRow ? (
-          <RemoveFromTeamButton teamId={teamId} teamName={teamName} member={member} />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function RemoveFromTeamButton({
-  teamId,
-  teamName,
-  member,
-}: {
-  teamId: string;
-  teamName: string;
-  member: TeamMemberRow;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        color="danger"
-        size="sm"
-        className="h-7 shrink-0 px-2 text-xs"
-        onClick={() => setOpen(true)}
-        data-qa={`team-member-remove-${member.userId}`}
-      >
-        Remove from this team
-      </Button>
-      <TeamMemberRemovalDialog
-        target={{ teamId, teamName, userId: member.userId, userName: member.name }}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
+    <TeamRosterMemberRow
+      teamId={teamId}
+      teamName={teamName}
+      member={member}
+      managerId={managerId}
+      // Admin/Owner can remove from any org team (authorization matrix);
+      // the manager row is still excluded inside the shared component.
+      canRemove
+      dataQaPrefix="team-member"
+      extraActions={
+        <>
+          {member.projects.map((p) => (
+            <ProjectUnlink key={p.projectId} project={p} member={member} />
+          ))}
+          {member.projects.length === 0 && !isManagerRow ? (
+            <span className="text-muted-foreground text-xs">Not on any project</span>
+          ) : null}
+          <LinkProjectButton teamId={teamId} member={member} />
+          <MoveToTeamButton teamId={teamId} member={member} />
+        </>
+      }
+    />
   );
 }
 
