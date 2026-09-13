@@ -133,6 +133,16 @@ function makeTx(overrides: {
       findFirst: vi.fn(async () =>
         overrides.teamId === undefined ? { id: 'team-1' } : overrides.teamId === null ? null : { id: overrides.teamId },
       ),
+      // T-TEAM-AUTHORITATIVE (2026-09-13): managerTeamIds() resolves via
+      // TeamAccessService.getManagedTeamIds(), which calls findMany (a
+      // manager may lead multiple teams) - mirror findFirst's fixture.
+      findMany: vi.fn(async () =>
+        overrides.teamId === undefined
+          ? [{ id: 'team-1' }]
+          : overrides.teamId === null
+            ? []
+            : [{ id: overrides.teamId }],
+      ),
     },
     auditLog: {
       count: vi.fn(async () => 3),
@@ -215,12 +225,12 @@ describe('DashboardService.getStats', () => {
     expect(leadCountArgs.where).toMatchObject({ ownerId: 'tc-1' });
   });
 
-  it('MANAGER sees team leads (via managerTeamId lookup)', async () => {
+  it('MANAGER sees team leads (via managerTeamIds lookup)', async () => {
     const svc = new DashboardService({ $client: {} } as never);
     const tx = txCapture.current!;
     await svc.getStats(managerActor, {});
     const leadCountArgs = tx.lead.count.mock.calls[0]![0] as MockArgs;
-    expect(leadCountArgs.where).toMatchObject({ teamId: 'team-1' });
+    expect(leadCountArgs.where).toMatchObject({ teamId: { in: ['team-1'] } });
   });
 
   it('projectId filter is applied to the lead where clause', async () => {

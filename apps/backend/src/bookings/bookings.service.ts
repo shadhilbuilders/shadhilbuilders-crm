@@ -41,6 +41,7 @@ import type {
 
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TeamAccessService } from '../teams/team-access.service';
 import { isAdminClass } from '../users/roles';
 
 /**
@@ -108,6 +109,9 @@ export class BookingsService {
     private readonly notifications?: NotificationsService,
   ) {}
 
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
+  private readonly teamAccess = new TeamAccessService();
+
   private get client(): PrismaClient {
     return this.prismaService.$client;
   }
@@ -164,13 +168,13 @@ export class BookingsService {
             ownerId: actor.sub,
           };
         } else if (actor.role === 'MANAGER') {
-          const team = await (tx as unknown as PrismaClient).team.findFirst({
-            where: { managerId: actor.sub },
-            select: { id: true },
-          });
+          const teamIds = await this.teamAccess.getManagedTeamIds(
+            tx as never,
+            actor.sub,
+          );
           where['lead'] = {
             ...(where['lead'] as object | undefined),
-            teamId: team?.id ?? '__no_team__',
+            teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
           };
         }
 

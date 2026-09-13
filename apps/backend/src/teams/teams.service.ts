@@ -433,9 +433,16 @@ export class TeamsService {
 
   /**
    * Validate a `managerId` candidate for create/update: null clears the
-   * manager (always allowed); otherwise the user must exist, be a
-   * `MANAGER`, and not already lead a DIFFERENT active team (`excludeTeamId`
-   * lets an update re-save the team's own current manager as a no-op).
+   * manager (always allowed); otherwise the user must exist and be a
+   * `MANAGER`.
+   *
+   * T-TEAM-AUTHORITATIVE (2026-09-13, Decision Audit Trail #39): REMOVES
+   * the "manager already leads a DIFFERENT team" guard that used to live
+   * here. One manager may now lead multiple teams - that's the whole
+   * point of the cutover (design doc fixture #1: "Manager Meera leads
+   * Metro Sales and Launch Support"). `excludeTeamId` is now unused by
+   * this method but kept as a parameter (harmless) so every call site
+   * doesn't need to change.
    */
   private async assertManagerAssignable(
     tx: Omit<
@@ -443,7 +450,7 @@ export class TeamsService {
       '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
     >,
     managerId: string | null,
-    excludeTeamId: string | null,
+    _excludeTeamId: string | null,
   ): Promise<string | null> {
     if (managerId === null) return null;
     const user = await tx.user.findUnique({
@@ -456,19 +463,6 @@ export class TeamsService {
     if (user.role !== 'MANAGER') {
       throw new BadRequestException(
         `User ${managerId} is not a MANAGER and cannot lead a team.`,
-      );
-    }
-    const ledTeam = await tx.team.findFirst({
-      where: {
-        managerId,
-        deletedAt: null,
-        ...(excludeTeamId !== null ? { id: { not: excludeTeamId } } : {}),
-      },
-      select: { id: true, name: true },
-    });
-    if (ledTeam !== null) {
-      throw new ConflictException(
-        `This manager already leads team "${ledTeam.name}".`,
       );
     }
     return managerId;

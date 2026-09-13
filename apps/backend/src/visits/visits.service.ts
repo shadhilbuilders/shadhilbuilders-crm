@@ -40,6 +40,7 @@ import type {
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
 
@@ -79,31 +80,26 @@ export class VisitsService {
     private readonly notifications?: NotificationsService,
   ) {}
 
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
+  private readonly teamAccess = new TeamAccessService();
+
   private get client(): PrismaClient {
     return this.prismaService.$client;
   }
 
   /**
-   * Manager → team lookup, identical to LeadsService.managerTeamId.
+   * Manager → EVERY team they lead (T-TEAM-AUTHORITATIVE: one manager
+   * may lead multiple teams), identical to LeadsService.managerTeamIds.
    * Mirrored here to avoid a circular module import (LeadsModule
    * doesn't import VisitsModule yet; pulling LeadsService into
    * VisitsModule is one-directional).
    */
-  private async managerTeamId(
+  private async managerTeamIds(
     tx: PrismaClient,
     actor: JwtPayload,
-  ): Promise<string | null> {
-    if (actor.role === 'MANAGER') {
-      const team = await tx.team.findFirst({
-        where: { managerId: actor.sub },
-        select: { id: true },
-      });
-      return team?.id ?? null;
-    }
-    if (actor.role === 'ADMIN' || actor.role === 'OWNER') {
-      return actor.teamId;
-    }
-    return null;
+  ): Promise<string[]> {
+    if (actor.role !== 'MANAGER') return [];
+    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
   }
 
   /**
@@ -141,11 +137,13 @@ export class VisitsService {
         if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
           where['lead'] = { ownerId: actor.sub };
         } else if (actor.role === 'MANAGER') {
-          const teamId = await this.managerTeamId(
+          const teamIds = await this.managerTeamIds(
             tx as unknown as PrismaClient,
             actor,
           );
-          where['lead'] = { teamId: teamId ?? '__no_team__' };
+          where['lead'] = {
+            teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
+          };
         }
 
         const [rows, total] = await Promise.all([

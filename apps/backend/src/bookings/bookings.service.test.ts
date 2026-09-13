@@ -39,7 +39,7 @@ function makeService(): {
     };
     lead: { findUnique: ReturnType<typeof vi.fn> };
     unit: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
-    team: { findFirst: ReturnType<typeof vi.fn> };
+    team: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
   };
 } {
@@ -58,7 +58,9 @@ function makeService(): {
     },
     lead: { findUnique: vi.fn() },
     unit: { findUnique: vi.fn(), update: vi.fn() },
-    team: { findFirst: vi.fn() },
+    // T-TEAM-AUTHORITATIVE (2026-09-13): TeamAccessService.getManagedTeamIds
+    // calls findMany (a manager may lead multiple teams), not findFirst.
+    team: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   };
   const prismaService = { $client: client } as never;
@@ -408,7 +410,7 @@ describe('transition - advance booking state', () => {
 describe('list - role-scoped query with status filter', () => {
   it('passes status filter through to the where clause', async () => {
     const { service, client } = makeService();
-    client.team.findFirst.mockResolvedValue({ id: 'team-mgr' });
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }]);
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor(), {
@@ -423,16 +425,31 @@ describe('list - role-scoped query with status filter', () => {
     );
   });
 
-  it('MANAGER narrows by own team', async () => {
+  it('MANAGER narrows by every team they lead', async () => {
     const { service, client } = makeService();
-    client.team.findFirst.mockResolvedValue({ id: 'team-mgr' });
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }]);
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor(), { limit: 50, offset: 0 });
     expect(client.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          lead: { teamId: 'team-mgr' },
+          lead: { teamId: { in: ['team-mgr'] } },
+        }),
+      }),
+    );
+  });
+
+  it('MANAGER leading multiple teams narrows by ALL of them', async () => {
+    const { service, client } = makeService();
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }, { id: 'team-mgr-2' }]);
+    client.booking.findMany.mockResolvedValue([]);
+    client.booking.count.mockResolvedValue(0);
+    await service.list(makeActor(), { limit: 50, offset: 0 });
+    expect(client.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          lead: { teamId: { in: ['team-mgr', 'team-mgr-2'] } },
         }),
       }),
     );

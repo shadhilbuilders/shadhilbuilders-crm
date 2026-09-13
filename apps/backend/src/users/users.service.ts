@@ -66,16 +66,29 @@ export class UsersService {
     let teamId = dto.teamId ?? null;
 
     if (actorIsManager) {
-      // The manager's team is resolved authoritatively via Team.managerId -
-      // the JWT teamId claim is unreliable (seeded managers carry
-      // teamId=null; the team links through managerId instead).
-      const team = await this.client.team.findFirst({
-        where: { managerId: actor.sub },
+      // T-TEAM-AUTHORITATIVE (2026-09-13): the manager's team(s) are
+      // resolved authoritatively via Team.managerId (a manager may lead
+      // multiple teams) - the JWT teamId claim is unreliable (seeded
+      // managers carry teamId=null; the team links through managerId
+      // instead). An explicit dto.teamId must be one of THEIR teams;
+      // omitted defaults to their first (oldest) managed team.
+      const managedTeams = await this.client.team.findMany({
+        where: { managerId: actor.sub, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
       });
-      if (!team) {
+      if (managedTeams.length === 0) {
         throw new ForbiddenException('You do not manage any team');
       }
-      teamId = team.id;
+      if (dto.teamId !== undefined) {
+        if (!managedTeams.some((t) => t.id === dto.teamId)) {
+          throw new ForbiddenException(
+            'You can only create users in a team you manage',
+          );
+        }
+        teamId = dto.teamId;
+      } else {
+        teamId = managedTeams[0]!.id;
+      }
     } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && !dto.teamId) {
       // Admin creating a manager WITHOUT teamId: auto-create the team.
       // Admin creating a STAFF user without teamId: reject - ambiguous.
@@ -423,11 +436,14 @@ export class UsersService {
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       // sees anyone.
     } else if (actor.role === 'MANAGER') {
-      const team = await this.client.team.findFirst({
-        where: { managerId: actor.sub },
+      // T-TEAM-AUTHORITATIVE (2026-09-13): a manager may lead multiple
+      // teams - check membership in the FULL managed-team set.
+      const teams = await this.client.team.findMany({
+        where: { managerId: actor.sub, deletedAt: null },
         select: { id: true },
       });
-      const inOwnTeam = team !== null && target.teamId === team.id;
+      const inOwnTeam =
+        target.teamId !== null && teams.some((t) => t.id === target.teamId);
       if (!inOwnTeam && target.id !== actor.sub) {
         throw new ForbiddenException("You can only view your own team's users");
       }
@@ -669,17 +685,23 @@ export class UsersService {
   }
 
   async list(actor: JwtPayload, filter: UserFilterDto = { limit: 50, offset: 0 }): Promise<UserListResult> {
-    // Team scoping resolves TEAM.managerId, same as create() - the JWT
-    // teamId claim is unreliable for managers (seed keeps it null).
-    // OWNER and ADMIN see all. All scopes exclude soft-deleted users.
+    // T-TEAM-AUTHORITATIVE (2026-09-13): team scoping resolves EVERY team
+    // via TEAM.managerId (a manager may lead multiple teams), same as
+    // create() - the JWT teamId claim is unreliable for managers (seed
+    // keeps it null). OWNER and ADMIN see all. All scopes exclude
+    // soft-deleted users.
     let where: Record<string, unknown>;
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       where = { deletedAt: null };
     } else if (actor.role === 'MANAGER') {
-      const team = await this.client.team.findFirst({
-        where: { managerId: actor.sub },
+      const teams = await this.client.team.findMany({
+        where: { managerId: actor.sub, deletedAt: null },
       });
-      where = { deletedAt: null, teamId: team?.id ?? '__none__' };
+      const teamIds = teams.map((t) => t.id);
+      where = {
+        deletedAt: null,
+        teamId: teamIds.length > 0 ? { in: teamIds } : '__none__',
+      };
     } else {
       where = { deletedAt: null, id: actor.sub };
     }
@@ -764,21 +786,22 @@ export class UsersService {
       return [];
     }
 
-    // Resolve the manager's team (JWT teamId is unreliable for managers).
-    let teamId: string | null = null;
+    // T-TEAM-AUTHORITATIVE (2026-09-13): resolve EVERY team the manager
+    // leads (JWT teamId is unreliable for managers).
+    let teamIds: string[] | null = null;
     if (actor.role === 'MANAGER') {
-      const team = await this.client.team.findFirst({
-        where: { managerId: actor.sub },
+      const teams = await this.client.team.findMany({
+        where: { managerId: actor.sub, deletedAt: null },
         select: { id: true },
       });
-      teamId = team?.id ?? '__none__';
+      teamIds = teams.length > 0 ? teams.map((t) => t.id) : ['__none__'];
     }
 
     // Distinct owners of this project's leads, optionally team-scoped.
     const owners = await this.client.lead.findMany({
       where: {
         projectId,
-        ...(teamId !== null ? { teamId } : {}),
+        ...(teamIds !== null ? { teamId: { in: teamIds } } : {}),
       },
       select: { ownerId: true },
       distinct: ['ownerId'],
@@ -819,27 +842,32 @@ export class UsersService {
     if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
       where = {};
     } else {
-      // Resolve the actor's team. Managers link via Team.managerId (JWT
-      // teamId is unreliable for them); staff carry teamId on the JWT.
-      let teamId: string | null = actor.teamId ?? null;
+      // T-TEAM-AUTHORITATIVE (2026-09-13): resolve EVERY team the actor
+      // is associated with. Managers link via Team.managerId (a manager
+      // may lead multiple teams; the JWT teamId is unreliable for them);
+      // staff carry a single teamId on the JWT.
+      let teamIds: string[] = actor.teamId !== null && actor.teamId !== undefined ? [actor.teamId] : [];
       if (actor.role === 'MANAGER') {
-        const team = await this.client.team.findFirst({
-          where: { managerId: actor.sub },
+        const teams = await this.client.team.findMany({
+          where: { managerId: actor.sub, deletedAt: null },
         });
-        teamId = team?.id ?? null;
+        teamIds = teams.map((t) => t.id);
       }
-      if (teamId === null) {
+      if (teamIds.length === 0) {
         // No team - the actor can only mention themselves.
         return [];
       }
-      // Team members + the team's manager (so staff can loop their
+      // Team members + each team's manager (so staff can loop their
       // manager even though the manager isn't a teamId member).
-      const team = await this.client.team.findUnique({
-        where: { id: teamId },
+      const teams = await this.client.team.findMany({
+        where: { id: { in: teamIds } },
         select: { managerId: true },
       });
+      const managerIds = Array.from(
+        new Set(teams.map((t) => t.managerId).filter((id): id is string => id !== null)),
+      );
       where = {
-        OR: [{ teamId }, { id: team?.managerId ?? '__none__' }],
+        OR: [{ teamId: { in: teamIds } }, { id: { in: managerIds.length > 0 ? managerIds : ['__none__'] } }],
       };
     }
 

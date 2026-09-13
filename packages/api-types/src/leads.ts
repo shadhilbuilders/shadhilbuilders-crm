@@ -48,6 +48,12 @@ export const CreateLeadDtoSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
   // Internal: optional explicit owner override (public-leads only).
   assignedOwnerId: z.string().cuid2().optional(),
+  // T-TEAM-AUTHORITATIVE (2026-09-13): optional explicit team pick. A
+  // MANAGER who leads multiple teams (or an ADMIN/OWNER) may specify
+  // which team the lead belongs to; omitted defaults to the actor's
+  // first/oldest managed team (MANAGER) or the org's oldest team
+  // (ADMIN/OWNER) - unchanged behavior for single-team actors.
+  teamId: z.cuid2().optional(),
 });
 export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
 

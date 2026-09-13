@@ -326,23 +326,26 @@ describe('changePassword - missing Account row', () => {
 });
 
 describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
-  function makeTeamService() {
-    const teamFindFirst = vi.fn();
-    const teamFindUnique = vi.fn();
+  // T-TEAM-AUTHORITATIVE (2026-09-13): teamMembers() resolves via
+  // team.findMany with TWO different where shapes - `{ managerId }` for
+  // the manager's own managed teams, `{ id: { in } }` for the keyed
+  // lookup that collects each team's manager. Dispatch on the where
+  // shape rather than call order (a TELECALLER only ever makes the
+  // second call, never the first).
+  function makeTeamService(managedTeams: Array<{ id: string }> = [], teamsById: Array<{ managerId: string | null }> = [{ managerId: 'mgr-1' }]) {
+    const teamFindMany = vi.fn(
+      async (args: { where: { managerId?: string; id?: { in: string[] } } }) =>
+        'managerId' in args.where ? managedTeams : teamsById,
+    );
     const userFindMany = vi.fn();
     const fakeClient = {
-      team: {
-        findFirst: teamFindFirst,
-        findUnique: teamFindUnique,
-      },
-      user: {
-        findMany: userFindMany,
-      },
+      team: { findMany: teamFindMany },
+      user: { findMany: userFindMany },
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, teamFindUnique, userFindMany },
+      mocks: { teamFindMany, userFindMany },
     };
   }
 
@@ -355,30 +358,41 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     );
   });
 
-  it('MANAGER resolves their team via Team.managerId and lists its members', async () => {
-    const { service, mocks } = makeTeamService();
-    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
-    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+  it('MANAGER resolves EVERY team they lead via Team.managerId and lists all members', async () => {
+    const { service, mocks } = makeTeamService([{ id: 'team-mgr' }], [{ managerId: 'mgr-1' }]);
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(managerActor);
-    expect(mocks.teamFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { managerId: 'mgr-1' } }),
-    );
+    expect(mocks.teamFindMany).toHaveBeenNthCalledWith(1, {
+      where: { managerId: 'mgr-1', deletedAt: null },
+    });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: 'team-mgr' }, { id: 'mgr-1' }] },
+        where: { OR: [{ teamId: { in: ['team-mgr'] } }, { id: { in: ['mgr-1'] } }] },
+      }),
+    );
+  });
+
+  it('MANAGER leading multiple teams sees members across ALL of them', async () => {
+    const { service, mocks } = makeTeamService(
+      [{ id: 'team-a' }, { id: 'team-b' }],
+      [{ managerId: 'mgr-1' }, { managerId: 'mgr-1' }],
+    );
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(managerActor);
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { OR: [{ teamId: { in: ['team-a', 'team-b'] } }, { id: { in: ['mgr-1'] } }] },
       }),
     );
   });
 
   it('TELECALLER sees their team + the team manager (so they can loop the manager)', async () => {
-    const { service, mocks } = makeTeamService();
-    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+    const { service, mocks } = makeTeamService([], [{ managerId: 'mgr-1' }]);
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(telecallerActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: 'team-tc' }, { id: 'mgr-1' }] },
+        where: { OR: [{ teamId: { in: ['team-tc'] } }, { id: { in: ['mgr-1'] } }] },
       }),
     );
   });
@@ -395,16 +409,19 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
 describe('list - role facet filter + server pagination (autoplan 2026-09-09)', () => {
   function makeListService() {
     const teamFindFirst = vi.fn();
+    // T-TEAM-AUTHORITATIVE (2026-09-13): list()'s MANAGER scope resolves
+    // via findMany (a manager may lead multiple teams).
+    const teamFindMany = vi.fn().mockResolvedValue([]);
     const userFindMany = vi.fn();
     const userCount = vi.fn();
     const fakeClient = {
-      team: { findFirst: teamFindFirst },
+      team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, userFindMany, userCount },
+      mocks: { teamFindFirst, teamFindMany, userFindMany, userCount },
     };
   }
 
@@ -451,13 +468,13 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
 
   it('MANAGER with a role filter → team scope AND role IN ([...])', async () => {
     const { service, mocks } = makeListService();
-    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
+    mocks.teamFindMany.mockResolvedValue([{ id: 'team-mgr' }]);
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
     await service.list(managerActor, { role: 'TELECALLER', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, teamId: 'team-mgr', role: { in: ['TELECALLER'] } },
+        where: { deletedAt: null, teamId: { in: ['team-mgr'] }, role: { in: ['TELECALLER'] } },
       }),
     );
   });
