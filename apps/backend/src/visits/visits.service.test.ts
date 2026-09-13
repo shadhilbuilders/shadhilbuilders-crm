@@ -130,7 +130,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       await db.team.upsert({
         where: { id: TEAM_ID },
         update: {},
-        create: { id: TEAM_ID, name: 'VOC Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        create: { id: TEAM_ID, name: `VOC Test Team ${RUN}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       });
       await db.user.upsert({
         where: { id: ADMIN_ID },
