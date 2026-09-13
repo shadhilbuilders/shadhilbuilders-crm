@@ -533,7 +533,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     );
   });
 
-  it('returns { rows, total } envelope', async () => {
+  it('returns { rows, total } envelope (projects come from the user\'s TEAM\'s ProjectTeam rows - T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover, ProjectMember retired)', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([
       {
@@ -542,7 +542,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
         name: 'A',
         role: 'ADMIN',
         teamId: null,
-        projectMembers: [{ project: { name: 'Shadhil Metro Heights' } }],
+        team: { projectTeams: [{ project: { name: 'Shadhil Metro Heights' } }] },
       },
     ]);
     mocks.userCount.mockResolvedValue(1);

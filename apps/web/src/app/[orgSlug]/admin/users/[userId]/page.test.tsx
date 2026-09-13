@@ -8,10 +8,10 @@
 //   5. SALES_EXEC/TELECALLER data  → manager row renders (name + email,
 //      or "No manager assigned") + "Assign manager"/"Reassign manager"
 //   6. MANAGER/ADMIN data          → manager row is OMITTED entirely
-//   7. projects render as badges; empty → "Not assigned to any project."
-//   8. "Link to project" button renders in the Projects card header
-//      (canManageProjectMembers gate - actor is always ADMIN/OWNER here
-//      since the page's own gate already requires isAdminLike)
+//   7. projects render as badges; empty → the team-aware empty copy
+//      (T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover: Projects card is
+//      read-only now - ProjectMember, the per-user link this used to
+//      offer, was retired; project staffing is team-based only)
 //
 // Page has a `mounted` gate (flips true only in useEffect) - mount with
 // createRoot + act (runs effects), same pattern as users/page.test.tsx.
@@ -26,19 +26,12 @@ const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
   useUser: vi.fn(),
   useAssignManager: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-  useProjects: vi.fn(() => ({ data: [] })),
-  useLinkProjectMemberToProject: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useTeams: vi.fn(() => ({ data: [] })),
 }));
 
 vi.mock('@/hooks/queries/users', () => ({
   useUser: mocks.useUser,
   useAssignManager: mocks.useAssignManager,
-}));
-
-vi.mock('@/hooks/queries/projects', () => ({
-  useProjects: mocks.useProjects,
-  useLinkProjectMemberToProject: mocks.useLinkProjectMemberToProject,
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -49,8 +42,6 @@ vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
   canManageUsers: (role: string) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
-  canManageProjectMembers: (role: string) =>
     role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
 }));
 
@@ -92,8 +83,6 @@ afterEach(async () => {
   mocks.useSessionUser.mockReset();
   mocks.useUser.mockReset();
   mocks.useAssignManager.mockClear();
-  mocks.useProjects.mockClear();
-  mocks.useLinkProjectMemberToProject.mockClear();
   mocks.useTeams.mockClear();
 });
 
@@ -184,11 +173,11 @@ describe('UserDetailPage - state matrix', () => {
     // Projects render as badges.
     expect(html).toContain('data-qa="user-projects-list"');
     expect(html).toContain('Metro Heights');
-    // Write actions: an admin/owner viewer sees both "Reassign manager"
-    // (a manager is already set) and "Link to project".
+    // Write action: an admin/owner viewer sees "Reassign manager" (a
+    // manager is already set). The Projects card is read-only now (no
+    // link action - ProjectMember was retired).
     expect(html).toContain('data-qa="user-assign-manager-button"');
     expect(html).toContain('Reassign manager');
-    expect(html).toContain('data-qa="user-link-project-button"');
   });
 
   it('SALES_EXEC with no manager yet: button reads "Assign manager"', async () => {
@@ -242,8 +231,8 @@ describe('UserDetailPage - state matrix', () => {
     const html = container?.innerHTML ?? '';
     expect(html).toContain('data-qa="user-manager-row"');
     expect(html).toContain('No manager assigned');
-    // No projects → the empty state, not the badge list.
-    expect(html).toContain('Not assigned to any project.');
+    // No projects → the team-aware empty state, not the badge list.
+    expect(html).toContain("Unled Team isn't linked to any project yet.");
     expect(html).not.toContain('data-qa="user-projects-list"');
   });
 
@@ -270,10 +259,10 @@ describe('UserDetailPage - state matrix', () => {
     await mount();
     const html = container?.innerHTML ?? '';
     expect(html).not.toContain('data-qa="user-manager-row"');
-    // No manager section → no "assign manager" button either, but the
-    // Projects card's "Link to project" button is unaffected.
+    // No manager section → no "assign manager" button either. The
+    // Projects card renders regardless (read-only, unaffected by role).
     expect(html).not.toContain('data-qa="user-assign-manager-button"');
-    expect(html).toContain('data-qa="user-link-project-button"');
+    expect(html).toContain('data-qa="user-projects-card"');
   });
 
   it('ADMIN row: the manager section is omitted entirely', async () => {

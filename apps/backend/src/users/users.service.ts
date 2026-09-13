@@ -420,11 +420,16 @@ export class UsersService {
             id: true,
             name: true,
             manager: { select: { id: true, name: true, email: true } },
+            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "which
+            // projects" is now "which projects is this user's TEAM linked
+            // to" (ProjectTeam) - ProjectMember (per-user linking) was
+            // retired. Read-only here (linking happens on the project's
+            // Staff page, at the team level, not per-user).
+            projectTeams: {
+              select: { project: { select: { id: true, name: true } } },
+              orderBy: { project: { name: 'asc' } },
+            },
           },
-        },
-        projectMembers: {
-          select: { project: { select: { id: true, name: true } } },
-          orderBy: { project: { name: 'asc' } },
         },
       },
     });
@@ -470,9 +475,9 @@ export class UsersService {
               email: target.team.manager.email,
             }
           : null,
-      projects: target.projectMembers.map((pm) => ({
-        id: pm.project.id,
-        name: pm.project.name,
+      projects: (target.team?.projectTeams ?? []).map((pt) => ({
+        id: pt.project.id,
+        name: pt.project.name,
       })),
     };
   }
@@ -740,11 +745,18 @@ export class UsersService {
           name: true,
           role: true,
           teamId: true,
-          // Project names for the admin Users table (autoplan 2026-09-12):
-          // a user's projects come from ProjectMember (many-to-many).
-          projectMembers: {
-            select: { project: { select: { name: true } } },
-            orderBy: { project: { name: 'asc' } },
+          // Project names for the admin Users table (autoplan 2026-09-12).
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a user's
+          // projects are now "whichever projects this user's TEAM is
+          // linked to" (ProjectTeam) - ProjectMember (per-user linking)
+          // was retired.
+          team: {
+            select: {
+              projectTeams: {
+                select: { project: { select: { name: true } } },
+                orderBy: { project: { name: 'asc' } },
+              },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -760,7 +772,7 @@ export class UsersService {
         name: r.name,
         role: r.role,
         teamId: r.teamId,
-        projects: r.projectMembers.map((pm) => pm.project.name),
+        projects: (r.team?.projectTeams ?? []).map((pt) => pt.project.name),
       })),
       total,
     };

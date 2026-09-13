@@ -10,7 +10,9 @@
 //   7. staff viewing themselves → allowed
 //   8. `manager` is populated ONLY for TELECALLER/SALES_EXEC (MANAGER/ADMIN
 //      rows never report to a manager on this surface, even with a team)
-//   9. projects come from the target's ProjectMember rows
+//   9. projects come from the target's TEAM's ProjectTeam rows
+//      (T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover: ProjectMember, the
+//      per-user link this used to read, was retired)
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -53,8 +55,8 @@ type FakeUserRow = {
     id: string;
     name: string;
     manager: { id: string; name: string; email: string } | null;
+    projectTeams: Array<{ project: { id: string; name: string } }>;
   } | null;
-  projectMembers: Array<{ project: { id: string; name: string } }>;
 };
 
 const salesExec: FakeUserRow = {
@@ -67,8 +69,8 @@ const salesExec: FakeUserRow = {
     id: 'team-1',
     name: "Ravi's Team",
     manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [{ project: { id: 'proj-1', name: 'Metro Heights' } }],
   },
-  projectMembers: [{ project: { id: 'proj-1', name: 'Metro Heights' } }],
 };
 
 const managerRow: FakeUserRow = {
@@ -80,8 +82,12 @@ const managerRow: FakeUserRow = {
   // A manager can still have a `team` relation resolved (e.g. via a
   // different link) - the point of the test is that `manager` stays null
   // regardless, because MANAGER doesn't report to anyone on this surface.
-  team: { id: 'team-1', name: "Ravi's Team", manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' } },
-  projectMembers: [],
+  team: {
+    id: 'team-1',
+    name: "Ravi's Team",
+    manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [],
+  },
 };
 
 function makeService(opts: {
@@ -200,7 +206,7 @@ describe('getUser - manager field only applies to TELECALLER/SALES_EXEC', () => 
   it('SALES_EXEC on a team with no manager assigned → manager is null', async () => {
     const noManager: FakeUserRow = {
       ...salesExec,
-      team: { id: 'team-2', name: 'Unled Team', manager: null },
+      team: { id: 'team-2', name: 'Unled Team', manager: null, projectTeams: [] },
     };
     const { service } = makeService({ user: noManager });
     const result = await service.getUser(adminActor, noManager.id);

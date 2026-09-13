@@ -22,20 +22,17 @@ export type TeamListItem = {
   managerName: string | null;
 };
 
-export type TeamMemberProject = {
-  projectId: string;
-  projectName: string;
-  role: string;
-  /** True when this project came only from lead-ownership (read-only). */
-  isLeadOwner: boolean;
-};
-
+// T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMemberProject/
+// member.projects were removed - ProjectMember (the per-user project link
+// this was derived from) was retired. Project staffing is exclusively
+// team-based now (see hooks/queries/project-teams.ts) - the per-project
+// Staff page (ProjectTeamList) is the place to see "which projects", not
+// a per-row field duplicated on every team roster member.
 export type TeamMemberRow = {
   userId: string;
   name: string;
   email: string;
   role: string;
-  projects: TeamMemberProject[];
 };
 
 export type TeamDetail = {

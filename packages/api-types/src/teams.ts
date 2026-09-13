@@ -5,12 +5,16 @@
 // These shapes back the ADMIN/OWNER org-Teams pages:
 //   GET /api/teams       -> TeamListItem[] (list; every authenticated role,
 //                           RLS-scoped - used by the create-user dialog).
-//   GET /api/teams/:id   -> TeamDetail (ADMIN/OWNER only; roster with each
-//                           member's EXPLICIT project assignments + lead-owner
-//                           provenance for read-only rows).
-// Team membership = User.teamId matches the Team. An UNLINK removes a
-// ProjectMember row from ONE project (reuses the projects module's
-// DELETE /api/projects/:id/members/:userId); it does not change User.teamId.
+//   GET /api/teams/:id   -> TeamDetail (ADMIN/OWNER only; simple roster).
+//
+// T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamDetail's members no
+// longer carry a per-member `projects` list - that was ProjectMember-
+// derived, and ProjectMember was retired (design doc: "per-user project
+// exceptions" are Not in Scope). Project staffing is exclusively team-based
+// now (see team-membership.ts's ProjectTeamRowSchema) - "which projects is
+// this member on" is the SAME answer for every member of a team (whichever
+// projects the TEAM is linked to via ProjectTeam), so it belongs on the
+// per-project Staff page, not duplicated per-row on the team roster.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
@@ -30,32 +34,12 @@ export const TeamListItemSchema = z.object({
 });
 export type TeamListItem = z.infer<typeof TeamListItemSchema>;
 
-/** A single project a team member is assigned to (explicit ProjectMember). */
-export const TeamMemberProjectSchema = z.object({
-  projectId: z.string(),
-  projectName: z.string(),
-  role: z.string(), // RoleSchema
-  /**
-   * True when this project assignment came ONLY from lead-ownership (the
-   * member owns leads in the project but has no explicit ProjectMember row).
-   * Such rows are read-only in the UI (Unlink disabled) - there is no
-   * explicit ProjectMember to delete, and unlinking would be a silent no-op.
-   */
-  isLeadOwner: z.boolean(),
-});
-export type TeamMemberProject = z.infer<typeof TeamMemberProjectSchema>;
-
-/**
- * One team member on the roster.
- * `projects` = every project they appear in: EXPLICIT ProjectMember rows
- * (unlinkable) UNION lead-owner-derived ones (read-only, isLeadOwner=true).
- */
+/** One team member on the roster. */
 export const TeamMemberRowSchema = z.object({
   userId: z.string(),
   name: z.string(),
   email: z.string(),
   role: z.string(), // RoleSchema
-  projects: z.array(TeamMemberProjectSchema),
 });
 export type TeamMemberRow = z.infer<typeof TeamMemberRowSchema>;
 

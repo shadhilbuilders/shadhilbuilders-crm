@@ -81,7 +81,6 @@ const managerMember: TeamMemberRow = {
   name: 'Meera',
   email: 'meera@x.in',
   role: 'MANAGER',
-  projects: [],
 };
 
 const ordinaryMember: TeamMemberRow = {
@@ -89,7 +88,6 @@ const ordinaryMember: TeamMemberRow = {
   name: 'Priya',
   email: 'priya@x.in',
   role: 'TELECALLER',
-  projects: [],
 };
 
 describe('TeamRosterMemberRow', () => {

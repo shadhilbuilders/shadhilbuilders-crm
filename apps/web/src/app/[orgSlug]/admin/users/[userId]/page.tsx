@@ -2,20 +2,20 @@
 
 // User detail page (/admin/users/[userId], autoplan 2026-09-13).
 // Clicking a user's name in the /admin/users table lands here. Shows the
-// user's identity, team, the projects they're assigned to (via
-// ProjectMember), and - only when the role is TELECALLER or SALES_EXEC,
-// since those are the only roles that report to a manager on this surface -
-// who manages them. ADMIN/OWNER/MANAGER rows omit the manager section
-// entirely (they don't report to anyone here).
+// user's identity, team, the projects their team is linked to (via
+// ProjectTeam - read-only here, T-TEAM-AUTHORITATIVE 2026-09-13 clean
+// cutover: the per-user ProjectMember link was retired, so project
+// staffing is only editable from the project's Staff page now), and -
+// only when the role is TELECALLER or SALES_EXEC, since those are the
+// only roles that report to a manager on this surface - who manages them.
+// ADMIN/OWNER/MANAGER rows omit the manager section entirely (they don't
+// report to anyone here).
 //
 // Auth: same gate as the /admin/users list (ADMIN/OWNER only) - the
 // backend additionally scopes MANAGER to their own team + self, so this
 // page would also work for a manager if that gate is ever relaxed.
 //
 // Write actions (autoplan 2026-09-13):
-//   - "Link to project" (Projects card) - POST /api/projects/:id/members,
-//     reusing the same mutation the Teams roster page uses. Gated by
-//     `canManageProjectMembers` (ADMIN/OWNER/MANAGER).
 //   - "Assign manager" / "Reassign manager" (Manager row, TELECALLER/
 //     SALES_EXEC only) - PATCH /api/users/:id/manager, which moves the
 //     user into the chosen manager's team. Gated by `canManageUsers`
@@ -40,7 +40,6 @@ import {
 import {
   LuArrowLeft,
   LuFolderKanban,
-  LuPlus,
   LuUserCog,
 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
@@ -50,10 +49,8 @@ import {
   useUser,
   type BackendUserDetail,
 } from '@/hooks/queries/users';
-import { useLinkProjectMemberToProject, useProjects } from '@/hooks/queries/projects';
 import { useTeams } from '@/hooks/queries/teams';
 import {
-  canManageProjectMembers,
   canManageUsers,
   isAdminLike,
   useSessionUser,
@@ -230,19 +227,21 @@ function UserDetailContent({
 
       <Card data-qa="user-projects-card">
         <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-base">Projects</CardTitle>
-            {canManageProjectMembers(actorRole) ? (
-              <LinkProjectButton detail={detail} onLinked={onChanged} />
-            ) : null}
-          </div>
+          <CardTitle className="text-base">Projects</CardTitle>
         </CardHeader>
         <CardContent>
+          {/* T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): read-only -
+              "which projects" is now "which projects is this user's TEAM
+              linked to" (ProjectTeam). Linking happens on the project's
+              Staff page at the team level, not per-user here anymore
+              (ProjectMember, the per-user link, was retired). */}
           {detail.projects.length === 0 ? (
             <div className="flex flex-col items-center gap-1 py-6 text-center">
               <LuFolderKanban className="text-muted-foreground size-6" />
               <p className="text-muted-foreground text-sm">
-                Not assigned to any project.
+                {detail.teamName === null
+                  ? 'Not on a team, so no linked projects.'
+                  : `${detail.teamName} isn't linked to any project yet.`}
               </p>
             </div>
           ) : (
@@ -369,122 +368,6 @@ function AssignManagerButton({
               data-qa="user-assign-manager-confirm"
             >
               Assign
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Link to project - POST /api/projects/:id/members
-// ---------------------------------------------------------------------------
-
-/** Opens a dialog to link this user to a project they're not already on. */
-function LinkProjectButton({
-  detail,
-  onLinked,
-}: {
-  detail: BackendUserDetail;
-  onLinked: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const { data: projects } = useProjects();
-  const linkMember = useLinkProjectMemberToProject();
-  const [selected, setSelected] = useState('');
-
-  const linkedIds = useMemo(
-    () => new Set(detail.projects.map((p) => p.id)),
-    [detail.projects],
-  );
-  const candidates = useMemo(
-    () =>
-      (projects ?? [])
-        .filter((p) => !linkedIds.has(p.id))
-        .map((p) => ({ value: p.id, label: p.name })),
-    [projects, linkedIds],
-  );
-
-  function handleLink() {
-    if (!selected) return;
-    linkMember.mutate(
-      { projectId: selected, userId: detail.id },
-      {
-        onSuccess: () => {
-          toast.success(`${detail.name} linked to a project`);
-          // The link mutation only invalidates the project's member list;
-          // this page reads projects off the user-detail query, so
-          // refetch that too.
-          onLinked();
-          setSelected('');
-          setOpen(false);
-        },
-        onError: (error) => {
-          toast.error(error instanceof Error ? error.message : 'Link failed');
-        },
-      },
-    );
-  }
-
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-        leftIcon={<LuPlus className="size-4" />}
-        data-qa="user-link-project-button"
-      >
-        Link to project
-      </Button>
-      <Dialog
-        open={open}
-        onOpenChange={(next) => {
-          if (!next) setSelected('');
-          setOpen(next);
-        }}
-        trigger={null}
-        header={{
-          title: `Link ${detail.name} to a project`,
-          description: 'Choose a project to add this user to.',
-        }}
-        contentClassName="sm:max-w-md"
-      >
-        <div className="space-y-3">
-          <Combobox
-            value={selected}
-            onValueChange={(v) => setSelected(v ?? '')}
-            options={candidates}
-            placeholder={
-              candidates.length === 0
-                ? 'No more projects to link'
-                : 'Search projects...'
-            }
-            disabled={candidates.length === 0}
-            selectOptionAsValue
-            className="w-full"
-            data-qa="user-link-project-picker"
-          />
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={linkMember.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleLink}
-              disabled={!selected || linkMember.isPending}
-              isLoading={linkMember.isPending}
-              loadingText="Linking..."
-              data-qa="user-link-project-confirm"
-            >
-              Link
             </Button>
           </div>
         </div>
