@@ -38,7 +38,7 @@ async function ensureFixtures(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'WA-UC Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: { id: TEST_TEAM_ID, name: `WA-UC Test Team ${TEST_TEAM_ID}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },

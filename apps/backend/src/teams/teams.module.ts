@@ -15,12 +15,13 @@
 
 import { Module } from '@nestjs/common';
 
+import { TeamAccessService } from './team-access.service';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 
 @Module({
   controllers: [TeamsController],
-  providers: [TeamsService],
-  exports: [TeamsService],
+  providers: [TeamsService, TeamAccessService],
+  exports: [TeamsService, TeamAccessService],
 })
 export class TeamsModule {}

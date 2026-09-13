@@ -222,6 +222,8 @@ model Organization {
   projectMembers           ProjectMember[]
   projectOptions           ProjectOption[]
   managerAssignmentRules   ManagerAssignmentRule[]
+  teamMembers              TeamMember[]
+  projectTeams             ProjectTeam[]
 
   @@index([slug])
 }
@@ -264,6 +266,13 @@ model User {
   // business relations
   organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   team              Team?              @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  // T-TEAM-AUTHORITATIVE (2026-09-13): additive multi-team membership.
+  // `teamId` above stays for now (expand phase) - the removal/reassignment
+  // flow and the derived project registry read from `teamMemberships`
+  // instead. See design doc referenced in Decision Audit Trail #39.
+  teamMemberships   TeamMember[]       @relation("TeamMembershipUser")
+  teamMembershipsAssignedBy TeamMember[] @relation("TeamMembershipAssignedBy")
+  projectTeamsAssignedBy    ProjectTeam[] @relation("ProjectTeamAssignedBy")
   managedTeams      Team[]             @relation("TeamManager")
   defaultAssigneeOf Team[]             @relation("TeamDefaultAssignee")
   ownedLeads        Lead[]             @relation("LeadOwner")
@@ -311,6 +320,11 @@ model Team {
   // match any rule stay unassigned (notification trigger fires).
   defaultAssigneeId String?
   createdAt         DateTime @default(now())
+  // T-TEAM-CRUD (2026-09-13): NULL = active; set = soft-deleted (hidden
+  // from the org-Teams pages). Mirrors Project.deletedAt exactly - avoids
+  // Lead.teamId's onDelete:Restrict hard-delete trap and keeps historical
+  // Lead/ManagerAssignmentRule references intact.
+  deletedAt         DateTime?
 
   manager         User?                   @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
   defaultAssignee User?                   @relation("TeamDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
@@ -318,9 +332,76 @@ model Team {
   members         User[]                  @relation("TeamMembers")
   leads           Lead[]
   assignmentRules ManagerAssignmentRule[]
+  teamMembers     TeamMember[]
+  projectTeams    ProjectTeam[]
 
+  // T-TEAM-CRUD: per-org name uniqueness, mirrors Project's
+  // @@unique([organizationId, slug]) exactly (plain composite - not
+  // soft-delete-aware, same tradeoff Project already accepts).
+  @@unique([organizationId, name])
   @@index([managerId])
   @@index([defaultAssigneeId])
+  @@index([organizationId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2b. TeamMember (additive multi-team staff↔team join)
+// ────────────────────────────────────────────────────────────────────────────
+// T-TEAM-AUTHORITATIVE (2026-09-13, design doc in Decision Audit Trail #39):
+// authoritative "which teams does this person belong to" join, replacing the
+// single-valued `User.teamId`. A user may hold many rows (one per team,
+// composite PK). The team's manager participates through `Team.managerId`
+// and does NOT need a duplicate row here unless they also serve as an
+// ordinary member of a DIFFERENT team.
+//
+// Expand phase: this table is additive. `User.teamId` is untouched and
+// remains the read path for every existing service until the RLS/service
+// cutover (phase 2) switches reads over; `User.teamId` and `ProjectMember`
+// are dropped only after a zero-drift backfill reconciliation.
+model TeamMember {
+  userId     String
+  teamId     String
+  // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
+  organizationId String
+  assignedAt DateTime @default(now())
+  assignedById String?
+
+  user         User         @relation("TeamMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedBy   User?        @relation("TeamMembershipAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, teamId])
+  @@index([userId])
+  @@index([teamId])
+  @@index([organizationId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4c. ProjectTeam (additive team↔project join; replaces ProjectMember)
+// ────────────────────────────────────────────────────────────────────────────
+// T-TEAM-AUTHORITATIVE (2026-09-13): projects link to TEAMS, never directly
+// to users. Effective project staff = union of every TeamMember (+ the
+// team's manager) across every team linked via ProjectTeam. Kept alongside
+// ProjectMember during the expand phase (see model comment there); the
+// derived-staff read path switches over in phase 2, and ProjectMember is
+// dropped only after a zero-drift backfill reconciliation.
+model ProjectTeam {
+  projectId  String
+  teamId     String
+  // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
+  organizationId String
+  assignedAt DateTime @default(now())
+  assignedById String?
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedBy   User?        @relation("ProjectTeamAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([projectId, teamId])
+  @@index([projectId])
+  @@index([teamId])
   @@index([organizationId])
 }
 
@@ -393,6 +474,7 @@ model Project {
   phases     Phase[]
   leads      Lead[]
   members    ProjectMember[]
+  projectTeams ProjectTeam[]
   projectOptions ProjectOption[]
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -801,6 +883,17 @@ model AuditLog {
   reason     String?  @db.Text
   ipAddress  String?
   userAgent  String?  @db.Text
+  // T-TEAM-AUTHORITATIVE (2026-09-13): groups every row written inside one
+  // multi-row transaction (e.g. N lead-ownership transfers + 1 membership
+  // removal) so the Audit page can render/collapse them as one operation.
+  // Not unique - many rows share a batchId. Nullable: unrelated actions
+  // (e.g. a single lead.update) never set it.
+  batchId    String?
+  // T-TEAM-AUTHORITATIVE: client-generated UUID carried ONLY on the
+  // membership-removal row, for idempotent replay of
+  // POST /api/teams/:teamId/members/:userId/reassign-and-remove. Unique
+  // (not per-org) - a requestId is a one-shot token regardless of tenant.
+  requestId  String?  @unique
   createdAt  DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -811,6 +904,7 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([action])
   @@index([createdAt])
+  @@index([batchId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
