@@ -96,14 +96,23 @@ function makeService(opts: {
         ? { id: opts.managerTeamId }
         : null,
     );
+  // T-TEAM-AUTHORITATIVE (2026-09-13): getUser()'s MANAGER scope check
+  // resolves via findMany (a manager may lead multiple teams).
+  const teamFindMany = vi
+    .fn()
+    .mockResolvedValue(
+      opts.managerTeamId !== undefined && opts.managerTeamId !== null
+        ? [{ id: opts.managerTeamId }]
+        : [],
+    );
   const fakeClient = {
     user: { findUnique: userFindUnique },
-    team: { findFirst: teamFindFirst },
+    team: { findFirst: teamFindFirst, findMany: teamFindMany },
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
     service: new UsersService(prismaService),
-    mocks: { userFindUnique, teamFindFirst },
+    mocks: { userFindUnique, teamFindFirst, teamFindMany },
   };
 }
 

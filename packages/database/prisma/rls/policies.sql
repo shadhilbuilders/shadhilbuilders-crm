@@ -71,12 +71,23 @@ CREATE POLICY lead_select_telecaller ON "Lead"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13, Decision Audit Trail #39): a manager
+-- may now lead multiple teams, so this checks Team.managerId via EXISTS
+-- rather than the single-valued app.user_team_id GUC. Non-recursive (Team
+-- is a simple lookup, not a query back into Lead).
 CREATE POLICY lead_select_manager ON "Lead"
   FOR SELECT
   USING (
     current_setting('app.user_role', true) = 'MANAGER'
-    AND "teamId" = current_setting('app.user_team_id', true)
     AND "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      "Lead"."teamId" = current_setting('app.user_team_id', true)
+      OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = "Lead"."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+    )
   );
 
 CREATE POLICY lead_select_admin ON "Lead"
@@ -86,12 +97,34 @@ CREATE POLICY lead_select_admin ON "Lead"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER split into its own INSERT
+-- policy below (EXISTS-based, supports multi-team managers) - this policy
+-- now covers only TELECALLER/SALES_EXEC, who stay single-team via the GUC.
 CREATE POLICY lead_insert_telecaller ON "Lead"
   FOR INSERT
   WITH CHECK (
-    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC', 'MANAGER', 'ADMIN')
+    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
     AND "teamId" = current_setting('app.user_team_id', true)
     AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- T-TEAM-AUTHORITATIVE (2026-09-13): a manager may INSERT a Lead into ANY
+-- team they manage (Team.managerId), not just their single JWT-carried
+-- teamId. Postgres OR's overlapping FOR INSERT policies, so this is
+-- additive alongside lead_insert_telecaller/lead_insert_admin.
+CREATE POLICY lead_insert_manager ON "Lead"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'MANAGER'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      "Lead"."teamId" = current_setting('app.user_team_id', true)
+      OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = "Lead"."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+    )
   );
 
 -- T-TEAMLESS-CREATE (2026-09-08): allow ADMIN (and OWNER, downcast to ADMIN
@@ -128,17 +161,34 @@ CREATE POLICY lead_update_telecaller ON "Lead"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): EXISTS-based Team.managerId check
+-- (supports a manager leading multiple teams) instead of the single-
+-- valued app.user_team_id GUC equality.
 CREATE POLICY lead_update_manager ON "Lead"
   FOR UPDATE
   USING (
     current_setting('app.user_role', true) = 'MANAGER'
-    AND "teamId" = current_setting('app.user_team_id', true)
     AND "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      "Lead"."teamId" = current_setting('app.user_team_id', true)
+      OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = "Lead"."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+    )
   )
   WITH CHECK (
     current_setting('app.user_role', true) = 'MANAGER'
-    AND "teamId" = current_setting('app.user_team_id', true)
     AND "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      "Lead"."teamId" = current_setting('app.user_team_id', true)
+      OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = "Lead"."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+    )
   );
 
 CREATE POLICY lead_update_admin ON "Lead"
@@ -162,6 +212,9 @@ CREATE POLICY lead_delete_admin ON "Lead"
 -- ── Activity (scoped via its parent Lead + denormalized org) ───────────────
 ALTER TABLE "Activity" ENABLE ROW LEVEL SECURITY;
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER's team check is now EXISTS-
+-- based against Team.managerId (supports a manager leading multiple
+-- teams) instead of the single-valued app.user_team_id GUC equality.
 CREATE POLICY activity_select_team ON "Activity"
   FOR SELECT
   USING (
@@ -173,7 +226,14 @@ CREATE POLICY activity_select_team ON "Activity"
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
-              AND l."teamId" = current_setting('app.user_team_id', true))
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -192,8 +252,17 @@ CREATE POLICY activity_insert_team ON "Activity"
       WHERE l.id = "Activity"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -206,6 +275,10 @@ CREATE POLICY activity_insert_team ON "Activity"
 -- ── SiteVisit (team-scoped via lead + denormalized org) ────────────────────
 ALTER TABLE "SiteVisit" ENABLE ROW LEVEL SECURITY;
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER's team check is now EXISTS-
+-- based against Team.managerId (supports a manager leading multiple
+-- teams) instead of the single-valued app.user_team_id GUC equality.
+-- ADMIN's clause is left exactly as-is (split out, not otherwise changed).
 CREATE POLICY site_visit_select_team ON "SiteVisit"
   FOR SELECT
   USING (
@@ -217,7 +290,14 @@ CREATE POLICY site_visit_select_team ON "SiteVisit"
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
-              AND l."teamId" = current_setting('app.user_team_id', true))
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -236,8 +316,17 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
       WHERE l.id = "SiteVisit"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -253,8 +342,17 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
       WHERE l.id = "SiteVisit"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -281,6 +379,10 @@ CREATE POLICY site_visit_insert_admin ON "SiteVisit"
 -- ── Message (team-scoped via lead + denormalized org) ───────────────────────
 ALTER TABLE "Message" ENABLE ROW LEVEL SECURITY;
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER's team check is now EXISTS-
+-- based against Team.managerId (supports a manager leading multiple
+-- teams) instead of the single-valued app.user_team_id GUC equality.
+-- ADMIN's clause is left exactly as-is (split out, not otherwise changed).
 CREATE POLICY message_select_team ON "Message"
   FOR SELECT
   USING (
@@ -292,7 +394,14 @@ CREATE POLICY message_select_team ON "Message"
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
-              AND l."teamId" = current_setting('app.user_team_id', true))
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -311,8 +420,17 @@ CREATE POLICY message_insert_team ON "Message"
       WHERE l.id = "Message"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -339,6 +457,10 @@ CREATE POLICY message_insert_admin ON "Message"
 -- ── Booking (team-scoped via lead + denormalized org) ───────────────────────
 ALTER TABLE "Booking" ENABLE ROW LEVEL SECURITY;
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER's team check is now EXISTS-
+-- based against Team.managerId (supports a manager leading multiple
+-- teams) instead of the single-valued app.user_team_id GUC equality.
+-- ADMIN's clause is left exactly as-is (split out, not otherwise changed).
 CREATE POLICY booking_select_team ON "Booking"
   FOR SELECT
   USING (
@@ -350,7 +472,14 @@ CREATE POLICY booking_select_team ON "Booking"
         AND (
           (current_setting('app.user_role', true) = 'ADMIN')
           OR (current_setting('app.user_role', true) = 'MANAGER'
-              AND l."teamId" = current_setting('app.user_team_id', true))
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -369,8 +498,17 @@ CREATE POLICY booking_write_team ON "Booking"
       WHERE l.id = "Booking"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -386,8 +524,17 @@ CREATE POLICY booking_write_team ON "Booking"
       WHERE l.id = "Booking"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -603,8 +750,18 @@ CREATE POLICY consent_select_admin_or_owner ON "Consent"
         WHERE l.id = "Consent"."leadId"
           AND l."organizationId" = current_setting('app.user_org_id', true)
           AND (
+            -- T-TEAM-AUTHORITATIVE (2026-09-13): EXISTS-based
+            -- Team.managerId check (supports a manager leading multiple
+            -- teams) instead of the app.user_team_id GUC equality.
             (current_setting('app.user_role', true) = 'MANAGER'
-             AND l."teamId" = current_setting('app.user_team_id', true))
+             AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
             OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
                 AND (
                   l."ownerId" = current_setting('app.user_id', true)
@@ -624,8 +781,17 @@ CREATE POLICY consent_insert_owner ON "Consent"
       WHERE l.id = "Consent"."leadId"
         AND l."organizationId" = current_setting('app.user_org_id', true)
         AND (
-          (current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER')
+          (current_setting('app.user_role', true) = 'ADMIN'
            AND l."teamId" = current_setting('app.user_team_id', true))
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND (
+                l."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = l."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              ))
           OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
               AND (
                 l."ownerId" = current_setting('app.user_id', true)
@@ -649,6 +815,9 @@ CREATE POLICY consent_insert_owner ON "Consent"
 -- (DEFAULT DENY) on the pooled role.
 ALTER TABLE "ManagerAssignmentRule" ENABLE ROW LEVEL SECURITY;
 
+-- T-TEAM-AUTHORITATIVE (2026-09-13): EXISTS-based Team.managerId check
+-- (supports a manager leading multiple teams) instead of the app.user_
+-- team_id GUC equality.
 CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
   FOR SELECT
   USING (
@@ -656,7 +825,14 @@ CREATE POLICY managerassignmentrule_select_team ON "ManagerAssignmentRule"
     AND (
       (
         current_setting('app.user_role', true) = 'MANAGER'
-        AND "teamId" = current_setting('app.user_team_id', true)
+        AND (
+                "ManagerAssignmentRule"."teamId" = current_setting('app.user_team_id', true)
+                OR EXISTS (
+                  SELECT 1 FROM "Team" t
+                  WHERE t."id" = "ManagerAssignmentRule"."teamId"
+                    AND t."managerId" = current_setting('app.user_id', true)
+                )
+              )
       )
       OR current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
     )
