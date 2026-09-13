@@ -21,7 +21,7 @@ import {
 } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 
 import { ApiError } from '@/apis/client';
@@ -84,6 +84,7 @@ export function TeamMemberRemovalDialog({
   const preview = useRemovalPreview(target?.teamId, target?.userId, open);
   const execute = useReassignAndRemove(target?.teamId, target?.userId);
   const [staleNotice, setStaleNotice] = useState(false);
+  const [replacementFieldError, setReplacementFieldError] = useState<string | null>(null);
 
   if (target === null) return null;
   const t = target;
@@ -94,12 +95,16 @@ export function TeamMemberRemovalDialog({
     // request, so this one guard covers Escape, overlay click, and the
     // Cancel button uniformly.
     if (!next && execute.isPending) return;
-    if (!next) setStaleNotice(false);
+    if (!next) {
+      setStaleNotice(false);
+      setReplacementFieldError(null);
+    }
     onOpenChange(next);
   }
 
   function handleSubmit(values: RemovalFormValues): void {
     if (preview.data === undefined) return;
+    setReplacementFieldError(null);
     const input: ReassignAndRemoveInput = {
       replacementUserId:
         values.replacementUserId === NO_REPLACEMENT ? null : values.replacementUserId,
@@ -130,6 +135,19 @@ export function TeamMemberRemovalDialog({
           toast.error(`${error.message} Close this dialog and reload.`);
           return;
         }
+        // Design doc interaction-state matrix: SELF_REPLACEMENT,
+        // TARGET_NOT_TEAM_MEMBER, TARGET_ROLE_INELIGIBLE render as an
+        // inline field error on the replacement picker, not a toast.
+        if (
+          error instanceof ApiError &&
+          error.code !== null &&
+          (['SELF_REPLACEMENT', 'TARGET_NOT_TEAM_MEMBER', 'TARGET_ROLE_INELIGIBLE'] as const).includes(
+            error.code as 'SELF_REPLACEMENT' | 'TARGET_NOT_TEAM_MEMBER' | 'TARGET_ROLE_INELIGIBLE',
+          )
+        ) {
+          setReplacementFieldError(error.message);
+          return;
+        }
         toast.error(error instanceof Error ? error.message : 'Removal failed');
       },
     });
@@ -144,12 +162,17 @@ export function TeamMemberRemovalDialog({
         title: `Remove ${t.userName} from ${t.teamName}?`,
       }}
       footer={
-        <div className="flex w-full justify-end gap-2">
+        // Responsive/a11y contract (design doc UI5): on small screens the
+        // footer stacks full-width with Cancel appearing BEFORE (above)
+        // the destructive action, in DOM/visual order; on sm+ it's the
+        // usual inline row (Cancel, then the primary action, right-aligned).
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="outline"
             onClick={() => handleClose(false)}
             disabled={execute.isPending}
+            className="w-full sm:w-auto"
             data-qa="team-member-removal-cancel"
           >
             Cancel
@@ -163,6 +186,7 @@ export function TeamMemberRemovalDialog({
         staleNotice={staleNotice}
         pending={execute.isPending}
         onSubmit={handleSubmit}
+        replacementFieldError={replacementFieldError}
       />
     </Dialog>
   );
@@ -192,6 +216,7 @@ function RemovalConfirmButton({
       isLoading={pending}
       loadingText="Transferring..."
       disabled={preview === undefined || pending}
+      className="w-full sm:w-auto"
       data-qa="team-member-removal-confirm"
       aria-describedby="team-member-removal-summary"
     >
@@ -210,17 +235,22 @@ export function TeamMemberRemovalDialogBody({
   staleNotice,
   pending,
   onSubmit,
+  replacementFieldError,
 }: {
   preview: ReturnType<typeof useRemovalPreview>;
   staleNotice: boolean;
   pending: boolean;
   onSubmit: (values: RemovalFormValues) => void;
+  /** SELF_REPLACEMENT/TARGET_NOT_TEAM_MEMBER/TARGET_ROLE_INELIGIBLE from the
+   * last submit attempt (design doc: "inline field error"), or null. */
+  replacementFieldError?: string | null;
 }) {
   const form = useForm<RemovalFormValues>({
     resolver: zodResolver(removalSchema),
     defaultValues: { replacementUserId: NO_REPLACEMENT, reason: '' },
     mode: 'onSubmit',
   });
+  const reasonLength = (useWatch({ control: form.control, name: 'reason' }) ?? '').length;
 
   // STALE_PREVIEW recovery: clear the chosen replacement ONLY if it's no
   // longer in the refreshed eligible list; the reason field is untouched
@@ -280,16 +310,30 @@ export function TeamMemberRemovalDialogBody({
       label: 'Replacement',
       required: true,
       render: ({ field }) => (
-        <Combobox
-          value={(field.value as string | undefined) ?? NO_REPLACEMENT}
-          onValueChange={(v) => field.onChange(v ?? NO_REPLACEMENT)}
-          options={replacementOptions}
-          placeholder="Search eligible team members..."
-          emptyOptionMessage="No eligible replacement."
-          selectOptionAsValue
-          className="w-full"
-          data-qa="team-member-removal-replacement"
-        />
+        <div className="space-y-1">
+          <Combobox
+            value={(field.value as string | undefined) ?? NO_REPLACEMENT}
+            onValueChange={(v) => field.onChange(v ?? NO_REPLACEMENT)}
+            options={replacementOptions}
+            placeholder="Search eligible team members..."
+            emptyOptionMessage="No eligible replacement."
+            selectOptionAsValue
+            className="w-full"
+            aria-invalid={replacementFieldError !== null && replacementFieldError !== undefined}
+            data-qa="team-member-removal-replacement"
+          />
+          {/* SELF_REPLACEMENT/TARGET_NOT_TEAM_MEMBER/TARGET_ROLE_INELIGIBLE
+              render inline on this field, not a toast (design doc). */}
+          {replacementFieldError ? (
+            <p
+              role="alert"
+              className="text-destructive text-xs"
+              data-qa="form-error-message-replacementUserId"
+            >
+              {replacementFieldError}
+            </p>
+          ) : null}
+        </div>
       ),
     });
   }
@@ -339,6 +383,11 @@ export function TeamMemberRemovalDialogBody({
         hideResetButton
         fields={fields}
       />
+      {/* Responsive/a11y contract (design doc UI5): "Reason supports 500
+          characters with a visible character count." */}
+      <p className="text-muted-foreground -mt-2 text-right text-xs" data-qa="team-member-removal-reason-count">
+        {reasonLength}/500
+      </p>
       {pending ? (
         <TypographyMuted className="text-xs">
           Transferring leads and removing the membership - this cannot be undone.

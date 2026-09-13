@@ -218,4 +218,87 @@ describe('ProjectTeamList', () => {
     expect(document.body.textContent).not.toContain('Member of Metro Sales');
     expect(document.body.textContent).not.toContain('Member of Closing Desk');
   });
+
+  it('a manager-only team (no ordinary members yet) shows "No members yet" when expanded (design doc partial/stale row)', async () => {
+    baseMocks();
+    mocks.useProjectTeams.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        projectId: 'proj-1',
+        teams: [
+          {
+            teamId: 'team-a',
+            teamName: 'Weekend Enquiries',
+            manager: { id: 'mgr-a', name: 'Priya' },
+            memberCount: 0,
+            leadCount: 0,
+            canUnlink: true,
+            members: [],
+          },
+        ],
+      },
+    });
+    await mount({});
+    // Single linked team auto-expands.
+    expect(document.body.textContent).toContain('No members yet.');
+  });
+
+  it('a team with assigned leads shows the "Blocked" unlink reason and disables the action (PROJECT_TEAM_HAS_LEADS)', async () => {
+    baseMocks();
+    mocks.useProjectTeams.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        projectId: 'proj-1',
+        teams: [
+          {
+            teamId: 'team-a',
+            teamName: 'Metro Sales',
+            manager: { id: 'mgr-a', name: 'Meera' },
+            memberCount: 1,
+            leadCount: 18,
+            canUnlink: false,
+            members: [],
+          },
+        ],
+      },
+    });
+    await mount({});
+    // Open the actions dropdown to reveal the unlink menu item's label.
+    const trigger = container?.querySelector('[data-qa="project-team-actions-team-a"]');
+    expect(trigger).not.toBeNull();
+    await act(async () => {
+      (trigger as HTMLButtonElement).click();
+    });
+    expect(document.body.textContent).toContain('Blocked: 18 leads assigned here');
+    const unlinkItem = document.querySelector('[data-qa="project-team-unlink-team-a"]');
+    expect(unlinkItem?.getAttribute('aria-disabled')).toBe('true');
+    // Blocked rows link to the filtered Leads view (design doc).
+    expect(document.querySelector('[data-qa="project-team-view-leads-team-a"]')).not.toBeNull();
+  });
+
+  it('canManage=false never renders the actions menu (design doc: Owner/Admin-only link/unlink)', async () => {
+    baseMocks();
+    mocks.useProjectTeams.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        projectId: 'proj-1',
+        teams: [
+          {
+            teamId: 'team-a',
+            teamName: 'Metro Sales',
+            manager: { id: 'mgr-a', name: 'Meera' },
+            memberCount: 1,
+            leadCount: 0,
+            canUnlink: true,
+            members: [],
+          },
+        ],
+      },
+    });
+    await mount({ canManage: false });
+    expect(container?.querySelector('[data-qa="project-team-actions-team-a"]')).toBeNull();
+  });
 });
