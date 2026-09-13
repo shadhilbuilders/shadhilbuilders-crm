@@ -123,6 +123,11 @@ beforeAll(async () => {
         mustChangePassword: false,
       },
     });
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): RLS's MANAGER checks
+    // are now Team.managerId-EXISTS only (the legacy app.user_team_id GUC
+    // fallback this fixture used to lean on has been removed) - set it
+    // explicitly rather than relying on the manager's own User.teamId.
+    await db.team.update({ where: { id: TEAM_A_ID }, data: { managerId: MGR_A_ID } });
     await db.user.upsert({
       where: { id: TC_A_ID },
       update: { teamId: TEAM_A_ID, role: 'TELECALLER' },

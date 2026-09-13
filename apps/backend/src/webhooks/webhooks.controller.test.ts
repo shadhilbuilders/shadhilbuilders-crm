@@ -66,6 +66,12 @@ beforeAll(async () => {
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a couple of
+      // assertions below read the Message row back impersonating this same
+      // user as MANAGER (message_select_team's MANAGER branch is now
+      // Team.managerId-EXISTS only - the legacy app.user_team_id GUC
+      // fallback has been removed) - set it explicitly.
+      await tx.team.update({ where: { id: TEST_TEAM_ID }, data: { managerId: TEST_USER_ID } });
     },
   );
 });

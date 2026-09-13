@@ -78,6 +78,11 @@ beforeAll(async () => {
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): RLS's MANAGER checks
+    // are now Team.managerId-EXISTS only (the legacy app.user_team_id GUC
+    // fallback this fixture used to lean on has been removed) - set it
+    // explicitly rather than relying on the manager's own User.teamId.
+    await db.team.update({ where: { id: TEST_TEAM_ID }, data: { managerId: TEST_USER_ID } });
     // Upsert lead. The phone must be unique per test run (Lead has a
     // unique phone constraint). We use a 14-digit random phone that
     // starts with the test run's Date.now() so we can find + clean
