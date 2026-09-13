@@ -92,18 +92,34 @@ const managerRow: FakeUserRow = {
 
 function makeService(opts: {
   user: FakeUserRow | null;
+  /** The ACTOR's own managed-team id, when the actor is a MANAGER doing
+   * getUser()'s scope check (a DIFFERENT query from resolveDisplayTeamId's
+   * per-target lookup below). */
   managerTeamId?: string | null;
 }) {
-  const userFindUnique = vi.fn().mockResolvedValue(opts.user);
-  const teamFindFirst = vi
-    .fn()
-    .mockResolvedValue(
-      opts.managerTeamId !== undefined && opts.managerTeamId !== null
-        ? { id: opts.managerTeamId }
-        : null,
-    );
-  // T-TEAM-AUTHORITATIVE (2026-09-13): getUser()'s MANAGER scope check
-  // resolves via findMany (a manager may lead multiple teams).
+  const userFindUnique = vi.fn().mockResolvedValue(
+    opts.user === null
+      ? null
+      : { id: opts.user.id, email: opts.user.email, name: opts.user.name, role: opts.user.role },
+  );
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): two DISTINCT
+  // team.findFirst-shaped consumers now share this table:
+  //   1. resolveDisplayTeamId(target) - `where: { managerId: target.id }` -
+  //      only matches when the FIXTURE user is itself a MANAGER with a team.
+  //   2. (none else uses findFirst here - the actor's own MANAGER scope
+  //      check uses findMany, mocked separately below via managerTeamId.)
+  const teamFindFirst = vi.fn(async (args: { where: { managerId: string } }) => {
+    if (
+      opts.user?.role === 'MANAGER' &&
+      args.where.managerId === opts.user.id &&
+      opts.user.team !== null
+    ) {
+      return { id: opts.user.team.id };
+    }
+    return null;
+  });
+  // getUser()'s MANAGER scope check resolves via findMany (a manager may
+  // lead multiple teams) - this is the ACTOR's own managed-team set.
   const teamFindMany = vi
     .fn()
     .mockResolvedValue(
@@ -111,14 +127,25 @@ function makeService(opts: {
         ? [{ id: opts.managerTeamId }]
         : [],
     );
+  // resolveDisplayTeamId's non-MANAGER branch: the fixture user's own
+  // (single, oldest) TeamMember row.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue(
+    opts.user?.role !== 'MANAGER' && opts.user?.team !== null && opts.user !== null
+      ? { teamId: opts.user.team!.id }
+      : null,
+  );
+  // The resolved team's full detail (manager + linked projects) - only one
+  // team fixture is ever in play per test, so this ignores the id filter.
+  const teamFindUnique = vi.fn().mockResolvedValue(opts.user?.team ?? null);
   const fakeClient = {
     user: { findUnique: userFindUnique },
-    team: { findFirst: teamFindFirst, findMany: teamFindMany },
+    team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
+    teamMember: { findFirst: teamMemberFindFirst },
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
     service: new UsersService(prismaService),
-    mocks: { userFindUnique, teamFindFirst, teamFindMany },
+    mocks: { userFindUnique, teamFindFirst, teamFindMany, teamMemberFindFirst, teamFindUnique },
   };
 }
 

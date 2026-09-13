@@ -80,8 +80,12 @@ type TxMock = {
   };
   user: {
     findUnique: ReturnType<typeof vi.fn>;
+  };
+  teamMember: {
     count: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+    createMany: ReturnType<typeof vi.fn>;
   };
   auditLog: { create: ReturnType<typeof vi.fn> };
 };
@@ -92,9 +96,22 @@ function makeTx(overrides: Partial<{
   users: Record<string, { id: string; role: string; name?: string } | null>;
   managerLedTeam: { id: string; name: string } | null;
   memberCount: number;
+  members: Array<{ userId: string; teamId: string; organizationId: string }>;
 }> = {}): TxMock {
   const teams = overrides.teams ?? {};
   const users = overrides.users ?? {};
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassignMembers() and
+  // remove()'s member-count guard both read TeamMember rows now, not
+  // User.teamId. `members` defaults to a count matching `memberCount` so
+  // existing "N members" tests keep the same shape without listing every
+  // row explicitly, unless a test needs specific rows (reassignMembers).
+  const members =
+    overrides.members ??
+    Array.from({ length: overrides.memberCount ?? 0 }, (_, i) => ({
+      userId: `member-${i}`,
+      teamId: 'team-1',
+      organizationId: ORG,
+    }));
   const tx: TxMock = {
     team: {
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -127,8 +144,12 @@ function makeTx(overrides: Partial<{
         async ({ where }: { where: { id: string } }) =>
           users[where.id] === undefined ? null : users[where.id],
       ),
-      count: vi.fn().mockResolvedValue(overrides.memberCount ?? 0),
-      updateMany: vi.fn().mockResolvedValue({ count: overrides.memberCount ?? 0 }),
+    },
+    teamMember: {
+      count: vi.fn().mockResolvedValue(members.length),
+      findMany: vi.fn().mockResolvedValue(members),
+      deleteMany: vi.fn().mockResolvedValue({ count: members.length }),
+      createMany: vi.fn().mockResolvedValue({ count: members.length }),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
   };
@@ -416,10 +437,10 @@ describe('TeamsService.reassignMembers', () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.reassignMembers(adminActor, 'team-1', { targetTeamId: 'team-2' });
     expect(result).toEqual({ count: 4 });
-    expect(tx.user.updateMany).toHaveBeenCalledWith({
+    expect(tx.teamMember.deleteMany).toHaveBeenCalledWith({
       where: { teamId: 'team-1' },
-      data: { teamId: 'team-2' },
     });
+    expect(tx.teamMember.createMany).toHaveBeenCalled();
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -442,9 +463,9 @@ describe('TeamsService.reassignMembers', () => {
       userIds: ['u-x'],
     });
     expect(result).toEqual({ count: 1 });
-    expect(tx.user.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['u-x'] }, teamId: 'team-1' },
-      data: { teamId: 'team-2' },
+    expect(tx.teamMember.deleteMany).toHaveBeenCalledWith({
+      where: { userId: { in: ['u-x'] }, teamId: 'team-1' },
     });
+    expect(tx.teamMember.createMany).toHaveBeenCalled();
   });
 });
