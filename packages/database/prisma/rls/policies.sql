@@ -1274,6 +1274,54 @@ CREATE POLICY teammember_write_admin ON "TeamMember"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-MANAGER-MEMBERSHIP-WRITE (2026-09-13): a MANAGER may add/remove
+-- TeamMember rows, but ONLY on teams they manage. This closes a gap where
+-- the service + design doc granted the action while RLS rejected it:
+-- TeamAccessService.canMutateTeam returns true for a MANAGER on a team they
+-- lead, and the design doc's authorization matrix says
+-- "Add/remove TeamMember | Managed teams only", but teammember_write_admin
+-- is ADMIN-only - so a MANAGER's write failed with
+-- `42501 new row violates row-level security policy`.
+--
+-- Scope is deliberately NARROWER than the phase_manager_write precedent
+-- (which widens by role only): the matrix restricts a MANAGER to MANAGED
+-- teams, so this mirrors lead_insert_manager / lead_select_manager's
+-- `Team.managerId = app.user_id` EXISTS check rather than granting
+-- org-wide write. A MANAGER therefore cannot touch another manager's team,
+-- and cannot add themselves to a team they don't lead.
+--
+-- Postgres OR's overlapping permissive policies, so this is ADDITIVE
+-- alongside teammember_write_admin: ADMIN (and OWNER, downcast to ADMIN in
+-- rls.ts) keeps org-wide write; MANAGER gains managed-team write.
+--
+-- NOTE ON DELETE: FOR DELETE is gated by USING only. Before this policy a
+-- MANAGER's deleteMany matched 0 rows and reported `count: 0` - a SILENT
+-- no-op rather than an error (the RLS-hidden row is simply not matched).
+-- Adding this policy makes the intent explicit: a MANAGER's delete on a
+-- team they lead now actually deletes. Never treat `count: 0` from a
+-- deleteMany/updateMany as proof the row was absent - it may mean the actor
+-- could not see it (see references/known-runtime-bugs.md Bug 12).
+CREATE POLICY teammember_write_manager ON "TeamMember"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'MANAGER'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Team" t
+      WHERE t."id" = "TeamMember"."teamId"
+        AND t."managerId" = current_setting('app.user_id', true)
+    )
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'MANAGER'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Team" t
+      WHERE t."id" = "TeamMember"."teamId"
+        AND t."managerId" = current_setting('app.user_id', true)
+    )
+  );
+
 -- ProjectTeam SELECT mirrors Project/Team's shape exactly: any authenticated
 -- business role, org-gated. Writes are ADMIN-class for now; the eventual
 -- Owner/Admin "Link team" / "Unlink" endpoints (UI3 in the design doc) are

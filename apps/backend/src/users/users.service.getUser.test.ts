@@ -136,10 +136,21 @@ function makeService(opts: {
   // The resolved team's full detail (manager + linked projects) - only one
   // team fixture is ever in play per test, so this ignores the id filter.
   const teamFindUnique = vi.fn().mockResolvedValue(opts.user?.team ?? null);
+  // getUser() now runs entirely inside ONE withRlsContext transaction, so
+  // the tx handed to the callback must expose every accessor the method
+  // touches (the outer client's shape alone is not enough). The mocks are
+  // shared between both so assertions still see the calls.
+  const txMock = {
+    user: { findUnique: userFindUnique },
+    team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
+    teamMember: { findFirst: teamMemberFindFirst },
+    $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+  };
   const fakeClient = {
     user: { findUnique: userFindUnique },
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
     teamMember: { findFirst: teamMemberFindFirst },
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {

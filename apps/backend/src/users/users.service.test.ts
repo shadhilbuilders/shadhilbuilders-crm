@@ -100,7 +100,20 @@ function makeService(opts: StubOptions = {}) {
   // withRlsContext first calls tx.$executeRawUnsafe('SET LOCAL ...')
   // for the actor claim, then invokes our callback with the same tx.
   // Both calls must land on the same mock surface.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue(null);
   const txMock = {
+    user: {
+      findUnique: userFindUnique,
+      update: userUpdate,
+    },
+    // update() resolves the display team inside the same transaction
+    // (resolveDisplayTeamId reads Team/TeamMember, both FORCE RLS).
+    teamMember: { findFirst: teamMemberFindFirst },
+    team: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
@@ -343,10 +356,20 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): non-manager actors
     // resolve their own teams via TeamMember, not the JWT teamId claim.
     const teamMemberFindMany = vi.fn().mockResolvedValue(ownTeamMemberships);
+    // teamMembers() now runs inside ONE withRlsContext transaction, so the
+    // tx must expose every accessor it touches (the outer shape alone is
+    // not enough). Mocks are shared so assertions still see the calls.
+    const txMock = {
+      team: { findMany: teamFindMany },
+      user: { findMany: userFindMany },
+      teamMember: { findMany: teamMemberFindMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    };
     const fakeClient = {
       team: { findMany: teamFindMany },
       user: { findMany: userFindMany },
       teamMember: { findMany: teamMemberFindMany },
+      $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
@@ -439,10 +462,19 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): projects come from
     // the resolved team's ProjectTeam rows now (ProjectMember retired).
     const projectTeamFindMany = vi.fn().mockResolvedValue([]);
+    // list() now runs inside ONE withRlsContext transaction - the tx must
+    // expose every accessor it touches. Mocks shared so assertions see calls.
+    const txMock = {
+      team: { findFirst: teamFindFirst, findMany: teamFindMany },
+      user: { findMany: userFindMany, count: userCount },
+      projectTeam: { findMany: projectTeamFindMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    };
     const fakeClient = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
       projectTeam: { findMany: projectTeamFindMany },
+      $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
@@ -639,7 +671,20 @@ function makeManageService(opts: ManageStubOptions = {}) {
   // value resolves `teamId` via resolveDisplayTeamId - a non-manager
   // target (SALES_EXEC fixture default) reads its oldest TeamMember row.
   const teamMemberFindFirst = vi.fn().mockResolvedValue({ teamId: 't-1' });
+  // update() now runs wholly inside ONE withRlsContext transaction, so the
+  // tx must expose the user write, the audit row, and the Team/TeamMember
+  // reads resolveDisplayTeamId performs.
   const txMock = {
+    user: {
+      findUnique: userFindUnique,
+      update: userUpdate,
+    },
+    teamMember: { findFirst: teamMemberFindFirst },
+    team: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
