@@ -42,8 +42,8 @@ beforeAll(async () => {
   // Seed a manager user + a team that owns the known lead. The
   // WhatsappUnknownContact / WebhookEvent / OutboundMessage rows
   // we create here are owned by CRON_SERVICE (no real actor), so
-  // the user+team is only needed for the known Lead. Team is
-  // upserted FIRST - User.teamId is an FK to Team (User_teamId_fkey).
+  // the user+team is only needed for the known Lead. Membership is a
+  // TeamMember row now (User.teamId was dropped in the cutover).
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,

@@ -113,7 +113,7 @@ export class UsersController {
   ): Promise<CreatedUser> {
     // Shared Zod schema validates BEFORE the service is touched (the
     // api-types convention: same schema rejects at BFF too).
-    const dto: CreateUserDto = CreateUserDtoSchema.parse(body);
+    const dto: CreateUserDto = parseBody(CreateUserDtoSchema, body);
     return this.users.create(req.user!, dto);
   }
 
@@ -127,7 +127,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<CreatedUser> {
-    const dto: ChangeRoleDto = ChangeRoleDtoSchema.parse(body);
+    const dto: ChangeRoleDto = parseBody(ChangeRoleDtoSchema, body);
     return this.users.changeRole(req.user!, id, dto);
   }
 
@@ -141,7 +141,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<CreatedUser> {
-    const dto: AssignManagerDto = AssignManagerDtoSchema.parse(body);
+    const dto: AssignManagerDto = parseBody(AssignManagerDtoSchema, body);
     return this.users.assignManager(req.user!, id, dto);
   }
 
@@ -155,7 +155,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<CreatedUser> {
-    const dto: UpdateUserDto = UpdateUserDtoSchema.parse(body);
+    const dto: UpdateUserDto = parseBody(UpdateUserDtoSchema, body);
     return this.users.update(req.user!, id, dto);
   }
 
@@ -192,7 +192,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<{ ok: true; mustChangePassword: false }> {
-    const dto: ChangePasswordDto = ChangePasswordDtoSchema.parse(body);
+    const dto: ChangePasswordDto = parseBody(ChangePasswordDtoSchema, body);
     return this.users.changePassword(req.user!, id, dto);
   }
 

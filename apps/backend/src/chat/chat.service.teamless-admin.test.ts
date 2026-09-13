@@ -7,12 +7,13 @@
 // at chat.service.ts:165 (message.create).
 //
 // Root cause: the only INSERT policy (`message_insert_team`) requires
-// `l."teamId" = current_setting('app.user_team_id')` for ADMIN/MANAGER.
-// Seeded ADMIN/OWNER users carry `teamId: null` on their JWT (seed keeps
-// it null by design), so withRlsContext sets app.user_team_id to '' and
-// no lead matches → the insert is rejected. Fixed by the
+// `l."teamId"` to match the actor's team resolution for ADMIN/MANAGER.
+// Seeded ADMIN/OWNER users lead no team, so the team-scoped predicate
+// matched nothing and the insert was rejected. Fixed by the
 // `message_insert_admin` policy (role-only, no team equality) - mirrors
-// `lead_insert_admin` (2026-09-08).
+// `lead_insert_admin` (2026-09-08). The app.user_team_id GUC this comment
+// used to cite was removed in the T-TEAM-AUTHORITATIVE cutover; team
+// membership now resolves via TeamMember / Team.managerId.
 //
 // We seed our own team + lead so we don't depend on the seed DB, and
 // assert a teamless ADMIN can send a message (the message insert no

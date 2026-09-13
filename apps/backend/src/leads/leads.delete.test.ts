@@ -67,9 +67,9 @@ const PHONE = (n: number) =>
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
-  // teamId: TEAM_ID - the lead_insert RLS policy requires
-  // Lead.teamId = app.user_team_id, so the seed context must carry the
-  // team (the reassign.test.ts pattern does the same).
+  // ADMIN satisfies every policy by role alone - the lead_insert policy
+  // resolves team membership via TeamMember / Team.managerId (the
+  // app.user_team_id GUC was removed in the T-TEAM-AUTHORITATIVE cutover).
   return withRlsContext(
     prisma,
     { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },

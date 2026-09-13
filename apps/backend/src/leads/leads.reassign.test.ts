@@ -32,6 +32,7 @@ import {
 } from 'vitest';
 import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
+import { createId } from '@paralleldrive/cuid2';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -40,19 +41,18 @@ import { LeadsService } from './leads.service';
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Per-test unique IDs so re-runs don't collide on FK / unique constraints.
-const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const TEAM_A_ID = `test-reassign-teamA-${RUN_TAG}`;
-const TEAM_B_ID = `test-reassign-teamB-${RUN_TAG}`;
-const ADMIN_ID = `test-reassign-admin-${RUN_TAG}`;
-const MGR_A_ID = `test-reassign-mgrA-${RUN_TAG}`;
-const TC_A_ID = `test-reassign-tcA-${RUN_TAG}`;
-const TC_A2_ID = `test-reassign-tcA2-${RUN_TAG}`;
-const TC_B_ID = `test-reassign-tcB-${RUN_TAG}`;
-const SE_A_ID = `test-reassign-seA-${RUN_TAG}`;
-const SE_OWNER_ID = `test-reassign-seOwner-${RUN_TAG}`;
-const SE_A2_ID = `test-reassign-seA2-${RUN_TAG}`;
-const LEAD_ID = `test-reassign-lead-${RUN_TAG}`;
+// Per-test unique IDs using real cuid2 so they pass z.cuid2() validation.
+const TEAM_A_ID = createId();
+const TEAM_B_ID = createId();
+const ADMIN_ID = createId();
+const MGR_A_ID = createId();
+const TC_A_ID = createId();
+const TC_A2_ID = createId();
+const TC_B_ID = createId();
+const SE_A_ID = createId();
+const SE_OWNER_ID = createId();
+const SE_A2_ID = createId();
+const LEAD_ID = createId();
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
 const TEST_AUDIT_KEYS: string[] = [];
@@ -89,7 +89,7 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_A_ID,
-        name: `Reassign Test Team A ${RUN_TAG}`,
+        name: `Reassign Test Team A ${TEAM_A_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
@@ -98,7 +98,7 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_B_ID,
-        name: `Reassign Test Team B ${RUN_TAG}`,
+        name: `Reassign Test Team B ${TEAM_B_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
@@ -240,14 +240,14 @@ beforeAll(async () => {
     await db.lead.upsert({
       where: { id: LEAD_ID },
       update: {
-        phone: `91${RUN_TAG.slice(0, 8)}001`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}001`,
+        phone: `91${LEAD_ID.slice(0, 8)}001`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}001`,
       },
       create: {
         id: LEAD_ID,
-        name: `Reassign Test Lead ${RUN_TAG}`,
-        phone: `91${RUN_TAG.slice(0, 8)}001`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}001`,
+        name: `Reassign Test Lead ${LEAD_ID.slice(0, 8)}`,
+        phone: `91${LEAD_ID.slice(0, 8)}001`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}001`,
         source: 'WEBSITE',
         state: 'NEW',
         teamId: TEAM_A_ID,
@@ -472,7 +472,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     expect(before?.ownerId).toBe(TC_A_ID); // belt + suspenders
 
     const leads = makeLeadsService();
-    const reason = `Test: audit verification ${RUN_TAG}`; // RUN_TAG makes the query unique per process
+    const reason = `Test: audit verification ${LEAD_ID.slice(0, 8)}`;
     await leads.reassign(
       actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       {
@@ -510,7 +510,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // The test lead was just reset by beforeEach to
     // {ownerId: TC_A_ID, state: NEW}. Reassign to the SAME owner.
     const leads = makeLeadsService();
-    const reason = `Test: same-owner no-op ${RUN_TAG}`;
+    const reason = `Test: same-owner no-op ${LEAD_ID.slice(0, 8)}`;
     const result = await leads.reassign(
       actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       {

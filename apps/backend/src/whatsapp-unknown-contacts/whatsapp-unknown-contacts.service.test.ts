@@ -39,7 +39,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 async function ensureFixtures(): Promise<void> {
   if (prisma === null) return;
   await adminSeed(async (db) => {
-    // Team first (FK target for User.teamId)
+    // Team first (FK target for the TeamMember rows below)
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},

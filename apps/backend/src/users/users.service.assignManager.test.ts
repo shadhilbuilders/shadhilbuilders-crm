@@ -10,8 +10,8 @@
 //   6. ADMIN/OWNER can assign into ANY led team
 //   7. MANAGER can assign into their OWN led team
 //   8. MANAGER assigning into ANOTHER manager's team → 403 ForbiddenException
-//   9. happy path writes User.teamId and returns the updated CreatedUser
-//      shape + writes an audit row
+//   9. happy path replaces the target's TeamMember row and returns the
+//      updated CreatedUser shape + writes an audit row
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
