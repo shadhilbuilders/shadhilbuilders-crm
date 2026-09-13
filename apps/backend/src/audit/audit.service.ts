@@ -43,6 +43,12 @@ export interface AuditRow {
   after: unknown;
   reason: string | null;
   createdAt: string;
+  /** T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI6): groups every row
+   * written inside one multi-row transaction (e.g. N lead-ownership
+   * transfers + 1 membership removal) so the Audit page can render/
+   * collapse them as one operation. Null for every action that isn't
+   * part of a batch. */
+  batchId: string | null;
 }
 
 export interface AuditListResult {
@@ -107,6 +113,7 @@ export class AuditService {
               after: true,
               reason: true,
               createdAt: true,
+              batchId: true,
               user: { select: { name: true } },
             },
           }),
@@ -128,6 +135,7 @@ export class AuditService {
             after: r.after as unknown,
             reason: r.reason,
             createdAt: r.createdAt.toISOString(),
+            batchId: r.batchId,
           })),
         };
       },
