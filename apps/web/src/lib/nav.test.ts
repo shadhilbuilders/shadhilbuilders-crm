@@ -78,6 +78,9 @@ describe('lib/nav', () => {
       '/bookings',
       '/notifications',
     ];
+    // T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER additionally sees
+    // My Teams (design doc UI1) - every other staff role does not.
+    const managerHrefs = [...workHrefs, '/my-teams'];
 
     it('TELECALLER sees only the work group (no Admin launcher, no admin items)', () => {
       const items = getVisibleNav('TELECALLER');
@@ -90,9 +93,9 @@ describe('lib/nav', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
     });
 
-    it('MANAGER sees only the work group (Users / Projects / WA Unknown are admin-only)', () => {
+    it('MANAGER sees only the work group + My Teams (Users / Projects / WA Unknown are admin-only)', () => {
       const hrefs = flattenNavHrefs(getVisibleNav('MANAGER'));
-      expect(hrefs).toEqual(workHrefs);
+      expect(hrefs).toEqual(managerHrefs);
       expect(hrefs).not.toContain('/admin');
       expect(hrefs).not.toContain('/admin/users');
       expect(hrefs).not.toContain('/admin/projects');

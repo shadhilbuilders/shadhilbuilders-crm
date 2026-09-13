@@ -29,6 +29,8 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { isAdminClass } from '../users/roles';
 
+import { TeamAccessService } from './team-access.service';
+
 @Injectable()
 export class TeamsService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
@@ -38,35 +40,47 @@ export class TeamsService {
     @Inject(PrismaService) private readonly prismaService: PrismaService,
   ) {}
 
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
+  private readonly teamAccess = new TeamAccessService();
+
   private get client(): PrismaClient {
     return this.prismaService.$client;
   }
 
-  /** List the teams the actor is a member of. RLS-filtered. */
+  /**
+   * List the teams the actor can see. T-TEAM-AUTHORITATIVE (2026-09-13,
+   * design doc UI1): OWNER/ADMIN see every org team; MANAGER sees every
+   * team they MANAGE (Team.managerId) UNION every team they're an
+   * ordinary member of (TeamMember/legacy User.teamId, via
+   * TeamAccessService); other staff see only their ordinary-member
+   * team(s). This is what powers BOTH the Admin -> Teams list and the
+   * Work -> My Teams list - same endpoint, role-scoped result.
+   */
   async list(actor: JwtPayload): Promise<TeamListItem[]> {
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
-        // OWNER/ADMIN oversee every team (mirrors the leads scoping
-        // convention - role lane, not membership). MANAGER/TELECALLER/
-        // SALES_EXEC see only teams they are members of.
         const isOverseer = isAdminClass(actor.role);
-        // T-TEAM-CRUD: soft-deleted teams never appear in the list.
+        let where: { deletedAt: null; id?: { in: string[] } };
+        if (isOverseer) {
+          where = { deletedAt: null };
+        } else {
+          const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(
+            tx as never,
+            { sub: actor.sub, role: actor.role },
+          );
+          // Legacy fallback (mirrors leads.service.ts's managesLeadTeam
+          // pattern): a staff member's own User.teamId membership, for
+          // accounts not yet reflected in TeamAccessService's sources.
+          const legacyTeamId = actor.teamId ?? undefined;
+          const teamIds = Array.from(
+            new Set([...accessibleTeamIds, ...(legacyTeamId ? [legacyTeamId] : [])]),
+          );
+          where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
+        }
         const rows = await tx.team.findMany({
-          where: isOverseer
-            ? { deletedAt: null }
-            : {
-                deletedAt: null,
-                // Belt-and-braces: even though the RLS policy on Team
-                // already filters to rows where the user appears in
-                // members, we add an explicit where so the SQL is
-                // self-documenting and the index is obvious. With FORCE
-                // RLS the policy is the only thing that matters, so this
-                // is redundant - but if RLS is ever dropped in a future
-                // migration, this still gives the right answer.
-                members: { some: { id: actor.sub } },
-              },
+          where,
           select: {
             id: true,
             name: true,
@@ -103,9 +117,14 @@ export class TeamsService {
    * row — the UI shows those as read-only "via leads" rows (Unlink disabled).
    */
   async getTeam(actor: JwtPayload, id: string): Promise<TeamDetail> {
-    if (!isAdminClass(actor.role)) {
+    // T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1): ADMIN/OWNER view
+    // any team (Admin -> Teams). A MANAGER may also view a team they
+    // manage OR are an ordinary member of (Work -> My Teams) - checked
+    // below, once the team is loaded, via TeamAccessService so a manager
+    // leading multiple teams isn't limited to their JWT-carried teamId.
+    if (!isAdminClass(actor.role) && actor.role !== 'MANAGER') {
       throw new ForbiddenException(
-        'Only ADMIN or OWNER can view the org teams.',
+        'Only ADMIN, OWNER, or a MANAGER can view a team roster.',
       );
     }
     return withRlsContext(
@@ -121,6 +140,18 @@ export class TeamsService {
         // T-TEAM-CRUD: a soft-deleted team 404s like a missing one.
         if (team === null || team.deletedAt !== null) {
           throw new NotFoundException(`Team ${id} not found.`);
+        }
+        if (actor.role === 'MANAGER') {
+          const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(
+            tx as never,
+            { sub: actor.sub, role: actor.role },
+          );
+          const canView = accessibleTeamIds.includes(id) || actor.teamId === id;
+          if (!canView) {
+            throw new ForbiddenException(
+              "You can only view a team you manage or belong to.",
+            );
+          }
         }
 
         const members = await tx.user.findMany({
