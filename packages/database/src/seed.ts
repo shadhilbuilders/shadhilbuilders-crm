@@ -184,6 +184,21 @@ async function upsertUser(
     },
   });
 
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMember is the
+  // read path for "who's on this team" now (team roster, chat @mention
+  // resolution, create-lead team defaulting) - User.teamId above no
+  // longer has any application-code reader, but is kept until the
+  // planned column drop. A MANAGER's own leadership is Team.managerId,
+  // a separate axis - they don't need a TeamMember row for a team they
+  // lead, so this only fires for ordinary (non-manager) team members.
+  if (teamId && role !== 'MANAGER') {
+    await prisma.teamMember.upsert({
+      where: { userId_teamId: { userId: dbUser.id, teamId } },
+      update: {},
+      create: { userId: dbUser.id, teamId, organizationId: SEED_ORG_ID },
+    });
+  }
+
   return dbUser;
 }
 
