@@ -7,11 +7,24 @@
 // Role/session lookups use better-auth's useSession (react bindings).
 export class ApiError extends Error {
   readonly status: number;
+  /**
+   * Stable machine-readable error code from the Nest envelope (T-TEAM-
+   * AUTHORITATIVE, UI4: "extend web ApiError to preserve it"), e.g.
+   * 'PROJECT_TEAM_HAS_LEADS', 'STALE_PREVIEW'. `null` when the backend
+   * didn't emit a coded envelope (plain HttpException string bodies,
+   * Zod validation-array 400s, etc.) - callers must not assume it's
+   * always present.
+   */
+  readonly code: string | null;
+  /** Arbitrary structured payload alongside `code` (e.g. affected counts). */
+  readonly details: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code: string | null = null, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
@@ -140,11 +153,21 @@ export async function api<T>(
     // Zod 400 arrays readable as before for existing call sites).
     const detail = await response.text().catch(() => '');
     let human: string | null = null;
+    let code: string | null = null;
+    let details: unknown;
     if (detail.length > 0) {
       try {
-        const parsed = JSON.parse(detail) as { message?: unknown };
+        const parsed = JSON.parse(detail) as {
+          message?: unknown;
+          code?: unknown;
+          details?: unknown;
+        };
         if (typeof parsed.message === 'string') human = parsed.message;
         else if (Array.isArray(parsed.message)) human = parsed.message.join('; ');
+        // CodedException envelope (T-TEAM-AUTHORITATIVE, UI4): a stable
+        // machine-readable `code` alongside the human message.
+        if (typeof parsed.code === 'string') code = parsed.code;
+        if ('details' in parsed) details = parsed.details;
       } catch {
         /* not JSON - keep raw detail */
       }
@@ -155,6 +178,8 @@ export async function api<T>(
           ? `API ${response.status}: ${detail.slice(0, 300)}`
           : `API ${response.status} ${response.statusText}`),
       response.status,
+      code,
+      details,
     );
   }
   if (response.status === 204) return undefined as T;
