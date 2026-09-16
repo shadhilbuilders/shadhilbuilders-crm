@@ -86,6 +86,36 @@ export const INVENTORY_STATUSES = [
 export type InventoryStatus = (typeof INVENTORY_STATUSES)[number];
 
 /**
+ * T-INV-SYNC (2026-09-15): the subset of unit statuses a staff member may set
+ * BY HAND. Unit.status is derived from the booking lifecycle (a booking
+ * trigger recomputes it; see migration 20260915060000_unit_status_sync), so
+ * HOLD/TOKEN only ever come from a booking. AVAILABLE and SOLD are the two
+ * off-pipeline marks an admin legitimately chooses, and the server rejects any
+ * value that contradicts the unit's live bookings with a 409.
+ * Mirrors UpdateUnitStatusSchema in @shadhil/api-types.
+ */
+export const INVENTORY_MANUAL_STATUSES = ['AVAILABLE', 'SOLD'] as const;
+export type InventoryManualStatus = (typeof INVENTORY_MANUAL_STATUSES)[number];
+
+/**
+ * T-INV-SYNC follow-up (2026-09-15): unit statuses that a BOOKING produces and
+ * that no form may submit.
+ *
+ * These are not "hidden" options - they are not editable values at all. The
+ * edit dialog used to seed its status picker from the unit's own current
+ * status and always submit it, so editing a held unit sent `status: 'HOLD'`,
+ * which `UpdateUnitStatusSchema` (AVAILABLE|SOLD only) rejects with a 400.
+ * Every save on a held or token-paid unit failed, including pure price/BHK
+ * edits. Callers must render these read-only and omit them from the payload.
+ */
+export const DERIVED_UNIT_STATUSES = ['HOLD', 'TOKEN'] as const;
+
+/** True when the unit's status is owned by its booking, not by a form. */
+export function isDerivedUnitStatus(status: string): boolean {
+  return (DERIVED_UNIT_STATUSES as readonly string[]).includes(status);
+}
+
+/**
  * Booking-lifecycle values per the Prisma `Booking.status` enum.
  * Added 2026-09-04 alongside the booking page wire-up. The friendly
  * labels match §0.11 plan copy.

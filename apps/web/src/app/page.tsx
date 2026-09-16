@@ -15,11 +15,10 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { ErrorInternalServer, Loading } from '@paalstack/react-ui';
-
-import { Skeleton } from '@/components/shared/Skeleton';
 import { useOrgSlugForId } from '@/hooks/queries/organizations';
 import { useSessionUser } from '@/lib/session';
+import { PageLoading } from '@/components/shared/PageLoading';
+import { PageError } from '@/components/shared/PageError';
 
 export default function OrgRootRedirectPage() {
   const router = useRouter();
@@ -40,18 +39,15 @@ export default function OrgRootRedirectPage() {
   }, [isPending, orgsPending, orgsError, user, orgSlug, router]);
 
   // Session still resolving → skeleton.
-  if (isPending) return <Skeleton variant="overview" className="py-4" />;
+  if (isPending) return <PageLoading content="Loading workspace..." />;
 
   // Orgs lookup failed → real error state with retry.
   if (orgsError !== null) {
     const message =
       orgsError instanceof Error ? orgsError.message : 'Could not load your organization';
     return (
-      <ErrorInternalServer
+      <PageError
         error={orgsError instanceof Error ? orgsError : new Error(message)}
-        showErrorMessage
-        goBackText="Go back"
-        refreshText="Try again"
         onRefresh={() => {
           router.refresh();
           window.location.reload();
@@ -60,7 +56,5 @@ export default function OrgRootRedirectPage() {
     );
   }
 
-  return <div className="flex min-h-[80vh] w-full items-center justify-center">
-  <Loading content="Loading workspace..." className='text-foreground' spinnerProps={{ size: 'lg' }} />
-</div>;
+  return <PageLoading content="Loading workspace..." />;
 }

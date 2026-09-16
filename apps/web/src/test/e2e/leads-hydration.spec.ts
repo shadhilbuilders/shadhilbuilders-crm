@@ -50,7 +50,7 @@ test('leads inbox: no hydration mismatch on load', async ({ page }) => {
   });
 
   await ensureLoggedIn(page);
-  await page.goto('/oe6g1xkagiisnn4oeefpdyhk/leads');
+  await page.goto('/demo/projects/demo-villas/leads');
   await page.waitForLoadState('domcontentloaded');
   // Give hydration + the client fetch time to settle.
   await page.waitForTimeout(2_500);

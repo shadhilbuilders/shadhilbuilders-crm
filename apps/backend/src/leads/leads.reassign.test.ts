@@ -32,6 +32,7 @@ import {
 } from 'vitest';
 import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
+import { createId } from '@paralleldrive/cuid2';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -40,19 +41,18 @@ import { LeadsService } from './leads.service';
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Per-test unique IDs so re-runs don't collide on FK / unique constraints.
-const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const TEAM_A_ID = `test-reassign-teamA-${RUN_TAG}`;
-const TEAM_B_ID = `test-reassign-teamB-${RUN_TAG}`;
-const ADMIN_ID = `test-reassign-admin-${RUN_TAG}`;
-const MGR_A_ID = `test-reassign-mgrA-${RUN_TAG}`;
-const TC_A_ID = `test-reassign-tcA-${RUN_TAG}`;
-const TC_A2_ID = `test-reassign-tcA2-${RUN_TAG}`;
-const TC_B_ID = `test-reassign-tcB-${RUN_TAG}`;
-const SE_A_ID = `test-reassign-seA-${RUN_TAG}`;
-const SE_OWNER_ID = `test-reassign-seOwner-${RUN_TAG}`;
-const SE_A2_ID = `test-reassign-seA2-${RUN_TAG}`;
-const LEAD_ID = `test-reassign-lead-${RUN_TAG}`;
+// Per-test unique IDs using real cuid2 so they pass z.cuid2() validation.
+const TEAM_A_ID = createId();
+const TEAM_B_ID = createId();
+const ADMIN_ID = createId();
+const MGR_A_ID = createId();
+const TC_A_ID = createId();
+const TC_A2_ID = createId();
+const TC_B_ID = createId();
+const SE_A_ID = createId();
+const SE_OWNER_ID = createId();
+const SE_A2_ID = createId();
+const LEAD_ID = createId();
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
 const TEST_AUDIT_KEYS: string[] = [];
@@ -63,17 +63,16 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
 
-function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role' | 'teamId'>): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
-    teamId: overrides.teamId,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -90,7 +89,7 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_A_ID,
-        name: `Reassign Test Team A ${RUN_TAG}`,
+        name: `Reassign Test Team A ${TEAM_A_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
@@ -99,7 +98,7 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_B_ID,
-        name: `Reassign Test Team B ${RUN_TAG}`,
+        name: `Reassign Test Team B ${TEAM_B_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
@@ -107,13 +106,12 @@ beforeAll(async () => {
     // ADMIN (cross-team, used for seeding + as a reassigner).
     await db.user.upsert({
       where: { id: ADMIN_ID },
-      update: { teamId: TEAM_A_ID, role: 'ADMIN' },
+      update: { role: 'ADMIN' },
       create: {
         id: ADMIN_ID,
         email: `${ADMIN_ID}@test.local`,
         name: 'Reassign Test Admin',
         role: 'ADMIN',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -121,27 +119,30 @@ beforeAll(async () => {
     // MANAGER for team A.
     await db.user.upsert({
       where: { id: MGR_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'MANAGER' },
+      update: { role: 'MANAGER' },
       create: {
         id: MGR_A_ID,
         email: `${MGR_A_ID}@test.local`,
         name: 'Reassign Test Manager A',
         role: 'MANAGER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): RLS's MANAGER checks
+    // are now Team.managerId-EXISTS only (the legacy app.user_team_id GUC
+    // fallback this fixture used to lean on has been removed) - set it
+    // explicitly rather than relying on the manager's own User.teamId.
+    await db.team.update({ where: { id: TEAM_A_ID }, data: { managerId: MGR_A_ID } });
     // TELECALLER in team A (current owner of the test lead).
     await db.user.upsert({
       where: { id: TC_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_A_ID,
         email: `${TC_A_ID}@test.local`,
         name: 'Reassign Test TC A',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -149,13 +150,12 @@ beforeAll(async () => {
     // Another TELECALLER in team A (same-team reassign target).
     await db.user.upsert({
       where: { id: TC_A2_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_A2_ID,
         email: `${TC_A2_ID}@test.local`,
         name: 'Reassign Test TC A2',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -163,13 +163,12 @@ beforeAll(async () => {
     // TELECALLER in team B (cross-team reassign target).
     await db.user.upsert({
       where: { id: TC_B_ID },
-      update: { teamId: TEAM_B_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_B_ID,
         email: `${TC_B_ID}@test.local`,
         name: 'Reassign Test TC B',
         role: 'TELECALLER',
-        teamId: TEAM_B_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -177,13 +176,12 @@ beforeAll(async () => {
     // SALES_EXEC in team A - for the "target role can't own NEW lead" test.
     await db.user.upsert({
       where: { id: SE_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'SALES_EXEC' },
+      update: { role: 'SALES_EXEC' },
       create: {
         id: SE_A_ID,
         email: `${SE_A_ID}@test.local`,
         name: 'Reassign Test SE A',
         role: 'SALES_EXEC',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -193,13 +191,12 @@ beforeAll(async () => {
     // OK" path on a different lead state.
     await db.user.upsert({
       where: { id: SE_OWNER_ID },
-      update: { teamId: TEAM_A_ID, role: 'SALES_EXEC' },
+      update: { role: 'SALES_EXEC' },
       create: {
         id: SE_OWNER_ID,
         email: `${SE_OWNER_ID}@test.local`,
         name: 'Reassign Test SE Owner',
         role: 'SALES_EXEC',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
@@ -208,31 +205,49 @@ beforeAll(async () => {
     // no-op test (reassign to current owner).
     await db.user.upsert({
       where: { id: SE_A2_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: SE_A2_ID,
         email: `${SE_A2_ID}@test.local`,
         name: 'Reassign Test TC A2 (alt)',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
+
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassign()/
+    // setCoOwner() resolve a target's team via TeamMember rows now (the
+    // legacy User.teamId column set above is no longer read for this) -
+    // give every non-manager fixture user the matching membership.
+    for (const [userId, teamId] of [
+      [TC_A_ID, TEAM_A_ID],
+      [TC_A2_ID, TEAM_A_ID],
+      [TC_B_ID, TEAM_B_ID],
+      [SE_A_ID, TEAM_A_ID],
+      [SE_OWNER_ID, TEAM_A_ID],
+      [SE_A2_ID, TEAM_A_ID],
+    ] as const) {
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId, teamId } },
+        update: {},
+        create: { userId, teamId, organizationId: ORG },
+      });
+    }
 
     // The lead under test - NEW state, telecaller-owned, team A.
     // Phone must be unique; use a per-run suffix.
     await db.lead.upsert({
       where: { id: LEAD_ID },
       update: {
-        phone: `91${RUN_TAG.slice(0, 8)}001`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}001`,
+        phone: `91${LEAD_ID.slice(0, 8)}001`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}001`,
       },
       create: {
         id: LEAD_ID,
-        name: `Reassign Test Lead ${RUN_TAG}`,
-        phone: `91${RUN_TAG.slice(0, 8)}001`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}001`,
+        name: `Reassign Test Lead ${LEAD_ID.slice(0, 8)}`,
+        phone: `91${LEAD_ID.slice(0, 8)}001`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}001`,
         source: 'WEBSITE',
         state: 'NEW',
         teamId: TEAM_A_ID,
@@ -296,7 +311,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
   it('ADMIN reassigns to a target in a different team (cross-team happy path)', async () => {
     const leads = makeLeadsService();
     const result = await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       {
         leadId: LEAD_ID,
         targetUserId: TC_B_ID,
@@ -328,7 +343,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
 
     const leads = makeLeadsService();
     const result = await leads.reassign(
-      actorFor({ sub: MGR_A_ID, role: 'MANAGER', teamId: TEAM_A_ID }),
+      actorFor({ sub: MGR_A_ID, role: 'MANAGER'}),
       {
         leadId: LEAD_ID,
         targetUserId: TC_A2_ID,
@@ -343,7 +358,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: MGR_A_ID, role: 'MANAGER', teamId: TEAM_A_ID }),
+        actorFor({ sub: MGR_A_ID, role: 'MANAGER'}),
         {
           leadId: LEAD_ID,
           targetUserId: TC_B_ID, // in team B
@@ -357,7 +372,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: TC_A_ID, role: 'TELECALLER', teamId: TEAM_A_ID }),
+        actorFor({ sub: TC_A_ID, role: 'TELECALLER'}),
         {
           leadId: LEAD_ID,
           targetUserId: TC_A2_ID,
@@ -395,7 +410,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: SE_A_ID, role: 'SALES_EXEC', teamId: TEAM_A_ID }),
+        actorFor({ sub: SE_A_ID, role: 'SALES_EXEC'}),
         {
           leadId: LEAD_ID,
           targetUserId: TC_A2_ID,
@@ -411,7 +426,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
         {
           leadId: LEAD_ID,
           targetUserId: SE_A_ID, // SALES_EXEC, lane starts at VISITED
@@ -426,7 +441,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // directly to VISITED - must go NEW → CONTACTED →
     // VISIT_REQUESTED → VISIT_SCHEDULED → VISITED.
     const leads = makeLeadsService();
-    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
+    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'CONTACTED' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISIT_REQUESTED' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISIT_SCHEDULED' });
@@ -457,9 +472,9 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     expect(before?.ownerId).toBe(TC_A_ID); // belt + suspenders
 
     const leads = makeLeadsService();
-    const reason = `Test: audit verification ${RUN_TAG}`; // RUN_TAG makes the query unique per process
+    const reason = `Test: audit verification ${LEAD_ID.slice(0, 8)}`;
     await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       {
         leadId: LEAD_ID,
         targetUserId: TC_A2_ID,
@@ -495,9 +510,9 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // The test lead was just reset by beforeEach to
     // {ownerId: TC_A_ID, state: NEW}. Reassign to the SAME owner.
     const leads = makeLeadsService();
-    const reason = `Test: same-owner no-op ${RUN_TAG}`;
+    const reason = `Test: same-owner no-op ${LEAD_ID.slice(0, 8)}`;
     const result = await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       {
         leadId: LEAD_ID,
         targetUserId: TC_A_ID, // same owner (beforeEach reset it to this)
@@ -526,7 +541,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
         {
           leadId: 'this-lead-does-not-exist',
           targetUserId: TC_A_ID,
@@ -540,7 +555,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     const leads = makeLeadsService();
     await expect(
       leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
         {
           leadId: LEAD_ID,
           targetUserId: 'this-user-does-not-exist',

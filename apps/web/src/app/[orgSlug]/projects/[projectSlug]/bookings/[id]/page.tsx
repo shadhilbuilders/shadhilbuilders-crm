@@ -15,26 +15,42 @@
 // (backend enforces; the UI hides the button for other roles via
 // canApproveBookings). REJECTED/CANCELLED require a reason (audit
 // policy) - the form prompts for it inline, mirroring LeadActionPanel.
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, Card, CardContent, CardHeader, CardTitle, Label, Textarea, toast } from '@paalstack/react-ui';
-import { LuArrowRight } from '@paalstack/react-icons/lu';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Button, Card, CardContent, CardHeader, CardTitle, toast } from '@paalstack/react-ui';
+import {
+  LuArrowLeft,
+  LuBadgeCheck,
+  LuBan,
+  LuCircleDollarSign,
+  LuCircleX,
+} from '@paalstack/react-icons/lu';
+import { TransitionReasonRequired } from '@shadhil/api-types';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
+import {
+  BookingTransitionConfirmStep,
+  type BookingTransitionTarget,
+  type TransitionFormValues,
+} from '@/components/bookings/BookingTransitionConfirmStep';
 import { useBooking, useUpdateBooking } from '@/hooks/queries/crm';
 import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
-import { canApproveBookings, useSessionUser } from '@/lib/session';
+import { canApproveBookings, canInitiateBookings, useSessionUser } from '@/lib/session';
 
 type BookingRow = {
   id: string;
   leadId?: string;
   leadName?: string;
   unitId?: string;
+  unitNumber?: string;
   userName?: string;
   amount?: string;
   tokenAmount?: string | null;
@@ -48,7 +64,7 @@ type BookingRow = {
 // Local mirror of the backend legalNextStates() (bookings.service.ts).
 // The UI only offers legal moves; the server re-validates and rejects
 // anything else with a 400.
-const LEGAL_NEXT: Record<BookingStatus, BookingStatus[]> = {
+const LEGAL_NEXT: Record<BookingStatus, BookingTransitionTarget[]> = {
   HOLD: ['TOKEN', 'CANCELLED'],
   TOKEN: ['APPROVED', 'REJECTED', 'CANCELLED'],
   APPROVED: ['CANCELLED'],
@@ -63,6 +79,35 @@ const STATUS_BADGE_CLASS: Record<BookingStatus, string> = {
   REJECTED: 'bg-red-100 text-red-900',
   CANCELLED: 'bg-gray-100 text-gray-700',
 };
+
+/**
+ * A semantic icon per booking TRANSITION TARGET, used on the transition
+ * buttons and the confirm action so an operator can scan the choices without
+ * reading every label.
+ *
+ * Mirrors the `STATE_ICONS` convention in components/shared/LeadActionPanel.tsx:
+ * one icon per target state, commented with why it reads the way it does.
+ * Before this, every non-approval transition shared a single generic
+ * `LuArrowRight`, so "Cancel booking" and "Token received" were visually
+ * indistinguishable and the destructive one had no warning cue at all.
+ *
+ * Keyed on `BookingTransitionTarget`, so it covers exactly the states a button
+ * can offer - `HOLD` is absent by construction (a booking is created in HOLD;
+ * nothing transitions into it).
+ */
+const STATUS_ICONS: Readonly<
+  Record<BookingTransitionTarget, ComponentType<{ className?: string }>>
+> = {
+  // Forward motions (money in, deal advances)
+  TOKEN: LuCircleDollarSign, // token payment received
+  APPROVED: LuBadgeCheck, // manager signed off, deal locked in
+  // Rejection / release (the two that end or reverse a deal)
+  REJECTED: LuCircleX, // manager refused this booking
+  CANCELLED: LuBan, // cancelled - the destructive one, flagged
+};
+
+/** Icon shown on the "Back to bookings" action. */
+const BACK_ICON = LuArrowLeft;
 
 function isBookingStatus(value: string): value is BookingStatus {
   return (['HOLD', 'TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED'] as const).includes(
@@ -87,21 +132,37 @@ export default function BookingDetailPage() {
   const bookingQuery = useBooking(bookingId);
   const { user } = useSessionUser();
   const canApprove = canApproveBookings(user?.role);
+  // T-BOOK-ROLES: REJECTED is an approval decision (same gate as APPROVED).
+  // TELECALLER must not be offered TOKEN either - the service 403s it now.
+  const canInitiate = canInitiateBookings(user?.role);
 
   const booking = bookingQuery.data as BookingRow | undefined;
   const leadName =
     typeof booking?.leadName === 'string' && booking.leadName.length > 0
       ? booking.leadName
-      : 'Booking';
+      : null;
+  const unitNumber =
+    typeof booking?.unitNumber === 'string' && booking.unitNumber.length > 0
+      ? booking.unitNumber
+      : null;
+
+  // T-BOOK-LINK: the unit identifies a booking (one active booking per unit),
+  // so it leads the crumb and the lead name is the parenthetical qualifier:
+  // "A-101 (Priya Sharma)". Falls back sensibly when either side is missing.
+  const crumbLabel =
+    unitNumber !== null && leadName !== null
+      ? `${unitNumber} (${leadName})`
+      : (unitNumber ?? leadName ?? 'Booking');
+  const pageTitle = unitNumber !== null ? `Unit ${unitNumber}` : 'Booking';
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Booking"
+        title={pageTitle}
         breadcrumb={[
           { label: 'Work' },
           { label: 'Bookings', href: projectHref(orgSlug, projectSlug, '/bookings') },
-          { label: leadName },
+          { label: crumbLabel },
         ]}
       />
 
@@ -116,6 +177,7 @@ export default function BookingDetailPage() {
           <BookingActions
             booking={booking}
             canApprove={canApprove}
+            canInitiate={canInitiate}
             orgSlug={orgSlug}
             projectSlug={projectSlug}
           />
@@ -140,6 +202,7 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
 
   const meta: Array<{ label: string; value: string | null }> = [
     { label: 'Lead', value: booking.leadName ?? null },
+    { label: 'Unit', value: booking.unitNumber ?? null },
     { label: 'Owner', value: booking.userName ?? null },
     { label: 'Approved by', value: booking.approvedByName ?? null },
     { label: 'Total amount', value: formatMoney(booking.amount) },
@@ -150,7 +213,11 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
     <Card data-qa="booking-info-card">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle className="text-xl">{booking.leadName ?? 'Booking'}</CardTitle>
+          {/* T-BOOK-LINK: unit-led title, matching the page header + crumb.
+              The lead name has its own row in the detail list below. */}
+          <CardTitle className="text-xl">
+            {booking.unitNumber ? `Unit ${booking.unitNumber}` : (booking.leadName ?? 'Booking')}
+          </CardTitle>
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
             data-qa="booking-status-badge"
@@ -198,35 +265,90 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
             <p className="text-muted-foreground mt-1 text-sm">{booking.notes}</p>
           </div>
         ) : null}
+
       </CardContent>
     </Card>
   );
 }
 
+/**
+ * Transition form schema (user direction: every input form goes through the
+ * props-API `Form` + zod, not hand-rolled state).
+ *
+ * `toStatus` is a hidden piece of form state - the operator picks it with the
+ * action buttons, and the confirm step renders it as a badge. `reason` is
+ * required only for the moves that end or reverse a deal; the rule is
+ * `.superRefine()` on the parent object (zod v4 cross-field pattern, matching
+ * BookingApprovalDialog) so the issue attaches to `reason` and the form can
+ * highlight that control. Never throw inside a refinement.
+ *
+ * `reasonRequired` mirrors `TransitionReasonRequired` from @shadhil/api-types -
+ * one definition shared by DTO, service guard and this form.
+ */
+const transitionSchema = z
+  .object({
+    toStatus: z.enum(['TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED']),
+    reason: z
+      .string()
+      .trim()
+      .max(500, 'Reason must be under 500 characters')
+      .optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (!TransitionReasonRequired.has(values.toStatus)) return;
+    if ((values.reason ?? '').trim().length > 0) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['reason'],
+      message: `A reason is required when moving a booking to ${labelFor('booking', values.toStatus)}`,
+    });
+  });
+
 function BookingActions({
   booking,
   canApprove,
+  canInitiate,
   orgSlug,
   projectSlug,
 }: {
   booking: BookingRow;
   canApprove: boolean;
+  canInitiate: boolean;
   orgSlug: string | null;
   projectSlug: string | null;
 }) {
   const router = useRouter();
   const updateBooking = useUpdateBooking();
-  const [toStatus, setToStatus] = useState<BookingStatus | null>(null);
-  const [reason, setReason] = useState('');
+  const [toStatus, setToStatus] = useState<BookingTransitionTarget | null>(null);
 
   const status = typeof booking.status === 'string' ? booking.status : '';
   const current = isBookingStatus(status) ? status : null;
   const outgoing = current !== null ? LEGAL_NEXT[current] : [];
 
-  // APPROVED is only offered to MANAGER/ADMIN (backend enforces too).
-  const offered = outgoing.filter(
-    (s) => s !== 'APPROVED' || canApprove,
-  );
+  // T-BOOK-ROLES: only offer transitions the service will accept, so the UI
+  // never shows a button that answers 403.
+  //   TOKEN             -> initiate booking  (MANAGER/SALES_EXEC/ADMIN/OWNER)
+  //   APPROVED/REJECTED -> manager decision  (MANAGER/ADMIN/OWNER)
+  //   CANCELLED         -> any role that can see the booking (no role gate)
+  const offered = outgoing.filter((s) => {
+    if (s === 'TOKEN') return canInitiate;
+    if (s === 'APPROVED' || s === 'REJECTED') return canApprove;
+    return true;
+  });
+
+  // Single useForm instance for the card (the props-API Form does not create
+  // its own). `toStatus` is mirrored into the form so the resolver can apply
+  // the reason rule to the right target.
+  const form = useForm<TransitionFormValues>({
+    resolver: zodResolver(transitionSchema),
+    defaultValues: { toStatus: 'TOKEN', reason: '' },
+    mode: 'onSubmit',
+  });
+
+  // Confirmation step: the icon for the state being moved INTO, so the confirm
+  // button repeats the same visual cue the operator clicked to get here.
+  const ConfirmIcon = toStatus !== null ? STATUS_ICONS[toStatus] : undefined;
+  const reasonRequired = toStatus !== null && TransitionReasonRequired.has(toStatus);
 
   if (current === null || offered.length === 0) {
     return (
@@ -245,23 +367,30 @@ function BookingActions({
     );
   }
 
-  function onSubmit(target: BookingStatus) {
+  function chooseTarget(target: BookingTransitionTarget) {
+    form.reset({ toStatus: target, reason: '' });
+    setToStatus(target);
+  }
+
+  function closeStep() {
+    form.reset({ toStatus: 'TOKEN', reason: '' });
+    setToStatus(null);
+  }
+
+  function onValid(values: TransitionFormValues) {
+    const target = values.toStatus;
+    // The resolver guaranteed a reason when one is required; `toStatus` is the
+    // form's own value, so the payload can never drift from what was validated.
+    const reason = (values.reason ?? '').trim();
     const body: { toStatus: BookingStatus; reason?: string } = { toStatus: target };
-    if (target === 'REJECTED' || target === 'CANCELLED') {
-      const r = reason.trim();
-      if (r.length === 0) {
-        toast.error(`Reason is required when moving to ${labelFor('booking', target)}`);
-        return;
-      }
-      body.reason = r;
-    }
+    if (reason.length > 0) body.reason = reason;
+
     updateBooking.mutate(
       { id: booking.id, body },
       {
         onSuccess: () => {
           toast.success(`Booking moved to ${labelFor('booking', target)}`);
-          setToStatus(null);
-          setReason('');
+          closeStep();
         },
         onError: (e) => {
           const msg = e instanceof Error ? e.message : 'Update failed';
@@ -279,90 +408,38 @@ function BookingActions({
       <CardContent className="space-y-4">
         {toStatus === null ? (
           <div className="flex flex-wrap gap-2">
-            {offered.map((target) => (
-              <Button
-                key={target}
-                type="button"
-                size="sm"
-                variant={target === 'APPROVED' ? 'default' : 'outline'}
-                onClick={() => setToStatus(target)}
-                data-qa={`booking-to-${target}`}
-              >
-                {target === 'APPROVED' ? 'Approve' : `→ ${labelFor('booking', target)}`}
-              </Button>
-            ))}
+            {offered.map((target) => {
+              const Icon = STATUS_ICONS[target];
+              const isApprove = target === 'APPROVED';
+              return (
+                <Button
+                  key={target}
+                  type="button"
+                  size="sm"
+                  variant={isApprove ? 'default' : 'outline'}
+                  onClick={() => chooseTarget(target)}
+                  data-qa={`booking-to-${target}`}
+                  className="gap-1.5"
+                >
+                  {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                  {isApprove ? 'Approve' : labelFor('booking', target)}
+                </Button>
+              );
+            })}
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm">
-              Move from{' '}
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  isBookingStatus(status) ? STATUS_BADGE_CLASS[status] : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {labelFor('booking', status)}
-              </span>{' '}
-              to{' '}
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  STATUS_BADGE_CLASS[toStatus]
-                }`}
-              >
-                {labelFor('booking', toStatus)}
-              </span>
-            </div>
-
-            {toStatus === 'REJECTED' || toStatus === 'CANCELLED' ? (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor={`reason-${booking.id}-${toStatus}`}>
-                  Reason <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id={`reason-${booking.id}-${toStatus}`}
-                  value={reason}
-                  onChange={(e) => setReason(e.currentTarget.value)}
-                  maxLength={500}
-                  rows={2}
-                  placeholder="e.g. customer backed out, payment not received"
-                  data-qa="booking-reason"
-                />
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setToStatus(null);
-                  setReason('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={updateBooking.isPending}
-                onClick={() => onSubmit(toStatus)}
-                data-qa="booking-confirm"
-              >
-                {updateBooking.isPending
-                  ? 'Saving…'
-                  : toStatus === 'APPROVED'
-                    ? 'Confirm approval'
-                    : (
-                        <>
-                          <LuArrowRight className="h-4 w-4" aria-hidden="true" />
-                          Confirm {labelFor('booking', toStatus)}
-                        </>
-                      )}
-              </Button>
-            </div>
-          </div>
+          <BookingTransitionConfirmStep
+            form={form}
+            onSubmit={onValid}
+            currentStatus={status}
+            toStatus={toStatus}
+            reasonRequired={reasonRequired}
+            isPending={updateBooking.isPending}
+            ConfirmIcon={ConfirmIcon}
+            onCancelStep={closeStep}
+          />
         )}
+
 
         <div className="border-border border-t pt-3">
           <Button
@@ -370,11 +447,14 @@ function BookingActions({
             variant="ghost"
             size="sm"
             onClick={() => void router.push(projectHref(orgSlug, projectSlug, '/bookings'))}
+            className="gap-1.5"
           >
-            ← Back to bookings
+            <BACK_ICON className="h-4 w-4" aria-hidden="true" />
+            Back to bookings
           </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
+

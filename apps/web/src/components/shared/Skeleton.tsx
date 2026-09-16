@@ -24,6 +24,7 @@
 //   │ list   │ 6 items: avatar + 2 text lines per item           │
 //   │ card   │ 1 cell: h-32 w-full rounded-lg                    │
 //   │ user   │ 1 row: avatar + 2 text lines (sidebar/topbar)     │
+//   │ navItems │ N rows: icon (h-4 w-4) + label (h-4 w-24), 5 default │
 //   │ projectSwitcher │ 1 row: icon + 2 text lines + chevron   │
 //   │ text   │ N lines: h-4 w-full, 3 lines by default            │
 //   └────────┴───────────────────────────────────────────────────┘
@@ -45,6 +46,7 @@ export type SkeletonVariant =
   | 'card'
   | 'user'
   | 'users'
+  | 'navItems'
   | 'projectSwitcher'
   | 'overview'
   | 'text';
@@ -87,6 +89,10 @@ export const SKELETON_SHAPES = {
   list: { count: 6, item: { avatar: 'h-9 w-9', lines: 2 } },
   card: { count: 1, shape: 'h-32 w-full rounded-lg' },
   user: { count: 1, avatar: 'h-10 w-10', lines: 2 },
+  // Sidebar nav-group placeholder rows (icon + label), shown while the
+  // session/role is still resolving so the sidebar isn't an empty gap
+  // alongside a full-page PageLoading. 5 rows is a typical work-group size.
+  navItems: { count: 5, icon: 'h-4 w-4', label: 'h-4 w-24' },
   users: {
     count: 1,
     header: { title: 'h-6 w-24', subtitle: 'h-4 w-56' },
@@ -296,6 +302,20 @@ export function Skeleton({
               <LibSkeleton className="h-3 w-20" />
             </div>
           </div>
+        );
+
+      case 'navItems':
+        return (
+          <ul className="space-y-1" data-qa="skeleton-nav-items">
+            {Array.from({ length: c }).map((_, index) => (
+              <li key={index} className="flex items-center gap-2 rounded-md p-2">
+                <LibSkeleton
+                  className={`${SKELETON_SHAPES.navItems.icon} shrink-0 rounded-sm`}
+                />
+                <LibSkeleton className={SKELETON_SHAPES.navItems.label} />
+              </li>
+            ))}
+          </ul>
         );
 
       case 'users':

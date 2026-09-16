@@ -60,16 +60,21 @@ const salesExec: Actor = {
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
 };
 
-function makeService(teamReturn: { id: string } | null = null): {
+// T-TEAM-AUTHORITATIVE (2026-09-13): managerTeamIds() now resolves via
+// TeamAccessService.getManagedTeamIds(), which calls tx.team.findMany
+// (not findFirst) - a manager may lead multiple teams. `managedTeams`
+// is the full array of teams Team.managerId returns for this actor.
+function makeService(managedTeams: Array<{ id: string }> = []): {
   service: LeadsService;
-  tx: { team: { findFirst: ReturnType<typeof vi.fn> } };
+  tx: { team: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> } };
 } {
-  const teamFindFirst = vi.fn().mockResolvedValue(teamReturn);
-  const tx = { team: { findFirst: teamFindFirst } };
+  const teamFindFirst = vi.fn().mockResolvedValue(managedTeams[0] ?? null);
+  const teamFindMany = vi.fn().mockResolvedValue(managedTeams);
   const fakeClient = {
-    team: { findFirst: teamFindFirst },
-    // listWhere calls tx.team.findFirst only. list() also calls
-    // tx.lead.findMany / tx.lead.count - we don't exercise list() here.
+    team: { findFirst: teamFindFirst, findMany: teamFindMany },
+    // listWhere calls tx.team.findMany (via TeamAccessService) only.
+    // list() also calls tx.lead.findMany / tx.lead.count - we don't
+    // exercise list() here.
     lead: {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
@@ -77,7 +82,7 @@ function makeService(teamReturn: { id: string } | null = null): {
   } as never;
   const prismaService = { $client: fakeClient } as never;
   const service = new LeadsService(prismaService);
-  return { service, tx: { team: { findFirst: teamFindFirst } } };
+  return { service, tx: { team: { findFirst: teamFindFirst, findMany: teamFindMany } } };
 }
 
 beforeEach(() => {
@@ -141,9 +146,9 @@ describe('listWhere - TELECALLER/SALES_EXEC scoped to own leads', () => {
   });
 });
 
-describe('listWhere - MANAGER scoped to own team', () => {
-  it('MANAGER with team: where.teamId === their team.id', async () => {
-    const { service, tx } = makeService({ id: 'team-xyz' });
+describe('listWhere - MANAGER scoped to own team(s)', () => {
+  it('MANAGER with one team: where.teamId === { in: [their team.id] }', async () => {
+    const { service, tx } = makeService([{ id: 'team-xyz' }]);
     const where = await (
       service as unknown as {
         listWhere: (
@@ -153,15 +158,29 @@ describe('listWhere - MANAGER scoped to own team', () => {
         ) => Promise<Record<string, unknown>>;
       }
     ).listWhere(tx, manager, { limit: 50, offset: 0 });
-    expect(where['teamId']).toBe('team-xyz');
-    expect(tx.team.findFirst).toHaveBeenCalledWith({
-      where: { managerId: manager.sub },
+    expect(where['teamId']).toEqual({ in: ['team-xyz'] });
+    expect(tx.team.findMany).toHaveBeenCalledWith({
+      where: { managerId: manager.sub, deletedAt: null },
       select: { id: true },
     });
   });
 
+  it('MANAGER leading multiple teams: where.teamId === { in: [...every managed team] }', async () => {
+    const { service, tx } = makeService([{ id: 'team-a' }, { id: 'team-b' }]);
+    const where = await (
+      service as unknown as {
+        listWhere: (
+          tx: unknown,
+          actor: typeof manager,
+          dto: Record<string, unknown>,
+        ) => Promise<Record<string, unknown>>;
+      }
+    ).listWhere(tx, manager, { limit: 50, offset: 0 });
+    expect(where['teamId']).toEqual({ in: ['team-a', 'team-b'] });
+  });
+
   it('MANAGER with NO team: where.teamId === sentinel so nothing returns', async () => {
-    const { service, tx } = makeService(null);
+    const { service, tx } = makeService([]);
     const where = await (
       service as unknown as {
         listWhere: (
@@ -292,5 +311,62 @@ describe('badgeCount - project-scoped NEW-lead count (sidebar badge)', () => {
     const { service } = makeBadgeService(0);
     const result = await service.badgeCount(admin as never, 'proj-1');
     expect(result).toEqual({ newLeads: 0 });
+  });
+});
+// Default lead-inbox ordering (Decision 0.2). NOTHING covered this before, so
+// the tiebreaker could (and did) contradict the plan: the code sorted each
+// bucket by `createdAt` while Decision 0.2 says "-> Most recent activity" and
+// the column the operator reads ("Last Activity") renders `updatedAt`.
+//
+// These assert the generated ORDER BY text. `sortOrderSql` is private - the
+// cast mirrors how the other pure-logic tests in this file reach internals.
+describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
+  function orderSql(dto: Record<string, unknown> = {}): string {
+    const { service } = makeService();
+    const sql = (
+      service as unknown as {
+        sortOrderSql: (dto: Record<string, unknown>) => { sql: string };
+      }
+    ).sortOrderSql(dto);
+    // Collapse whitespace so assertions do not depend on formatting.
+    return sql.sql.replace(/\s+/g, ' ').trim();
+  }
+
+  it('buckets: overdue NEW first, then fresh NEW, then the rest', () => {
+    const sql = orderSql();
+    // Bucket 0 keyed on NEW + past the 30-minute SLA.
+    expect(sql).toContain(`WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0`);
+    expect(sql).toContain(`WHEN "state"='NEW' THEN 1`);
+    expect(sql).toContain('ELSE 2');
+    // The bucket CASE must be the FIRST ordering key.
+    expect(sql.indexOf('CASE')).toBeLessThan(sql.indexOf('"updatedAt" DESC'));
+  });
+
+  it('orders WITHIN a bucket by most recent activity (updatedAt), per Decision 0.2', () => {
+    const sql = orderSql();
+    expect(sql).toContain('"updatedAt" DESC');
+    // Regression guard: the old tiebreaker was createdAt, which ordered by
+    // creation age and ignored whether anyone had worked the lead.
+    const updatedAtAt = sql.indexOf('"updatedAt" DESC');
+    const createdAtAt = sql.indexOf('"createdAt" DESC');
+    expect(createdAtAt).toBeGreaterThan(updatedAtAt);
+  });
+
+  it('keeps createdAt as a final tiebreaker so equal updatedAt stays deterministic', () => {
+    // Bulk imports + the seed write many rows in the same millisecond; without
+    // a total order, server pagination can drop or duplicate a row across pages.
+    const sql = orderSql();
+    expect(sql).toContain('"updatedAt" DESC, "createdAt" DESC');
+  });
+
+  it('an explicit column sort still wins over the buckets', () => {
+    expect(orderSql({ sortBy: 'name', sortDir: 'asc' })).toBe('"name" ASC');
+    expect(orderSql({ sortBy: 'updatedAt', sortDir: 'desc' })).toBe('"updatedAt" DESC');
+    // Default direction is DESC when sortDir is omitted.
+    expect(orderSql({ sortBy: 'createdAt' })).toBe('"createdAt" DESC');
+  });
+
+  it('explicit sort does NOT carry the bucket CASE', () => {
+    expect(orderSql({ sortBy: 'name', sortDir: 'asc' })).not.toContain('CASE');
   });
 });

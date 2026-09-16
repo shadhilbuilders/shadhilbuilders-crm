@@ -55,19 +55,18 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
 
 function actorFor(
-  overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role' | 'teamId'>,
+  overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>,
 ): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
-    teamId: overrides.teamId,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -99,82 +98,97 @@ beforeAll(async () => {
 
     await db.user.upsert({
       where: { id: ADMIN_ID },
-      update: { teamId: TEAM_A_ID, role: 'ADMIN' },
+      update: { role: 'ADMIN' },
       create: {
         id: ADMIN_ID,
         email: `${ADMIN_ID}@test.local`,
         name: 'CoOwner Test Admin',
         role: 'ADMIN',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: MGR_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'MANAGER' },
+      update: { role: 'MANAGER' },
       create: {
         id: MGR_A_ID,
         email: `${MGR_A_ID}@test.local`,
         name: 'CoOwner Test Manager A',
         role: 'MANAGER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): RLS's MANAGER checks
+    // are now Team.managerId-EXISTS only (the legacy app.user_team_id GUC
+    // fallback this fixture used to lean on has been removed) - set it
+    // explicitly rather than relying on the manager's own User.teamId.
+    await db.team.update({ where: { id: TEAM_A_ID }, data: { managerId: MGR_A_ID } });
     await db.user.upsert({
       where: { id: TC_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_A_ID,
         email: `${TC_A_ID}@test.local`,
         name: 'CoOwner Test TC A',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_A2_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_A2_ID,
         email: `${TC_A2_ID}@test.local`,
         name: 'CoOwner Test TC A2',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_B_ID },
-      update: { teamId: TEAM_B_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_B_ID,
         email: `${TC_B_ID}@test.local`,
         name: 'CoOwner Test TC B',
         role: 'TELECALLER',
-        teamId: TEAM_B_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: SE_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'SALES_EXEC' },
+      update: { role: 'SALES_EXEC' },
       create: {
         id: SE_A_ID,
         email: `${SE_A_ID}@test.local`,
         name: 'CoOwner Test SE A',
         role: 'SALES_EXEC',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
+
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): setCoOwner()
+    // resolves a target's team via TeamMember rows now (the legacy
+    // User.teamId column set above is no longer read for this).
+    for (const [userId, teamId] of [
+      [TC_A_ID, TEAM_A_ID],
+      [TC_A2_ID, TEAM_A_ID],
+      [TC_B_ID, TEAM_B_ID],
+      [SE_A_ID, TEAM_A_ID],
+    ] as const) {
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId, teamId } },
+        update: {},
+        create: { userId, teamId, organizationId: ORG },
+      });
+    }
 
     // Lead owned by TC_A.
     await db.lead.upsert({
@@ -217,7 +231,7 @@ describe('LeadsService.setCoOwner', () => {
   const service = new LeadsService(new PrismaService());
 
   it('1. ADMIN can set a same-team co-owner', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: SE_A_ID,
@@ -234,7 +248,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('2. MANAGER can set a same-team co-owner', async () => {
-    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER'});
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: TC_A2_ID,
@@ -251,7 +265,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('3. MANAGER cannot set a co-owner in another team (403)', async () => {
-    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER'});
     await expect(
       service.setCoOwner(actor, {
         leadId: LEAD_ID,
@@ -267,7 +281,7 @@ describe('LeadsService.setCoOwner', () => {
     // NotFound — regardless of which team they're in. TC_B (other team,
     // no ownership tie) is the clean actor here: an earlier test sets
     // TC_A2 as co-owner, which would let TC_A2 see the lead.
-    const actor = actorFor({ sub: TC_B_ID, role: 'TELECALLER', teamId: TEAM_B_ID });
+    const actor = actorFor({ sub: TC_B_ID, role: 'TELECALLER'});
     let thrown: unknown;
     try {
       await service.setCoOwner(actor, {
@@ -282,7 +296,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('5. the lead owner cannot also be the co-owner (400)', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
     await expect(
       service.setCoOwner(actor, {
         leadId: LEAD_ID,
@@ -299,7 +313,7 @@ describe('LeadsService.setCoOwner', () => {
         data: { coOwnerId: SE_A_ID },
       }),
     );
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: null,
@@ -316,7 +330,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('7. unknown lead -> NotFound', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID });
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
     await expect(
       service.setCoOwner(actor, {
         leadId: 'cmx00000000000000000000000',

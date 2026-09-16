@@ -15,7 +15,6 @@ function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
     sub: 'admin-1',
     email: 'admin@shadhilbuilders.in',
     role: 'ADMIN',
-    teamId: null,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -51,7 +50,10 @@ function makeService(): {
       delete: ReturnType<typeof vi.fn>;
     };
     project: { findUnique: ReturnType<typeof vi.fn> };
-    booking: { count: ReturnType<typeof vi.fn> };
+    booking: {
+      count: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
+    };
     auditLog: { create: ReturnType<typeof vi.fn> };
   };
 } {
@@ -82,7 +84,7 @@ function makeService(): {
       delete: vi.fn(),
     },
     project: { findUnique: vi.fn() },
-    booking: { count: vi.fn() },
+    booking: { count: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   };
   const prismaService = { $client: client } as never;
@@ -553,6 +555,88 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
       }),
     ).rejects.toThrow(/Only ADMIN\/OWNER/);
     expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  // ── T-INV-SYNC (2026-09-15): manual status override vs live bookings ──
+  // Unit.status is derived from the booking lifecycle, so the only hand-set
+  // values are the off-pipeline marks. Anything that contradicts a live
+  // booking (or invents HOLD/TOKEN with no booking behind it) must 409.
+
+  it('409s when marking SOLD but the unit has an approved booking', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ status: 'AVAILABLE' }));
+    client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }]);
+
+    await expect(
+      service.update(makeActor(), 'unit-1', { status: 'AVAILABLE' }),
+    ).rejects.toThrow(/live booking/);
+    expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('allows SOLD when the unit already has an approved booking', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ status: 'SOLD' }));
+    client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }]);
+    client.unit.update.mockResolvedValue({ ...unitRow(), status: 'SOLD' });
+
+    const result = await service.update(makeActor(), 'unit-1', { status: 'SOLD' });
+
+    expect(result.status).toBe('SOLD');
+    expect(client.unit.update).toHaveBeenCalled();
+  });
+
+  it('409s when setting HOLD on a unit with no booking behind it', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.booking.findMany.mockResolvedValue([]);
+
+    await expect(
+      // Cast: the DTO no longer accepts HOLD - the service guard is the second
+      // line of defence and must 409 if a bad value ever reaches it.
+      service.update(makeActor(), 'unit-1', { status: 'HOLD' as 'AVAILABLE' }),
+    ).rejects.toThrow(/cannot be set to HOLD/);
+    expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('409s when setting TOKEN on a unit with no booking behind it', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.booking.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.update(makeActor(), 'unit-1', { status: 'TOKEN' as 'AVAILABLE' }),
+    ).rejects.toThrow(/cannot be set to TOKEN/);
+    expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('allows TOKEN when a token booking exists', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ status: 'TOKEN' }));
+    client.booking.findMany.mockResolvedValue([{ status: 'TOKEN' }]);
+    client.unit.update.mockResolvedValue({ ...unitRow(), status: 'TOKEN' });
+
+    const result = await service.update(makeActor(), 'unit-1', {
+      status: 'TOKEN' as 'AVAILABLE',
+    });
+
+    expect(result.status).toBe('TOKEN');
+  });
+
+  it('leaves status untouched when the payload does not include one', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.unit.update.mockResolvedValue({
+      ...unitRow(),
+      price: { toString: () => '6000000.00' },
+    });
+
+    await service.update(makeActor(), 'unit-1', { price: 6_000_000 });
+
+    expect(client.booking.findMany).not.toHaveBeenCalled();
+    const call = client.unit.update.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(call.data['status']).toBeUndefined();
   });
 
   it('returns 404 when the unit does not exist', async () => {

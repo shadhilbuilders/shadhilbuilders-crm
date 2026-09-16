@@ -288,7 +288,6 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
           {
             userId: 'cron-service',
             role: 'CRON_SERVICE',
-            teamId: null,
             organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
           },
           async (tx) =>
@@ -319,7 +318,6 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
           {
             userId: 'cron-service',
             role: 'CRON_SERVICE',
-            teamId: null,
             organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
           },
           async (tx) =>
@@ -347,7 +345,6 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
               {
                 userId: 'cron-service',
                 role: 'CRON_SERVICE',
-                teamId: null,
                 organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
               },
               async (tx) =>
@@ -375,7 +372,6 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
               {
                 userId: 'cron-service',
                 role: 'CRON_SERVICE',
-                teamId: null,
                 organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
               },
               async (tx) =>

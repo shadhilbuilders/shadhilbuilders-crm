@@ -6,6 +6,7 @@
 // whose $client has the methods we exercise stubbed per-test.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
 import { BookingsService, legalNextStates } from './bookings.service';
@@ -15,7 +16,6 @@ function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
     sub: 'mgr-1',
     email: 'mgr@shadhilbuilders.in',
     role: 'MANAGER',
-    teamId: 'team-mgr',
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -37,9 +37,9 @@ function makeService(): {
       update: ReturnType<typeof vi.fn>;
       delete: ReturnType<typeof vi.fn>;
     };
-    lead: { findUnique: ReturnType<typeof vi.fn> };
+    lead: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     unit: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
-    team: { findFirst: ReturnType<typeof vi.fn> };
+    team: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
   };
 } {
@@ -56,19 +56,45 @@ function makeService(): {
       update: vi.fn(),
       delete: vi.fn(),
     },
-    lead: { findUnique: vi.fn() },
+    // T-BOOK-LEADSYNC: the service now reads lead.state (the bookable-lead
+    // guard) and writes lead.state (the sync), plus booking.findMany to compute
+    // the target state.
+    lead: { findUnique: vi.fn(), update: vi.fn() },
     unit: { findUnique: vi.fn(), update: vi.fn() },
-    team: { findFirst: vi.fn() },
+    // T-TEAM-AUTHORITATIVE (2026-09-13): TeamAccessService.getManagedTeamIds
+    // calls findMany (a manager may lead multiple teams), not findFirst.
+    team: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   };
   const prismaService = { $client: client } as never;
   const service = new BookingsService(prismaService);
+  // T-BOOK-LEADSYNC: syncLeadState reads the lead's bookings to compute the
+  // target state. Default to "the booking we just wrote" so every test's sync
+  // resolves; individual tests override when they assert the state move.
+  client.booking.findMany.mockResolvedValue([{ status: 'HOLD' }]);
+  client.lead.update.mockResolvedValue({});
   return { service, client };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+// T-BOOK-LEADSYNC: every makeService() call re-seeds these defaults, because
+// vi.clearAllMocks() in beforeEach wipes any mockResolvedValue set inside the
+// factory. Kept as a helper so the transition/delete suites get a readable
+// lead + a resolvable booking list without each test restating them.
+function makeServiceWithLeadSync() {
+  const made = makeService();
+  made.client.booking.findMany.mockResolvedValue([{ status: 'HOLD' }]);
+  made.client.lead.findUnique.mockResolvedValue({
+    id: 'lead-1',
+    state: 'NEGOTIATION',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+  });
+  made.client.lead.update.mockResolvedValue({});
+  return made;
+}
 
 // ─── legalNextStates - pure state-machine helper ──────────────────────
 
@@ -106,6 +132,7 @@ describe('findOne - single booking', () => {
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -132,8 +159,16 @@ describe('findOne - single booking', () => {
 describe('create - start a new booking in HOLD state', () => {
   it('creates the booking with status=HOLD and writes an audit row', async () => {
     const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-1' });
-    client.unit.findUnique.mockResolvedValue({ id: 'unit-1' });
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'AVAILABLE',
+    });
     client.booking.create.mockResolvedValue({
       id: 'b-1',
       leadId: 'lead-1',
@@ -146,6 +181,7 @@ describe('create - start a new booking in HOLD state', () => {
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'Mgr 1' },
       approvedBy: null,
     });
@@ -158,21 +194,26 @@ describe('create - start a new booking in HOLD state', () => {
 
     expect(result.status).toBe('HOLD');
     expect(result.amount).toBe('5000000.00');
+    // T-BOOK-UNIT: the bookings grid renders the villa number, so the wire
+    // shape must carry it (denormalized from the unit relation).
+    expect(result.unitNumber).toBe('A-101');
     expect(client.booking.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'HOLD',
           userId: 'mgr-1',
         }),
+        select: expect.objectContaining({
+          unit: { select: { unitNumber: true } },
+        }),
       }),
     );
-    // T-INV-SYNC: creating a booking holds the unit.
-    expect(client.unit.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'unit-1' },
-        data: { status: 'HOLD' },
-      }),
-    );
+    // T-INV-SYNC: the unit's status is no longer written by the service - the
+    // unit_status_sync_booking DB trigger derives it (SECURITY DEFINER, so it
+    // works for every role). The old service-level unit.update silently
+    // matched zero rows for non-ADMIN actors under RLS, which is what let the
+    // inventory grid and the bookings list drift apart.
+    expect(client.unit.update).not.toHaveBeenCalled();
     expect(client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -198,7 +239,11 @@ describe('create - start a new booking in HOLD state', () => {
 
   it('returns 404 when the unit does not exist', async () => {
     const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-1' });
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
     client.unit.findUnique.mockResolvedValue(null);
     await expect(
       service.create(makeActor(), {
@@ -209,13 +254,121 @@ describe('create - start a new booking in HOLD state', () => {
     ).rejects.toThrow(/Unit missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
+
+  // ── T-INV-SYNC: a unit takes at most ONE active booking ────────────────
+  // The partial unique index one_active_booking_per_unit is the hard
+  // guarantee; these cover the readable 409s in front of it.
+
+  it('409s when the unit is already held by another booking', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'HOLD',
+    });
+
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/cannot take a new booking/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('409s when the unit is SOLD', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'SOLD',
+    });
+
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/cannot take a new booking/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects TELECALLER - cannot initiate a booking (T-BOOK-ROLES)', async () => {
+    const { service, client } = makeService();
+    await expect(
+      service.create(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
+        leadId: 'lead-1',
+        unitId: 'unit-1',
+        amount: 1,
+      }),
+    ).rejects.toThrow(/can create a booking/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  // ── T-BOOK-LEADSYNC: the lead must be negotiable, and it must stay in step
+  // ── with the booking.
+  it('409s when the lead is still NEW (booking would skip the sales process)', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEW',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/can only start from/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('409s when the lead is LOST (reviving is a deliberate act)', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'LOST',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/can only start from/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('409s when the unique index fires (concurrent create won the race)', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'AVAILABLE',
+    });
+    client.booking.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`unitId`)',
+        { code: 'P2002', clientVersion: '7.10.0' },
+      ),
+    );
+
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/already has an active booking/);
+  });
 });
 
 // ─── transition - state machine + audit row ──────────────────────────
 
 describe('transition - advance booking state', () => {
   it('HOLD → TOKEN: succeeds, audit row written, no approvedBy change', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
       status: 'HOLD',
@@ -228,6 +381,7 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -243,12 +397,16 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
 
+    // T-BOOK-ROLES: SALES_EXEC initiates a booking (DESIGN.md §4 ✅).
+    // This test previously used TELECALLER, which was asserting the missing
+    // role gate rather than the intended behaviour.
     const result = await service.transition(
-      makeActor({ role: 'TELECALLER' }),
+      makeActor({ role: 'SALES_EXEC', sub: 'se-1' }),
       'b-1',
       { toStatus: 'TOKEN' },
     );
@@ -270,7 +428,7 @@ describe('transition - advance booking state', () => {
   });
 
   it('TOKEN → APPROVED: only MANAGER/ADMIN, sets approvedById', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
       status: 'TOKEN',
@@ -283,6 +441,7 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -298,6 +457,7 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: { name: 'Mgr 1' },
     });
@@ -312,17 +472,12 @@ describe('transition - advance booking state', () => {
         data: expect.objectContaining({ approvedById: 'mgr-1' }),
       }),
     );
-    // T-INV-SYNC: approving a booking marks the unit SOLD.
-    expect(client.unit.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'unit-1' },
-        data: { status: 'SOLD' },
-      }),
-    );
+    // T-INV-SYNC: the unit SOLD transition is applied by the DB trigger.
+    expect(client.unit.update).not.toHaveBeenCalled();
   });
 
   it('TOKEN → APPROVED: rejects TELECALLER (not MANAGER/ADMIN)', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
       status: 'TOKEN',
@@ -335,6 +490,7 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -345,12 +501,93 @@ describe('transition - advance booking state', () => {
         'b-1',
         { toStatus: 'APPROVED' },
       ),
-    ).rejects.toThrow(/Only MANAGER\/ADMIN/);
+    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER can approve/);
     expect(client.booking.update).not.toHaveBeenCalled();
   });
 
-  it('rejects illegal transition (HOLD → APPROVED not allowed)', async () => {
-    const { service, client } = makeService();
+  // ── T-BOOK-ROLES (2026-09-15): the two role-gate defects ────────────────
+  // Defect 1: OWNER was rejected from approving (literal `!== 'ADMIN'` check)
+  // even though DESIGN.md §4 grants Super Admin ✅ and the UI shows OWNER the
+  // Approve button. The gate now uses the shared isAdminClass() helper.
+  // Defect 2: HOLD → TOKEN (and booking create) had NO role gate, so a
+  // TELECALLER who owned the lead could initiate a booking - matrix says ❌.
+
+  it('TOKEN → APPROVED: OWNER can approve (isAdminClass, not a literal ADMIN check)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'TOKEN',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+    client.booking.update.mockResolvedValue({
+      id: 'b-1',
+      status: 'APPROVED',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: 'owner-1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: { name: 'Owner 1' },
+    });
+
+    const result = await service.transition(
+      makeActor({ role: 'OWNER', sub: 'owner-1' }),
+      'b-1',
+      { toStatus: 'APPROVED' },
+    );
+
+    expect(result.status).toBe('APPROVED');
+    expect(result.approvedById).toBe('owner-1');
+  });
+
+  it('rejects REJECTED from a plain TELECALLER (approval is MANAGER/ADMIN/OWNER)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'TOKEN',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    await expect(
+      service.transition(
+        makeActor({ role: 'TELECALLER', sub: 'tc-1' }),
+        'b-1',
+        { toStatus: 'REJECTED', reason: 'not interested' },
+      ),
+    ).rejects.toThrow(/can approve or reject/);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('HOLD → TOKEN: rejects TELECALLER (cannot initiate a booking)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
       status: 'HOLD',
@@ -363,6 +600,36 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    await expect(
+      service.transition(
+        makeActor({ role: 'TELECALLER', sub: 'tc-1' }),
+        'b-1',
+        { toStatus: 'TOKEN' },
+      ),
+    ).rejects.toThrow(/can start a booking/);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects illegal transition (HOLD → APPROVED not allowed)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'HOLD',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -373,7 +640,7 @@ describe('transition - advance booking state', () => {
   });
 
   it('rejects transition from a terminal state', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
       status: 'CANCELLED',
@@ -386,6 +653,7 @@ describe('transition - advance booking state', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
     });
@@ -395,7 +663,7 @@ describe('transition - advance booking state', () => {
   });
 
   it('returns 404 when the booking does not exist', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(null);
     await expect(
       service.transition(makeActor(), 'missing', { toStatus: 'TOKEN' }),
@@ -407,8 +675,8 @@ describe('transition - advance booking state', () => {
 
 describe('list - role-scoped query with status filter', () => {
   it('passes status filter through to the where clause', async () => {
-    const { service, client } = makeService();
-    client.team.findFirst.mockResolvedValue({ id: 'team-mgr' });
+    const { service, client } = makeServiceWithLeadSync();
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }]);
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor(), {
@@ -423,23 +691,38 @@ describe('list - role-scoped query with status filter', () => {
     );
   });
 
-  it('MANAGER narrows by own team', async () => {
-    const { service, client } = makeService();
-    client.team.findFirst.mockResolvedValue({ id: 'team-mgr' });
+  it('MANAGER narrows by every team they lead', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }]);
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor(), { limit: 50, offset: 0 });
     expect(client.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          lead: { teamId: 'team-mgr' },
+          lead: { teamId: { in: ['team-mgr'] } },
+        }),
+      }),
+    );
+  });
+
+  it('MANAGER leading multiple teams narrows by ALL of them', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.team.findMany.mockResolvedValue([{ id: 'team-mgr' }, { id: 'team-mgr-2' }]);
+    client.booking.findMany.mockResolvedValue([]);
+    client.booking.count.mockResolvedValue(0);
+    await service.list(makeActor(), { limit: 50, offset: 0 });
+    expect(client.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          lead: { teamId: { in: ['team-mgr', 'team-mgr-2'] } },
         }),
       }),
     );
   });
 
   it('TELECALLER narrows by own userId via parent Lead.ownerId', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
@@ -456,7 +739,7 @@ describe('list - role-scoped query with status filter', () => {
   });
 
   it('passes search through to the parent Lead name/phone filter', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor(), {
@@ -479,7 +762,7 @@ describe('list - role-scoped query with status filter', () => {
   });
 
   it('merges search with staff role scoping (TELECALLER)', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findMany.mockResolvedValue([]);
     client.booking.count.mockResolvedValue(0);
     await service.list(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
@@ -520,6 +803,7 @@ describe('update - edit booking fields', () => {
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
       ...overrides,
@@ -527,7 +811,7 @@ describe('update - edit booking fields', () => {
   }
 
   it('updates amount/tokenAmount/notes and writes an audit row', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(bookingRow());
     client.booking.update.mockResolvedValue(
       bookingRow({
@@ -569,7 +853,7 @@ describe('update - edit booking fields', () => {
   });
 
   it('clears tokenAmount when null is passed', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(bookingRow());
     client.booking.update.mockResolvedValue(
       bookingRow({ tokenAmount: null, notes: 'old note' }),
@@ -585,7 +869,7 @@ describe('update - edit booking fields', () => {
   });
 
   it('returns 404 when the booking does not exist', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(null);
     await expect(
       service.update(makeActor(), 'missing', { amount: 1 }),
@@ -611,17 +895,17 @@ describe('delete - remove a booking (ADMIN/OWNER only)', () => {
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
       lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
       approvedBy: null,
       ...overrides,
     };
   }
 
-  it('deletes the booking and frees the unit when no other active booking', async () => {
-    const { service, client } = makeService();
+  it('deletes the booking (unit recompute is the trigger\'s job)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(bookingRow());
     client.booking.delete.mockResolvedValue({ id: 'b-1' });
-    client.booking.count.mockResolvedValue(0);
 
     const result = await service.delete(makeActor({ role: 'ADMIN' }), 'b-1');
 
@@ -629,13 +913,8 @@ describe('delete - remove a booking (ADMIN/OWNER only)', () => {
     expect(client.booking.delete).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'b-1' } }),
     );
-    // Unit freed back to AVAILABLE.
-    expect(client.unit.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'unit-1' },
-        data: { status: 'AVAILABLE' },
-      }),
-    );
+    // T-INV-SYNC: freeing the unit moved to the AFTER DELETE trigger.
+    expect(client.unit.update).not.toHaveBeenCalled();
     expect(client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -646,19 +925,19 @@ describe('delete - remove a booking (ADMIN/OWNER only)', () => {
     );
   });
 
-  it('does NOT free the unit when another active booking references it', async () => {
-    const { service, client } = makeService();
+  it('does not touch the unit itself - the trigger owns that write', async () => {
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(bookingRow());
     client.booking.delete.mockResolvedValue({ id: 'b-1' });
-    client.booking.count.mockResolvedValue(1);
 
     await service.delete(makeActor({ role: 'ADMIN' }), 'b-1');
 
     expect(client.unit.update).not.toHaveBeenCalled();
+    expect(client.booking.count).not.toHaveBeenCalled();
   });
 
   it('rejects TELECALLER (not ADMIN/OWNER)', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     await expect(
       service.delete(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), 'b-1'),
     ).rejects.toThrow(/Only ADMIN\/OWNER/);
@@ -666,11 +945,236 @@ describe('delete - remove a booking (ADMIN/OWNER only)', () => {
   });
 
   it('returns 404 when the booking does not exist', async () => {
-    const { service, client } = makeService();
+    const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(null);
     await expect(
       service.delete(makeActor({ role: 'ADMIN' }), 'missing'),
     ).rejects.toThrow(/Booking missing not found/);
     expect(client.booking.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ─── T-BOOK-LEADSYNC: the lead follows its bookings ─────────────────────────
+//
+// The sync runs inside the same transaction as the booking write, so these
+// assert on `lead.update` (the observable side effect). Direction guard: an
+// ordinary progression is forward-only, a cancel/reject is an explicit release.
+
+describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
+  function transitioningRow(from: string) {
+    return {
+      id: 'b-1',
+      status: from,
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    };
+  }
+
+  function syncService() {
+    const made = makeService();
+    made.client.auditLog.create.mockResolvedValue({ id: 'a-1' });
+    return made;
+  }
+
+  it('APPROVED advances the lead to WON', async () => {
+    const { service, client } = syncService();
+    client.booking.findUnique.mockResolvedValue(transitioningRow('TOKEN'));
+    client.booking.update.mockResolvedValue(transitioningRow('APPROVED'));
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'BOOKING_INITIATED',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }]);
+
+    await service.transition(makeActor(), 'b-1', { toStatus: 'APPROVED' });
+
+    expect(client.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-1' }, data: { state: 'WON' } }),
+    );
+  });
+
+  it('TOKEN advances the lead to BOOKING_INITIATED', async () => {
+    const { service, client } = syncService();
+    client.booking.findUnique.mockResolvedValue(transitioningRow('HOLD'));
+    client.booking.update.mockResolvedValue(transitioningRow('TOKEN'));
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.booking.findMany.mockResolvedValue([{ status: 'TOKEN' }]);
+
+    await service.transition(makeActor({ role: 'SALES_EXEC', sub: 'se-1' }), 'b-1', {
+      toStatus: 'TOKEN',
+    });
+
+    expect(client.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { state: 'BOOKING_INITIATED' } }),
+    );
+  });
+
+  it('CANCELLED releases the lead back to NEGOTIATION even from WON', async () => {
+    const { service, client } = syncService();
+    client.booking.findUnique.mockResolvedValue(transitioningRow('APPROVED'));
+    client.booking.update.mockResolvedValue(transitioningRow('CANCELLED'));
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'WON',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.booking.findMany.mockResolvedValue([{ status: 'CANCELLED' }]);
+
+    await service.transition(makeActor({ role: 'ADMIN', sub: 'a-1' }), 'b-1', {
+      toStatus: 'CANCELLED',
+      reason: 'customer backed out',
+    });
+
+    expect(client.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { state: 'NEGOTIATION' } }),
+    );
+  });
+
+  it('a stale extra HOLD cannot regress a WON lead on an ordinary transition', async () => {
+    const { service, client } = syncService();
+    client.booking.findUnique.mockResolvedValue(transitioningRow('TOKEN'));
+    client.booking.update.mockResolvedValue(transitioningRow('APPROVED'));
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'WON',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    // Target is WON (approved booking wins) and the lead is already WON - the
+    // sync must be a complete no-op, not a write.
+    client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }, { status: 'CANCELLED' }]);
+
+    await service.transition(makeActor(), 'b-1', { toStatus: 'APPROVED' });
+
+    expect(client.lead.update).not.toHaveBeenCalled();
+  });
+
+  it('deleting the last booking re-syncs the lead to NEGOTIATION', async () => {
+    const { service, client } = syncService();
+    client.booking.findUnique.mockResolvedValue(transitioningRow('HOLD'));
+    client.booking.delete.mockResolvedValue({ id: 'b-1' });
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'WON',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.booking.findMany.mockResolvedValue([]);
+
+    await service.delete(makeActor({ role: 'ADMIN' }), 'b-1');
+
+    expect(client.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { state: 'NEGOTIATION' } }),
+    );
+  });
+});
+
+// T-BOOK-REASON: a CANCELLED/REJECTED transition must carry an operator-supplied
+// reason. The DTO's comment always claimed this, but `reason` was merely
+// `.optional()` and the service never checked - verified live: a cancel with NO
+// reason (and one with only whitespace) both succeeded and the audit row stored
+// the generated "Booking HOLD -> CANCELLED by <email>" placeholder instead of a
+// real justification.
+describe('transition - a reason is required for CANCELLED/REJECTED', () => {
+  function makeCancelService(from: 'HOLD' | 'TOKEN') {
+    // makeServiceWithLeadSync() already seeds booking.findMany + the lead read
+    // that syncLeadState needs; a bare makeService() leaves lead.findUnique
+    // resolving undefined and the sync throws before the assertion.
+    const made = makeServiceWithLeadSync();
+    made.client.booking.findUnique.mockResolvedValue({
+      id: 'bk1',
+      status: from,
+      leadId: 'ld1',
+      unitId: 'un1',
+      userId: 'u-1',
+      amount: '1000.00',
+      tokenAmount: null,
+      approvedById: null,
+      notes: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: { name: 'Manager' },
+    });
+    made.client.booking.update.mockResolvedValue({
+      id: 'bk1',
+      status: 'CANCELLED',
+      leadId: 'ld1',
+      unitId: 'un1',
+      userId: 'u-1',
+      amount: '1000.00',
+      tokenAmount: null,
+      approvedById: null,
+      notes: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: { name: 'Manager' },
+    });
+    made.client.auditLog.create.mockResolvedValue({ id: 'a-1' });
+    return made;
+  }
+
+  it('rejects CANCELLED with no reason at all', async () => {
+    const { service, client } = makeCancelService('HOLD');
+    await expect(
+      service.transition(makeActor({ role: 'OWNER' }), 'bk1', { toStatus: 'CANCELLED' } as never),
+    ).rejects.toThrow(/reason is required/i);
+    // The write must not have happened.
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects CANCELLED with a whitespace-only reason', async () => {
+    const { service, client } = makeCancelService('HOLD');
+    await expect(
+      service.transition(makeActor({ role: 'OWNER' }), 'bk1', {
+        toStatus: 'CANCELLED',
+        reason: '   ',
+      } as never),
+    ).rejects.toThrow(/reason is required/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects REJECTED with no reason', async () => {
+    const { service } = makeCancelService('TOKEN');
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', { toStatus: 'REJECTED' } as never),
+    ).rejects.toThrow(/reason is required/i);
+  });
+
+  it('accepts CANCELLED with a real reason and stores it verbatim in the audit', async () => {
+    const { service, client } = makeCancelService('HOLD');
+    await service.transition(makeActor({ role: 'OWNER' }), 'bk1', {
+      toStatus: 'CANCELLED',
+      reason: 'customer backed out',
+    } as never);
+    const auditArg = client.auditLog.create.mock.calls.at(-1)?.[0] as {
+      data: { reason: string };
+    };
+    expect(auditArg.data.reason).toBe('customer backed out');
+  });
+
+  it('still allows a forward move with NO reason (HOLD -> TOKEN)', async () => {
+    const { service } = makeCancelService('HOLD');
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', { toStatus: 'TOKEN' } as never),
+    ).resolves.toBeDefined();
   });
 });

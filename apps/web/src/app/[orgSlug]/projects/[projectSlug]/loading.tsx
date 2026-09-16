@@ -1,9 +1,5 @@
-import { Loading } from '@paalstack/react-ui';
+import { PageLoading } from '@/components/shared/PageLoading';
 
 export default function ProjectLoading() {
-  return (
-    <div className="flex min-h-[60vh] w-full items-center justify-center">
-      <Loading content="Loading project…" spinnerProps={{ size: 'lg' }} />
-    </div>
-  );
+  return <PageLoading content="Loading project…" minHeight="section" />;
 }

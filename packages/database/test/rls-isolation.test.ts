@@ -101,6 +101,12 @@ type Fixture = {
   rowIds: Record<TableName, { own: string; other: string }>;
 };
 
+// T-INV-SYNC: the Booking INSERT probe needs units with no other active
+// booking on them (one_active_booking_per_unit). Real cuid2s - the repo purged
+// slug-style fixture ids in T-PROJID-CUID2, and ids are validated strictly.
+const PROBE_UNIT_A_ID = 'ydrwwx6zzyg7qnb7a9toe5bz';
+const PROBE_UNIT_B_ID = 'uwdjvvo0k5akc5hg5hm6pvci';
+
 /**
  * Build a fixture with two orgs, two leads, and one row of every business
  * table linked to each lead. Idempotent: re-running overwrites by cuid-
@@ -124,8 +130,8 @@ async function buildFixture(): Promise<Fixture> {
 
   // Build the fixture in dependency order: users first WITHOUT teamId
   // (no FK target yet), then teams (managerId FK to existing users),
-  // then UPDATE users to set teamId (User.teamId FK to teams).
-  // Three passes break the User.teamId ↔ Team.managerId chicken-and-egg.
+  // Pass 1: users (no team membership yet). Pass 2: teams with managerId.
+  // Pass 3: TeamMember rows for ordinary staff.
   for (const u of [
     { id: managerAId, role: 'MANAGER' as const, email: 'wwj8bwawdwawkr0917f0z57u@x' },
     { id: managerBId, role: 'MANAGER' as const, email: 'cct80r1jkpgifkiuuynw1ia6@x' },
@@ -136,13 +142,12 @@ async function buildFixture(): Promise<Fixture> {
   ]) {
     await adminPrisma.user.upsert({
       where: { id: u.id },
-      update: { role: u.role, teamId: null },
+      update: { role: u.role },
       create: {
         id: u.id,
         email: u.email,
         name: u.email,
         role: u.role,
-        teamId: null,
         emailVerified: true,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
@@ -202,17 +207,24 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
-  // Pass 3: now that both ends of the FK exist, set User.teamId.
-  const teamMap: Record<string, string> = {
-    [managerAId]: teamAId,
-    [managerBId]: teamBId,
-    [execAId]: teamAId,
-    [execBId]: teamBId,
-    [teleAId]: teamAId,
-    [teleBId]: teamBId,
-  };
-  for (const [userId, teamId] of Object.entries(teamMap)) {
-    await adminPrisma.user.update({ where: { id: userId }, data: { teamId } });
+  // Pass 3: TeamMember rows for ordinary staff (managers participate
+  // via Team.managerId only).
+  const memberMap: Array<{ userId: string; teamId: string }> = [
+    { userId: execAId, teamId: teamAId },
+    { userId: execBId, teamId: teamBId },
+    { userId: teleAId, teamId: teamAId },
+    { userId: teleBId, teamId: teamBId },
+  ];
+  for (const { userId, teamId } of memberMap) {
+    await adminPrisma.teamMember.upsert({
+      where: { userId_teamId: { userId, teamId } },
+      update: {},
+      create: {
+        userId,
+        teamId,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
   }
 
   // Need a Project + Phase + Unit for Booking - seed minimal versions.
@@ -278,11 +290,53 @@ async function buildFixture(): Promise<Fixture> {
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
+  // T-INV-SYNC (2026-09-15): the Booking INSERT/UPDATE matrix cases add a
+  // SECOND active booking (HOLD) on the same unit as the fixture rows above.
+  // The one_active_booking_per_unit partial unique index correctly rejects
+  // that, but this matrix asserts RLS permission, not the booking invariant -
+  // so the probe rows get their own free units. Without this the cases fail
+  // with a P2002 constraint error instead of the RLS outcome under test.
+  await adminPrisma.unit.upsert({
+    where: { phaseId_unitNumber: { phaseId: phaseAId, unitNumber: 'FA-002' } },
+    update: {},
+    create: {
+      id: PROBE_UNIT_A_ID,
+      phaseId: phaseAId,
+      unitNumber: 'FA-002',
+      bhk: 3,
+      price: '10000000.00',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
+  await adminPrisma.unit.upsert({
+    where: { phaseId_unitNumber: { phaseId: phaseBId, unitNumber: 'FB-002' } },
+    update: {},
+    create: {
+      id: PROBE_UNIT_B_ID,
+      phaseId: phaseBId,
+      unitNumber: 'FB-002',
+      bhk: 3,
+      price: '10000000.00',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
 
   // Leads.
+  //
+  // T-BOOK-LEADSYNC (2026-09-15): `state` is deliberately NOT forced in the
+  // update clause. `Lead.state` is reconciled with the lead's bookings
+  // (HOLD -> NEGOTIATION, TOKEN -> BOOKING_INITIATED, APPROVED -> WON), and
+  // this fixture gives both leads a HOLD booking just below. Forcing
+  // `state: 'NEW'` on every re-run made the fixture fight that rule: each test
+  // run reset the two leads to NEW and re-created the exact drift the
+  // lead-state-sync repair migration had just cleaned up. It also made the
+  // suite order-dependent. `create` still seeds NEW - the booking INSERT
+  // trigger then advances it, which is itself evidence the trigger works.
+  // No Lead RLS policy reads `state` (see prisma/rls/policies.sql) and no case
+  // asserts it, so leaving it alone costs the matrix nothing.
   await adminPrisma.lead.upsert({
     where: { id: leadAId },
-    update: { state: 'NEW', teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER' },
+    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER' },
     create: {
       id: leadAId,
       name: 'Fixture Lead A',
@@ -296,7 +350,7 @@ async function buildFixture(): Promise<Fixture> {
   });
   await adminPrisma.lead.upsert({
     where: { id: leadBId },
-    update: { state: 'NEW', teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER' },
+    update: { teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER' },
     create: {
       id: leadBId,
       name: 'Fixture Lead B',
@@ -523,13 +577,13 @@ async function buildFixture(): Promise<Fixture> {
 function ctxFor(role: Role, fixture: Fixture): RlsContext {
   switch (role) {
     case 'ADMIN':
-      return { userId: fixture.managerAId, role: 'ADMIN', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.managerAId, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'MANAGER':
-      return { userId: fixture.managerAId, role: 'MANAGER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.managerAId, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'SALES_EXEC':
-      return { userId: fixture.execAId, role: 'SALES_EXEC', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.execAId, role: 'SALES_EXEC', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
     case 'TELECALLER':
-      return { userId: fixture.teleAId, role: 'TELECALLER', teamId: fixture.teamAId, organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
+      return { userId: fixture.teleAId, role: 'TELECALLER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' };
   }
 }
 
@@ -892,10 +946,21 @@ async function runCase(
             },
           });
         } else if (table === 'Booking') {
+          // T-INV-SYNC: use the probe's own free unit (not the fixture row's),
+          // so the one_active_booking_per_unit index doesn't turn a permission
+          // check into a constraint violation. Clear this probe's previous row
+          // first - the matrix re-runs against a persistent dev DB.
+          const probeUnit =
+            ctx.role === 'TELECALLER' || ctx.role === 'SALES_EXEC'
+              ? PROBE_UNIT_B_ID
+              : PROBE_UNIT_A_ID;
+          await tx.booking.deleteMany({
+            where: { unitId: probeUnit, amount: '1.00', status: 'HOLD' },
+          });
           await tx.booking.create({
             data: {
               leadId: fixture.leadAId,
-              unitId: 'zmcwmelpek4rd8z6kgnokqyo',
+              unitId: probeUnit,
               userId: ctx.userId,
               amount: '1.00',
               status: 'HOLD',
@@ -939,7 +1004,7 @@ async function runCase(
               name: 'matrix-test',
               phone: `99${String(Date.now()).slice(-8)}`,
               state: 'NEW',
-              teamId: ctx.teamId ?? '',
+              teamId: fixture.teamAId,
               ownerId: ctx.userId,
               organizationId: 'ceid01lpfe1esm8jwsxid41k28',
               // roleFromCtx is widened to include CRON_SERVICE for the
@@ -967,7 +1032,11 @@ async function runCase(
         } else if (table === 'Message') {
           await tx.message.update({ where: { id: own }, data: { body: 'matrix-updated' } });
         } else if (table === 'Booking') {
-          await tx.booking.update({ where: { id: own }, data: { status: 'HOLD' } });
+          // T-INV-SYNC: update a non-status column. Writing status here would
+          // have to satisfy one_active_booking_per_unit against whatever else
+          // is active on the unit - that is the booking invariant's business,
+          // not the RLS permission this matrix asserts.
+          await tx.booking.update({ where: { id: own }, data: { notes: 'matrix-updated' } });
         } else if (table === 'Reminder') {
           await tx.reminder.update({ where: { id: own }, data: { status: 'SCHEDULED' } });
         } else if (table === 'Notification') {
@@ -1137,7 +1206,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
       const cronCtx: RlsContext = {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
-        teamId: null,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const result = await withRlsContext(prisma, cronCtx, async (tx) => {
@@ -1170,7 +1238,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
       const cronCtx: RlsContext = {
         userId: 'cron-service',
         role: 'CRON_SERVICE',
-        teamId: null,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, cronCtx, async (tx) =>
@@ -1200,7 +1267,6 @@ describe('T-CRONS 129th case: reminder cron service-account RLS bypass', () => {
         const ctx: RlsContext = {
           userId: fixture.managerAId, // a real user from fixture
           role: 'CRON_SERVICE', // <-- the impersonation attempt
-          teamId: null,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         };
         const result = await withRlsContext(prisma, ctx, async (tx) => {
@@ -1260,7 +1326,6 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
       const managerCtx: RlsContext = {
         userId: fixture.managerAId,
         role: 'MANAGER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, managerCtx, async (tx) =>
@@ -1290,7 +1355,6 @@ describe('T-ARM-SCHEMA 129th + 130th case: ManagerAssignmentRule SELECT policy',
       const tcCtx: RlsContext = {
         userId: fixture.teleAId,
         role: 'TELECALLER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       };
       const rows = await withRlsContext(prisma, tcCtx, async (tx) =>
@@ -1334,7 +1398,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
     insertedId = await withRlsContext(prisma, {
       userId: 'public-api',
       role: 'PUBLIC_API',
-      teamId: '',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     }, async (tx) => {
       // Raw INSERT - typed `feedback.create` hits the Prisma 7 typed-API
@@ -1369,7 +1432,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const freshId = `fb_rls_ins_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       // If the policy were missing, the insert would 42501 and this throws.
       await expect(
-        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }, async (tx) =>
+        withRlsContext(prisma, { userId: 'public-api', role: 'PUBLIC_API', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }, async (tx) =>
           (tx as unknown as {
             $executeRawUnsafe: (sql: string, ...p: unknown[]) => Promise<unknown>;
           }).$executeRawUnsafe(
@@ -1393,7 +1456,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: 'public-api',
         role: 'PUBLIC_API',
-        teamId: '',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1411,7 +1473,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'MANAGER',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1429,7 +1490,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const rows = await withRlsContext(prisma, {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1448,7 +1508,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const updated = await withRlsContext(prisma, {
         userId: fixture.managerAId, // ADMIN identity per ctxFor (matrix line ~505)
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1479,7 +1538,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1511,7 +1569,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const coOwnerSelect = await withRlsContext(prisma, {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1524,7 +1581,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const coOwnerUpdate = await withRlsContext(prisma, {
         userId: fixture.execAId,
         role: 'SALES_EXEC',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1538,7 +1594,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       const strangerSelect = await withRlsContext(prisma, {
         userId: fixture.teleBId,
         role: 'TELECALLER',
-        teamId: fixture.teamBId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1551,7 +1606,6 @@ describe('Feedback - public submit + admin triage RLS', () => {
       await withRlsContext(prisma, {
         userId: fixture.managerAId,
         role: 'ADMIN',
-        teamId: fixture.teamAId,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       }, async (tx) =>
         (tx as unknown as {
@@ -1561,4 +1615,131 @@ describe('Feedback - public submit + admin triage RLS', () => {
     },
   );
 
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Team (T-TEAM-CRUD, 2026-09-13) - the table previously had FORCE ROW LEVEL
+// SECURITY set with zero policies (RLS was a no-op). Mirrors the
+// ManagerAssignmentRule/Feedback bolt-on pattern above rather than the 128
+// matrix, since Team's policy shape (any-authenticated SELECT, ADMIN-only
+// writes, no team-scoping) doesn't fit the parent-Lead-derived TableName
+// union. Five cases pin the new policy set end-to-end:
+//   (a) TELECALLER (any authenticated role) can SELECT a team in their org
+//   (b) TELECALLER cannot INSERT a team (admin-only write)
+//   (c) TELECALLER cannot UPDATE a team (admin-only write)
+//   (d) TELECALLER cannot DELETE a team (admin-only write)
+//   (e) ADMIN can INSERT + UPDATE + DELETE a team (admin-class write)
+describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-only)', () => {
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+  }, 60_000);
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER can SELECT a team in their org (team_select_any_authenticated)',
+    { timeout: 30_000 },
+    async () => {
+      const rows = await withRlsContext(prisma, {
+        userId: fixture.teleAId,
+        role: 'TELECALLER',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      }, async (tx) =>
+        (tx as unknown as {
+          team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+        }).team.findMany({ where: { id: fixture.teamAId } }),
+      );
+      expect(rows.length).toBe(1);
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot INSERT a team (team_insert_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { create: (a: { data: { name: string; organizationId: string } }) => Promise<unknown> };
+          }).team.create({
+            data: { name: 'RLS test team (tele insert)', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+          }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot UPDATE a team (team_update_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { update: (a: { where: { id: string }; data: { name: string } }) => Promise<unknown> };
+          }).team.update({ where: { id: fixture.teamAId }, data: { name: 'renamed-by-tele' } }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'TELECALLER cannot DELETE a team (team_delete_admin is ADMIN-only)',
+    { timeout: 30_000 },
+    async () => {
+      await expect(
+        withRlsContext(prisma, {
+          userId: fixture.teleAId,
+          role: 'TELECALLER',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        }, async (tx) =>
+          (tx as unknown as {
+            team: { delete: (a: { where: { id: string } }) => Promise<unknown> };
+          }).team.delete({ where: { id: fixture.teamAId } }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'ADMIN can INSERT + UPDATE + DELETE a team (admin-class write)',
+    { timeout: 30_000 },
+    async () => {
+      const adminCtx: RlsContext = {
+        userId: fixture.managerAId,
+        role: 'ADMIN',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      };
+      const created = await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { create: (a: { data: { name: string; organizationId: string } }) => Promise<{ id: string }> };
+        }).team.create({
+          data: { name: `RLS test team (admin) ${Date.now()}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        }),
+      );
+      expect(created.id).toBeDefined();
+
+      const updated = await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { update: (a: { where: { id: string }; data: { name: string } }) => Promise<{ name: string }> };
+        }).team.update({ where: { id: created.id }, data: { name: 'renamed-by-admin' } }),
+      );
+      expect(updated.name).toBe('renamed-by-admin');
+
+      await withRlsContext(prisma, adminCtx, async (tx) =>
+        (tx as unknown as {
+          team: { delete: (a: { where: { id: string } }) => Promise<unknown> };
+        }).team.delete({ where: { id: created.id } }),
+      );
+    },
+  );
 });

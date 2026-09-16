@@ -6,7 +6,18 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { BookingStatusSchema } from './enums';
+import { BookingStatusSchema, type BookingStatus } from './enums';
+
+/**
+ * The booking statuses that may only be reached WITH an operator-supplied
+ * reason. Single source for the DTO rule, the service guard and the UI form, so
+ * the three can never disagree about which moves need a justification.
+ * Declared before the DTOs that use it.
+ */
+export const TransitionReasonRequired: ReadonlySet<BookingStatus> = new Set([
+  'CANCELLED',
+  'REJECTED',
+]);
 
 /**
  * POST /api/bookings - start a new booking (HOLD state).
@@ -55,11 +66,33 @@ export type ApproveBookingDto = z.infer<typeof ApproveBookingDtoSchema>;
 /**
  * PATCH /api/bookings/:id/transition - advance booking state.
  * Used for: HOLD → TOKEN (after token payment) | any → CANCELLED.
+ *
+ * `reason` is REQUIRED when the move ends or reverses the deal
+ * (`CANCELLED`, `REJECTED`) and forbidden-to-be-blank there: the audit row and
+ * the customer follow-up both depend on it, and a generated
+ * "moved by <email>" string is not a reason. Enforced with `.superRefine()` on
+ * the parent object (zod v4 cross-field rule) so the error lands on the
+ * `reason` field and the form can highlight the right control.
+ *
+ * Before this, `reason` was merely `.optional()` with a comment claiming it was
+ * required - so a cancel with no reason (or a whitespace-only one) went
+ * straight through and the audit log substituted a placeholder. Verified
+ * against the live service.
  */
-export const BookingTransitionDtoSchema = z.object({
-  toStatus: BookingStatusSchema,
-  reason: z.string().trim().max(500).optional(),
-});
+export const BookingTransitionDtoSchema = z
+  .object({
+    toStatus: BookingStatusSchema,
+    reason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (!TransitionReasonRequired.has(values.toStatus)) return;
+    if ((values.reason ?? '').trim().length > 0) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['reason'],
+      message: `A reason is required when moving a booking to ${values.toStatus}`,
+    });
+  });
 export type BookingTransitionDto = z.infer<typeof BookingTransitionDtoSchema>;
 
 /**

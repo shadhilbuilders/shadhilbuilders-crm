@@ -12,7 +12,7 @@
 //     feedback_update_admin.
 //
 // RLS context:
-//   - public: { userId: 'public-api', role: 'PUBLIC_API', teamId: '' }.
+//   - public: { userId: 'public-api', role: 'PUBLIC_API'}.
 //     PUBLIC_API is a GUC-only marker (like CRON_SERVICE) - not a Prisma
 //     enum, no JWT claim. It has INSERT-only power on Feedback.
 //   - admin: the actor's real JWT { userId, role, teamId }. OWNER travels
@@ -165,13 +165,23 @@ export class FeedbacksService {
       throw new BadRequestException('Too many submissions. Please try again shortly.');
     }
 
+    // T-ORG: Feedback.organizationId is NOT NULL. The landing page is
+    // anonymous, so the row is stamped with PUBLIC_ORG_ID (the single org
+    // this deploy serves). Boot-env already fail-fasts if the var is
+    // missing; this check is the in-request belt.
+    const organizationId = process.env['PUBLIC_ORG_ID'] ?? '';
+    if (organizationId === '') {
+      throw new BadRequestException(
+        'PUBLIC_ORG_ID is not configured - cannot attribute public feedback to an organization',
+      );
+    }
+
     const id = await withRlsContext(
       this.client,
       {
         userId: 'public-api',
         role: 'PUBLIC_API',
-        teamId: '',
-        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+        organizationId,
       },
       async (tx) => {
         // Raw INSERT, not typed `tx.feedback.create` - Prisma 7's typed API
@@ -184,8 +194,9 @@ export class FeedbacksService {
         // feedback_insert_public_api matches app.user_role = PUBLIC_API.
         const msgId = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         await tx.$executeRawUnsafe(
-          `INSERT INTO "Feedback" (id, name, phone, rating, project, message, page, "userAgent", "ipAddress", status, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'NEW', NOW(), NOW())`,
+          `INSERT INTO "Feedback" (id, "organizationId", name, phone, rating, project, message, page, "userAgent", "ipAddress", status, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'NEW', NOW(), NOW())`,
           msgId,
+          organizationId,
           dto.name || null,
           dto.phone || null,
           dto.rating,

@@ -18,15 +18,18 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  AssignManagerDtoSchema,
   ChangePasswordDtoSchema,
   ChangeRoleDtoSchema,
   CreateUserDtoSchema,
   UpdateUserDtoSchema,
   UserFilterDtoSchema,
+  type AssignManagerDto,
   type ChangePasswordDto,
   type ChangeRoleDto,
   type CreateUserDto,
   type UpdateUserDto,
+  type UserDetail,
   type UserFilterDto,
   type UserListResult,
 } from '@shadhil/api-types';
@@ -110,7 +113,7 @@ export class UsersController {
   ): Promise<CreatedUser> {
     // Shared Zod schema validates BEFORE the service is touched (the
     // api-types convention: same schema rejects at BFF too).
-    const dto: CreateUserDto = CreateUserDtoSchema.parse(body);
+    const dto: CreateUserDto = parseBody(CreateUserDtoSchema, body);
     return this.users.create(req.user!, dto);
   }
 
@@ -124,8 +127,22 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<CreatedUser> {
-    const dto: ChangeRoleDto = ChangeRoleDtoSchema.parse(body);
+    const dto: ChangeRoleDto = parseBody(ChangeRoleDtoSchema, body);
     return this.users.changeRole(req.user!, id, dto);
+  }
+
+  @Patch(':id/manager')
+  @ApiOperation({
+    summary:
+      "Assign/reassign a TELECALLER/SALES_EXEC's manager (autoplan 2026-09-13) by moving them into the manager's team. OWNER/ADMIN: any led team; MANAGER: own team only.",
+  })
+  async assignManager(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<CreatedUser> {
+    const dto: AssignManagerDto = parseBody(AssignManagerDtoSchema, body);
+    return this.users.assignManager(req.user!, id, dto);
   }
 
   @Patch(':id')
@@ -138,7 +155,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<CreatedUser> {
-    const dto: UpdateUserDto = UpdateUserDtoSchema.parse(body);
+    const dto: UpdateUserDto = parseBody(UpdateUserDtoSchema, body);
     return this.users.update(req.user!, id, dto);
   }
 
@@ -175,7 +192,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<{ ok: true; mustChangePassword: false }> {
-    const dto: ChangePasswordDto = ChangePasswordDtoSchema.parse(body);
+    const dto: ChangePasswordDto = parseBody(ChangePasswordDtoSchema, body);
     return this.users.changePassword(req.user!, id, dto);
   }
 
@@ -221,5 +238,23 @@ export class UsersController {
     @Param('projectId') projectId: string,
   ): Promise<CreatedUser[]> {
     return this.users.projectSalesExecs(req.user!, projectId);
+  }
+
+  /**
+   * GET /api/users/:id - the user detail page (autoplan 2026-09-13).
+   * Declared LAST so it doesn't shadow the more specific routes above
+   * (`team`, `project/:projectId/sales-execs`) - Nest matches routes in
+   * declaration order and `:id` would otherwise capture `team` as an id.
+   */
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Get a user (detail page). ADMIN/OWNER: anyone; MANAGER: own team + self; staff: self only. Includes team, manager (staff roles only), and project assignments.',
+  })
+  async getOne(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<UserDetail> {
+    return this.users.getUser(req.user!, id);
   }
 }

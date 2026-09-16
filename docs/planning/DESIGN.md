@@ -355,7 +355,18 @@ action, not a rebuild.
 - `VisitOutcome` - `SCHEDULED | VISITED | NO_SHOW | CANCELLED | RESCHEDULED`
 - `MessageDirection` - `INBOUND | OUTBOUND`
 - `MessageChannel` - `WHATSAPP | IN_APP | SMS`
-- `UnitStatus` - `AVAILABLE | HOLD | BOOKED | SOLD`
+- `UnitStatus` - `AVAILABLE | HOLD | TOKEN | SOLD` (derived - see below)
+  - **Derived field (T-INV-SYNC, 2026-09-15).** `Unit.status` is not written by
+    application code. A `SECURITY DEFINER` trigger on `Booking`
+    (`unit_status_sync_booking`) recomputes it on every booking
+    insert/update/delete: `APPROVED → SOLD`, else `TOKEN → TOKEN`, else
+    `HOLD → HOLD`, else `AVAILABLE`. At most one `HOLD/TOKEN/APPROVED` booking
+    per unit (partial unique index `one_active_booking_per_unit`). The only
+    manual override is the off-pipeline mark `AVAILABLE | SOLD`, and the API
+    returns 409 when it contradicts a live booking. Before this, the status was
+    a hand-maintained duplicate written inside an ADMIN-only RLS policy, so it
+    silently failed to update for MANAGER/SALES_EXEC/TELECALLER and the
+    inventory grid drifted from the bookings list.
 - `ActivityType` - `NOTE | CALL | WHATSAPP | EMAIL | STATUS_CHANGE | ASSIGNMENT | VISIT_OUTCOME`
 - `ReminderType` - `PRE_VISIT_STAFF | PRE_VISIT_CUSTOMER | RESCHEDULE_FOLLOWUP | NO_SHOW_STAFF | POST_BOOKING`
 - `ReminderStatus` - `SCHEDULED | FIRING | FIRED | ACKNOWLEDGED | CANCELLED | FAILED`

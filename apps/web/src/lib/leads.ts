@@ -57,3 +57,60 @@ export function isOverdue(row: OverdueCheckRow | null | undefined): boolean {
   if (Number.isNaN(createdMs)) return false;
   return Date.now() - createdMs >= OVERDUE_AFTER_MIN * 60_000;
 }
+
+/**
+ * Row-tint tiers for the leads table (user request 2026-09-15): a NEW lead's
+ * row gets progressively more urgent the longer it has sat untouched.
+ *
+ *   < 10 min          -> null      (default, white)
+ *   10 min – < 20 min -> 'age'     (light yellow)
+ *   20 min – < 30 min -> 'warn'    (dark yellow)
+ *   >= 30 min         -> 'overdue' (red)
+ *
+ * Tiers are a clean staircase with no gaps: each boundary belongs to the LATER
+ * tier, so a lead is never un-tinted inside a window and 30 min lands on red -
+ * the same boundary as OVERDUE_AFTER_MIN, so the row colour and the existing
+ * "Overdue" badge can never disagree.
+ *
+ * NEW-only, by the same rule as isOverdue: once a lead has been picked up the
+ * clock stops mattering (plan D25 non-goal - aging CONTACTED/NO_SHOW leads).
+ * Unknown data returns null (fail-closed), so a contract change cannot paint a
+ * row urgent by accident.
+ */
+export type LeadAgeTier = 'age' | 'warn' | 'overdue';
+
+export const AGE_WARN_AFTER_MIN = 10;
+export const AGE_URGENT_AFTER_MIN = 20;
+
+export function leadAgeTier(
+  row: OverdueCheckRow | null | undefined,
+  now: number = Date.now(),
+): LeadAgeTier | null {
+  if (row === null || row === undefined) return null;
+  if (row.status !== 'NEW') return null;
+  if (typeof row.createdAt !== 'string' || row.createdAt.length === 0) {
+    return null;
+  }
+  const createdMs = Date.parse(row.createdAt);
+  if (Number.isNaN(createdMs)) return null;
+  const ageMin = (now - createdMs) / 60_000;
+  if (ageMin >= OVERDUE_AFTER_MIN) return 'overdue';
+  if (ageMin >= AGE_URGENT_AFTER_MIN) return 'warn';
+  if (ageMin >= AGE_WARN_AFTER_MIN) return 'age';
+  return null;
+}
+
+/**
+ * Tailwind classes per tier. Kept here (not in the page) so the table and any
+ * future surface - a mobile list, a dashboard widget - stay consistent, and so
+ * the class values are pinned by a test rather than living only in JSX.
+ *
+ * `dark:` variants are included because the app ships a theme toggle; a raw
+ * `bg-red-50` would glare in dark mode. `/60` opacity keeps the row readable
+ * behind the text colours the cells already set.
+ */
+export const LEAD_AGE_TIER_CLASS: Record<LeadAgeTier, string> = {
+  age: 'bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/40 dark:hover:bg-yellow-950/60',
+  warn: 'bg-yellow-200 hover:bg-yellow-300 dark:bg-yellow-900/50 dark:hover:bg-yellow-900/70',
+  overdue: 'bg-red-200 hover:bg-red-300 dark:bg-red-950/50 dark:hover:bg-red-950/70',
+};

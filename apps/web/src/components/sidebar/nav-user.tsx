@@ -11,7 +11,7 @@
 // The user menu in the topbar (app-header.tsx UserMenu) remains as a
 // secondary shortcut; this footer menu is the always-visible primary.
 //
-// Identity: SessionUser has { id, name, email, role, teamId } - there
+// Identity: SessionUser has { id, name, email, role } - there
 // is no avatar image field on the session wire yet, so we render the
 // initials fallback. When better-auth image propagation lands, add
 // <AvatarImage> here.

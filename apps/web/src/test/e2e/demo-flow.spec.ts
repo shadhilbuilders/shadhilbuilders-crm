@@ -5,8 +5,14 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * Exercises every step the handoff prompt lists as "MUST work end-to-end"
  * against a live backend (port 8080) + web (port 3000). Uses the
- * already-seeded demo user (demo@shadhilbuilders.in / demo123, MANAGER,
- * demo-team) and the demo data from packages/database/scripts/setup-demo-user.ts.
+ * already-seeded demo user (demo@shadhilbuilders.in / demo123, OWNER of the
+ * isolated `demo` organization) and the demo data from
+ * packages/database/scripts/setup-demo-user.ts.
+ *
+ * All paths are slug-based under the demo org. Bare paths (`/leads`) were stale
+ * - the slug-URL scheme landed 2026-09-11 and only `/[orgSlug]/...` routes
+ * exist, so those navigations 404'd. The demo user is now in its own tenant,
+ * so the real org's rows are correctly invisible to it.
  *
  * Step map (per the demo-sprint prompt):
  *   1. /login → sign in as demo user
@@ -31,6 +37,9 @@ import { expect, test, type Page } from '@playwright/test';
  * a data-qa on the dialog's Form lib wrapper.
  */
 
+// The demo org's slug-based root (see setup-demo-user.ts). Every demo
+// navigation is scoped under it.
+const DEMO_BASE = '/demo/projects/demo-villas';
 const DEMO_EMAIL = 'demo@shadhilbuilders.in';
 const DEMO_PASSWORD = 'demo123';
 
@@ -142,7 +151,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
 
   test('STEP 2 - /leads lists demo leads', async ({ page }) => {
     await login(page);
-    await page.goto('/leads');
+    await page.goto(`${DEMO_BASE}/leads`);
     await shot(page, '02-leads');
     const probe = await probeForLayoutError(page, 'STEP 2');
     if (probe.broken) throw new Error(probe.reason);
@@ -182,7 +191,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
 
   test('STEP 3 - create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
     await login(page);
-    await page.goto('/leads/new');
+    await page.goto(`${DEMO_BASE}/leads/new`);
     const probe = await probeForLayoutError(page, 'STEP 3');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -216,7 +225,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 4 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`/leads/${createdLeadId}`);
+    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 4');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -246,7 +255,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 5 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`/leads/${createdLeadId}`);
+    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 5');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -280,7 +289,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 6 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`/leads/${createdLeadId}`);
+    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 6');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -331,7 +340,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 7 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`/leads/${createdLeadId}`);
+    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 7');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -363,7 +372,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     page,
   }) => {
     await login(page);
-    await page.goto('/visits');
+    await page.goto(`${DEMO_BASE}/visits`);
     const probe = await probeForLayoutError(page, 'STEP 8');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -390,7 +399,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`/leads/${createdLeadId}`);
+    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'BONUS');
     if (probe.broken) throw new Error(probe.reason);
 

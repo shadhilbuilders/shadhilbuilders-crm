@@ -17,18 +17,20 @@
 //   Pagination: SERVER-side. The page passes `total`/`currentPage`/
 //     `onPageChange`/`onPageSizeChange` to the DataTable; each page change
 //     refetches `{ limit, offset }` from the API.
-//   Columns: Lead (link back to parent) → Status (Badge) → Amount → Token →
-//     Created → Owner / Approval.
-//   Row actions: View (link to parent lead) + Review approval (link to
-//     /bookings/[id], MANAGER/ADMIN only, TOKEN status).
+//   Columns: Unit (link to the booking) → Lead (link to the lead) → Status
+//     (Badge) → Amount → Token → Created → Owner / Approval.
+//   Row actions: Approve/Reject (TOKEN + manager) · View details (booking) ·
+//     View lead · Edit · Delete.
 import { AlertDialog, Badge, Button, DataTable, DataTableRowActions, MultiSelect, TypographyP, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
+import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2, LuUser } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 
+import { BookingApprovalDialog } from '@/components/bookings/BookingApprovalDialog';
 import { BookingEditDialog } from '@/components/bookings/BookingEditDialog';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
@@ -36,7 +38,7 @@ import { useBookings, useBookingsEnvelope, useDeleteBooking } from '@/hooks/quer
 import { currencyIntl, dateIntl } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
-import { canApproveBookings, isAdminLike, useSessionUser } from '@/lib/session';
+import { canApproveBookings, canInitiateBookings, isAdminLike, useSessionUser } from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -48,6 +50,7 @@ type BookingRow = {
   leadId?: string;
   leadName?: string;
   unitId?: string;
+  unitNumber?: string;
   userName?: string;
   amount?: string;
   tokenAmount?: string | null;
@@ -64,6 +67,7 @@ const bookingRowSchema = z.object({
   leadId: z.string().optional(),
   leadName: z.string().optional(),
   unitId: z.string().optional(),
+  unitNumber: z.string().optional(),
   userName: z.string().optional(),
   amount: z.string().optional(),
   tokenAmount: z.string().nullable().optional(),
@@ -145,13 +149,9 @@ export default function BookingsPage() {
     ? (bookingsQuery.data as BookingRow[])
     : [];
 
-  const canCreate =
-    mounted &&
-    user !== null &&
-    (user.role === 'ADMIN' ||
-      user.role === 'OWNER' ||
-      user.role === 'MANAGER' ||
-      user.role === 'SALES_EXEC');
+  // T-BOOK-ROLES: the shared helper mirrors the service gate exactly, so the
+  // button and the API can't disagree about who may initiate a booking.
+  const canCreate = mounted && canInitiateBookings(user?.role);
   const canApprove = mounted && canApproveBookings(user?.role);
   // Delete: ADMIN/OWNER only (mirrors the inventory unit delete). Edit is
   // available to everyone who can see the row - the backend RLS write
@@ -163,7 +163,9 @@ export default function BookingsPage() {
 
   const [editTarget, setEditTarget] = useState<BookingRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BookingRow | null>(null);
+  const [approvalTarget, setApprovalTarget] = useState<BookingRow | null>(null);
   const deleteBooking = useDeleteBooking();
+  const router = useRouter();
 
   const statusOptions = useMemo(
     () =>
@@ -177,25 +179,57 @@ export default function BookingsPage() {
   const columns = useMemo<DataTableColumnDef<BookingRow>[]>(
     () => [
       {
+        accessorKey: 'unitNumber',
+        header: 'Unit',
+        cell: ({ row }) => {
+          const bookingId =
+            typeof row.original.id === 'string' ? row.original.id : '';
+          const unitNumber =
+            typeof row.original.unitNumber === 'string' &&
+            row.original.unitNumber.length > 0
+              ? row.original.unitNumber
+              : null;
+          // T-BOOK-LINK (2026-09-15): Unit is the FIRST column and opens the
+          // BOOKING. The unit is the booking's natural key
+          // (one_active_booking_per_unit = at most one active booking per
+          // unit), so it is the identifier operators scan for.
+          if (unitNumber === null) {
+            return <span className="text-muted-foreground text-sm">-</span>;
+          }
+          return bookingId.length > 0 ? (
+            <Button
+              as={Link}
+              variant="link"
+              href={projectHref(orgSlug, projectSlug, `/bookings/${bookingId}`)}
+              className="text-link tabular-nums"
+              data-qa="booking-unit-link"
+            >
+              {unitNumber}
+            </Button>
+          ) : (
+            <span className="text-sm font-medium tabular-nums" data-qa="booking-unit">
+              {unitNumber}
+            </span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
         accessorKey: 'leadName',
         header: 'Lead',
         cell: ({ row }) => {
-          const leadId = typeof row.original.leadId === 'string' ? row.original.leadId : '';
           const leadName =
             typeof row.original.leadName === 'string' && row.original.leadName.length > 0
               ? row.original.leadName
               : '-';
-          return leadId.length > 0 ? (
-            <Button
-              as={Link}
-              variant="link"
-              href={projectHref(orgSlug, projectSlug, `/leads/${leadId}`)}
-              className="text-link"
-            >
+          // T-BOOK-LINK (2026-09-15, user direction): the Lead cell is plain
+          // text - Unit is the single clickable link on the row (it opens the
+          // booking). The lead's own page is reached from the row-actions
+          // "View lead".
+          return (
+            <span className="text-sm" data-qa="booking-lead">
               {leadName}
-            </Button>
-          ) : (
-            <span className="text-muted-foreground text-sm">{leadName}</span>
+            </span>
           );
         },
         enableSorting: false,
@@ -264,14 +298,13 @@ export default function BookingsPage() {
             <div className="text-muted-foreground text-xs">
               {owner !== null ? <span>Owner: {owner}</span> : null}
               {approver !== null ? <span className="block">Approved by: {approver}</span> : null}
+              {/* T-BOOK-APPROVE: the approval action moved into the row-actions
+                  menu ("Approve / Reject"), so this cell no longer needs the
+                  buried link - it keeps a plain hint for context. */}
               {canApprove && status === 'TOKEN' ? (
-                <Link
-                  href={projectHref(orgSlug, projectSlug, `/bookings/${row.original.id}`)}
-                  className="mt-1 inline-block font-medium text-blue-700 underline-offset-4 hover:underline"
-                  data-qa="approve-booking-link"
-                >
-                  Review approval →
-                </Link>
+                <span className="mt-1 block font-medium text-amber-700">
+                  Awaiting approval
+                </span>
               ) : null}
             </div>
           );
@@ -281,23 +314,77 @@ export default function BookingsPage() {
       {
         id: 'actions',
         header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row }) => (
-          <div className="text-right">
-            <DataTableRowActions
-              row={row}
-              rowSchema={bookingRowSchema}
-              actionItems={[
-                { label: 'Edit', value: 'edit', icon: LuPencil, onClick: () => setEditTarget(row.original) },
-                { label: 'Delete', value: 'delete', icon: LuTrash2, onClick: () => setDeleteTarget(row.original) },
-              ].filter((item) => item.value !== 'delete' || canDelete)}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const status = row.original.status ?? '';
+          // T-BOOK-APPROVE: TOKEN is the only state with a manager decision
+          // pending, so "Review approval" is offered exactly there - to
+          // MANAGER/ADMIN/OWNER (the service gate; SALES_EXEC initiates but
+          // cannot approve).
+          const awaitingApproval = canApprove && status === 'TOKEN';
+          const actionItems = [
+            ...(awaitingApproval
+              ? [
+                  {
+                    label: 'Approve / Reject',
+                    value: 'approve',
+                    icon: LuBadgeCheck,
+                    onClick: () => setApprovalTarget(row.original),
+                  },
+                ]
+              : []),
+            {
+              label: 'View details',
+              value: 'view',
+              icon: LuArrowRight,
+              onClick: () =>
+                void router.push(
+                  projectHref(orgSlug, projectSlug, `/bookings/${row.original.id}`),
+                ),
+            },
+            // T-BOOK-LINK: the Lead cell now opens the BOOKING, so the lead
+            // itself needs its own entry point (context switching from a
+            // booking back to the CRM record for the customer).
+            ...(typeof row.original.leadId === 'string' && row.original.leadId.length > 0
+              ? [
+                  {
+                    label: 'View lead',
+                    value: 'view-lead',
+                    icon: LuUser,
+                    onClick: () =>
+                      void router.push(
+                        projectHref(orgSlug, projectSlug, `/leads/${row.original.leadId}`),
+                      ),
+                  },
+                ]
+              : []),
+            {
+              label: 'Edit',
+              value: 'edit',
+              icon: LuPencil,
+              onClick: () => setEditTarget(row.original),
+            },
+            {
+              label: 'Delete',
+              value: 'delete',
+              icon: LuTrash2,
+              onClick: () => setDeleteTarget(row.original),
+            },
+          ].filter((item) => item.value !== 'delete' || canDelete);
+          return (
+            <div className="text-right">
+              <DataTableRowActions
+                row={row}
+                rowSchema={bookingRowSchema}
+                actionItems={actionItems}
+              />
+            </div>
+          );
+        },
         enableSorting: false,
         enableHiding: false,
       },
     ],
-    [orgSlug, projectSlug, canApprove, canDelete],
+    [orgSlug, projectSlug, canApprove, canDelete, router],
   );
 
   return (
@@ -412,6 +499,14 @@ export default function BookingsPage() {
           tableContainerClassName="rounded-lg border"
         />
       )}
+
+      <BookingApprovalDialog
+        booking={approvalTarget}
+        open={approvalTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setApprovalTarget(null);
+        }}
+      />
 
       <BookingEditDialog
         booking={editTarget}

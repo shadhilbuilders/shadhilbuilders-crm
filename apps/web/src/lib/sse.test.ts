@@ -1,3 +1,4 @@
+// @vitest-environment node
 // sse.ts - isAbortError contract.
 //
 // T-PUSH hardening (2026-09-08): the SSE reconnect loop must treat an

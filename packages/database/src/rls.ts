@@ -9,7 +9,7 @@
 //   const result = await withRlsContext(prisma, {
 //     userId: 'cuid',
 //     role:   'TELECALLER',
-//     teamId: 'cuid',
+//     organizationId: 'cuid',
 //   }, async (tx) => {
 //     return tx.lead.findMany();
 //   });
@@ -59,8 +59,6 @@ export type Role =
 export interface RlsContext {
   userId: string;
   role: Role;
-  /** null/undefined for ADMIN without an assigned team. */
-  teamId: string | null;
   /** T-ORG: the tenant the actor belongs to. Drives app.user_org_id so
    *  every org-scoped policy gates on it. */
   organizationId: string;
@@ -83,7 +81,6 @@ export type RlsTx = Parameters<
 export interface RlsActorLike {
   sub: string;
   role: Role;
-  teamId: string | null;
   organizationId?: string | null;
 }
 
@@ -91,7 +88,6 @@ export function rlsContextFrom(actor: RlsActorLike): RlsContext {
   return {
     userId: actor.sub,
     role: actor.role,
-    teamId: actor.teamId ?? null,
     organizationId: actor.organizationId ?? '',
   };
 }
@@ -129,8 +125,13 @@ function sqlLiteral(value: string): string {
  *   - Vars are scoped to THIS transaction (SET LOCAL) - no cross-request bleed.
  *   - role must be a valid Prisma Role enum value; anything else throws
  *     (fail-closed, AR-2 companion).
- *   - For null teamId (ADMIN), sets app.user_team_id to empty string -
- *     policies treat NULL and '' as "no team match" (no rows visible).
+ *
+ * T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): no longer sets
+ * app.user_team_id. No RLS policy reads that GUC anymore - every
+ * team-scoped policy resolves membership via `TeamMember` (ordinary staff)
+ * or `Team.managerId` (managers), both queried directly against
+ * app.user_id, which supports multi-team membership (a single-valued GUC
+ * never could).
  */
 export async function withRlsContext<T>(
   prisma: PrismaClient,
@@ -147,7 +148,6 @@ export async function withRlsContext<T>(
   // would defeat the bypass.
   const rlsRole =
     ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
-  const teamValue = ctx.teamId ?? '';
   // T-ORG: the org value always travels as-is (never downcast). An actor
   // without an org is a fail-closed state; the policies use
   // current_setting('app.user_org_id', true) which yields NULL here and
@@ -165,7 +165,6 @@ export async function withRlsContext<T>(
     async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
       await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
-      await tx.$executeRawUnsafe(`SET LOCAL app.user_team_id = ${sqlLiteral(teamValue)}`);
       await tx.$executeRawUnsafe(`SET LOCAL app.user_org_id = ${sqlLiteral(orgValue)}`);
 
       return fn(tx as unknown as RlsTx);

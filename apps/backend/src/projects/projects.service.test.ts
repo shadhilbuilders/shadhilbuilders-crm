@@ -52,11 +52,6 @@ type MockTx = {
     delete: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
     count: Mock<() => Promise<number>>;
   };
-  projectMember: {
-    upsert: Mock<(args: MockArgs) => Promise<Record<string, unknown>>>;
-    findMany: Mock<(args: MockArgs) => Promise<Array<Record<string, unknown>>>>;
-    deleteMany: Mock<(args: MockArgs) => Promise<{ count: number }>>;
-  };
   user: {
     findUnique: Mock<
       (args: MockArgs) => Promise<Record<string, unknown> | null>
@@ -80,6 +75,7 @@ function makeTx(overrides: {
   projectFindUnique?: (args: MockArgs) => MockProjectRow | null | undefined;
   bookingCount?: number;
   leadCount?: number;
+  memberLeadCount?: number;
   findUser?: (args: MockArgs) => Record<string, unknown> | null;
 }): MockTx {
   const projectRows: Record<string, MockProjectRow> = {
@@ -153,17 +149,6 @@ function makeTx(overrides: {
     booking: {
       count: vi.fn(async () => overrides.bookingCount ?? 0),
     },
-    projectMember: {
-      upsert: vi.fn(async (args: MockArgs) => ({
-        projectId: 'proj-metro',
-        userId: (args.where as { projectId_userId: { userId: string } })
-          .projectId_userId.userId,
-        role: 'SALES_EXEC',
-        assignedAt: new Date('2026-09-09T00:00:00.000Z'),
-      })),
-      findMany: vi.fn(async () => []),
-      deleteMany: vi.fn(async () => ({ count: 1 })),
-    },
     user: {
       findUnique: vi.fn(
         async (args: MockArgs) =>
@@ -177,7 +162,7 @@ function makeTx(overrides: {
       findMany: vi.fn(async () => []),
     },
     lead: {
-      count: vi.fn(async () => 0),
+      count: vi.fn(async () => overrides.memberLeadCount ?? 0),
       findMany: vi.fn(async () => []),
     },
     projectOption: {
@@ -197,12 +182,10 @@ vi.mock('@shadhil/database', () => {
     rlsContextFrom: vi.fn((actor: {
       sub: string;
       role: string;
-      teamId: string | null;
       organizationId?: string | null;
     }) => ({
       userId: actor.sub,
       role: actor.role,
-      teamId: actor.teamId,
       organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     withRlsContext: vi.fn(
@@ -222,7 +205,6 @@ const ownerActor: JwtPayload = {
   sub: 'owner-1',
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
-  teamId: null,
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
@@ -241,7 +223,6 @@ const managerActor: JwtPayload = {
   sub: 'mgr-1',
   email: 'manager@shadhilbuilders.in',
   role: 'MANAGER',
-  teamId: 'team-1',
 };
 
 const telecallerActor: JwtPayload = {
@@ -249,7 +230,6 @@ const telecallerActor: JwtPayload = {
   sub: 'tc-1',
   email: 'telecaller@shadhilbuilders.in',
   role: 'TELECALLER',
-  teamId: 'team-1',
 };
 
 describe('slugifyProjectName', () => {
@@ -287,7 +267,6 @@ describe('ProjectsService.list', () => {
     expect(ctx).toEqual({
       userId: 'tc-1',
       role: 'TELECALLER',
-      teamId: 'team-1',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     });
   });
@@ -511,169 +490,6 @@ describe('ProjectsService.remove', () => {
     const svc = new ProjectsService({ $client: {} } as never);
     await expect(
       svc.remove(ownerActor, 'proj-ghost'),
-    ).rejects.toMatchObject({ status: 404 });
-  });
-});
-
-describe('ProjectsService.addMember', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    txCapture.current = makeTx({});
-  });
-
-  it('ADMIN links a staff user; upserts with the user role; provenance from lead ownership', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    const tx = txCapture.current!;
-    // The user is also a lead-owner in this project.
-    tx.lead.count.mockResolvedValue(1);
-    const row = await svc.addMember(adminActor, 'proj-metro', {
-      userId: 'u-exec',
-    });
-    expect(row.userId).toBe('u-exec');
-    expect(row.role).toBe('SALES_EXEC');
-    expect(row.isLeadOwner).toBe(true);
-    const upsertArgs = tx.projectMember.upsert.mock.calls[0]![0] as MockArgs;
-    expect(upsertArgs.create).toMatchObject({
-      projectId: 'proj-metro',
-      userId: 'u-exec',
-      role: 'SALES_EXEC',
-    });
-    // Upsert key is the composite unique.
-    expect(upsertArgs.where).toMatchObject({
-      projectId_userId: { projectId: 'proj-metro', userId: 'u-exec' },
-    });
-  });
-
-  it('MANAGER can link a member (MANAGER has write on project members)', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    const row = await svc.addMember(managerActor, 'proj-metro', {
-      userId: 'u-exec',
-    });
-    expect(row.userId).toBe('u-exec');
-  });
-
-  it('TELECALLER is rejected with 403 (staff view-only)', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.addMember(telecallerActor, 'proj-metro', { userId: 'u-exec' }),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  it('unknown project → 404', async () => {
-    txCapture.current = makeTx({
-      projectFindUnique: () => null,
-    });
-    const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.addMember(adminActor, 'proj-ghost', { userId: 'u-exec' }),
-    ).rejects.toMatchObject({ status: 404 });
-  });
-});
-
-describe('ProjectsService.unlinkMember', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    txCapture.current = makeTx({});
-  });
-
-  it('ADMIN unlinks a user; returns ok and writes an audit log in the same tx', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    const tx = txCapture.current!;
-    const result = await svc.unlinkMember(adminActor, 'proj-metro', 'u-exec');
-    expect(result).toEqual({ ok: true });
-    expect(tx.projectMember.deleteMany).toHaveBeenCalledWith({
-      where: { projectId: 'proj-metro', userId: 'u-exec' },
-    });
-    // HIGH-STAKES audit (AGENTS.md A2/G-1): removal is audited in the same tx.
-    expect(tx.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ action: 'project.member.unlink' }),
-      }),
-    );
-  });
-
-  it('MANAGER can unlink a member (member-write is manager+ admin-class)', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    const tx = txCapture.current!;
-    const result = await svc.unlinkMember(managerActor, 'proj-metro', 'u-exec');
-    expect(result).toEqual({ ok: true });
-    expect(tx.projectMember.deleteMany).toHaveBeenCalled();
-  });
-
-  it('TELECALLER is rejected with 403', async () => {
-    const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.unlinkMember(telecallerActor, 'proj-metro', 'u-exec'),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-});
-
-describe('ProjectsService.listMembers', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns explicit members UNION lead-owners with provenance', async () => {
-    txCapture.current = makeTx({});
-    const tx = txCapture.current!;
-    // One EXPLICIT member (u-exec) who also owns leads.
-    tx.projectMember.findMany.mockResolvedValue([
-      {
-        projectId: 'proj-metro',
-        userId: 'u-exec',
-        role: 'SALES_EXEC',
-        assignedAt: new Date('2026-09-09T00:00:00.000Z'),
-        user: {
-          id: 'u-exec',
-          name: 'Priya Sharma',
-          email: 'priya@shadhilbuilders.in',
-          role: 'SALES_EXEC',
-        },
-      },
-    ]);
-    // OwnerIds = [u-exec, u-tc]. u-tc is NOT an explicit member.
-    tx.lead.findMany.mockResolvedValue([
-      { ownerId: 'u-exec' },
-      { ownerId: 'u-tc' },
-    ]);
-    tx.user.findMany.mockResolvedValue([
-      {
-        id: 'u-tc',
-        name: 'Arun Raj',
-        email: 'arun@shadhilbuilders.in',
-        role: 'TELECALLER',
-      },
-    ]);
-    const svc = new ProjectsService({ $client: {} } as never);
-    const rows = await svc.listMembers(adminActor, 'proj-metro');
-    expect(rows.length).toBe(2);
-    // u-exec: explicit + lead-owner.
-    const exec = rows.find((r) => r.userId === 'u-exec')!;
-    expect(exec.name).toBe('Priya Sharma');
-    expect(exec.isLeadOwner).toBe(true);
-    // u-tc: added via the lead-ownership half.
-    const tc = rows.find((r) => r.userId === 'u-tc')!;
-    expect(tc.isLeadOwner).toBe(true);
-    expect(tc.role).toBe('TELECALLER');
-  });
-
-  it('MANAGER can read members (no write guard on list)', async () => {
-    txCapture.current = makeTx({});
-    const tx = txCapture.current!;
-    tx.projectMember.findMany.mockResolvedValue([]);
-    tx.lead.findMany.mockResolvedValue([]);
-    const svc = new ProjectsService({ $client: {} } as never);
-    const rows = await svc.listMembers(managerActor, 'proj-metro');
-    expect(rows).toEqual([]);
-  });
-
-  it('unknown project → 404', async () => {
-    txCapture.current = makeTx({
-      projectFindUnique: () => null,
-    });
-    const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.listMembers(adminActor, 'proj-ghost'),
     ).rejects.toMatchObject({ status: 404 });
   });
 });

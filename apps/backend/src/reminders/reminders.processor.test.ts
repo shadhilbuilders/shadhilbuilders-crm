@@ -50,11 +50,12 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // Admin context wrapper for fixture seeding. shadhil_app is RLS-enforced
 // (no BYPASSRLS - the original attempt in T-G4 was reverted because
 // it broke the 128-case matrix). Seeding needs to insert
-// Lead/Reminder/etc - admin satisfies every policy by role alone,
-// BUT the Lead INSERT policy also checks teamId = app.user_team_id,
-// so the admin context must set teamId to match the fixture's
-// teamId. The reminder INSERT policy gates on userId = app.user_id,
-// so the seeded reminder's userId matches the admin actor's userId.
+// Lead/Reminder/etc - admin satisfies every policy by role alone
+// (the Lead INSERT policy resolves team membership via TeamMember /
+// Team.managerId; the app.user_team_id GUC was removed in the
+// T-TEAM-AUTHORITATIVE cutover). The reminder INSERT policy gates on
+// userId = app.user_id, so the seeded reminder's userId matches the
+// admin actor's userId.
 async function adminSeed<T>(
   fn: (db: PrismaClient) => Promise<T>,
 ): Promise<T> {
@@ -64,7 +65,6 @@ async function adminSeed<T>(
     {
       userId: 'zhp69koimlj4hqorl1skmpsq',
       role: 'ADMIN',
-      teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
     async (tx) => fn(tx as unknown as PrismaClient),
