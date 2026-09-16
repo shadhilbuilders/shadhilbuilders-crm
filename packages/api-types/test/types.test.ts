@@ -11,6 +11,8 @@ import {
   CreateSiteVisitDtoSchema,
   SendMessageDtoSchema,
   CreateBookingDtoSchema,
+  BookingTransitionDtoSchema,
+  TransitionReasonRequired,
   CreateReminderDtoSchema,
   MarkReadDtoSchema,
   AuditLogQueryDtoSchema,
@@ -248,6 +250,50 @@ describe('@shadhil/api-types - booking DTOs', () => {
         amount: -1,
       }),
     ).toThrow();
+  });
+
+  // T-BOOK-REASON: the DTO's comment always claimed a reason was required for a
+  // cancel/reject, but it was merely `.optional()` - a blank reason went
+  // through. The rule is now a zod v4 `.superRefine()` on the parent object so
+  // the issue lands on the `reason` path and the form can highlight it.
+  it('BookingTransitionDto requires a reason for CANCELLED and REJECTED', () => {
+    for (const toStatus of ['CANCELLED', 'REJECTED'] as const) {
+      const missing = BookingTransitionDtoSchema.safeParse({ toStatus });
+      expect(missing.success, `${toStatus} without a reason must fail`).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0]?.path).toEqual(['reason']);
+      }
+      // Whitespace is not a reason.
+      expect(
+        BookingTransitionDtoSchema.safeParse({ toStatus, reason: '   ' }).success,
+      ).toBe(false);
+      // A real reason passes.
+      expect(
+        BookingTransitionDtoSchema.safeParse({ toStatus, reason: 'customer backed out' })
+          .success,
+      ).toBe(true);
+    }
+  });
+
+  it('BookingTransitionDto allows forward moves with no reason', () => {
+    for (const toStatus of ['TOKEN', 'APPROVED'] as const) {
+      expect(
+        BookingTransitionDtoSchema.safeParse({ toStatus }).success,
+        `${toStatus} should not need a reason`,
+      ).toBe(true);
+    }
+  });
+
+  it('reason over 500 characters is rejected', () => {
+    const r = BookingTransitionDtoSchema.safeParse({
+      toStatus: 'CANCELLED',
+      reason: 'x'.repeat(501),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('TransitionReasonRequired is exactly the two release moves', () => {
+    expect([...TransitionReasonRequired].sort()).toEqual(['CANCELLED', 'REJECTED']);
   });
 });
 

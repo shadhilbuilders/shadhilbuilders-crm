@@ -1,8 +1,13 @@
 // NewUnitPage (props-API Form) wire-shape contract.
 //
 // Pins: the props-API Form renders all required fields (Phase select,
-// Unit number, BHK, Price, Status select); the "Create unit" submit +
+// Unit number, BHK, Facing, Sqft, Price); the "Create unit" submit +
 // "Cancel" reset button are wired.
+//
+// T-INV-SYNC (2026-09-15): the Status select is GONE from this form on
+// purpose. Unit.status is derived from the booking lifecycle, so a new unit
+// is always created AVAILABLE - it cannot be seeded into HOLD/TOKEN/SOLD by
+// hand. See migration 20260915060000_unit_status_sync.
 //
 // We deliberately do NOT exercise the mutation call here - that
 // requires react-hook-form's setValue + submit plumbing. This file pins
@@ -50,7 +55,8 @@ describe('NewUnitPage - props-API Form surface', () => {
     expect(html).toContain('Facing');
     expect(html).toContain('Sqft');
     expect(html).toContain('Price (₹)');
-    expect(html).toContain('Status');
+    // Status is intentionally absent - always AVAILABLE on create (T-INV-SYNC).
+    expect(html).not.toMatch(/data-qa="unit-status"/);
 
     // The form's submit button text (props API)
     expect(html).toContain('Create unit');

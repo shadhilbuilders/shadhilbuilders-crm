@@ -11,13 +11,19 @@ import { expect, test, type Page } from '@playwright/test';
  *   5. Sort - "Last activity" asc/desc via the column header dropdown
  *   6. Summary line - overdue / new-today counts from the server envelope
  *
- * Uses the demo user (demo@shadhilbuilders.in / demo123, MANAGER, demo-team)
- * who owns the 60 seeded leads in the Shadhil Metro Heights project
- * (id `oe6g1xkagiisnn4oeefpdyhk`, T-PROJID-CUID2 2026-09-08).
+ * Uses the demo user (demo@shadhilbuilders.in / demo123) who is the OWNER of
+ * the ISOLATED demo organization (slug `demo`) created by
+ * packages/database/scripts/setup-demo-user.ts, and owns that org's own seeded
+ * leads in the `demo-villas` project.
+ *
+ * Paths are slug-based (`/demo/projects/demo-villas/leads`). The spec used to
+ * point at the real org's project id (`/oe6g1xkagiisnn4oeefpdyhk/leads`), but
+ * the demo user now lives in a different tenant - RLS is org-scoped, so those
+ * rows are correctly invisible to it.
  */
 const DEMO_EMAIL = 'demo@shadhilbuilders.in';
 const DEMO_PASSWORD = 'demo123';
-const LEADS_URL = '/oe6g1xkagiisnn4oeefpdyhk/leads';
+const LEADS_URL = '/demo/projects/demo-villas/leads';
 
 async function ensureLoggedIn(page: Page): Promise<void> {
   await page.goto('/login');

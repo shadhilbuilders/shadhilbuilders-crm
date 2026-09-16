@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Source-of-truth assertion for `lib/labels.ts`.
 //
 // Per Eng-review Section 1 P1: every Prisma enum value listed in

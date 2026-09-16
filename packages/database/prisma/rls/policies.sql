@@ -1346,3 +1346,28 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
     current_setting('app.user_role', true) = 'ADMIN'
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- T-INV-SYNC (2026-09-15): Unit.status is DERIVED from the booking lifecycle.
+-- ────────────────────────────────────────────────────────────────────────────
+-- Unit.status used to be a hand-maintained duplicate of Booking.status, kept
+-- in step by bookings.service.ts inside a user-scoped RLS transaction. The
+-- Unit UPDATE policy below (unit_update_admin) is ADMIN-only, so for
+-- MANAGER / SALES_EXEC / TELECALLER that write matched zero rows SILENTLY -
+-- the inventory grid and the bookings list drifted apart with no error.
+--
+-- The sync now lives in a trigger on "Booking" whose function is SECURITY
+-- DEFINER (owned by the table owner), so it is not subject to the caller's
+-- RLS visibility: every role, script and cron gets the same result. The
+-- function definitions + trigger are created by migration
+-- 20260915060000_unit_status_sync; the policies below are unchanged in
+-- intent - they are restated here so the canonical file states explicitly
+-- that Unit.status is not an application-writable field.
+--
+-- unit_update_admin stays ADMIN-only ON PURPOSE: an admin may still mark a
+-- unit SOLD/AVAILABLE off-pipeline (documented manual override), and that
+-- manual edit is what the trigger overwrites the next time a booking on that
+-- unit changes.
+--
+-- See also: "one_active_booking_per_unit" partial unique index (same
+-- migration) - at most one HOLD/TOKEN/APPROVED booking per unit.

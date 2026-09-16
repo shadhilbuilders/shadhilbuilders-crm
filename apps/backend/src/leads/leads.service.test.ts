@@ -313,3 +313,60 @@ describe('badgeCount - project-scoped NEW-lead count (sidebar badge)', () => {
     expect(result).toEqual({ newLeads: 0 });
   });
 });
+// Default lead-inbox ordering (Decision 0.2). NOTHING covered this before, so
+// the tiebreaker could (and did) contradict the plan: the code sorted each
+// bucket by `createdAt` while Decision 0.2 says "-> Most recent activity" and
+// the column the operator reads ("Last Activity") renders `updatedAt`.
+//
+// These assert the generated ORDER BY text. `sortOrderSql` is private - the
+// cast mirrors how the other pure-logic tests in this file reach internals.
+describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
+  function orderSql(dto: Record<string, unknown> = {}): string {
+    const { service } = makeService();
+    const sql = (
+      service as unknown as {
+        sortOrderSql: (dto: Record<string, unknown>) => { sql: string };
+      }
+    ).sortOrderSql(dto);
+    // Collapse whitespace so assertions do not depend on formatting.
+    return sql.sql.replace(/\s+/g, ' ').trim();
+  }
+
+  it('buckets: overdue NEW first, then fresh NEW, then the rest', () => {
+    const sql = orderSql();
+    // Bucket 0 keyed on NEW + past the 30-minute SLA.
+    expect(sql).toContain(`WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0`);
+    expect(sql).toContain(`WHEN "state"='NEW' THEN 1`);
+    expect(sql).toContain('ELSE 2');
+    // The bucket CASE must be the FIRST ordering key.
+    expect(sql.indexOf('CASE')).toBeLessThan(sql.indexOf('"updatedAt" DESC'));
+  });
+
+  it('orders WITHIN a bucket by most recent activity (updatedAt), per Decision 0.2', () => {
+    const sql = orderSql();
+    expect(sql).toContain('"updatedAt" DESC');
+    // Regression guard: the old tiebreaker was createdAt, which ordered by
+    // creation age and ignored whether anyone had worked the lead.
+    const updatedAtAt = sql.indexOf('"updatedAt" DESC');
+    const createdAtAt = sql.indexOf('"createdAt" DESC');
+    expect(createdAtAt).toBeGreaterThan(updatedAtAt);
+  });
+
+  it('keeps createdAt as a final tiebreaker so equal updatedAt stays deterministic', () => {
+    // Bulk imports + the seed write many rows in the same millisecond; without
+    // a total order, server pagination can drop or duplicate a row across pages.
+    const sql = orderSql();
+    expect(sql).toContain('"updatedAt" DESC, "createdAt" DESC');
+  });
+
+  it('an explicit column sort still wins over the buckets', () => {
+    expect(orderSql({ sortBy: 'name', sortDir: 'asc' })).toBe('"name" ASC');
+    expect(orderSql({ sortBy: 'updatedAt', sortDir: 'desc' })).toBe('"updatedAt" DESC');
+    // Default direction is DESC when sortDir is omitted.
+    expect(orderSql({ sortBy: 'createdAt' })).toBe('"createdAt" DESC');
+  });
+
+  it('explicit sort does NOT carry the bucket CASE', () => {
+    expect(orderSql({ sortBy: 'name', sortDir: 'asc' })).not.toContain('CASE');
+  });
+});

@@ -1,3 +1,4 @@
+// @vitest-environment node
 // useProjects + pickDefaultProject tests - T-ProjectSwitch (2026-09-05).
 // pickDefaultProject is the pure default-selection rule; the hook wiring
 // itself is covered by the honest-state pattern shared with useLeads.

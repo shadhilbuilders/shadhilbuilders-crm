@@ -30,7 +30,7 @@ const UNIT = {
   status: 'AVAILABLE',
 };
 
-function TestForm() {
+function TestForm({ status = 'AVAILABLE' }: { status?: string }) {
   const form = useForm<{
     unitNumber: string;
     bhk: string;
@@ -45,7 +45,7 @@ function TestForm() {
       facing: UNIT.facing,
       sqft: String(UNIT.sqft),
       price: UNIT.price,
-      status: UNIT.status,
+      status,
     },
     mode: 'onSubmit',
   });
@@ -55,6 +55,7 @@ function TestForm() {
       onSubmit={() => undefined}
       bhkOptions={[{ value: '1', label: '1 BHK' }, { value: '2', label: '2 BHK' }, { value: '3', label: '3 BHK' }]}
       facingOptions={[{ value: 'North', label: 'North' }, { value: 'South', label: 'South' }]}
+      derivedStatus={status === 'HOLD' || status === 'TOKEN' ? status : null}
     />
   );
 }
@@ -81,5 +82,34 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     // wrapper data-qa instead.
     expect(html).toMatch(/data-qa="form-field-bhk"/);
     expect(html).toMatch(/data-qa="form-field-facing"/);
+  });
+
+  // T-INV-SYNC follow-up: a held/token unit must NOT render the status picker.
+  // It used to render a SELECT pre-selected with 'HOLD' - a value its options
+  // (AVAILABLE|SOLD) cannot contain - and always submitted it, so the server
+  // DTO rejected every save with a 400 and the unit became uneditable.
+  it('shows the status read-only when a booking owns it (HOLD)', () => {
+    const html = renderToStaticMarkup(<TestForm status='HOLD' />);
+
+    expect(html).toMatch(/data-qa="unit-edit-status-derived"/);
+    expect(html).toContain('Set by this unit&#x27;s booking');
+    // No editable picker, and no hidden input carrying the derived value.
+    expect(html).not.toMatch(/data-qa="unit-edit-status"/);
+    expect(html).not.toMatch(/name="status"/);
+    // Still fully usable for the fields that ARE editable.
+    expect(html).toMatch(/data-qa="unit-edit-price"/);
+  });
+
+  it('shows the status read-only for TOKEN too', () => {
+    const html = renderToStaticMarkup(<TestForm status='TOKEN' />);
+    expect(html).toMatch(/data-qa="unit-edit-status-derived"/);
+    expect(html).not.toMatch(/name="status"/);
+  });
+
+  it('keeps the editable picker for a status with no booking (AVAILABLE)', () => {
+    const html = renderToStaticMarkup(<TestForm status='AVAILABLE' />);
+    expect(html).toMatch(/data-qa="form-field-status"/);
+    expect(html).not.toMatch(/data-qa="unit-edit-status-derived"/);
+    expect(html).toMatch(/name="status"/);
   });
 });

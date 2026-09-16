@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Unit tests for the phone helpers (lib/phone.ts), shared by the
 // PhoneNumber component and every phone-rendering surface.
 import { describe, expect, it } from 'vitest';
