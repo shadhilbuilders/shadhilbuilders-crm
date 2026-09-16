@@ -8,7 +8,9 @@
 // we re-validate client-side via react-hook-form + zodResolver.
 //
 // Phase is a data-driven select from useInventoryPhases (the active
-// project's phases). Status defaults to AVAILABLE.
+// project's phases). Status is always AVAILABLE on create - T-INV-SYNC:
+// Unit.status is derived from the booking lifecycle, so a new unit cannot be
+// seeded into HOLD/TOKEN/SOLD by hand.
 //
 // We use the props-API Form (data-driven, declarative `fields` array)
 // per the canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
@@ -22,7 +24,6 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 import { useCreateUnit, useInventoryPhases, useProjectOptions } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
-import { labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 
@@ -33,15 +34,9 @@ const createUnitSchema = z.object({
   facing: z.string().trim().max(40).optional(),
   sqft: z.string().optional(),
   price: z.string().min(1, 'Price is required'),
-  status: z.enum(INVENTORY_STATUSES).optional(),
 });
 
 type CreateUnitSchema = z.infer<typeof createUnitSchema>;
-
-const STATUS_OPTIONS = INVENTORY_STATUSES.map((value) => ({
-  value,
-  label: labelFor('inventory', value),
-}));
 
 export default function NewUnitPage() {
   const router = useRouter();
@@ -79,7 +74,6 @@ export default function NewUnitPage() {
       facing: '',
       sqft: '',
       price: '',
-      status: 'AVAILABLE',
     },
     mode: 'onSubmit',
   });
@@ -114,7 +108,6 @@ export default function NewUnitPage() {
         ? { facing: values.facing.trim() }
         : {}),
       ...(sqft !== undefined ? { sqft } : {}),
-      ...(values.status !== undefined ? { status: values.status } : {}),
     };
 
     createUnit.mutate(payload, {
@@ -229,17 +222,6 @@ export default function NewUnitPage() {
               min: 1,
               step: 1,
               'data-qa': 'unit-price',
-            },
-          },
-          {
-            type: 'select',
-            name: 'status',
-            label: 'Status',
-            placeholder: 'Pick a status',
-            description: 'Defaults to Available.',
-            options: STATUS_OPTIONS,
-            selectProps: {
-              'data-qa': 'unit-status',
             },
           },
         ]}

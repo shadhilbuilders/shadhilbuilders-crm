@@ -71,6 +71,7 @@ vi.mock('@/components/leads/LeadReassignDialog', () => ({
 
 import LeadInboxPage from './page';
 import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
+import { LEAD_AGE_TIER_CLASS } from '@/lib/leads';
 
 const mockedUseLeads = vi.mocked(useLeads);
 const mockedUseLeadsEnvelope = vi.mocked(useLeadsEnvelope);
@@ -235,5 +236,92 @@ describe('LeadInboxPage - state matrix (rewritten)', () => {
     // backend D14 tests. (The library's trigger uses a generic sr-only
     // "Open menu" label - no per-row aria-label prop.)
     expect(html).toContain('data-qa="data-table-row-actions-button"');
+  });
+});
+
+// Row-tint by lead age (user request 2026-09-15). Renders the REAL page and
+// asserts the tint lands on the <tr> - this is the integration half of the
+// tier tests in lib/leads.test.ts: those pin the boundaries, these pin that
+// the boundaries actually reach the table.
+describe('LeadInboxPage - age row tint', () => {
+  /** Render the page with one NEW lead created `min` minutes ago. */
+  function renderWithNewLeadAged(min: number) {
+    mockedUseLeads.mockReturnValue({
+      data: [
+        freshRow({
+          status: 'NEW',
+          createdAt: new Date(Date.now() - min * 60_000).toISOString(),
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+    return renderToStaticMarkup(<LeadInboxPage />);
+  }
+
+  /** The class attribute of the first body row, or '' when absent. */
+  function bodyRowClass(html: string): string {
+    // Skip the header row; take the first row after the thead.
+    const body = html.slice(html.indexOf('</thead>'));
+    const m = /<tr[^>]*class="([^"]*)"/.exec(body);
+    return m?.[1] ?? '';
+  }
+
+  it('under 10 minutes: no tint (default background)', () => {
+    const cls = bodyRowClass(renderWithNewLeadAged(5));
+    expect(cls).not.toMatch(/bg-yellow|bg-red/);
+  });
+
+  // Assert against LEAD_AGE_TIER_CLASS rather than hardcoded shades: the exact
+  // Tailwind step is a design choice that gets tuned (the overdue red moved
+  // 100 -> 200 on 2026-09-16), and a test that pins the literal would fail on
+  // every tweak while proving nothing about the tiering. These check that the
+  // RIGHT tier's class reached the row; lib/leads.test.ts owns the boundary
+  // maths and asserts the tiers are visually distinct.
+  /** The tier's background utility, e.g. `bg-red-200` from its class list. */
+  function tierBg(tier: keyof typeof LEAD_AGE_TIER_CLASS): string {
+    const m = /(?:^|\s)(bg-[a-z]+-\d+)/.exec(LEAD_AGE_TIER_CLASS[tier]);
+    if (m?.[1] === undefined) throw new Error(`no bg-* in tier ${tier}`);
+    return m[1];
+  }
+
+  it('10-20 minutes: the light-yellow (age) tier', () => {
+    const cls = bodyRowClass(renderWithNewLeadAged(15));
+    expect(cls).toContain(tierBg('age'));
+  });
+
+  it('20-30 minutes: the dark-yellow (warn) tier', () => {
+    const cls = bodyRowClass(renderWithNewLeadAged(25));
+    expect(cls).toContain(tierBg('warn'));
+  });
+
+  it('30+ minutes: the red (overdue) tier', () => {
+    const cls = bodyRowClass(renderWithNewLeadAged(45));
+    expect(cls).toContain(tierBg('overdue'));
+  });
+
+  it('each age window gets a DISTINCT tier, not the same tint', () => {
+    // The real regression risk: everything lands on one colour and the
+    // staircase silently collapses.
+    const at = (min: number) => bodyRowClass(renderWithNewLeadAged(min));
+    const bgOf = (cls: string) => /(?:^|\s)(bg-[a-z]+-\d+)/.exec(cls)?.[1] ?? '';
+    const [ten, twenty, thirty] = [at(15), at(25), at(45)];
+    const shades = [bgOf(ten), bgOf(twenty), bgOf(thirty)];
+    expect(new Set(shades).size).toBe(3);
+  });
+
+  it('a non-NEW lead is never tinted, however old', () => {
+    mockedUseLeads.mockReturnValue({
+      data: [
+        freshRow({
+          status: 'CONTACTED',
+          createdAt: new Date(Date.now() - 600 * 60_000).toISOString(),
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+    const cls = bodyRowClass(renderToStaticMarkup(<LeadInboxPage />));
+    expect(cls).not.toMatch(/bg-yellow|bg-red/);
   });
 });

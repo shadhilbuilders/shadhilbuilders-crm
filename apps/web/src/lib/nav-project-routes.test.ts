@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Org + project-scoped route helpers - SLUG-based URL scheme (2026-09-11).
 // URL shape: /[orgSlug]/overview ... ; /[orgSlug]/projects/[projectSlug]/leads
 import { describe, expect, it } from 'vitest';

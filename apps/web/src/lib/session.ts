@@ -74,6 +74,16 @@ export function canApproveBookings(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';
 }
 
+/**
+ * T-BOOK-ROLES (2026-09-15): "Initiate booking" per DESIGN.md §4 - SuperAdmin /
+ * Admin / Manager / Sales Exec. TELECALLER is excluded. Mirrors the service
+ * gate in BookingsService.create() and .transition(→ TOKEN), so the UI never
+ * offers an action the API answers 403 for.
+ */
+export function canInitiateBookings(role: Role | undefined): boolean {
+  return isAdminLike(role) || role === 'MANAGER' || role === 'SALES_EXEC';
+}
+
 /** Audit log: admin + owner read (DESIGN.md §4). */
 export function canViewAudit(role: Role | undefined): boolean {
   return isAdminLike(role);

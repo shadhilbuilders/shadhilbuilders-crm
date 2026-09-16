@@ -247,12 +247,21 @@ model User {
   // ADMIN/OWNER only. Hard-delete is removed - the account row is kept so
   // audit/session history survives; login rejects deletedAt <> null.
   deletedAt     DateTime?
-  // T-S hardening (2026-09-04): a placeholder-password gate.
-  // Seeded users (owner/admin/manager/telecaller/sales_exec) keep
-  // mustChangePassword=true until they complete /change-password.
-  // The demo user is exempted (mustChangePassword=false) so the
-  // Sunday demo path works without a forced rotation.
-  mustChangePassword Boolean @default(true)
+  // Placeholder-password gate (T-S hardening, 2026-09-04; re-scoped
+  // 2026-09-15). When true, the JwtAuthGuard rejects every authenticated
+  // request with a 403 + PASSWORD_CHANGE_REQUIRED, and the web client bounces
+  // to /change-password.
+  //
+  // ONLY THE OWNER IS GATED (2026-09-15). The default is FALSE because the
+  // other four roles start ungated; the seed arms the gate for the OWNER
+  // account alone (`mustChangePassword: role === 'OWNER'`), which is the
+  // single highest-privilege account and the only one that cannot be created
+  // or reassigned into through the API.
+  //
+  // The feature was NOT removed: /change-password, the guard's check, the
+  // service's flip-to-false write and the BFF's 403 handler all still work.
+  // Setting this column to true for any user re-arms the gate for that user.
+  mustChangePassword Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

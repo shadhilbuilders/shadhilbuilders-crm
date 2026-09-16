@@ -1,3 +1,4 @@
+// @vitest-environment node
 // T15: pure-function tests for `lib/nav.ts`.
 //
 // These tests assert the visibility + active-state rules without

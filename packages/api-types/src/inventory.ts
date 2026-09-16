@@ -65,8 +65,28 @@ export const UnitFilterDtoSchema = z.object({
 export type UnitFilterDto = z.infer<typeof UnitFilterDtoSchema>;
 
 /**
+ * T-INV-SYNC (2026-09-15): manual unit-status overrides are limited to the
+ * off-pipeline marks. Unit.status is DERIVED from the booking lifecycle - a
+ * booking trigger recomputes it - so HOLD/TOKEN are produced by a booking, never
+ * hand-set, and SOLD/AVAILABLE are the only states an admin legitimately sets by
+ * hand. Anything that contradicts a live booking is rejected with a 409 by the
+ * service. Declared before CreateUnitDtoSchema, which also uses it.
+ */
+export const UpdateUnitStatusSchema = z.enum(['AVAILABLE', 'SOLD']);
+export type UpdateUnitStatus = z.infer<typeof UpdateUnitStatusSchema>;
+
+/**
  * POST /api/inventory/units body. `price` is a number (converted to a
  * Decimal string server-side). `facing`/`sqft` optional.
+ *
+ * T-INV-SYNC: `status` accepts the MANUAL marks only (AVAILABLE|SOLD).
+ * `Unit.status` is derived from the booking lifecycle - a trigger on `Booking`
+ * recomputes it - so a new unit cannot be seeded straight into HOLD/TOKEN. That
+ * combination is unreachable otherwise: the trigger only fires on Booking
+ * writes, so a unit created as HOLD with no booking behind it would stay HOLD
+ * forever and could never accept a booking (the bookable-unit guard rejects any
+ * unit that is not AVAILABLE). Mirrors UpdateUnitStatusSchema; the web create
+ * page never sends this field.
  */
 export const CreateUnitDtoSchema = z.object({
   // Phase.id is a real cuid2 (T-PROJID-CUID2, 2026-09-08) - the same shape
@@ -78,14 +98,15 @@ export const CreateUnitDtoSchema = z.object({
   facing: z.string().trim().min(1).max(40).optional(),
   sqft: z.number().int().positive().max(100_000).optional(),
   price: z.number().positive().max(100_000_000_00, 'Price too large (cap ₹100 Cr)'),
-  status: UnitStatusSchema.optional(),
+  status: UpdateUnitStatusSchema.optional(),
 });
 export type CreateUnitDto = z.infer<typeof CreateUnitDtoSchema>;
 
 /**
  * PATCH /api/inventory/units/:id body - partial. Omitted fields keep
- * their value. `status` is optional so an admin can flip a unit's
- * availability directly (e.g. mark SOLD off-pipeline).
+ * their value. `status` accepts the off-pipeline marks only (see
+ * UpdateUnitStatusSchema) and is validated against the unit's live bookings
+ * server-side.
  */
 export const UpdateUnitDtoSchema = z.object({
   unitNumber: z.string().trim().min(1).max(40).optional(),
@@ -93,7 +114,7 @@ export const UpdateUnitDtoSchema = z.object({
   facing: z.string().trim().min(1).max(40).nullable().optional(),
   sqft: z.number().int().positive().max(100_000).nullable().optional(),
   price: z.number().positive().max(100_000_000_00).optional(),
-  status: UnitStatusSchema.optional(),
+  status: UpdateUnitStatusSchema.optional(),
 });
 export type UpdateUnitDto = z.infer<typeof UpdateUnitDtoSchema>;
 

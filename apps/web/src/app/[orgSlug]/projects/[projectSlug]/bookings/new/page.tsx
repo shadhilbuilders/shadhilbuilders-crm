@@ -8,6 +8,10 @@
 // client-side so 400s land as inline errors via the standard form
 // flow.
 //
+// On success the form redirects to the BOOKINGS LIST (not the parent lead's
+// page). The operator has just created a booking and wants to see it in
+// context; the lead page shows no trace of it. Pinned by page.test.tsx.
+//
 // Lead picker is data-driven via useLeads (the same pattern as
 // ScheduleVisitDialog). Unit picker is data-driven via useInventoryUnits
 // (AVAILABLE units in the active project) - the inventory module is live
@@ -27,6 +31,7 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 import { useCreateBooking, useLeads } from '@/hooks/queries/crm';
 import { useInventoryUnits } from '@/hooks/queries/inventory';
 import { labelFor } from '@/lib/labels';
+import { afterBookingCreateHref } from '@/lib/bookings';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
@@ -61,8 +66,6 @@ const createBookingSchema = z.object({
 });
 
 type CreateBookingSchema = z.infer<typeof createBookingSchema>;
-
-type CreatedBooking = { id: string; leadId?: string };
 
 export default function NewBookingPage() {
   // useSearchParams() must be inside a Suspense boundary (Next.js App
@@ -165,16 +168,11 @@ function NewBookingPageInner() {
     }
 
     createBooking.mutate(payload, {
-      onSuccess: (data) => {
+      onSuccess: () => {
         toast.success('Booking created in HOLD');
-        const id = (data as CreatedBooking | undefined)?.id;
-        const leadId =
-          (data as CreatedBooking | undefined)?.leadId ?? values.leadId;
-        if (typeof id === 'string' && id.length > 0) {
-          void router.push(projectHref(orgSlug, projectSlug, `/leads/${leadId}`));
-        } else {
-          void router.push(projectHref(orgSlug, projectSlug, '/bookings'));
-        }
+        // Land on the bookings list - see afterBookingCreateHref() for why the
+        // parent lead's page is the wrong destination here.
+        void router.push(afterBookingCreateHref(orgSlug, projectSlug));
       },
       onError: (error) => {
         const msg = error instanceof Error ? error.message : 'Create failed';

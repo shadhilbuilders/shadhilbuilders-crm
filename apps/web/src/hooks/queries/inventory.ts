@@ -8,6 +8,11 @@
 //
 // T24 (PR3): list-shape queries use `placeholderData: keepPreviousData` so
 // the skeleton only renders on first load, not on refetch.
+//
+// T-INV-SYNC (2026-09-15): Unit.status is derived from the booking lifecycle,
+// so unit writes and booking writes touch the same two caches. Both hook
+// families invalidate ['inventory', ...] AND ['bookings'] - otherwise the
+// inventory grid and the bookings list disagree until the next refetch.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
@@ -19,6 +24,15 @@ import type {
   UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
+
+/** Invalidate both sides of the unit/booking status relationship. */
+function invalidateInventoryAndBookings(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+  void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+}
 
 export type UnitRow = {
   id: string;
@@ -132,8 +146,7 @@ export function useCreateUnit() {
     mutationFn: (body: CreateUnitDto) =>
       api<UnitRow>('/inventory/units', { method: 'POST', json: body }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      invalidateInventoryAndBookings(queryClient);
     },
   });
 }
@@ -147,8 +160,7 @@ export function useUpdateUnit() {
         json: args.body,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      invalidateInventoryAndBookings(queryClient);
     },
   });
 }
@@ -159,8 +171,7 @@ export function useDeleteUnit() {
     mutationFn: (id: string) =>
       api<{ id: string }>(`/inventory/units/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+      invalidateInventoryAndBookings(queryClient);
     },
   });
 }

@@ -161,11 +161,21 @@ async function upsertUser(
       role,
       organizationId: SEED_ORG_ID,
       emailVerified: true,
-      // T-S hardening (2026-09-04, Week 5): the 5 seed placeholders
-      // carry mustChangePassword=true so the post-login /change-password
-      // gate fires for every operator signing in with a placeholder.
-      // Demo users (setup-demo-user.ts) are exempt - see that script.
-      mustChangePassword: true,
+      // Placeholder-password gate (T-S hardening, 2026-09-04, re-scoped
+      // 2026-09-15): ONLY the OWNER is forced through /change-password on
+      // first sign-in. Every other role starts ungated.
+      //
+      // OWNER-only because it is the single highest-privilege account and the
+      // only one that cannot be created through the API
+      // (`assertCanCreateRole` rejects an OWNER target - "exactly one exists
+      // via seed") nor reassigned into, so this seed is its sole writer.
+      // Gating it costs one rotation and protects the account that can do
+      // everything.
+      //
+      // Set on CREATE only, matching the previous behaviour: a re-seed must not
+      // re-arm the gate after the OWNER has legitimately rotated their
+      // password (which flips this to false).
+      mustChangePassword: role === 'OWNER',
     },
   });
 
@@ -369,7 +379,14 @@ async function main() {
     skipDuplicates: true,
   });
 
-  // (phaseId, unitNumber) → { bhk, facing, sqft, price, status }
+  // (phaseId, unitNumber) → { bhk, facing, sqft, price }
+  //
+  // T-INV-SYNC (2026-09-15): `status` is deliberately NOT part of the seeded
+  // unit definition. Unit.status is DERIVED from the booking lifecycle (a
+  // trigger on "Booking" recomputes it), so seeding HOLD/TOKEN/SOLD here used
+  // to plant units that no booking could ever clear - one of the two sources
+  // of the inventory/bookings drift. Every unit is created AVAILABLE and only
+  // a booking moves it.
   const unitDefs: Array<{
     phaseId: string;
     unitNumber: string;
@@ -377,30 +394,29 @@ async function main() {
     facing: string;
     sqft: number;
     price: number;
-    status: 'AVAILABLE' | 'HOLD' | 'TOKEN' | 'SOLD';
   }> = [
     // Phase A - 2 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000, status: 'AVAILABLE' },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000, status: 'AVAILABLE' },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000, status: 'HOLD' },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000, status: 'SOLD' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000 },
     // Phase A - 3 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000, status: 'AVAILABLE' },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000, status: 'TOKEN' },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000, status: 'AVAILABLE' },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000 },
     // Phase B - 3 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000, status: 'AVAILABLE' },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000, status: 'HOLD' },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000, status: 'AVAILABLE' },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000 },
     // Phase B - 4 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000, status: 'AVAILABLE' },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000, status: 'SOLD' },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000 },
     // Phase C - 2 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000, status: 'AVAILABLE' },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000, status: 'AVAILABLE' },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000 },
     // Phase C - 3 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000, status: 'TOKEN' },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000, status: 'AVAILABLE' },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000 },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
@@ -410,7 +426,7 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
-        status: u.status,
+        // status intentionally omitted - derived from bookings (T-INV-SYNC).
       },
       create: {
         phaseId: u.phaseId,
@@ -420,7 +436,7 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
-        status: u.status,
+        status: 'AVAILABLE',
       },
     });
   }

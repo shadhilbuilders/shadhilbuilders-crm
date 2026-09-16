@@ -101,6 +101,12 @@ type Fixture = {
   rowIds: Record<TableName, { own: string; other: string }>;
 };
 
+// T-INV-SYNC: the Booking INSERT probe needs units with no other active
+// booking on them (one_active_booking_per_unit). Real cuid2s - the repo purged
+// slug-style fixture ids in T-PROJID-CUID2, and ids are validated strictly.
+const PROBE_UNIT_A_ID = 'ydrwwx6zzyg7qnb7a9toe5bz';
+const PROBE_UNIT_B_ID = 'uwdjvvo0k5akc5hg5hm6pvci';
+
 /**
  * Build a fixture with two orgs, two leads, and one row of every business
  * table linked to each lead. Idempotent: re-running overwrites by cuid-
@@ -284,11 +290,53 @@ async function buildFixture(): Promise<Fixture> {
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
+  // T-INV-SYNC (2026-09-15): the Booking INSERT/UPDATE matrix cases add a
+  // SECOND active booking (HOLD) on the same unit as the fixture rows above.
+  // The one_active_booking_per_unit partial unique index correctly rejects
+  // that, but this matrix asserts RLS permission, not the booking invariant -
+  // so the probe rows get their own free units. Without this the cases fail
+  // with a P2002 constraint error instead of the RLS outcome under test.
+  await adminPrisma.unit.upsert({
+    where: { phaseId_unitNumber: { phaseId: phaseAId, unitNumber: 'FA-002' } },
+    update: {},
+    create: {
+      id: PROBE_UNIT_A_ID,
+      phaseId: phaseAId,
+      unitNumber: 'FA-002',
+      bhk: 3,
+      price: '10000000.00',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
+  await adminPrisma.unit.upsert({
+    where: { phaseId_unitNumber: { phaseId: phaseBId, unitNumber: 'FB-002' } },
+    update: {},
+    create: {
+      id: PROBE_UNIT_B_ID,
+      phaseId: phaseBId,
+      unitNumber: 'FB-002',
+      bhk: 3,
+      price: '10000000.00',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
 
   // Leads.
+  //
+  // T-BOOK-LEADSYNC (2026-09-15): `state` is deliberately NOT forced in the
+  // update clause. `Lead.state` is reconciled with the lead's bookings
+  // (HOLD -> NEGOTIATION, TOKEN -> BOOKING_INITIATED, APPROVED -> WON), and
+  // this fixture gives both leads a HOLD booking just below. Forcing
+  // `state: 'NEW'` on every re-run made the fixture fight that rule: each test
+  // run reset the two leads to NEW and re-created the exact drift the
+  // lead-state-sync repair migration had just cleaned up. It also made the
+  // suite order-dependent. `create` still seeds NEW - the booking INSERT
+  // trigger then advances it, which is itself evidence the trigger works.
+  // No Lead RLS policy reads `state` (see prisma/rls/policies.sql) and no case
+  // asserts it, so leaving it alone costs the matrix nothing.
   await adminPrisma.lead.upsert({
     where: { id: leadAId },
-    update: { state: 'NEW', teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER' },
+    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER' },
     create: {
       id: leadAId,
       name: 'Fixture Lead A',
@@ -302,7 +350,7 @@ async function buildFixture(): Promise<Fixture> {
   });
   await adminPrisma.lead.upsert({
     where: { id: leadBId },
-    update: { state: 'NEW', teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER' },
+    update: { teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER' },
     create: {
       id: leadBId,
       name: 'Fixture Lead B',
@@ -898,10 +946,21 @@ async function runCase(
             },
           });
         } else if (table === 'Booking') {
+          // T-INV-SYNC: use the probe's own free unit (not the fixture row's),
+          // so the one_active_booking_per_unit index doesn't turn a permission
+          // check into a constraint violation. Clear this probe's previous row
+          // first - the matrix re-runs against a persistent dev DB.
+          const probeUnit =
+            ctx.role === 'TELECALLER' || ctx.role === 'SALES_EXEC'
+              ? PROBE_UNIT_B_ID
+              : PROBE_UNIT_A_ID;
+          await tx.booking.deleteMany({
+            where: { unitId: probeUnit, amount: '1.00', status: 'HOLD' },
+          });
           await tx.booking.create({
             data: {
               leadId: fixture.leadAId,
-              unitId: 'zmcwmelpek4rd8z6kgnokqyo',
+              unitId: probeUnit,
               userId: ctx.userId,
               amount: '1.00',
               status: 'HOLD',
@@ -973,7 +1032,11 @@ async function runCase(
         } else if (table === 'Message') {
           await tx.message.update({ where: { id: own }, data: { body: 'matrix-updated' } });
         } else if (table === 'Booking') {
-          await tx.booking.update({ where: { id: own }, data: { status: 'HOLD' } });
+          // T-INV-SYNC: update a non-status column. Writing status here would
+          // have to satisfy one_active_booking_per_unit against whatever else
+          // is active on the unit - that is the booking invariant's business,
+          // not the RLS permission this matrix asserts.
+          await tx.booking.update({ where: { id: own }, data: { notes: 'matrix-updated' } });
         } else if (table === 'Reminder') {
           await tx.reminder.update({ where: { id: own }, data: { status: 'SCHEDULED' } });
         } else if (table === 'Notification') {

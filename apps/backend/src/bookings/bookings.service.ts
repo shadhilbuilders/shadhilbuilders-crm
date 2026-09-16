@@ -20,6 +20,7 @@
 // APPROVED we set it to actor.sub if the actor is MANAGER/ADMIN.
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -32,6 +33,7 @@ import {
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+import { TransitionReasonRequired } from '@shadhil/api-types';
 import type {
   BookingFilterDto,
   BookingTransitionDto,
@@ -43,6 +45,12 @@ import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 import { isAdminClass } from '../users/roles';
+import {
+  BOOKABLE_LEAD_STATES,
+  isBookableLeadState,
+  leadStateForBookings,
+  shouldApplyLeadState,
+} from './lead-state-sync';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -57,6 +65,8 @@ export interface BookingRow {
   leadId: string;
   leadName: string;
   unitId: string;
+  /** T-BOOK-UNIT: denormalized for the bookings grid ("Unit" column). */
+  unitNumber: string;
   userId: string;
   userName: string;
   amount: string;
@@ -95,6 +105,22 @@ export function legalNextStates(from: BookingStatus): BookingStatus[] {
     case 'CANCELLED':
       return [];
   }
+}
+
+/** Unit statuses a unit may be in when a NEW booking starts (T-INV-SYNC). */
+const BOOKABLE_UNIT_STATUSES = ['AVAILABLE'] as const;
+
+/**
+ * Prisma unique-constraint violation. The partial index
+ * `one_active_booking_per_unit` raises this when a second active booking is
+ * created for the same unit (including a race between two concurrent creates).
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
 }
 
 @Injectable()
@@ -197,6 +223,7 @@ export class BookingsService {
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
+              unit: { select: { unitNumber: true } },
               user: { select: { name: true } },
               approvedBy: { select: { name: true } },
             },
@@ -211,6 +238,7 @@ export class BookingsService {
             leadId: r.leadId,
             leadName: r.lead.name,
             unitId: r.unitId,
+            unitNumber: r.unit.unitNumber,
             userId: r.userId,
             userName: r.user.name,
             amount: r.amount.toString(),
@@ -252,6 +280,7 @@ export class BookingsService {
             createdAt: true,
             updatedAt: true,
             lead: { select: { name: true } },
+            unit: { select: { unitNumber: true } },
             user: { select: { name: true } },
             approvedBy: { select: { name: true } },
           },
@@ -264,6 +293,7 @@ export class BookingsService {
           leadId: row.leadId,
           leadName: row.lead.name,
           unitId: row.unitId,
+          unitNumber: row.unit.unitNumber,
           userId: row.userId,
           userName: row.user.name,
           amount: row.amount.toString(),
@@ -288,63 +318,120 @@ export class BookingsService {
     actor: JwtPayload,
     dto: CreateBookingDto,
   ): Promise<BookingRow> {
+    // T-BOOK-ROLES (2026-09-15): creating a booking IS initiating one
+    // (it lands in HOLD), so it carries the same role gate as HOLD → TOKEN.
+    // TELECALLER is excluded per DESIGN.md §4 ("Initiate booking" ❌). The web
+    // form already hides itself from TELECALLER; this is the enforcement
+    // layer, and the RLS write policy only scopes by lead owner/team - it does
+    // not know about roles.
+    if (
+      actor.role !== 'MANAGER' &&
+      actor.role !== 'SALES_EXEC' &&
+      !isAdminClass(actor.role)
+    ) {
+      throw new ForbiddenException(
+        `Only MANAGER/SALES_EXEC/ADMIN/OWNER can create a booking (actor is ${actor.role})`,
+      );
+    }
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: dto.leadId },
-          select: { id: true },
+          select: { id: true, state: true },
         });
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
         }
+
+        // T-BOOK-LEADSYNC (2026-09-15): a booking starts the deal, so the lead
+        // must already be under negotiation. Without this guard a booking could
+        // be opened on a lead still at NEW/CONTACTED/VISIT_*, skipping the
+        // whole sales conversation - and the leads page would show "New" for a
+        // customer with a villa on hold.
+        if (!isBookableLeadState(lead.state)) {
+          throw new ConflictException(
+            `Lead is ${lead.state} - a booking can only start from ` +
+              `${BOOKABLE_LEAD_STATES.join(', ')}. Move the lead to NEGOTIATION first.`,
+          );
+        }
         const unit = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: dto.unitId },
-          select: { id: true },
+          select: { id: true, unitNumber: true, status: true },
         });
         if (unit === null) {
           throw new NotFoundException(`Unit ${dto.unitId} not found`);
         }
 
-        const created = await (tx as unknown as PrismaClient).booking.create({
-          data: {
-            leadId: dto.leadId,
-            organizationId: actor.organizationId,
-            unitId: dto.unitId,
-            userId: actor.sub,
-            // Prisma Decimal - pass as a string to avoid float drift.
-            amount: dto.amount.toFixed(2),
-            ...(dto.tokenAmount !== undefined
-              ? { tokenAmount: dto.tokenAmount.toFixed(2) }
-              : {}),
-            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-            status: 'HOLD',
-          },
-          select: {
-            id: true,
-            leadId: true,
-            unitId: true,
-            userId: true,
-            amount: true,
-            tokenAmount: true,
-            status: true,
-            approvedById: true,
-            notes: true,
-            createdAt: true,
-            updatedAt: true,
-            lead: { select: { name: true } },
-            user: { select: { name: true } },
-            approvedBy: { select: { name: true } },
-          },
-        });
+        // T-INV-SYNC: a unit already occupied by an active booking cannot take
+        // a second one. The partial unique index
+        // (one_active_booking_per_unit) is the hard guarantee - this guard
+        // exists to return a readable 409 instead of a raw constraint error.
+        if (!(BOOKABLE_UNIT_STATUSES as readonly string[]).includes(unit.status)) {
+          throw new ConflictException(
+            `Unit ${unit.unitNumber} is ${unit.status} and cannot take a new booking. ` +
+              'Pick an AVAILABLE unit, or clear the existing booking on this one.',
+          );
+        }
 
-        // T-INV-SYNC: a new booking holds the unit - the inventory grid
-        // must reflect it immediately (AVAILABLE → HOLD).
-        await (tx as unknown as PrismaClient).unit.update({
-          where: { id: dto.unitId },
-          data: { status: 'HOLD' },
-        });
+        let created;
+        try {
+          created = await (tx as unknown as PrismaClient).booking.create({
+            data: {
+              leadId: dto.leadId,
+              organizationId: actor.organizationId,
+              unitId: dto.unitId,
+              userId: actor.sub,
+              // Prisma Decimal - pass as a string to avoid float drift.
+              amount: dto.amount.toFixed(2),
+              ...(dto.tokenAmount !== undefined
+                ? { tokenAmount: dto.tokenAmount.toFixed(2) }
+                : {}),
+              ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+              status: 'HOLD',
+            },
+            select: {
+              id: true,
+              leadId: true,
+              unitId: true,
+              userId: true,
+              amount: true,
+              tokenAmount: true,
+              status: true,
+              approvedById: true,
+              notes: true,
+              createdAt: true,
+              updatedAt: true,
+              lead: { select: { name: true } },
+              unit: { select: { unitNumber: true } },
+              user: { select: { name: true } },
+              approvedBy: { select: { name: true } },
+            },
+          });
+        } catch (err) {
+          // Race: another request created an active booking for this unit
+          // between the guard above and this INSERT.
+          if (isUniqueViolation(err)) {
+            throw new ConflictException(
+              `Unit ${unit.unitNumber} already has an active booking.`,
+            );
+          }
+          throw err;
+        }
+
+        // T-INV-SYNC: the Unit.status change (AVAILABLE → HOLD) is applied by
+        // the unit_status_sync_booking trigger on "Booking" - a SECURITY
+        // DEFINER function, so it works for EVERY role. Application code no
+        // longer writes Unit.status on the booking path: the previous
+        // service-level update silently matched zero rows for
+        // MANAGER/SALES_EXEC/TELECALLER (Unit UPDATE was ADMIN-only under
+        // RLS), which is exactly how the two pages drifted apart.
+
+        // T-BOOK-LEADSYNC: a new HOLD moves the lead along the pipeline in the
+        // same transaction. Forward-only (allowRegress false) - a new booking
+        // never pulls a lead backwards.
+        await this.syncLeadState(tx, created.leadId, { allowRegress: false, actor });
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
@@ -377,6 +464,7 @@ export class BookingsService {
           leadId: created.leadId,
           leadName: created.lead.name,
           unitId: created.unitId,
+          unitNumber: created.unit.unitNumber,
           userId: created.userId,
           userName: created.user.name,
           amount: created.amount.toString(),
@@ -422,6 +510,7 @@ export class BookingsService {
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
+              unit: { select: { unitNumber: true } },
               user: { select: { name: true } },
               approvedBy: { select: { name: true } },
             },
@@ -438,13 +527,56 @@ export class BookingsService {
           );
         }
 
-        // Manager approval - only MANAGER/ADMIN can transition to
-        // APPROVED. The full plan §0.11 approval flow (separate modal
-        // + audit reason) ships later; for Pass 1 we gate at the
-        // service layer.
-        if (dto.toStatus === 'APPROVED' && actor.role !== 'MANAGER' && actor.role !== 'ADMIN') {
+        // T-BOOK-ROLES (2026-09-15): role gates per DESIGN.md §4. Before this,
+        // the ONLY gate was on APPROVED and it omitted OWNER; HOLD → TOKEN (the
+        // "initiate booking" step) had NO role gate at all, so a TELECALLER who
+        // owned the lead could advance a booking.
+        //
+        //   Initiate booking (HOLD → TOKEN):  ADMIN/OWNER/MANAGER/SALES_EXEC
+        //     - TELECALLER is excluded (DESIGN.md §4 "Initiate booking" ❌).
+        //   Approve booking (→ APPROVED/REJECTED): MANAGER/ADMIN/OWNER only.
+        //     - Uses isAdminClass() so OWNER is included: OWNER downcasts to
+        //       ADMIN at the RLS layer, the UI already offers OWNER the
+        //       Approve button (canApproveBookings), and the permission matrix
+        //       grants Super Admin ✅. The old literal role check let an owner
+        //       press Approve and get a 400 saying they are neither.
+        //
+        // The full plan §0.11 approval flow (separate modal + audit reason)
+        // ships later; for now the gate lives here, in the same transaction as
+        // the status write.
+        if (
+          dto.toStatus === 'TOKEN' &&
+          actor.role !== 'MANAGER' &&
+          actor.role !== 'SALES_EXEC' &&
+          !isAdminClass(actor.role)
+        ) {
+          throw new ForbiddenException(
+            `Only MANAGER/SALES_EXEC/ADMIN/OWNER can start a booking (actor is ${actor.role})`,
+          );
+        }
+
+        if (
+          (dto.toStatus === 'APPROVED' || dto.toStatus === 'REJECTED') &&
+          actor.role !== 'MANAGER' &&
+          !isAdminClass(actor.role)
+        ) {
+          throw new ForbiddenException(
+            `Only MANAGER/ADMIN/OWNER can approve or reject a booking (actor is ${actor.role})`,
+          );
+        }
+
+        // A cancel or reject must carry an operator-supplied reason: the audit
+        // row and the customer follow-up depend on it, and a generated
+        // "moved by <email>" string is not a reason. The DTO's superRefine
+        // already rejects a blank reason, but the service refuses it too so a
+        // direct service call (or an older client) cannot slip through - the
+        // live service accepted exactly that before this guard.
+        if (
+          TransitionReasonRequired.has(dto.toStatus) &&
+          (dto.reason ?? '').trim().length === 0
+        ) {
           throw new BadRequestException(
-            `Only MANAGER/ADMIN can approve a booking (actor is ${actor.role})`,
+            `A reason is required when moving a booking to ${dto.toStatus}`,
           );
         }
 
@@ -469,35 +601,28 @@ export class BookingsService {
             createdAt: true,
             updatedAt: true,
             lead: { select: { name: true } },
+            unit: { select: { unitNumber: true } },
             user: { select: { name: true } },
             approvedBy: { select: { name: true } },
           },
         });
 
-        // T-INV-SYNC: keep the inventory grid truthful as the booking
-        // advances. APPROVED → unit SOLD. CANCELLED/REJECTED → unit back
-        // to AVAILABLE, but only when no OTHER active booking (HOLD/TOKEN/
-        // APPROVED) still references the unit.
-        if (dto.toStatus === 'APPROVED') {
-          await (tx as unknown as PrismaClient).unit.update({
-            where: { id: updated.unitId },
-            data: { status: 'SOLD' },
-          });
-        } else if (dto.toStatus === 'CANCELLED' || dto.toStatus === 'REJECTED') {
-          const otherActive = await (tx as unknown as PrismaClient).booking.count({
-            where: {
-              unitId: updated.unitId,
-              id: { not: bookingId },
-              status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
-            },
-          });
-          if (otherActive === 0) {
-            await (tx as unknown as PrismaClient).unit.update({
-              where: { id: updated.unitId },
-              data: { status: 'AVAILABLE' },
-            });
-          }
-        }
+        // T-INV-SYNC: the Unit.status follow-through (APPROVED → SOLD,
+        // CANCELLED/REJECTED → back to AVAILABLE/HOLD/TOKEN depending on the
+        // unit's remaining bookings) is applied by the
+        // unit_status_sync_booking trigger on "Booking". The service used to
+        // do it here and the write silently matched zero rows for every
+        // non-ADMIN role under RLS - the trigger is role-independent, so the
+        // inventory grid is now correct for whoever advances the booking.
+
+        // T-BOOK-LEADSYNC: keep the lead in step with the booking. A cancel or
+        // reject RELEASES the deal, so allowRegress is true for those - the lead
+        // re-enters the pipeline at NEGOTIATION instead of staying parked on
+        // WON. Ordinary progressions stay forward-only.
+        await this.syncLeadState(tx, updated.leadId, {
+          allowRegress: dto.toStatus === 'CANCELLED' || dto.toStatus === 'REJECTED',
+          actor,
+        });
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
@@ -508,6 +633,10 @@ export class BookingsService {
             entityId: updated.id,
             before: { status: existing.status },
             after: { status: updated.status, approvedById: updated.approvedById },
+            // For a cancel/reject the reason is guaranteed non-blank by the
+            // guard above (and by the DTO), so it is always the operator's own
+            // words here. The generated fallback remains for the moves that
+            // legitimately have no reason (HOLD → TOKEN, → APPROVED).
             reason:
               dto.reason ??
               `Booking ${existing.status} → ${updated.status} by ${actor.email} (${actor.role})`,
@@ -530,6 +659,7 @@ export class BookingsService {
           leadId: updated.leadId,
           leadName: updated.lead.name,
           unitId: updated.unitId,
+          unitNumber: updated.unit.unitNumber,
           userId: updated.userId,
           userName: updated.user.name,
           amount: updated.amount.toString(),
@@ -577,6 +707,7 @@ export class BookingsService {
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
+              unit: { select: { unitNumber: true } },
               user: { select: { name: true } },
               approvedBy: { select: { name: true } },
             },
@@ -610,6 +741,7 @@ export class BookingsService {
             createdAt: true,
             updatedAt: true,
             lead: { select: { name: true } },
+            unit: { select: { unitNumber: true } },
             user: { select: { name: true } },
             approvedBy: { select: { name: true } },
           },
@@ -641,6 +773,7 @@ export class BookingsService {
           leadId: updated.leadId,
           leadName: updated.lead.name,
           unitId: updated.unitId,
+          unitNumber: updated.unit.unitNumber,
           userId: updated.userId,
           userName: updated.user.name,
           amount: updated.amount.toString(),
@@ -688,6 +821,7 @@ export class BookingsService {
               createdAt: true,
               updatedAt: true,
               lead: { select: { name: true } },
+              unit: { select: { unitNumber: true } },
               user: { select: { name: true } },
               approvedBy: { select: { name: true } },
             },
@@ -701,21 +835,16 @@ export class BookingsService {
           where: { id: bookingId },
         });
 
-        // T-INV-SYNC: freeing the unit back to AVAILABLE, but only when
-        // no OTHER active booking still references it.
-        const otherActive = await (tx as unknown as PrismaClient).booking.count({
-          where: {
-            unitId: existing.unitId,
-            id: { not: bookingId },
-            status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
-          },
-        });
-        if (otherActive === 0) {
-          await (tx as unknown as PrismaClient).unit.update({
-            where: { id: existing.unitId },
-            data: { status: 'AVAILABLE' },
-          });
-        }
+        // T-INV-SYNC: freeing the unit is handled by the
+        // unit_status_sync_booking trigger on "Booking" (AFTER DELETE):
+        // Unit.status recomputes from the unit's remaining active bookings
+        // (SOLD > TOKEN > HOLD > AVAILABLE). Role-independent, unlike the
+        // admin-only Unit UPDATE policy this code used to rely on.
+
+        // T-BOOK-LEADSYNC: the booking is gone, so the lead re-syncs from
+        // whatever bookings remain (none → NEGOTIATION). allowRegress because
+        // removing the booking is a release, not a progression.
+        await this.syncLeadState(tx, existing.leadId, { allowRegress: true, actor });
 
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
@@ -737,6 +866,67 @@ export class BookingsService {
         return { id: bookingId };
       },
     );
+  }
+
+  /**
+   * T-BOOK-LEADSYNC (2026-09-15): reconcile `Lead.state` with the lead's
+   * bookings. Called from every booking write path (create / transition /
+   * delete) inside the SAME transaction, so the booking and the lead can never
+   * diverge.
+   *
+   * Most-advanced active booking wins (APPROVED > TOKEN > HOLD); with no active
+   * booking the lead returns to NEGOTIATION. Backwards moves are only applied
+   * for an explicit release (`allowRegress`) - a cancel/reject/open-again -
+   * which is what keeps a re-synced stale HOLD from dragging a WON lead back.
+   *
+   * `allowRegress` is false for ordinary progressions, and true when the
+   * booking just LEFT the active set (CANCELLED/REJECTED, or a delete) so the
+   * deal re-enters the pipeline instead of staying parked on WON.
+   */
+  private async syncLeadState(
+    tx: unknown,
+    leadId: string,
+    options: { allowRegress: boolean; actor: JwtPayload },
+  ): Promise<void> {
+    const client = tx as unknown as PrismaClient;
+    const lead = await client.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, state: true, organizationId: true },
+    });
+    if (lead === null) return;
+
+    const bookings = await client.booking.findMany({
+      where: { leadId },
+      select: { status: true },
+    });
+    const target = leadStateForBookings(bookings.map((b) => b.status));
+
+    if (!shouldApplyLeadState(lead.state, target, options)) return;
+
+    await client.lead.update({
+      where: { id: leadId },
+      data: { state: target },
+    });
+
+    // Audit trail. userId MUST be the acting user: the
+    // auditlog_insert_any_authenticated policy requires app.user_id IS NOT NULL
+    // (a null actor violates RLS with P2039 - caught by the live check). The
+    // action name marks it as a system-derived write rather than a user
+    // transition of the lead.
+    await client.auditLog.create({
+      data: {
+        userId: options.actor.sub,
+        organizationId: lead.organizationId,
+        action: 'lead.state_sync',
+        entityType: 'Lead',
+        entityId: leadId,
+        before: { state: lead.state },
+        after: { state: target },
+        reason:
+          'Lead state synced from its bookings (T-BOOK-LEADSYNC): ' +
+          'APPROVED→WON, TOKEN→BOOKING_INITIATED, HOLD→NEGOTIATION, none→NEGOTIATION',
+      },
+    });
   }
 
   /**

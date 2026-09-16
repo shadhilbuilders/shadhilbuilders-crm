@@ -260,13 +260,25 @@ export class LeadsService {
 
   /**
    * Build the SQL `ORDER BY` clause for the Lead list. Default priority
-   * buckets (requested 2026-09-12):
+   * buckets (Decision 0.2, refined 2026-09-12):
    *   0  OVERDUE   - state NEW AND created >30m ago (past the to-first-touch
    *                  SLA; unanswered NEW that need immediate attention)
    *   1  NEW       - state NEW but still within the 30m window (fresh)
    *   2  everything else
-   * Within each bucket, most-recent-first (`createdAt DESC`) so the latest
-   * lead in that bucket floats up.
+   * Within each bucket, MOST RECENT ACTIVITY first (`updatedAt DESC`).
+   *
+   * The tiebreaker is `updatedAt`, not `createdAt`: Decision 0.2 specifies
+   * "to New -> Most recent activity" and the "Last Activity" column the
+   * operator sorts by renders `updatedAt`. Sorting on `createdAt` meant a lead
+   * worked five minutes ago could sit below one that had merely been created
+   * more recently and never touched - the ordering contradicted the column
+   * displayed next to it.
+   *
+   * `createdAt DESC` is kept as the final tiebreaker so the order stays
+   * deterministic when two leads share an `updatedAt` (bulk imports and the
+   * seed create many rows in the same millisecond), which is what keeps
+   * server pagination from dropping or duplicating a row across pages.
+   *
    * When the page passes `sortBy`/`sortDir` (server-side sort, T-SRVPG),
    * that column + direction wins instead. `sortBy` is whitelisted by the
    * DTO enum so it can never inject SQL.
@@ -284,17 +296,18 @@ export class LeadsService {
         WHEN "state"='NEW' THEN 1
         ELSE 2
       END) ASC,
+      "updatedAt" DESC,
       "createdAt" DESC
     `;
   }
 
   /**
    * GET /api/leads - the Lead Inbox. Returns the page-shaped result the
-   * UI expects (rows + total + summary counts). Order: overdue NEW leads
-   * first (unanswered >30m), then fresh NEW, then the rest - each bucket
-   * most-recent first (`createdAt DESC`) - requested 2026-09-12. When the
-   * page passes `sortBy`, that wins. Enforced server-side so pagination
-   * returns a consistent order (T-SRVPG).
+   * UI expects (rows + total + summary counts). Order (Decision 0.2):
+   * overdue NEW leads first (unanswered >30m), then fresh NEW, then the
+   * rest - each bucket MOST RECENT ACTIVITY first (`updatedAt DESC`, tie-broken
+   * by `createdAt DESC`). When the page passes `sortBy`, that wins. Enforced
+   * server-side so pagination returns a consistent order (T-SRVPG).
    */
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
     return withRlsContext(
