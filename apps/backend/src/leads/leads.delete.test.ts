@@ -67,12 +67,12 @@ const PHONE = (n: number) =>
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
-  // teamId: TEAM_ID - the lead_insert RLS policy requires
-  // Lead.teamId = app.user_team_id, so the seed context must carry the
-  // team (the reassign.test.ts pattern does the same).
+  // ADMIN satisfies every policy by role alone - the lead_insert policy
+  // resolves team membership via TeamMember / Team.managerId (the
+  // app.user_team_id GUC was removed in the T-TEAM-AUTHORITATIVE cutover).
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_ID, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -92,7 +92,6 @@ function actorFor(
     sub,
     email: `${sub}@test.local`,
     role,
-    teamId: role === 'ADMIN' ? null : TEAM_ID,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -125,16 +124,27 @@ beforeAll(async () => {
     ] as const) {
       await db.user.upsert({
         where: { id },
-        update: { teamId: TEAM_ID, role },
+        update: { role },
         create: {
           id,
           email: `${id}@test.local`,
           name: `Delete Test ${role}`,
           role,
-          teamId: TEAM_ID,
           organizationId: ORG,
           mustChangePassword: false,
         },
+      });
+    }
+
+    await db.team.update({ where: { id: TEAM_ID }, data: { managerId: MGR_ID } });
+    for (const [userId, teamId] of [
+      [TC_ID, TEAM_ID],
+      [SE_ID, TEAM_ID],
+    ] as const) {
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId, teamId } },
+        update: {},
+        create: { userId, teamId, organizationId: ORG },
       });
     }
 

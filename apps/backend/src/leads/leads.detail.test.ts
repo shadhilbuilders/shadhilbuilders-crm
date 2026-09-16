@@ -1,18 +1,5 @@
 // Lead Detail endpoints - findOne + activities integration test.
-//
-// Real-DB tests (no mocks), mirroring leads.reassign.test.ts. The service
-// methods run inside withRlsContext(actor) so we use the bare prisma
-// client to seed fixtures under an admin actor (who can write everything),
-// then invoke leads.findOne / leads.activities with the actor-under-test.
-//
-// What we cover (each = one `it`):
-//   1. findOne returns the full detail row (name, phone, email, source,
-//      status, ownerName, coOwnerName, teamId, projectId, timestamps).
-//   2. findOne 404s for a missing lead.
-//   3. findOne 404s for a lead the actor cannot see (RLS-silent-zero).
-//   4. activities returns the timeline oldest → newest with userName joined.
-//   5. activities 404s for a missing lead.
-//   6. activities 404s for a lead the actor cannot see.
+// Real-DB tests (no mocks), mirroring leads.reassign.test.ts.
 import {
   afterAll,
   beforeAll,
@@ -23,6 +10,7 @@ import {
 } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
+import { createId } from '@paralleldrive/cuid2';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -31,14 +19,13 @@ import { LeadsService } from './leads.service';
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
-// Per-test unique IDs so re-runs don't collide on FK / unique constraints.
-const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const TEAM_A_ID = `test-detail-teamA-${RUN_TAG}`;
-const TEAM_B_ID = `test-detail-teamB-${RUN_TAG}`;
-const ADMIN_ID = `test-detail-admin-${RUN_TAG}`;
-const TC_A_ID = `test-detail-tcA-${RUN_TAG}`;
-const TC_B_ID = `test-detail-tcB-${RUN_TAG}`;
-const LEAD_ID = `test-detail-lead-${RUN_TAG}`;
+// Per-test unique IDs using real cuid2 so they pass z.cuid2() validation.
+const TEAM_A_ID = createId();
+const TEAM_B_ID = createId();
+const ADMIN_ID = createId();
+const TC_A_ID = createId();
+const TC_B_ID = createId();
+const LEAD_ID = createId();
 
 const TEST_LEAD_IDS: string[] = [LEAD_ID];
 // Every business row now carries organizationId (T-ORG multitenancy).
@@ -48,17 +35,16 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID, organizationId: ORG },
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
 
-function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role' | 'teamId'>): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
-    teamId: overrides.teamId,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -74,7 +60,7 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_A_ID,
-        name: `Detail Test Team A ${RUN_TAG}`,
+        name: `Detail Test Team A ${TEAM_A_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
@@ -83,60 +69,67 @@ beforeAll(async () => {
       update: {},
       create: {
         id: TEAM_B_ID,
-        name: `Detail Test Team B ${RUN_TAG}`,
+        name: `Detail Test Team B ${TEAM_B_ID.slice(0, 8)}`,
         organizationId: ORG,
       },
     });
     await db.user.upsert({
       where: { id: ADMIN_ID },
-      update: { teamId: TEAM_A_ID, role: 'ADMIN' },
+      update: { role: 'ADMIN' },
       create: {
         id: ADMIN_ID,
         email: `${ADMIN_ID}@test.local`,
         name: 'Detail Test Admin',
         role: 'ADMIN',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_A_ID },
-      update: { teamId: TEAM_A_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_A_ID,
         email: `${TC_A_ID}@test.local`,
         name: 'Detail Test TC A',
         role: 'TELECALLER',
-        teamId: TEAM_A_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
     await db.user.upsert({
       where: { id: TC_B_ID },
-      update: { teamId: TEAM_B_ID, role: 'TELECALLER' },
+      update: { role: 'TELECALLER' },
       create: {
         id: TC_B_ID,
         email: `${TC_B_ID}@test.local`,
         name: 'Detail Test TC B',
         role: 'TELECALLER',
-        teamId: TEAM_B_ID,
         organizationId: ORG,
         mustChangePassword: false,
       },
     });
+    for (const [userId, teamId] of [
+      [TC_A_ID, TEAM_A_ID],
+      [TC_B_ID, TEAM_B_ID],
+    ] as const) {
+      await db.teamMember.upsert({
+        where: { userId_teamId: { userId, teamId } },
+        update: {},
+        create: { userId, teamId, organizationId: ORG },
+      });
+    }
     await db.lead.upsert({
       where: { id: LEAD_ID },
       update: {
-        phone: `91${RUN_TAG.slice(0, 8)}002`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}002`,
+        phone: `91${LEAD_ID.slice(0, 8)}002`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}002`,
       },
       create: {
         id: LEAD_ID,
-        name: `Detail Test Lead ${RUN_TAG}`,
-        phone: `91${RUN_TAG.slice(0, 8)}002`,
-        phoneE164: `91${RUN_TAG.slice(0, 8)}002`,
+        name: `Detail Test Lead ${LEAD_ID.slice(0, 8)}`,
+        phone: `91${LEAD_ID.slice(0, 8)}002`,
+        phoneE164: `91${LEAD_ID.slice(0, 8)}002`,
         email: 'detail@test.local',
         source: 'WEBSITE',
         state: 'NEW',
@@ -192,7 +185,7 @@ describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
   it('returns the full detail row for a visible lead', async () => {
     const leads = makeLeadsService();
     const result = await leads.findOne(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+      actorFor({ sub: ADMIN_ID, role: 'ADMIN' }),
       LEAD_ID,
     );
     expect(result.id).toBe(LEAD_ID);
@@ -216,8 +209,8 @@ describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
     const leads = makeLeadsService();
     await expect(
       leads.findOne(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
-        `test-detail-missing-${RUN_TAG}`,
+        actorFor({ sub: ADMIN_ID, role: 'ADMIN' }),
+        createId(), // non-existent cuid2
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -229,7 +222,7 @@ describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
     // a missing row - correct for this actor).
     await expect(
       leads.findOne(
-        actorFor({ sub: TC_B_ID, role: 'TELECALLER', teamId: TEAM_B_ID }),
+        actorFor({ sub: TC_B_ID, role: 'TELECALLER'}),
         LEAD_ID,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -264,7 +257,7 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
     });
 
     const result = await leads.activities(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
+      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       LEAD_ID,
     );
     expect(result.length).toBeGreaterThanOrEqual(2);
@@ -281,8 +274,8 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
     const leads = makeLeadsService();
     await expect(
       leads.activities(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN', teamId: TEAM_A_ID }),
-        `test-detail-missing-${RUN_TAG}`,
+        actorFor({ sub: ADMIN_ID, role: 'ADMIN' }),
+        createId(), // non-existent cuid2
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -291,7 +284,7 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
     const leads = makeLeadsService();
     await expect(
       leads.activities(
-        actorFor({ sub: TC_B_ID, role: 'TELECALLER', teamId: TEAM_B_ID }),
+        actorFor({ sub: TC_B_ID, role: 'TELECALLER'}),
         LEAD_ID,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);

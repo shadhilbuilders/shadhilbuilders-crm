@@ -11,6 +11,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ orgId: 'org-1', projectId: 'proj-1' }),
+  // T-BOOK-APPROVE: the page gained router.push for the "View details" row
+  // action, so this mock must export useRouter or every render throws.
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
 }));
 
 // Slug-based URL scheme: the page reads org/project SLUGS from the tenant
@@ -32,6 +35,13 @@ vi.mock('@/hooks/queries/crm', () => ({
     isPending: false,
   })),
   useEditBooking: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+  })),
+  // T-BOOK-APPROVE: BookingApprovalDialog (mounted by this page) calls
+  // useUpdateBooking. A partial mock here makes every page render throw
+  // "No useUpdateBooking export is defined on the @/hooks/queries/crm mock".
+  useUpdateBooking: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
   })),
@@ -76,6 +86,7 @@ describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
           leadId: 'lead-1',
           leadName: 'Priya Sharma',
           unitId: 'unit-1',
+          unitNumber: 'A-101',
           userId: 'u-1',
           userName: 'Sales Exec',
           amount: '7500000',
@@ -91,6 +102,7 @@ describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
           leadId: 'lead-2',
           leadName: 'Rajesh Kumar',
           unitId: 'unit-2',
+          unitNumber: 'B-201',
           userId: 'u-2',
           userName: 'Sales Exec',
           amount: '4500000',
@@ -107,10 +119,22 @@ describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
     } as never);
 
     const html = renderToStaticMarkup(<BookingsPage />);
-    // Lead column links back to the parent lead
-    expect(html).toContain('Priya Sharma');
+    // T-BOOK-LINK: Unit (first column) is the row's single clickable link and
+    // opens the BOOKING. Lead is plain text (user direction).
+    function tagAfter(marker: string): string {
+      const at = html.indexOf(marker);
+      if (at === -1) return '';
+      const end = html.indexOf('>', at);
+      return end === -1 ? html.slice(at) : html.slice(at, end + 1);
+    }
+    expect(tagAfter('data-qa="booking-unit-link"')).toContain(
+      'href="/org-1/projects/proj-1/bookings/b-1"',
+    );
+    // The lead is NOT a link.
+    expect(html).not.toContain('booking-lead-link');
+    expect(html).not.toContain('href="/org-1/projects/proj-1/leads/lead-1"');
+    expect(html).toMatch(/data-qa="booking-lead">Priya Sharma</);
     expect(html).toContain('Rajesh Kumar');
-    expect(html).toContain('href="/org-1/projects/proj-1/leads/lead-1"');
     // Status badges via labelFor (NOT raw enum)
     expect(html).toContain('Token received');
     expect(html).toContain('On hold');
@@ -121,6 +145,76 @@ describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
     expect(html).toContain('₹5,00,000');
     // Badge test ID
     expect(html).toMatch(/data-qa="booking-status-badge"/);
+  });
+
+  // T-BOOK-LINK: Unit leads the column order (it is the booking's natural key).
+  it('renders Unit before Lead', () => {
+    mockedUseBookings.mockReturnValue({
+      data: [
+        {
+          id: 'b-1',
+          leadId: 'lead-1',
+          leadName: 'Priya Sharma',
+          unitId: 'unit-1',
+          unitNumber: 'A-101',
+          userName: 'Sales Exec',
+          amount: '7500000',
+          tokenAmount: '500000',
+          status: 'TOKEN',
+          approvedByName: null,
+          createdAt: '2026-09-04T08:30:00Z',
+          updatedAt: '2026-09-04T08:30:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingsPage />);
+    const unitIdx = html.indexOf('>Unit<');
+    const leadIdx = html.indexOf('>Lead<');
+    expect(unitIdx).toBeGreaterThan(-1);
+    expect(leadIdx).toBeGreaterThan(-1);
+    expect(unitIdx).toBeLessThan(leadIdx);
+  });
+
+  // T-BOOK-APPROVE + T-BOOK-UNIT: the row exposes the unit no, and the Actions
+  // menu is where the manager decision now lives.
+  //
+  // The "Awaiting approval" hint and the Approve/Reject item are gated on
+  // `canApprove = mounted && canApproveBookings(...)`, and `mounted` flips only
+  // in useEffect - which never runs under renderToStaticMarkup. So this test
+  // pins what SSR can show (unit no + the actions trigger); the approval
+  // gating itself is covered by booking-roles.test.ts and
+  // BookingApprovalDialog.test.tsx.
+  it('shows the unit number and a row-actions trigger', () => {
+    mockedUseBookings.mockReturnValue({
+      data: [
+        {
+          id: 'b-1',
+          leadId: 'lead-1',
+          leadName: 'Priya Sharma',
+          unitId: 'unit-1',
+          unitNumber: 'A-101',
+          userName: 'Sales Exec',
+          amount: '7500000',
+          tokenAmount: '500000',
+          status: 'TOKEN',
+          approvedByName: null,
+          createdAt: '2026-09-04T08:30:00Z',
+          updatedAt: '2026-09-04T08:30:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingsPage />);
+    // The Unit column is first and its cell is now a LINK to the booking.
+    expect(html).toMatch(/data-qa="booking-unit-link"[^>]*>A-101</);
+    // Row actions menu is present (Edit / Delete / View details, + Approve for
+    // a manager on a TOKEN row).
+    expect(html).toMatch(/data-qa="data-table-row-actions-button"/);
   });
 
   it('renders the retryable error state when the query has an error', () => {

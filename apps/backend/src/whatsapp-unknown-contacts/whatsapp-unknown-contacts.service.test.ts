@@ -20,13 +20,18 @@ const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 const TEST_USER_ID = 'test-wa-uc-admin-' + Date.now();
-const TEST_TEAM_ID = 'test-wa-uc-team-' + Date.now();
+// T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): this id is now also
+// passed through CreateLeadDtoSchema's `teamId: z.cuid2()` validation (the
+// convert() test below picks it explicitly), so it must be a lowercase-
+// alphanumeric cuid2-shaped string - no hyphens, unlike the other
+// test-id constants in this file.
+const TEST_TEAM_ID = 'testwauctm' + Date.now().toString();
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
@@ -34,21 +39,20 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 async function ensureFixtures(): Promise<void> {
   if (prisma === null) return;
   await adminSeed(async (db) => {
-    // Team first (FK target for User.teamId)
+    // Team first (FK target for the TeamMember rows below)
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'WA-UC Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: { id: TEST_TEAM_ID, name: `WA-UC Test Team ${TEST_TEAM_ID}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
-      update: { teamId: TEST_TEAM_ID, role: 'ADMIN' },
+      update: { role: 'ADMIN' },
       create: {
         id: TEST_USER_ID,
         email: `wa-uc-admin-${Date.now()}@example.com`,
         name: 'WA-UC Test Admin',
         role: 'ADMIN',
-        teamId: TEST_TEAM_ID,
         mustChangePassword: false,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
@@ -61,7 +65,6 @@ function makeAdminActor(): JwtPayload {
     sub: TEST_USER_ID,
     email: 'wa-uc-admin@example.com',
     role: 'ADMIN',
-    teamId: TEST_TEAM_ID,
     organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     iat: 0,
     exp: 0,
@@ -191,6 +194,11 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         phone: c.phoneE164,
         source: 'WHATSAPP',
         notes: 'First message: Hi, I am interested in 3BHK in Shadhil Meadows',
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): ADMIN's
+        // create-lead flow no longer defaults to the actor's own JWT
+        // teamId claim (retired) - pick the test team explicitly, same
+        // as any other ADMIN-initiated cross-team lead create.
+        teamId: TEST_TEAM_ID,
       });
 
       // The Lead has a real id, the right state (NEW), and the

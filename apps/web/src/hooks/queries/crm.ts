@@ -10,6 +10,7 @@
 // so the skeleton only renders on first load, not on refetch (avoids the
 // "stale data → skeleton → fresh data" flicker on navigation).
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 import { useRealtimeChannel } from '@/hooks/use-realtime-channel';
@@ -580,9 +581,52 @@ export function useBooking(id: string | null) {
   });
 }
 
+/** Booking status changes move Unit.status (T-INV-SYNC: a DB trigger recomputes
+ *  it), so ANY booking write must also refresh the inventory caches. Without
+ *  this the two pages disagree for up to the cache staleTime after a change. */
+function invalidateBookingAndInventory(queryClient: QueryClient, bookingId?: string) {
+  void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+  if (bookingId !== undefined) {
+    void queryClient.invalidateQueries({ queryKey: ['bookings', bookingId] });
+  }
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+}
+
 /**
- * Create a new booking in HOLD state. Invalidates the bookings list and
- * the parent lead's caches on success.
+ * T-BOOK-LEADSYNC: a booking write also moves `Lead.state` server-side
+ * (HOLD → NEGOTIATION, TOKEN → BOOKING_INITIATED, APPROVED → WON, and a
+ * cancel/reject or delete releases it back to NEGOTIATION). Without refreshing
+ * the lead caches the leads page/board keeps showing the pre-booking state for
+ * up to the 5-minute staleTime - the exact "lead and booking status is not in
+ * sync" symptom, this time in the client rather than the database.
+ *
+ * `leadId` is optional because the transition/edit/delete callers only know the
+ * booking id; the `['leads']` list is invalidated regardless, which is what the
+ * pipeline board and the leads grid actually read.
+ */
+function invalidateLeadCaches(queryClient: QueryClient, leadId?: string) {
+  void queryClient.invalidateQueries({ queryKey: ['leads'] });
+  if (typeof leadId === 'string' && leadId.length > 0) {
+    void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+  }
+}
+
+/** Every booking write: bookings + inventory + the parent lead's caches.
+ *  Exported for the invalidation test - this repo has no
+ *  @testing-library/react, so the wiring is asserted against a real
+ *  QueryClient rather than a rendered hook. */
+export function invalidateBookingSideEffects(
+  queryClient: QueryClient,
+  bookingId?: string,
+  leadId?: string,
+) {
+  invalidateBookingAndInventory(queryClient, bookingId);
+  invalidateLeadCaches(queryClient, leadId);
+}
+
+/**
+ * Create a new booking in HOLD state. Invalidates the bookings list, the
+ * inventory grid (the unit moves to HOLD), and the parent lead's caches.
  */
 export function useCreateBooking() {
   const queryClient = useQueryClient();
@@ -590,22 +634,19 @@ export function useCreateBooking() {
     mutationFn: (body: CreateBookingDto) =>
       api<unknown>('/bookings', { method: 'POST', json: body }),
     onSuccess: (data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
       const leadId =
         typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
           ? (data as { leadId: string }).leadId
           : variables.leadId;
-      if (typeof leadId === 'string') {
-        void queryClient.invalidateQueries({ queryKey: ['leads'] });
-        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      }
+      invalidateBookingSideEffects(queryClient, undefined, leadId);
     },
   });
 }
 
 /**
  * Advance booking state (HOLD → TOKEN → APPROVED, etc.). Manager-only
- * approval. Invalidates the bookings list on success.
+ * approval. Invalidates the bookings list, the inventory grid, and the parent
+ * lead (its state moves with the booking).
  */
 export function useUpdateBooking() {
   const queryClient = useQueryClient();
@@ -615,9 +656,11 @@ export function useUpdateBooking() {
         method: 'PATCH',
         json: args.body,
       }),
-    onSuccess: (_data, args) => {
-      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      void queryClient.invalidateQueries({ queryKey: ['bookings', args.id] });
+    onSuccess: (data, args) => {
+      // The response is the updated BookingRow and carries leadId, so the
+      // single-lead cache is refreshed too, not just the list.
+      const leadId = (data as { leadId?: string } | undefined)?.leadId;
+      invalidateBookingSideEffects(queryClient, args.id, leadId);
     },
   });
 }
@@ -631,21 +674,27 @@ export function useEditBooking() {
         method: 'PUT',
         json: args.body,
       }),
-    onSuccess: (_data, args) => {
-      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      void queryClient.invalidateQueries({ queryKey: ['bookings', args.id] });
+    onSuccess: (data, args) => {
+      const leadId = (data as { leadId?: string } | undefined)?.leadId;
+      invalidateBookingSideEffects(queryClient, args.id, leadId);
     },
   });
 }
 
-/** Delete a booking. ADMIN/OWNER only (backend enforces). */
+/**
+ * Delete a booking. ADMIN/OWNER only (backend enforces). Frees the unit AND
+ * releases the parent lead back to NEGOTIATION (T-BOOK-LEADSYNC), so the lead
+ * caches must go too. The row is gone after this call, so the lead id cannot be
+ * read from the response - the `['leads']` list invalidation covers the grids
+ * and the board; a stale single-lead detail cache is refetched on next open.
+ */
 export function useDeleteBooking() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api<{ id: string }>(`/bookings/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      invalidateBookingSideEffects(queryClient);
     },
   });
 }

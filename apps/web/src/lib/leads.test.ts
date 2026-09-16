@@ -1,3 +1,4 @@
+// @vitest-environment node
 // lib/leads.ts - pure helpers (autoplan 2026-09-07, plan T5).
 //
 // The tripwire test pins LEAD_STATES to the api-types enum: a state added
@@ -6,7 +7,15 @@
 import { LeadStateSchema } from '@shadhil/api-types';
 import { describe, expect, it } from 'vitest';
 
-import { isOverdue, LEAD_STATES, OVERDUE_AFTER_MIN } from './leads';
+import {
+  AGE_URGENT_AFTER_MIN,
+  AGE_WARN_AFTER_MIN,
+  isOverdue,
+  leadAgeTier,
+  LEAD_AGE_TIER_CLASS,
+  LEAD_STATES,
+  OVERDUE_AFTER_MIN,
+} from './leads';
 
 describe('LEAD_STATES mirror', () => {
   it('matches the api-types LeadStateSchema enum exactly (order + values)', () => {
@@ -65,5 +74,96 @@ describe('isOverdue', () => {
 
   it('false: missing status', () => {
     expect(isOverdue({ createdAt: minutesAgo(60) })).toBe(false);
+  });
+});
+// Row-tint tiers (user request 2026-09-15): NEW leads get progressively
+// warmer rows at 10 / 20 / 30 minutes. Pinned here because the boundaries ARE
+// the feature - an off-by-one would tint at the wrong minute and nobody would
+// notice in review.
+describe('leadAgeTier', () => {
+  const NOW = Date.parse('2026-09-15T12:00:00.000Z');
+  /** ISO createdAt for a NEW lead created `min` minutes before NOW. */
+  const createdMinAgo = (min: number) =>
+    new Date(NOW - min * 60_000).toISOString();
+
+  function tier(minAgo: number, status = 'NEW') {
+    return leadAgeTier({ status, createdAt: createdMinAgo(minAgo) }, NOW);
+  }
+
+  it('null (default white): under the first boundary', () => {
+    expect(tier(0)).toBeNull();
+    expect(tier(9)).toBeNull();
+    expect(tier(9.99)).toBeNull();
+  });
+
+  it('age (light yellow): 10 min up to just under 20', () => {
+    expect(tier(AGE_WARN_AFTER_MIN)).toBe('age');
+    expect(tier(15)).toBe('age');
+    expect(tier(19.99)).toBe('age');
+  });
+
+  it('warn (dark yellow): 20 min up to just under 30', () => {
+    expect(tier(AGE_URGENT_AFTER_MIN)).toBe('warn');
+    expect(tier(25)).toBe('warn');
+    expect(tier(29.99)).toBe('warn');
+  });
+
+  it('overdue (red): 30 min and beyond', () => {
+    expect(tier(OVERDUE_AFTER_MIN)).toBe('overdue');
+    expect(tier(31)).toBe('overdue');
+    expect(tier(60 * 24)).toBe('overdue');
+  });
+
+  it('boundaries belong to the LATER tier - no un-tinted gaps', () => {
+    // Walk the whole range and assert every minute maps to exactly one tier
+    // (never null above the first boundary, never skipping a tier).
+    const seen = new Set<string | null>();
+    for (let m = 10; m <= 40; m++) seen.add(tier(m));
+    expect([...seen].sort()).toEqual(['age', 'overdue', 'warn']);
+    expect(seen.has(null)).toBe(false);
+  });
+
+  it('agrees with isOverdue at the 30-minute boundary', () => {
+    for (const m of [5, 10, 20, 29, 30, 45]) {
+      const row = { status: 'NEW', createdAt: createdMinAgo(m) };
+      const red = leadAgeTier(row, NOW) === 'overdue';
+      // isOverdue reads the real clock, so only compare the boundary rule.
+      expect(red).toBe(m >= OVERDUE_AFTER_MIN);
+    }
+  });
+
+  it('null: non-NEW states are exempt, however old', () => {
+    for (const status of ['CONTACTED', 'VISITED', 'NEGOTIATION', 'WON', 'LOST']) {
+      expect(tier(600, status)).toBeNull();
+    }
+  });
+
+  it('null: unknown data fails closed', () => {
+    expect(leadAgeTier(null, NOW)).toBeNull();
+    expect(leadAgeTier(undefined, NOW)).toBeNull();
+    expect(leadAgeTier({ status: 'NEW' }, NOW)).toBeNull();
+    expect(leadAgeTier({ status: 'NEW', createdAt: '' }, NOW)).toBeNull();
+    expect(leadAgeTier({ status: 'NEW', createdAt: 'not-a-date' }, NOW)).toBeNull();
+    expect(leadAgeTier({ createdAt: createdMinAgo(60) }, NOW)).toBeNull();
+  });
+
+  it('tier classes exist, differ, and carry a dark-mode variant', () => {
+    const classes = Object.values(LEAD_AGE_TIER_CLASS);
+    expect(new Set(classes).size).toBe(classes.length);
+    for (const cls of classes) {
+      expect(cls).toMatch(/\bbg-/);
+      expect(cls).toMatch(/\bdark:bg-/);
+    }
+    // The three tints must be visually distinct colours.
+    expect(LEAD_AGE_TIER_CLASS.age).toContain('bg-yellow');
+    expect(LEAD_AGE_TIER_CLASS.warn).toContain('bg-yellow');
+    expect(LEAD_AGE_TIER_CLASS.overdue).toContain('bg-red');
+  });
+
+  it('the warn tier is a deeper yellow than the age tier', () => {
+    const shade = (cls: string) => Number(/-(\d{2,3})\b/.exec(cls)?.[1] ?? 0);
+    expect(shade(LEAD_AGE_TIER_CLASS.warn)).toBeGreaterThan(
+      shade(LEAD_AGE_TIER_CLASS.age),
+    );
   });
 });

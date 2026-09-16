@@ -36,7 +36,6 @@ const managerActor: Actor = {
   sub: 'mgr-1',
   email: 'manager@shadhilbuilders.in',
   role: 'MANAGER',
-  teamId: 'team-mgr',
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: NOW,
   exp: NOW + 3600,
@@ -46,7 +45,6 @@ const telecallerActor: Actor = {
   sub: 'tc-1',
   email: 'telecaller@shadhilbuilders.in',
   role: 'TELECALLER',
-  teamId: 'team-tc',
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: NOW,
   exp: NOW + 3600,
@@ -56,7 +54,6 @@ const adminActor: Actor = {
   sub: 'admin-1',
   email: 'admin@shadhilbuilders.in',
   role: 'ADMIN',
-  teamId: null,
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: NOW,
   exp: NOW + 3600,
@@ -66,7 +63,6 @@ const ownerActor: Actor = {
   sub: 'owner-1',
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
-  teamId: null,
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: NOW,
   exp: NOW + 3600,
@@ -104,7 +100,20 @@ function makeService(opts: StubOptions = {}) {
   // withRlsContext first calls tx.$executeRawUnsafe('SET LOCAL ...')
   // for the actor claim, then invokes our callback with the same tx.
   // Both calls must land on the same mock surface.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue(null);
   const txMock = {
+    user: {
+      findUnique: userFindUnique,
+      update: userUpdate,
+    },
+    // update() resolves the display team inside the same transaction
+    // (resolveDisplayTeamId reads Team/TeamMember, both FORCE RLS).
+    teamMember: { findFirst: teamMemberFindFirst },
+    team: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
@@ -326,23 +335,46 @@ describe('changePassword - missing Account row', () => {
 });
 
 describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
-  function makeTeamService() {
-    const teamFindFirst = vi.fn();
-    const teamFindUnique = vi.fn();
+  // T-TEAM-AUTHORITATIVE (2026-09-13): teamMembers() resolves via
+  // team.findMany with TWO different where shapes - `{ managerId }` for
+  // the manager's own managed teams, `{ id: { in } }` for the keyed
+  // lookup that collects each team's manager. Dispatch on the where
+  // shape rather than call order (a TELECALLER only ever makes the
+  // second call, never the first).
+  function makeTeamService(
+    managedTeams: Array<{ id: string }> = [],
+    teamsById: Array<{ managerId: string | null }> = [{ managerId: 'mgr-1' }],
+    ownTeamMemberships: Array<{ teamId: string }> = [],
+  ) {
+    const teamFindMany = vi.fn(
+      async (args: { where: { managerId?: string; id?: { in: string[] }; deletedAt?: null } }) => {
+        if ('managerId' in args.where) return managedTeams;
+        return teamsById;
+      },
+    );
     const userFindMany = vi.fn();
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): non-manager actors
+    // resolve their own teams via TeamMember, not the JWT teamId claim.
+    const teamMemberFindMany = vi.fn().mockResolvedValue(ownTeamMemberships);
+    // teamMembers() now runs inside ONE withRlsContext transaction, so the
+    // tx must expose every accessor it touches (the outer shape alone is
+    // not enough). Mocks are shared so assertions still see the calls.
+    const txMock = {
+      team: { findMany: teamFindMany },
+      user: { findMany: userFindMany },
+      teamMember: { findMany: teamMemberFindMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    };
     const fakeClient = {
-      team: {
-        findFirst: teamFindFirst,
-        findUnique: teamFindUnique,
-      },
-      user: {
-        findMany: userFindMany,
-      },
+      team: { findMany: teamFindMany },
+      user: { findMany: userFindMany },
+      teamMember: { findMany: teamMemberFindMany },
+      $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, teamFindUnique, userFindMany },
+      mocks: { teamFindMany, userFindMany, teamMemberFindMany },
     };
   }
 
@@ -355,38 +387,65 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     );
   });
 
-  it('MANAGER resolves their team via Team.managerId and lists its members', async () => {
-    const { service, mocks } = makeTeamService();
-    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
-    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+  it('MANAGER resolves EVERY team they lead via Team.managerId and lists all members', async () => {
+    const { service, mocks } = makeTeamService([{ id: 'team-mgr' }], [{ managerId: 'mgr-1' }]);
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(managerActor);
-    expect(mocks.teamFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { managerId: 'mgr-1' } }),
-    );
+    expect(mocks.teamFindMany).toHaveBeenNthCalledWith(1, {
+      where: { managerId: 'mgr-1', deletedAt: null },
+    });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: 'team-mgr' }, { id: 'mgr-1' }] },
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-mgr'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('MANAGER leading multiple teams sees members across ALL of them', async () => {
+    const { service, mocks } = makeTeamService(
+      [{ id: 'team-a' }, { id: 'team-b' }],
+      [{ managerId: 'mgr-1' }, { managerId: 'mgr-1' }],
+    );
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(managerActor);
+    expect(mocks.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-a', 'team-b'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
       }),
     );
   });
 
   it('TELECALLER sees their team + the team manager (so they can loop the manager)', async () => {
-    const { service, mocks } = makeTeamService();
-    mocks.teamFindUnique.mockResolvedValue({ managerId: 'mgr-1' });
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via the
+    // telecaller's OWN TeamMember rows, not the JWT teamId claim.
+    const { service, mocks } = makeTeamService([], [{ managerId: 'mgr-1' }], [{ teamId: 'team-tc' }]);
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(telecallerActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ teamId: 'team-tc' }, { id: 'mgr-1' }] },
+        where: {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: ['team-tc'] } } } },
+            { id: { in: ['mgr-1'] } },
+          ],
+        },
       }),
     );
   });
 
   it('returns [] when the actor has no team', async () => {
-    const { service, mocks } = makeTeamService();
-    const noTeamActor: Actor = { ...telecallerActor, teamId: null };
-    const result = await service.teamMembers(noTeamActor);
+    const { service, mocks } = makeTeamService([], [], []);
+    const result = await service.teamMembers(telecallerActor);
     expect(result).toEqual([]);
     expect(mocks.userFindMany).not.toHaveBeenCalled();
   });
@@ -395,16 +454,32 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
 describe('list - role facet filter + server pagination (autoplan 2026-09-09)', () => {
   function makeListService() {
     const teamFindFirst = vi.fn();
+    // T-TEAM-AUTHORITATIVE (2026-09-13): list()'s MANAGER scope resolves
+    // via findMany (a manager may lead multiple teams).
+    const teamFindMany = vi.fn().mockResolvedValue([]);
     const userFindMany = vi.fn();
     const userCount = vi.fn();
-    const fakeClient = {
-      team: { findFirst: teamFindFirst },
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): projects come from
+    // the resolved team's ProjectTeam rows now (ProjectMember retired).
+    const projectTeamFindMany = vi.fn().mockResolvedValue([]);
+    // list() now runs inside ONE withRlsContext transaction - the tx must
+    // expose every accessor it touches. Mocks shared so assertions see calls.
+    const txMock = {
+      team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
+      projectTeam: { findMany: projectTeamFindMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    };
+    const fakeClient = {
+      team: { findFirst: teamFindFirst, findMany: teamFindMany },
+      user: { findMany: userFindMany, count: userCount },
+      projectTeam: { findMany: projectTeamFindMany },
+      $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, userFindMany, userCount },
+      mocks: { teamFindFirst, teamFindMany, userFindMany, userCount, projectTeamFindMany },
     };
   }
 
@@ -451,13 +526,17 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
 
   it('MANAGER with a role filter → team scope AND role IN ([...])', async () => {
     const { service, mocks } = makeListService();
-    mocks.teamFindFirst.mockResolvedValue({ id: 'team-mgr' });
+    mocks.teamFindMany.mockResolvedValue([{ id: 'team-mgr' }]);
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
     await service.list(managerActor, { role: 'TELECALLER', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, teamId: 'team-mgr', role: { in: ['TELECALLER'] } },
+        where: {
+          deletedAt: null,
+          teamMemberships: { some: { teamId: { in: ['team-mgr'] } } },
+          role: { in: ['TELECALLER'] },
+        },
       }),
     );
   });
@@ -516,7 +595,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     );
   });
 
-  it('returns { rows, total } envelope', async () => {
+  it('returns { rows, total } envelope (projects come from the user\'s TEAM\'s ProjectTeam rows - T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover, ProjectMember retired)', async () => {
     const { service, mocks } = makeListService();
     mocks.userFindMany.mockResolvedValue([
       {
@@ -524,11 +603,13 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
         email: 'a@x',
         name: 'A',
         role: 'ADMIN',
-        teamId: null,
-        projectMembers: [{ project: { name: 'Shadhil Metro Heights' } }],
+        teamMemberships: [{ teamId: 'team-x' }],
       },
     ]);
     mocks.userCount.mockResolvedValue(1);
+    mocks.projectTeamFindMany.mockResolvedValue([
+      { teamId: 'team-x', project: { name: 'Shadhil Metro Heights' } },
+    ]);
     const result = await service.list(adminActor, { limit: 50, offset: 0 });
     expect(result).toEqual({
       rows: [
@@ -537,7 +618,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
           email: 'a@x',
           name: 'A',
           role: 'ADMIN',
-          teamId: null,
+          teamId: 'team-x',
           projects: ['Shadhil Metro Heights'],
         },
       ],
@@ -586,7 +667,24 @@ function makeManageService(opts: ManageStubOptions = {}) {
   const userDelete = vi.fn().mockResolvedValue({});
   const accountDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
   const auditCreate = vi.fn().mockResolvedValue({});
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): update()'s return
+  // value resolves `teamId` via resolveDisplayTeamId - a non-manager
+  // target (SALES_EXEC fixture default) reads its oldest TeamMember row.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue({ teamId: 't-1' });
+  // update() now runs wholly inside ONE withRlsContext transaction, so the
+  // tx must expose the user write, the audit row, and the Team/TeamMember
+  // reads resolveDisplayTeamId performs.
   const txMock = {
+    user: {
+      findUnique: userFindUnique,
+      update: userUpdate,
+    },
+    teamMember: { findFirst: teamMemberFindFirst },
+    team: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     auditLog: { create: auditCreate },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
@@ -597,6 +695,7 @@ function makeManageService(opts: ManageStubOptions = {}) {
       delete: userDelete,
     },
     account: { deleteMany: accountDeleteMany },
+    teamMember: { findFirst: teamMemberFindFirst },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
       cb(txMock),
   } as never;

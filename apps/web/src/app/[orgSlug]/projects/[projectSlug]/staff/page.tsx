@@ -1,16 +1,15 @@
 'use client';
 
-// Per-project Staff page - manage the working staff linked to THIS project.
-//
-// Lives under the active project (/[projectId]/staff) so it switches with
-// the project switcher and is a work-surface route. Reuses ProjectMembersBody
-// (the same link/unlink UI as the admin Projects page's "Manage staff"
-// dialog) so there's exactly one member-management surface.
+// Per-project Staff page - T-TEAM-AUTHORITATIVE (2026-09-13, Decision Audit
+// Trail #39, design doc UI3). Projects link to TEAMS, never directly to
+// users: this page is now a grouped ProjectTeam view (ProjectTeamList),
+// replacing the per-user ProjectMembersBody link/unlink surface. Staff
+// members shown here are team-derived only.
 import { useProjects } from '@/hooks/queries';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 
 import { Skeleton } from '@/components/shared/Skeleton';
-import { ProjectMembersBody } from '@/components/projects/project-form-bodies';
+import { ProjectTeamList } from '@/components/teams/project-team-list';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { useProjectId } from '@/lib/tenant-context';
 
@@ -20,8 +19,10 @@ export default function ProjectStaffPage() {
   const { data: projects } = useProjects();
   const project = projects?.find((p) => p.id === projectId) ?? null;
 
-  // Staff page is viewable by EVERYONE (any authenticated role sees member
-  // items). Only ADMIN/OWNER can link/unlink; others see Items read-only.
+  // Staff page is viewable by EVERYONE (any authenticated role sees the
+  // linked-team roster read-only). Only ADMIN/OWNER can link/unlink teams
+  // (design doc authorization matrix - stricter than the legacy per-user
+  // ProjectMember's MANAGER-inclusive capability).
   const canManage = isAdminLike(user?.role);
 
   if (sessionPending || projectId === null) {
@@ -35,26 +36,16 @@ export default function ProjectStaffPage() {
         breadcrumb={[{ label: 'Work' }, { label: 'Staff' }]}
         subtitle={
           project !== null
-            ? `Staff linked to ${project.name}.`
-            : 'Staff linked to this project.'
+            ? `Teams linked to ${project.name}.`
+            : 'Teams linked to this project.'
         }
       />
       <div className="border-border rounded-lg border p-4">
-        <ProjectMembersBody
-          project={
-            project ?? {
-              id: projectId,
-              slug: '',
-              name: 'This project',
-              address: '',
-              reraNumber: null,
-              cmdaNumber: null,
-              createdAt: new Date().toISOString(),
-            }
-          }
+        <ProjectTeamList
+          projectId={projectId}
+          projectName={project?.name ?? 'this project'}
+          projectSlug={project?.slug ?? ''}
           canManage={canManage}
-          embedded
-          onDone={() => {}}
         />
       </div>
     </div>

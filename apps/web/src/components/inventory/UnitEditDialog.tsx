@@ -26,7 +26,12 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { useUpdateUnit, useProjectOptions } from '@/hooks/queries/inventory';
-import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
+import {
+  labelFor,
+  INVENTORY_MANUAL_STATUSES,
+  isDerivedUnitStatus,
+  type InventoryManualStatus,
+} from '@/lib/labels';
 
 const FORM_ID = 'unit-edit-form';
 
@@ -65,7 +70,9 @@ const unitEditSchema = z.object({
       { message: 'Price must be a positive number' },
     ),
   // Status is a string in the form (the Select holds the raw enum value);
-  // the payload casts it to InventoryStatus on submit.
+  // the payload casts it to InventoryManualStatus on submit. T-INV-SYNC:
+  // only the off-pipeline marks are offered - HOLD/TOKEN are set by bookings,
+  // so the server DTO (UpdateUnitStatusSchema) rejects them outright.
   status: z.string(),
 });
 type UnitEditFormValues = z.infer<typeof unitEditSchema>;
@@ -89,7 +96,7 @@ export type UnitEditDialogProps = {
   projectId: string | null;
 };
 
-const STATUS_OPTIONS = INVENTORY_STATUSES.map((value) => ({
+const STATUS_OPTIONS = INVENTORY_MANUAL_STATUSES.map((value) => ({
   value,
   label: labelFor('inventory', value),
 }));
@@ -107,11 +114,20 @@ export function UnitEditFormBody({
   onSubmit,
   bhkOptions,
   facingOptions,
+  derivedStatus,
 }: {
   form: UseFormReturn<UnitEditFormValues>;
   onSubmit: (values: UnitEditFormValues) => void;
   bhkOptions: { value: string; label: string }[];
   facingOptions: { value: string; label: string }[];
+  /**
+   * T-INV-SYNC follow-up: set when the unit's status is owned by its booking
+   * (HOLD/TOKEN). The picker is replaced by a read-only row - the status is not
+   * an editable value, so offering it in a SELECT whose options cannot contain
+   * it (the server DTO allows AVAILABLE|SOLD only) both lied to the operator and
+   * made every save fail with a 400.
+   */
+  derivedStatus?: string | null;
 }) {
   return (
     <Form
@@ -178,15 +194,34 @@ export function UnitEditFormBody({
             'data-qa': 'unit-edit-price',
           },
         },
-        {
-          type: 'select',
-          name: 'status',
-          label: 'Status',
-          options: STATUS_OPTIONS,
-          selectProps: {
-            'data-qa': 'unit-edit-status',
-          },
-        },
+        // A booking-owned status cannot be chosen, so it is shown read-only
+        // instead of as a picker pre-selected with a value it does not offer.
+        derivedStatus
+          ? {
+              type: 'custom',
+              name: 'status',
+              label: 'Status',
+              render: () => (
+                <div
+                  className='flex flex-col gap-1 rounded-lg border border-input bg-muted/40 px-2.5 py-2'
+                  data-qa='unit-edit-status-derived'
+                >
+                  <span className='text-sm font-medium'>{labelFor('inventory', derivedStatus)}</span>
+                  <span className='text-xs text-muted-foreground'>
+                    Set by this unit&apos;s booking. Cancel or reject the booking to free the unit.
+                  </span>
+                </div>
+              ),
+            }
+          : {
+              type: 'select',
+              name: 'status',
+              label: 'Status',
+              options: STATUS_OPTIONS,
+              selectProps: {
+                'data-qa': 'unit-edit-status',
+              },
+            },
       ]}
     />
   );
@@ -273,6 +308,8 @@ export function UnitEditDialog({
 
   if (unit === null) return null;
   const target = unit;
+  // A booking owns HOLD/TOKEN - the dialog must not offer or submit them.
+  const derivedStatus = isDerivedUnitStatus(target.status) ? target.status : null;
 
   function handleSubmit(values: UnitEditFormValues) {
     const bhk = Number(values.bhk);
@@ -282,6 +319,11 @@ export function UnitEditDialog({
       sqft = Number(values.sqft);
     }
 
+    // Status is only submitted for units whose status is NOT booking-owned.
+    // Sending a derived status (HOLD/TOKEN) trips the server DTO
+    // (UpdateUnitStatusSchema = AVAILABLE|SOLD) with a 400 and the whole save
+    // fails - even a pure price edit. Omitting the key leaves Unit.status
+    // untouched, so the booking keeps owning it.
     const payload = {
       unitNumber: values.unitNumber.trim(),
       bhk,
@@ -290,7 +332,7 @@ export function UnitEditDialog({
         ? { facing: values.facing.trim() }
         : { facing: null }),
       ...(sqft !== undefined ? { sqft } : { sqft: null }),
-      status: values.status as InventoryStatus,
+      ...(derivedStatus ? {} : { status: values.status as InventoryManualStatus }),
     };
 
     updateUnit.mutate(
@@ -338,7 +380,13 @@ export function UnitEditDialog({
         </div>
       }
     >
-      <UnitEditFormBody form={form} onSubmit={handleSubmit} bhkOptions={bhkOptions} facingOptions={facingOptions} />
+      <UnitEditFormBody
+        form={form}
+        onSubmit={handleSubmit}
+        bhkOptions={bhkOptions}
+        facingOptions={facingOptions}
+        derivedStatus={derivedStatus}
+      />
     </Dialog>
   );
 }

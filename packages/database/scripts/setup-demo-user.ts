@@ -1,20 +1,39 @@
-// One-off: create a DEMO user with a real (non-placeholder) password and
-// reassign all seeded leads to that user, so the T-S placeholder gate
-// doesn't block the Sunday client demo.
+// One-off: create the DEMO organization + an OWNER-role demo user inside it,
+// with its own isolated demo data.
 //
 // Usage:
 //   cd packages/database && pnpm exec tsx --env-file=../../.env scripts/setup-demo-user.ts
 //
-// What it does:
-//   1. Upserts a MANAGER-role user demo@shadhilbuilders.in (password demo123)
-//   2. Upserts a credential Account for them (better-auth sign-in contract)
-//   3. Reassigns all seeded leads' ownerId to the demo user, keeps teamId
-//   4. Leaves the 5 seed users untouched (they stay in placeholder-users.json)
+// What it does (all of it scoped to DEMO_ORG_ID - the real org is untouched):
+//   1. Upserts the demo Organization row (its own tenant).
+//   2. Upserts an OWNER-role user demo@shadhilbuilders.in (password demo123)
+//      INSIDE that org, plus its credential Account.
+//   3. Upserts a demo team + project + phases + units + leads, so the demo
+//      org is not an empty shell.
+//   4. Seeds chat / notifications / bookings for the demo lists to render.
 //
-// Idempotent - re-running just resets the password and re-reassigns leads.
+// WHY A SEPARATE ORG, AND WHY THAT IS THE ONLY OPTION FOR OWNER:
+//   `User.organizationId` is single-valued (one org per user; there is no
+//   membership table), and the DB enforces
+//     one_owner_per_org  UNIQUE ("organizationId") WHERE role = 'OWNER'
+//   i.e. EXACTLY ONE OWNER PER ORG. A second OWNER therefore cannot coexist
+//   with the bootstrap org's owner - a different org is the only legal shape.
+//
+// WHY THE PREVIOUS VERSION WAS DANGEROUS (removed here):
+//   It ran `lead.updateMany({ where: { id: { not: { startsWith: 'test-' } } } })`
+//   - reassigning ~120 REAL leads from the bootstrap org to the demo user and
+//   the demo team. With the demo user in its own org that is both wrong (it
+//   would steal another tenant's rows) and pointless (RLS is org-scoped, so the
+//   demo user could not read them anyway). The demo org now gets its OWN leads.
+//
+// RLS note: this script connects as the migration/owner role, so RLS is
+// bypassed for these writes. That is deliberate - it is a provisioning script,
+// not request-path code.
+//
+// Idempotent: every write is an upsert or a scoped delete-then-insert, so
+// re-running resets the demo data without duplicating rows.
 //
 // DO NOT commit the demo user to prod: this is a local demo helper.
-// Delete the script after Sunday's demo.
 import { randomBytes, scryptSync } from 'node:crypto';
 
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -29,13 +48,23 @@ const prisma: PrismaClient = new PrismaClient({
 
 const DEMO_EMAIL = 'demo@shadhilbuilders.in';
 const DEMO_PASSWORD = 'demo123';
-const DEMO_NAME = 'Demo Manager';
-// Fixed cuid2 team id for the demo user's team (cuid2-only contract -
-// a hyphenated `demo-team` id would be rejected by the API's z.cuid2()).
-const DEMO_TEAM_ID = 'v31x9c35h91d9ciqcn6bo4dz';
-// T-ORG: demo user + all demo rows belong to the bootstrap org (matches the
-// org the migration seeds - ceid01lpfe1esm8jwsxid41k28 / Shadhil Builders).
-const DEMO_ORG_ID = 'ceid01lpfe1esm8jwsxid41k28';
+const DEMO_NAME = 'Demo Owner';
+
+// ── Demo tenant identity (fixed cuid2 ids, so re-runs stay idempotent) ──────
+const DEMO_ORG_ID = 'j6lic67mwuop8ur7epjylexz';
+const DEMO_ORG_NAME = 'Shadhil Demo';
+const DEMO_ORG_SLUG = 'demo';
+const DEMO_PROJECT_ID = 'tnvhme2fxh92kxrrjmrvokip';
+const DEMO_PROJECT_SLUG = 'demo-villas';
+const DEMO_PHASE_A = 'yennyts583urar4ztg3sa82p';
+const DEMO_PHASE_B = 'n5aak5hnpetukvoddg7gofb8';
+const DEMO_TEAM_ID = 'md4u15ycnbvdx9483hcp9tjy';
+const DEMO_LEAD_1 = 'hki6tw8qj15qpw55ol9rmc2f';
+const DEMO_LEAD_2 = 'ds531k56sxtfhiafzc9x4ont';
+const DEMO_LEAD_3 = 'njbo3jgz1jtw4d5mahuu896q';
+const DEMO_LEAD_4 = 'vmrm6cadajiv36z7j596zplo';
+const DEMO_LEAD_5 = 'ruz788er1ilinxdazl8lq74m';
+const DEMO_LEAD_WON = 'kavsu6r8uxqi6rnninmxwqi5';
 
 function hash(pw: string): string {
   const salt = randomBytes(16).toString('hex');
@@ -50,57 +79,40 @@ function hash(pw: string): string {
 }
 
 async function main() {
-  // 1. Upsert demo user (no team yet - the team needs demoUser.id).
+  // ── 1. The demo organization (its own tenant) ───────────────────────────
+  const demoOrg = await prisma.organization.upsert({
+    where: { id: DEMO_ORG_ID },
+    update: { name: DEMO_ORG_NAME, slug: DEMO_ORG_SLUG },
+    create: { id: DEMO_ORG_ID, name: DEMO_ORG_NAME, slug: DEMO_ORG_SLUG },
+  });
+
+  // ── 2. The demo user: OWNER of the demo org ─────────────────────────────
+  //
+  // mustChangePassword = FALSE even though the OWNER is the one role the gate
+  // applies to (see packages/database/src/seed.ts). Rationale: this is a
+  // throwaway local demo account whose password is published in this file and
+  // in the e2e specs, so gating it would only block the demo path - and the
+  // gate's purpose (protect a privileged account with an unknown password)
+  // does not apply. The real org's OWNER stays gated.
   const demoUser = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
     update: {
       name: DEMO_NAME,
-      role: 'MANAGER',
-      // T-S hardening (Week 5): the demo user is exempt from the
-      // mustChangePassword gate so the Sunday client demo path works
-      // without a forced rotation. The 5 seed placeholders keep the
-      // gate (see packages/database/src/seed.ts).
+      role: 'OWNER',
+      organizationId: demoOrg.id,
       mustChangePassword: false,
     },
     create: {
       email: DEMO_EMAIL,
       name: DEMO_NAME,
-      role: 'MANAGER',
-      organizationId: DEMO_ORG_ID,
+      role: 'OWNER',
+      organizationId: demoOrg.id,
       emailVerified: true,
       mustChangePassword: false,
     },
   });
 
-  // Create a fresh team for the demo user so RLS team-scoped queries
-  // return rows. The seed's MANAGER team is also available (after the
-  // Day 3 ordering-bug fix), but using a separate team keeps demo data
-  // clearly partitioned - anyone touching demo@shadhilbuilders.in can't
-  // accidentally read other users' rows.
-  //
-  // managerId MUST be set: leads.service.ts:managerTeamId() resolves the
-  // MANAGER's team via Team.findFirst({ managerId: actor.sub }), so a
-  // team with no managerId leaves the manager with teamId=null from the
-  // backend's perspective, and listWhere narrows to '__no_team__'
-  // (zero rows).
-  const demoTeam = await prisma.team.upsert({
-    where: { id: DEMO_TEAM_ID },
-    update: { name: 'Demo Team', managerId: demoUser.id },
-    create: {
-      id: DEMO_TEAM_ID,
-      name: 'Demo Team',
-      managerId: demoUser.id,
-      organizationId: DEMO_ORG_ID,
-    },
-  });
-
-  // 1b. Now that the team exists, set the demo user's teamId.
-  await prisma.user.update({
-    where: { id: demoUser.id },
-    data: { teamId: demoTeam.id },
-  });
-
-  // 2. Upsert credential Account (better-auth sign-in contract).
+  // Credential Account (better-auth sign-in contract: accountId === user.id).
   await prisma.account.upsert({
     where: {
       providerId_accountId: {
@@ -118,34 +130,154 @@ async function main() {
     },
   });
 
-  // 3. Reassign all leads to the demo user + demo team.
-  // EXCLUDE test-fixture rows (ids prefixed `test-`) - backend tests
-  // (outbound.cron.test.ts et al.) create fixtures with fixed ids and
-  // fixed owner/team; stealing them breaks RLS scoping in those tests
-  // (42501 on message.create) for any run AFTER this script executes.
-  const reassign = await prisma.lead.updateMany({
-    where: { id: { not: { startsWith: 'test-' } } },
-    data: { ownerId: demoUser.id, ownerType: 'MANAGER', teamId: demoTeam.id },
+  // ── 3. Demo team + project + inventory + leads (all inside the demo org) ─
+  const demoTteam = await prisma.team.upsert({
+    where: { id: DEMO_TEAM_ID },
+    update: { name: 'Demo Team', managerId: demoUser.id },
+    create: {
+      id: DEMO_TEAM_ID,
+      name: 'Demo Team',
+      managerId: demoUser.id,
+      organizationId: demoOrg.id,
+    },
   });
 
-  // 4. T-DEMOSET: seed chat, notifications, and bookings for the demo user
-  // so the demo lists (chat pane, /notifications, /bookings) render with
-  // real data on Sunday 2026-09-07. RLS uses the parent-Lead (or userId for
-  // Notification) to scope rows; we connect as the owner role here, so RLS
-  // is bypassed for the inserts and the demo user will see them via their
-  // JWT-scoped reads at runtime.
-  //
-  // Idempotency: re-running this script must not append duplicate rows.
-  // Strategy - clear the previous demo-seeded rows for this user/team
-  // first, then re-insert. We scope by userId (Notification) and by the
-  // demo-team lead set (Message, Booking) so any unrelated rows
-  // (e.g. matrix-test fixtures) are untouched.
-  const demoLeads = await prisma.lead.findMany({
-    where: { teamId: demoTeam.id },
-    select: { id: true, name: true, state: true },
-    orderBy: { name: 'asc' },
+  const demoProject = await prisma.project.upsert({
+    where: { id: DEMO_PROJECT_ID },
+    update: { name: 'Demo Villas', slug: DEMO_PROJECT_SLUG },
+    create: {
+      id: DEMO_PROJECT_ID,
+      name: 'Demo Villas',
+      slug: DEMO_PROJECT_SLUG,
+      organizationId: demoOrg.id,
+      address: 'Demo Villas, Chennai, Tamil Nadu (demo data)',
+    },
   });
-  const demoLeadIds = demoLeads.map((l) => l.id);
+
+  await prisma.projectTeam.upsert({
+    where: { projectId_teamId: { projectId: demoProject.id, teamId: demoTteam.id } },
+    update: {},
+    create: {
+      projectId: demoProject.id,
+      teamId: demoTteam.id,
+      organizationId: demoOrg.id,
+    },
+  });
+
+  for (const p of [
+    { id: DEMO_PHASE_A, name: 'Phase A' },
+    { id: DEMO_PHASE_B, name: 'Phase B' },
+  ]) {
+    await prisma.phase.upsert({
+      where: { id: p.id },
+      update: { name: p.name },
+      create: {
+        id: p.id,
+        projectId: demoProject.id,
+        organizationId: demoOrg.id,
+        name: p.name,
+      },
+    });
+  }
+
+  // Picker values, so the inventory form's facing/BHK selects are populated.
+  for (const opt of [
+    { type: 'FACING' as const, value: 'North' },
+    { type: 'FACING' as const, value: 'South' },
+    { type: 'FACING' as const, value: 'East' },
+    { type: 'FACING' as const, value: 'West' },
+    { type: 'BHK' as const, value: '2' },
+    { type: 'BHK' as const, value: '3' },
+  ]) {
+    await prisma.projectOption.upsert({
+      where: {
+        projectId_type_value: {
+          projectId: demoProject.id,
+          type: opt.type,
+          value: opt.value,
+        },
+      },
+      update: {},
+      create: {
+        projectId: demoProject.id,
+        organizationId: demoOrg.id,
+        type: opt.type,
+        value: opt.value,
+      },
+    });
+  }
+
+  const unitDefs = [
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-102', bhk: 3, facing: 'East', sqft: 1450, price: 5_800_000 },
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-103', bhk: 3, facing: 'South', sqft: 1480, price: 5_950_000 },
+    { phaseId: DEMO_PHASE_B, unitNumber: 'D-201', bhk: 3, facing: 'West', sqft: 1500, price: 6_100_000 },
+    { phaseId: DEMO_PHASE_B, unitNumber: 'D-202', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
+  ];
+  for (const u of unitDefs) {
+    await prisma.unit.upsert({
+      where: { phaseId_unitNumber: { phaseId: u.phaseId, unitNumber: u.unitNumber } },
+      update: {
+        bhk: u.bhk,
+        facing: u.facing,
+        sqft: u.sqft,
+        price: u.price.toFixed(2),
+        // status intentionally omitted - derived from bookings (T-INV-SYNC).
+      },
+      create: {
+        phaseId: u.phaseId,
+        organizationId: demoOrg.id,
+        unitNumber: u.unitNumber,
+        bhk: u.bhk,
+        facing: u.facing,
+        sqft: u.sqft,
+        price: u.price.toFixed(2),
+        status: 'AVAILABLE',
+      },
+    });
+  }
+
+  // Demo leads - a spread of states so the inbox, board and filters all render
+  // variety, owned by the demo user's team (RLS scopes by owner/team/org).
+  const leadDefs = [
+    { id: DEMO_LEAD_1, name: 'Demo Priya', phone: '9876510001', state: 'NEW' as const, source: 'META_AD' as const },
+    { id: DEMO_LEAD_2, name: 'Demo Arjun', phone: '9876510002', state: 'CONTACTED' as const, source: 'LANDING' as const },
+    { id: DEMO_LEAD_3, name: 'Demo Kavya', phone: '9876510003', state: 'VISIT_SCHEDULED' as const, source: 'REFERRAL' as const },
+    { id: DEMO_LEAD_4, name: 'Demo Rahul', phone: '9876510004', state: 'NEGOTIATION' as const, source: 'WALK_IN' as const },
+    { id: DEMO_LEAD_5, name: 'Demo Meera', phone: '9876510005', state: 'BOOKING_INITIATED' as const, source: 'META_AD' as const },
+    { id: DEMO_LEAD_WON, name: 'Demo Vikram', phone: '9876510006', state: 'WON' as const, source: 'REFERRAL' as const },
+  ];
+  for (const l of leadDefs) {
+    await prisma.lead.upsert({
+      where: { id: l.id },
+      update: {
+        name: l.name,
+        state: l.state,
+        source: l.source,
+        projectId: demoProject.id,
+        ownerId: demoUser.id,
+        ownerType: 'MANAGER',
+        teamId: demoTteam.id,
+        organizationId: demoOrg.id,
+      },
+      create: {
+        id: l.id,
+        name: l.name,
+        phone: l.phone,
+        state: l.state,
+        source: l.source,
+        projectId: demoProject.id,
+        ownerId: demoUser.id,
+        ownerType: 'MANAGER',
+        teamId: demoTteam.id,
+        organizationId: demoOrg.id,
+      },
+    });
+  }
+
+  // ── 4. Demo chat / notifications / bookings ─────────────────────────────
+  // Clear this org's previous demo rows first so a re-run does not append.
+  const demoLeadIds = leadDefs.map((l) => l.id);
   const clearMessages = await prisma.message.deleteMany({
     where: { leadId: { in: demoLeadIds } },
   });
@@ -157,112 +289,109 @@ async function main() {
   });
   // eslint-disable-next-line no-console
   console.log(
-    `[demo-user] cleared previous demo rows: ${clearMessages.count} messages, ${clearNotifs.count} notifications, ${clearBookings.count} bookings`
+    `[demo-user] cleared previous demo rows: ${clearMessages.count} messages, ${clearNotifs.count} notifications, ${clearBookings.count} bookings`,
   );
 
-  const wonLead = demoLeads.find((l) => l.state === 'WON');
-  // Pick a deterministic unit from the seed roster (avoids creating new
-  // rows the inventory module hasn't audited).
-  const unit = await prisma.unit.findFirst({ select: { id: true } });
-  const unitId = unit?.id ?? 'fixture-unit-a';
-
-  // 4a. Chat: 1 message per demo lead (alternating directions + channels
-  // so the chat pane has visual variety).
   const channelMix: Array<'IN_APP' | 'WHATSAPP'> = ['IN_APP', 'IN_APP', 'WHATSAPP'];
-  for (let i = 0; i < demoLeads.length; i++) {
-    const lead = demoLeads[i]!;
+  for (let i = 0; i < leadDefs.length; i++) {
+    const lead = leadDefs[i]!;
     const direction = i % 2 === 0 ? 'IN' : 'OUT';
-    const channel = channelMix[i % channelMix.length]!;
-    const body =
-      direction === 'IN'
-        ? `Hi, I'm interested in the ${lead.state} property. Please share details.`
-        : `Thanks for reaching out, ${lead.name.split(' ')[0]}. Sharing the brochure now.`;
     await prisma.message.create({
       data: {
         leadId: lead.id,
-        organizationId: DEMO_ORG_ID,
+        organizationId: demoOrg.id,
         userId: direction === 'OUT' ? demoUser.id : null,
         direction,
-        channel,
-        body,
+        channel: channelMix[i % channelMix.length]!,
+        body:
+          direction === 'IN'
+            ? `Hi, I'm interested in the project. Please share details.`
+            : `Thanks for reaching out, ${lead.name.split(' ')[1]}. Sharing the brochure now.`,
       },
     });
   }
 
-  // 4b. Notifications: 3 for the demo user, mixing read + unread, across
-  // different lead.contexts (matches the wireframe's "All / Unread" filter
-  // chips).
   await prisma.notification.createMany({
     data: [
       {
         userId: demoUser.id,
-        organizationId: DEMO_ORG_ID,
+        organizationId: demoOrg.id,
         type: 'lead.assigned',
-        title: `New lead: ${demoLeads[0]?.name ?? 'Unassigned'}`,
+        title: `New lead: ${leadDefs[0]!.name}`,
         body: 'Assigned to you by the system. Review and respond within 24h.',
-        leadId: demoLeads[0]?.id,
+        leadId: leadDefs[0]!.id,
         read: false,
       },
       {
         userId: demoUser.id,
-        organizationId: DEMO_ORG_ID,
+        organizationId: demoOrg.id,
         type: 'visit.scheduled',
         title: 'Visit confirmed for tomorrow',
-        body: `${demoLeads[1]?.name ?? 'Lead'} confirmed the site visit at 10:00 AM.`,
-        leadId: demoLeads[1]?.id,
+        body: `${leadDefs[2]!.name} confirmed the site visit at 10:00 AM.`,
+        leadId: leadDefs[2]!.id,
         read: false,
       },
       {
         userId: demoUser.id,
-        organizationId: DEMO_ORG_ID,
+        organizationId: demoOrg.id,
         type: 'booking.requested',
         title: 'Token request received',
-        body: `${demoLeads[2]?.name ?? 'Lead'} requested a token for Unit A-1201.`,
-        leadId: demoLeads[2]?.id,
+        body: `${leadDefs[4]!.name} requested a token for Unit D-102.`,
+        leadId: leadDefs[4]!.id,
         read: true,
       },
     ],
   });
 
-  // 4c. Bookings: 2 on the WON lead (so /bookings has data on the demo
-  // path). Different statuses to exercise the status filter.
-  if (wonLead) {
+  const wonUnits = await prisma.unit.findMany({
+    where: { organizationId: demoOrg.id, status: 'AVAILABLE', unitNumber: { startsWith: 'D-10' } },
+    select: { id: true },
+    orderBy: { unitNumber: 'asc' },
+  });
+  if (wonUnits.length > 0) {
     await prisma.booking.createMany({
       data: [
         {
-          leadId: wonLead.id,
-          organizationId: DEMO_ORG_ID,
-          unitId,
+          leadId: DEMO_LEAD_WON,
+          organizationId: demoOrg.id,
+          unitId: wonUnits[0]!.id,
           userId: demoUser.id,
-          amount: '7500000.00',
+          amount: '5800000.00',
           tokenAmount: '250000.00',
-          status: 'APPROVED',
-          approvedById: demoUser.id,
+          status: 'TOKEN',
         },
-        {
-          leadId: wonLead.id,
-          organizationId: DEMO_ORG_ID,
-          unitId,
-          userId: demoUser.id,
-          amount: '1200000.00',
-          tokenAmount: null,
-          status: 'HOLD',
-        },
+        ...(wonUnits[1]
+          ? [
+              {
+                leadId: DEMO_LEAD_4,
+                organizationId: demoOrg.id,
+                unitId: wonUnits[1]!.id,
+                userId: demoUser.id,
+                amount: '5950000.00',
+                tokenAmount: null,
+                status: 'HOLD' as const,
+              },
+            ]
+          : []),
       ],
     });
   }
 
   // eslint-disable-next-line no-console
   console.log(
-    `[demo-user] user ${DEMO_EMAIL} (MANAGER) ready, password "${DEMO_PASSWORD}"`
+    `[demo-user] org "${demoOrg.name}" (${demoOrg.slug}, ${demoOrg.id}) ready`,
   );
   // eslint-disable-next-line no-console
   console.log(
-    `[demo-user] ${reassign.count} leads reassigned to demo user (team: ${demoTeam.id})`
+    `[demo-user] user ${DEMO_EMAIL} (OWNER) password "${DEMO_PASSWORD}"`,
   );
   // eslint-disable-next-line no-console
   console.log(
-    `[demo-user] seeded: ${demoLeads.length} chat messages, 3 notifications, ${wonLead ? 2 : 0} bookings`
+    `[demo-user] seeded ${unitDefs.length} units, ${leadDefs.length} leads, ${leadDefs.length} chat messages, 3 notifications`,
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `[demo-user] sign in at /${DEMO_ORG_SLUG}/projects/${DEMO_PROJECT_SLUG}`,
   );
 
   await prisma.$disconnect();

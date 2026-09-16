@@ -10,7 +10,9 @@
 //   7. staff viewing themselves → allowed
 //   8. `manager` is populated ONLY for TELECALLER/SALES_EXEC (MANAGER/ADMIN
 //      rows never report to a manager on this surface, even with a team)
-//   9. projects come from the target's ProjectMember rows
+//   9. projects come from the target's TEAM's ProjectTeam rows
+//      (T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover: ProjectMember, the
+//      per-user link this used to read, was retired)
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,7 +30,6 @@ function actor(overrides: Partial<Actor>): Actor {
     sub: 'actor-1',
     email: 'actor@shadhilbuilders.in',
     role: 'ADMIN',
-    teamId: null,
     organizationId: ORG,
     iat: NOW,
     exp: NOW + 3600,
@@ -41,7 +42,7 @@ const ownerActor = actor({ sub: 'owner-1', role: 'OWNER' });
 const adminActor = actor({ sub: 'admin-1', role: 'ADMIN' });
 const managerActor = actor({ sub: 'mgr-1', role: 'MANAGER' });
 const otherManagerActor = actor({ sub: 'mgr-2', role: 'MANAGER' });
-const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER', teamId: 'team-1' });
+const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER'});
 
 type FakeUserRow = {
   id: string;
@@ -53,8 +54,8 @@ type FakeUserRow = {
     id: string;
     name: string;
     manager: { id: string; name: string; email: string } | null;
+    projectTeams: Array<{ project: { id: string; name: string } }>;
   } | null;
-  projectMembers: Array<{ project: { id: string; name: string } }>;
 };
 
 const salesExec: FakeUserRow = {
@@ -67,8 +68,8 @@ const salesExec: FakeUserRow = {
     id: 'team-1',
     name: "Ravi's Team",
     manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [{ project: { id: 'proj-1', name: 'Metro Heights' } }],
   },
-  projectMembers: [{ project: { id: 'proj-1', name: 'Metro Heights' } }],
 };
 
 const managerRow: FakeUserRow = {
@@ -80,30 +81,81 @@ const managerRow: FakeUserRow = {
   // A manager can still have a `team` relation resolved (e.g. via a
   // different link) - the point of the test is that `manager` stays null
   // regardless, because MANAGER doesn't report to anyone on this surface.
-  team: { id: 'team-1', name: "Ravi's Team", manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' } },
-  projectMembers: [],
+  team: {
+    id: 'team-1',
+    name: "Ravi's Team",
+    manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [],
+  },
 };
 
 function makeService(opts: {
   user: FakeUserRow | null;
+  /** The ACTOR's own managed-team id, when the actor is a MANAGER doing
+   * getUser()'s scope check (a DIFFERENT query from resolveDisplayTeamId's
+   * per-target lookup below). */
   managerTeamId?: string | null;
 }) {
-  const userFindUnique = vi.fn().mockResolvedValue(opts.user);
-  const teamFindFirst = vi
+  const userFindUnique = vi.fn().mockResolvedValue(
+    opts.user === null
+      ? null
+      : { id: opts.user.id, email: opts.user.email, name: opts.user.name, role: opts.user.role },
+  );
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): two DISTINCT
+  // team.findFirst-shaped consumers now share this table:
+  //   1. resolveDisplayTeamId(target) - `where: { managerId: target.id }` -
+  //      only matches when the FIXTURE user is itself a MANAGER with a team.
+  //   2. (none else uses findFirst here - the actor's own MANAGER scope
+  //      check uses findMany, mocked separately below via managerTeamId.)
+  const teamFindFirst = vi.fn(async (args: { where: { managerId: string } }) => {
+    if (
+      opts.user?.role === 'MANAGER' &&
+      args.where.managerId === opts.user.id &&
+      opts.user.team !== null
+    ) {
+      return { id: opts.user.team.id };
+    }
+    return null;
+  });
+  // getUser()'s MANAGER scope check resolves via findMany (a manager may
+  // lead multiple teams) - this is the ACTOR's own managed-team set.
+  const teamFindMany = vi
     .fn()
     .mockResolvedValue(
       opts.managerTeamId !== undefined && opts.managerTeamId !== null
-        ? { id: opts.managerTeamId }
-        : null,
+        ? [{ id: opts.managerTeamId }]
+        : [],
     );
+  // resolveDisplayTeamId's non-MANAGER branch: the fixture user's own
+  // (single, oldest) TeamMember row.
+  const teamMemberFindFirst = vi.fn().mockResolvedValue(
+    opts.user?.role !== 'MANAGER' && opts.user?.team !== null && opts.user !== null
+      ? { teamId: opts.user.team!.id }
+      : null,
+  );
+  // The resolved team's full detail (manager + linked projects) - only one
+  // team fixture is ever in play per test, so this ignores the id filter.
+  const teamFindUnique = vi.fn().mockResolvedValue(opts.user?.team ?? null);
+  // getUser() now runs entirely inside ONE withRlsContext transaction, so
+  // the tx handed to the callback must expose every accessor the method
+  // touches (the outer client's shape alone is not enough). The mocks are
+  // shared between both so assertions still see the calls.
+  const txMock = {
+    user: { findUnique: userFindUnique },
+    team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
+    teamMember: { findFirst: teamMemberFindFirst },
+    $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+  };
   const fakeClient = {
     user: { findUnique: userFindUnique },
-    team: { findFirst: teamFindFirst },
+    team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
+    teamMember: { findFirst: teamMemberFindFirst },
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
     service: new UsersService(prismaService),
-    mocks: { userFindUnique, teamFindFirst },
+    mocks: { userFindUnique, teamFindFirst, teamFindMany, teamMemberFindFirst, teamFindUnique },
   };
 }
 
@@ -191,7 +243,7 @@ describe('getUser - manager field only applies to TELECALLER/SALES_EXEC', () => 
   it('SALES_EXEC on a team with no manager assigned → manager is null', async () => {
     const noManager: FakeUserRow = {
       ...salesExec,
-      team: { id: 'team-2', name: 'Unled Team', manager: null },
+      team: { id: 'team-2', name: 'Unled Team', manager: null, projectTeams: [] },
     };
     const { service } = makeService({ user: noManager });
     const result = await service.getUser(adminActor, noManager.id);

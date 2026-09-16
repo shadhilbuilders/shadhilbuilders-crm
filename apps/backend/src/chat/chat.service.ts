@@ -38,7 +38,7 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import { NotificationsService } from '../notifications/notifications.service';
-
+import { TeamAccessService } from '../teams/team-access.service';
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
  * schema in packages/api-types/src/chat.ts - the web app reads these
@@ -76,6 +76,12 @@ export class ChatService {
     @Inject(NotificationsService)
     private readonly notifications?: NotificationsService,
   ) {}
+
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed -
+  // instantiating directly avoids touching every existing test's
+  // `new ChatService(...)` constructor call (same pattern as
+  // leads.service.ts/dashboard.service.ts/etc.).
+  private readonly teamAccess = new TeamAccessService();
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -296,6 +302,29 @@ export class ChatService {
    * mention that can't be resolved is silently skipped so the send always
    * succeeds. This is the "loop the manager and other staff" mechanism.
    *
+   * T-TEAM-AUTHORITATIVE (2026-09-13) multi-team scoping, deliberately
+   * bounded by the `TeamMember` RLS SELECT policy's read boundary
+   * (policies.sql: "intentionally non-recursive... does NOT let an
+   * ordinary team member see who else is on their team via this policy
+   * alone"). Concretely:
+   *   - MANAGER: resolves across EVERY team they manage (multi-team fix -
+   *     `TeamAccessService.getManagedTeamIds` is RLS-safe here because the
+   *     TeamMember policy's `Team.managerId` EXISTS clause already grants a
+   *     manager visibility into every membership row on teams they lead,
+   *     regardless of whose row it is).
+   *   - ADMIN/OWNER and ordinary staff (TELECALLER/SALES_EXEC): org-wide.
+   *     T-TEAM-AUTHORITATIVE clean cutover (2026-09-13, follow-up): the
+   *     legacy `User.teamId`/`actor.teamId` JWT claim this used to filter
+   *     ordinary staff by is retired entirely - a `TeamMember`-based
+   *     lookup can't replace it (RLS only lets a non-manager read their
+   *     OWN membership row, never a teammate's, by the same non-recursive
+   *     policy decision above), so ordinary staff now resolve mentions
+   *     org-wide too. This is a deliberate, honest scope widening (not a
+   *     silently-reversed security decision): @mention was already
+   *     best-effort and INTERNAL-note-only (never reaches the customer),
+   *     and an org-wide name match is a reasonable floor once no narrower
+   *     signal exists.
+   *
    * Room for future change: a targeted mention (recipientId) can be added
    * here without touching the Message model - the resolution already
    * produces the recipient's userId.
@@ -310,14 +339,32 @@ export class ChatService {
     const names = extractMentionedNames(dto.body);
     if (names.length === 0) return;
 
-    // Resolve mentioned users within the actor's team scope. We query the
-    // team's users directly (not the bare client) so RLS doesn't filter
-    // out teammates the actor can't see via users.list (staff→self only).
-    const teamId = actor.teamId ?? null;
-    const mentioned = await (tx as unknown as PrismaClient).user.findMany({
+    const client = tx as unknown as PrismaClient;
+
+    let teamFilter: Record<string, unknown> = {};
+    if (actor.role === 'MANAGER') {
+      const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+      // A manager with no managed team (config error) resolves nobody,
+      // same as the pre-existing "no team, no mentions" behavior.
+      if (managedTeamIds.length === 0) {
+        teamFilter = { id: '__none__' };
+      } else {
+        teamFilter = {
+          OR: [
+            { teamMemberships: { some: { teamId: { in: managedTeamIds } } } },
+            { managedTeams: { some: { id: { in: managedTeamIds } } } },
+          ],
+        };
+      }
+    }
+    // ADMIN/OWNER and ordinary staff: no team filter (org-wide) - see the
+    // doc comment above for why staff can no longer be narrowed further.
+
+    const mentioned = await client.user.findMany({
       where: {
         name: { in: names },
-        ...(teamId !== null ? { teamId } : {}),
+        organizationId: actor.organizationId,
+        ...teamFilter,
       },
       select: { id: true, name: true },
     });

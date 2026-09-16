@@ -2,8 +2,11 @@
 //
 // Phase 1 wiring: verifies the JWT in `Authorization: Bearer *** and
 // resolves the JwtPayload onto request.user. Per-request RLS session vars
-// (app.user_id, app.user_role, app.user_team_id) are set inside the
-// controller's RlsInterceptor (see rls.interceptor.ts).
+// (app.user_id, app.user_role, app.user_org_id) are set inside the
+// controller's RlsInterceptor (see rls.interceptor.ts). Team membership is
+// NOT a session var - every team-scoped policy resolves it via TeamMember /
+// Team.managerId (app.user_team_id was removed in the T-TEAM-AUTHORITATIVE
+// cutover).
 //
 // T-S hardening (2026-09-04, Week 5):
 //   After JWT verify, look up User.mustChangePassword. When true, reject

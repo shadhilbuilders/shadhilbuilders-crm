@@ -27,21 +27,16 @@ import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/data
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreateProjectDto,
-  LinkProjectMemberDto,
   ProjectFilterDto,
   ProjectListResult,
-  ProjectMemberRow,
   ProjectRow,
   UpdateProjectDto,
 } from './projects.types';
 
 import { PrismaService } from '../prisma/prisma.module';
-import {
-  canManageProjectMembers,
-  isAdminClass,
-} from '../users/roles';
+import { isAdminClass } from '../users/roles';
 
-export type { ProjectRow, ProjectListResult, ProjectMemberRow } from './projects.types';
+export type { ProjectRow, ProjectListResult } from './projects.types';
 
 /**
  * Derive a URL-safe slug from a project name. Exported for direct unit
@@ -383,206 +378,6 @@ export class ProjectsService {
         return { id };
       },
     );
-  }
-
-  /**
-   * POST /api/projects/:id/members - link an existing user to a project.
-   * ADMIN/OWNER only. The per-project role defaults to the user's current
-   * role; the caller may not override it here (role is set from User.role so
-   * a SALES_EXEC linked to two projects is a SALES_EXEC on both — per-project
-   * role overrides are out of scope for v1).
-   */
-  async addMember(
-    actor: JwtPayload,
-    projectId: string,
-    dto: LinkProjectMemberDto,
-  ): Promise<ProjectMemberRow> {
-    if (!canManageProjectMembers(actor.role)) {
-      throw new ForbiddenException('Only MANAGER, ADMIN or OWNER can link members.');
-    }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const project = await tx.project.findUnique({
-          where: { id: projectId },
-        });
-        if (project === null) {
-          throw new NotFoundException(`Project ${projectId} not found.`);
-        }
-        const user = await tx.user.findUnique({
-          where: { id: dto.userId },
-          select: { id: true, name: true, email: true, role: true },
-        });
-        if (user === null) {
-          throw new NotFoundException(`User ${dto.userId} not found.`);
-        }
-        const member = await tx.projectMember.upsert({
-          where: {
-            projectId_userId: { projectId, userId: dto.userId },
-          },
-          update: { role: user.role },
-          create: {
-            projectId,
-            userId: dto.userId,
-            role: user.role,
-            organizationId: actor.organizationId,
-          },
-        });
-        // Provenance: an EXPLICIT member is not inferred from lead ownership.
-        const isLeadOwner =
-          (await tx.lead.count({
-            where: { projectId, ownerId: dto.userId },
-          })) > 0;
-        return this.toMemberRow(member, user.name, user.email, user.role, isLeadOwner);
-      },
-    );
-  }
-
-  /**
-   * DELETE /api/projects/:id/members/:userId - unlink a user from a project.
-   * MANAGER/ADMIN/OWNER only. Removes the explicit ProjectMember row only;
-   * the user may still own leads in the project (so they'd remain in a
-   * lead-owner-derived union).
-   */
-  async unlinkMember(
-    actor: JwtPayload,
-    projectId: string,
-    userId: string,
-  ): Promise<{ ok: true }> {
-    if (!canManageProjectMembers(actor.role)) {
-      throw new ForbiddenException('Only MANAGER, ADMIN or OWNER can unlink members.');
-    }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const project = await tx.project.findUnique({
-          where: { id: projectId },
-        });
-        if (project === null) {
-          throw new NotFoundException(`Project ${projectId} not found.`);
-        }
-        // Fetch the member's identity for a readable audit reason.
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { name: true, email: true },
-        });
-        await tx.projectMember.deleteMany({
-          where: { projectId, userId },
-        });
-        // HIGH-STAKES audit (AGENTS.md A2/G-1): removing a staff member's
-        // project access is written in the SAME tx as the delete.
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'project.member.unlink',
-            organizationId: actor.organizationId,
-            entityType: 'Project',
-            entityId: projectId,
-            before: {
-              userId,
-              name: user?.name ?? null,
-              email: user?.email ?? null,
-              projectName: project.name,
-            },
-            reason: `project.member.unlink by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { ok: true };
-      },
-    );
-  }
-
-  /**
-   * GET /api/projects/:id/members - the effective staff list = EXPLICIT
-   * ProjectMember rows UNION lead-owners (additive, never regresses). Each
-   * row carries `isLeadOwner` provenance so the UI can mark inferred members.
-   * Roles are joined from User.role (authoritative single role).
-   */
-  async listMembers(
-    actor: JwtPayload,
-    projectId: string,
-  ): Promise<ProjectMemberRow[]> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const project = await tx.project.findUnique({
-          where: { id: projectId },
-        });
-        if (project === null) {
-          throw new NotFoundException(`Project ${projectId} not found.`);
-        }
-        const [members, ownerIds] = await Promise.all([
-          tx.projectMember.findMany({
-            where: { projectId },
-            include: { user: { select: { id: true, name: true, email: true, role: true } } },
-          }),
-          // Distinct lead-owners in this project (the additive half).
-          tx.lead.findMany({
-            where: { projectId },
-            select: { ownerId: true },
-            distinct: ['ownerId'],
-          }).then((rows) => rows.map((r) => r.ownerId)),
-        ]);
-        const ownerIdSet = new Set(ownerIds);
-
-        // Build the union, keyed by userId to dedupe explicit∩lead-owner.
-        const byUser = new Map<string, ProjectMemberRow>();
-        for (const m of members) {
-          byUser.set(m.userId, {
-            projectId,
-            userId: m.userId,
-            name: m.user.name,
-            email: m.user.email,
-            role: m.user.role,
-            assignedAt: m.assignedAt.toISOString(),
-            isLeadOwner: ownerIdSet.has(m.userId),
-          });
-        }
-        // Lead-owners who aren't explicit members appear too (additive).
-        const missingOwnerIds = ownerIds.filter((id) => !byUser.has(id));
-        if (missingOwnerIds.length > 0) {
-          const owners = await tx.user.findMany({
-            where: { id: { in: missingOwnerIds } },
-            select: { id: true, name: true, email: true, role: true },
-          });
-          for (const o of owners) {
-            byUser.set(o.id, {
-              projectId,
-              userId: o.id,
-              name: o.name,
-              email: o.email,
-              role: o.role,
-              assignedAt: new Date().toISOString(),
-              isLeadOwner: true,
-            });
-          }
-        }
-        const rows = [...byUser.values()];
-        rows.sort((a, b) => a.name.localeCompare(b.name));
-        return rows;
-      },
-    );
-  }
-
-  private toMemberRow(
-    m: { assignedAt: Date },
-    name: string,
-    email: string,
-    role: string,
-    isLeadOwner: boolean,
-  ): ProjectMemberRow {
-    return {
-      projectId: (m as unknown as { projectId: string }).projectId,
-      userId: (m as unknown as { userId: string }).userId,
-      name,
-      email,
-      role,
-      assignedAt: m.assignedAt.toISOString(),
-      isLeadOwner,
-    };
   }
 
   /** Slug uniqueness with a -2 / -3 suffix on collision (create only). */

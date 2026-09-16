@@ -100,7 +100,7 @@ export const UserListResultSchema = z.object({
       name: z.string(),
       role: RoleSchema,
       teamId: z.string().nullable(),
-      // Project names the user is a member of (via ProjectMember), for the
+      // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
     }),
@@ -108,6 +108,37 @@ export const UserListResultSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 export type UserListResult = z.infer<typeof UserListResultSchema>;
+
+/**
+ * GET /api/users/:id - the user detail page (users/[userId], autoplan
+ * 2026-09-13). `manager` is the team's manager identity, populated only
+ * when the target reports to one (TELECALLER/SALES_EXEC with an assigned
+ * team that has a manager) - null for MANAGER/ADMIN/OWNER or an
+ * unassigned/unmanaged team. `projects` are the projects linked to the
+ * target's team via ProjectTeam.
+ */
+export const UserDetailSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: RoleSchema,
+  teamId: z.string().nullable(),
+  teamName: z.string().nullable(),
+  manager: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+    })
+    .nullable(),
+  projects: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+    }),
+  ),
+});
+export type UserDetail = z.infer<typeof UserDetailSchema>;
 
 /**
  * PATCH /api/users/:id/role - role change (Round 20, rename 21). OWNER
@@ -134,6 +165,20 @@ export const UpdateUserDtoSchema = z.object({
 export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
 
 /**
+ * PATCH /api/users/:id/manager - assign/reassign the manager for a
+ * TELECALLER/SALES_EXEC (autoplan 2026-09-13). A user's "manager" is
+ * derived from `Team.managerId` via `User.teamId`, so this DTO sets
+ * `teamId` to an existing team (which must have a manager for the UI's
+ * concept of "manager" to mean anything, but the server only requires the
+ * team to exist - an unled team is rejected server-side with a clear
+ * message rather than silently no-oping).
+ */
+export const AssignManagerDtoSchema = z.object({
+  teamId: z.string().cuid2(),
+});
+export type AssignManagerDto = z.infer<typeof AssignManagerDtoSchema>;
+
+/**
  * Verified JWT claims. Populated by NestJS after `jose.jwtVerify` on the
  * incoming Authorization header. Never accepted as request input - this is
  * output-only, used by NestJS request-scoped middleware to seed Postgres
@@ -142,14 +187,15 @@ export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
  * Contract (symmetric with better-auth JWT bridge, HS256 v1):
  *   sub:    userId (cuid)
  *   role:   Role enum value
- *   teamId: optional team membership (nullable for admins / cross-team managers)
  *   iat:    issued-at (epoch seconds)
  *   exp:    expires-at (epoch seconds)
+ *
+ * Team membership is a TeamMember row, not a JWT claim
+ * (T-TEAM-AUTHORITATIVE 2026-09-13).
  */
 export const JwtPayloadSchema = z.object({
   sub: z.string().cuid2(),
   role: RoleSchema,
-  teamId: z.string().cuid2().nullable().optional(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
 });

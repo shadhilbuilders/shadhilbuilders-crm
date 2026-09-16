@@ -560,6 +560,21 @@ export class InventoryService {
         `Only ADMIN/OWNER can create inventory units (actor is ${actor.role})`,
       );
     }
+    // T-INV-SYNC: HOLD/TOKEN are booking-owned, and a brand-new unit has no
+    // booking. The Booking trigger only fires on Booking writes, so a unit born
+    // as HOLD would stay HOLD forever AND could never take a booking (the
+    // bookable-unit guard rejects a non-AVAILABLE unit) - a dead unit.
+    // Widened to `string` on purpose, exactly like the update() guard: the DTO
+    // already rejects HOLD/TOKEN (CreateUnitDtoSchema), but the service must
+    // still refuse them so a direct service call or an older client cannot
+    // create one.
+    const requestedStatus: string | undefined = dto.status;
+    if (requestedStatus === 'HOLD' || requestedStatus === 'TOKEN') {
+      throw new ConflictException(
+        `A new unit cannot be created as ${requestedStatus} - HOLD/TOKEN come from a booking. ` +
+          'Create it as AVAILABLE and raise a booking instead.',
+      );
+    }
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
@@ -584,6 +599,11 @@ export class InventoryService {
               sqft: dto.sqft ?? null,
               // Prisma Decimal - pass as a string to avoid float drift.
               price: dto.price.toFixed(2),
+              // T-INV-SYNC: the DTO already restricts this to AVAILABLE|SOLD,
+              // but the service refuses a booking-owned status outright so a
+              // direct service call (or an older client) cannot create a unit
+              // stuck in HOLD with no booking behind it - the trigger only fires
+              // on Booking writes, so nothing would ever correct it.
               status: dto.status ?? 'AVAILABLE',
             },
             select: {
@@ -688,7 +708,47 @@ export class InventoryService {
         if (dto.facing !== undefined) data['facing'] = dto.facing;
         if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
         if (dto.price !== undefined) data['price'] = dto.price.toFixed(2);
-        if (dto.status !== undefined) data['status'] = dto.status;
+
+        // T-INV-SYNC: Unit.status is DERIVED from the booking lifecycle (a
+        // trigger on "Booking" recomputes it; see migration
+        // 20260915060000_unit_status_sync). The only manual override left is
+        // the off-pipeline mark: AVAILABLE (no live booking) or SOLD (sold
+        // outside this pipeline). Anything the live bookings already state -
+        // HOLD/TOKEN from an active booking, SOLD from an approved one - is
+        // refused with a 409 instead of being silently contradicted.
+        if (dto.status !== undefined) {
+          // Widened to `string` on purpose: the DTO already rejects HOLD/TOKEN
+          // (UpdateUnitStatusSchema), but the service must still refuse them
+          // with a readable 409 if a bad value ever reaches it - e.g. an
+          // older client, or a direct service call.
+          const requested: string = dto.status;
+          const liveBookings = await (tx as unknown as PrismaClient).booking.findMany({
+            where: {
+              unitId,
+              status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
+            },
+            select: { status: true },
+          });
+          if (liveBookings.length > 0) {
+            const derived = liveBookings.some((b) => b.status === 'APPROVED')
+              ? 'SOLD'
+              : liveBookings.some((b) => b.status === 'TOKEN')
+                ? 'TOKEN'
+                : 'HOLD';
+            if (requested !== derived) {
+              throw new ConflictException(
+                `Unit ${existing.unitNumber} is ${derived} because of its live booking(s). ` +
+                  `Clear or cancel them before setting it to ${requested}.`,
+              );
+            }
+          } else if (requested === 'HOLD' || requested === 'TOKEN') {
+            throw new ConflictException(
+              `Unit ${existing.unitNumber} has no live booking, so it cannot be set to ${requested}. ` +
+                'HOLD/TOKEN come from a booking - create one instead.',
+            );
+          }
+          data['status'] = dto.status;
+        }
 
         let updated;
         try {

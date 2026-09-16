@@ -28,6 +28,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { TeamAccessService } from '../teams/team-access.service';
 
 /** Monday-start week containing `now` (matches VisitsThisWeekChart). */
 function startOfWeek(now: Date): Date {
@@ -66,29 +67,24 @@ export class DashboardService {
     @Inject(PrismaService) private readonly prismaService: PrismaService,
   ) {}
 
+  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
+  private readonly teamAccess = new TeamAccessService();
+
   private get client(): PrismaClient {
     return this.prismaService.$client;
   }
 
   /**
-   * Resolve the team a MANAGER leads (mirrors leads.service.managerTeamId).
-   * Returns null for ADMIN (no team) or a MANAGER with no team.
+   * Resolve EVERY team a MANAGER leads (T-TEAM-AUTHORITATIVE: one manager
+   * may lead multiple teams - mirrors leads.service.managerTeamIds).
+   * Returns [] for a MANAGER with no team.
    */
-  private async managerTeamId(
+  private async managerTeamIds(
     tx: PrismaClient,
     actor: JwtPayload,
-  ): Promise<string | null> {
-    if (actor.role === 'MANAGER') {
-      const team = await tx.team.findFirst({
-        where: { managerId: actor.sub },
-        select: { id: true },
-      });
-      return team?.id ?? null;
-    }
-    if (actor.role === 'ADMIN' || actor.role === 'OWNER') {
-      return actor.teamId;
-    }
-    return null;
+  ): Promise<string[]> {
+    if (actor.role !== 'MANAGER') return [];
+    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
   }
 
   /**
@@ -105,8 +101,8 @@ export class DashboardService {
     if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
       where['ownerId'] = actor.sub;
     } else if (actor.role === 'MANAGER') {
-      const teamId = await this.managerTeamId(tx, actor);
-      where['teamId'] = teamId ?? '__no_team__';
+      const teamIds = await this.managerTeamIds(tx, actor);
+      where['teamId'] = teamIds.length > 0 ? { in: teamIds } : '__no_team__';
     }
     return where;
   }
@@ -147,8 +143,10 @@ export class DashboardService {
         if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
           visitWhere['lead'] = { ownerId: actor.sub };
         } else if (actor.role === 'MANAGER') {
-          const teamId = await this.managerTeamId(txClient, actor);
-          visitWhere['lead'] = { teamId: teamId ?? '__no_team__' };
+          const teamIds = await this.managerTeamIds(txClient, actor);
+          visitWhere['lead'] = {
+            teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
+          };
         }
 
         // Booking where: role-scoped via parent Lead (Booking has no projectId).
@@ -159,8 +157,10 @@ export class DashboardService {
         if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
           bookingWhere['lead'] = { ownerId: actor.sub };
         } else if (actor.role === 'MANAGER') {
-          const teamId = await this.managerTeamId(txClient, actor);
-          bookingWhere['lead'] = { teamId: teamId ?? '__no_team__' };
+          const teamIds = await this.managerTeamIds(txClient, actor);
+          bookingWhere['lead'] = {
+            teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
+          };
         }
 
         // Run all aggregates in parallel (single round-trip, no N+1).

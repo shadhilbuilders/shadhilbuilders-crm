@@ -25,13 +25,10 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   CreateProjectDtoSchema,
-  LinkProjectMemberDtoSchema,
   ProjectFilterDtoSchema,
   UpdateProjectDtoSchema,
   type CreateProjectDto,
-  type LinkProjectMemberDto,
   type ProjectFilterDto,
-  type ProjectMemberRow,
   type UpdateProjectDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
@@ -174,56 +171,5 @@ export class ProjectsController {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
     return this.projects.remove(req.user!, id);
-  }
-
-  @Get(':id/members')
-  @ApiOperation({
-    summary:
-      'List a project staff (explicit ProjectMember UNION lead-owners). All authenticated roles.',
-  })
-  async listMembers(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<ProjectMemberRow[]> {
-    if (!ID_RE.safeParse(id).success) {
-      throw new BadRequestException(`Invalid project id: ${id}`);
-    }
-    return this.projects.listMembers(req.user!, id);
-  }
-
-  @Post(':id/members')
-  @ApiOperation({
-    summary:
-      'Link an existing user to a project. ADMIN/OWNER only. Idempotent (upsert).',
-  })
-  async addMember(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ): Promise<ProjectMemberRow> {
-    if (!ID_RE.safeParse(id).success) {
-      throw new BadRequestException(`Invalid project id: ${id}`);
-    }
-    const dto: LinkProjectMemberDto = parseBody(
-      LinkProjectMemberDtoSchema,
-      body,
-    );
-    return this.projects.addMember(req.user!, id, dto);
-  }
-
-  @Delete(':id/members/:userId')
-  @ApiOperation({
-    summary:
-      'Unlink a user from a project. MANAGER/ADMIN/OWNER only. Removes the explicit membership.',
-  })
-  async unlinkMember(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-    @Param('userId') userId: string,
-  ): Promise<{ ok: true }> {
-    if (!ID_RE.safeParse(id).success || !ID_RE.safeParse(userId).success) {
-      throw new BadRequestException(`Invalid id: ${id}/${userId}`);
-    }
-    return this.projects.unlinkMember(req.user!, id, userId);
   }
 }

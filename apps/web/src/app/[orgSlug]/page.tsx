@@ -4,9 +4,9 @@
 // visits, inventory, bookings, and notifications live under
 // `/[orgSlug]/projects/[projectSlug]/...`. Bounce to the role-appropriate
 // dashboard (decision in lib/dashboard-redirect.ts):
-//   - Admin/owner → /{orgSlug}/overview (cross-project command center)
+//   - Admin/owner → /{orgSlug}/admin (cross-project command center)
 //   - Everyone else → /{orgSlug}/projects/{projectSlug}/dashboard
-//   - Empty project registry → /{orgSlug}/projects
+//   - Empty project registry → /{orgSlug}/work
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -14,7 +14,7 @@ import { useProjects } from '@/hooks/queries';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { rootRedirectTarget } from '@/lib/dashboard-redirect';
-import { Loading } from '@paalstack/react-ui';
+import { PageLoading } from '@/components/shared/PageLoading';
 
 export default function AppHomePage() {
   const router = useRouter();
@@ -30,18 +30,16 @@ export default function AppHomePage() {
         router.replace('/login');
         break;
       case 'command-center':
-        router.replace(orgSlug ? `/${orgSlug}/overview` : '/overview');
+        router.replace(orgSlug ? `/${orgSlug}/admin` : '/admin');
         break;
       case 'project-dashboard':
         router.replace(target.href);
         break;
-      case 'projects':
-        router.replace(orgSlug ? `/${orgSlug}/projects` : '/projects');
+      case 'work':
+        router.replace(target.href);
         break;
     }
   }, [isPending, sessionPending, projects, user, router, orgSlug]);
 
-  return  <div className="flex min-h-[60vh] w-full items-center justify-center">
-        <Loading content="Loading workspace..." spinnerProps={{ size: 'lg' }} />
-  </div>;
+  return <PageLoading content="Loading workspace..." minHeight="section" />;
 }

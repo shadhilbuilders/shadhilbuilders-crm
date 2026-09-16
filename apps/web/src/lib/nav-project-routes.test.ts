@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Org + project-scoped route helpers - SLUG-based URL scheme (2026-09-11).
 // URL shape: /[orgSlug]/overview ... ; /[orgSlug]/projects/[projectSlug]/leads
 import { describe, expect, it } from 'vitest';
@@ -5,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
+  isAdminPathname,
   isNavItemActive,
   isProjectScopedNavPath,
   navItemHref,
@@ -36,7 +38,15 @@ describe('isProjectScopedNavPath', () => {
   });
 
   it('keeps org-level pages unscoped', () => {
-    for (const href of ['/', '/users', '/audit', '/overview', '/projects', '/whatsapp-unknown-contacts']) {
+    for (const href of [
+      '/',
+      '/admin/users',
+      '/admin/audit',
+      '/admin/overview',
+      '/admin/projects',
+      '/admin/whatsapp-unknown-contacts',
+      '/work',
+    ]) {
       expect(isProjectScopedNavPath(href)).toBe(false);
     }
   });
@@ -67,13 +77,13 @@ describe('projectHref', () => {
 
 describe('orgHref', () => {
   it('prefixes the org slug for org-level pages', () => {
-    expect(orgHref(ORG, '/overview')).toBe('/shadhil-builders/overview');
-    expect(orgHref(ORG, '/users')).toBe('/shadhil-builders/users');
-    expect(orgHref(ORG, '/teams/abc')).toBe('/shadhil-builders/teams/abc');
+    expect(orgHref(ORG, '/admin/overview')).toBe('/shadhil-builders/admin/overview');
+    expect(orgHref(ORG, '/admin/users')).toBe('/shadhil-builders/admin/users');
+    expect(orgHref(ORG, '/admin/teams/abc')).toBe('/shadhil-builders/admin/teams/abc');
   });
 
   it('keeps the template when org is missing', () => {
-    expect(orgHref(null, '/overview')).toBe('/overview');
+    expect(orgHref(null, '/admin/overview')).toBe('/admin/overview');
   });
 });
 
@@ -88,21 +98,21 @@ describe('navItemHref', () => {
   });
 
   it('resolves unscoped items (scoped:false) under just the org slug', () => {
-    expect(navItemHref({ href: '/overview', scoped: false }, ORG, PROJ)).toBe(
-      '/shadhil-builders/overview',
+    expect(navItemHref({ href: '/admin/overview', scoped: false }, ORG, PROJ)).toBe(
+      '/shadhil-builders/admin/overview',
     );
-    expect(navItemHref({ href: '/overview', scoped: false }, ORG, null)).toBe(
-      '/shadhil-builders/overview',
+    expect(navItemHref({ href: '/admin/overview', scoped: false }, ORG, null)).toBe(
+      '/shadhil-builders/admin/overview',
     );
-    expect(navItemHref({ href: '/overview', scoped: false }, null, null)).toBe(
-      '/overview',
+    expect(navItemHref({ href: '/admin/overview', scoped: false }, null, null)).toBe(
+      '/admin/overview',
     );
   });
 });
 
 describe('activeOrgSlugFromPathname', () => {
   it('extracts the org slug from /<orgSlug> paths', () => {
-    expect(activeOrgSlugFromPathname('/shadhil-builders/overview')).toBe(ORG);
+    expect(activeOrgSlugFromPathname('/shadhil-builders/admin/overview')).toBe(ORG);
     expect(
       activeOrgSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
     ).toBe(ORG);
@@ -129,8 +139,8 @@ describe('activeProjectSlugFromPathname', () => {
 
   it('returns null on org-level and top-level routes', () => {
     expect(activeProjectSlugFromPathname('/')).toBeNull();
-    expect(activeProjectSlugFromPathname('/shadhil-builders/overview')).toBeNull();
-    expect(activeProjectSlugFromPathname('/shadhil-builders/users')).toBeNull();
+    expect(activeProjectSlugFromPathname('/shadhil-builders/admin/overview')).toBeNull();
+    expect(activeProjectSlugFromPathname('/shadhil-builders/admin/users')).toBeNull();
     expect(activeProjectSlugFromPathname('/login')).toBeNull();
   });
 });
@@ -146,8 +156,8 @@ describe('stripProjectSegment', () => {
   });
 
   it('strips the org prefix from org-level pages', () => {
-    expect(stripProjectSegment('/shadhil-builders/overview')).toBe('/overview');
-    expect(stripProjectSegment('/shadhil-builders/users')).toBe('/users');
+    expect(stripProjectSegment('/shadhil-builders/admin/overview')).toBe('/admin/overview');
+    expect(stripProjectSegment('/shadhil-builders/admin/users')).toBe('/admin/users');
     expect(stripProjectSegment('/shadhil-builders')).toBe('/');
   });
 
@@ -188,5 +198,21 @@ describe('isNavItemActive with org+project segments (integration)', () => {
         stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/dashboard'),
       ),
     ).toBe(true);
+  });
+});
+
+describe('isAdminPathname', () => {
+  it('detects the admin namespace under the org slug', () => {
+    expect(isAdminPathname('/shadhil-builders/admin')).toBe(true);
+    expect(isAdminPathname('/shadhil-builders/admin/users')).toBe(true);
+    expect(isAdminPathname('/shadhil-builders/admin/teams/t-1')).toBe(true);
+  });
+
+  it('is false for work surfaces and org home', () => {
+    expect(isAdminPathname('/shadhil-builders')).toBe(false);
+    expect(isAdminPathname('/shadhil-builders/work')).toBe(false);
+    expect(
+      isAdminPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
+    ).toBe(false);
   });
 });

@@ -19,6 +19,7 @@ export * from './bookings';
 export * from './inventory';
 export * from './reminders';
 export * from './teams';
+export * from './team-membership';
 export * from './organizations';
 export * from './notifications';
 export * from './audit';

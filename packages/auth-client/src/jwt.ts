@@ -2,8 +2,10 @@
 // Shares BETTER_AUTH_SECRET with better-auth's jwt() plugin (HS256, iss: shadhil-crm).
 //
 // Pattern (eng review A4): verify on every NestJS request, then SET LOCAL
-// app.user_id / app.user_role / app.user_team_id in a transaction so RLS
-// policies in Postgres can filter per request.
+// app.user_id / app.user_role / app.user_org_id in a transaction so RLS
+// policies in Postgres can filter per request (T-TEAM-AUTHORITATIVE,
+// 2026-09-13 clean cutover: app.user_team_id was removed - every team-
+// scoped policy resolves membership via TeamMember/Team.managerId now).
 //
 // SECOND-ROUND AUDIT (AR-2, 2026-08-31):
 //   - Role values are EXACTLY the Prisma `Role` enum (UPPERCASE): ADMIN |
@@ -32,7 +34,6 @@ export type Role = (typeof ROLES)[number];
 export type JwtPayload = {
   sub: string; // user id
   role: Role;
-  teamId: string | null;
   // T-ORG: the tenant the user belongs to. Required - verifyJwt rejects a
   // token without it (fail-closed, mirror of the AR-2 role gate). Without
   // this every RLS policy would see app.user_org_id = '' and scope to zero
@@ -85,17 +86,16 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
     throw new Error('JWT missing sub claim');
   }
 
-  // better-auth's jwt() plugin puts role/teamId/organizationId in the
-  // `user` object. Accept both flat (role at top level) and nested
-  // (user.role) shapes so tokens issued by issueJwt and tokens issued by
-  // better-auth itself both round-trip cleanly.
+  // better-auth's jwt() plugin puts role/organizationId in the `user`
+  // object. Accept both flat (role at top level) and nested (user.role)
+  // shapes so tokens issued by issueJwt and tokens issued by better-auth
+  // itself both round-trip cleanly.
   const top = payload as Record<string, unknown>;
   const nested =
     (top.user as
-      | { role?: string; teamId?: string | null; organizationId?: string; email?: string }
+      | { role?: string; organizationId?: string; email?: string }
       | undefined) ?? undefined;
   const roleRaw = (top.role as string | undefined) ?? nested?.role;
-  const teamRaw = (top.teamId as string | null | undefined) ?? nested?.teamId ?? null;
   const orgRaw = (top.organizationId as string | undefined) ?? nested?.organizationId;
   const emailRaw = (top.email as string | undefined) ?? nested?.email ?? '';
 
@@ -110,7 +110,6 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
   return {
     sub: payload.sub,
     role: parseRole(roleRaw),
-    teamId: teamRaw ?? null,
     organizationId: orgRaw,
     email: emailRaw,
     iat: payload.iat ?? 0,
@@ -124,21 +123,21 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
  * Production code should rely on better-auth's $Infer.Session and the
  * /api/auth/token endpoint, not call this directly.
  *
- * The role + teamId are stored under a `user` claim (matching better-auth's
- * jwt() plugin shape) so verifyJwt can read them out consistently.
+ * The role + organizationId are stored under a `user` claim (matching
+ * better-auth's jwt() plugin shape) so verifyJwt can read them out
+ * consistently. Team membership is a TeamMember row, not a JWT claim.
  */
 export async function issueJwt(
   payload: Omit<JwtPayload, 'iat' | 'exp' | 'iss'>,
   expiresInSec = 60 * 60 * 24 * 7,
 ): Promise<string> {
   const { SignJWT } = await import('jose');
-  const { sub, role, teamId, organizationId, email } = payload;
+  const { sub, role, organizationId, email } = payload;
   return await new SignJWT({
     role,
-    teamId,
     organizationId,
     email,
-    user: { role, teamId, organizationId, email },
+    user: { role, organizationId, email },
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(sub)

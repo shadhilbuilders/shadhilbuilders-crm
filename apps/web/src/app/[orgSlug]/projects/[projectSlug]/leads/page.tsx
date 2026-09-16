@@ -50,7 +50,8 @@ import {
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { canDeleteLeads, canReassign, useSessionUser } from '@/lib/session';
-import { isOverdue, LEAD_STATES } from '@/lib/leads';
+import { isOverdue, leadAgeTier, LEAD_AGE_TIER_CLASS, LEAD_STATES } from '@/lib/leads';
+import { useAgingTick } from '@/lib/use-aging-tick';
 import { labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -452,6 +453,32 @@ function LeadTable({
   onReassign: (row: LeadRow) => void;
   onView: (row: LeadRow) => void;
 }) {
+  // Row tints age in real time (10/20/30-min tiers), so the table needs a
+  // coarse heartbeat - otherwise a lead that crosses a boundary while the
+  // operator is reading the page stays white until the next refetch.
+  // Only tick when there is something that can age: a page with no NEW lead
+  // has no tint to update, so we avoid the timer entirely.
+  const hasNewLead = rows.some((r) => r.status === 'NEW');
+  const tick = useAgingTick(hasNewLead);
+
+  /**
+   * Row tint by lead age (user request 2026-09-15). Tiers live in
+   * `@/lib/leads` so they are unit-tested + reusable; this only maps a row to
+   * its class. `tick` is in the deps on purpose: it is what makes the table
+   * re-evaluate the tiers as time passes.
+   *
+   * Returns undefined (no class) for everything else, so a non-NEW row keeps
+   * the table's default background.
+   */
+  const getRowClassName = useMemo(() => {
+    void tick;
+    const now = Date.now();
+    return (row: { original: LeadRow }): string | undefined => {
+      const tier = leadAgeTier(row.original, now);
+      return tier === null ? undefined : LEAD_AGE_TIER_CLASS[tier];
+    };
+  }, [tick]);
+
   const columns = useMemo<DataTableColumnDef<LeadRow>[]>(
     () => [
       {
@@ -578,6 +605,9 @@ function LeadTable({
     <DataTable
       columns={columns}
       rows={rows}
+      // Age-based row tint (10/20/30-min tiers for NEW leads). The props-API
+      // DataTable merges this AFTER its base classes, so the tint wins.
+      getRowClassName={getRowClassName}
       // Search is server-side (onSearchValueChange → API). The DataTable's
       // built-in client-side global filter is redundant here AND throws
       // "Column with id 'phone' does not exist" because there is no standalone

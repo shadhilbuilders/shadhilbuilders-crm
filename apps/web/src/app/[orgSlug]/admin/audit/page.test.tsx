@@ -146,3 +146,106 @@ describe('AuditPage - wire-shape contract (T-F3)', () => {
     expect(html).toMatch(/data-qa="audit-empty"/);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI6) - batch grouping
+// ────────────────────────────────────────────────────────────────────────────
+describe('AuditPage - removal batch grouping (UI6)', () => {
+  const batchId = 'batch_123_abc';
+  const anchorRow = {
+    id: 'audit-anchor',
+    userId: 'admin-1',
+    userName: 'Admin',
+    action: 'team.member.remove',
+    entityType: 'Team',
+    entityId: 'team-a',
+    before: { userId: 'tc-1'},
+    after: {
+      removedUserId: 'tc-1',
+      removedUserName: 'Priya Sharma',
+      teamId: 'team-a',
+      teamName: 'Metro Sales',
+      replacementUserId: 'tc-2',
+      replacementName: 'Rahul Verma',
+      transferredLeadCount: 2,
+    },
+    reason: 'leaving the team',
+    createdAt: '2026-09-13T08:00:00Z',
+    batchId,
+  };
+  const detailRow1 = {
+    id: 'audit-detail-1',
+    userId: 'admin-1',
+    userName: 'Admin',
+    action: 'lead.ownership_transfer',
+    entityType: 'Lead',
+    entityId: 'lead-1',
+    before: { ownerId: 'tc-1', coOwnerId: null },
+    after: { ownerId: 'tc-2', coOwnerId: null },
+    reason: null,
+    createdAt: '2026-09-13T08:00:00Z',
+    batchId,
+  };
+  const detailRow2 = {
+    id: 'audit-detail-2',
+    userId: 'admin-1',
+    userName: 'Admin',
+    action: 'lead.ownership_transfer',
+    entityType: 'Lead',
+    entityId: 'lead-2',
+    before: { ownerId: 'tc-1', coOwnerId: null },
+    after: { ownerId: 'tc-2', coOwnerId: null },
+    reason: null,
+    createdAt: '2026-09-13T08:00:00Z',
+    batchId,
+  };
+
+  it('shows the batch summary line instead of raw ids, and hides detail rows until expanded', async () => {
+    mockedUseAuditLog.mockReturnValue({
+      data: { rows: [anchorRow, detailRow1, detailRow2], total: 3 },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Priya Sharma removed from Metro Sales · 2 leads transferred to Rahul Verma');
+    // Detail rows are collapsed by default.
+    expect(container?.querySelector('[data-qa="audit-batch-toggle-batch_123_abc"]')).not.toBeNull();
+    const detailAppearances = (html.match(/lead-1/g) ?? []).length;
+    // entityId "lead-1" should not appear in the collapsed table body at all
+    // (the detail row rendering the "Lead · lead-1" entity text is hidden).
+    expect(detailAppearances).toBe(0);
+  });
+
+  it('non-batched rows render exactly as before (no toggle, plain Before -> After)', async () => {
+    mockedUseAuditLog.mockReturnValue({
+      data: {
+        rows: [
+          {
+            id: 'a-plain',
+            userId: 'u1',
+            userName: 'Owner',
+            action: 'lead.transition',
+            entityType: 'Lead',
+            entityId: 'lead-999',
+            before: { state: 'NEW' },
+            after: { state: 'CONTACTED' },
+            reason: 'call',
+            createdAt: '2026-09-04T08:30:00Z',
+            batchId: null,
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Lead transition');
+    expect(html).toMatch(/(state).*NEW/);
+    expect(container?.querySelector('[data-qa^="audit-batch-toggle-"]')).toBeNull();
+  });
+});

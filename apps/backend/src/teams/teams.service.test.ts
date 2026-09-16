@@ -10,8 +10,9 @@
 //      Maps to TeamListItem with rename _count.members->memberCount AND a
 //      managerName (null when unassigned).
 //   3. getTeam(): ADMIN/OWNER only (403 otherwise); not-found -> 404; returns
-//      manager + members each with their EXPLICIT project assignments UNION
-//      lead-owner projects (isLeadOwner=true => read-only); explicit wins.
+//      manager + a simple member list (userId/name/email/role) - no
+//      per-member `projects` field (ProjectMember, which that used to be
+//      derived from, was retired T-TEAM-AUTHORITATIVE 2026-09-13).
 //
 // Test strategy: stub withRlsContext to invoke the callback with a
 // fake tx that records calls and returns canned rows.
@@ -25,26 +26,43 @@ import type { JwtPayload } from '@shadhil/auth';
 const txCapture: { current: any } = { current: undefined };
 
 vi.mock('@shadhil/database', () => {
+  const allTeamRows = [
+    {
+      id: 'team-construction',
+      name: "Manager (placeholder)'s Team",
+      defaultAssigneeId: 'tc-1',
+      managerId: 'mgr-1',
+      manager: { name: 'Maya Rao' },
+      _count: { teamMembers: 4 },
+    },
+    {
+      id: 'team-real-estate',
+      name: 'Real Estate Desk',
+      defaultAssigneeId: 'se-1',
+      managerId: null,
+      manager: null,
+      _count: { teamMembers: 2 },
+    },
+  ];
   const tx = {
     team: {
-      findMany: vi.fn(async () => [
-        {
-          id: 'team-construction',
-          name: "Manager (placeholder)'s Team",
-          defaultAssigneeId: 'tc-1',
-          managerId: 'mgr-1',
-          manager: { name: 'Maya Rao' },
-          _count: { members: 4 },
-        },
-        {
-          id: 'team-real-estate',
-          name: 'Real Estate Desk',
-          defaultAssigneeId: 'se-1',
-          managerId: null,
-          manager: null,
-          _count: { members: 2 },
-        },
-      ]),
+      // T-TEAM-AUTHORITATIVE (2026-09-13): dispatch on the where shape so
+      // this one mock serves both TeamAccessService.getManagedTeamIds()
+      // (where: { managerId, deletedAt }, select: { id: true } only) and
+      // TeamsService.list()'s own final query (where: { deletedAt } or
+      // { deletedAt, id: { in } }, with the full select shape).
+      findMany: vi.fn(async (args: { where?: { managerId?: string; id?: { in: string[] } } } = {}) => {
+        const where = args.where ?? {};
+        if (where.managerId !== undefined) {
+          return allTeamRows
+            .filter((t) => t.managerId === where.managerId)
+            .map((t) => ({ id: t.id }));
+        }
+        if (where.id !== undefined) {
+          return allTeamRows.filter((t) => where.id!.in.includes(t.id));
+        }
+        return allTeamRows;
+      }),
       findUnique: vi.fn(async (args: { where: { id: string } }) => {
         if (args.where.id === 'team-missing') return null;
         if (args.where.id === 'team-real-estate') {
@@ -52,30 +70,52 @@ vi.mock('@shadhil/database', () => {
             id: 'team-real-estate',
             name: 'Real Estate Desk',
             manager: null,
+            deletedAt: null,
           };
         }
         return {
           id: 'team-construction',
           name: "Manager (placeholder)'s Team",
           manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
+          deletedAt: null,
         };
       }),
     },
+    // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): dispatches on the
+    // select shape - TeamAccessService.getOrdinaryMemberTeamIds() asks for
+    // `select: { teamId: true }` (no fixtures in this suite hold a
+    // TeamMember row, so [] there); getTeam() asks for
+    // `select: { user: {...} } }` and gets the roster's ordinary members.
+    teamMember: {
+      findMany: vi.fn(async (args: { select?: { user?: unknown }; where?: { userId?: string } } = {}) => {
+        if (args.select?.user !== undefined) {
+          return [
+            {
+              user: {
+                id: 'u-tc',
+                name: 'Tele Caller One',
+                email: 'tc1@x',
+                role: 'TELECALLER',
+              },
+            },
+          ];
+        }
+        // TeamAccessService.getOrdinaryMemberTeamIds(userId) shape
+        // (select: { teamId: true }) - the telecaller fixture is an
+        // ordinary member of team-construction via this row.
+        if (args.where?.userId === 'tc-1') {
+          return [{ teamId: 'team-construction' }];
+        }
+        return [];
+      }),
+    },
     user: {
-      findMany: vi.fn(async () => [
-        {
-          id: 'u-tc',
-          name: 'Tele Caller One',
-          email: 'tc1@x',
-          role: 'TELECALLER',
-          // Explicit member of one project + lead-owner of another.
-          projectMembers: [
-            { project: { id: 'p-1', name: 'Metro' }, role: 'TELECALLER' },
-          ],
-          ownedLeads: [{ project: { id: 'p-1', name: 'Metro' } }, { project: { id: 'p-2', name: 'Skyline' } }],
-          coOwnedLeads: [],
-        },
-      ]),
+      findUnique: vi.fn(async (args: { where: { id: string } }) => {
+        if (args.where.id === 'mgr-1') {
+          return { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x', role: 'MANAGER' };
+        }
+        return null;
+      }),
     },
   };
   return {
@@ -83,12 +123,10 @@ vi.mock('@shadhil/database', () => {
     rlsContextFrom: vi.fn((actor: {
       sub: string;
       role: string;
-      teamId: string | null;
       organizationId?: string | null;
     }) => ({
       userId: actor.sub,
       role: actor.role,
-      teamId: actor.teamId,
       organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     withRlsContext: vi.fn(
@@ -111,7 +149,6 @@ const ownerActor: JwtPayload = {
   sub: 'owner-1',
   email: 'owner@shadhilbuilders.in',
   role: 'OWNER',
-  teamId: 'team-construction',
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
@@ -122,7 +159,6 @@ const managerActor: JwtPayload = {
   sub: 'mgr-1',
   email: 'mgr@shadhilbuilders.in',
   role: 'MANAGER',
-  teamId: 'team-construction',
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
@@ -133,7 +169,6 @@ const telecallerActor: JwtPayload = {
   sub: 'tc-1',
   email: 'telecaller@shadhilbuilders.in',
   role: 'TELECALLER',
-  teamId: 'team-construction',
   organizationId: 'ceid01lpfe1esm8jwsxid41k28',
   iat: 1_000_000,
   exp: 1_000_000 + 3600,
@@ -155,7 +190,6 @@ describe('TeamsService.list', () => {
     expect(ctx).toEqual({
       userId: 'owner-1',
       role: 'OWNER',
-      teamId: 'team-construction',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     });
   });
@@ -167,15 +201,16 @@ describe('TeamsService.list', () => {
     expect(tx).toBeDefined();
     expect(tx.team.findMany).toHaveBeenCalledTimes(1);
     const args = tx.team.findMany.mock.calls[0]![0];
-    // OWNER is an overseer: no membership filter (sees every project).
-    expect(args.where).toEqual({});
+    // OWNER is an overseer: no membership filter (sees every project),
+    // just the soft-delete exclusion.
+    expect(args.where).toEqual({ deletedAt: null });
     expect(args.select).toMatchObject({
       id: true,
       name: true,
       defaultAssigneeId: true,
       managerId: true,
       manager: { select: { name: true } },
-      _count: { select: { members: true } },
+      _count: { select: { teamMembers: true } },
     });
     expect(args.orderBy).toEqual({ name: 'asc' });
   });
@@ -184,8 +219,21 @@ describe('TeamsService.list', () => {
     const svc = new TeamsService({ $client: {} } as never);
     await svc.list(telecallerActor);
     const tx = txCapture.current;
-    const args = tx.team.findMany.mock.calls[0]![0];
-    expect(args.where).toEqual({ members: { some: { id: 'tc-1' } } });
+    // T-TEAM-AUTHORITATIVE (2026-09-13): the LAST team.findMany call is
+    // the final list query - TeamAccessService's own internal
+    // findMany calls happen first.
+    const lastCall = tx.team.findMany.mock.calls.at(-1)![0];
+    expect(lastCall.where).toEqual({ deletedAt: null, id: { in: ['team-construction'] } });
+  });
+
+  it('MANAGER sees the union of teams they manage AND their legacy teamId membership', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    await svc.list(managerActor);
+    const tx = txCapture.current;
+    const lastCall = tx.team.findMany.mock.calls.at(-1)![0];
+    // managerActor manages team-construction (fixture managerId='mgr-1')
+    // AND their own legacy teamId is also team-construction - deduped.
+    expect(lastCall.where).toEqual({ deletedAt: null, id: { in: ['team-construction'] } });
   });
 
   it('maps to TeamListItem with managerName (null when unassigned)', async () => {
@@ -218,13 +266,23 @@ describe('TeamsService.getTeam', () => {
     txCapture.current = undefined;
   });
 
-  it('forbids non-admin roles (ADMIN/OWNER only)', async () => {
+  it('forbids staff roles entirely (TELECALLER/SALES_EXEC cannot view any team roster)', async () => {
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(svc.getTeam(managerActor, 'team-construction')).rejects.toThrow(
-      /ADMIN or OWNER/,
-    );
     await expect(svc.getTeam(telecallerActor, 'team-construction')).rejects.toThrow(
-      /ADMIN or OWNER/,
+      /ADMIN, OWNER, or a MANAGER/,
+    );
+  });
+
+  it('T-TEAM-AUTHORITATIVE: a MANAGER CAN view a team they manage (Work -> My Teams)', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    const result = await svc.getTeam(managerActor, 'team-construction');
+    expect(result.id).toBe('team-construction');
+  });
+
+  it('a MANAGER CANNOT view a team they neither manage nor belong to', async () => {
+    const svc = new TeamsService({ $client: {} } as never);
+    await expect(svc.getTeam(managerActor, 'team-real-estate')).rejects.toThrow(
+      /only view a team you manage or belong to/,
     );
   });
 
@@ -235,7 +293,7 @@ describe('TeamsService.getTeam', () => {
     );
   });
 
-  it('returns manager + members with explicit AND lead-owner project union', async () => {
+  it('returns manager + members (no per-member projects field - retired with ProjectMember)', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.getTeam(ownerActor, 'team-construction');
     expect(result).toEqual({
@@ -248,10 +306,6 @@ describe('TeamsService.getTeam', () => {
           name: 'Tele Caller One',
           email: 'tc1@x',
           role: 'TELECALLER',
-          projects: [
-            { projectId: 'p-1', projectName: 'Metro', role: 'TELECALLER', isLeadOwner: false },
-            { projectId: 'p-2', projectName: 'Skyline', role: 'TELECALLER', isLeadOwner: true },
-          ],
         },
       ],
     });

@@ -29,12 +29,10 @@ vi.mock('@shadhil/database', () => {
     rlsContextFrom: vi.fn((actor: {
       sub: string;
       role: string;
-      teamId: string | null;
       organizationId?: string | null;
     }) => ({
       userId: actor.sub,
       role: actor.role,
-      teamId: actor.teamId,
       organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
     })),
     withRlsContext: vi.fn(
@@ -57,7 +55,6 @@ function actor(overrides: Partial<JwtPayload>): JwtPayload {
     sub: 'actor-1',
     email: 'actor@shadhilbuilders.in',
     role: 'ADMIN',
-    teamId: null,
     organizationId: ORG,
     iat: NOW,
     exp: NOW + 3600,
@@ -80,8 +77,12 @@ type TxMock = {
   };
   user: {
     findUnique: ReturnType<typeof vi.fn>;
+  };
+  teamMember: {
     count: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+    createMany: ReturnType<typeof vi.fn>;
   };
   auditLog: { create: ReturnType<typeof vi.fn> };
 };
@@ -92,9 +93,22 @@ function makeTx(overrides: Partial<{
   users: Record<string, { id: string; role: string; name?: string } | null>;
   managerLedTeam: { id: string; name: string } | null;
   memberCount: number;
+  members: Array<{ userId: string; teamId: string; organizationId: string }>;
 }> = {}): TxMock {
   const teams = overrides.teams ?? {};
   const users = overrides.users ?? {};
+  // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassignMembers() and
+  // remove()'s member-count guard both read TeamMember rows now, not
+  // User.teamId. `members` defaults to a count matching `memberCount` so
+  // existing "N members" tests keep the same shape without listing every
+  // row explicitly, unless a test needs specific rows (reassignMembers).
+  const members =
+    overrides.members ??
+    Array.from({ length: overrides.memberCount ?? 0 }, (_, i) => ({
+      userId: `member-${i}`,
+      teamId: 'team-1',
+      organizationId: ORG,
+    }));
   const tx: TxMock = {
     team: {
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -127,8 +141,12 @@ function makeTx(overrides: Partial<{
         async ({ where }: { where: { id: string } }) =>
           users[where.id] === undefined ? null : users[where.id],
       ),
-      count: vi.fn().mockResolvedValue(overrides.memberCount ?? 0),
-      updateMany: vi.fn().mockResolvedValue({ count: overrides.memberCount ?? 0 }),
+    },
+    teamMember: {
+      count: vi.fn().mockResolvedValue(members.length),
+      findMany: vi.fn().mockResolvedValue(members),
+      deleteMany: vi.fn().mockResolvedValue({ count: members.length }),
+      createMany: vi.fn().mockResolvedValue({ count: members.length }),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
   };
@@ -168,17 +186,16 @@ describe('TeamsService.create', () => {
     });
   });
 
-  it('rejects a managerId that already leads another team', async () => {
-    makeTx({
+  it('T-TEAM-AUTHORITATIVE: allows a managerId that already leads another team (one manager, multiple teams)', async () => {
+    const tx = makeTx({
       users: { 'mgr-9': { id: 'mgr-9', role: 'MANAGER' } },
       managerLedTeam: { id: 'team-existing', name: "Mgr 9's Team" },
     });
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(
-      svc.create(adminActor, { name: 'New Team', managerId: 'mgr-9' }),
-    ).rejects.toMatchObject({
-      name: 'ConflictException',
-      message: expect.stringContaining('already leads team "Mgr 9\'s Team"'),
+    const result = await svc.create(adminActor, { name: 'New Team', managerId: 'mgr-9' });
+    expect(result.managerId).toBe('mgr-9');
+    expect(tx.team.create).toHaveBeenCalledWith({
+      data: { name: 'New Team', managerId: 'mgr-9', organizationId: ORG },
     });
   });
 
@@ -243,32 +260,32 @@ describe('TeamsService.update', () => {
     ).rejects.toMatchObject({ name: 'NotFoundException' });
   });
 
-  it('rejects reassigning to a managerId that already leads a DIFFERENT team', async () => {
-    makeTx({
+  it('T-TEAM-AUTHORITATIVE: allows reassigning to a managerId that already leads a DIFFERENT team', async () => {
+    const tx = makeTx({
       teams: { 'team-1': { id: 'team-1', name: 'Team 1', managerId: null, deletedAt: null } },
       users: { 'mgr-9': { id: 'mgr-9', role: 'MANAGER' } },
-      managerLedTeam: { id: 'team-other', name: "Other Team" },
+      managerLedTeam: { id: 'team-other', name: 'Other Team' },
     });
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(
-      svc.update(adminActor, 'team-1', { managerId: 'mgr-9' }),
-    ).rejects.toMatchObject({ name: 'ConflictException' });
+    const result = await svc.update(adminActor, 'team-1', { managerId: 'mgr-9' });
+    expect(result.managerId).toBe('mgr-9');
+    expect(tx.team.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ managerId: 'mgr-9' }) }),
+    );
   });
 
-  it('allows re-saving the SAME manager the team already has (excludeTeamId no-op)', async () => {
+  it('allows re-saving the SAME manager the team already has (no-op)', async () => {
     const tx = makeTx({
       teams: { 'team-1': { id: 'team-1', name: 'Team 1', managerId: 'mgr-1', deletedAt: null } },
       users: { 'mgr-1': { id: 'mgr-1', role: 'MANAGER', name: 'Maya' } },
-      managerLedTeam: null, // findFirst excludes team-1, so no OTHER team found
     });
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.update(adminActor, 'team-1', { managerId: 'mgr-1' });
     expect(result.managerId).toBe('mgr-1');
-    expect(tx.team.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ managerId: 'mgr-1', id: { not: 'team-1' } }),
-      }),
-    );
+    // T-TEAM-AUTHORITATIVE (2026-09-13): the "already leads a team" guard
+    // is gone, so assertManagerAssignable no longer issues a ledTeam
+    // lookup at all - only the user-role lookup remains.
+    expect(tx.team.findFirst).not.toHaveBeenCalled();
   });
 
   it('renames + writes an audit row on the happy path', async () => {
@@ -417,10 +434,10 @@ describe('TeamsService.reassignMembers', () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.reassignMembers(adminActor, 'team-1', { targetTeamId: 'team-2' });
     expect(result).toEqual({ count: 4 });
-    expect(tx.user.updateMany).toHaveBeenCalledWith({
+    expect(tx.teamMember.deleteMany).toHaveBeenCalledWith({
       where: { teamId: 'team-1' },
-      data: { teamId: 'team-2' },
     });
+    expect(tx.teamMember.createMany).toHaveBeenCalled();
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -443,9 +460,9 @@ describe('TeamsService.reassignMembers', () => {
       userIds: ['u-x'],
     });
     expect(result).toEqual({ count: 1 });
-    expect(tx.user.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['u-x'] }, teamId: 'team-1' },
-      data: { teamId: 'team-2' },
+    expect(tx.teamMember.deleteMany).toHaveBeenCalledWith({
+      where: { userId: { in: ['u-x'] }, teamId: 'team-1' },
     });
+    expect(tx.teamMember.createMany).toHaveBeenCalled();
   });
 });

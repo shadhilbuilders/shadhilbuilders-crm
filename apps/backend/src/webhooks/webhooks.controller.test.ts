@@ -42,12 +42,12 @@ beforeAll(async () => {
   // Seed a manager user + a team that owns the known lead. The
   // WhatsappUnknownContact / WebhookEvent / OutboundMessage rows
   // we create here are owned by CRON_SERVICE (no real actor), so
-  // the user+team is only needed for the known Lead. Team is
-  // upserted FIRST - User.teamId is an FK to Team (User_teamId_fkey).
+  // the user+team is only needed for the known Lead. Membership is a
+  // TeamMember row now (User.teamId was dropped in the cutover).
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       await tx.team.upsert({
         where: { id: TEST_TEAM_ID },
@@ -62,10 +62,15 @@ beforeAll(async () => {
           email: 'wa-handler-admin@test.local',
           name: 'WA Handler Test Admin',
           role: 'ADMIN',
-          teamId: TEST_TEAM_ID,
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a couple of
+      // assertions below read the Message row back impersonating this same
+      // user as MANAGER (message_select_team's MANAGER branch is now
+      // Team.managerId-EXISTS only - the legacy app.user_team_id GUC
+      // fallback has been removed) - set it explicitly.
+      await tx.team.update({ where: { id: TEST_TEAM_ID }, data: { managerId: TEST_USER_ID } });
     },
   );
 });
@@ -81,7 +86,7 @@ beforeEach(async () => {
 
   await withRlsContext(
     runtimePrisma as unknown as PrismaClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       const lead = await tx.lead.create({
         data: {
@@ -140,7 +145,7 @@ afterAll(async () => {
   const adminClient = runtimePrisma as unknown as PrismaClient;
   await withRlsContext(
     adminClient,
-    { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+    { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
       // Find all leads we created in this test session
       const leads = await tx.lead.findMany({
@@ -205,7 +210,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // The Message row was actually written
     const msg = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'MANAGER', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.message.findFirst({
           where: { externalId, leadId: knownLeadId },
@@ -253,7 +258,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // The contact row was created
     const contact = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.whatsappUnknownContact.findUnique({
           where: { phoneE164: unknownPhone },
@@ -290,7 +295,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     });
     const updated = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'ADMIN', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.whatsappUnknownContact.findUnique({
           where: { phoneE164: unknownPhone },
@@ -331,7 +336,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
 
     const updated = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', teamId: '', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.outboundMessage.findUnique({
           where: { id: outboundMessageId },
@@ -402,7 +407,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     // Only one Message row was created for that externalId
     const messages = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: TEST_USER_ID, role: 'MANAGER', teamId: TEST_TEAM_ID, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      { userId: TEST_USER_ID, role: 'MANAGER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
       async (tx) =>
         tx.message.findMany({
           where: { externalId, leadId: knownLeadId },

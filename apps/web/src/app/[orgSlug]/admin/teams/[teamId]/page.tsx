@@ -1,20 +1,17 @@
 'use client';
 
 // Org team roster - ADMIN/OWNER ONLY (/teams/[teamId]).
-// Lists the team's members (User.teamId matches) with the projects each is
-// assigned to, and lets an admin unlink a member from a SPECIFIC project
-// (DELETE /api/projects/:projectId/members/:userId). Rows where the member
-// is only a lead-owner on a project (no explicit ProjectMember) are shown
-// read-only as "via leads" with Unlink disabled - unlinking would be a
-// silent no-op. Team members also show a "View in Users" link to /users.
+// Lists the team's members (User.teamId matches). Per-project link/unlink
+// (the old ProjectMember-based "Link to project"/"Unlink" actions) was
+// retired T-TEAM-AUTHORITATIVE (2026-09-13, clean cutover) - project
+// staffing is exclusively team-based now (see the per-project Staff page,
+// ProjectTeamList). Team members also show a "View in Users" link to /users.
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
   AlertDialog,
-  Badge,
   Button,
-  Combobox,
   DataTable,
   Dialog,
   DropdownMenuContent,
@@ -24,22 +21,14 @@ import {
   Heading,
   Loading,
   toast,
-  Tooltip,
   TypographyP,
 } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
-import { useQueryClient } from '@tanstack/react-query';
 
-import {
-  useLinkProjectMemberToProject,
-  useProjects,
-  useUnlinkProjectMember,
-} from '@/hooks/queries/projects';
 import {
   useReassignTeamMembers,
   useTeam,
   type TeamListItem,
-  type TeamMemberProject,
   type TeamMemberRow,
 } from '@/hooks/queries/teams';
 import {
@@ -47,10 +36,10 @@ import {
   TeamFormBody,
   TeamTargetPicker,
 } from '@/components/teams/team-form-bodies';
+import { TeamRosterMemberRow } from '@/components/teams/team-roster';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
-import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -186,6 +175,7 @@ export default function TeamRosterPage() {
         <RosterTable
           orgSlug={orgSlug}
           teamId={team.id}
+          teamName={team.name}
           members={team.members}
           managerId={team.manager?.id ?? null}
         />
@@ -334,42 +324,34 @@ function TeamHeaderActions({
 // ---------------------------------------------------------------------------
 
 /**
- * One member row: name/email, role, and the projects they're on. The Unlink
- * action is per-project and only enabled for EXPLICIT members; lead-owner-only
- * projects render a disabled Unlink with a tooltip.
+ * One member row - delegates the manager-pin/Manager-badge/"Remove from
+ * this team" contract to the shared `TeamRosterMemberRow` (design doc UI1:
+ * "Both routes render the same shared roster component"), and supplies the
+ * Admin-only "Move to team" action via its `extraActions` slot.
  */
 function MemberCard({
   teamId,
+  teamName,
   member,
   managerId,
 }: {
   teamId: string;
+  teamName: string;
   member: TeamMemberRow;
   managerId: string | null;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{member.name}</span>
-          {member.userId === managerId ? (
-            <Badge variant="secondary">Manager</Badge>
-          ) : null}
-        </div>
-        <p className="text-muted-foreground text-xs">{member.email}</p>
-        <p className="text-muted-foreground text-xs">{labelFor('role', member.role)}</p>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        {member.projects.map((p) => (
-          <ProjectUnlink key={p.projectId} project={p} member={member} />
-        ))}
-        {member.projects.length === 0 ? (
-          <span className="text-muted-foreground text-xs">Not on any project</span>
-        ) : null}
-        <LinkProjectButton teamId={teamId} member={member} />
-        <MoveToTeamButton teamId={teamId} member={member} />
-      </div>
-    </div>
+    <TeamRosterMemberRow
+      teamId={teamId}
+      teamName={teamName}
+      member={member}
+      managerId={managerId}
+      // Admin/Owner can remove from any org team (authorization matrix);
+      // the manager row is still excluded inside the shared component.
+      canRemove
+      dataQaPrefix="team-member"
+      extraActions={<MoveToTeamButton teamId={teamId} member={member} />}
+    />
   );
 }
 
@@ -444,241 +426,17 @@ function MoveToTeamButton({
   );
 }
 
-/** Opens a dialog to link this member to a project they're not already on. */
-function LinkProjectButton({
-  teamId,
-  member,
-}: {
-  teamId: string;
-  member: TeamMemberRow;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 px-2 text-xs"
-        onClick={() => setOpen(true)}
-        data-qa={`project-member-link-${member.userId}`}
-      >
-        Link to project
-      </Button>
-      <LinkProjectDialog
-        teamId={teamId}
-        member={member}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
-  );
-}
-
-/** Dialog: pick a project (not already linked) and link the member to it. */
-function LinkProjectDialog({
-  teamId,
-  member,
-  open,
-  onOpenChange,
-}: {
-  teamId: string;
-  member: TeamMemberRow;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const queryClient = useQueryClient();
-  const { data: projects } = useProjects();
-  const linkMember = useLinkProjectMemberToProject();
-  const [selected, setSelected] = useState('');
-
-  // Projects the member isn't already on (explicit or lead-owner).
-  const linkedIds = useMemo(
-    () => new Set(member.projects.map((p) => p.projectId)),
-    [member.projects],
-  );
-  const candidates = useMemo(
-    () =>
-      (projects ?? [])
-        .filter((p) => !linkedIds.has(p.id))
-        .map((p) => ({ value: p.id, label: p.name })),
-    [projects, linkedIds],
-  );
-
-  function handleLink() {
-    if (!selected) return;
-    linkMember.mutate(
-      { projectId: selected, userId: member.userId },
-      {
-        onSuccess: () => {
-          toast.success(`${member.name} linked to a project`);
-          void queryClient.invalidateQueries({ queryKey: ['teams', teamId] });
-          setSelected('');
-          onOpenChange(false);
-        },
-        onError: (error: unknown) => {
-          toast.error(error instanceof Error ? error.message : 'Link failed');
-        },
-      },
-    );
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        // Reset the picker whenever the dialog closes (cancel, X, or after
-        // a successful link) so the next open starts clean.
-        if (!next) setSelected('');
-        onOpenChange(next);
-      }}
-      trigger={null}
-      header={{
-        title: `Link ${member.name} to a project`,
-        description: 'Choose a project to add this member to.',
-      }}
-      contentClassName="sm:max-w-md"
-    >
-      <div className="space-y-3">
-        <Combobox
-          value={selected}
-          onValueChange={(v) => setSelected(v ?? '')}
-          options={candidates}
-          placeholder={
-            candidates.length === 0
-              ? 'No more projects to link'
-              : 'Search projects...'
-          }
-          disabled={candidates.length === 0}
-          selectOptionAsValue
-          className="w-full"
-          data-qa="project-link-picker"
-        />
-        <div className="flex justify-end gap-2 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={linkMember.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleLink}
-            disabled={!selected || linkMember.isPending}
-            isLoading={linkMember.isPending}
-            loadingText="Linking..."
-            data-qa="project-link-confirm"
-          >
-            Link
-          </Button>
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-/** A single project chip with an Unlink button (or a read-only badge). */
-function ProjectUnlink({
-  project,
-  member,
-}: {
-  project: TeamMemberProject;
-  member: TeamMemberRow;
-}) {
-  const unlinkMember = useUnlinkProjectMember(project.projectId);
-  const [confirming, setConfirming] = useState(false);
-  const [removing, setRemoving] = useState(false);
-
-  function handleUnlink() {
-    setRemoving(true);
-    unlinkMember.mutate(member.userId, {
-      onSuccess: () => {
-        toast.success(`${member.name} unlinked from ${project.projectName}`);
-      },
-      onError: (error: unknown) => {
-        toast.error(error instanceof Error ? error.message : 'Unlink failed');
-      },
-      onSettled: () => {
-        setRemoving(false);
-        setConfirming(false);
-      },
-    });
-  }
-
-  const button = (
-    <Button
-      type="button"
-      variant="ghost"
-      color="danger"
-      size="sm"
-      onClick={() => setConfirming(true)}
-      disabled={removing || project.isLeadOwner}
-      isLoading={removing}
-      loadingText="..."
-      data-qa={`project-member-unlink-${project.projectId}-${member.userId}`}
-    >
-      Unlink · {project.projectName}
-    </Button>
-  );
-
-  if (project.isLeadOwner) {
-    return (
-      <Tooltip
-        content="This member only owns leads on this project (no explicit assignment) - nothing to unlink."
-        side="left"
-        trigger={
-          <span className="flex items-center justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="pointer-events-auto h-7 cursor-not-allowed! shrink-0 px-2 text-xs opacity-50"
-              data-qa={`project-member-readonly-${project.projectId}-${member.userId}`}
-            >
-              via leads · {project.projectName}
-            </Button>
-          </span>
-        }
-      />
-    );
-  }
-
-  return (
-    <>
-      {button}
-      <AlertDialog
-        open={confirming}
-        onOpenChange={(open) => {
-          if (!open) setConfirming(false);
-        }}
-        trigger={null}
-        header={{
-          title: `Unlink ${member.name} from ${project.projectName}?`,
-          description: `This removes ${member.name}'s explicit assignment to ${project.projectName}. They can still be re-linked later.`,
-        }}
-        cancelButtonText="Cancel"
-        confirmButtonText={removing ? 'Unlinking...' : 'Unlink'}
-        confirmButtonProps={{
-          variant: 'destructive',
-          disabled: removing,
-        }}
-        onConfirm={handleUnlink}
-        onCancel={() => setConfirming(false)}
-      />
-    </>
-  );
-}
 
 function RosterTable({
   orgSlug,
   teamId,
+  teamName,
   members,
   managerId,
 }: {
   orgSlug: string | null;
   teamId: string;
+  teamName: string;
   members: TeamMemberRow[];
   managerId: string | null;
 }) {
@@ -689,12 +447,17 @@ function RosterTable({
         accessorKey: 'name',
         header: 'Member',
         cell: ({ row }) => (
-          <MemberCard teamId={teamId} member={row.original} managerId={managerId} />
+          <MemberCard
+            teamId={teamId}
+            teamName={teamName}
+            member={row.original}
+            managerId={managerId}
+          />
         ),
         enableSorting: true,
       },
     ],
-    [teamId, managerId],
+    [teamId, teamName, managerId],
   );
 
   return (

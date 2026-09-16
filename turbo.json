@@ -20,7 +20,9 @@
     "NEXT_PUBLIC_API_BASE_URL",
     "NEXT_PUBLIC_APP_URL",
     "NEXT_PUBLIC_APP_NAME",
-    "CORS_ORIGINS"
+    "CORS_ORIGINS",
+    "PUBLIC_ORG_ID",
+    "WA_WEBHOOK_VERIFY_TOKEN"
   ],
   "tasks": {
     "build": {

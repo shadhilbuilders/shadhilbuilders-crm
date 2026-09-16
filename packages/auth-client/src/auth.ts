@@ -46,9 +46,9 @@ export const auth: any = betterAuth({
   // SECOND-ROUND AUDIT B4a (2026-08-31): the Prisma `User.role` column is a
   // NOT NULL Role enum with no default - better-auth's signUpEmail inserts a
   // bare user and Prisma rejects it ("Invalid value for argument `role`").
-  // Declare role/teamId as additional fields with server-side defaults so
-  // every better-auth-created user lands with a valid enum role and a team
-  // slot to be filled by an admin (plan A6: single primary role).
+  // Declare role as an additional field with a server-side default so every
+  // better-auth-created user lands with a valid enum role (team membership
+  // is filled in by an admin afterward, via TeamMember - see below).
   user: {
     additionalFields: {
       role: {
@@ -57,12 +57,12 @@ export const auth: any = betterAuth({
         defaultValue: 'TELECALLER',
         input: false, // AR-8: roles are set by admins/seed only, never via signup input
       },
-      teamId: {
-        type: 'string',
-        required: false,
-        defaultValue: null,
-        input: false,
-      },
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): `teamId` is not
+      // an additionalField. Team membership is a TeamMember row, which
+      // supports a user belonging to multiple teams - a single scalar
+      // additionalField could never have modeled that. JWTs carry
+      // sub/role/organizationId/email only.
+      //
       // T-ORG (2026-09-11, eng review A4): Organization is the tenant axis.
       // It is a NOT NULL column with no DB default, so like `role` (B4a), a
       // bare better-auth signup insert would be rejected by Prisma. Declare
