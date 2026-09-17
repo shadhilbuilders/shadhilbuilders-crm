@@ -30,8 +30,10 @@ import { useForm } from 'react-hook-form';
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { authClient } from '@/lib/auth-client';
+import { env } from '@/lib/env';
 
 import { z } from 'zod';
+import Link from 'next/link';
 
 /**
  * Client form contract for the login form. Derived from the server's
@@ -156,6 +158,15 @@ export function LoginForm() {
       <TypographyP className="text-muted-foreground mt-6 text-center text-xs">
         Shadhil Builders internal system - access is provisioned by an admin.
       </TypographyP>
+
+      {env.NEXT_PUBLIC_ORG_SIGNUP_ENABLED ? (
+        <TypographyP className="text-muted-foreground mt-3 text-center text-xs">
+          No account yet?{' '}
+          <Link href="/register" className="text-link underline underline-offset-4">
+            Create an organization
+          </Link>
+        </TypographyP>
+      ) : null}
     </Card>
   );
 }

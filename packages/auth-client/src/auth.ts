@@ -28,7 +28,18 @@ import { admin } from 'better-auth/plugins/admin';
 import { adminAc } from 'better-auth/plugins/admin/access';
 
 import { prisma } from '@shadhil/database';
+import { createOrgForSignup } from './org-owner';
 import { assertAuthEnv } from './env';
+
+/** Normalize a free-text org name into a URL-safe slug ("Acme Co." -> "acme-co"). */
+function slugifyOrgName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96) || 'organization';
+}
 
 const env = assertAuthEnv();
 
@@ -77,6 +88,16 @@ export const auth: any = betterAuth({
         required: false,
         defaultValue: 'ceid01lpfe1esm8jwsxid41k28',
         input: false,
+      },
+      // T-ORG-OWNER (2026-09-17): self-signup. When a sign-up supplies an
+      // organization name, the user.create.after hook creates a NEW org
+      // (createdBy = this user), sets the user's role=OWNER and reassigns
+      // organizationId to it. input:true so the register form can send it.
+      // Admin-created users / the existing seed path omit it (no new org).
+      organizationName: {
+        type: 'string',
+        required: false,
+        input: true,
       },
     },
   },
@@ -148,6 +169,19 @@ export const auth: any = betterAuth({
   // `databaseHooks.session.create.before` hook that returns false to
   // reject the session (the core types even cite it for banned users).
   databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          // T-ORG-OWNER (2026-09-17): a self-signup that sent an
+          // organizationName creates a brand-new org (createdBy = this
+          // user), then promotes the user to OWNER and binds them to it.
+          // Runs on the bare prisma client (auth-table + org INSERT path).
+          // A throw here rejects the signup atomically - the org + role
+          // write and the session issuance do not partially persist.
+          await createOrgForSignup({ prisma, user, slugify: slugifyOrgName });
+        },
+      },
+    },
     session: {
       create: {
         before: async (session) => {

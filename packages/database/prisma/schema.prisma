@@ -195,6 +195,12 @@ model Organization {
   id        String   @id @default(cuid(2))
   name      String
   slug      String   @unique
+  // T-ORG-OWNER (2026-09-17): the user who created the org via self-signup
+  // becomes its OWNER. createdBy records that origin (the OWNER role itself
+  // already grants full access via the admin downcast); nullable because the
+  // seeded bootstrap org predates the field. Set on user.create in the
+  // better-auth hook; never mutated afterward.
+  createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -321,6 +327,13 @@ model Team {
   // nullable: a team without a default assignee → leads that don't
   // match any rule stay unassigned (notification trigger fires).
   defaultAssigneeId String?
+  // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads.
+  //   true  = auto-assign across ALL project teams (least-loaded telecaller
+  //          by openLeads/weight; managers never own).
+  //   false = new leads land owned by this team's MANAGER (pending state),
+  //          who then reassigns to a specific telecaller. Manager owns until
+  //          handoff (LeadOwnerType.MANAGER).
+  autoAssignLeads Boolean @default(false)
   createdAt         DateTime @default(now())
   // T-TEAM-CRUD (2026-09-13): NULL = active; set = soft-deleted (hidden
   // from the org-Teams pages). Mirrors Project.deletedAt exactly - avoids
@@ -360,6 +373,12 @@ model TeamMember {
   organizationId String
   assignedAt DateTime @default(now())
   assignedById String?
+  // T-AUTOASSIGN (2026-09-17): relative routing weight for auto-assignment.
+  // Higher = gets MORE leads when the team spreads new work. Default 1 for
+  // everyone; an admin can bias toward an experienced telecaller (e.g. 2 =
+  // twice the share of a weight-1 member). Availability = open-lead count;
+  // the engine assigns to the member with the lowest openLeads / weight.
+  weight      Int      @default(1)
 
   user         User         @relation("TeamMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
   team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)

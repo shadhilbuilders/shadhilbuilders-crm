@@ -393,7 +393,7 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     };
   }
 
-  // ── T-USER-PROJECT-SCOPE (2026-09-16) — @mention picker ────────────────────
+  // ── T-USER-PROJECT-SCOPE (2026-09-16) - @mention picker ────────────────────
   // User-reported: an admin/owner's @mention list showed people from every
   // project. The chat pane now passes the active project.
   it('ADMIN + projectId → scoped to that project staff (not the whole directory)', async () => {
@@ -543,19 +543,22 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     // against the actor's org, so list() resolves the project first. Defaults to
     // "found" - tests that assert the cross-org rejection override it.
     const projectFindFirst = vi.fn().mockResolvedValue({ id: 'proj-1' });
+    // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN rows get the FULL org project
+    // set via tx.project.findMany (the admin-projects branch). Defaults empty.
+    const projectFindMany = vi.fn().mockResolvedValue([]);
     // list() now runs inside ONE withRlsContext transaction - the tx must
     // expose every accessor it touches. Mocks shared so assertions see calls.
     const txMock = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
-      project: { findFirst: projectFindFirst },
+      project: { findFirst: projectFindFirst, findMany: projectFindMany },
       projectTeam: { findMany: projectTeamFindMany },
       $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     };
     const fakeClient = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
-      project: { findFirst: projectFindFirst },
+      project: { findFirst: projectFindFirst, findMany: projectFindMany },
       projectTeam: { findMany: projectTeamFindMany },
       $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
@@ -568,6 +571,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
         userFindMany,
         userCount,
         projectFindFirst,
+        projectFindMany,
         projectTeamFindMany,
       },
     };
@@ -833,12 +837,15 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
 
   it('returns { rows, total } envelope (projects come from the user\'s TEAM\'s ProjectTeam rows - T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover, ProjectMember retired)', async () => {
     const { service, mocks } = makeListService();
+    // Non-admin role (TELECALLER): project list reflects their TEAM's linked
+    // projects. (ADMIN/OWNER rows return the full org project set instead -
+    // covered by the T-ORG-OWNER-ACCESS test below.)
     mocks.userFindMany.mockResolvedValue([
       {
         id: 'u1',
         email: 'a@x',
         name: 'A',
-        role: 'ADMIN',
+        role: 'TELECALLER',
         teamMemberships: [{ teamId: 'team-x' }],
       },
     ]);
@@ -853,13 +860,38 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
           id: 'u1',
           email: 'a@x',
           name: 'A',
-          role: 'ADMIN',
+          role: 'TELECALLER',
           teamId: 'team-x',
           projects: ['Shadhil Metro Heights'],
         },
       ],
       total: 1,
     });
+  });
+
+  it('OWNER row exposes the FULL org project set (not just their team-linked projects - T-ORG-OWNER-ACCESS 2026-09-17)', async () => {
+    const { service, mocks } = makeListService();
+    // OWNER has no team membership and no team - RLS already grants the
+    // org-wide Project registry, so list() must surface every org project.
+    mocks.userFindMany.mockResolvedValue([
+      { id: 'owner-1', email: 'o@x', name: 'Owner', role: 'OWNER', teamMemberships: [] },
+    ]);
+    mocks.userCount.mockResolvedValue(1);
+    // The org-wide registry: project.findMany returns ALL org projects for
+    // admin-class rows (owner/owner2 downcast to ADMIN at the RLS layer).
+    mocks.projectFindMany.mockResolvedValue([
+      { name: 'Bridgeway' },
+      { name: 'Metro Heights' },
+    ]);
+    const result = await service.list(ownerActor, { limit: 50, offset: 0 });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.projects).toEqual(['Bridgeway', 'Metro Heights']);
+    // And the projects fetch was scoped to the owner's ORG, not a team.
+    expect(mocks.projectFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      }),
+    );
   });
 });
 

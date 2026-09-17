@@ -44,6 +44,15 @@ export const env = createEnv({
       .string()
       .transform((val) => val === 'true')
       .default(true),
+
+    // T-ORG-OWNER-SIGNUP (2026-09-17): when true, the public /register page is
+    // live - anyone can create an org and become its OWNER. MUST be off unless
+    // the org-owner signup flow is explicitly enabled for the deployment.
+    // Default OFF (opt-in via NEXT_PUBLIC_ORG_SIGNUP_ENABLED=true).
+    NEXT_PUBLIC_ORG_SIGNUP_ENABLED: z
+      .string()
+      .transform((val) => val === 'true')
+      .default(false),
   },
 
   runtimeEnv: {
@@ -67,6 +76,7 @@ export const env = createEnv({
     NEXT_PUBLIC_RERA_VALID_FROM: process.env.NEXT_PUBLIC_RERA_VALID_FROM,
     NEXT_PUBLIC_RERA_VALID_UNTIL: process.env.NEXT_PUBLIC_RERA_VALID_UNTIL,
     NEXT_PUBLIC_MODEL_C_ENABLED: process.env.NEXT_PUBLIC_MODEL_C_ENABLED,
+    NEXT_PUBLIC_ORG_SIGNUP_ENABLED: process.env.NEXT_PUBLIC_ORG_SIGNUP_ENABLED,
   },
 
   emptyStringAsUndefined: true,

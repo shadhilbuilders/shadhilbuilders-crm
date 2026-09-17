@@ -564,10 +564,21 @@ export class UsersService {
                 email: team.manager.email,
               }
             : null,
-        projects: (team?.projectTeams ?? []).map((pt) => ({
-          id: pt.project.id,
-          name: pt.project.name,
-        })),
+        // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN see every project in
+        // the org; staff see the projects linked to their resolved team.
+        projects:
+          target.role === 'OWNER' || target.role === 'ADMIN'
+            ? (
+                await client.project.findMany({
+                  where: { organizationId: actor.organizationId },
+                  select: { id: true, name: true },
+                  orderBy: { name: 'asc' },
+                })
+              ).map((p) => ({ id: p.id, name: p.name }))
+            : (team?.projectTeams ?? []).map((pt) => ({
+                id: pt.project.id,
+                name: pt.project.name,
+              })),
       };
     });
   }
@@ -1090,6 +1101,27 @@ export class UsersService {
         projectNamesByTeamId.set(pt.teamId, list);
       }
 
+      // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
+      // the org, not just the (empty) set linked to their team. OWNER/ADMIN
+      // carry no team (teamId null -> the team-linked map yields an empty
+      // list), yet RLS already grants them the org-wide Project registry, so
+      // show the full org project names for admin-class rows.
+      const adminRoles = new Set(['OWNER', 'ADMIN']);
+      const adminRowIndexes = rows
+        .map((r, i) => (adminRoles.has(r.role) ? i : -1))
+        .filter((i) => i >= 0);
+      // One batched fetch of the org's projects, filtered to the name list we
+      // already use for the team-linked rows (same shape, same orderBy).
+      let orgProjectNames: string[] = [];
+      if (adminRowIndexes.length > 0) {
+        const orgRows = await client.project.findMany({
+          where: { organizationId: actor.organizationId },
+          select: { name: true },
+          orderBy: { name: 'asc' },
+        });
+        orgProjectNames = orgRows.map((p) => p.name);
+      }
+
       return {
         rows: rows.map((r, i) => ({
           id: r.id,
@@ -1097,7 +1129,11 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
-          projects: projectNamesByTeamId.get(resolvedTeamIds[i] ?? '') ?? [],
+          // Admin-class rows expose the full org project set; everyone else
+          // reflects the projects linked to their resolved team.
+          projects: adminRoles.has(r.role)
+            ? orgProjectNames
+            : projectNamesByTeamId.get(resolvedTeamIds[i] ?? '') ?? [],
         })),
         total,
       };

@@ -66,6 +66,15 @@ CREATE POLICY org_cron_service_all ON "Organization"
     AND "id" = current_setting('app.user_org_id', true)
   );
 
+-- T-ORG-OWNER (2026-09-17): INSERT-only policy so the better-auth self-signup
+-- hook can create a brand-new org on the bare `shadhil_app` client (no GUCs).
+-- There is no other org-write path (seed + signup are the only creators).
+-- SELECT stays fully gated by org_select_own, so an empty org is invisible to
+-- everyone but its OWNER (whose JWT carries the new org id after sign-in).
+CREATE POLICY org_insert_public ON "Organization"
+  FOR INSERT
+  WITH CHECK (true);
+
 CREATE POLICY lead_select_telecaller ON "Lead"
   FOR SELECT
   USING (
