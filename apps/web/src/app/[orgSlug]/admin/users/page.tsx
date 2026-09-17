@@ -528,7 +528,7 @@ function UserTable({
           const { projects } = row.original;
           if (projects.length === 0) {
             return (
-              <span className="text-muted-foreground hidden text-sm md:table-cell">
+              <span className="text-muted-foreground text-sm">
                 0 projects
               </span>
             );
@@ -538,7 +538,7 @@ function UserTable({
               content={projects.join(', ')}
               side="top"
               trigger={
-                <span className="text-muted-foreground hidden text-sm underline decoration-dotted md:table-cell">
+                <span className="text-muted-foreground text-sm underline decoration-dotted">
                   {projects.length} {projects.length === 1 ? 'project' : 'projects'}
                 </span>
               }
