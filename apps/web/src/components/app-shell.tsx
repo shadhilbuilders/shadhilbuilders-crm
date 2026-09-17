@@ -497,7 +497,7 @@ function NavMenuItem({
  * A collapsible submenu under a sidebar item. `defaultOpen` is captured ONCE
  * via a useState lazy initializer (any child active on first mount), so we
  * never pass a changing `defaultOpen` to the uncontrolled Base UI
- * Collapsible — that triggers its "changing default open state of
+ * Collapsible - that triggers its "changing default open state of
  * uncontrolled Collapsible" warning.
  */
 function NavMenuSubmenu({

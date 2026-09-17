@@ -174,7 +174,7 @@ describe('TeamMemberRemovalDialogBody', () => {
         onSubmit={vi.fn()}
       />,
     );
-    expect(html).toContain('Details changed — checking again.');
+    expect(html).toContain('Details changed - checking again.');
     expect(html).toContain('aria-live="polite"');
   });
 

@@ -56,7 +56,7 @@ export class WhatsappSignatureGuard implements CanActivate {
 
   // Self-contained: we build our own Reflector instead of constructor
   // injection. The guard is applied class-level via @UseGuards(ClassRef),
-  // which in this codebase resolves WITHOUT DI in some boot paths —
+  // which in this codebase resolves WITHOUT DI in some boot paths -
   // this.reflector came back undefined and every inbound webhook POST
   // crashed. Reflector is a plain no-arg class from @nestjs/core with no
   // state, so constructing it internally is safe and deterministic (it

@@ -242,7 +242,7 @@ export function BookingApprovalDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
       header={{
         title: `Approve booking for ${detail}`,
         description: (

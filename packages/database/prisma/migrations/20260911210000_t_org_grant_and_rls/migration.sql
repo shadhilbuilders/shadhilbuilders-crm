@@ -1,5 +1,5 @@
 -- T-ORG-FIX (2026-09-11): the Organization table was created by the
--- org-multitenancy migration WITHOUT grants for shadhil_app and WITHOUT RLS —
+-- org-multitenancy migration WITHOUT grants for shadhil_app and WITHOUT RLS -
 -- so the app role could not read it (42501 permission denied) and the root
 -- page's getOrganizationBySlug / GET /organizations hung forever.
 --

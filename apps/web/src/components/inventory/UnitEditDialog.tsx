@@ -355,7 +355,7 @@ export function UnitEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
       header={{ title: `Edit unit ${target.unitNumber}`, description: 'Update the unit details.' }}
       footer={
         <div className="flex w-full justify-end gap-2">

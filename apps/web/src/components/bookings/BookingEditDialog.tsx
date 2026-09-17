@@ -217,7 +217,7 @@ export function BookingEditDialog({
         title: `Edit booking${target.leadName ? ` for ${target.leadName}` : ''}`,
         description: 'Update the booking amount, token amount, or notes.',
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

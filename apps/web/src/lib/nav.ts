@@ -278,7 +278,7 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
       items.push(item);
       continue;
     }
-    // group === 'admin' — OWNER/ADMIN only
+    // group === 'admin' - OWNER/ADMIN only
 
     if (item.children !== undefined) {
       const visibleChildren = item.children.filter((c) => isNavItemVisible(c, role));

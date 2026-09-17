@@ -12,7 +12,7 @@
 // through the existing manager-assignment engine + lead RLS policies with no
 // new schema. The engine assigns the lead to the matching
 // telecaller/sales-exec (source=LANDING), the team's default assignee, or a
-// configured fallback owner — so the landing enquiry lands in the real leads
+// configured fallback owner - so the landing enquiry lands in the real leads
 // inbox with a real owner, claimable and routed exactly like any other lead.
 import {
   BadRequestException,

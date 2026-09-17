@@ -155,7 +155,7 @@ export default function ProjectsPage() {
             header={{ title: 'Create a project' }}
             open={createOpen}
             onOpenChange={setCreateOpen}
-            contentClassName="sm:max-w-md"
+            contentClassName="sm:max-w-lg"
           >
             <ProjectFormBody
               mode="create"
@@ -564,7 +564,7 @@ function EditProjectDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
     >
       {target !== null ? (
         <ProjectFormBody mode="edit" project={target} onDone={onClose} />
@@ -592,7 +592,7 @@ function DeleteProjectDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
     >
       {target !== null ? (
         <ProjectDeleteBody project={target} onDone={onClose} />

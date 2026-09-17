@@ -189,7 +189,7 @@ export function LeadCoOwnerDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
       header={{
         title: `Set co-owner for "${target.name}"`,
         description: hasCoOwner

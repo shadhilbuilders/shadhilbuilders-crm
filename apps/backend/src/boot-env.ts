@@ -38,7 +38,7 @@ export interface BootEnv {
   TELEGRAM_ALERT_COOLDOWN_MS: number;
 
   // Shared public API key (required). Guards BOTH anonymous public endpoints
-  // — POST /api/public/feedback and POST /api/public/leads — via ApiKeyGuard
+  // - POST /api/public/feedback and POST /api/public/leads - via ApiKeyGuard
   // (constant-time header compare). One key keeps config simple; the landing
   // page holds the same value in CRM_PUBLIC_API_KEY. Fail-fast on absence
   // (T-G8): without it the public endpoints would refuse to boot rather than

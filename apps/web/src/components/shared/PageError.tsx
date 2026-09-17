@@ -2,7 +2,7 @@
 
 // Shared error surface for route-level Next.js error boundaries and pages
 // that render a caught error inline. Renders @paalstack/react-ui's
-// ErrorInternalServer with a retry — never a blank screen or infinite
+// ErrorInternalServer with a retry - never a blank screen or infinite
 // skeleton.
 import { useEffect } from 'react';
 

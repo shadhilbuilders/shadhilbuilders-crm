@@ -292,7 +292,7 @@ export default function UsersPage() {
  *
  * Uses the published DropdownMenu composition primitives + Tooltip directly
  * instead of `DataTableRowActions` because the shipped `DataTableActionItem`
- * has no `disabled`/`disabledReason` field — so we render each action as a
+ * has no `disabled`/`disabledReason` field - so we render each action as a
  * normal item when allowed, or as a DISABLED item wrapped in a Tooltip that
  * explains why when it isn't (your own row, or a target you don't strictly
  * outrank). Mirror of the backend hierarchy guards in users.service.
@@ -712,7 +712,7 @@ function EditUserDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -876,7 +876,7 @@ function ChangeRoleDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>

@@ -174,7 +174,7 @@ export async function withRlsContext<T>(
     // (maxWait 2s / timeout 5s) when the server pool is busy under cron
     // load. The result was a noisy "expired transaction ... 5000 ms, however
     // ~19s passed" prisma:error + ERROR[Scheduler] pair from the outbound /
-    // reminders crons — a pool stall, not slow SQL (the query itself is
+    // reminders crons - a pool stall, not slow SQL (the query itself is
     // sub-ms on an empty/idle table). Raise both so a legitimate checkout
     // wait doesn't kill the transaction; the query bound (100s floor) is far
     // beyond any realistic stall. This is the single gate every business

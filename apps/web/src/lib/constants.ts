@@ -4,7 +4,7 @@
 // Facing and BHK are now PER-PROJECT data (ProjectOption table), managed from
 // the phases page and read by the inventory pickers. These constants remain
 // ONLY as the documented default set the seed backfills (see
-// packages/database/src/seed.ts). Do NOT wire pickers to these — load from
+// packages/database/src/seed.ts). Do NOT wire pickers to these - load from
 // useProjectOptions() instead.
 // ────────────────────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { Loading } from '@paalstack/react-ui';
 
 const MIN_HEIGHT_CLASSES = {
-  // Full viewport minus the 64px app header — used for top-level route
+  // Full viewport minus the 64px app header - used for top-level route
   // loading states (root redirect, org home, org loading.tsx).
   full: 'min-h-[calc(100dvh-64px)]',
   // Shorter, used inside a page body that already renders its own chrome

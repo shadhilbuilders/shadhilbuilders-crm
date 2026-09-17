@@ -44,7 +44,7 @@ export function CreateUserDialog({
       header={{ title: 'Create a user' }}
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -384,7 +384,7 @@ function LinkTeamDialog({
         title: 'Link a team to this project',
         description: 'Choose an active, manager-assigned team not already linked here.',
       }}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
     >
       <div className="space-y-3">
         {candidates.length === 0 ? (

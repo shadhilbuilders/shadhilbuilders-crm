@@ -6,7 +6,7 @@
 // but pages and API hooks are id-keyed. The async server layouts resolve the
 // slug → row (getOrganizationBySlug / getProjectBySlug) and render these
 // providers with the resolved ids. Client components then read the id for
-// API calls and the slug for building hrefs — so page internals stay
+// API calls and the slug for building hrefs - so page internals stay
 // id-based and only the URL surface / nav change (confirmed decision 2026-09-11).
 import { createContext, useContext } from 'react';
 

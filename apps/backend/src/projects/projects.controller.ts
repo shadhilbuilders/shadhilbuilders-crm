@@ -54,7 +54,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 
 /**
  * Parse query-string filters into a ProjectFilterDto. `search` (name/slug
- * match), `limit`/`offset` (server-side pagination) are all optional — when
+ * match), `limit`/`offset` (server-side pagination) are all optional - when
  * omitted the service returns the full registry (the sidebar switcher's
  * useProjects calls with no params).
  */

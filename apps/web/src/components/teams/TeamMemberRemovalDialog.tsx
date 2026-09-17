@@ -360,7 +360,7 @@ export function TeamMemberRemovalDialogBody({
         className="text-sm"
         data-qa="team-member-removal-summary"
       >
-        {staleNotice ? 'Details changed — checking again. ' : ''}
+        {staleNotice ? 'Details changed - checking again. ' : ''}
         {affectedSummary}
       </p>
       {data.projects.length > 0 ? (

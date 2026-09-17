@@ -273,7 +273,7 @@ function TeamHeaderActions({
         header={{ title: 'Edit team' }}
         open={editOpen}
         onOpenChange={onEditOpenChange}
-        contentClassName="sm:max-w-md"
+        contentClassName="sm:max-w-lg"
       >
         <TeamFormBody mode="edit" team={team} onDone={() => onEditOpenChange(false)} />
       </Dialog>
@@ -307,7 +307,7 @@ function TeamHeaderActions({
         header={{ title: 'Delete team' }}
         open={deleteOpen}
         onOpenChange={onDeleteOpenChange}
-        contentClassName="sm:max-w-md"
+        contentClassName="sm:max-w-lg"
       >
         <TeamDeleteBody
           team={team}

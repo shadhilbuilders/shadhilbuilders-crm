@@ -129,7 +129,7 @@ export function ProjectOptionManageDialog({
         title: `Add ${label}`,
         description: `Add a ${label} value to this project's pickers.`,
       }}
-      contentClassName='sm:max-w-md'
+      contentClassName='sm:max-w-lg'
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

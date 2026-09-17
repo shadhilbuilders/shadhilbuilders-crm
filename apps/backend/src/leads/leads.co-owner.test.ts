@@ -296,7 +296,7 @@ describe('LeadsService.setCoOwner', () => {
   it('4. TELECALLER / SALES_EXEC cannot set a co-owner', async () => {
     // A staff member who is neither owner nor co-owner can't even SEE the
     // lead under RLS (it's owned by TC_A in team A), so they get 404
-    // NotFound — regardless of which team they're in. TC_B (other team,
+    // NotFound - regardless of which team they're in. TC_B (other team,
     // no ownership tie) is the clean actor here: an earlier test sets
     // TC_A2 as co-owner, which would let TC_A2 see the lead.
     const actor = actorFor({ sub: TC_B_ID, role: 'TELECALLER'});

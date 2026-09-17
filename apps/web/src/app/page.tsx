@@ -4,14 +4,14 @@
 //
 // Every authenticated route lives under `/[orgSlug]/...`. The bare `/` (the
 // proxy's post-login target) has no page of its own, so bounce to the org
-// home. The session exposes ORG ID, but the URL needs the ORG SLUG — so we
+// home. The session exposes ORG ID, but the URL needs the ORG SLUG - so we
 // resolve id → slug via GET /organizations. The org home itself
 // (src/app/[orgSlug]/page.tsx) then applies the role-appropriate redirect
 // (overview vs project dashboard).
 //
 // Error surface: if the orgs lookup fails (session expired, backend down,
 // DB misconfigured), we render @paalstack/react-ui's ErrorInternalServer
-// with a retry — never an infinite skeleton.
+// with a retry - never an infinite skeleton.
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 

@@ -2,7 +2,7 @@
 
 // Work landing used when leaving Admin. Sends OWNER/ADMIN (and anyone
 // else who hits this URL) to the default project dashboard. Empty
-// registry shows a work-side empty state — never the admin project registry.
+// registry shows a work-side empty state - never the admin project registry.
 import { Button, Heading, TypographyP } from '@paalstack/react-ui';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';

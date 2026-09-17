@@ -333,7 +333,7 @@ function AssignManagerButton({
           title: `${detail.manager ? 'Reassign' : 'Assign'} manager for ${detail.name}`,
           description: 'Choose the manager to move this user under.',
         }}
-        contentClassName="sm:max-w-md"
+        contentClassName="sm:max-w-lg"
       >
         <div className="space-y-3">
           <Combobox
