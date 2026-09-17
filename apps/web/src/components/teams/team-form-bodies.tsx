@@ -19,6 +19,8 @@ import {
   Button,
   Combobox,
   Form,
+  Label,
+  Switch,
   toast,
   TypographyP,
 } from '@paalstack/react-ui';
@@ -79,6 +81,8 @@ export function TeamFormBody({
     defaultValues: {
       name: team?.name ?? '',
       managerId: team?.managerId ?? undefined,
+      // T-AUTOASSIGN: default false on create; use the team's current value on edit.
+      autoAssignLeads: team?.autoAssignLeads ?? false,
     },
     mode: 'onSubmit',
   });
@@ -88,9 +92,10 @@ export function TeamFormBody({
       values.managerId === undefined || (values.managerId as unknown) === NO_MANAGER
         ? null
         : values.managerId;
+    const autoAssignLeads = values.autoAssignLeads ?? false;
     if (mode === 'create') {
       createTeam.mutate(
-        { name: values.name.trim(), managerId },
+        { name: values.name.trim(), managerId, autoAssignLeads },
         {
           onSuccess: (created) => {
             toast.success(`Team ${created.name} created`);
@@ -105,7 +110,7 @@ export function TeamFormBody({
     }
     if (team === undefined) return;
     updateTeam.mutate(
-      { id: team.id, name: values.name.trim(), managerId },
+      { id: team.id, name: values.name.trim(), managerId, autoAssignLeads },
       {
         onSuccess: (updated) => {
           toast.success(`Team ${updated.name} updated`);
@@ -146,6 +151,25 @@ export function TeamFormBody({
           className="w-full"
           data-qa="team-form-manager"
         />
+      ),
+    },
+    {
+      // Auto-assign new leads toggle. Uses the library Switch (boolean
+      // on/off), wired through a `custom` field because Form has no native
+      // `switch` field type. `checked`/`onCheckedChange` map to RHF's
+      // field.value/onChange; the Switch's Base UI root reads `checked`.
+      type: 'custom',
+      name: 'autoAssignLeads',
+      render: ({ field }) => (
+        <div className="flex items-center gap-2">
+          <Switch
+            id='auto-assign-leads'
+            checked={Boolean(field.value)}
+            onCheckedChange={(checked) => field.onChange(!!checked)}
+            aria-label="Auto-assign new leads to the least-loaded telecaller"
+          />
+          <Label htmlFor='auto-assign-leads'>Auto-assign new leads</Label>
+        </div>
       ),
     },
   ];

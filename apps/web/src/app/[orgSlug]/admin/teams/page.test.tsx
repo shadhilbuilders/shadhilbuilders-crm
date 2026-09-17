@@ -123,6 +123,7 @@ describe('TeamsPage - org teams list', () => {
           memberCount: 4,
           managerId: 'mgr-1',
           managerName: 'Maya Rao',
+          autoAssignLeads: true,
         },
         {
           id: 't-2',
@@ -131,6 +132,7 @@ describe('TeamsPage - org teams list', () => {
           memberCount: 2,
           managerId: null,
           managerName: null,
+          autoAssignLeads: false,
         },
       ],
       isLoading: false,
@@ -146,6 +148,11 @@ describe('TeamsPage - org teams list', () => {
     // Links to the roster pages, prefixed with the active org slug.
     expect(html).toContain('data-qa="team-row-link-t-1"');
     expect(html).toContain('href="/shadhil-builders/admin/teams/t-1"');
+    // T-AUTOASSIGN badge next to the team name (enabled vs disabled).
+    expect(html).toContain('data-qa="team-auto-assign-t-1"');
+    expect(html).toContain('Auto-assign');
+    expect(html).toContain('data-qa="team-auto-assign-t-2"');
+    expect(html).toContain('Manager first');
   });
 
   it('error surfaces inline', async () => {

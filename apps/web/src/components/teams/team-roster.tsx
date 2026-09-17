@@ -26,10 +26,11 @@
 // single source of truth for the parts that must be identical everywhere.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Badge, Button } from '@paalstack/react-ui';
+import { Badge, Button, toast } from '@paalstack/react-ui';
 
 import type { TeamMemberRow } from '@/hooks/queries/teams';
 import { labelFor } from '@/lib/labels';
+import { useUpdateTeamMemberWeight } from '@/hooks/queries/teams';
 import { TeamMemberRemovalDialog } from './TeamMemberRemovalDialog';
 
 export function TeamRosterMemberRow({
@@ -58,7 +59,38 @@ export function TeamRosterMemberRow({
   dataQaPrefix?: string;
 }) {
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [weight, setWeight] = useState<string>(String(member.weight ?? 1));
+  const [weightSaving, setWeightSaving] = useState(false);
   const isManagerRow = member.userId === managerId;
+  const updateWeight = useUpdateTeamMemberWeight();
+
+  // T-AUTOASSIGN (2026-09-17): the manager row never gets a weight editor
+  // (a manager doesn't take auto-assigned leads as a telecaller), and only
+  // the viewer who may mutate members may edit weight.
+  const canEditWeight = canRemove && !isManagerRow;
+
+  async function commitWeight(next: string) {
+    const parsed = Number(next);
+    // Empty/invalid/negative → revert to the last committed value.
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      setWeight(String(member.weight ?? 1));
+      return;
+    }
+    if (parsed === (member.weight ?? 1)) return;
+    setWeightSaving(true);
+    try {
+      await updateWeight.mutateAsync({ teamId, userId: member.userId, weight: parsed });
+      // Reflect the new value immediately - the input stays stale until the
+      // query cache is invalidated/refetched otherwise.
+      setWeight(String(parsed));
+      toast.success('Routing weight updated');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not update weight');
+      setWeight(String(member.weight ?? 1));
+    } finally {
+      setWeightSaving(false);
+    }
+  }
 
   return (
     <div
@@ -78,6 +110,30 @@ export function TeamRosterMemberRow({
         <p className="text-muted-foreground text-xs">{member.email}</p>
       </div>
       <div className="flex flex-col items-end gap-1">
+        {canEditWeight ? (
+          // T-AUTOASSIGN (2026-09-17): inline routing-weight editor. Higher
+          // weight = this telecaller gets more auto-assigned leads. Commits
+          // on blur/Enter; reverts on invalid input.
+          <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            Weight
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              onBlur={(e) => void commitWeight(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitWeight((e.target as HTMLInputElement).value);
+              }}
+              disabled={weightSaving}
+              className="border-border focus-visible:ring-ring h-7 w-16 rounded-md border bg-transparent px-2 text-right text-xs tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+              aria-label={`Routing weight for ${member.name}`}
+              data-qa={`${dataQaPrefix}-weight-${member.userId}`}
+            />
+          </label>
+        ) : null}
         {extraActions}
         {/* Rule 1 + rule 2 (file header): never on the manager row, only
             when the caller says this viewer may remove from THIS team. */}

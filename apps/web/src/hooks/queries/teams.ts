@@ -20,6 +20,8 @@ export type TeamListItem = {
   memberCount: number;
   managerId: string | null;
   managerName: string | null;
+  // T-AUTOASSIGN (2026-09-17): admin toggle for the auto-assign lead routing.
+  autoAssignLeads?: boolean;
 };
 
 // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMemberProject/
@@ -33,6 +35,8 @@ export type TeamMemberRow = {
   name: string;
   email: string;
   role: string;
+  // T-AUTOASSIGN (2026-09-17): relative routing weight (higher = more leads).
+  weight?: number;
 };
 
 export type TeamDetail = {
@@ -75,6 +79,9 @@ export function useTeam(id: string | undefined) {
 export type CreateTeamInput = {
   name: string;
   managerId?: string | null;
+  // T-AUTOASSIGN (2026-09-17): auto-assign new leads to the least-loaded
+  // telecaller across project teams. Optional; server defaults false.
+  autoAssignLeads?: boolean;
 };
 
 export type UpdateTeamInput = Partial<CreateTeamInput>;
@@ -117,6 +124,37 @@ export function useDeleteTeam() {
     mutationFn: async (id: string) =>
       api<{ id: string }>(`/teams/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+    },
+  });
+}
+
+// T-AUTOASSIGN (2026-09-17): update a member's auto-assign routing weight.
+// ADMIN/OWNER or the team's manager only (service-enforced).
+export function updateTeamMemberWeight(args: {
+  teamId: string;
+  userId: string;
+  weight: number;
+}): Promise<{ userId: string; teamId: string; weight: number }> {
+  return api<{ userId: string; teamId: string; weight: number }>(
+    `/teams/${args.teamId}/members/${args.userId}/weight`,
+    { method: 'PATCH', json: { weight: args.weight } },
+  );
+}
+
+// Mutation wrapper so the weight change also invalidates the cached team
+// detail. Without this, `useTeam(id)` (staleTime 30s) keeps serving the old
+// member weights, so reopening the weight/manage dialog shows a stale value
+// until the cache naturally expires. `id` is taken at mutation time (the
+// per-open selected team), mirroring the codebase's mutate-time-resource rule.
+export function useUpdateTeamMemberWeight() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateTeamMemberWeight,
+    onSuccess: (_data, { teamId }) => {
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, teamId] });
+      // The team list row badges only read autoAssignLeads (unchanged), but
+      // invalidating TEAMS_KEY keeps any derived weight surfaces consistent.
       void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
     },
   });

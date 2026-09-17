@@ -21,12 +21,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   useRemovalPreview: vi.fn(),
   useReassignAndRemove: vi.fn(),
+  useUpdateTeamMemberWeight: vi.fn(() => ({ mutateAsync: vi.fn(), isLoading: false })),
 }));
 
 vi.mock('@/hooks/queries/team-members', () => ({
   useRemovalPreview: mocks.useRemovalPreview,
   useReassignAndRemove: mocks.useReassignAndRemove,
 }));
+
+vi.mock('@/hooks/queries/teams', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/hooks/queries/teams')>();
+  return { ...actual, useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight };
+});
 
 import { TeamRosterMemberRow } from './team-roster';
 import type { TeamMemberRow } from '@/hooks/queries/teams';
@@ -123,5 +130,41 @@ describe('TeamRosterMemberRow', () => {
     await mount({ member: ordinaryMember, managerId: 'mgr-a', canRemove: false });
     expect(document.body.textContent).toContain('Priya');
     expect(document.body.textContent).toContain('priya@x.in');
+  });
+
+  it('shows the weight editor on a removable ordinary member (auto-assign)', async () => {
+    await mount({ member: { ...ordinaryMember, weight: 2 }, managerId: 'mgr-a', canRemove: true });
+    const input = container?.querySelector('[data-qa="team-member-weight-tc-1"]');
+    expect(input).not.toBeNull();
+    // Defaults to the member's current weight.
+    expect((input as HTMLInputElement | null)?.value).toBe('2');
+    // Hidden on the manager row (a manager doesn't take auto-assigned leads).
+    await unmount();
+    await mount({ member: managerMember, managerId: 'mgr-a', canRemove: true });
+    expect(container?.querySelector('[data-qa="team-member-weight-mgr-a"]')).toBeNull();
+  });
+
+  it('commits a changed weight via useUpdateTeamMemberWeight on blur', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ userId: 'tc-1', teamId: 'team-a', weight: 5 });
+    mocks.useUpdateTeamMemberWeight.mockReturnValue({ mutateAsync, isLoading: false });
+    await mount({ member: { ...ordinaryMember, weight: 1 }, managerId: 'mgr-a', canRemove: true });
+    const input = container?.querySelector('[data-qa="team-member-weight-tc-1"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    await act(async () => {
+      input!.value = '5';
+      input!.dispatchEvent(new Event('input', { bubbles: true }));
+      // React's onBlur is wired through the native `focusout` event.
+      input!.dispatchEvent(new Event('focusout', { bubbles: true }));
+    });
+    expect(mutateAsync).toHaveBeenCalledWith({
+      teamId: 'team-a',
+      userId: 'tc-1',
+      weight: 5,
+    });
+  });
+
+  it('hides the weight editor when canRemove is false (matching remove gating)', async () => {
+    await mount({ member: ordinaryMember, managerId: 'mgr-a', canRemove: false });
+    expect(container?.querySelector('[data-qa="team-member-weight-tc-1"]')).toBeNull();
   });
 });

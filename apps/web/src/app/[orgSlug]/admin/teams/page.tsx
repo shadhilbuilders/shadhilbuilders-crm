@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  Badge,
   Button,
   DataTable,
   Dialog,
@@ -34,6 +35,7 @@ import {
   LuPlus,
   LuTrash2,
   LuUsersRound,
+  LuWeight,
 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 
@@ -49,6 +51,7 @@ import {
   TeamDeleteBody,
   TeamReassignAllDialog,
 } from '@/components/teams/team-form-bodies';
+import { TeamWeightDialog } from '@/components/teams/TeamWeightDialog';
 
 export default function TeamsPage() {
   // Hooks MUST all be called unconditionally, before any early return, to
@@ -62,6 +65,7 @@ export default function TeamsPage() {
   const [editTarget, setEditTarget] = useState<TeamListItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TeamListItem | null>(null);
   const [reassignTarget, setReassignTarget] = useState<TeamListItem | null>(null);
+  const [weightTarget, setWeightTarget] = useState<TeamListItem | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -97,7 +101,7 @@ export default function TeamsPage() {
             header={{ title: 'Create a team' }}
             open={createOpen}
             onOpenChange={setCreateOpen}
-            contentClassName="sm:max-w-md"
+            contentClassName="sm:max-w-lg"
           >
             <TeamFormBody mode="create" onDone={() => setCreateOpen(false)} />
           </Dialog>
@@ -133,6 +137,7 @@ export default function TeamsPage() {
           onEdit={setEditTarget}
           onDelete={setDeleteTarget}
           onReassign={setReassignTarget}
+          onWeight={setWeightTarget}
         />
       )}
 
@@ -146,6 +151,15 @@ export default function TeamsPage() {
             if (!open) setReassignTarget(null);
           }}
           onDone={() => setReassignTarget(null)}
+        />
+      ) : null}
+      {weightTarget !== null ? (
+        <TeamWeightDialog
+          team={weightTarget}
+          open={weightTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setWeightTarget(null);
+          }}
         />
       ) : null}
     </div>
@@ -162,11 +176,13 @@ function TeamRowActions({
   onEdit,
   onDelete,
   onReassign,
+  onWeight,
 }: {
   target: TeamListItem;
   onEdit: (team: TeamListItem) => void;
   onDelete: (team: TeamListItem) => void;
   onReassign: (team: TeamListItem) => void;
+  onWeight: (team: TeamListItem) => void;
 }) {
   return (
     <div className="text-right" data-qa="team-row-actions">
@@ -184,6 +200,13 @@ function TeamRowActions({
           }
         />
         <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem
+            onClick={() => onWeight(target)}
+            data-qa="data-table-row-action-item"
+          >
+            <LuWeight className="mr-2 size-4 text-muted-foreground" />
+            Manage weights
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onEdit(target)}
             data-qa="data-table-row-action-item"
@@ -217,12 +240,14 @@ function TeamsTable({
   onEdit,
   onDelete,
   onReassign,
+  onWeight,
 }: {
   teams: TeamListItem[];
   orgSlug: string | null;
   onEdit: (team: TeamListItem) => void;
   onDelete: (team: TeamListItem) => void;
   onReassign: (team: TeamListItem) => void;
+  onWeight: (team: TeamListItem) => void;
 }) {
   const columns = useMemo<DataTableColumnDef<TeamListItem>[]>(
     () => [
@@ -230,13 +255,24 @@ function TeamsTable({
         accessorKey: 'name',
         header: 'Team',
         cell: ({ row }) => (
-          <Link
-            href={orgHref(orgSlug, `/admin/teams/${row.original.id}`)}
-            className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
-            data-qa={`team-row-link-${row.original.id}`}
-          >
-            {row.original.name}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={orgHref(orgSlug, `/admin/teams/${row.original.id}`)}
+              className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
+              data-qa={`team-row-link-${row.original.id}`}
+            >
+              {row.original.name}
+            </Link>
+            {/* T-AUTOASSIGN badge - reflects whether new leads auto-route to
+                the least-loaded telecaller (success) or the manager first
+                (muted). */}
+            <Badge
+              variant={row.original.autoAssignLeads ? 'success' : 'secondary'}
+              data-qa={`team-auto-assign-${row.original.id}`}
+            >
+              {row.original.autoAssignLeads ? 'Auto-assign' : 'Manager first'}
+            </Badge>
+          </div>
         ),
         enableSorting: true,
       },
@@ -267,13 +303,14 @@ function TeamsTable({
             onEdit={onEdit}
             onDelete={onDelete}
             onReassign={onReassign}
+            onWeight={onWeight}
           />
         ),
         enableSorting: false,
         enableHiding: false,
       },
     ],
-    [orgSlug, onEdit, onDelete, onReassign],
+    [orgSlug, onEdit, onDelete, onReassign, onWeight],
   );
 
   return (
@@ -323,7 +360,7 @@ function EditTeamDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
     >
       {target !== null ? (
         <TeamFormBody mode="edit" team={target} onDone={onClose} />
@@ -351,7 +388,7 @@ function DeleteTeamDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName="sm:max-w-md"
+      contentClassName="sm:max-w-lg"
     >
       {target !== null ? <TeamDeleteBody team={target} onDone={onClose} /> : null}
     </Dialog>
