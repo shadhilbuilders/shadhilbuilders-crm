@@ -69,7 +69,31 @@ const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'COLD'];
  *   - SALES_EXEC owns VISITED onwards (handoff at visit outcome)
  *   - MANAGER + ADMIN can move any non-terminal lead
  *   - Only ADMIN can reopen a terminal state (WON/LOST/COLD → anything)
+ *
+ * HANDOFF EXCEPTION (2026-09-16, owner ruling + dashboard design R3):
+ * exactly one edge is reserved, because the visit handoff happens *while the
+ * lead is still in VISIT_SCHEDULED*: VISIT_SCHEDULED → VISITED.
+ *
+ *   - SALES_EXEC may drive it. `VisitsService.updateOutcome` drives that
+ *     transition when the assigned exec records the visit as COMPLETED
+ *     ("Drive the parent lead state on COMPLETED"). Before this it threw
+ *     ROLE_FORBIDDEN for a real exec, because VISIT_SCHEDULED is not in the
+ *     exec lane; the only test coverage ran as ADMIN, which masked it.
+ *   - TELECALLER may NOT drive it. Only the exec (or manager/admin) marks a
+ *     visit as conducted. The telecaller's outcomes from VISIT_SCHEDULED are
+ *     NO_SHOW / RESCHEDULED / COLD / LOST, all of which stay permitted - the
+ *     lane reuses the raw TRANSITIONS list, which is why VISITED had to be
+ *     carved out explicitly rather than left to the lane check.
+ *
+ * Deliberately ONE edge, not "add VISIT_SCHEDULED to the exec lane": adding
+ * the state would hand the exec the whole TRANSITIONS['VISIT_SCHEDULED'] list
+ * (NO_SHOW / RESCHEDULED / COLD / LOST) and strip the telecaller's
+ * re-engagement lane, contrary to Model C. Pinned by
+ * leads.state-machine.test.ts.
  */
+const HANDOFF_FROM: LeadState = 'VISIT_SCHEDULED';
+const HANDOFF_TO: LeadState = 'VISITED';
+
 function canRoleTransition(
   from: LeadState,
   to: LeadState,
@@ -90,7 +114,10 @@ function canRoleTransition(
     return TRANSITIONS[from].includes(to);
   }
 
-  // Telecaller + Sales Exec are gated to their lane.
+  const isHandoffEdge = from === HANDOFF_FROM && to === HANDOFF_TO;
+
+  // Telecaller + Sales Exec are gated to their lane, plus the reserved
+  // handoff edge (see the HANDOFF EXCEPTION note above).
   if (role === 'TELECALLER') {
     const telecallerLane: readonly LeadState[] = [
       'NEW',
@@ -101,6 +128,8 @@ function canRoleTransition(
       'NO_SHOW',
     ];
     if (!telecallerLane.includes(from)) return false;
+    // The handoff edge is reserved for the exec.
+    if (isHandoffEdge) return false;
     return TRANSITIONS[from].includes(to);
   }
 
@@ -110,8 +139,12 @@ function canRoleTransition(
       'NEGOTIATION',
       'BOOKING_INITIATED',
     ];
-    if (!execLane.includes(from)) return false;
-    return TRANSITIONS[from].includes(to);
+    if (execLane.includes(from)) {
+      return TRANSITIONS[from].includes(to);
+    }
+    // The visit handoff is the exec's one out-of-lane edge.
+    if (isHandoffEdge) return true;
+    return false;
   }
 
   return false;

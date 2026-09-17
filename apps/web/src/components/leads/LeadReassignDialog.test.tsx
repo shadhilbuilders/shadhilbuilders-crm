@@ -29,6 +29,7 @@ describe('LeadReassignFormBody', () => {
     const html = renderToStaticMarkup(
       <LeadReassignFormBody
         currentOwnerId="owner-1"
+        projectId={null}
         onSubmit={noopSubmit}
       />,
     );
@@ -42,6 +43,7 @@ describe('LeadReassignFormBody', () => {
     const html = renderToStaticMarkup(
       <LeadReassignFormBody
         currentOwnerId="owner-1"
+        projectId={null}
         onSubmit={noopSubmit}
       />,
     );
@@ -52,6 +54,7 @@ describe('LeadReassignFormBody', () => {
     const html = renderToStaticMarkup(
       <LeadReassignFormBody
         currentOwnerId="owner-1"
+        projectId={null}
         onSubmit={noopSubmit}
       />,
     );
@@ -64,6 +67,7 @@ describe('LeadReassignFormBody', () => {
     const html = renderToStaticMarkup(
       <LeadReassignFormBody
         currentOwnerId="owner-1"
+        projectId={null}
         onSubmit={noopSubmit}
       />,
     );

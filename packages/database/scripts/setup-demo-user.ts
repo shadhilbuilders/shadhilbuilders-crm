@@ -343,38 +343,58 @@ async function main() {
     ],
   });
 
-  const wonUnits = await prisma.unit.findMany({
-    where: { organizationId: demoOrg.id, status: 'AVAILABLE', unitNumber: { startsWith: 'D-10' } },
-    select: { id: true },
+  // ── Demo bookings ────────────────────────────────────────────────────────
+  // These units are FIXED by number, not "the next available ones": the
+  // notification above says "requested a token for Unit D-102", so the booking
+  // has to BE on D-102 or the demo contradicts itself. (The earlier version took
+  // `status: AVAILABLE` ordered by unit number, which silently changed which
+  // units got booked whenever an unrelated booking moved a status.)
+  //
+  // The AMOUNT is taken from each unit's own `price`. It used to be hardcoded
+  // (D-101 booked at 5,800,000 while its price is 4,200,000 - unit D-102's
+  // price), i.e. every seeded booking disagreed with the unit it sat on. That is
+  // precisely the mismatch T-BOOK-AMOUNT now REJECTS at the API
+  // (bookings.service.ts derives the amount from the unit and refuses a
+  // disagreeing client value), so a hardcoded amount here would seed data the
+  // API itself would never accept - and would contradict the demo dashboard's
+  // own approval figures.
+  const demoBookingUnits = await prisma.unit.findMany({
+    where: {
+      organizationId: demoOrg.id,
+      unitNumber: { in: ['D-101', 'D-102'] },
+    },
+    select: { id: true, unitNumber: true, price: true },
     orderBy: { unitNumber: 'asc' },
   });
-  if (wonUnits.length > 0) {
+  const byUnitNumber = new Map(demoBookingUnits.map((u) => [u.unitNumber, u]));
+  const tokenUnit = byUnitNumber.get('D-101');
+  const holdUnit = byUnitNumber.get('D-102');
+  if (tokenUnit && holdUnit) {
     await prisma.booking.createMany({
       data: [
         {
           leadId: DEMO_LEAD_WON,
           organizationId: demoOrg.id,
-          unitId: wonUnits[0]!.id,
+          unitId: tokenUnit.id,
           userId: demoUser.id,
-          amount: '5800000.00',
+          amount: tokenUnit.price,
           tokenAmount: '250000.00',
           status: 'TOKEN',
         },
-        ...(wonUnits[1]
-          ? [
-              {
-                leadId: DEMO_LEAD_4,
-                organizationId: demoOrg.id,
-                unitId: wonUnits[1]!.id,
-                userId: demoUser.id,
-                amount: '5950000.00',
-                tokenAmount: null,
-                status: 'HOLD' as const,
-              },
-            ]
-          : []),
+        {
+          leadId: DEMO_LEAD_4,
+          organizationId: demoOrg.id,
+          unitId: holdUnit.id,
+          userId: demoUser.id,
+          amount: holdUnit.price,
+          tokenAmount: null,
+          status: 'HOLD' as const,
+        },
       ],
     });
+  } else {
+    // eslint-disable-next-line no-console
+    console.warn('[demo-user] skipped demo bookings: D-101/D-102 not found in the demo org');
   }
 
   // eslint-disable-next-line no-console

@@ -474,4 +474,70 @@ describe.skipIf(!HAS_DB)('UsersService read paths - real DB / RLS', () => {
       await db.user.deleteMany({ where: { id: seId } });
     });
   }, 30_000);
+
+  it('projectSalesExecs(): resolves a project-staffed exec who owns NO lead (T-VISIT-EXEC-SOURCE)', async () => {
+    // THE REPORTED BUG. A project can have an assigned SALES_EXEC who simply has
+    // not been given a lead yet. The original implementation derived the picker
+    // from LEAD OWNERSHIP only, so that exec was invisible and the schedule-visit
+    // dialog had no assignee to offer - reported by the owner against
+    // shadhil-metro-heights, which had exactly that situation.
+    //
+    // The link must come from PROJECT STAFFING (ProjectTeam -> Team -> member).
+    const users = makeService();
+    const seId = createId();
+    const teamId = createId();
+    const projectId = createId();
+
+    await adminSeed(async (db) => {
+      await db.team.create({
+        data: {
+          id: teamId,
+          name: `RLS Staffed Team ${teamId.slice(0, 6)}`,
+          organizationId: ORG,
+        },
+      });
+      await db.user.upsert({
+        where: { id: seId },
+        update: {},
+        create: {
+          id: seId,
+          email: `${seId}@test.local`,
+          name: 'RLS Staffed SE',
+          role: 'SALES_EXEC',
+          organizationId: ORG,
+          mustChangePassword: false,
+        },
+      });
+      // TeamMember has a COMPOSITE @@id([userId, teamId]) - no `id` column.
+      await db.teamMember.create({
+        data: { userId: seId, teamId, organizationId: ORG },
+      });
+      await db.project.create({
+        data: {
+          id: projectId,
+          name: `RLS Staffed Project ${projectId.slice(0, 6)}`,
+          slug: `rls-staffed-${projectId.slice(0, 8)}`,
+          address: 'RLS Staffed Address',
+          organizationId: ORG,
+        },
+      });
+      // The team is staffed onto the project. NOTE: no Lead is created at all -
+      // that is the whole point of this test.
+      // ProjectTeam has a COMPOSITE @@id([projectId, teamId]) - no `id` column.
+      await db.projectTeam.create({
+        data: { projectId, teamId, organizationId: ORG },
+      });
+    });
+
+    const execs = await users.projectSalesExecs(adminActor, projectId);
+    expect(execs.map((e) => e.id)).toContain(seId);
+
+    await adminSeed(async (db) => {
+      await db.projectTeam.deleteMany({ where: { projectId } });
+      await db.project.deleteMany({ where: { id: projectId } });
+      await db.teamMember.deleteMany({ where: { teamId } });
+      await db.user.deleteMany({ where: { id: seId } });
+      await db.team.deleteMany({ where: { id: teamId } });
+    });
+  }, 30_000);
 });

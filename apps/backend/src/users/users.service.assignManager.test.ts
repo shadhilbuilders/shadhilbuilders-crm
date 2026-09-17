@@ -204,8 +204,9 @@ describe('assignManager - ADMIN/OWNER scope', () => {
       teamId: 'team-2',
     });
     expect(result.teamId).toBe('team-2');
+    // T-ORG-EXPLICIT: the membership replace is scoped by org, not just userId.
     expect(mocks.teamMemberDeleteMany).toHaveBeenCalledWith({
-      where: { userId: salesExecTarget.id },
+      where: { userId: salesExecTarget.id, organizationId: ORG },
     });
     expect(mocks.teamMemberCreate).toHaveBeenCalledWith(
       expect.objectContaining({

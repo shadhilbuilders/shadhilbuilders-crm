@@ -39,6 +39,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'leadsreasspr' + Date.now().toString();
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 // Per-test unique IDs using real cuid2 so they pass z.cuid2() validation.
@@ -84,6 +87,19 @@ beforeAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
     // Two teams.
+    // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+    // fixtures below need a project to point at.
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEAM_A_ID },
       update: {},
@@ -254,6 +270,8 @@ beforeAll(async () => {
         ownerId: TC_A_ID,
         ownerType: 'TELECALLER',
         organizationId: ORG,
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });

@@ -23,6 +23,9 @@ import { LeadsService } from '../leads/leads.service';
 import { VisitsService } from './visits.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
+// fixture leads below need a project.
+const TEST_PROJECT_ID = 'testprojvisits' + Date.now().toString();
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 const RUN = Date.now();
@@ -73,6 +76,8 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
         ownerType: 'SALES_EXEC',
         teamId: TEAM_ID,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+        projectId: TEST_PROJECT_ID,
       },
     });
     await db.siteVisit.create({
@@ -126,6 +131,19 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
     service = new VisitsService(prismaService, leadsService);
 
     await adminSeed(async (db) => {
+      // T-LEAD-PROJECT-REQUIRED (2026-09-16): the lead fixtures below point
+      // at this project (Lead.projectId is NOT NULL).
+      await db.project.upsert({
+        where: { id: TEST_PROJECT_ID },
+        update: {},
+        create: {
+          id: TEST_PROJECT_ID,
+          name: `Test Project ${TEST_PROJECT_ID}`,
+          slug: TEST_PROJECT_ID,
+          address: 'test',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
       await db.team.upsert({
         where: { id: TEAM_ID },
         update: {},
@@ -306,5 +324,115 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
     expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  /**
+   * T-VISIT-ASSIGNEE (2026-09-16 owner ruling). The baseline above runs as
+   * ADMIN, which is exactly why the handoff bug hid for so long: ADMIN is the
+   * only role whose lead-lane gate admitted VISIT_SCHEDULED -> VISITED. These
+   * two tests run the SAME flow as a real SALES_EXEC and as the lead's
+   * TELECALLER owner, and pin the ruling in both directions:
+   *   - the assigned exec CAN complete the handoff;
+   *   - the telecaller CANNOT, even though they own the lead.
+   */
+  it('the ASSIGNED sales exec can drive VISIT_SCHEDULED -> VISITED (the handoff)', async () => {
+    const { leadId, visitId } = await seedLeadWithVisit();
+    // The fixture assigns the visit to SE_ID, who is a SALES_EXEC and does NOT
+    // own the lead - precisely the Model C handoff shape.
+    const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visitId, {
+      visitId,
+      outcome: 'COMPLETED',
+      notes: 'conducted by the assigned exec',
+    });
+    expect(row.status).toBe('COMPLETED');
+
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISITED');
+  });
+
+  it('the lead-owning TELECALLER cannot mark a visit COMPLETED', async () => {
+    // SE_ID owns the lead in the fixture; reuse the same visit but act as a
+    // TELECALLER. The owner ruling reserves COMPLETED for the exec (and
+    // manager/admin), so this must be refused - before the gate was corrected
+    // the visit panel offered this button to telecallers and the server
+    // answered 403.
+    const { visitId } = await seedLeadWithVisit();
+    await expect(
+      service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visitId, {
+        visitId,
+        outcome: 'COMPLETED',
+      }),
+    ).resolves.toBeTruthy(); // exec: allowed (sanity - same call, exec lane)
+
+    // Reset, then attempt the telecaller's NO_SHOW (the only outcome the ruling
+    // grants them) and assert the lead does NOT advance to VISITED.
+    const { leadId, visitId: visit2 } = await seedLeadWithVisit();
+    const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visit2, {
+      visitId: visit2,
+      outcome: 'NO_SHOW',
+    });
+    expect(row.status).toBe('NO_SHOW');
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED'); // not VISITED
+  });
+
+});
+
+/**
+ * T-VISIT-ASSIGNEE / T-PROJFILTER (2026-09-16): `visits.list` scoping.
+ *
+ * This method had NO test coverage before - which is why the exec's invisible
+ * visit and the silently-overwritten projectId filter both survived. Pins:
+ *   - a SALES_EXEC sees the visit assigned to them even though the lead belongs
+ *     to the telecaller (the handoff shape);
+ *   - a SALES_EXEC does NOT see a colleague's visit;
+ *   - the projectId filter is actually applied for a staff role (it used to be
+ *     written into `where.lead` and then overwritten by the role branch, so it
+ *     was silently dropped).
+ */
+describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () => {
+  let service: VisitsService;
+  let prismaService: PrismaService;
+
+  beforeAll(async () => {
+    if (prisma === null) return;
+    prismaService = {
+      $client: prisma as unknown as PrismaClient,
+    } as PrismaService;
+    const leadsService = new LeadsService(prismaService);
+    service = new VisitsService(prismaService, leadsService);
+  });
+
+  afterAll(async () => {
+    await cleanupAll();
+  }, 30_000);
+
+  it('the exec sees the visit assigned to them, on a lead they do NOT own', async () => {
+    const { visitId } = await seedLeadWithVisit(); // visit assigned to SE_ID
+    const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
+      limit: 200,
+      offset: 0,
+    });
+    expect(page.rows.map((r) => r.id)).toContain(visitId);
+  });
+
+  it('the projectId filter is applied, not silently dropped, for a staff role', async () => {
+    const { visitId } = await seedLeadWithVisit();
+    const other = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: TEST_LEAD_IDS[TEST_LEAD_IDS.length - 1] }, select: { projectId: true } }),
+    );
+    // Filter on a projectId that is definitely NOT this lead's. Before the fix
+    // the filter was overwritten for staff roles and the visit came back anyway.
+    const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
+      projectId: '__not_this_project__',
+      limit: 200,
+      offset: 0,
+    });
+    expect(page.rows.map((r) => r.id)).not.toContain(visitId);
+    expect(other).not.toBeNull();
   });
 });

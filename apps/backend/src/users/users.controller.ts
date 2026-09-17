@@ -72,6 +72,10 @@ function parseFilter(query: Record<string, unknown>): UserFilterDto {
   const result = UserFilterDtoSchema.safeParse({
     role,
     search: typeof query['search'] === 'string' ? query['search'] : undefined,
+    projectId:
+      typeof query['projectId'] === 'string' && query['projectId'].length > 0
+        ? query['projectId']
+        : undefined,
     limit:
       typeof query['limit'] === 'string'
         ? Number.parseInt(query['limit'], 10)
@@ -198,7 +202,8 @@ export class UsersController {
 
   @Get()
   @ApiOperation({
-    summary: 'List users (ADMIN: all; MANAGER: own team; staff: self). Optional ?role= filter + server pagination.',
+    summary:
+      'List users (ADMIN: all; MANAGER: own team; staff: self). Optional ?role= / ?search= / ?projectId= filters + server pagination. ?projectId= narrows to that project staff (intersection - never widens the caller\'s scope).',
   })
   async list(
     @Req() req: AuthedRequest,
@@ -213,14 +218,26 @@ export class UsersController {
    * whole team so a telecaller can see + mention their manager and
    * teammates. Route order matters: `team` must be declared BEFORE
    * `:id/...` routes so it isn't captured as an id.
+   *
+   * T-USER-PROJECT-SCOPE (2026-09-16): accepts an optional ?projectId=. The
+   * chat @mention picker passes the ACTIVE project, so an ADMIN/OWNER (who
+   * otherwise sees every user in the org) is offered that project's staff
+   * rather than the whole directory.
    */
   @Get('team')
   @ApiOperation({
     summary:
-      'List the actor team + manager (mention picker). ADMIN/OWNER: all; MANAGER: own team; staff: team + manager.',
+      'List the actor team + manager (mention picker). ADMIN/OWNER: all; MANAGER: own team; staff: team + manager. Optional ?projectId= narrows ADMIN/OWNER to that project staff.',
   })
-  async team(@Req() req: AuthedRequest): Promise<CreatedUser[]> {
-    return this.users.teamMembers(req.user!);
+  async team(
+    @Req() req: AuthedRequest,
+    @Query() query: Record<string, unknown>,
+  ): Promise<CreatedUser[]> {
+    const projectId =
+      typeof query['projectId'] === 'string' && query['projectId'].length > 0
+        ? query['projectId']
+        : undefined;
+    return this.users.teamMembers(req.user!, projectId);
   }
 
   /**

@@ -31,6 +31,9 @@ import { OutboundService, MAX_ATTEMPTS } from './outbound.service';
 import { WhatsAppClient } from './whatsapp.client';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'outboundcrpr' + Date.now().toString();
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
@@ -64,6 +67,19 @@ async function adminSeed<T>(
 async function ensureFixtures(): Promise<void> {
   await adminSeed(async (db) => {
     // User needs teamId; team must exist first (FK).
+    // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+    // fixtures below need a project to point at.
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
@@ -100,6 +116,8 @@ async function ensureFixtures(): Promise<void> {
         ownerId: TEST_USER_ID,
         ownerType: 'ADMIN',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });

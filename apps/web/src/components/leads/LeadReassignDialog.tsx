@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { api, qs, type Role } from '@/apis/client';
 import { useReassignLead } from '@/hooks/queries/crm';
 import { useUsers } from '@/hooks/queries/users';
+import { useProjectId } from '@/lib/tenant-context';
 import { isLinkableStaffRole } from '@/lib/session';
 
 const FORM_ID = 'lead-reassign-form';
@@ -36,6 +37,8 @@ const FORM_ID = 'lead-reassign-form';
 export type LeadReassignTarget = {
   id: string;
   name: string;
+  /** The lead's project, so the picker can offer only THAT project's staff. */
+  projectId?: string | null;
 };
 
 export type LeadReassignDialogProps = {
@@ -68,11 +71,21 @@ type ReassignFormValues = z.infer<typeof reassignSchema>;
 async function fetchAssignees(
   query: string,
   currentOwnerId: string,
+  projectId: string | null,
 ): Promise<Array<{ value: string; label: string }>> {
   const q = query.trim();
   const res = await api<{
     rows: Array<{ id: string; name: string; email: string; role: Role }>;
-  }>(`/users${qs({ search: q.length > 0 ? q : undefined, limit: 10 })}`);
+  }>(
+    // projectId narrows to the lead's OWN project staff. Without it the remote
+    // search offered staff from other projects - and, for an admin/owner, from
+    // other organisations (T-USER-PROJECT-SCOPE).
+    `/users${qs({
+      search: q.length > 0 ? q : undefined,
+      projectId: projectId ?? undefined,
+      limit: 10,
+    })}`,
+  );
   return (res.rows ?? [])
     .filter((u) => u.id !== currentOwnerId && isLinkableStaffRole(u.role))
     .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
@@ -83,9 +96,11 @@ async function fetchAssignees(
 // ---------------------------------------------------------------------------
 export function LeadReassignFormBody({
   currentOwnerId,
+  projectId,
   onSubmit,
 }: {
   currentOwnerId: string;
+  projectId: string | null;
   onSubmit: (values: ReassignFormValues) => void;
 }) {
   const form = useForm<ReassignFormValues>({
@@ -94,13 +109,18 @@ export function LeadReassignFormBody({
     mode: 'onSubmit',
   });
 
-  const fetchAssigneesBound = (query: string) => fetchAssignees(query, currentOwnerId);
+  const fetchAssigneesBound = (query: string) =>
+    fetchAssignees(query, currentOwnerId, projectId);
 
   // Default list shown when the picker opens (no typing yet): the first 10
   // staff, filtered to assignable roles + not the current owner. Once the
   // user types, fetchOptions takes over (remote search). Mirrors the
   // project member picker pattern.
-  const { data: defaultUsers } = useUsers({ limit: 10 });
+  //
+  // T-USER-PROJECT-SCOPE: scoped to the lead's PROJECT. Previously unscoped, so
+  // the picker offered staff from other projects - and, for an admin/owner, from
+  // other organisations entirely.
+  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined });
   const defaultOptions = useMemo(() => {
     return (defaultUsers?.rows ?? [])
       .filter((u) => u.id !== currentOwnerId && isLinkableStaffRole(u.role))
@@ -116,7 +136,7 @@ export function LeadReassignFormBody({
       placeholder: 'Search staff by name or email...',
       options: defaultOptions,
       description:
-        'Only telecallers / sales executives in your team are assignable. Start typing to search all users.',
+        'Only telecallers / sales executives on this project are assignable. Start typing to search them.',
       comboboxProps: {
         fetchOptions: fetchAssigneesBound,
         fetchDebounce: 300,
@@ -164,9 +184,13 @@ export function LeadReassignDialog({
   onOpenChange,
 }: LeadReassignDialogProps) {
   const reassign = useReassignLead();
+  const activeProjectId = useProjectId();
 
   if (lead === null) return null;
   const target = lead;
+  // The lead's own project wins; tenant context is the fallback (both call sites
+  // are project-scoped routes, so it is the same project).
+  const leadProjectId = lead.projectId ?? activeProjectId;
 
   function handleSubmit(values: ReassignFormValues) {
     reassign.mutate(
@@ -221,6 +245,7 @@ export function LeadReassignDialog({
     >
       <LeadReassignFormBody
         currentOwnerId={currentOwnerId}
+        projectId={leadProjectId}
         onSubmit={handleSubmit}
       />
     </Dialog>

@@ -29,17 +29,31 @@ function TestForm({ decision }: { decision: Values['decision'] }) {
 }
 
 describe('BookingApprovalFormBody - approval decision surface', () => {
-  it('renders the decision picker and a reason field', () => {
+  // T-APPROVE-ONE-CONTROL (2026-09-16, owner report): the dialog offered the same
+  // decision TWICE - a Decision select here in the body AND Approve/Reject
+  // buttons in the footer. The select was removed so ONE control owns the
+  // decision. These assertions pin its absence: if someone re-adds a decision
+  // field here, this fails and points at the reason.
+  it('does NOT render a second decision control in the body', () => {
     const html = renderToStaticMarkup(<TestForm decision="APPROVED" />);
 
-    expect(html).toContain('Decision');
-    // The Select hardcodes data-qa="select-trigger" (custom selectProps.data-qa
-    // is dropped by the library), so assert on the field WRAPPER.
-    expect(html).toMatch(/data-qa="form-field-decision"/);
-    expect(html).toContain('Approved');
+    expect(html).not.toContain('Decision');
+    expect(html).not.toMatch(/data-qa="form-field-decision"/);
+    // The footer buttons own the decision (the shell renders them; the body
+    // must not duplicate them).
+    expect(html).not.toMatch(/data-qa="booking-approval-approve"/);
+    expect(html).not.toMatch(/data-qa="booking-approval-reject"/);
+    // The reason field is what remains.
     expect(html).toMatch(/data-qa="booking-approval-reason"/);
+  });
+
+  it('renders the reason as optional while the pending decision is an approval', () => {
+    const html = renderToStaticMarkup(<TestForm decision="APPROVED" />);
     // Reason is optional for an approval.
     expect(html).toContain('Reason (optional)');
+    // ...but the copy still warns that rejecting will require it, since the
+    // decision buttons sit right below this field.
+    expect(html).toContain('Required if you reject');
   });
 
   it('asks for a required reason when the decision is REJECTED', () => {

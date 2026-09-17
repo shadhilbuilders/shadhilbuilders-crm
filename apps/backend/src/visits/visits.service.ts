@@ -99,7 +99,7 @@ export class VisitsService {
     actor: JwtPayload,
   ): Promise<string[]> {
     if (actor.role !== 'MANAGER') return [];
-    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
   }
 
   /**
@@ -114,11 +114,6 @@ export class VisitsService {
 
         if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
         if (dto.salesExecId !== undefined) where['userId'] = dto.salesExecId;
-        // T-ProjectSwitch: filter by the active project via the parent
-        // Lead (SiteVisit has no projectId of its own).
-        if (dto.projectId !== undefined) {
-          where['lead'] = { ...(where['lead'] as object | undefined), projectId: dto.projectId };
-        }
         if (dto.status !== undefined) {
           where['status'] = Array.isArray(dto.status)
             ? { in: dto.status }
@@ -131,19 +126,44 @@ export class VisitsService {
           };
         }
 
+        // T-PROJFILTER (2026-09-16): the project filter is built ONCE here and
+        // combined with the role scope below. It used to be written into
+        // `where['lead']` and then overwritten by the role branch, which
+        // silently dropped it for TELECALLER / SALES_EXEC - a lead from
+        // another project could appear in a project-scoped visit list.
+        const projectLeadFilter =
+          dto.projectId !== undefined
+            ? { lead: { projectId: dto.projectId } }
+            : {};
+
         // Role scoping: gate via the parent Lead so RLS policies
         // (which join through Lead) are consistent. For MANAGER we
         // resolve the team via the managerId lookup.
-        if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-          where['lead'] = { ownerId: actor.sub };
+        if (actor.role === 'SALES_EXEC') {
+          // T-VISIT-ASSIGNEE (2026-09-16 owner ruling): the exec must see
+          // visits ASSIGNED to them, not only visits on leads they own.
+          // Under Model C the visit handoff happens while the lead is still
+          // VISIT_SCHEDULED and owned by the telecaller, so an owner-only
+          // scope made the visit the exec is meant to conduct invisible to
+          // them - the handoff could never happen.
+          where['OR'] = [
+            { lead: { ...(projectLeadFilter.lead ?? {}), ownerId: actor.sub } },
+            { ...projectLeadFilter, userId: actor.sub },
+          ];
+        } else if (actor.role === 'TELECALLER') {
+          where['lead'] = { ...(projectLeadFilter.lead ?? {}), ownerId: actor.sub };
         } else if (actor.role === 'MANAGER') {
           const teamIds = await this.managerTeamIds(
             tx as unknown as PrismaClient,
             actor,
           );
           where['lead'] = {
+            ...(projectLeadFilter.lead ?? {}),
             teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
           };
+        } else if (dto.projectId !== undefined) {
+          // ADMIN / OWNER: no role narrowing, but the project filter still applies.
+          where['lead'] = { projectId: dto.projectId };
         }
 
         const [rows, total] = await Promise.all([

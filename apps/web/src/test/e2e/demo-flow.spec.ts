@@ -59,7 +59,10 @@ async function login(page: Page): Promise<void> {
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: /Shadhil CRM/i })).toBeVisible();
   await page.getByLabel('Email').fill(DEMO_EMAIL);
-  await page.getByLabel('Password').fill(DEMO_PASSWORD);
+  // NOT getByLabel('Password'): the shared PasswordInput's "Show password"
+  // toggle carries the same accessible label, so that locator resolves to two
+  // elements and strict mode rejects it. Target the input directly.
+  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
   // The login form does a router.replace(nextPath) then router.refresh().
   // The URL changes from /login → / (or /leads etc.) before the
@@ -134,11 +137,18 @@ async function writeCreatedLeadId(id: string): Promise<void> {
 test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
   test.setTimeout(240_000);
 
-  // Each step runs independently (no test.describe.serial) so we get a
-  // genuine per-step pass/fail report. STEPS 3-8 + BONUS coordinate via
-  // CREATED_LEAD_ID_FILE: STEP 3 writes the lead id, STEPS 4-8 + BONUS
-  // read it. If STEP 3 fails (e.g. the layout crash), the file stays
-  // empty and the dependent steps `test.skip()` with a clear reason.
+  // This file is a SINGLE user journey, so it must run in order.
+  //
+  // STEPS 3-8 + BONUS coordinate via CREATED_LEAD_ID_FILE on disk: STEP 3 writes
+  // the created lead's id, STEPS 4-8 + BONUS read it. That coordination cannot
+  // survive interleaving - under the repo's default `fullyParallel: true` the
+  // dependent steps read the file before STEP 3 had written it and skipped
+  // (measured: 4 passed / 5 skipped), while serial gives a full 9/9 pass. Setting
+  // `mode: 'serial'` makes a plain `pnpm test:e2e` correct without a --workers
+  // flag. Consequence to know about: in serial mode a failing step skips the
+  // ones after it, which is the honest outcome for a sequential flow - the later
+  // steps genuinely depend on the earlier ones.
+  test.describe.configure({ mode: 'serial' });
 
   test('STEP 1 - login as demo user', async ({ page }) => {
     await page.goto('/login');
@@ -196,19 +206,39 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     if (probe.broken) throw new Error(probe.reason);
 
     const createdLeadName = `Demo Sprint Lead ${Date.now().toString().slice(-6)}`;
+    // The phone MUST be unique per run: Lead.phoneE164 is unique, so a hardcoded
+    // '9876543210' made every re-run fail with
+    //   `400 Lead with phone 919876543210 already exists`
+    // which took down STEP 3 and every step that depends on its lead id.
+    // 10 digits, Indian mobile prefix.
+    const uniquePhone = `9${Date.now().toString().slice(-9)}`;
     await page.getByLabel(/Full name/i).fill(createdLeadName);
-    // Phone: 10 digits - the form rejects <10.
-    await page.getByLabel(/^Phone$/i).fill('9876543210');
-    await page.getByLabel(/^Email$/i).fill('demo-sprint@example.com');
-    await page.getByLabel(/^Source$/i).fill('Demo Sprint E2E');
+    // Target the data-qa hooks, not the accessible labels. `Phone` is a custom
+    // `render` (PhoneNumberInput) so `getByLabel(/^Phone$/i)` no longer resolves,
+    // and `Email` has a data-qa of its own. Using the hooks everywhere makes the
+    // spec robust to a field being converted from declarative to custom.
+    await page.locator('[data-qa="lead-phone"]').fill(uniquePhone);
+    await page.locator('[data-qa="lead-email"]').fill('demo-sprint@example.com');
+    // Source is deliberately NOT touched. Its defaultValue is 'LANDING' (a real
+    // LEAD_SOURCES member - see lib/labels.ts) and it is required, so it is
+    // already valid on load. The old step filled it with 'Demo Sprint E2E',
+    // which is not an enum member at all.
 
     await shot(page, '03a-new-lead-form');
     await page.getByRole('button', { name: /create lead/i }).click();
 
-    await page.waitForURL(/\/leads\/[a-z0-9]+$/, { timeout: 20_000 });
+    // Wait for the created lead's OWN id - explicitly NOT the '/leads/new' form
+    // route, which also satisfies /\/leads\/[a-z0-9]+$/. Without the exclusion
+    // this resolved instantly against the form and produced the id "new".
+    await page.waitForURL(
+      (u) => /\/leads\/[a-z0-9]+$/.test(u.pathname) && !u.pathname.endsWith('/leads/new'),
+      { timeout: 20_000 },
+    );
     const url = new URL(page.url());
     const createdLeadId = url.pathname.split('/').pop() ?? '';
     expect(createdLeadId).not.toBe('');
+    // Guard the regression directly: "new" is a route, never a lead id.
+    expect(createdLeadId).not.toBe('new');
     // Persist for STEPS 4-8 + BONUS (each runs in its own browser context).
     await writeCreatedLeadId(createdLeadId);
 
@@ -312,8 +342,11 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await shot(page, '06a-visit-requested');
     await scheduleBtn.click();
 
-    const dateInput = page.getByLabel(/^Date$/);
-    const timeInput = page.getByLabel(/^Time$/);
+    // NOT getByLabel(/^Date$/) - a required field's accessible name is "Date *",
+    // so the anchored pattern never matched and this step always failed. The
+    // dialog exposes explicit hooks instead.
+    const dateInput = page.locator('[data-qa="schedule-visit-date"]');
+    const timeInput = page.locator('[data-qa="schedule-visit-time"]');
     await expect(dateInput).toBeVisible();
     await expect(timeInput).toBeVisible();
 
@@ -324,7 +357,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await timeInput.fill('11:30');
 
     await shot(page, '06b-schedule-dialog');
-    await page.getByRole('button', { name: /^Schedule$/ }).click();
+    await page.locator('[data-qa="schedule-visit-submit"]').click();
 
     await expect(page.getByText(/Visit scheduled/i)).toBeVisible({ timeout: 15_000 });
 
@@ -378,18 +411,49 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
 
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1_500);
+
+    // T-VISITS-AGENDA-DEFAULT (2026-09-16): the page now DEFAULTS to Agenda, so
+    // this step must switch to Week explicitly before asserting the grid. Do not
+    // re-derive the view from the default - that is what made this step silently
+    // depend on a setting it does not own.
+    await page.getByRole('button', { name: /^View by week$/i }).click();
+    await page.waitForTimeout(1_000);
+
+    // STEP 6 schedules the visit for today+7, which always lands in the NEXT
+    // calendar week (this grid spans Sun->Sat). The week view shows the CURRENT
+    // week, so without advancing, the assertion looked at a week that could not
+    // contain the visit.
+    // Target the calendar's OWN next button. A role+name match on /^Next$/ hit
+    // the month navigator instead (the page has both), so the week never moved.
+    await page.locator('[data-qa="calendar-next"]').first().click();
+    await page.waitForTimeout(1_500);
     await shot(page, '08a-visits-page');
 
-    const grid = page.getByRole('table');
+    // NOT getByRole('table'): the calendar is built from CSS `grid-cols-7`
+    // divs - there is no <table> element anywhere in components/calendar/ - so
+    // that role never matches and this step failed unconditionally. The week
+    // header (one label per day column) only renders when the grid mounts.
+    const grid = page.locator('[data-qa="visits-week-grid"]');
     const hasGrid = (await grid.count()) > 0;
     if (!hasGrid) {
       throw new Error(
         'STEP 8: /visits weekly grid did not render - page may have errored.',
       );
     }
+    const dayColumns = await page.locator('[data-qa="visits-week-day"]').count();
+    if (dayColumns !== 7) {
+      throw new Error(
+        `STEP 8: expected 7 day columns in the week grid, got ${dayColumns}.`,
+      );
+    }
     // We created one new SCHEDULED visit in STEP 6; the demo seed also
     // adds bookings/visits that may or may not fall in the visible week.
-    const visitPills = page.locator('table .bg-primary\\/10');
+    // NOT `table .bg-primary/10`: the events are <button>s styled by cva colour
+    // variants, and there is no table, so that selector matched nothing ever.
+    // Anchored on the WRAPPER, not the event button: EventDetailsDialog's Base UI
+    // Trigger overwrites data-qa on its child (verified in the live DOM), so a
+    // hook on the button is unreachable.
+    const visitPills = page.locator('[data-qa="visit-event-block"]');
     const pillCount = await visitPills.count();
     console.log(`[STEP 8] /visits grid rendered with ${pillCount} visit pill(s).`);
     expect(pillCount).toBeGreaterThanOrEqual(1);

@@ -157,7 +157,7 @@ export class LeadsService {
     actor: JwtPayload,
   ): Promise<string[]> {
     if (actor.role !== 'MANAGER') return [];
-    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
   }
 
   /**
@@ -646,7 +646,7 @@ export class LeadsService {
     let teamId: string | null = null;
     if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
       const memberships = await client.teamMember.findMany({
-        where: { userId: actor.sub },
+        where: { userId: actor.sub, organizationId: actor.organizationId },
         orderBy: { assignedAt: 'asc' },
         select: { teamId: true },
       });
@@ -755,8 +755,12 @@ export class LeadsService {
     const resolveTarget = async (
       userId: string,
     ): Promise<TargetUser | null> => {
-      const u = await client.user.findUnique({
-        where: { id: userId },
+      // T-ORG-EXPLICIT: `User` has no RLS and the id comes from a
+      // ManagerAssignmentRule / Team.defaultAssigneeId - neither of which is
+      // org-checked here. Scope the lookup so a stale or cross-org id can never
+      // become a lead's assignee.
+      const u = await client.user.findFirst({
+        where: { id: userId, organizationId: actor.organizationId },
         select: { id: true, role: true },
       });
       return u === null ? null : { id: u.id, role: u.role as TargetUser['role'] };
@@ -773,7 +777,8 @@ export class LeadsService {
     } else {
       const leadAttrs: LeadAttributes = {
         source: dto.source,
-        projectId: dto.projectId ?? null,
+        // T-LEAD-PROJECT-REQUIRED: required by the DTO and NOT NULL in the DB.
+        projectId: dto.projectId,
       };
 
       resolution = await this.resolveOwnerFromEngine(
@@ -800,6 +805,22 @@ export class LeadsService {
       );
     }
 
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): validate the project BEFORE the
+    // insert. `Lead.projectId` is NOT NULL with a RESTRICT FK, so an unknown or
+    // other-org id would otherwise surface as a raw FK violation - a 500 for what
+    // is plainly a bad request. Same "validate, don't rely on the constraint"
+    // pattern as the org checks elsewhere: the constraint is the backstop, the
+    // 400 is the contract.
+    const project = await client.project.findFirst({
+      where: { id: dto.projectId, organizationId: actor.organizationId },
+      select: { id: true },
+    });
+    if (project === null) {
+      throw new BadRequestException(
+        `Project ${dto.projectId} not found in your organization`,
+      );
+    }
+
     const created = await client.lead.create({
       data: {
         name: dto.name,
@@ -807,7 +828,10 @@ export class LeadsService {
         email:
           dto.email && dto.email.trim().length > 0 ? dto.email : null,
         source: dto.source,
-        projectId: dto.projectId ?? null,
+        // T-LEAD-PROJECT-REQUIRED (2026-09-16): this was `dto.projectId ?? null`,
+        // which is exactly how project-less leads were created. The DTO requires
+        // it now and the column is NOT NULL, so use it as given - no fallback.
+        projectId: dto.projectId,
         ownerId: ownerId,
         ownerType: this.ownerTypeForRole(actor.role),
         teamId,
@@ -1067,8 +1091,10 @@ export class LeadsService {
         //    managed-team set, and that overlapping team becomes the
         //    lead's new teamId (below).
         const [target, targetMemberships] = await Promise.all([
-          tx.user.findUnique({
-            where: { id: dto.targetUserId },
+          // T-ORG-EXPLICIT: a User has `organizationId`, but `User` has no RLS,
+          // so an id-only lookup resolves a user in ANOTHER ORG. Scope it.
+          tx.user.findFirst({
+            where: { id: dto.targetUserId, organizationId: actor.organizationId },
             select: { id: true, role: true, name: true },
           }),
           tx.teamMember.findMany({
@@ -1274,8 +1300,9 @@ export class LeadsService {
         // 3. Resolve + validate the target (or clear).
         let newCoOwnerId: string | null = null;
         if (dto.coOwnerId !== null) {
-          const target = await tx.user.findUnique({
-            where: { id: dto.coOwnerId },
+          // T-ORG-EXPLICIT: scope the co-owner lookup to the actor's org.
+          const target = await tx.user.findFirst({
+            where: { id: dto.coOwnerId, organizationId: actor.organizationId },
             select: { id: true, role: true },
           });
           if (target === null) {
@@ -1291,7 +1318,7 @@ export class LeadsService {
             const [managedTeamIds, targetMemberships] = await Promise.all([
               this.managerTeamIds(tx as unknown as PrismaClient, actor),
               tx.teamMember.findMany({
-                where: { userId: target.id },
+                where: { userId: target.id, organizationId: actor.organizationId },
                 select: { teamId: true },
               }),
             ]);

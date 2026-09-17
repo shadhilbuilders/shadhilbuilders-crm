@@ -12,8 +12,18 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { TeamAccessService } from './team-access.service';
 
+// T-ORG-EXPLICIT (2026-09-16): every scoping call now takes/targets an explicit
+// organisation. `organizationId` is REQUIRED on AccessActor so an absent org
+// fails to compile instead of degrading into an unscoped query.
+const ORG = 'org-test-1';
+const actor = (sub: string, role: 'ADMIN' | 'OWNER' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC') => ({
+  sub,
+  role,
+  organizationId: ORG,
+});
+
 type TxMock = {
-  team: { findMany: ReturnType<typeof vi.fn> };
+  team: { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   teamMember: { findMany: ReturnType<typeof vi.fn> };
   projectTeam: { findMany: ReturnType<typeof vi.fn> };
   project: { findMany: ReturnType<typeof vi.fn> };
@@ -28,6 +38,10 @@ function makeTx(overrides: Partial<{
   return {
     team: {
       findMany: vi.fn(async () => overrides.teams ?? []),
+      // canMutateTeam now resolves the team in the actor's org.
+      findFirst: vi.fn(async (args: { where?: { id?: string } }) =>
+        (overrides.teams ?? []).some((t) => t.id === args?.where?.id) ? { id: args.where?.id } : null,
+      ),
     },
     teamMember: {
       findMany: vi.fn(async () => overrides.memberTeamIds ?? []),
@@ -46,10 +60,10 @@ const service = new TeamAccessService();
 describe('TeamAccessService.getManagedTeamIds', () => {
   it('queries active teams managed by the given user', async () => {
     const tx = makeTx({ teams: [{ id: 'team-a' }, { id: 'team-b' }] });
-    const ids = await service.getManagedTeamIds(tx as never, 'mgr-1');
+    const ids = await service.getManagedTeamIds(tx as never, 'mgr-1', ORG);
     expect(ids).toEqual(['team-a', 'team-b']);
     expect(tx.team.findMany).toHaveBeenCalledWith({
-      where: { managerId: 'mgr-1', deletedAt: null },
+      where: { managerId: 'mgr-1', deletedAt: null, organizationId: ORG },
       select: { id: true },
     });
   });
@@ -58,10 +72,10 @@ describe('TeamAccessService.getManagedTeamIds', () => {
 describe('TeamAccessService.getOrdinaryMemberTeamIds', () => {
   it('queries TeamMember rows for active teams', async () => {
     const tx = makeTx({ memberTeamIds: [{ teamId: 'team-x' }] });
-    const ids = await service.getOrdinaryMemberTeamIds(tx as never, 'user-1');
+    const ids = await service.getOrdinaryMemberTeamIds(tx as never, 'user-1', ORG);
     expect(ids).toEqual(['team-x']);
     expect(tx.teamMember.findMany).toHaveBeenCalledWith({
-      where: { userId: 'user-1', team: { deletedAt: null } },
+      where: { userId: 'user-1', organizationId: ORG, team: { deletedAt: null } },
       select: { teamId: true },
     });
   });
@@ -73,6 +87,7 @@ describe('TeamAccessService.getAccessibleTeamIds', () => {
     const ids = await service.getAccessibleTeamIds(tx as never, {
       sub: 'admin-1',
       role: 'ADMIN',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['team-a', 'team-b']);
     expect(tx.teamMember.findMany).not.toHaveBeenCalled();
@@ -83,13 +98,17 @@ describe('TeamAccessService.getAccessibleTeamIds', () => {
     const ids = await service.getAccessibleTeamIds(tx as never, {
       sub: 'owner-1',
       role: 'OWNER',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['team-a']);
   });
 
   it('MANAGER sees the union of managed and ordinary-member teams, deduped', async () => {
     const tx: TxMock = {
-      team: { findMany: vi.fn(async () => [{ id: 'team-managed' }]) },
+      team: {
+        findMany: vi.fn(async () => [{ id: 'team-managed' }]),
+        findFirst: vi.fn(async () => null),
+      },
       teamMember: {
         findMany: vi.fn(async () => [{ teamId: 'team-member' }, { teamId: 'team-managed' }]),
       },
@@ -99,6 +118,7 @@ describe('TeamAccessService.getAccessibleTeamIds', () => {
     const ids = await service.getAccessibleTeamIds(tx as never, {
       sub: 'mgr-1',
       role: 'MANAGER',
+      organizationId: ORG,
     });
     expect([...ids].sort()).toEqual(['team-managed', 'team-member']);
   });
@@ -108,13 +128,14 @@ describe('TeamAccessService.getAccessibleTeamIds', () => {
     const ids = await service.getAccessibleTeamIds(tx as never, {
       sub: 'tc-1',
       role: 'TELECALLER',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['team-x']);
     // Non-admin path always checks Team.managerId too (getManagedTeamIds),
     // not just TeamMember - a TELECALLER structurally never manages a team,
     // but the query itself is role-agnostic by design (one code path).
     expect(tx.team.findMany).toHaveBeenCalledWith({
-      where: { managerId: 'tc-1', deletedAt: null },
+      where: { managerId: 'tc-1', deletedAt: null, organizationId: ORG },
       select: { id: true },
     });
   });
@@ -126,11 +147,17 @@ describe('TeamAccessService.getMutableTeamIds / canMutateTeam', () => {
     const ids = await service.getMutableTeamIds(tx as never, {
       sub: 'admin-1',
       role: 'ADMIN',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['team-a', 'team-b']);
-    expect(await service.canMutateTeam(tx as never, { sub: 'admin-1', role: 'ADMIN' }, 'team-z')).toBe(
-      true,
-    );
+    // T-ORG-EXPLICIT: canMutateTeam now resolves the team in the actor's org
+    // instead of returning `true` unconditionally for an admin.
+    expect(
+      await service.canMutateTeam(tx as never, actor('admin-1', 'ADMIN'), 'team-a'),
+    ).toBe(true);
+    expect(
+      await service.canMutateTeam(tx as never, actor('admin-1', 'ADMIN'), 'team-in-other-org'),
+    ).toBe(false);
   });
 
   it('MANAGER may mutate only teams they manage, not ordinary-member teams', async () => {
@@ -138,24 +165,25 @@ describe('TeamAccessService.getMutableTeamIds / canMutateTeam', () => {
     const ids = await service.getMutableTeamIds(tx as never, {
       sub: 'mgr-1',
       role: 'MANAGER',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['team-managed']);
 
     expect(
-      await service.canMutateTeam(tx as never, { sub: 'mgr-1', role: 'MANAGER' }, 'team-managed'),
+      await service.canMutateTeam(tx as never, actor('mgr-1', 'MANAGER'), 'team-managed'),
     ).toBe(true);
     expect(
-      await service.canMutateTeam(tx as never, { sub: 'mgr-1', role: 'MANAGER' }, 'team-other'),
+      await service.canMutateTeam(tx as never, actor('mgr-1', 'MANAGER'), 'team-other'),
     ).toBe(false);
   });
 
   it('other staff roles may mutate no teams', async () => {
     const tx = makeTx();
-    expect(await service.getMutableTeamIds(tx as never, { sub: 'tc-1', role: 'TELECALLER' })).toEqual(
-      [],
-    );
     expect(
-      await service.canMutateTeam(tx as never, { sub: 'tc-1', role: 'TELECALLER' }, 'team-a'),
+      await service.getMutableTeamIds(tx as never, actor('tc-1', 'TELECALLER')),
+    ).toEqual([]);
+    expect(
+      await service.canMutateTeam(tx as never, actor('tc-1', 'TELECALLER'), 'team-a'),
     ).toBe(false);
   });
 });
@@ -163,7 +191,7 @@ describe('TeamAccessService.getMutableTeamIds / canMutateTeam', () => {
 describe('TeamAccessService.getProjectIdsForTeams', () => {
   it('returns an empty array without querying when given no team ids', async () => {
     const tx = makeTx();
-    const ids = await service.getProjectIdsForTeams(tx as never, []);
+    const ids = await service.getProjectIdsForTeams(tx as never, [], ORG);
     expect(ids).toEqual([]);
     expect(tx.projectTeam.findMany).not.toHaveBeenCalled();
   });
@@ -172,10 +200,10 @@ describe('TeamAccessService.getProjectIdsForTeams', () => {
     const tx = makeTx({
       projectTeamRows: [{ projectId: 'proj-1' }, { projectId: 'proj-2' }, { projectId: 'proj-1' }],
     });
-    const ids = await service.getProjectIdsForTeams(tx as never, ['team-a', 'team-b']);
+    const ids = await service.getProjectIdsForTeams(tx as never, ['team-a', 'team-b'], ORG);
     expect([...ids].sort()).toEqual(['proj-1', 'proj-2']);
     expect(tx.projectTeam.findMany).toHaveBeenCalledWith({
-      where: { teamId: { in: ['team-a', 'team-b'] } },
+      where: { teamId: { in: ['team-a', 'team-b'] }, organizationId: ORG },
       select: { projectId: true },
     });
   });
@@ -187,6 +215,7 @@ describe('TeamAccessService.getAccessibleProjectIds', () => {
     const ids = await service.getAccessibleProjectIds(tx as never, {
       sub: 'admin-1',
       role: 'ADMIN',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['proj-1', 'proj-2']);
     expect(tx.teamMember.findMany).not.toHaveBeenCalled();
@@ -194,7 +223,10 @@ describe('TeamAccessService.getAccessibleProjectIds', () => {
 
   it('staff resolve projects via their accessible teams -> ProjectTeam', async () => {
     const tx: TxMock = {
-      team: { findMany: vi.fn(async () => []) },
+      team: {
+        findMany: vi.fn(async () => []),
+        findFirst: vi.fn(async () => null),
+      },
       teamMember: { findMany: vi.fn(async () => [{ teamId: 'team-x' }]) },
       projectTeam: { findMany: vi.fn(async () => [{ projectId: 'proj-9' }]) },
       project: { findMany: vi.fn(async () => []) },
@@ -202,10 +234,11 @@ describe('TeamAccessService.getAccessibleProjectIds', () => {
     const ids = await service.getAccessibleProjectIds(tx as never, {
       sub: 'tc-1',
       role: 'TELECALLER',
+      organizationId: ORG,
     });
     expect(ids).toEqual(['proj-9']);
     expect(tx.projectTeam.findMany).toHaveBeenCalledWith({
-      where: { teamId: { in: ['team-x'] } },
+      where: { teamId: { in: ['team-x'] }, organizationId: ORG },
       select: { projectId: true },
     });
   });

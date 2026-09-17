@@ -148,6 +148,21 @@ beforeAll(async () => {
       });
     }
 
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): the project must exist BEFORE the
+    // leads below, which now carry a projectId FK. It previously appeared further
+    // down (only Booking needed it), so the FK fails if it is not hoisted here.
+    await db.project.upsert({
+      where: { id: PROJECT_ID },
+      update: {},
+      create: {
+        id: PROJECT_ID,
+        name: `Delete Test Project ${RUN_TAG}`,
+        slug: `delete-test-${RUN_TAG}`,
+        address: 'Test address',
+        organizationId: ORG,
+      },
+    });
+
     const baseLead = {
       name: 'Delete Test Lead',
       source: 'WEBSITE',
@@ -156,6 +171,8 @@ beforeAll(async () => {
       ownerId: TC_ID,
       ownerType: 'TELECALLER' as const,
       organizationId: ORG,
+      // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL.
+      projectId: PROJECT_ID,
     };
 
     await db.lead.upsert({
@@ -194,17 +211,6 @@ beforeAll(async () => {
     // pre-review guard only named HOLD/CONFIRMED - CONFIRMED doesn't
     // exist). Booking requires a Unit (unitId NOT NULL, onDelete:
     // Restrict) so the fixture builds Project → Phase → Unit.
-    await db.project.upsert({
-      where: { id: PROJECT_ID },
-      update: {},
-      create: {
-        id: PROJECT_ID,
-        name: `Delete Test Project ${RUN_TAG}`,
-        slug: `delete-test-${RUN_TAG}`,
-        address: 'Test address',
-        organizationId: ORG,
-      },
-    });
     await db.phase.upsert({
       where: { id: PHASE_ID },
       update: {},

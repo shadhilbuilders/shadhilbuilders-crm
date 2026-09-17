@@ -71,7 +71,7 @@ export class TeamsService {
           // rows) is authoritative, no legacy fallback needed.
           const teamIds = await this.teamAccess.getAccessibleTeamIds(
             tx as never,
-            { sub: actor.sub, role: actor.role },
+            { sub: actor.sub, role: actor.role, organizationId: actor.organizationId },
           );
           where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
         }
@@ -144,7 +144,7 @@ export class TeamsService {
         if (actor.role === 'MANAGER') {
           const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(
             tx as never,
-            { sub: actor.sub, role: actor.role },
+            { sub: actor.sub, role: actor.role, organizationId: actor.organizationId },
           );
           if (!accessibleTeamIds.includes(id)) {
             throw new ForbiddenException(

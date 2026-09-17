@@ -26,7 +26,7 @@ export default function ProjectStaffPage() {
   const canManage = isAdminLike(user?.role);
 
   if (sessionPending || projectId === null) {
-    return <Skeleton variant="users" className="py-24" />;
+    return <Skeleton variant="users" className="py-4" />;
   }
 
   return (

@@ -187,8 +187,17 @@ function UserMenu({
     <PopoverRoot>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="sm" className="min-h-11 gap-2 px-3">
-            <LuUserRound className="size-5" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 gap-2 px-3"
+            // The name span is `hidden` below `sm`, so at narrow widths this
+            // icon-only button has no text content - without an explicit label
+            // it has NO accessible name (axe `button-name`, critical).
+            aria-label={`Account menu for ${name}`}
+            data-qa="account-menu"
+          >
+            <LuUserRound className="size-5" aria-hidden />
             <span className="hidden max-w-40 truncate sm:inline">
               {name}
             </span>

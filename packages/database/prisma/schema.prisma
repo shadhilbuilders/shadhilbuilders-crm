@@ -577,7 +577,24 @@ model Lead {
   // T-ORG: tenant axis (denormalized to every lead-scoped child too, so
   // RLS on child tables compares a column, not a join to Lead).
   organizationId String
-  projectId String?
+  // T-LEAD-PROJECT-REQUIRED (2026-09-16, owner ruling): a lead MUST belong to a
+  // project. It was `String?`, and `leads.service.create` wrote
+  // `dto.projectId ?? null`, so leads could be created belonging to no project.
+  //
+  // Why this is a DB constraint and not just DTO validation: 140 project-less
+  // leads accumulated in three days, every one of them created by a RAW INSERT
+  // in a test suite. Prisma's `@relation` does not validate on raw SQL, and no
+  // application-layer check ever runs for those paths - only a column constraint
+  // stops them.
+  //
+  // The consequence they caused: a lead with no project is invisible on every
+  // project-scoped surface (the work dashboard, the leads inbox) while still
+  // counting org-wide - so a correct `0` on the dashboard looked like a broken
+  // counter. Orphans are data corruption, not a display bug.
+  //
+  // `onDelete: Restrict` replaces `SetNull`: deleting a project must not be able
+  // to re-create project-less leads as a side effect. Reassign the leads first.
+  projectId String
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
@@ -585,7 +602,7 @@ model Lead {
   coOwner    User?       @relation("LeadCoOwner", fields: [coOwnerId], references: [id], onDelete: SetNull)
   team       Team        @relation(fields: [teamId], references: [id], onDelete: Restrict)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
   activities Activity[]
   visits     SiteVisit[]
   messages   Message[]

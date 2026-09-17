@@ -21,8 +21,8 @@ import { PhoneSchema } from './common';
 const sourceSchema = z.string().trim().min(1).max(80);
 
 /**
- * POST /api/leads - create a new lead. name, phone, source are required.
- * email and projectId are optional. Owner is assigned by the
+ * POST /api/leads - create a new lead. name, phone, source and projectId are
+ * required. email is optional. Owner is assigned by the
  * ManagerAssignmentRule service (IMPLEMENTATION-PLAN §7) - callers do NOT
  * pick the owner.
  *
@@ -44,7 +44,15 @@ export const CreateLeadDtoSchema = z.object({
     .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
     .optional(),
   source: sourceSchema,
-  projectId: z.cuid2().optional(),
+  /**
+   * T-LEAD-PROJECT-REQUIRED (2026-09-16, owner ruling): REQUIRED. `Lead.projectId`
+   * is NOT NULL in the database, so this mirrors a real constraint instead of
+   * inventing one. 140 project-less leads had accumulated, and because a lead
+   * with no project is invisible on every project-scoped surface (the work
+   * dashboard, the leads inbox) while still counting org-wide, a correct
+   * dashboard `0` read as a broken counter.
+   */
+  projectId: z.cuid2(),
   notes: z.string().trim().max(2000).optional(),
   // Internal: optional explicit owner override (public-leads only).
   assignedOwnerId: z.string().cuid2().optional(),

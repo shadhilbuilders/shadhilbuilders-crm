@@ -26,7 +26,7 @@ describe('CoOwnerFormBody', () => {
 
   it('renders the co-owner combobox (label + description) and the reason field', () => {
     const html = renderToStaticMarkup(
-      <CoOwnerFormBody ownerId="owner-1" onSubmit={noopSubmit} />,
+      <CoOwnerFormBody ownerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).toContain('Co-owner');
     expect(html).toContain('A second staff member who can work the lead.');
@@ -36,14 +36,14 @@ describe('CoOwnerFormBody', () => {
 
   it('shows the reason as required', () => {
     const html = renderToStaticMarkup(
-      <CoOwnerFormBody ownerId="owner-1" onSubmit={noopSubmit} />,
+      <CoOwnerFormBody ownerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).toContain('*');
   });
 
   it('hides the Form action section - Save lives in the Dialog footer', () => {
     const html = renderToStaticMarkup(
-      <CoOwnerFormBody ownerId="owner-1" onSubmit={noopSubmit} />,
+      <CoOwnerFormBody ownerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).not.toContain('data-qa="form-submit-button"');
     expect(html).not.toContain('data-qa="form-reset-button"');
@@ -53,7 +53,7 @@ describe('CoOwnerFormBody', () => {
 
   it('excludes the lead owner from the assignee picker', () => {
     const html = renderToStaticMarkup(
-      <CoOwnerFormBody ownerId="owner-1" onSubmit={noopSubmit} />,
+      <CoOwnerFormBody ownerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     // The owner is never rendered as an option label.
     expect(html).not.toContain('(owner-1)');

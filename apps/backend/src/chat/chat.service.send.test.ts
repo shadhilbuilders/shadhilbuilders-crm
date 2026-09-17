@@ -23,6 +23,9 @@ import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@sha
 import { ChatService } from './chat.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'chatservicpr' + Date.now().toString();
 
 // Test fixtures: a team + a lead. We need a real Lead to send
 // WhatsApp to. The fixture setup runs against the DIRECT_DATABASE_URL
@@ -59,6 +62,19 @@ beforeAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
     // Upsert team
+    // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+    // fixtures below need a project to point at.
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
@@ -99,6 +115,8 @@ beforeAll(async () => {
         ownerType: 'MANAGER',
         teamId: TEST_TEAM_ID,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });

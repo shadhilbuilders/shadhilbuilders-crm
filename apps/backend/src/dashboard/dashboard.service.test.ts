@@ -234,8 +234,29 @@ describe('DashboardService.getStats', () => {
     const svc = new DashboardService({ $client: {} } as never);
     const tx = txCapture.current!;
     await svc.getStats(adminActor, { projectId: 'proj-metro' });
-    const leadCountArgs = tx.lead.count.mock.calls[0]![0] as MockArgs;
-    expect(leadCountArgs.where).toMatchObject({ projectId: 'proj-metro' });
+    // T-DASH-ORPHAN-EXPLAIN: the unassigned-leads count also calls lead.count and
+    // runs FIRST, so call index 0 is no longer the scoped one (`projectId: null`).
+    // Select by shape instead of by position - an order-sensitive assertion here
+    // would break again the next time an aggregate is added.
+    const scoped = tx.lead.count.mock.calls
+      .map((c) => (c[0] as MockArgs).where)
+      .find((w) => w !== undefined && w['projectId'] === 'proj-metro');
+    expect(scoped).toBeDefined();
+    expect(scoped).toMatchObject({ projectId: 'proj-metro' });
+  });
+
+  it('never asks for leads with a NULL project - that state cannot exist', async () => {
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): `Lead.projectId` is NOT NULL, so a
+    // `projectId: null` filter is both invalid to Prisma and meaningless. A
+    // counter built on it (the removed `unassignedLeads`) could only ever read 0,
+    // which is worse than no counter: it looks like information.
+    const svc = new DashboardService({ $client: {} } as never);
+    const tx = txCapture.current!;
+    await svc.getStats(adminActor, { projectId: 'proj-metro' });
+    const nullScope = tx.lead.count.mock.calls
+      .map((c) => (c[0] as MockArgs).where)
+      .find((w) => w !== undefined && w['projectId'] === null);
+    expect(nullScope).toBeUndefined();
   });
 
   it('noShowRate guards divide-by-zero → 0 when no outcomes logged', async () => {

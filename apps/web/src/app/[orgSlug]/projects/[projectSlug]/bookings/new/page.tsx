@@ -22,7 +22,7 @@
 // the canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import z from 'zod';
 
@@ -38,6 +38,8 @@ import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LuArrowLeft } from '@paalstack/react-icons/lu';
+
+import { currencyIntl } from '@/lib/format';
 
 // Client-side mirror of CreateBookingDto (packages/api-types/src/bookings.ts).
 // Numeric fields are kept as strings in the form and coerced on submit
@@ -132,16 +134,62 @@ function NewBookingPageInner() {
     );
   })();
 
-  const unitOptions = (() => {
+  // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): the booking total IS
+  // the unit's price. It used to be a free-typed number, and in practice NONE of
+  // the 11 existing bookings matched their unit - amounts like ₹1 and ₹1212
+  // against ₹43,50,000 units. The amount is now DERIVED and read-only.
+  //
+  // Prices are kept alongside the options (and shown in the label) so the user
+  // can see which figure is being applied without opening the inventory page.
+  // `price` arrives as a STRING because Prisma serialises Decimal that way, so it
+  // is parsed once here and rendered through the shared currency formatter.
+  const unitRows = useMemo(() => {
     const rows = unitsQuery.data;
     if (rows === undefined || !Array.isArray(rows)) return [];
-    return (rows as Array<{ id: string; unitNumber?: string; bhk?: number }>).map(
-      (row) => ({
-        value: row.id,
-        label: `${row.unitNumber ?? 'Unit'}${typeof row.bhk === 'number' ? ` · ${row.bhk} BHK` : ''}`,
+    return rows as Array<{ id: string; unitNumber?: string; bhk?: number; price?: string }>;
+  }, [unitsQuery.data]);
+
+  const unitOptions = useMemo(
+    () =>
+      unitRows.map((row) => {
+        const price = typeof row.price === 'string' ? Number(row.price) : NaN;
+        const priceLabel = Number.isFinite(price) ? ` · ${currencyIntl.format(price)}` : '';
+        return {
+          value: row.id,
+          label: `${row.unitNumber ?? 'Unit'}${
+            typeof row.bhk === 'number' ? ` · ${row.bhk} BHK` : ''
+          }${priceLabel}`,
+        };
       }),
-    );
+    [unitRows],
+  );
+
+  // Price of the currently-selected unit, or null when nothing is chosen yet.
+  //
+  // `form.watch` is called at the TOP LEVEL (not inside useMemo) because watch is
+  // what SUBSCRIBES this component to the field. Calling it inside a useMemo would
+  // read the value on first render but never re-run when the unit changes - the
+  // amount would silently keep the first unit's price. Same for the picker's own
+  // label. The derived value itself is a cheap lookup, so it is not memoised.
+  const selectedUnitId = form.watch('unitId');
+  const selectedUnitPrice = (() => {
+    if (typeof selectedUnitId !== 'string' || selectedUnitId.length === 0) return null;
+    const row = unitRows.find((u) => u.id === selectedUnitId);
+    if (row === undefined || typeof row.price !== 'string') return null;
+    const value = Number(row.price);
+    return Number.isFinite(value) ? value : null;
   })();
+
+  // Keep the form's `amount` in lockstep with the selection. A watcher rather
+  // than an onChange on the picker: `reset()` and the `?unitId=` deep-link both
+  // set the unit WITHOUT going through a click, and both must fill the amount.
+  // Without this the field could sit empty (or stale) while the server would
+  // reject the submit.
+  useEffect(() => {
+    form.setValue('amount', selectedUnitPrice === null ? '' : String(selectedUnitPrice), {
+      shouldValidate: false,
+    });
+  }, [selectedUnitPrice, form]);
 
   function onSubmit(values: CreateBookingSchema) {
     // zodResolver already validated leadId/unitId/amount/tokenAmount.
@@ -234,16 +282,37 @@ function NewBookingPageInner() {
             },
           },
           {
+            // T-BOOKING-AMOUNT-FROM-UNIT: DERIVED, not entered.
+            //
+            // The value comes from the selected unit's price (see
+            // `selectedUnitPrice`), so this field is read-only. `readOnly` rather
+            // than `disabled` on purpose: a disabled input is not focusable and
+            // screen readers skip it, so a keyboard user would never discover the
+            // amount at all. Read-only keeps it in the tab order, announced, and
+            // selectable/copyable - it just cannot be edited.
+            //
+            // Still `required` + validated: the schema runs on submit, so an
+            // unselected unit (empty amount) fails loudly instead of posting 0.
             type: 'input',
             name: 'amount',
             label: 'Total amount (₹)',
             required: true,
             inputType: 'number',
-            description: 'Booking value in rupees (cap ₹100 Cr).',
-            placeholder: 'Enter amount here...',
+            description:
+              selectedUnitPrice === null
+                ? 'Set automatically from the unit you pick.'
+                : `From ${(unitRows.find((u) => u.id === selectedUnitId)?.unitNumber) ?? 'the selected unit'} - set by the unit price, not editable here.`,
+            placeholder: 'Pick a unit...',
+            // Read-only fields still LOOK editable unless styled - a muted
+            // background is the standard "you cannot type here" signal.
+            // `className` is a FIELD-level prop: `inputProps` is typed as
+            // Omit<InputProps, 'label'|'className'|...>, so passing it there is a
+            // compile error (the Form owns the input's layout classes).
+            className: 'bg-muted/50 cursor-not-allowed',
             inputProps: {
               min: 1,
               step: 1,
+              readOnly: true,
               'data-qa': 'booking-amount',
             },
           },

@@ -31,6 +31,9 @@ import {
 import { ChatService } from './chat.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'chatservicpr' + Date.now().toString();
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 // Per-test unique IDs so re-runs don't collide on FK / unique constraints.
@@ -79,6 +82,19 @@ function makeService(): ChatService {
 beforeAll(async () => {
   if (prisma === null) return;
   await seedAdmin(async (db) => {
+    // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+    // fixtures below need a project to point at.
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEAM_ID },
       update: {},
@@ -111,6 +127,8 @@ beforeAll(async () => {
         ownerId: ADMIN_ID,
         ownerType: 'ADMIN',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });

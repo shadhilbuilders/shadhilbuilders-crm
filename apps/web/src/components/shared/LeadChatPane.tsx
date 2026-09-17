@@ -77,6 +77,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
 import { useTeamMembers } from '@/hooks/queries/users';
+import { useProjectId } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 import { useSessionUser } from '@/lib/session';
 
@@ -220,13 +221,17 @@ export function LeadChatPane({
   // member's reply, or the customer's own message). The pane re-renders
   // from the TanStack cache without a manual refresh.
   useMessagesRealtime(leadId, kind);
+  const activeProjectId = useProjectId();
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Mention picker state (Internal composer only).
   // `mentionQuery` is the substring after the last `@` in the draft; when
   // non-null the picker is active and shows team members matching it.
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const teamQuery = useTeamMembers();
+  // T-USER-PROJECT-SCOPE: pass the ACTIVE project so an ADMIN/OWNER - who has no
+  // natural team - is offered that project's staff instead of the whole
+  // directory. Staff roles are unaffected (their scope is already their team).
+  const teamQuery = useTeamMembers(activeProjectId ?? undefined);
 
   // Extract the active mention query from the draft: the text after the
   // last `@` (case-insensitive). Returns null when there's no active `@`

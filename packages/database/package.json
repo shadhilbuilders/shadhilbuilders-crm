@@ -13,6 +13,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./test-db-isolation": {
+      "types": "./dist/test-db-isolation.d.ts",
+      "require": "./dist/test-db-isolation.js",
+      "import": "./dist/test-db-isolation.js",
+      "default": "./dist/test-db-isolation.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -26,6 +32,7 @@
     "test": "vitest run",
     "seed": "tsx --env-file=../../.env src/seed.ts",
     "setup-demo-user": "tsx --env-file=../../.env scripts/setup-demo-user.ts",
+    "test:db:reset": "bash scripts/reset-test-db.sh",
     "format": "echo '(prisma format)' && prisma format",
     "docker:up": "cd ../../docker && docker compose --env-file ../.env up -d postgres pgbouncer redis"
   },

@@ -22,7 +22,7 @@ import {
   useUpdateVisitOutcome,
   useVisits,
 } from '@/hooks/queries/crm';
-import { canScheduleVisits, useSessionUser } from '@/lib/session';
+import { canLogVisitOutcome, canScheduleVisits, useSessionUser } from '@/lib/session';
 import { queue } from '@/lib/offline-store/queue-store';
 
 type LeadData = {
@@ -147,36 +147,51 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
               Visit is scheduled. Record what happened on site.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                onClick={() => recordOutcome('COMPLETED')}
-                disabled={updateOutcome.isPending}
-                data-qa="visit-mark-completed"
-              >
-                Mark completed
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => recordOutcome('NO_SHOW')}
-                disabled={updateOutcome.isPending}
-                data-qa="visit-mark-no-show"
-              >
-                No-show
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => recordOutcome('CANCELLED')}
-                disabled={updateOutcome.isPending}
-                data-qa="visit-mark-cancelled"
-              >
-                Cancel visit
-              </Button>
+              {/*
+                T-VISIT-OUTCOME-GATE (2026-09-16 owner ruling): each button is
+                gated per-outcome by `canLogVisitOutcome`, not by the
+                panel-level `canScheduleVisits`. The old gate included
+                TELECALLER, so a telecaller was offered "Mark completed" - which
+                the server refuses (403: only the exec/manager/admin conduct a
+                visit, and COMPLETED is what drives the lead to VISITED). The
+                helper already encoded the ruling; it was simply never called.
+              */}
+              {canLogVisitOutcome(user?.role, 'COMPLETED') ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  onClick={() => recordOutcome('COMPLETED')}
+                  disabled={updateOutcome.isPending}
+                  data-qa="visit-mark-completed"
+                >
+                  Mark completed
+                </Button>
+              ) : null}
+              {canLogVisitOutcome(user?.role, 'NO_SHOW') ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => recordOutcome('NO_SHOW')}
+                  disabled={updateOutcome.isPending}
+                  data-qa="visit-mark-no-show"
+                >
+                  No-show
+                </Button>
+              ) : null}
+              {canLogVisitOutcome(user?.role, 'CANCELLED') ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => recordOutcome('CANCELLED')}
+                  disabled={updateOutcome.isPending}
+                  data-qa="visit-mark-cancelled"
+                >
+                  Cancel visit
+                </Button>
+              ) : null}
             </div>
           </>
         ) : null}

@@ -43,13 +43,25 @@ export function DateNavigator({ view, events }: IProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="outline" className="size-6.5 px-0 [&_svg]:size-4.5" onClick={handlePrevious}>
+        <Button
+          variant="outline"
+          className="size-6.5 px-0 [&_svg]:size-4.5"
+          aria-label="Previous period"
+          data-qa="calendar-prev"
+          onClick={handlePrevious}
+        >
           <LuChevronLeft />
         </Button>
 
         <p className="text-muted-foreground text-sm">{rangeText(view, selectedDate)}</p>
 
-        <Button variant="outline" className="size-6.5 px-0 [&_svg]:size-4.5" onClick={handleNext}>
+        <Button
+          variant="outline"
+          className="size-6.5 px-0 [&_svg]:size-4.5"
+          aria-label="Next period"
+          data-qa="calendar-next"
+          onClick={handleNext}
+        >
           <LuChevronRight />
         </Button>
       </div>

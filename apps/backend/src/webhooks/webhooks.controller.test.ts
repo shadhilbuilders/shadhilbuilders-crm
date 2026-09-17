@@ -24,6 +24,9 @@ import { WebhooksController } from './webhooks.controller';
 // module-level beforeAll connects to the DB and fails loudly with
 // "client password must be a string" instead of skipping.
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'webhookscopr' + Date.now().toString();
 
 // ── Test fixtures ──────────────────────────────────────────────────
 const TEST_USER_ID = 'test-wa-handler-user';
@@ -49,6 +52,19 @@ beforeAll(async () => {
     adminClient,
     { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
     async (tx) => {
+      // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+      // fixtures below need a project to point at.
+      await tx.project.upsert({
+        where: { id: TEST_PROJECT_ID },
+        update: {},
+        create: {
+          id: TEST_PROJECT_ID,
+          name: `Test Project ${TEST_PROJECT_ID}`,
+          slug: TEST_PROJECT_ID,
+          address: 'test',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
       await tx.team.upsert({
         where: { id: TEST_TEAM_ID },
         update: {},
@@ -98,6 +114,8 @@ beforeEach(async () => {
           ownerId: TEST_USER_ID,
           ownerType: 'ADMIN',
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+          projectId: TEST_PROJECT_ID,
         },
         select: { id: true },
       });

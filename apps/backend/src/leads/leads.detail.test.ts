@@ -17,6 +17,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
+// fixture leads below need a project.
+const TEST_PROJECT_ID = 'testprojdetail' + Date.now().toString();
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 // Per-test unique IDs using real cuid2 so they pass z.cuid2() validation.
@@ -55,6 +58,19 @@ function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'rol
 beforeAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): the lead fixtures below point
+    // at this project (Lead.projectId is NOT NULL).
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEAM_A_ID },
       update: {},
@@ -137,6 +153,8 @@ beforeAll(async () => {
         ownerId: TC_A_ID,
         ownerType: 'TELECALLER',
         organizationId: ORG,
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });
@@ -200,7 +218,9 @@ describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
     expect(result.coOwnerId).toBeNull();
     expect(result.coOwnerName).toBeNull();
     expect(result.teamId).toBe(TEAM_A_ID);
-    expect(result.projectId).toBeNull();
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): was toBeNull(). A lead now always
+    // belongs to a project, so detail returns the fixture's project id.
+    expect(result.projectId).toBe(TEST_PROJECT_ID);
     expect(typeof result.createdAt).toBe('string');
     expect(typeof result.updatedAt).toBe('string');
   });

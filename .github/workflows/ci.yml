@@ -87,6 +87,27 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    # T-TEST-DB-ISOLATION (2026-09-16): this job had NO database, so every
+    # DB-backed suite silently took its `skipIf(!HAS_DB)` path. A green run meant
+    # "the fixtures never executed". It now gets postgres + a dedicated
+    # `shadhil_crm_test` database, matching local, and the suites really run.
+    env:
+      SHADHIL_APP_PASSWORD: shadhil
+      SHADHIL_OWNER_PASSWORD: shadhil
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shadhil
+          POSTGRES_PASSWORD: shadhil
+          POSTGRES_DB: shadhil_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shadhil -d shadhil_crm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -97,7 +118,26 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Same role bootstrap as rls-matrix: migration 1 GRANTs to shadhil_app.
+      - run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          SQL
       - run: pnpm --filter @shadhil/database generate
+      # Create + migrate + seed the TEST database. Tests refuse to run against a
+      # non-`_test` database (packages/database/src/test-db-isolation.ts), so this
+      # step is what makes the isolation real rather than nominal.
+      - run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE DATABASE shadhil_crm_test;
+          SQL
+      - run: cd packages/database && npx prisma migrate deploy
+        env:
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+      - run: cd packages/database && pnpm exec tsx src/seed.ts
+        env:
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+          DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
       # Day 5 T-G4: @shadhil/database exports point to ./dist/index.js.
       # The test job runs vitest which imports from the workspace;
       # the import resolves to dist (per package.json `main`), not
@@ -163,13 +203,22 @@ jobs:
           CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
           SQL
       - run: pnpm --filter @shadhil/database generate
+      # T-TEST-DB-ISOLATION (2026-09-16): the matrix runs against
+      # `shadhil_crm_test`, not the dev database, on BOTH local and CI. The
+      # helper rewrites the database NAME to `<name>_test`, so this job must
+      # create and migrate that database - otherwise every query fails with
+      # "no such database: shadhil_crm_test".
+      - run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE DATABASE shadhil_crm_test;
+          SQL
       # 00-init.sql equivalent + schema + policies + FORCE + grants
       - run: cd packages/database && npx prisma migrate deploy
         env:
           # NOTE: GH Actions does NOT shell-expand ${VAR} inside env: map
           # values - that's bash syntax. Use the ${{ }} expression form or
           # Prisma gets the literal '${...}' as the password (P1000).
-          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
       # AR-4 companion: the matrix FAILS if the DB is unreachable - a missing
       # DATABASE_URL must never silently skip the security suite.
       - run: cd packages/database && pnpm test
@@ -179,9 +228,162 @@ jobs:
           # is RLS-enforced and must connect as the non-owner shadhil_app
           # role - using shadhil here bypasses RLS and the matrix flips
           # green for the wrong reason).
-          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
-          DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm?schema=public
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+          DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
           RLS_MATRIX_REQUIRED: 'true'
+
+
+  # Playwright e2e against real servers + a real Postgres.
+  #
+  # WHY THIS EXISTS: e2e was never in CI, and the suite rotted silently - a
+  # clean-tree baseline on 2026-09-16 was 9 failed / 5 passed / 5 skipped
+  # (demo-flow.spec.ts and leads-full.spec.ts), none of which anyone could see.
+  # A suite nobody runs is not a safety net.
+  #
+  # Mirrors the rls-matrix job's service + role bootstrap. Every env var below
+  # mirrors what the local .env provides; the seeded demo login
+  # (demo@shadhilbuilders.in / demo123) is created by scripts/setup-demo-user.ts
+  # and is already committed in demo-flow.spec.ts as the sanctioned local fixture.
+  #
+  # NOTE: unlike rls-matrix this job deliberately DOES connect the backend as the
+  # RLS-enforced `shadhil_app` role, because the specs assert real role-scoped
+  # behaviour (a telecaller's queue, a manager's approvals). That means every
+  # migration must GRANT to shadhil_app, which migration 1 already does.
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    env:
+      # shadhil_app password matches the CREATE ROLE heredoc; shadhil (owner)
+      # matches the postgres service and DIRECT_DATABASE_URL below.
+      SHADHIL_APP_PASSWORD: shadhil
+      SHADHIL_OWNER_PASSWORD: shadhil
+      # MUST be production, not development: a production `next build` only
+      # succeeds with NODE_ENV=production. With `development` it fails
+      # prerendering "/" (NextTopLoader/global-error read a null React context),
+      # which is an environment artifact, not a code defect - verified locally
+      # 2026-09-16 (exit 1 with development, exit 0 with production).
+      NODE_ENV: production
+      # Backend boot-env (apps/backend/src/boot-env.ts) fails fast on any of
+      # these being missing, so a blank one makes the server exit rather than
+      # start half-dead. Secret values here are throwaway CI placeholders -
+      # CI never talks to a real provider, same convention as the rest of this file.
+      JWT_SECRET: ci-e2e-jwt-secret-not-a-real-secret-0000
+      JWT_ISSUER: shadhil-ci
+      BETTER_AUTH_SECRET: ci-e2e-better-auth-secret-not-real-0000
+      BETTER_AUTH_URL: http://localhost:8080
+      POOL_MODE: session
+      PUBLIC_API_KEY: ci-e2e-public-api-key-placeholder
+      # PUBLIC_ORG_ID must be a 26-char ULID or 36-char UUID and must match the
+      # org the demo seed creates (DEMO_ORG_ID in scripts/setup-demo-user.ts).
+      PUBLIC_ORG_ID: j6lic67mwuop8ur7epjylexz
+      CORS_ORIGINS: http://localhost:3000
+      # Frontend. The web app proxies to the backend through /api/bff.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_APP_NAME: Shadhil
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_DEBUG_MODE: 'false'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shadhil
+          POSTGRES_PASSWORD: shadhil
+          POSTGRES_DB: shadhil_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shadhil -d shadhil_crm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # Required: RedisService throws at boot when REDIS_URL is unset, and the
+      # backend's assertBootEnv requires it too.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser download is the slow part; cache it across runs.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm --filter @shadhil/web exec playwright install --with-deps chromium
+      # CI's bare postgres container has no docker-entrypoint hook, so create the
+      # non-owner app role BEFORE migrations (migration 1 GRANTs to it).
+      - run: |
+          PGPASSWORD=${SHADHIL_OWNER_PASSWORD} psql -h localhost -U shadhil -d shadhil_crm -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE shadhil_app LOGIN PASSWORD 'shadhil' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          SQL
+      - run: pnpm --filter @shadhil/database generate
+      # Env for every subsequent step. No PgBouncer here, so the pooler vars point
+      # straight at the service port (Prisma tolerates ?pgbouncer=true on a direct
+      # connection). DATABASE_URL uses the RLS-enforced app role on purpose;
+      # DIRECT_DATABASE_URL uses the owner role for DDL.
+      - name: Export e2e database env
+        run: |
+          {
+            echo "DATABASE_URL=postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@localhost:5432/shadhil_crm?schema=public&pgbouncer=true"
+            echo "DIRECT_DATABASE_URL=postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public"
+            echo "REDIS_URL=redis://localhost:6379"
+            echo "API_PORT=8080"
+          } >> "$GITHUB_ENV"
+      - run: cd packages/database && npx prisma migrate deploy
+      # Seed the org/project/units + the 10 demo leads, then the demo login the
+      # specs use. The e2e specs assert against THIS roster
+      # (Demo Priya / Demo Arjun / ... via scripts/setup-demo-user.ts and the
+      # 10-lead set in src/seed.ts).
+      - run: pnpm --filter @shadhil/database seed
+      - run: pnpm --filter @shadhil/database setup-demo-user
+      # Build the workspace so the backend can run, then start both servers in
+      # the background and wait for real readiness instead of sleeping.
+      - run: pnpm --filter @shadhil/database build
+      - run: pnpm exec turbo run build --filter=@shadhil/backend --filter=@shadhil/web --concurrency=1
+      - name: Start backend
+        run: |
+          pnpm --filter @shadhil/backend start > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/api/health > /dev/null; then
+              echo "backend ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "backend failed to become ready"; tail -60 /tmp/backend.log; exit 1
+      - name: Start web
+        run: |
+          pnpm --filter @shadhil/web start > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/login; then
+              echo "web ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "web failed to become ready"; tail -60 /tmp/web.log; exit 1
+      - run: pnpm --filter @shadhil/web exec playwright test --project=chromium
+      # Upload the failure screenshots Playwright already captures - without this
+      # a red CI run is unreadable.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failures
+          path: |
+            apps/web/test-results/
+            apps/web/src/test/e2e/__screenshots__/
+          retention-days: 7
 
   build:
     name: Build

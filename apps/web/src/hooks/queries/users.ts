@@ -30,6 +30,8 @@ const USERS_KEY = ['users'] as const;
 export type UsersFilter = {
   role?: Role[];
   search?: string;
+  /** Narrow to staff of ONE project (T-USER-PROJECT-SCOPE). */
+  projectId?: string;
   limit?: number;
   offset?: number;
 };
@@ -45,6 +47,9 @@ export function useUsers(filter: UsersFilter = {}) {
       ...USERS_KEY,
       filter.role ?? [],
       filter.search ?? '',
+      // T-USER-PROJECT-SCOPE: part of the KEY, not just the request. Without it
+      // the picker would serve the previous project's list from cache.
+      filter.projectId ?? '',
       filter.limit,
       filter.offset,
     ],
@@ -53,6 +58,7 @@ export function useUsers(filter: UsersFilter = {}) {
         `/users${qs({
           role: filter.role?.join(','),
           search: filter.search,
+          projectId: filter.projectId,
           limit: filter.limit,
           offset: filter.offset,
         })}`,
@@ -68,10 +74,14 @@ export function useUsers(filter: UsersFilter = {}) {
  * picker. Unlike `useUsers` (staff→self only), this returns the whole team
  * so a telecaller can see + mention their manager and teammates.
  */
-export function useTeamMembers() {
+export function useTeamMembers(projectId?: string) {
   return useQuery({
-    queryKey: ['users', 'team'] as const,
-    queryFn: ({ signal }) => api<BackendCreatedUser[]>('/users/team', { signal }),
+    queryKey: ['users', 'team', projectId ?? ''] as const,
+    queryFn: ({ signal }) =>
+      api<BackendCreatedUser[]>(
+        `/users/team${qs({ projectId })}`,
+        { signal },
+      ),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

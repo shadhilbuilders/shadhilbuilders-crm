@@ -107,11 +107,23 @@ export default function NewLeadPage() {
       toast.error('Phone must be at least 10 digits');
       return;
     }
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): every lead needs a project. This form
+    // only ever renders on a project-scoped route, so a missing projectId means
+    // the routing is broken - say so instead of posting a lead that would be
+    // invisible on every project surface.
+    if (projectId === null) {
+      toast.error('No project in context - reload the page from a project.');
+      return;
+    }
 
     const payload = {
       name: values.name.trim().replace(/\s+/g, ' '),
       phone,
-      ...(projectId !== null ? { projectId } : {}),
+      // T-LEAD-PROJECT-REQUIRED (2026-09-16): projectId is REQUIRED by the API and
+      // NOT NULL in the DB, so this is no longer conditional. The route is
+      // project-scoped, so a null here is a routing error, and the guard below
+      // fails loudly rather than posting a lead no project surface can show.
+      projectId,
       ...(values.email && values.email.trim().length > 0
         ? { email: values.email.trim().toLowerCase() }
         : {}),

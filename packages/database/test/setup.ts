@@ -10,6 +10,17 @@ import 'dotenv/config';
 
 import { beforeAll, afterAll } from 'vitest';
 
+import { isolateTestDatabase } from '../src/test-db-isolation';
+
+// T-TEST-DB-ISOLATION (2026-09-16): `dotenv/config` above loads the repo-root
+// `.env`, whose URLs point at the DEVELOPMENT database. Redirect the matrix at
+// `shadhil_crm_test` before anything connects - its INSERT probes write real rows
+// and are how 140 `matrix-test` leads ended up in dev.
+//
+// Throws rather than warns: if the redirect does not take effect, the suite must
+// not run at all, because the whole point is that dev is unreachable from tests.
+isolateTestDatabase();
+
 export const DATABASE_AVAILABLE = Boolean(process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL);
 
 beforeAll(() => {

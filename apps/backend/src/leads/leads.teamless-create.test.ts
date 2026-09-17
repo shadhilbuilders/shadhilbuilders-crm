@@ -34,6 +34,10 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // Per-test unique IDs so re-runs don't collide on FK / unique constraints.
 const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const TEAM_ID = `test-teamless-team-${RUN_TAG}`;
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): create() now requires a projectId (the
+// DB column is NOT NULL). The fixture owns its project rather than borrowing a
+// seeded one, so the test cannot depend on what happens to exist in the dev DB.
+const PROJECT_ID = `test-teamless-project-${RUN_TAG}`;
 // Teamless ADMIN + OWNER actors (no teamId on the JWT, like the seed).
 const ADMIN_ID = `test-teamless-admin-${RUN_TAG}`;
 // OWNER actor: reuse the single seeded OWNER (the `one_owner` partial
@@ -74,6 +78,18 @@ let service: LeadsService;
 beforeAll(async () => {
   if (prisma === null) return;
   await seedAdmin(async (db) => {
+    // One project - create() requires a projectId now.
+    await db.project.upsert({
+      where: { id: PROJECT_ID },
+      update: {},
+      create: {
+        id: PROJECT_ID,
+        name: `Teamless Create Test Project ${RUN_TAG}`,
+        slug: `test-teamless-project-${RUN_TAG}`,
+        address: 'test',
+        organizationId: ORG,
+      },
+    });
     // One team - the default-team resolver picks it (oldest first).
     await db.team.upsert({
       where: { id: TEAM_ID },
@@ -126,6 +142,7 @@ describe('LeadsService.create - teamless ADMIN/OWNER (T-TEAMLESS-CREATE)', () =>
         name: `Teamless Admin Lead ${RUN_TAG}`,
         phone: `9199${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
         source: 'REFERRAL',
+        projectId: PROJECT_ID,
       },
     );
     LEAD_IDS.push(lead.id);
@@ -156,6 +173,7 @@ describe('LeadsService.create - teamless ADMIN/OWNER (T-TEAMLESS-CREATE)', () =>
         name: `Teamless Owner Lead ${RUN_TAG}`,
         phone: `9198${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
         source: 'WALK_IN',
+        projectId: PROJECT_ID,
       },
     );
     LEAD_IDS.push(lead.id);

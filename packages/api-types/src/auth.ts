@@ -86,6 +86,15 @@ export const UserFilterDtoSchema = z.object({
     .union([RoleSchema, z.array(RoleSchema)])
     .optional(),
   search: z.string().trim().min(1).max(120).optional(),
+  /**
+   * T-USER-PROJECT-SCOPE (2026-09-16): narrow the result to staffed on ONE
+   * project. Applied as an INTERSECTION with the caller's existing scope, so it
+   * can only ever reduce the list - never grant a manager or telecaller anyone
+   * they could not already see. Powers the lead "Assign to" / "Co-owner"
+   * pickers, which previously offered staff from other projects (and, for an
+   * admin/owner, other ORGANISATIONS).
+   */
+  projectId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });

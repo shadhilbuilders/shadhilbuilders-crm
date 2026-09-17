@@ -39,12 +39,7 @@ export type PageHeaderProps = {
   subtitle?: ReactNode;
 };
 
-export function PageHeader({
-  title,
-  breadcrumb,
-  action,
-  subtitle,
-}: PageHeaderProps) {
+export function PageHeader({ title, breadcrumb, action, subtitle }: PageHeaderProps) {
   const crumbs = breadcrumb ?? [{ label: 'Work' }, { label: title }];
   return (
     <div className="border-border border-b">
@@ -59,13 +54,21 @@ export function PageHeader({
           <Heading as="h1" className="truncate">
             {title}
           </Heading>
+          {/*
+ T-DASH-MOBILE (2026-09-16): clamped to two lines on touch widths.
+ The dashboard's manager subtitle ("Your team's queue and anything
+ awaiting approval, Demo Owner.") runs to two full lines at 320px,
+ and every line up here pushes the first actionable queue row further
+ below the fold - measured at 564px of a 568px viewport, i.e. the
+ queue was effectively invisible on a small phone on first paint.
+ `line-clamp-2` keeps the sentence readable where there is room and
+ stops it dominating where there is not.
+ */}
           {subtitle !== undefined && subtitle !== null ? (
-            <p className="text-muted-foreground mt-0.5 text-sm">{subtitle}</p>
+            <p className="text-muted-foreground mt-0.5 line-clamp-2 text-sm">{subtitle}</p>
           ) : null}
         </div>
-        {action !== undefined && action !== null ? (
-          <div className="shrink-0">{action}</div>
-        ) : null}
+        {action !== undefined && action !== null ? <div className="shrink-0">{action}</div> : null}
       </div>
     </div>
   );

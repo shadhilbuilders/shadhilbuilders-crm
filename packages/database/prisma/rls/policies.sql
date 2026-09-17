@@ -297,30 +297,65 @@ ALTER TABLE "SiteVisit" ENABLE ROW LEVEL SECURITY;
 -- EXISTS-based against Team.managerId; the app.user_team_id GUC equality
 -- fallback has been removed. ADMIN's clause is unchanged (already
 -- unconditional, no team check).
+-- T-VISIT-ASSIGNEE (2026-09-16): the assigned exec must be able to see the visit
+-- they are sent to conduct.
+--
+-- Structural note, learned the hard way: an RLS policy on "SiteVisit" cannot
+-- decide a non-owner exec's access by looking UP at the parent Lead, because the
+-- Lead row is itself invisible to that exec - `lead_select_telecaller` grants
+-- TELECALLER *and* SALES_EXEC visibility only where they are the lead's
+-- ownerId/coOwnerId, and under Model C the exec is NOT the owner while the visit
+-- is pending. An `EXISTS (SELECT 1 FROM "Lead" ...)` inside this policy
+-- therefore evaluates to FALSE and hides the row. (Reproduced with a focused
+-- probe: the visit was assigned to the exec, the predicate text was correct, and
+-- the row was still invisible.) So each branch that must hold for someone who
+-- does not own the lead is expressed against THIS row's own columns.
+--
+-- This matters for writes too: Postgres applies the SELECT policies when
+-- locating the row an UPDATE targets, so widening UPDATE alone is never enough.
+-- A first attempt granted UPDATE without SELECT and failed with
+--   P2025 "No record was found for an update".
+--
+-- Branch semantics (permissive, OR'd):
+--   ADMIN      - org-wide.
+--   MANAGER    - leads on teams they manage (via Lead, which managers CAN see).
+--   TELECALLER - owns/co-owns the lead, OR is the visit's assignee.
+--   SALES_EXEC - owns/co-owns the lead, OR is the visit's assignee.
+-- Visibility stays org-scoped and requires an actual assignment, so a staff
+-- member still cannot see a colleague's visit.
 CREATE POLICY site_visit_select_team ON "SiteVisit"
   FOR SELECT
   USING (
     "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
-    AND EXISTS (
-      SELECT 1 FROM "Lead" l
-      WHERE l.id = "SiteVisit"."leadId"
-        AND l."organizationId" = current_setting('app.user_org_id', true)
-        AND (
-          (current_setting('app.user_role', true) = 'ADMIN')
-          OR (current_setting('app.user_role', true) = 'MANAGER'
+    AND (
+      (current_setting('app.user_role', true) = 'ADMIN')
+      OR (current_setting('app.user_role', true) = 'MANAGER'
+          AND EXISTS (
+            SELECT 1 FROM "Lead" l
+            WHERE l.id = "SiteVisit"."leadId"
+              AND l."organizationId" = current_setting('app.user_org_id', true)
               AND EXISTS (
                 SELECT 1 FROM "Team" t
                 WHERE t."id" = l."teamId"
                   AND t."managerId" = current_setting('app.user_id', true)
-              ))
-          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
-              AND (
-                l."ownerId" = current_setting('app.user_id', true)
-                OR l."coOwnerId" = current_setting('app.user_id', true)
-              ))
-        )
+              )
+          ))
+      OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+          AND (
+            "SiteVisit"."userId" = current_setting('app.user_id', true)
+            OR EXISTS (
+              SELECT 1 FROM "Lead" l
+              WHERE l.id = "SiteVisit"."leadId"
+                AND l."organizationId" = current_setting('app.user_org_id', true)
+                AND (
+                  l."ownerId" = current_setting('app.user_id', true)
+                  OR l."coOwnerId" = current_setting('app.user_id', true)
+                )
+            )
+          ))
     )
   );
+
 
 -- The embedded ADMIN branch here (`l.teamId = app.user_team_id`) was dead
 -- code for the same reason as activity_insert_team's: the seed ADMIN/OWNER
@@ -373,6 +408,57 @@ CREATE POLICY site_visit_write_team ON "SiteVisit"
                 OR l."coOwnerId" = current_setting('app.user_id', true)
               ))
         )
+    )
+  );
+
+-- T-VISIT-ASSIGNEE (2026-09-16): the assigned exec must also be able to RECORD
+-- the outcome on the visit they conducted - the write that drives the parent
+-- lead VISIT_SCHEDULED -> VISITED.
+--
+-- Same structural reasoning as the SELECT policy above: expressed against this
+-- row's own columns, because an EXISTS on the parent Lead is FALSE for an exec
+-- who does not own that Lead. Mirrors site_visit_select_team so no row is
+-- readable-but-not-writable.
+--
+-- WHY A SEPARATE POLICY INSTEAD OF WIDENING site_visit_write_team: that policy
+-- is FOR ALL, and this grant must not imply INSERT. `visits.service.create()`
+-- resolves the assignee as `dto.salesExecId ?? actor.sub`, so it inserts rows
+-- whose `userId` is the acting telecaller; widening a FOR ALL policy on
+-- `userId = app.user_id` would have let a SALES_EXEC CREATE visits. Scheduling
+-- is the telecaller's job, so INSERT stays refused for SALES_EXEC (pinned by
+-- the RLS matrix). DELETE is not granted here either.
+CREATE POLICY site_visit_update_assignee ON "SiteVisit"
+  FOR UPDATE
+  USING (
+    "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    AND (
+      "SiteVisit"."userId" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Lead" l
+        WHERE l.id = "SiteVisit"."leadId"
+          AND l."organizationId" = current_setting('app.user_org_id', true)
+          AND (
+            l."ownerId" = current_setting('app.user_id', true)
+            OR l."coOwnerId" = current_setting('app.user_id', true)
+          )
+      )
+    )
+  )
+  WITH CHECK (
+    "SiteVisit"."organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    AND (
+      "SiteVisit"."userId" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Lead" l
+        WHERE l.id = "SiteVisit"."leadId"
+          AND l."organizationId" = current_setting('app.user_org_id', true)
+          AND (
+            l."ownerId" = current_setting('app.user_id', true)
+            OR l."coOwnerId" = current_setting('app.user_id', true)
+          )
+      )
     )
   );
 

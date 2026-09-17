@@ -21,6 +21,7 @@
     "db:migrate": "pnpm --filter @shadhil/database migrate",
     "db:seed": "pnpm --filter @shadhil/database seed",
     "db:setup-demo-user": "pnpm --filter @shadhil/database setup-demo-user",
+    "db:test:reset": "pnpm --filter @shadhil/database test:db:reset",
     "db:studio": "pnpm --filter @shadhil/database studio",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache",
     "docker:up": "pnpm --filter @shadhil/database docker:up",

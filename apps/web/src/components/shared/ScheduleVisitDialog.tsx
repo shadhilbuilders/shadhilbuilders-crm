@@ -11,19 +11,32 @@
 // scheduledFor is required (must be in the future per the Zod refine);
 // salesExecId is optional (defaults to actor.sub on the server).
 //
-// We use the props-API Form (data-driven `fields` array) per the
-// canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
-import { useMemo } from 'react';
+// T-DASH-QUEUE (2026-09-16) - TELECALLER FIX. Two things blocked a telecaller
+// from scheduling a visit at all, both verified against the running server:
+//   1. `visits.service.create` sets `userId = dto.salesExecId ?? actor.sub`
+//      (visits.service.ts:245) and then rejects any assignee that is not
+//      SALES_EXEC-or-higher (:255-264). A telecaller who leaves the exec blank
+//      therefore gets a 400: "Visit assignee must be SALES_EXEC or higher
+//      (got TELECALLER)". Omitting the exec is not a valid path for them.
+//   2. The exec picker is fed by `/users/project/:id/sales-execs`, which
+//      returns [] for TELECALLER (users.service.ts:1011-1013) - so the picker
+//      was EMPTY and there was no way to fill the field in.
+// Fix: for a telecaller, source the picker from `/users/team` (staff scope =
+// team + manager, already powering the chat @mention picker) filtered to
+// SALES_EXEC/MANAGER, and make the field REQUIRED so a blank submit - which
+// would 400 - is impossible. No backend change: supplying a valid salesExecId
+// passes the existing assignee check.
+import { useEffect, useMemo } from 'react';
 
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
-import { useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import z from 'zod';
 
 import { useCreateVisit, useLeads } from '@/hooks/queries/crm';
-import { useProjectSalesExecs } from '@/hooks/queries/users';
+import { useProjectId } from '@/lib/tenant-context';
+import { useProjectSalesExecs, useTeamMembers } from '@/hooks/queries/users';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
 
@@ -77,8 +90,13 @@ export function ScheduleVisitDialog({
 }: ScheduleVisitDialogProps) {
   const createVisit = useCreateVisit();
   const { user } = useSessionUser();
-  const params = useParams<{ projectId?: string }>();
-  const projectId = typeof params?.projectId === 'string' ? params.projectId : undefined;
+  // NOT useParams<{projectId}>(): the route is
+  // /[orgSlug]/projects/[projectSlug]/... so there is no `projectId` param and
+  // this was permanently undefined, which silently disabled the exec query
+  // (`enabled: projectId !== undefined`). The tenant context resolves the ACTIVE
+  // project properly and is what the rest of the app uses.
+  const projectIdFromContext = useProjectId();
+  const projectId = projectIdFromContext ?? undefined;
 
   // Only fetch leads that can actually accept a visit (VISIT_REQUESTED,
   // VISIT_SCHEDULED, RESCHEDULED) so the picker never offers a lead that
@@ -89,14 +107,70 @@ export function ScheduleVisitDialog({
   //   - MANAGER: execs in the manager's own team who own leads in this project.
   //   - ADMIN/OWNER: all SALES_EXEC who own leads in this project.
   const isAdminOrOwner = user === null ? false : isAdminLike(user.role);
-  const showExecPicker = user !== null && (isAdminOrOwner || user.role === 'MANAGER');
+  const isManager = user !== null && user.role === 'MANAGER';
+  const isTelecaller = user !== null && user.role === 'TELECALLER';
+  const showExecPicker = isAdminOrOwner || isManager || isTelecaller;
+
+  // Two different sources on purpose (see the T-DASH-QUEUE note at the top):
+  // MANAGER/ADMIN use the project-scoped endpoint, but a TELECALLER must use the
+  // team endpoint - the project-scoped one returns [] for them, which is why
+  // their picker used to be empty with no way to proceed.
   const projectSalesExecsQuery = useProjectSalesExecs(projectId);
+  const teamMembersQuery = useTeamMembers();
   const salesExecOptions = useMemo(() => {
+    const asOption = (u: { id: string; name: string; role: string }) => ({
+      value: u.id,
+      label: `${u.name}${u.role === 'MANAGER' ? ' (manager)' : ''}`,
+    });
+
     if (!showExecPicker) return [];
-    const rows = projectSalesExecsQuery.data;
-    if (!Array.isArray(rows)) return [];
-    return rows.map((u) => ({ value: u.id, label: u.name }));
-  }, [showExecPicker, projectSalesExecsQuery.data]);
+
+    // Only roles the SERVER will accept as a visit assignee (SALES_EXEC or
+    // higher). Offering a fellow telecaller would produce a 400.
+    const assignable = (rows: unknown) =>
+      Array.isArray(rows)
+        ? (rows as { id: string; name: string; role: string }[]).filter(
+            (u) => u.role === 'SALES_EXEC' || u.role === 'MANAGER',
+          )
+        : [];
+
+    const fromProject = assignable(projectSalesExecsQuery.data);
+
+    // The project-scoped list is fed by STAFFING on the project, but it can
+    // still be empty (no team linked yet). Falling back to the actor's team
+    // keeps the field usable instead of dead-ending the whole dialog on a
+    // project whose staffing is incomplete.
+    const source = fromProject.length > 0 ? fromProject : assignable(teamMembersQuery.data);
+    return source.map(asOption);
+  }, [
+    showExecPicker,
+    teamMembersQuery.data,
+    projectSalesExecsQuery.data,
+  ]);
+
+  // A telecaller CANNOT omit the exec: the server falls back to the actor and
+  // then rejects a TELECALLER assignee with a 400. So required for them, and
+  // only for them - a manager's blank field legitimately means "me".
+  const execRequired = isTelecaller;
+
+  // When a lead is preselected AND the form has a real value for it, hide the
+  // picker: from the work queue the telecaller clicked a specific lead, so
+  // asking them to find that same lead again in a dropdown is busywork. Falls
+  // back to showing the picker when there is nothing preselected.
+  const hideLeadPickerEffective = hideLeadPicker || (initialLeadId ?? '').length > 0;
+
+  // The exec field's rule has to be built per role, so the resolver schema is
+  // derived from the module-scope one rather than forked.
+  const schema = useMemo(
+    () =>
+      execRequired
+        ? scheduleVisitSchema.refine((v) => (v.salesExecId ?? '').length > 0, {
+            message: 'Select the sales exec who will attend',
+            path: ['salesExecId'],
+          })
+        : scheduleVisitSchema,
+    [execRequired],
+  );
 
   // Default to tomorrow at 10am - gives the user a sensible starting
   // point while still requiring them to confirm the date. When a calendar
@@ -120,7 +194,7 @@ export function ScheduleVisitDialog({
   }, [initialDate]);
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(scheduleVisitSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       leadId: initialLeadId ?? '',
       scheduledForDate: defaultDate,
@@ -130,6 +204,21 @@ export function ScheduleVisitDialog({
     },
     mode: 'onSubmit',
   });
+
+  // Re-seed on open: `defaultValues` is only read at mount, so a dialog whose
+  // `initialLeadId` changes (the queue opens it for a different lead each time)
+  // would otherwise keep the FIRST lead forever. This is the bug that made the
+  // preselected-lead flow unusable.
+  useEffect(() => {
+    if (!open) return;
+    form.reset({
+      leadId: initialLeadId ?? '',
+      scheduledForDate: defaultDate,
+      scheduledForTime: defaultTime,
+      salesExecId: '',
+      notes: '',
+    });
+  }, [open, initialLeadId, defaultDate, defaultTime, form]);
 
   const leadOptions = useMemo(() => {
     const rows = leadsQuery.data;
@@ -183,7 +272,7 @@ export function ScheduleVisitDialog({
   }
 
   const fields = [
-    ...(hideLeadPicker
+    ...(hideLeadPickerEffective
       ? []
       : [
           {
@@ -206,6 +295,7 @@ export function ScheduleVisitDialog({
       label: 'Date',
       required: true,
       inputType: 'date',
+      inputProps: { 'data-qa': 'schedule-visit-date' },
     },
     {
       type: 'input' as const,
@@ -213,18 +303,23 @@ export function ScheduleVisitDialog({
       label: 'Time',
       required: true,
       inputType: 'time',
+      inputProps: { 'data-qa': 'schedule-visit-time' },
     },
     ...(showExecPicker
       ? [
           {
             type: 'combobox' as const,
             name: 'salesExecId',
-            label: 'Sales exec (optional)',
-            required: false,
+            // Required for a telecaller (see T-DASH-QUEUE note at top): the
+            // server rejects a TELECALLER assignee, so a blank field would 400.
+            // For MANAGER/ADMIN blank legitimately means "me", so optional.
+            label: execRequired ? 'Sales exec attending' : 'Sales exec (optional)',
+            required: execRequired,
             options: salesExecOptions,
             placeholder: 'Search a sales exec...',
             comboboxProps: {
-              emptyOptionMessage: 'No sales execs in this project',
+              emptyOptionMessage:
+                'No sales exec available - add one to a team on this project',
               'data-qa': 'schedule-visit-sales-exec',
               selectOptionAsValue: true,
             },

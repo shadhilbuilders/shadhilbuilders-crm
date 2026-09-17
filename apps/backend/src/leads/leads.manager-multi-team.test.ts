@@ -30,6 +30,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
+// every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
+const TEST_PROJECT_ID = 'leadsmanagpr' + Date.now().toString();
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
 const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -67,6 +70,19 @@ function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'rol
 beforeAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
+    // Lead.projectId is NOT NULL (T-LEAD-PROJECT-REQUIRED) - the lead
+    // fixtures below need a project to point at.
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     await db.team.upsert({
       where: { id: TEAM_1_ID },
       update: { managerId: MGR_ID },
@@ -159,6 +175,8 @@ beforeAll(async () => {
         ownerType: 'TELECALLER',
         teamId: TEAM_1_ID,
         organizationId: ORG,
+
+        projectId: TEST_PROJECT_ID,
       },
     });
     // This lead belongs to TEAM_2 - the team the manager leads but does
@@ -176,6 +194,8 @@ beforeAll(async () => {
         ownerType: 'TELECALLER',
         teamId: TEAM_2_ID,
         organizationId: ORG,
+
+        projectId: TEST_PROJECT_ID,
       },
     });
   });

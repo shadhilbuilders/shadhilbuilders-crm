@@ -36,6 +36,11 @@ import { RedisService } from '../redis/redis.module';
 import { RemindersService, REMINDER_LOCK_KEY } from './reminders.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
+// fixture leads below need a project.
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): the id of the project this suite already
+// creates in its fixture - NOT a fresh id, or the lead's FK fails.
+const TEST_PROJECT_ID = 'wqvswgk5n0ucvq8l1ydva3d7';
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 
 // Runtime client (RLS-enforced, shadhil_app role). The cron's
@@ -158,6 +163,8 @@ async function seedDueReminder(label: string): Promise<string> {
         ownerId: 'dyamh3gezek1ag5wh8xn9ib5',
         ownerType: 'MANAGER',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+
+        projectId: TEST_PROJECT_ID,
       },
     });
     await db.reminder.create({

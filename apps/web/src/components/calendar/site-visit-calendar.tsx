@@ -59,7 +59,19 @@ export function SiteVisitCalendar({
   onWeekStartChange: (date: Date) => void;
   onSlotClick: (date: Date) => void;
 }) {
-  const [view, setView] = useState<TCalendarView>('week');
+  // T-VISITS-AGENDA-DEFAULT (2026-09-16, owner request): agenda is the default
+  // view, not the week grid.
+  //
+  // WHY: this page answers "what visits do I have coming up?" - a question the
+  // week grid answers badly. The grid needs a visit to fall inside the visible
+  // 7-day window (the page fetches a week at a time), so a visit scheduled next
+  // month is invisible on load and reads as "no visits". The agenda lists
+  // upcoming visits across the range regardless of which week they land in.
+  //
+  // The grid is still one click away - the header's view switcher is unchanged -
+  // so nothing is lost, and `view` remains local state, so a user's choice is not
+  // persisted and each visit to the page starts on the agenda.
+  const [view, setView] = useState<TCalendarView>('agenda');
   const visitsQuery = useVisits({ projectId, limit: 200 });
   const reschedule = useRescheduleVisit();
 

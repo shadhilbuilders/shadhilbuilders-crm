@@ -168,6 +168,9 @@ describe('create - start a new booking in HOLD state', () => {
       id: 'unit-1',
       unitNumber: 'A-101',
       status: 'AVAILABLE',
+      // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the server derives the booking
+      // amount from this price, so the fixture must provide one.
+      price: { toString: () => '5000000.00' },
     });
     client.booking.create.mockResolvedValue({
       id: 'b-1',
@@ -231,7 +234,7 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'missing',
         unitId: 'unit-1',
-        amount: 1,
+        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Lead missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -249,7 +252,7 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'lead-1',
         unitId: 'missing',
-        amount: 1,
+        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Unit missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -273,7 +276,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
     ).rejects.toThrow(/cannot take a new booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -292,7 +295,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
     ).rejects.toThrow(/cannot take a new booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -303,7 +306,7 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
         leadId: 'lead-1',
         unitId: 'unit-1',
-        amount: 1,
+        amount: 5_000_000,
       }),
     ).rejects.toThrow(/can create a booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -320,7 +323,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
     ).rejects.toThrow(/can only start from/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -334,8 +337,147 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
     ).rejects.toThrow(/can only start from/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  // ── T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling) ─────────────────
+  // "the price is the price": the booking total comes from the selected unit, and
+  // the SERVER is the authority. Before this, `dto.amount` was written straight
+  // through, so the client decided the figure - and every existing booking in the
+  // database disagreed with its unit.
+  it('derives the amount from the unit price, ignoring what the client sent', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'AVAILABLE',
+      price: { toString: () => '4250000.00' },
+    });
+    client.booking.create.mockResolvedValue({
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'mgr-1',
+      amount: { toString: () => '4250000.00' },
+      tokenAmount: null,
+      status: 'HOLD',
+      approvedById: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'Mgr 1' },
+      approvedBy: null,
+    });
+
+    await service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 4250000 });
+
+    // The write carries the UNIT price, formatted as a Decimal string.
+    expect(client.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: '4250000.00' }),
+      }),
+    );
+  });
+
+  it('REJECTS an amount that disagrees with the unit price', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'AVAILABLE',
+      price: { toString: () => '4250000.00' },
+    });
+
+    // Loudly, not silently corrected: overwriting a bad amount would hide the UI
+    // bug, and the entire point is that the two can no longer disagree unnoticed.
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+    ).rejects.toThrow(/must equal the unit price/);
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a sub-rupee rounding difference but not a real one', async () => {
+    const { service, client } = makeService();
+    const setup = () => {
+      client.lead.findUnique.mockResolvedValue({
+        id: 'lead-1',
+        state: 'NEGOTIATION',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      });
+      client.unit.findUnique.mockResolvedValue({
+        id: 'unit-1',
+        unitNumber: 'A-101',
+        status: 'AVAILABLE',
+        price: { toString: () => '4250000.00' },
+      });
+      client.booking.create.mockResolvedValue({
+        id: 'b-1',
+        leadId: 'lead-1',
+        unitId: 'unit-1',
+        userId: 'mgr-1',
+        amount: { toString: () => '4250000.00' },
+        tokenAmount: null,
+        status: 'HOLD',
+        approvedById: null,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+        lead: { name: 'Lead 1' },
+        unit: { unitNumber: 'A-101' },
+        user: { name: 'Mgr 1' },
+        approvedBy: null,
+      });
+    };
+
+    // 0.4 off: tolerated (wire rounding), still writes the UNIT price.
+    setup();
+    await service.create(makeActor(), {
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      amount: 4250000.4,
+    });
+    expect(client.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: '4250000.00' }) }),
+    );
+
+    // 2 off: a real disagreement, rejected.
+    setup();
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 4250002 }),
+    ).rejects.toThrow(/must equal the unit price/);
+  });
+
+  it('refuses to book a unit that has no usable price', async () => {
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-101',
+      status: 'AVAILABLE',
+      price: { toString: () => '0' },
+    });
+
+    // A zero/priceless unit cannot produce an amount, and booking it at 0 would
+    // be worse than failing: the figure would look deliberate.
+    await expect(
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 0 }),
+    ).rejects.toThrow(/no usable price/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
 
@@ -350,6 +492,9 @@ describe('create - start a new booking in HOLD state', () => {
       id: 'unit-1',
       unitNumber: 'A-101',
       status: 'AVAILABLE',
+      // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the server derives the booking
+      // amount from this price, so the fixture must provide one.
+      price: { toString: () => '5000000.00' },
     });
     client.booking.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError(
@@ -359,7 +504,7 @@ describe('create - start a new booking in HOLD state', () => {
     );
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
     ).rejects.toThrow(/already has an active booking/);
   });
 });
@@ -872,7 +1017,7 @@ describe('update - edit booking fields', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue(null);
     await expect(
-      service.update(makeActor(), 'missing', { amount: 1 }),
+      service.update(makeActor(), 'missing', { amount: 5_000_000 }),
     ).rejects.toThrow(/Booking missing not found/);
     expect(client.booking.update).not.toHaveBeenCalled();
   });

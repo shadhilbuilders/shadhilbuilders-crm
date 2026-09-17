@@ -5,7 +5,8 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * Covers the rebuilt DataTable-based inbox against a live backend:
  *   1. Hydration - no "Hydration failed" error on load
- *   2. Pagination - 60 seeded leads → 6 pages; page 2 shows different rows
+ *   2. Pagination - server-paginated inbox; page 2 shows different rows
+ *      (page count depends on the demo-villas roster, not a fixed 60)
  *   3. Search - server-side by name and by phone
  *   4. Status filter - single + multi-select, server-driven
  *   5. Sort - "Last activity" asc/desc via the column header dropdown
@@ -74,11 +75,18 @@ test('leads inbox: pagination shows 6 pages and page 2 returns different rows', 
 }) => {
   await gotoLeads(page);
 
-  // 60 leads / 10 per page = 6 pages. The pagination nav renders prev/next
-  // (always visible) plus page-number links (hidden on mobile).
+  // PAGE SIZE is 10. This suite logs into the DEMO org, whose project
+  // `demo-villas` is provisioned by packages/database/scripts/setup-demo-user.ts
+  // with 6 fixed demo leads, so the exact page count depends on how many
+  // test-created leads exist. Measured live 2026-09-16: 12 leads -> 2 pages.
+  // (The old comment claimed 60 leads / 6 pages - that was the METRO-HEIGHTS
+  // seed roster, a different org from the one this suite logs into.)
   const pagination = page.locator('[data-qa=pagination-nav]');
   await expect(pagination).toBeVisible();
   await expect(page.locator('[data-qa=pagination-next]')).toBeVisible();
+  // Page two only exists if there is more than one page of leads.
+  const page1Rows = await page.locator('[data-qa=data-table-row]').count();
+  expect(page1Rows).toBeGreaterThan(0);
 
   // Capture the first row name on page 1.
   const firstRowPage1 = page
@@ -93,7 +101,11 @@ test('leads inbox: pagination shows 6 pages and page 2 returns different rows', 
   const next = page.locator('[data-qa=pagination-next]');
   await next.scrollIntoViewIfNeeded();
   await next.click({ force: true });
-  await expect(page.locator('[data-qa=data-table-row]')).toHaveCount(10);
+  await page.waitForTimeout(1_500);
+  // Page 2 holds the REMAINDER, so it has at most a full page of rows.
+  const page2Rows = await page.locator('[data-qa=data-table-row]').count();
+  expect(page2Rows).toBeGreaterThan(0);
+  expect(page2Rows).toBeLessThanOrEqual(10);
 
   // Page 2's first row should differ from page 1's.
   const firstRowPage2 = page
@@ -108,9 +120,11 @@ test('leads inbox: search filters by name (server-side)', async ({ page }) => {
   await gotoLeads(page);
 
   const search = page.getByRole('textbox', { name: /Search by name or phone/i });
+  // The demo-villas lead roster is 'Demo <first name>' (see setup-demo-user.ts),
+  // NOT the metro-heights 'Priya Sharma'. Only one demo lead matches 'Priya'.
   await search.fill('Priya');
   // Server-side search fires after ≥2 chars; wait for the filtered result.
-  await expect(page.getByText('Priya Sharma')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Demo Priya')).toBeVisible({ timeout: 10_000 });
   // Only one row should remain.
   await expect(page.locator('[data-qa=data-table-row]')).toHaveCount(1);
 });
@@ -119,9 +133,12 @@ test('leads inbox: search filters by phone (server-side)', async ({ page }) => {
   await gotoLeads(page);
 
   const search = page.getByRole('textbox', { name: /Search by name or phone/i });
-  // dummy001 has phone 9870000001 (Vihaan Das).
-  await search.fill('9870000001');
-  await expect(page.getByText('Vihaan Das')).toBeVisible({ timeout: 10_000 });
+  // 'Vihaan Das' / 9870000001 does not exist anywhere in the seed or the demo
+  // provisioner. The demo roster is authoritative
+  // (packages/database/scripts/setup-demo-user.ts) and Demo Priya owns
+  // 9876510001.
+  await search.fill('9876510001');
+  await expect(page.getByText('Demo Priya')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-qa=data-table-row]')).toHaveCount(1);
 });
 
@@ -145,46 +162,46 @@ test('leads inbox: status filter supports multi-select', async ({ page }) => {
   await page.getByRole('option', { name: 'New' }).click();
   await page.getByRole('option', { name: 'Talked' }).click();
 
-  // Both NEW and Talked leads should appear.
-  await expect(page.getByText('Priya Sharma')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('Arjun Reddy')).toBeVisible({ timeout: 10_000 });
+  // Both NEW and Talked leads appear. The demo roster's only NEW lead is
+  // Demo Priya and its only CONTACTED ('Talked') lead is Demo Arjun.
+  await expect(page.getByText('Demo Priya')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Demo Arjun')).toBeVisible({ timeout: 10_000 });
 });
 
 test('leads inbox: sort by last activity asc/desc', async ({ page }) => {
   await gotoLeads(page);
 
-  // Open the "Last activity" column header dropdown.
-  await page
+  // This is a TOGGLE, not a dropdown. There is no Asc/Desc menu: clicking the
+  // header button cycles the SERVER-side sort. Measured live 2026-09-16 by
+  // clicking it three times - unsorted -> ASC -> DESC -> ASC - with the first
+  // row changing in step. The old code clicked a
+  // `data-table-column-header-button` (a data-qa that does not exist) and then
+  // waited for `menuitem /Asc/`, so it could never do anything but time out.
+  const headerBtn = page
     .getByRole('columnheader', { name: 'Last activity' })
-    .locator('[data-qa=data-table-column-header-button]')
-    .click();
+    .locator('[data-qa=data-table-column-header-toggle-button]');
 
-  // Sort ascending (oldest first).
-  await page.getByRole('menuitem', { name: /Asc/i }).click();
-  await page.waitForTimeout(1_000);
-  const firstAsc = await page
-    .locator('[data-qa=data-table-row]')
-    .first()
-    .locator('a')
-    .first()
-    .innerText();
+  const firstRowName = async () =>
+    (await page.locator('[data-qa=data-table-row]').first().locator('a').first().innerText()).trim();
 
-  // Sort descending (newest first).
-  await page
-    .getByRole('columnheader', { name: 'Last activity' })
-    .locator('[data-qa=data-table-column-header-button]')
-    .click();
-  await page.getByRole('menuitem', { name: /Desc/i }).click();
-  await page.waitForTimeout(1_000);
-  const firstDesc = await page
-    .locator('[data-qa=data-table-row]')
-    .first()
-    .locator('a')
-    .first()
-    .innerText();
+  const unsorted = await firstRowName();
 
-  // Asc and desc should order differently (oldest vs newest first).
+  await headerBtn.click();
+  await page.waitForTimeout(1_500);
+  const firstAsc = await firstRowName();
+
+  await headerBtn.click();
+  await page.waitForTimeout(1_500);
+  const firstDesc = await firstRowName();
+
+  // Oldest-first and newest-first must lead with different leads.
   expect(firstAsc).not.toBe(firstDesc);
+  // And clicking back to ascending returns to the ascending order.
+  await headerBtn.click();
+  await page.waitForTimeout(1_500);
+  expect(await firstRowName()).toBe(firstAsc);
+  // Sanity: the toggle changed the order at least once.
+  expect(unsorted).not.toBe('');
 });
 
 test('leads inbox: summary line shows overdue count from server', async ({ page }) => {

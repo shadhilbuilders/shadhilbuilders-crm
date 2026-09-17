@@ -26,7 +26,25 @@ import { isAdminClass } from '../users/roles';
 export interface AccessActor {
   sub: string;
   role: Role;
-  organizationId?: string | null;
+  /**
+   * T-ORG-EXPLICIT (2026-09-16): REQUIRED for every scoping call. It was
+   * optional, so the org could be silently absent and every query in this
+   * authorization module fell back to "no org filter" - i.e. an admin-class
+   * actor resolved teams/projects across orgs.
+   */
+  organizationId: string;
+}
+
+/**
+ * T-ORG-EXPLICIT: fail loudly rather than run an unscoped authorization query. A
+ * missing org must never degrade into "no filter" - that turns a scoping bug into
+ * a cross-tenant grant.
+ */
+function requireOrg(actor: AccessActor): string {
+  if (typeof actor.organizationId !== 'string' || actor.organizationId.length === 0) {
+    throw new Error('AccessActor.organizationId is required for team/project scoping');
+  }
+  return actor.organizationId;
 }
 
 @Injectable()
@@ -37,9 +55,17 @@ export class TeamAccessService {
    * as a Team.managerId, though in practice only MANAGER accounts are
    * assigned there (teams.service.ts enforces that at write time).
    */
-  async getManagedTeamIds(tx: RlsTx, userId: string): Promise<string[]> {
+  async getManagedTeamIds(
+    tx: RlsTx,
+    userId: string,
+    organizationId: string,
+  ): Promise<string[]> {
     const rows = await tx.team.findMany({
-      where: { managerId: userId, deletedAt: null },
+      // T-ORG-EXPLICIT: `managerId` alone is NOT org-unique (a user id from one
+      // org can only exist in that org, but relying on an RLS policy to imply the
+      // boundary means a policy change silently widens this). The org is an
+      // explicit key on every team lookup in this file.
+      where: { managerId: userId, deletedAt: null, organizationId },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -52,9 +78,15 @@ export class TeamAccessService {
    * as an ordinary member of a DIFFERENT team than the one(s) they lead -
    * see the model comment on `TeamMember` in schema.prisma).
    */
-  async getOrdinaryMemberTeamIds(tx: RlsTx, userId: string): Promise<string[]> {
+  async getOrdinaryMemberTeamIds(
+    tx: RlsTx,
+    userId: string,
+    organizationId: string,
+  ): Promise<string[]> {
     const rows = await tx.teamMember.findMany({
-      where: { userId, team: { deletedAt: null } },
+      // T-ORG-EXPLICIT: filter the denormalized org COLUMN rather than relying on
+      // the `team` join for tenancy - that is exactly why the column exists.
+      where: { userId, organizationId, team: { deletedAt: null } },
       select: { teamId: true },
     });
     return rows.map((r) => r.teamId);
@@ -68,17 +100,19 @@ export class TeamAccessService {
    *   - Other staff (TELECALLER/SALES_EXEC): teams they ordinarily belong to.
    */
   async getAccessibleTeamIds(tx: RlsTx, actor: AccessActor): Promise<string[]> {
+    const organizationId = requireOrg(actor);
     if (isAdminClass(actor.role)) {
       const rows = await tx.team.findMany({
-        where: { deletedAt: null },
+        // T-ORG-EXPLICIT: "every team in the org" stated in the doc comment.
+        where: { deletedAt: null, organizationId },
         select: { id: true },
       });
       return rows.map((r) => r.id);
     }
 
     const [managed, member] = await Promise.all([
-      this.getManagedTeamIds(tx, actor.sub),
-      this.getOrdinaryMemberTeamIds(tx, actor.sub),
+      this.getManagedTeamIds(tx, actor.sub, organizationId),
+      this.getOrdinaryMemberTeamIds(tx, actor.sub, organizationId),
     ]);
     return Array.from(new Set([...managed, ...member]));
   }
@@ -90,24 +124,37 @@ export class TeamAccessService {
    * everyone else -> none.
    */
   async getMutableTeamIds(tx: RlsTx, actor: AccessActor): Promise<string[]> {
+    const organizationId = requireOrg(actor);
     if (isAdminClass(actor.role)) {
       const rows = await tx.team.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, organizationId },
         select: { id: true },
       });
       return rows.map((r) => r.id);
     }
     if (actor.role === 'MANAGER') {
-      return this.getManagedTeamIds(tx, actor.sub);
+      return this.getManagedTeamIds(tx, actor.sub, organizationId);
     }
     return [];
   }
 
   /** True iff the actor may mutate membership on `teamId` (see above). */
   async canMutateTeam(tx: RlsTx, actor: AccessActor, teamId: string): Promise<boolean> {
-    if (isAdminClass(actor.role)) return true;
+    const organizationId = requireOrg(actor);
+    // T-ORG-EXPLICIT: this returned `true` for an admin on ANY teamId without
+    // ever touching the database - an authorization answer that did not depend on
+    // the tenant. Resolve the team and require it to be in the actor's org. RLS
+    // would hide a foreign team, but "hidden" and "allowed" are different
+    // answers, and this method's whole job is to give the second one.
+    if (isAdminClass(actor.role)) {
+      const team = await tx.team.findFirst({
+        where: { id: teamId, deletedAt: null, organizationId },
+        select: { id: true },
+      });
+      return team !== null;
+    }
     if (actor.role !== 'MANAGER') return false;
-    const managed = await this.getManagedTeamIds(tx, actor.sub);
+    const managed = await this.getManagedTeamIds(tx, actor.sub, organizationId);
     return managed.includes(teamId);
   }
 
@@ -117,10 +164,15 @@ export class TeamAccessService {
    * criterion). Callers combine this with `getAccessibleTeamIds` to get an
    * actor's full accessible-project set.
    */
-  async getProjectIdsForTeams(tx: RlsTx, teamIds: string[]): Promise<string[]> {
+  async getProjectIdsForTeams(
+    tx: RlsTx,
+    teamIds: string[],
+    organizationId: string,
+  ): Promise<string[]> {
     if (teamIds.length === 0) return [];
     const rows = await tx.projectTeam.findMany({
-      where: { teamId: { in: teamIds } },
+      // T-ORG-EXPLICIT: filter the denormalized org column directly.
+      where: { teamId: { in: teamIds }, organizationId },
       select: { projectId: true },
     });
     return Array.from(new Set(rows.map((r) => r.projectId)));
@@ -128,14 +180,15 @@ export class TeamAccessService {
 
   /** Every project id the actor has access to, via their accessible teams. */
   async getAccessibleProjectIds(tx: RlsTx, actor: AccessActor): Promise<string[]> {
+    const organizationId = requireOrg(actor);
     if (isAdminClass(actor.role)) {
       const rows = await tx.project.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, organizationId },
         select: { id: true },
       });
       return rows.map((r) => r.id);
     }
     const teamIds = await this.getAccessibleTeamIds(tx, actor);
-    return this.getProjectIdsForTeams(tx, teamIds);
+    return this.getProjectIdsForTeams(tx, teamIds, organizationId);
   }
 }

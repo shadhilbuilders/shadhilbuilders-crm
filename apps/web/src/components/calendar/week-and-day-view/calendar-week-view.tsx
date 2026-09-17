@@ -45,9 +45,16 @@ export function CalendarWeekView({ singleDayEvents, multiDayEvents }: IProps) {
           {/* Week header */}
           <div className="relative z-20 flex border-b">
             <div className="w-18"></div>
-            <div className="grid flex-1 grid-cols-7 divide-x border-l">
+            <div
+              data-qa="visits-week-grid"
+              className="grid flex-1 grid-cols-7 divide-x border-l"
+            >
               {weekDays.map((day, index) => (
-                <span key={index} className="text-muted-foreground py-2 text-center text-xs font-medium">
+                <span
+                  key={index}
+                  data-qa="visits-week-day"
+                  className="text-muted-foreground py-2 text-center text-xs font-medium"
+                >
                   {format(day, 'EE')}{' '}
                   <span className="text-foreground ml-1 font-semibold">{format(day, 'd')}</span>
                 </span>
@@ -160,7 +167,12 @@ export function CalendarWeekView({ singleDayEvents, multiDayEvents }: IProps) {
                           if (!hasOverlap) style = { ...style, width: '100%', left: '0%' };
 
                           return (
-                            <div key={event.id} className="absolute p-1" style={style}>
+                            <div
+                              key={event.id}
+                              data-qa="visit-event-block"
+                              className="absolute p-1"
+                              style={style}
+                            >
                               <EventBlock event={event} />
                             </div>
                           );

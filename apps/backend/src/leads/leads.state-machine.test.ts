@@ -172,15 +172,43 @@ describe('canTransition - TELECALLER lane (NEW..VISIT_SCHEDULED + re-engagement)
     'RESCHEDULED',
     'NO_SHOW',
   ];
-  // Allowed outgoing edges from inside the lane:
+  // Allowed outgoing edges from inside the lane, minus the ones the visit
+  // handoff reserves. The telecaller lane reuses the raw TRANSITIONS list
+  // for its `from` states, so VISIT_SCHEDULED → VISITED used to be permitted
+  // to a TELECALLER. The 2026-09-16 owner ruling closed that: only the exec
+  // (or manager/admin) marks a visit as conducted; the telecaller's outcome
+  // from this state is NO_SHOW, which returns the lead for re-engagement.
+  const HANDOFF_RESERVED: Readonly<Record<string, readonly LeadState[]>> = {
+    VISIT_SCHEDULED: ['VISITED'],
+  };
   for (const from of telecallerLane) {
+    const reserved = HANDOFF_RESERVED[from] ?? [];
     for (const to of ALLOWED_EDGES[from]) {
+      if (reserved.includes(to)) continue;
       it(`TELECALLER: ${from} → ${to}`, () => {
         const result = canTransition({ from, to, role: 'TELECALLER' });
         expect(result.ok).toBe(true);
       });
     }
   }
+
+  // The reserved handoff edge is refused, and refused specifically by the
+  // ROLE gate (not by graph membership - the edge exists). This is the
+  // assertion that stops the hole from silently reopening.
+  for (const [from, targets] of Object.entries(HANDOFF_RESERVED)) {
+    for (const to of targets) {
+      it(`TELECALLER: ${from} → ${to} is ROLE_FORBIDDEN (handoff belongs to the exec)`, () => {
+        const result = canTransition({
+          from: from as LeadState,
+          to: to as LeadState,
+          role: 'TELECALLER',
+        });
+        expect(result.ok).toBe(false);
+        expect(result.ok === false && result.code).toBe('ROLE_FORBIDDEN');
+      });
+    }
+  }
+
   // Out-of-lane `from` may produce INVALID_TRANSITION (edge not in graph,
   // e.g. terminal states have no out-edges) OR ROLE_FORBIDDEN (edge
   // exists but the role can't traverse it). Both are non-ok; the
@@ -211,8 +239,35 @@ describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () =
       });
     }
   }
+
+  // The visit handoff. The exec conducts the visit while the lead is still
+  // VISIT_SCHEDULED, so this edge sits outside the lane list. It must be
+  // ALLOWED - `VisitsService.updateOutcome` drives it on COMPLETED, and
+  // before 2026-09-16 it threw ROLE_FORBIDDEN for a real exec (the only
+  // coverage ran as ADMIN, which masked it).
+  it('SALES_EXEC: VISIT_SCHEDULED → VISITED is allowed (visit handoff)', () => {
+    const result = canTransition({
+      from: 'VISIT_SCHEDULED',
+      to: 'VISITED',
+      role: 'SALES_EXEC',
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  // The exception is exactly one edge. Everything else out of
+  // VISIT_SCHEDULED stays refused, so the exec cannot take over the
+  // telecaller's re-engagement outcomes (Model C).
+  for (const to of ['NO_SHOW', 'RESCHEDULED', 'COLD', 'LOST'] as const) {
+    it(`SALES_EXEC: VISIT_SCHEDULED → ${to} is ROLE_FORBIDDEN (telecaller lane)`, () => {
+      const result = canTransition({ from: 'VISIT_SCHEDULED', to, role: 'SALES_EXEC' });
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.code).toBe('ROLE_FORBIDDEN');
+    });
+  }
+
   for (const outOfLane of LEAD_STATES) {
     if (execLane.includes(outOfLane)) continue;
+    if (outOfLane === 'VISIT_SCHEDULED') continue; // covered by the handoff assertions above
     for (const to of LEAD_STATES) {
       if (to === outOfLane) continue;
       it(`SALES_EXEC: ${outOfLane} → ${to} is non-ok`, () => {

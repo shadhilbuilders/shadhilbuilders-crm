@@ -25,6 +25,10 @@ import {
 
 import type { WhatsappUnknownContactRow } from '@shadhil/api-types';
 
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): buildConvertBody now REQUIRES a project -
+// a converted contact becomes a Lead, and every Lead belongs to a project.
+const TEST_PROJECT_ID = 'testconvertproj1234567890';
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -87,7 +91,7 @@ describe('buildConvertBody (T-E2b)', () => {
       name: 'Priya',
       email: '',
       notes: '',
-    });
+    }, TEST_PROJECT_ID);
     expect(body.source).toBe('WHATSAPP');
   });
 
@@ -96,7 +100,7 @@ describe('buildConvertBody (T-E2b)', () => {
       name: 'X',
       email: '',
       notes: '',
-    });
+    }, TEST_PROJECT_ID);
     expect(body.phone).toBe('+14155552671');
   });
 
@@ -105,7 +109,7 @@ describe('buildConvertBody (T-E2b)', () => {
       name: '  Priya Sharma  ',
       email: '  Priya@Example.COM  ',
       notes: '',
-    });
+    }, TEST_PROJECT_ID);
     expect(body.name).toBe('Priya Sharma');
     expect(body.email).toBe('priya@example.com');
   });
@@ -115,7 +119,7 @@ describe('buildConvertBody (T-E2b)', () => {
       name: 'X',
       email: '',
       notes: '',
-    });
+    }, TEST_PROJECT_ID);
     expect('email' in body).toBe(false);
     expect('notes' in body).toBe(false);
   });
@@ -125,7 +129,7 @@ describe('buildConvertBody (T-E2b)', () => {
       name: 'X',
       email: '',
       notes: '  First message: Hi there  ',
-    });
+    }, TEST_PROJECT_ID);
     expect(body.notes).toBe('First message: Hi there');
   });
 });

@@ -334,9 +334,13 @@ async function buildFixture(): Promise<Fixture> {
   // trigger then advances it, which is itself evidence the trigger works.
   // No Lead RLS policy reads `state` (see prisma/rls/policies.sql) and no case
   // asserts it, so leaving it alone costs the matrix nothing.
+  // T-RLS-NO-LEAK: the fixture creates projectAId just above, so its leads
+  // reference it. Leaving `projectId` null made fixture rows indistinguishable
+  // from the orphaned-lead pollution this suite was producing, and gave them a
+  // shape production leads never have.
   await adminPrisma.lead.upsert({
     where: { id: leadAId },
-    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER' },
+    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER', projectId: projectAId },
     create: {
       id: leadAId,
       name: 'Fixture Lead A',
@@ -345,12 +349,13 @@ async function buildFixture(): Promise<Fixture> {
       teamId: teamAId,
       ownerId: teleAId,
       ownerType: 'TELECALLER',
+      projectId: projectAId,
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
   await adminPrisma.lead.upsert({
     where: { id: leadBId },
-    update: { teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER' },
+    update: { teamId: teamBId, ownerId: teleBId, ownerType: 'TELECALLER', projectId: projectBId },
     create: {
       id: leadBId,
       name: 'Fixture Lead B',
@@ -359,6 +364,7 @@ async function buildFixture(): Promise<Fixture> {
       teamId: teamBId,
       ownerId: teleBId,
       ownerType: 'TELECALLER',
+      projectId: projectBId,
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
@@ -570,6 +576,111 @@ async function buildFixture(): Promise<Fixture> {
     },
   };
 }
+/**
+ * T-RLS-NO-LEAK (2026-09-16): remove everything `buildFixture` created.
+ *
+ * WHY THIS EXISTS: the fixture's INSERT probes are not simulations - they write
+ * REAL rows to whatever database DIRECT_DATABASE_URL points at, which locally is
+ * the DEVELOPMENT database. With no teardown, every run left rows behind. The
+ * worst offender was the Lead probe (`runCase`, table === 'Lead'), which creates
+ * a row named `matrix-test` with NO `projectId`:
+ *
+ *   - 140 had accumulated over three days;
+ *   - having no project, they were invisible on every project-scoped surface
+ *     (the work dashboard, the leads inbox) while still counting org-wide, so
+ *     they read as "the numbers look wrong" rather than as obvious junk;
+ *   - they were 100% of the org's `NEW` leads, so any question about the pipeline
+ *     was answered against test data.
+ *
+ * Deletes by the fixture's OWN ids rather than by table name or a name LIKE, so
+ * concurrent app/test activity cannot lose rows to this teardown. Order follows
+ * the foreign keys: children before the Lead/User rows they point at. Runs as
+ * `adminPrisma` (the bypass-owner role) so RLS cannot block the cleanup.
+ *
+ * Deletion (not truncation) is deliberate: the fixture uses `upsert` with fixed
+ * ids, so a re-run recreates exactly these rows. Nothing here is user data -
+ * every id above is a hard-coded literal owned by this file.
+ */
+async function cleanupFixture(fixture: Fixture): Promise<void> {
+  const { rowIds } = fixture;
+  const all = (t: keyof typeof rowIds): string[] => [
+    rowIds[t].own,
+    rowIds[t].other,
+  ];
+
+  // Children first.
+  await adminPrisma.notification.deleteMany({ where: { id: { in: all('Notification') } } });
+  await adminPrisma.reminder.deleteMany({ where: { id: { in: all('Reminder') } } });
+  await adminPrisma.message.deleteMany({ where: { id: { in: all('Message') } } });
+  await adminPrisma.booking.deleteMany({ where: { id: { in: all('Booking') } } });
+  await adminPrisma.siteVisit.deleteMany({ where: { id: { in: all('SiteVisit') } } });
+  await adminPrisma.activity.deleteMany({ where: { id: { in: all('Activity') } } });
+  await adminPrisma.auditLog.deleteMany({ where: { id: { in: all('AuditLog') } } });
+  // Rows the INSERT probes created during the run, which are NOT in rowIds.
+  await adminPrisma.auditLog.deleteMany({
+    where: { entityId: { in: [fixture.leadAId, fixture.leadBId] } },
+  });
+  // Any Lead left behind by the Lead INSERT probe, matched on NAME alone. It used
+  // to also filter `projectId: null`, which identified the orphans this suite was
+  // producing - but the column is NOT NULL now, so that filter is invalid AND
+  // unnecessary: the probe can no longer create a project-less lead at all.
+  await adminPrisma.lead.deleteMany({
+    where: {
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      name: 'matrix-test',
+    },
+  });
+  // T-LEAD-PROJECT-REQUIRED: `Lead_projectId_fkey` is RESTRICT now, so a single
+  // surviving probe lead blocks deleting the fixture's projects and the whole
+  // teardown fails. Delete by PROJECT scope as well as by id - the co-owner
+  // suite creates its own lead that is not in `rowIds`, and any future probe
+  // that forgets to register would otherwise break cleanup.
+  await adminPrisma.lead.deleteMany({
+    where: {
+      OR: [
+        { id: { in: all('Lead') } },
+        { projectId: { in: ['u83jbfz0bm340q1qaj17xoe3', 'h0wgdy2d32ax3eyl0r55db5e'] } },
+      ],
+    },
+  });
+
+  // Then the fixture's own org-structure rows.
+  await adminPrisma.managerAssignmentRule.deleteMany({
+    where: { teamId: { in: [fixture.teamAId, fixture.teamBId] } },
+  });
+  await adminPrisma.teamMember.deleteMany({
+    where: { teamId: { in: [fixture.teamAId, fixture.teamBId] } },
+  });
+  // Phases cascade to their Units (Unit.phaseId -> Phase, onDelete: Cascade), so
+  // deleting the phases removes the units. Unit has no projectId of its own.
+  await adminPrisma.phase.deleteMany({
+    where: { projectId: { in: ['u83jbfz0bm340q1qaj17xoe3', 'h0wgdy2d32ax3eyl0r55db5e'] } },
+  });
+  await adminPrisma.projectTeam.deleteMany({
+    where: { teamId: { in: [fixture.teamAId, fixture.teamBId] } },
+  });
+  await adminPrisma.project.deleteMany({
+    where: { id: { in: ['u83jbfz0bm340q1qaj17xoe3', 'h0wgdy2d32ax3eyl0r55db5e'] } },
+  });
+  await adminPrisma.team.deleteMany({
+    where: { id: { in: [fixture.teamAId, fixture.teamBId] } },
+  });
+  await adminPrisma.user.deleteMany({
+    where: {
+      id: {
+        in: [
+          fixture.managerAId,
+          fixture.managerBId,
+          fixture.execAId,
+          fixture.execBId,
+          fixture.teleAId,
+          fixture.teleBId,
+        ],
+      },
+    },
+  });
+}
+
 
 /**
  * Build the RlsContext for a given role acting as the alpha-org user.
@@ -712,8 +823,17 @@ const INSERT_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
 
 const UPDATE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outcome>>>> = {
   // UPDATE on the alpha-owned row:
-  //   - Lead/Activity/Message/SiteVisit/Booking: parent-Lead-scoped.
-  //     SALES_EXEC fails because execA != teleA.
+  //   - Lead/Activity/Message/Booking: parent-Lead-scoped. SALES_EXEC fails
+  //     because execA != teleA.
+  //   - SiteVisit: T-VISIT-ASSIGNEE-UPDATE (2026-09-16). The fixture assigns
+  //     visitA to execA (`userId: execAId`), and `site_visit_update_assignee`
+  //     lets a SALES_EXEC update the visit assigned to them. This is the one
+  //     cell the assignee policy deliberately flips: the exec must be able to
+  //     record the outcome on the visit they conducted, which lives on a lead
+  //     the telecaller still owns. Note UPDATE only - INSERT/DELETE stay
+  //     rejected for SALES_EXEC, because scheduling is the telecaller's job
+  //     (a FOR ALL grant would have let an exec insert visits on their own
+  //     leads, since create() falls back to `userId = actor.sub`).
   //   - Reminder/Notification/AuditLog: owner-only OR no policy.
   ADMIN: {
     Lead: 'allowed',
@@ -738,7 +858,7 @@ const UPDATE_EXPECTATIONS: Readonly<Record<Role, Readonly<Record<TableName, Outc
   SALES_EXEC: {
     Lead: 'rejected', // execA != teleA (lead owner)
     Activity: 'rejected',
-    SiteVisit: 'rejected', // execA != teleA (lead owner)
+    SiteVisit: 'allowed', // T-VISIT-ASSIGNEE-UPDATE: visitA is ASSIGNED to execA
     Message: 'rejected',
     Booking: 'rejected', // execA != teleA (lead owner)
     Reminder: 'rejected', // owner-only; exec != teleA
@@ -871,6 +991,13 @@ function expectedSelectCount(role: Role, table: TableName): number {
   if (role === 'ADMIN') return 2;
   if (role === 'MANAGER') return 1; // managerA is on teamA; leadA is teamA.
   if (role === 'TELECALLER') return 1; // teleA owns leadA.
+  // T-VISIT-ASSIGNEE (2026-09-16): SiteVisit is no longer purely parent-Lead
+  // scoped for a SALES_EXEC. The fixture assigns visitA to execA
+  // (`userId: execAId`), and `site_visit_select_team` now grants a staff member
+  // visibility of the visit ASSIGNED to them - not only visits on leads they
+  // own. So execA sees the alpha visit and NOT the beta one (assigned to execB).
+  // Every other parent-Lead-scoped table keeps the exec at 0.
+  if (table === 'SiteVisit' && role === 'SALES_EXEC') return 1;
   return 0; // SALES_EXEC: execA doesn't own leadA.
 }
 
@@ -1007,6 +1134,11 @@ async function runCase(
               teamId: fixture.teamAId,
               ownerId: ctx.userId,
               organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+              // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL.
+              // This probe previously inserted with NO project, which is how 140
+              // project-less leads accumulated in the dev database. Fixture
+              // project A's id - a buildFixture-local, hence the literal.
+              projectId: 'u83jbfz0bm340q1qaj17xoe3',
               // roleFromCtx is widened to include CRON_SERVICE for the
               // T-CRONS standalone cases; this path runs only for the
               // 4×8×4 matrix's real user roles, so cast down to the
@@ -1117,6 +1249,23 @@ describe('RLS isolation matrix: 4 roles × 8 tables × 4 actions = 128 cases', (
   beforeAll(async () => {
     if (!DATABASE_AVAILABLE) return;
     fixture = await buildFixture();
+  }, 60_000);
+
+  // T-RLS-NO-LEAK (2026-09-16): this suite had NO teardown, and its INSERT
+  // probes write REAL rows into whatever database DIRECT_DATABASE_URL points at
+  // - locally, the development database. Each run left a `matrix-test` Lead
+  // behind, and because `runCase`'s Lead insert sets no `projectId`, those rows
+  // were invisible to every project-scoped surface (the dashboard, the leads
+  // inbox) while still being counted org-wide. 140 of them had accumulated.
+  //
+  // Cleanup runs as the bypass-owner role (`adminPrisma`), matching the
+  // feedback suite below, so RLS cannot block it.
+  //
+  // Deletes by the FIXTURE's own ids rather than by name/table-wide, so a
+  // parallel run of the app cannot lose data to this teardown.
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    await cleanupFixture(fixture);
   }, 60_000);
 
   for (const table of TABLES) {
@@ -1546,7 +1695,7 @@ describe('Feedback - public submit + admin triage RLS', () => {
               data: {
                 id: string; name: string; phone: string; state: string;
                 ownerId: string; ownerType: string; teamId: string; coOwnerId: string;
-                organizationId: string;
+                organizationId: string; projectId: string;
               };
             }) => Promise<unknown>;
           };
@@ -1561,6 +1710,8 @@ describe('Feedback - public submit + admin triage RLS', () => {
             teamId: fixture.teamAId,
             coOwnerId: fixture.execAId,
             organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+            // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL.
+            projectId: 'u83jbfz0bm340q1qaj17xoe3',
           },
         }),
       );

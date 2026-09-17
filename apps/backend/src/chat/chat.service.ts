@@ -343,7 +343,7 @@ export class ChatService {
 
     let teamFilter: Record<string, unknown> = {};
     if (actor.role === 'MANAGER') {
-      const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+      const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
       // A manager with no managed team (config error) resolves nobody,
       // same as the pre-existing "no team, no mentions" behavior.
       if (managedTeamIds.length === 0) {

@@ -135,13 +135,16 @@ export function prefillNotes(row: WhatsappUnknownContactRow | null): string {
 export function buildConvertBody(
   contact: WhatsappUnknownContactRow,
   values: ConvertFormValues,
-  projectId?: string,
+  // T-LEAD-PROJECT-REQUIRED (2026-09-16): REQUIRED, not optional. The convert
+  // creates a Lead, and a Lead must belong to a project (the column is NOT NULL).
+  // Sending it conditionally is how a project-less lead could be produced.
+  projectId: string,
 ): ConvertUnknownContactDto {
   const body: ConvertUnknownContactDto = {
     name: values.name.trim(),
     phone: contact.phoneE164,
     source: 'WHATSAPP',
-    ...(projectId !== undefined ? { projectId } : {}),
+    projectId,
     ...(values.email !== undefined && values.email.trim().length > 0
       ? { email: values.email.trim().toLowerCase() }
       : {}),
@@ -189,6 +192,13 @@ export function ConvertFormBody({
   });
 
   function innerSubmit(values: ConvertFormValues) {
+    // T-LEAD-PROJECT-REQUIRED (2026-09-16): a converted contact becomes a Lead,
+    // and every Lead must belong to a project. If this body is rendered without a
+    // project the button must stop, not post data no project surface can show.
+    if (projectId === undefined) {
+      toast.error('No project in context - cannot convert this contact.');
+      return;
+    }
     handleSubmit(values, buildConvertBody(contact, values, projectId));
   }
 

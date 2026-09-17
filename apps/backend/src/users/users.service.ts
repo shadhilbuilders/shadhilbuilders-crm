@@ -75,16 +75,21 @@ export class UsersService {
     client: PrismaClient,
     userId: string,
     role: string,
+    organizationId: string,
   ): Promise<string | null> {
     if (role === 'MANAGER') {
       const led = await client.team.findFirst({
-        where: { managerId: userId, deletedAt: null },
+        // T-ORG-EXPLICIT: scope by org rather than inferring it from the
+        // managerId join. `TeamMember` carries a denormalized `organizationId`
+        // column precisely so RLS can compare a column instead of a join - the
+        // app layer should do the same.
+        where: { managerId: userId, deletedAt: null, organizationId },
         orderBy: { createdAt: 'asc' },
       });
       return led?.id ?? null;
     }
     const membership = await client.teamMember.findFirst({
-      where: { userId },
+      where: { userId, organizationId },
       orderBy: { assignedAt: 'asc' },
     });
     return membership?.teamId ?? null;
@@ -298,6 +303,7 @@ export class UsersService {
         client,
         updated.id,
         updated.role,
+        actor.organizationId,
       );
 
       // 6. Audit row in the same transaction (OWNER downcasts to ADMIN at
@@ -392,7 +398,12 @@ export class UsersService {
         email: updated.email,
         name: updated.name,
         role: updated.role,
-        teamId: await this.resolveDisplayTeamId(client, updated.id, updated.role),
+        teamId: await this.resolveDisplayTeamId(
+          client,
+          updated.id,
+          updated.role,
+          actor.organizationId,
+        ),
       };
     });
   }
@@ -494,6 +505,7 @@ export class UsersService {
         client,
         target.id,
         target.role,
+        actor.organizationId,
       );
       const team =
         teamId !== null
@@ -651,6 +663,7 @@ export class UsersService {
         client,
         target.id,
         target.role,
+        actor.organizationId,
       );
 
       // A MANAGER can only see/delete rows on teams they lead. If the target
@@ -659,13 +672,17 @@ export class UsersService {
       // is exactly why this was silent), so fail closed instead of silently
       // adding them alongside an invisible membership.
       const currentMemberships = await client.teamMember.findMany({
-        where: { userId: target.id },
+        where: { userId: target.id, organizationId: actor.organizationId },
         select: { teamId: true },
       });
 
       if (actor.role === 'MANAGER') {
         const managed = await client.team.findMany({
-          where: { managerId: actor.sub, deletedAt: null },
+          where: {
+            managerId: actor.sub,
+            deletedAt: null,
+            organizationId: actor.organizationId,
+          },
           select: { id: true },
         });
         const managedIds = managed.map((t) => t.id);
@@ -679,12 +696,21 @@ export class UsersService {
         // keeps the intent (and the audit) honest rather than relying on RLS
         // to silently narrow an unscoped delete.
         await client.teamMember.deleteMany({
-          where: { userId: target.id, teamId: { in: managedIds } },
+          where: {
+            userId: target.id,
+            teamId: { in: managedIds },
+            organizationId: actor.organizationId,
+          },
         });
       } else {
-        // ADMIN/OWNER can see and mutate every membership in the org, so the
-        // full replace is both possible and intended.
-        await client.teamMember.deleteMany({ where: { userId: target.id } });
+        // ADMIN/OWNER can see and mutate every membership in the ORG, so the
+        // full replace is both possible and intended. The org filter is explicit
+        // here (T-ORG-EXPLICIT) rather than implied by RLS on TeamMember - the
+        // comment above stated the org semantics before the query implemented
+        // them.
+        await client.teamMember.deleteMany({
+          where: { userId: target.id, organizationId: actor.organizationId },
+        });
       }
 
       await client.teamMember.create({
@@ -703,7 +729,7 @@ export class UsersService {
       // asserts over the rows they can see (an unrelated team's membership
       // stays invisible - see the scoped-delete note above).
       const afterMemberships = await client.teamMember.findMany({
-        where: { userId: target.id },
+        where: { userId: target.id, organizationId: actor.organizationId },
         select: { teamId: true },
       });
       if (
@@ -866,22 +892,104 @@ export class UsersService {
       const client = tx as unknown as PrismaClient;
 
       let where: Record<string, unknown>;
+      // Multiple optional filters each want `OR` (project scope, search). They
+      // are accumulated here and ANDed together at the end, because a plain
+      // `where.OR = ...` assignment silently replaces whatever set it before.
+      const andClauses: Record<string, unknown>[] = [];
       if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
-        where = { deletedAt: null };
+        // T-USER-PROJECT-SCOPE: this branch used to be `{ deletedAt: null }` with
+        // NO tenant filter, so it listed users from EVERY organisation. The org
+        // is the outer boundary of visibility - scope it here regardless of what
+        // else the caller asked for.
+        where = { deletedAt: null, organizationId: actor.organizationId };
       } else if (actor.role === 'MANAGER') {
         const teams = await client.team.findMany({
-          where: { managerId: actor.sub, deletedAt: null },
+          // T-ORG-EXPLICIT: scope the team lookup by org too. `Team` is
+          // org-scoped, so teamIds were already org-bounded in practice - but
+          // relying on that implicitly means an RLS policy change silently turns
+          // this into a cross-org read. The org is a top-level key on every
+          // branch, never an incidental consequence of a join.
+          where: {
+            managerId: actor.sub,
+            deletedAt: null,
+            organizationId: actor.organizationId,
+          },
         });
         const teamIds = teams.map((t) => t.id);
         where = {
           deletedAt: null,
+          organizationId: actor.organizationId,
           teamMemberships:
             teamIds.length > 0
               ? { some: { teamId: { in: teamIds } } }
               : { some: { teamId: '__none__' } },
         };
       } else {
-        where = { deletedAt: null, id: actor.sub };
+        where = {
+          deletedAt: null,
+          organizationId: actor.organizationId,
+          id: actor.sub,
+        };
+      }
+
+      // T-USER-PROJECT-SCOPE (2026-09-16): narrow to staff of ONE project.
+      // INTERSECTION with everything above - it can only ever REDUCE the list, so
+      // a manager still sees only their own team and a telecaller still sees only
+      // themselves. Source of truth is project STAFFING (ProjectTeam = the
+      // project<->team link): members of a staffed team, plus the managers of
+      // those teams. The actor's OWN row is always kept so a picker can never
+      // hide the current owner from a filter they triggered.
+      if (filter.projectId !== undefined) {
+        // T-ORG-EXPLICIT: validate the caller-supplied projectId against the
+        // actor's org, and fail LOUDLY. `Project`/`ProjectTeam` RLS allow any
+        // authenticated role, so RLS does bound this - but it bounds it by
+        // returning ZERO rows, which is indistinguishable from "this project has
+        // no staff" and therefore reports a cross-org probe as an empty picker.
+        // An explicit 403 makes the boundary observable.
+        const project = await client.project.findFirst({
+          where: { id: filter.projectId, organizationId: actor.organizationId },
+          select: { id: true },
+        });
+        if (project === null) {
+          throw new ForbiddenException('Project not found in your organization');
+        }
+
+        const projectTeams = await client.projectTeam.findMany({
+          where: {
+            projectId: filter.projectId,
+            organizationId: actor.organizationId,
+          },
+          select: { teamId: true },
+        });
+        const staffedTeamIds = projectTeams.map((pt) => pt.teamId);
+        const staffedTeams =
+          staffedTeamIds.length > 0
+            ? await client.team.findMany({
+                where: { id: { in: staffedTeamIds }, deletedAt: null },
+                select: { managerId: true },
+              })
+            : [];
+        const staffedManagerIds = staffedTeams
+          .map((t) => t.managerId)
+          .filter((id): id is string => id !== null);
+
+        const projectScope: Record<string, unknown>[] = [];
+        if (staffedTeamIds.length > 0) {
+          projectScope.push({
+            teamMemberships: { some: { teamId: { in: staffedTeamIds } } },
+          });
+        }
+        if (staffedManagerIds.length > 0) {
+          projectScope.push({ id: { in: staffedManagerIds } });
+        }
+        // Always include the actor, so "assign to me" style flows keep working
+        // and the current owner is never silently filtered out.
+        projectScope.push({ id: actor.sub });
+
+        // NOTE: `OR` is a single key, so it must NOT be re-assigned by the search
+        // block later in this method - that would silently drop the project
+        // scope. Collected into `andClauses` and combined once, below.
+        andClauses.push({ OR: projectScope });
       }
 
       // Server-driven role filter (autoplan 2026-09-09): the UI's MultiSelect
@@ -896,13 +1004,17 @@ export class UsersService {
       // sends ?search=...; match name OR email case-insensitively so search
       // works across the whole list, not just the loaded page.
       if (filter.search !== undefined && filter.search.length > 0) {
-        where = {
-          ...where,
+        andClauses.push({
           OR: [
             { name: { contains: filter.search, mode: 'insensitive' } },
             { email: { contains: filter.search, mode: 'insensitive' } },
           ],
-        };
+        });
+      }
+
+      // Combine every accumulated optional filter with AND.
+      if (andClauses.length > 0) {
+        where = { ...where, AND: andClauses };
       }
 
       // Server-side pagination (T-SRVPG, mirrors leads): the DataTable
@@ -993,16 +1105,32 @@ export class UsersService {
   }
 
   /**
-   * GET /api/users/project/:projectId/sales-execs - SALES_EXEC staff linked
-   * to a project, for the schedule-visit exec picker.
+   * GET /api/users/project/:projectId/sales-execs - who can be assigned to a
+   * site visit on this project, for the schedule-visit exec picker.
    *
-   * The project→exec link is via lead ownership (Lead.projectId +
-   * Lead.ownerId) - there is no direct Project↔Team↔User relation in the
-   * schema. Scoping:
-   *   - MANAGER: only execs in the manager's own team (resolved via
-   *     Team.managerId) who own leads in this project.
-   *   - ADMIN/OWNER: all SALES_EXEC who own leads in this project.
-   *   - TELECALLER/SALES_EXEC: empty (they can't assign execs).
+   * T-VISIT-EXEC-SOURCE (2026-09-16). The ORIGINAL implementation derived the
+   * list from lead OWNERSHIP (Lead.projectId + Lead.ownerId, filtered to
+   * role=SALES_EXEC). That is wrong for this picker: a project can have an
+   * assigned exec who simply does not own any lead yet, and then the picker was
+   * empty with no way to schedule a visit at all - reported by the owner against
+   * shadhil-metro-heights, which had exactly one such exec.
+   *
+   * Correct semantics: the exec must be STAFFED ON THE PROJECT. `ProjectTeam`
+   * is the project↔team link, so:
+   *   - execs on any team linked to this project, plus
+   *   - the manager of such a team (a manager can conduct a visit too, and the
+   *     create() endpoint already accepts SALES_EXEC-or-higher as an assignee).
+   *
+   * Scoping:
+   *   - ADMIN/OWNER: every project member exec/manager.
+   *   - MANAGER: only their own team.
+   *   - TELECALLER/SALES_EXEC: empty here. A telecaller's picker is fed by
+   *     GET /api/users/team (`teamMembers`) instead - the service-side gate is
+   *     unchanged, so this is not a permission widening.
+   *
+   * Lead ownership is kept as a UNION rather than dropped, so an exec who owns a
+   * lead in this project is still offered even if their team is not linked (that
+   * is how the previous behaviour earned its place).
    */
   async projectSalesExecs(
     actor: JwtPayload,
@@ -1020,34 +1148,95 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
-      // T-TEAM-AUTHORITATIVE (2026-09-13): resolve EVERY team the manager
-      // leads (JWT teamId is unreliable for managers).
-      let teamIds: string[] | null = null;
-      if (actor.role === 'MANAGER') {
-        const teams = await client.team.findMany({
-          where: { managerId: actor.sub, deletedAt: null },
-          select: { id: true },
-        });
-        teamIds = teams.length > 0 ? teams.map((t) => t.id) : ['__none__'];
+      // T-ORG-EXPLICIT: reject a project outside the actor's org up front.
+      // `Project`/`ProjectTeam` RLS allow any authenticated role, and RLS bounds
+      // cross-org reads only by returning zero rows - which is indistinguishable
+      // from "no execs on this project". Fail loudly instead.
+      const project = await client.project.findFirst({
+        where: { id: projectId, organizationId: actor.organizationId },
+        select: { id: true },
+      });
+      if (project === null) {
+        throw new ForbiddenException('Project not found in your organization');
       }
 
-      // Distinct owners of this project's leads, optionally team-scoped.
+      // T-TEAM-AUTHORITATIVE (2026-09-13): resolve EVERY team the manager
+      // leads (JWT teamId is unreliable for managers).
+      let managerTeamIds: string[] | null = null;
+      if (actor.role === 'MANAGER') {
+        const teams = await client.team.findMany({
+          where: {
+            managerId: actor.sub,
+            deletedAt: null,
+            organizationId: actor.organizationId,
+          },
+          select: { id: true },
+        });
+        managerTeamIds = teams.length > 0 ? teams.map((t) => t.id) : ['__none__'];
+      }
+
+      // (a) Teams staffed on this project (ProjectTeam = the project↔team link).
+      const projectTeams = await client.projectTeam.findMany({
+        where: {
+          projectId,
+          organizationId: actor.organizationId,
+          ...(managerTeamIds !== null ? { teamId: { in: managerTeamIds } } : {}),
+        },
+        select: { teamId: true },
+      });
+      const projectTeamIds = projectTeams.map((pt) => pt.teamId);
+
+      // The manager of a project team may conduct a visit (create() accepts
+      // SALES_EXEC-or-higher), so they belong in the picker too.
+      const projectTeamRows =
+        projectTeamIds.length > 0
+          ? await client.team.findMany({
+              where: {
+                id: { in: projectTeamIds },
+                deletedAt: null,
+                organizationId: actor.organizationId,
+              },
+              select: { id: true, managerId: true },
+            })
+          : [];
+      const teamManagerIds = projectTeamRows
+        .map((t) => t.managerId)
+        .filter((id): id is string => id !== null);
+
+      // (b) Execs who actually own a lead in this project - kept as a UNION so
+      // the previous behaviour is preserved, not replaced.
       const owners = await client.lead.findMany({
         where: {
           projectId,
-          ...(teamIds !== null ? { teamId: { in: teamIds } } : {}),
+          ...(managerTeamIds !== null ? { teamId: { in: managerTeamIds } } : {}),
         },
         select: { ownerId: true },
         distinct: ['ownerId'],
       });
       const ownerIds = owners.map((o) => o.ownerId);
 
-      if (ownerIds.length === 0) return [];
+      // Candidates: staffed via a project team (any member) OR a team manager
+      // OR a lead owner. Roles are narrowed below.
+      const candidateWhere: Record<string, unknown>[] = [];
+      if (projectTeamIds.length > 0) {
+        candidateWhere.push({ teamMemberships: { some: { teamId: { in: projectTeamIds } } } });
+      }
+      if (teamManagerIds.length > 0) {
+        candidateWhere.push({ id: { in: teamManagerIds } });
+      }
+      if (ownerIds.length > 0) {
+        candidateWhere.push({ id: { in: ownerIds } });
+      }
+      if (candidateWhere.length === 0) return [];
 
       const execs = await client.user.findMany({
         where: {
-          id: { in: ownerIds },
-          role: 'SALES_EXEC',
+          OR: candidateWhere,
+          // SALES_EXEC or MANAGER: the roles the visit-create endpoint accepts
+          // as an assignee (a TELECALLER assignee is rejected server-side, so
+          // offering one here would produce a guaranteed 400).
+          role: { in: ['SALES_EXEC', 'MANAGER'] },
+          deletedAt: null,
         },
         select: {
           id: true,
@@ -1065,12 +1254,19 @@ export class UsersService {
         },
         orderBy: { name: 'asc' },
       });
+
+      // A MANAGER's own team rows resolve teamId from the team they lead, since
+      // a manager has no TeamMember row for it.
+      const managerTeamByUser = new Map(projectTeamRows
+        .filter((t) => t.managerId !== null)
+        .map((t) => [t.managerId as string, t.id]));
+
       return execs.map((e) => ({
         id: e.id,
         email: e.email,
         name: e.name,
         role: e.role,
-        teamId: e.teamMemberships[0]?.teamId ?? null,
+        teamId: e.teamMemberships[0]?.teamId ?? managerTeamByUser.get(e.id) ?? null,
       }));
     });
   }
@@ -1085,7 +1281,7 @@ export class UsersService {
    *   - TELECALLER/SALES_EXEC: their team + the team's manager.
    * Returns the same CreatedUser shape as `list`.
    */
-  async teamMembers(actor: JwtPayload): Promise<CreatedUser[]> {
+  async teamMembers(actor: JwtPayload, projectId?: string): Promise<CreatedUser[]> {
     // One RLS transaction: Team/TeamMember are FORCE ROW LEVEL SECURITY, so
     // the bare client resolved `[]` for the actor's teams and this mention
     // picker returned an empty roster. `User` has no RLS.
@@ -1094,7 +1290,59 @@ export class UsersService {
 
       let where: Record<string, unknown>;
       if (actor.role === 'OWNER' || actor.role === 'ADMIN') {
-        where = {};
+        if (projectId === undefined) {
+          // T-ORG-EXPLICIT: was `{}` - the entire directory, with no org scoping
+          // and no soft-delete filter, for an admin/owner's @mention picker.
+          where = {
+            deletedAt: null,
+            organizationId: actor.organizationId,
+          };
+        } else {
+          // T-USER-PROJECT-SCOPE: an ADMIN/OWNER has no natural team, so their
+          // mention picker listed the WHOLE directory. When the chat pane passes
+          // the active project, offer that project's staff instead: members of a
+          // project-staffed team, plus those teams' managers.
+          // T-ORG-EXPLICIT: same cross-org guard as `list` - reject another
+          // org's project instead of returning a misleadingly empty roster.
+          const project = await client.project.findFirst({
+            where: { id: projectId, organizationId: actor.organizationId },
+            select: { id: true },
+          });
+          if (project === null) {
+            throw new ForbiddenException('Project not found in your organization');
+          }
+          const staffed = await client.projectTeam.findMany({
+            where: { projectId, organizationId: actor.organizationId },
+            select: { teamId: true },
+          });
+          const staffedTeamIdsForFilter = staffed.map((pt) => pt.teamId);
+          const staffedTeamsForFilter =
+            staffedTeamIdsForFilter.length > 0
+              ? await client.team.findMany({
+                  where: {
+                    id: { in: staffedTeamIdsForFilter },
+                    deletedAt: null,
+                    organizationId: actor.organizationId,
+                  },
+                  select: { managerId: true },
+                })
+              : [];
+          const mgrIds = staffedTeamsForFilter
+            .map((t) => t.managerId)
+            .filter((id): id is string => id !== null);
+
+          const scope: Record<string, unknown>[] = [];
+          if (staffedTeamIdsForFilter.length > 0) {
+            scope.push({
+              teamMemberships: { some: { teamId: { in: staffedTeamIdsForFilter } } },
+            });
+          }
+          if (mgrIds.length > 0) scope.push({ id: { in: mgrIds } });
+          // Never hide the caller from their own picker.
+          scope.push({ id: actor.sub });
+
+          where = { organizationId: actor.organizationId, OR: scope };
+        }
       } else {
         // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolve EVERY
         // team the actor is associated with. Managers link via
@@ -1105,12 +1353,19 @@ export class UsersService {
         let teamIds: string[];
         if (actor.role === 'MANAGER') {
           const teams = await client.team.findMany({
-            where: { managerId: actor.sub, deletedAt: null },
+            // T-ORG-EXPLICIT: see `list` - never rely on a join to imply the org.
+            where: {
+              managerId: actor.sub,
+              deletedAt: null,
+              organizationId: actor.organizationId,
+            },
           });
           teamIds = teams.map((t) => t.id);
         } else {
           const memberships = await client.teamMember.findMany({
-            where: { userId: actor.sub },
+            // T-ORG-EXPLICIT: read the denormalized org column directly instead
+            // of relying on the org-scoped Team join downstream.
+            where: { userId: actor.sub, organizationId: actor.organizationId },
             select: { teamId: true },
           });
           teamIds = memberships.map((m) => m.teamId);
@@ -1122,13 +1377,15 @@ export class UsersService {
         // Team members + each team's manager (so staff can loop their
         // manager even though the manager isn't a TeamMember row).
         const teams = await client.team.findMany({
-          where: { id: { in: teamIds } },
+          where: { id: { in: teamIds }, organizationId: actor.organizationId },
           select: { managerId: true },
         });
         const managerIds = Array.from(
           new Set(teams.map((t) => t.managerId).filter((id): id is string => id !== null)),
         );
         where = {
+          deletedAt: null,
+          organizationId: actor.organizationId,
           OR: [
             { teamMemberships: { some: { teamId: { in: teamIds } } } },
             { id: { in: managerIds.length > 0 ? managerIds : ['__none__'] } },

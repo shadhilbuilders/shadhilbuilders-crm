@@ -78,6 +78,10 @@ export function EventBlock({ event, className }: IProps) {
         <button
           role="button"
           tabIndex={0}
+          // NOTE: a data-qa here is NOT usable - EventDetailsDialog's Base UI
+          // Trigger merges its own props onto this child and overwrites data-qa
+          // with "dialog-trigger". The stable hook therefore lives on the
+          // wrapper in calendar-week-view.tsx (data-qa="visit-event-block").
           className={calendarWeekEventCardClasses}
           style={{ height: `${heightInPixels}px` }}
           onKeyDown={handleKeyDown}

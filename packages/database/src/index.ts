@@ -124,3 +124,13 @@ export type {
   StreamTicket,
   Role,
 } from './generated/prisma/client';
+
+// T-TEST-DB-ISOLATION (2026-09-16): re-exported so suites can import it from the
+// package root (`@shadhil/database`) as well as the focused subpath.
+export {
+  isolateTestDatabase,
+  toTestDatabaseUrl,
+  databaseNameOf,
+  assertTestDatabase,
+  shouldRedirect,
+} from './test-db-isolation';

@@ -14,6 +14,17 @@
 // REJECTED requires a reason here (mirrors the detail page + the audit policy:
 // the reason lands in the AuditLog row). APPROVED does not.
 //
+// T-APPROVE-ONE-CONTROL (2026-09-16, owner report): the dialog used to offer the
+// SAME decision TWICE - a "Decision" select in the body AND Approve/Reject
+// buttons in the footer. Two controls for one choice is not a shortcut, it is a
+// question: which one wins, and why are they showing different things? The select
+// is gone. ONE control remains, the footer pair, which is the pattern the user
+// already reads as "this is what this dialog will do".
+//
+// The footer pair is still a single submit path: each button sets `decision` and
+// then runs the SAME `handleSubmit(submit)`, so the rejection-reason rule is
+// applied before the mutation fires either way.
+//
 // Two-API convention: the Dialog shell owns the single `useForm` instance; the
 // form body is a separate named export so tests can render it without the
 // Base UI portal (portals render empty under renderToStaticMarkup).
@@ -26,6 +37,7 @@ import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 
 import { TransitionReasonRequired } from '@shadhil/api-types';
 import { useUpdateBooking } from '@/hooks/queries/crm';
+import { currencyIntl } from '@/lib/format';
 import { labelFor, type BookingStatus } from '@/lib/labels';
 
 const FORM_ID = 'booking-approval-form';
@@ -42,11 +54,7 @@ const FORM_ID = 'booking-approval-form';
 const approvalSchema = z
   .object({
     decision: z.enum(['APPROVED', 'REJECTED']),
-    reason: z
-      .string()
-      .trim()
-      .max(500, 'Reason must be under 500 characters')
-      .optional(),
+    reason: z.string().trim().max(500, 'Reason must be under 500 characters').optional(),
   })
   .superRefine((values, ctx) => {
     // One definition of "this move needs a reason", shared with the DTO and the
@@ -62,6 +70,19 @@ const approvalSchema = z
   });
 
 type ApprovalFormValues = z.infer<typeof approvalSchema>;
+
+/**
+ * Currency for display. The API returns decimal STRINGS ("4200000.00"), so a
+ * value is converted before formatting, and anything not finite is passed
+ * through rather than rendered as "NaN". Same wrapper the grid and detail page
+ * use.
+ */
+function formatMoney(value: string | undefined | null): string {
+  if (value === undefined || value === null) return '-';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  return currencyIntl.format(num);
+}
 
 /** Minimal booking shape the dialog needs (from the grid row). */
 export type BookingApprovalTarget = {
@@ -80,14 +101,14 @@ export type BookingApprovalDialogProps = {
   onDecided?: () => void;
 };
 
-const DECISION_OPTIONS = [
-  { value: 'APPROVED', label: labelFor('booking', 'APPROVED') },
-  { value: 'REJECTED', label: labelFor('booking', 'REJECTED') },
-];
-
 /**
  * Pure form-body markup, exported for tests (jsdom portal rule). Receives the
  * Dialog's single `form` instance - it does not create its own.
+ *
+ * T-APPROVE-ONE-CONTROL: this body is only the REASON field now. The decision is
+ * made by the footer's Approve/Reject buttons, which are the dialog's single
+ * answer to "what happens if I continue". The reason field's label tracks the
+ * pending decision so it still reads correctly before anything is clicked.
  */
 export function BookingApprovalFormBody({
   form,
@@ -112,23 +133,13 @@ export function BookingApprovalFormBody({
       hideResetButton
       fields={[
         {
-          type: 'select',
-          name: 'decision',
-          label: 'Decision',
-          required: true,
-          options: DECISION_OPTIONS,
-          selectProps: {
-            'data-qa': 'booking-approval-decision',
-          },
-        },
-        {
           type: 'textarea',
           name: 'reason',
           label: decision === 'REJECTED' ? 'Reason' : 'Reason (optional)',
           description:
             decision === 'REJECTED'
               ? 'Required. Recorded in the audit log and sent to the booking owner.'
-              : 'Optional note for the audit trail.',
+              : 'Optional note for the audit trail. Required if you reject.',
           placeholder: 'e.g. customer backed out, payment not received',
           textareaProps: {
             rows: 3,
@@ -182,9 +193,7 @@ export function BookingApprovalDialog({
       { id: target.id, body },
       {
         onSuccess: () => {
-          toast.success(
-            `Booking moved to ${labelFor('booking', values.decision)}`,
-          );
+          toast.success(`Booking moved to ${labelFor('booking', values.decision)}`);
           onOpenChange(false);
           onDecided?.();
         },
@@ -192,7 +201,7 @@ export function BookingApprovalDialog({
           const msg = error instanceof Error ? error.message : 'Update failed';
           toast.error(msg);
         },
-      },
+      }
     );
   }
 
@@ -212,6 +221,23 @@ export function BookingApprovalDialog({
       ? target.unitNumber
       : null;
 
+  // T-APPROVE-TOKEN-AMOUNT (2026-09-16, owner report): the dialog declared
+  // `amount` and `tokenAmount` on its target type but rendered neither, so the
+  // manager was asked to approve a booking without seeing the money. The TOKEN
+  // is the part that has actually been received - the number this decision is
+  // about - so it leads; the total is secondary context.
+  const tokenNum = Number(target.tokenAmount);
+  const hasToken =
+    typeof target.tokenAmount === 'string' &&
+    target.tokenAmount.length > 0 &&
+    Number.isFinite(tokenNum) &&
+    tokenNum !== 0;
+  const moneyLine = hasToken
+    ? `Token received: ${formatMoney(target.tokenAmount)} of ${formatMoney(target.amount)}`
+    : typeof target.amount === 'string' && target.amount.length > 0
+      ? `Total: ${formatMoney(target.amount)} · no token recorded`
+      : null;
+
   return (
     <Dialog
       open={open}
@@ -219,12 +245,25 @@ export function BookingApprovalDialog({
       contentClassName="sm:max-w-md"
       header={{
         title: `Approve booking for ${detail}`,
-        description:
-          unitNumber === null
-            ? 'Token received - awaiting a manager decision.'
-            : `Unit ${unitNumber} · token received - awaiting a manager decision.`,
+        description: (
+          <>
+            {unitNumber === null
+              ? 'Unit not set - awaiting a manager decision.'
+              : `Unit ${unitNumber} - awaiting a manager decision.`}
+            {moneyLine === null ? null : (
+              <span className="mt-1 block tabular-nums" data-qa="booking-approval-money">
+                {moneyLine}
+              </span>
+            )}
+          </>
+        ),
       }}
       footer={
+        // T-APPROVE-ONE-CONTROL: this footer is the dialog's ONLY decision
+        // control (the body's Decision select was removed - two controls for one
+        // choice made the user ask which one counted). Order is
+        // Cancel / Reject / Approve so the primary action sits last, and Reject is
+        // styled as destructive so "no" cannot be mistaken for "yes" in a hurry.
         <div className="flex w-full justify-end gap-2">
           <Button
             type="button"
@@ -237,13 +276,13 @@ export function BookingApprovalDialog({
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant="destructive"
             isLoading={pending && form.getValues('decision') === 'REJECTED'}
             loadingText="Rejecting..."
             onClick={() => decide('REJECTED')}
             data-qa="booking-approval-reject"
           >
-            Reject
+            Reject booking
           </Button>
           <Button
             type="button"
@@ -252,7 +291,7 @@ export function BookingApprovalDialog({
             onClick={() => decide('APPROVED')}
             data-qa="booking-approval-approve"
           >
-            Approve
+            Approve booking
           </Button>
         </div>
       }

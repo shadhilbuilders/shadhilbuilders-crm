@@ -90,6 +90,58 @@ const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
 const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'COLD']);
 
 /**
+ * The one edge the visit handoff reserves (2026-09-16 owner ruling).
+ *
+ * The handoff happens while the lead is still VISIT_SCHEDULED: the assigned
+ * SALES_EXEC records the visit as COMPLETED and the server drives
+ * VISIT_SCHEDULED → VISITED (visits.service.ts, "Drive the parent lead state
+ * on COMPLETED"). So this edge belongs to the exec, NOT to the telecaller -
+ * even though VISIT_SCHEDULED is otherwise the telecaller's state.
+ *
+ * The mirror has to encode this because the telecaller lane reuses the raw
+ * TRANSITIONS list for its states, so simply rendering `TRANSITIONS[status]`
+ * would offer a telecaller a "Visited" button the server answers 403 for.
+ * Mirrors HANDOFF_FROM/HANDOFF_TO in the backend state machine.
+ */
+const HANDOFF_FROM = 'VISIT_SCHEDULED';
+const HANDOFF_TO = 'VISITED';
+
+/** Outgoing edges for `role` at `status`, per the server's role gates. */
+export function allowedTransitionsFor(status: string, role: string): readonly string[] {
+  const outgoing: readonly string[] = TRANSITIONS[status] ?? [];
+  const isTelecallerLane = TELECALLER_LANE.includes(status);
+  const isExecLane = EXEC_LANE.includes(status);
+  const isHandoffEdge = (to: string) => status === HANDOFF_FROM && to === HANDOFF_TO;
+
+  if (role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER') {
+    // Managers and admins drive any non-terminal edge; terminal states have
+    // no outgoing edges for them.
+    return outgoing;
+  }
+  if (role === 'TELECALLER') {
+    if (!isTelecallerLane) return [];
+    return outgoing.filter((to) => !isHandoffEdge(to));
+  }
+  if (role === 'SALES_EXEC') {
+    if (isExecLane) return outgoing;
+    // The exec's one out-of-lane edge: completing the visit they conducted.
+    return outgoing.filter(isHandoffEdge);
+  }
+  return [];
+}
+
+const TELECALLER_LANE: readonly string[] = [
+  'NEW',
+  'CONTACTED',
+  'VISIT_REQUESTED',
+  'VISIT_SCHEDULED',
+  'RESCHEDULED',
+  'NO_SHOW',
+];
+
+const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
+
+/**
  * A semantic icon for each lead state, used on the transition buttons so a
  * user can scan the actions without reading every label. Keys mirror the
  * backend-state machine state names (leads.state-machine.ts).
@@ -118,6 +170,8 @@ type LeadData = {
   status?: string;
   ownerId?: string;
   coOwnerId?: string | null;
+  /** Optional: the dialogs fall back to the active project when omitted. */
+  projectId?: string | null;
 };
 
 export function LeadActionPanel({ lead }: { lead: LeadData }) {
@@ -165,13 +219,18 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
         </CardContent>
       </Card>
       <LeadReassignDialog
-        lead={{ id: lead.id, name: lead.name ?? 'lead' }}
+        lead={{ id: lead.id, name: lead.name ?? 'lead', projectId: lead.projectId ?? null }}
         currentOwnerId={lead.ownerId ?? ''}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
       />
       <LeadCoOwnerDialog
-        lead={{ id: lead.id, name: lead.name ?? 'lead', ownerId: lead.ownerId ?? '' }}
+        lead={{
+          id: lead.id,
+          name: lead.name ?? 'lead',
+          ownerId: lead.ownerId ?? '',
+          projectId: lead.projectId ?? null,
+        }}
         currentCoOwnerId={lead.coOwnerId ?? null}
         open={coOwnerOpen}
         onOpenChange={setCoOwnerOpen}

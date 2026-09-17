@@ -84,7 +84,7 @@ export class DashboardService {
     actor: JwtPayload,
   ): Promise<string[]> {
     if (actor.role !== 'MANAGER') return [];
-    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub);
+    return this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
   }
 
   /**
@@ -190,6 +190,7 @@ export class DashboardService {
               createdAt: { lte: new Date(now.getTime() - 30 * 60 * 1000) },
             },
           }),
+
           // pipeline: leads by status.
           txClient.lead.groupBy({
             by: ['state'],

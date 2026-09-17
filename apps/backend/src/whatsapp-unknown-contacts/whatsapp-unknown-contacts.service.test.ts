@@ -26,6 +26,10 @@ const TEST_USER_ID = 'test-wa-uc-admin-' + Date.now();
 // alphanumeric cuid2-shaped string - no hyphens, unlike the other
 // test-id constants in this file.
 const TEST_TEAM_ID = 'testwauctm' + Date.now().toString();
+// T-LEAD-PROJECT-REQUIRED (2026-09-16): convert() now requires a projectId.
+// cuid2-shaped for the same reason as TEST_TEAM_ID - it passes through
+// CreateLeadDtoSchema's `projectId: z.cuid2()`.
+const TEST_PROJECT_ID = 'testwaucpr' + Date.now().toString();
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -39,6 +43,18 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 async function ensureFixtures(): Promise<void> {
   if (prisma === null) return;
   await adminSeed(async (db) => {
+    // Project (convert() now requires a projectId - T-LEAD-PROJECT-REQUIRED).
+    await db.project.upsert({
+      where: { id: TEST_PROJECT_ID },
+      update: {},
+      create: {
+        id: TEST_PROJECT_ID,
+        name: `WA-UC Test Project ${TEST_PROJECT_ID}`,
+        slug: TEST_PROJECT_ID,
+        address: 'test',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
     // Team first (FK target for the TeamMember rows below)
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
@@ -193,6 +209,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         name: 'Converted Customer',
         phone: c.phoneE164,
         source: 'WHATSAPP',
+        projectId: TEST_PROJECT_ID,
         notes: 'First message: Hi, I am interested in 3BHK in Shadhil Meadows',
         // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): ADMIN's
         // create-lead flow no longer defaults to the actor's own JWT
@@ -228,6 +245,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         name: 'Source Override Attempt',
         phone: c.phoneE164,
         source: 'META_AD',
+        projectId: TEST_PROJECT_ID,
       } as never);
       TEST_LEAD_IDS.push(result.lead.id);
       // Read the Lead back; source must be 'WHATSAPP'.
@@ -244,6 +262,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         name: 'First Convert',
         phone: c.phoneE164,
         source: 'WHATSAPP',
+        projectId: TEST_PROJECT_ID,
       });
       TEST_LEAD_IDS.push(first.lead.id);
 
@@ -253,6 +272,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
           name: 'Second Convert',
           phone: c.phoneE164,
           source: 'WHATSAPP',
+          projectId: TEST_PROJECT_ID,
         }),
       ).rejects.toThrow(/already CONVERTED/);
     });
@@ -263,6 +283,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
           name: 'Nobody',
           phone: '910000000099',
           source: 'WHATSAPP',
+          projectId: TEST_PROJECT_ID,
         }),
       ).rejects.toThrow(/not found/);
     });
@@ -292,6 +313,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         name: 'Spam Attempt Subject',
         phone: c.phoneE164,
         source: 'WHATSAPP',
+        projectId: TEST_PROJECT_ID,
       });
       TEST_LEAD_IDS.push(convert.lead.id);
       await expect(service.markSpam(makeAdminActor(), c.id)).rejects.toThrow(

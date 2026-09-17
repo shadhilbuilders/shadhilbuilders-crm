@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { api, qs, type Role } from '@/apis/client';
 import { useSetLeadCoOwner } from '@/hooks/queries/crm';
+import { useProjectId } from '@/lib/tenant-context';
 import { useUsers } from '@/hooks/queries/users';
 import { isLinkableStaffRole } from '@/lib/session';
 
@@ -33,6 +34,8 @@ export type LeadCoOwnerTarget = {
   name: string;
   /** Current owner - excluded from the co-owner picker. */
   ownerId: string;
+  /** The lead's project, so the picker offers only THAT project's staff. */
+  projectId?: string | null;
 };
 
 export type LeadCoOwnerDialogProps = {
@@ -56,11 +59,20 @@ type CoOwnerFormValues = z.infer<typeof coOwnerSchema>;
 async function fetchCoOwners(
   query: string,
   ownerId: string,
+  projectId: string | null,
 ): Promise<Array<{ value: string; label: string }>> {
   const q = query.trim();
   const res = await api<{
     rows: Array<{ id: string; name: string; email: string; role: Role }>;
-  }>(`/users${qs({ search: q.length > 0 ? q : undefined, limit: 10 })}`);
+  }>(
+    // projectId narrows the remote search to the lead's own project staff
+    // (T-USER-PROJECT-SCOPE).
+    `/users${qs({
+      search: q.length > 0 ? q : undefined,
+      projectId: projectId ?? undefined,
+      limit: 10,
+    })}`,
+  );
   return (res.rows ?? [])
     .filter((u) => u.id !== ownerId && isLinkableStaffRole(u.role))
     .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
@@ -68,9 +80,11 @@ async function fetchCoOwners(
 
 export function CoOwnerFormBody({
   ownerId,
+  projectId,
   onSubmit,
 }: {
   ownerId: string;
+  projectId: string | null;
   onSubmit: (values: CoOwnerFormValues) => void;
 }) {
   const form = useForm<CoOwnerFormValues>({
@@ -79,9 +93,10 @@ export function CoOwnerFormBody({
     mode: 'onSubmit',
   });
 
-  const fetchBound = (query: string) => fetchCoOwners(query, ownerId);
+  const fetchBound = (query: string) => fetchCoOwners(query, ownerId, projectId);
 
-  const { data: defaultUsers } = useUsers({ limit: 10 });
+  // T-USER-PROJECT-SCOPE: scoped to the lead's project (see LeadReassignDialog).
+  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined });
   const defaultOptions = useMemo(
     () =>
       (defaultUsers?.rows ?? [])
@@ -99,7 +114,7 @@ export function CoOwnerFormBody({
       placeholder: 'Search staff by name or email...',
       options: defaultOptions,
       description:
-        'A second staff member who can work the lead. Only telecallers / sales executives in your team. Start typing to search all users.',
+        'A second staff member who can work the lead. Only telecallers / sales executives on this project. Start typing to search them.',
       comboboxProps: {
         fetchOptions: fetchBound,
         fetchDebounce: 300,
@@ -144,6 +159,7 @@ export function LeadCoOwnerDialog({
   onOpenChange,
 }: LeadCoOwnerDialogProps) {
   const setCoOwner = useSetLeadCoOwner();
+  const activeProjectId = useProjectId();
 
   if (lead === null) return null;
   const target = lead;
@@ -226,7 +242,11 @@ export function LeadCoOwnerDialog({
         </div>
       }
     >
-      <CoOwnerFormBody ownerId={target.ownerId} onSubmit={handleSubmit} />
+      <CoOwnerFormBody
+        ownerId={target.ownerId}
+        projectId={target.projectId ?? activeProjectId}
+        onSubmit={handleSubmit}
+      />
     </Dialog>
   );
 }

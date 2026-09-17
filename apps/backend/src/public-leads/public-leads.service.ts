@@ -179,13 +179,18 @@ export class PublicLeadsService {
     return fallback;
   }
 
-  /** Resolve a project slug -> project id (scoped to the org). Returns null
-   *  when no slug is provided AND no ENV fallback is set (projectId is
-   *  optional on Lead). Throws on an unresolvable provided slug. */
+  /** Resolve a project slug -> project id (scoped to the org).
+   *
+   *  T-LEAD-PROJECT-REQUIRED (2026-09-16): a Lead MUST have a project, so this
+   *  never returns null for a successful resolution. It previously returned null
+   *  when neither a slug nor the env fallback was configured, which silently
+   *  created a project-less lead - the exact corruption this change removes.
+   *  Misconfiguration now fails loudly (see the throws below) instead of
+   *  producing data that no project surface can ever show. */
   private async resolveProjectId(
     slug: string | undefined,
     orgId: string,
-  ): Promise<string | null> {
+  ): Promise<string> {
     const fallback = process.env['LEADS_FALLBACK_PROJECT_ID'] ?? '';
     if (slug && slug.trim().length > 0) {
       const project = await withRlsContext(
@@ -204,7 +209,15 @@ export class PublicLeadsService {
       }
       return project.id;
     }
-    if (fallback === '') return null;
+    if (fallback === '') {
+      // T-LEAD-PROJECT-REQUIRED: fail loudly. Returning null here is how a
+      // project-less lead got created; a landing enquiry that cannot be given a
+      // project is a CONFIGURATION fault, and losing the enquiry is worse than
+      // a 500 the operator can see and fix.
+      throw new BadRequestException(
+        'No project for this lead: the form sent no projectSlug and LEADS_FALLBACK_PROJECT_ID is not configured.',
+      );
+    }
     // Verify the fallback project actually exists + belongs to this org, so
     // a stale/misconfigured fallback doesn't silently create lead orphans.
     const project = await withRlsContext(
@@ -216,9 +229,14 @@ export class PublicLeadsService {
           select: { id: true },
         }),
     );
-    return project === null
-      ? null
-      : project.id;
+    if (project === null) {
+      // Same reasoning: a stale fallback is a configuration fault, not a reason
+      // to write a lead that no project surface can ever display.
+      throw new BadRequestException(
+        `LEADS_FALLBACK_PROJECT_ID "${fallback}" does not resolve to a project in this organization.`,
+      );
+    }
+    return project.id;
   }
 
   /** Validate an optional caller-supplied owner. Returns the owner id when it

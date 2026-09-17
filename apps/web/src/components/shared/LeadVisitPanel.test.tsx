@@ -15,7 +15,7 @@
 //      completed" while fetch rejects with a network TypeError.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---- isOfflineError (pure fn, direct import) ----
 import { isOfflineError } from './LeadVisitPanel';
@@ -69,6 +69,14 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// T-VISIT-OUTCOME-GATE (2026-09-16): the role-gate tests below need to swap the
+// acting role and the per-outcome permission mid-suite, so the session helpers
+// are held in a hoisted handle the vi.mock factory can reference.
+const sessionMock = vi.hoisted(() => ({
+  useSessionUser: vi.fn(),
+  canLogVisitOutcome: vi.fn(),
+}));
+
 vi.mock('@/hooks/queries/crm', () => ({
   useVisits: vi.fn(() => ({
     data: [
@@ -84,11 +92,13 @@ vi.mock('@/hooks/queries/crm', () => ({
 }));
 
 vi.mock('@/lib/session', () => ({
-  useSessionUser: vi.fn(() => ({
-    user: { id: 'u-1', name: 'A', email: 'a@x', role: 'ADMIN', teamId: null },
-    isPending: false,
-  })),
+  useSessionUser: sessionMock.useSessionUser,
   canScheduleVisits: () => true,
+  // T-VISIT-OUTCOME-GATE (2026-09-16): the panel now gates each outcome button
+  // on canLogVisitOutcome(role, outcome) instead of the panel-level
+  // canScheduleVisits. This mock must provide it, or every outcome button
+  // silently disappears and the offline-fallback tests below lose their target.
+  canLogVisitOutcome: sessionMock.canLogVisitOutcome,
 }));
 
 vi.mock('@/lib/offline-store/queue-store', () => ({
@@ -149,6 +159,16 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
+// Default session for the offline-fallback suite below: an ADMIN who may record
+// every outcome, mirroring lib/session.ts. The role-gate suite overrides these.
+beforeEach(() => {
+  sessionMock.useSessionUser.mockReturnValue({
+    user: { id: 'u-1', name: 'A', email: 'a@x', role: 'ADMIN', teamId: null },
+    isPending: false,
+  });
+  sessionMock.canLogVisitOutcome.mockReturnValue(true);
+});
+
 describe('LeadVisitPanel offline fallback (T-D4)', () => {
   it('transport failure on mutate → enqueues via enqueueUnique with dedupeKey + "Saved locally" toast', async () => {
     // Simulate the online mutation failing with the offline signal.
@@ -198,5 +218,50 @@ describe('LeadVisitPanel offline fallback (T-D4)', () => {
 
     expect(mocks.enqueueUnique).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith('Visit completed');
+  });
+});
+
+/**
+ * T-VISIT-OUTCOME-GATE (2026-09-16 owner ruling): the telecaller must never be
+ * offered "Mark completed".
+ *
+ * Why this test exists: the panel used to gate all three outcome buttons on the
+ * panel-level `canScheduleVisits`, which INCLUDES TELECALLER. A telecaller was
+ * therefore shown "Mark completed", and clicking it moved the lead to VISITED -
+ * a lifecycle action reserved for the exec (or manager/admin), refused by the
+ * server. The correct per-outcome helper, `canLogVisitOutcome`, already existed
+ * and encoded the ruling; it was simply never called. This pins the corrected
+ * gate so the button cannot come back.
+ */
+describe('LeadVisitPanel - visit outcome role gate (T-VISIT-OUTCOME-GATE)', () => {
+  it('a TELECALLER sees No-show but NOT Mark completed', async () => {
+    sessionMock.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'A', email: 'a@x', role: 'TELECALLER' },
+      isPending: false,
+    });
+    // Mirror the real helper: NO_SHOW is the telecaller's only outcome here.
+    sessionMock.canLogVisitOutcome.mockImplementation(
+      (_role: string | undefined, outcome: string) => outcome === 'NO_SHOW',
+    );
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('No-show');
+    expect(html).not.toContain('Mark completed');
+  });
+
+  it('a SALES_EXEC sees Mark completed (they conduct the visit)', async () => {
+    sessionMock.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'A', email: 'a@x', role: 'SALES_EXEC' },
+      isPending: false,
+    });
+    sessionMock.canLogVisitOutcome.mockImplementation(
+      (_role: string | undefined, outcome: string) =>
+        outcome === 'COMPLETED' || outcome === 'NO_SHOW' || outcome === 'CANCELLED',
+    );
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Mark completed');
   });
 });

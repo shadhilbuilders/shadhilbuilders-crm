@@ -86,10 +86,7 @@ import {
   type NavItem,
 } from '@/lib/nav';
 import { Skeleton } from '@/components/shared/Skeleton';
-import {
-  isAdminLike,
-  useSessionUser,
-} from '@/lib/session';
+import { isAdminLike, useSessionUser } from '@/lib/session';
 
 export function AppShell() {
   // T37: close the mobile Sheet whenever the route changes.
@@ -105,8 +102,7 @@ export function AppShell() {
   const { data: projects } = useProjects();
   const activeOrgSlug = ctxOrgSlug ?? pathOrgSlug ?? null;
   const inAdmin = isAdminPathname(pathname);
-  const activeProjectSlug =
-    pathProjectSlug ?? pickDefaultProject(projects ?? [])?.slug ?? null;
+  const activeProjectSlug = pathProjectSlug ?? pickDefaultProject(projects ?? [])?.slug ?? null;
   // useNavBadge needs the project ID (badge counts are id-keyed API calls).
   // Resolve it from the slug against the registry so the badge hook gets a
   // real id (fall back to the default project's id).
@@ -132,14 +128,16 @@ export function AppShell() {
               the same left edge. (Was 8px misaligned before this fix.) */}
           <Link
             href={activeOrgSlug ? `/${activeOrgSlug}` : '/'}
-            className="inline-flex h-10 shrink-0 items-center overflow-hidden text-primary"
+            // T-DASH-MOBILE: h-10 is 40px - just under the 44px tap-target
+            // minimum. 44px on a coarse pointer, unchanged on a mouse.
+            className="text-primary inline-flex h-10 min-h-11 shrink-0 items-center overflow-hidden pointer-fine:min-h-10"
             aria-label="Shadhil CRM home"
             data-qa="sidebar-brand"
           >
             {isCollapsed ? (
               <span className="text-3xl font-bold">SB</span>
             ) : (
-              <span className="text-4xl md:text-3xl font-bold">Shadhil CRM</span>
+              <span className="text-4xl font-bold md:text-3xl">Shadhil CRM</span>
             )}
           </Link>
           {/* The chip carries the full brand lockup (wordmark + tagline);
@@ -186,6 +184,15 @@ export function AppShell() {
           edge of the sidebar, hidden on mobile (the SidebarTrigger above
           handles the mobile Sheet open/close). The library renders the
           chevron automatically and rotates it on state. */}
+      {/*
+        T-DASH-MOBILE note: the library's SidebarRail is a 16px-wide edge strip
+        with `tabIndex={-1}` and an aria-label of "Toggle Sidebar" - it exists as
+        a mouse-drag affordance and is deliberately NOT reachable by keyboard.
+        Flagging an intentional mouse-only affordance as a tap-target failure
+        would push a fix that cannot help: a 16px-wide strip of the viewport
+        edge is not something a finger should own, and the real toggle is 44x44
+        on a coarse pointer (see SidebarToggleButton). Left as-is on purpose.
+      */}
       <SidebarRail data-qa="sidebar-rail" />
     </Sidebar>
   );
@@ -211,16 +218,16 @@ function SidebarSwitcherSlot({
   const { data: projects, isPending: projectsPending } = useProjects();
 
   if (projectsPending) {
-      return (
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <div className="w-full">
-              <Skeleton variant="projectSwitcher" className="w-full" />
-            </div>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      );
-    }
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="w-full">
+            <Skeleton variant="projectSwitcher" className="w-full" />
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
 
   // No session yet - render nothing (the nav groups below do the same).
   if (user === null) return null;
@@ -255,7 +262,11 @@ export function SidebarToggleButton({ className }: { className?: string }) {
       aria-label="Toggle sidebar"
       title={isMobile ? 'Open menu' : 'Expand / collapse sidebar'}
       data-qa="sidebar-toggle"
-      className={`cursor-pointer size-8 shrink-0 ${className ?? ''}`}
+      // T-DASH-MOBILE: `size-8` is 32px - under the 44px tap-target minimum,
+      // and it is the ONLY way to reach the nav on a phone (the sidebar is
+      // hidden behind it). 44px on a coarse pointer; unchanged on a mouse.
+      // `size-8` is kept rather than replaced so the icon size does not shift.
+      className={`size-8 min-h-11 min-w-11 shrink-0 cursor-pointer pointer-fine:min-h-8 pointer-fine:min-w-8 ${className ?? ''}`}
       onClick={() => toggleSidebar()}
     >
       <LuPanelLeft className="size-4-5" />
@@ -297,9 +308,7 @@ function WorkNavGroup({
     );
   }
 
-  const items = getVisibleNav(user?.role).filter(
-    (item) => item.group === 'work',
-  );
+  const items = getVisibleNav(user?.role).filter((item) => item.group === 'work');
 
   return (
     <SidebarGroup>
@@ -365,7 +374,11 @@ function AdminNavGroup({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Go to Work">
-              <Link href={workHref} data-qa="sidebar-go-to-work">
+              <Link
+                href={workHref}
+                data-qa="sidebar-go-to-work"
+                className="min-h-11 pointer-fine:min-h-8"
+              >
                 <LuArrowLeft className="size-4 shrink-0" />
                 <span className="min-w-0 truncate">Go to Work</span>
               </Link>
@@ -378,9 +391,7 @@ function AdminNavGroup({
     );
   }
 
-  const items = getVisibleNav(role).filter(
-    (item) => item.group === 'admin',
-  );
+  const items = getVisibleNav(role).filter((item) => item.group === 'admin');
 
   // Don't render an empty "Admin" group with just a label once the session
   // has resolved and the user genuinely has no admin items.
@@ -462,14 +473,14 @@ function NavMenuItem({
   const Icon = item.icon;
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        asChild
-        isActive={active}
-        tooltip={item.label}
-      >
+      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
         <Link
           href={href}
           aria-current={active ? 'page' : undefined}
+          // T-DASH-MOBILE: the library's nav row is 32px tall, under the 44px
+          // tap-target minimum - and this is the whole navigation on a phone.
+          // 44px on a coarse pointer, library default on a mouse.
+          className="min-h-11 pointer-fine:min-h-8"
         >
           <Icon className="size-4 shrink-0" />
           <span className="min-w-0 truncate">{item.label}</span>
@@ -503,7 +514,7 @@ function NavMenuSubmenu({
   activeProjectSlug: string | null;
 }) {
   const [defaultOpen] = useState(() =>
-    children.some((c) => isNavItemActive(c.href, stripProjectSegmentForNav(pathname))),
+    children.some((c) => isNavItemActive(c.href, stripProjectSegmentForNav(pathname)))
   );
   const Icon = item.icon;
   return (

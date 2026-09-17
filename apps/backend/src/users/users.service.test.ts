@@ -345,6 +345,8 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     managedTeams: Array<{ id: string }> = [],
     teamsById: Array<{ managerId: string | null }> = [{ managerId: 'mgr-1' }],
     ownTeamMemberships: Array<{ teamId: string }> = [],
+    // T-USER-PROJECT-SCOPE: project->team links, for ?projectId= scoping.
+    projectTeams: Array<{ teamId: string }> = [],
   ) {
     const teamFindMany = vi.fn(
       async (args: { where: { managerId?: string; id?: { in: string[] }; deletedAt?: null } }) => {
@@ -352,6 +354,9 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
         return teamsById;
       },
     );
+    const projectTeamFindMany = vi.fn().mockResolvedValue(projectTeams);
+    // T-ORG-EXPLICIT: same cross-org validation as `list`.
+    const projectFindFirst = vi.fn().mockResolvedValue({ id: 'proj-1' });
     const userFindMany = vi.fn();
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): non-manager actors
     // resolve their own teams via TeamMember, not the JWT teamId claim.
@@ -363,27 +368,89 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
       team: { findMany: teamFindMany },
       user: { findMany: userFindMany },
       teamMember: { findMany: teamMemberFindMany },
+      project: { findFirst: projectFindFirst },
+      projectTeam: { findMany: projectTeamFindMany },
       $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     };
     const fakeClient = {
       team: { findMany: teamFindMany },
       user: { findMany: userFindMany },
       teamMember: { findMany: teamMemberFindMany },
+      project: { findFirst: projectFindFirst },
+      projectTeam: { findMany: projectTeamFindMany },
       $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindMany, userFindMany, teamMemberFindMany },
+      mocks: {
+        teamFindMany,
+        userFindMany,
+        teamMemberFindMany,
+        projectFindFirst,
+        projectTeamFindMany,
+      },
     };
   }
 
-  it('ADMIN sees all users (no team filter)', async () => {
+  // ── T-USER-PROJECT-SCOPE (2026-09-16) — @mention picker ────────────────────
+  // User-reported: an admin/owner's @mention list showed people from every
+  // project. The chat pane now passes the active project.
+  it('ADMIN + projectId → scoped to that project staff (not the whole directory)', async () => {
+    const { service, mocks } = makeTeamService(
+      [],
+      [{ managerId: 'mgr-on-proj' }],
+      [],
+      [{ teamId: 'team-on-proj' }],
+    );
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(adminActor, 'proj-1');
+    const call = mocks.userFindMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(call.where['organizationId']).toBe('ceid01lpfe1esm8jwsxid41k28');
+    expect(call.where['OR']).toEqual([
+      { teamMemberships: { some: { teamId: { in: ['team-on-proj'] } } } },
+      { id: { in: ['mgr-on-proj'] } },
+      { id: adminActor.sub },
+    ]);
+  });
+
+  it('ADMIN without projectId → org-scoped, excludes soft-deleted', async () => {
+    const { service, mocks } = makeTeamService();
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(adminActor);
+    const call = mocks.userFindMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    // T-ORG-EXPLICIT: this was `{}` - the entire User table, every org, including
+    // soft-deleted rows.
+    expect(call.where).toEqual({
+      deletedAt: null,
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+  });
+
+  it('teamMembers: projectId from ANOTHER org → 403', async () => {
+    const { service, mocks } = makeTeamService();
+    mocks.projectFindFirst.mockResolvedValue(null);
+    await expect(service.teamMembers(adminActor, 'other-org-proj')).rejects.toThrow(
+      /not found in your organization/i,
+    );
+  });
+
+  it('ADMIN + projectId with no staffed teams → only the caller', async () => {
+    const { service, mocks } = makeTeamService([], [], [], []);
+    mocks.userFindMany.mockResolvedValue([]);
+    await service.teamMembers(adminActor, 'proj-empty');
+    const call = mocks.userFindMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(call.where['OR']).toEqual([{ id: adminActor.sub }]);
+  });
+
+  it('ADMIN sees all users in their ORG (no team filter)', async () => {
     const { service, mocks } = makeTeamService();
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(adminActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({
+        where: { deletedAt: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      }),
     );
   });
 
@@ -392,11 +459,17 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(managerActor);
     expect(mocks.teamFindMany).toHaveBeenNthCalledWith(1, {
-      where: { managerId: 'mgr-1', deletedAt: null },
+      where: {
+        managerId: 'mgr-1',
+        deletedAt: null,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           OR: [
             { teamMemberships: { some: { teamId: { in: ['team-mgr'] } } } },
             { id: { in: ['mgr-1'] } },
@@ -416,6 +489,8 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           OR: [
             { teamMemberships: { some: { teamId: { in: ['team-a', 'team-b'] } } } },
             { id: { in: ['mgr-1'] } },
@@ -434,6 +509,8 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           OR: [
             { teamMemberships: { some: { teamId: { in: ['team-tc'] } } } },
             { id: { in: ['mgr-1'] } },
@@ -462,24 +539,37 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): projects come from
     // the resolved team's ProjectTeam rows now (ProjectMember retired).
     const projectTeamFindMany = vi.fn().mockResolvedValue([]);
+    // T-ORG-EXPLICIT: `?projectId=` is caller-supplied and is now validated
+    // against the actor's org, so list() resolves the project first. Defaults to
+    // "found" - tests that assert the cross-org rejection override it.
+    const projectFindFirst = vi.fn().mockResolvedValue({ id: 'proj-1' });
     // list() now runs inside ONE withRlsContext transaction - the tx must
     // expose every accessor it touches. Mocks shared so assertions see calls.
     const txMock = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
+      project: { findFirst: projectFindFirst },
       projectTeam: { findMany: projectTeamFindMany },
       $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     };
     const fakeClient = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
       user: { findMany: userFindMany, count: userCount },
+      project: { findFirst: projectFindFirst },
       projectTeam: { findMany: projectTeamFindMany },
       $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
     } as never;
     const prismaService = { $client: fakeClient } as never;
     return {
       service: new UsersService(prismaService),
-      mocks: { teamFindFirst, teamFindMany, userFindMany, userCount, projectTeamFindMany },
+      mocks: {
+        teamFindFirst,
+        teamFindMany,
+        userFindMany,
+        userCount,
+        projectFindFirst,
+        projectTeamFindMany,
+      },
     };
   }
 
@@ -488,11 +578,20 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     mocks.userFindMany.mockResolvedValue([]);
     mocks.userCount.mockResolvedValue(0);
     await service.list(adminActor);
+    // T-USER-PROJECT-SCOPE (2026-09-16): the ADMIN/OWNER branch now ALSO scopes
+    // to the actor's organisation - before this, the list leaked users from
+    // every other org.
     expect(mocks.userFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { deletedAt: null }, skip: 0, take: 50 }),
+      expect.objectContaining({
+        where: { deletedAt: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        skip: 0,
+        take: 50,
+      }),
     );
     expect(mocks.userCount).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { deletedAt: null } }),
+      expect.objectContaining({
+        where: { deletedAt: null, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      }),
     );
   });
 
@@ -503,7 +602,11 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     await service.list(adminActor, { role: 'SALES_EXEC', limit: 50, offset: 0 });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, role: { in: ['SALES_EXEC'] } },
+        where: {
+          deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          role: { in: ['SALES_EXEC'] },
+        },
       }),
     );
   });
@@ -519,9 +622,129 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     });
     expect(mocks.userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, role: { in: ['SALES_EXEC', 'TELECALLER'] } },
+        where: {
+          deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          role: { in: ['SALES_EXEC', 'TELECALLER'] },
+        },
       }),
     );
+  });
+
+  // ── T-USER-PROJECT-SCOPE (2026-09-16) ──────────────────────────────────────
+  // User-reported: the lead "Assign to" / "Co-owner" pickers listed staff who
+  // were not on the lead's project. ?projectId= narrows to the project's staff.
+  it('projectId → narrows to the project staff (members + their managers)', async () => {
+    const { service, mocks } = makeListService();
+    mocks.projectTeamFindMany.mockResolvedValue([{ teamId: 'team-on-proj' }]);
+    mocks.teamFindMany.mockResolvedValue([{ managerId: 'mgr-on-proj' }]);
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+
+    await service.list(adminActor, { projectId: 'proj-1', limit: 50, offset: 0 });
+
+    const call = mocks.userFindMany.mock.calls[0][0] as {
+      where: { AND?: Array<{ OR: unknown[] }> };
+    };
+    // The project scope is an OR of: team members, the teams' managers, and the
+    // actor themselves (so a picker never hides the current owner).
+    expect(call.where.AND?.[0]?.OR).toEqual([
+      { teamMemberships: { some: { teamId: { in: ['team-on-proj'] } } } },
+      { id: { in: ['mgr-on-proj'] } },
+      { id: adminActor.sub },
+    ]);
+  });
+
+  it('projectId + search → BOTH clauses survive (AND, not overwrite)', async () => {
+    const { service, mocks } = makeListService();
+    mocks.projectTeamFindMany.mockResolvedValue([{ teamId: 'team-on-proj' }]);
+    mocks.teamFindMany.mockResolvedValue([{ managerId: 'mgr-on-proj' }]);
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+
+    await service.list(adminActor, {
+      projectId: 'proj-1',
+      search: 'priya',
+      limit: 50,
+      offset: 0,
+    });
+
+    const call = mocks.userFindMany.mock.calls[0][0] as {
+      where: { AND?: Array<{ OR: unknown[] }> };
+    };
+    // Regression guard: `OR` is a single key, so assigning both the project
+    // scope and the search as `where.OR` silently dropped one of them.
+    expect(call.where.AND).toHaveLength(2);
+    expect(call.where.AND?.[0]?.OR).toHaveLength(3); // project scope
+    expect(call.where.AND?.[1]?.OR).toHaveLength(2); // name/email search
+  });
+
+  it('MANAGER team lookup is org-scoped', async () => {
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+    await service.list(managerActor);
+    // T-ORG-EXPLICIT: the manager's own team lookup carries the org, so a policy
+    // change on Team can't silently turn this into a cross-org read.
+    expect(mocks.teamFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: 'ceid01lpfe1esm8jwsxid41k28' }),
+      }),
+    );
+  });
+
+  it('projectId from ANOTHER org → 403 (not a misleadingly empty list)', async () => {
+    const { service, mocks } = makeListService();
+    // The project exists, but in a different org: the org-scoped lookup misses.
+    mocks.projectFindFirst.mockResolvedValue(null);
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+
+    // T-ORG-EXPLICIT: Project/ProjectTeam RLS allow ANY authenticated role, so
+    // RLS bounded this only by returning zero rows - which reads as "this project
+    // has no staff". It must fail loudly instead.
+    await expect(
+      service.list(adminActor, { projectId: 'other-org-proj', limit: 50, offset: 0 }),
+    ).rejects.toThrow(/not found in your organization/i);
+    // And it must NOT have run the unfiltered user query.
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+  });
+
+  it('projectId with no staffed teams → still narrowed, never widens', async () => {
+    const { service, mocks } = makeListService();
+    mocks.projectTeamFindMany.mockResolvedValue([]);
+    mocks.teamFindMany.mockResolvedValue([]);
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+
+    await service.list(adminActor, { projectId: 'proj-no-teams', limit: 50, offset: 0 });
+
+    // No teams on the project => only the actor can match. It must NOT fall back
+    // to the unscoped org list.
+    const call = mocks.userFindMany.mock.calls[0][0] as {
+      where: { AND?: Array<{ OR: unknown[] }> };
+    };
+    expect(call.where.AND?.[0]?.OR).toEqual([{ id: adminActor.sub }]);
+  });
+
+  it('MANAGER + projectId → manager team scope AND project scope (intersection)', async () => {
+    const { service, mocks } = makeListService();
+    mocks.teamFindMany.mockResolvedValue([{ id: 'team-mgr' }]);
+    mocks.projectTeamFindMany.mockResolvedValue([{ teamId: 'team-on-proj' }]);
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.userCount.mockResolvedValue(0);
+
+    await service.list(managerActor, { projectId: 'proj-1', limit: 50, offset: 0 });
+
+    const call = mocks.userFindMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    // The team scope stays a top-level key; the project scope is an extra AND
+    // clause. Both must be present - the project filter may only ever REDUCE.
+    expect(call.where['teamMemberships']).toEqual({
+      some: { teamId: { in: ['team-mgr'] } },
+    });
+    expect(Array.isArray(call.where['AND'])).toBe(true);
   });
 
   it('MANAGER with a role filter → team scope AND role IN ([...])', async () => {
@@ -534,6 +757,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       expect.objectContaining({
         where: {
           deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           teamMemberships: { some: { teamId: { in: ['team-mgr'] } } },
           role: { in: ['TELECALLER'] },
         },
@@ -560,9 +784,16 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       expect.objectContaining({
         where: {
           deletedAt: null,
-          OR: [
-            { name: { contains: 'priya', mode: 'insensitive' } },
-            { email: { contains: 'priya', mode: 'insensitive' } },
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          // OR is nested inside AND so the project scope (also an OR) cannot be
+          // clobbered by the search filter.
+          AND: [
+            {
+              OR: [
+                { name: { contains: 'priya', mode: 'insensitive' } },
+                { email: { contains: 'priya', mode: 'insensitive' } },
+              ],
+            },
           ],
         },
       }),
@@ -583,10 +814,15 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       expect.objectContaining({
         where: {
           deletedAt: null,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
           role: { in: ['SALES_EXEC'] },
-          OR: [
-            { name: { contains: 'priya', mode: 'insensitive' } },
-            { email: { contains: 'priya', mode: 'insensitive' } },
+          AND: [
+            {
+              OR: [
+                { name: { contains: 'priya', mode: 'insensitive' } },
+                { email: { contains: 'priya', mode: 'insensitive' } },
+              ],
+            },
           ],
         },
         skip: 20,

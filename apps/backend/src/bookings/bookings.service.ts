@@ -197,6 +197,7 @@ export class BookingsService {
           const teamIds = await this.teamAccess.getManagedTeamIds(
             tx as never,
             actor.sub,
+            actor.organizationId,
           );
           where['lead'] = {
             ...(where['lead'] as object | undefined),
@@ -358,7 +359,10 @@ export class BookingsService {
         }
         const unit = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: dto.unitId },
-          select: { id: true, unitNumber: true, status: true },
+          // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): `price` is
+          // selected so the server can DERIVE the amount rather than trust the
+          // client. See the amount handling below.
+          select: { id: true, unitNumber: true, status: true, price: true },
         });
         if (unit === null) {
           throw new NotFoundException(`Unit ${dto.unitId} not found`);
@@ -375,6 +379,29 @@ export class BookingsService {
           );
         }
 
+        // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the unit's price is the booking
+        // amount. Prisma returns Decimal as an object with `toFixed`; guard the
+        // shape so a schema change fails here rather than writing a bogus amount.
+        const unitPrice = Number(unit.price);
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+          throw new ConflictException(
+            `Unit ${unit.unitNumber} has no usable price (got ${String(unit.price)}), so a booking ` +
+              'amount cannot be derived. Set a price on the unit first.',
+          );
+        }
+
+        // Reject a client that sends a different figure instead of quietly
+        // overwriting it: silently correcting would hide a UI bug, and the whole
+        // point of this change is that the two can no longer disagree unnoticed.
+        // 1 rupee tolerance absorbs rounding on the wire, nothing more.
+        if (Math.abs(dto.amount - unitPrice) > 1) {
+          throw new BadRequestException(
+            `Booking amount must equal the unit price: unit ${unit.unitNumber} is ` +
+              `${unitPrice.toFixed(2)}, but ${dto.amount.toFixed(2)} was sent. ` +
+              'The total comes from the selected unit.',
+          );
+        }
+
         let created;
         try {
           created = await (tx as unknown as PrismaClient).booking.create({
@@ -383,8 +410,19 @@ export class BookingsService {
               organizationId: actor.organizationId,
               unitId: dto.unitId,
               userId: actor.sub,
+              // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): the
+              // booking total IS the unit's price - "the price is the price".
+              //
+              // This used to write `dto.amount` straight through, so the client
+              // decided the figure and nothing cross-checked it. In practice EVERY
+              // existing booking disagreed with its unit (₹1 and ₹1212 against a
+              // ₹43,50,000 unit), which corrupts booking value, approval totals and
+              // reports. The server is the authority now: the amount comes from the
+              // unit, and a client that sends a different figure is rejected
+              // loudly rather than silently ignored, so the UI bug cannot hide.
+              //
               // Prisma Decimal - pass as a string to avoid float drift.
-              amount: dto.amount.toFixed(2),
+              amount: unitPrice.toFixed(2),
               ...(dto.tokenAmount !== undefined
                 ? { tokenAmount: dto.tokenAmount.toFixed(2) }
                 : {}),

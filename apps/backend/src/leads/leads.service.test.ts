@@ -160,7 +160,11 @@ describe('listWhere - MANAGER scoped to own team(s)', () => {
     ).listWhere(tx, manager, { limit: 50, offset: 0 });
     expect(where['teamId']).toEqual({ in: ['team-xyz'] });
     expect(tx.team.findMany).toHaveBeenCalledWith({
-      where: { managerId: manager.sub, deletedAt: null },
+      where: {
+        managerId: manager.sub,
+        deletedAt: null,
+        organizationId: manager.organizationId,
+      },
       select: { id: true },
     });
   });
