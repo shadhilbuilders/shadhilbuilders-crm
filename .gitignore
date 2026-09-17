@@ -85,3 +85,8 @@ C:\\Users\\*\\AppData\\Local\\lighthouse.*
 docs/**/*.jsonl
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# MEDIA (2026-09-17): dev-local chat attachment storage (LocalDiskStorage).
+# Files are user uploads at runtime - never commit. Prod uses imagekit.io.
+apps/backend/media/
+**/media/

@@ -12,7 +12,7 @@
 // these functions and runs them on a schedule. Testable in
 // isolation with a mock WhatsAppClient.
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   type OutboundMessage,
   type OutboundStatus,
@@ -22,6 +22,8 @@ import {
 } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { STORAGE_PROVIDER } from '../storage/storage.tokens';
+import type { StorageProvider } from '../storage/storage.provider';
 import { WhatsAppClient, WhatsAppSendError } from './whatsapp.client';
 
 /** Cap on retry attempts before marking the row FAILED. After
@@ -47,16 +49,22 @@ export class OutboundService {
     // undefined (reading '$client')".
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(WhatsAppClient) private readonly whatsapp: WhatsAppClient,
-    private readonly templateNames: {
-      chatReply: string;
-      visitFollowup: string;
-      visitReminder: string;
-    } = {
-      chatReply: process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply',
-      visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP ?? 'shadhil_visit_followup',
-      visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER ?? 'shadhil_visit_reminder',
-    },
+    // MEDIA (2026-09-17): storage for outbound attachments - read file bytes
+    // back and upload them to Meta's /media. @Optional so the direct-construct
+    // test harness keeps working without wiring StorageModule.
+    @Optional() @Inject(STORAGE_PROVIDER) private readonly storage?: StorageProvider,
   ) {}
+
+  // Template names resolved from env (never injected - they have no DI token).
+  private readonly templateNames: {
+    chatReply: string;
+    visitFollowup: string;
+    visitReminder: string;
+  } = {
+    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply',
+    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP ?? 'shadhil_visit_followup',
+    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER ?? 'shadhil_visit_reminder',
+  };
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -69,15 +77,30 @@ export class OutboundService {
    * (or, for non-transactional callers, as a follow-up insert that's
    * also OK on its own).
    */
-  async enqueue(opts: {
-    messageId: string;
-    leadId: string;
-    sendType: OutboundSendType;
-    freeformBody?: string;
-    templateName?: string;
-    templateVars?: Record<string, string>;
-  }): Promise<OutboundMessage> {
-    return this.client.outboundMessage.create({
+  async enqueue(
+    opts: {
+      messageId: string;
+      leadId: string;
+      sendType: OutboundSendType;
+      freeformBody?: string;
+      templateName?: string;
+      templateVars?: Record<string, string>;
+      // MEDIA (2026-09-17): optional attachment for the outbound cron.
+      mediaKey?: string;
+      mediaType?: string;
+      mediaFilename?: string;
+    },
+    // RLS-scoped client/transaction override. The chat service enqueues
+    // from INSIDE a withRlsContext(tx) block (which sets app.user_id etc.
+    // on that transaction's connection). Prisma does NOT propagate those
+    // GUCs to the bare injected client, so a bare-client INSERT hits
+    // outbound_insert_authenticated with no user → 42501. Passing the
+    // caller's tx client keeps the insert on the same RLS-scoped
+    // connection as the Message row it belongs to (atomic, policy-clean).
+    clientOverride?: PrismaClient,
+  ): Promise<OutboundMessage> {
+    const client = clientOverride ?? this.client;
+    return client.outboundMessage.create({
       data: {
         messageId: opts.messageId,
         leadId: opts.leadId,
@@ -86,6 +109,10 @@ export class OutboundService {
         ...(opts.freeformBody !== undefined ? { freeformBody: opts.freeformBody } : {}),
         ...(opts.templateName !== undefined ? { templateName: opts.templateName } : {}),
         ...(opts.templateVars !== undefined ? { templateVars: opts.templateVars } : {}),
+        // MEDIA: persist the attachment metadata on the outbox row.
+        ...(opts.mediaKey !== undefined ? { mediaKey: opts.mediaKey } : {}),
+        ...(opts.mediaType !== undefined ? { mediaType: opts.mediaType } : {}),
+        ...(opts.mediaFilename !== undefined ? { mediaFilename: opts.mediaFilename } : {}),
         status: 'PENDING',
       },
     });
@@ -218,9 +245,35 @@ export class OutboundService {
           deliveryResult = { ok: true, wamid: delivery.wamid };
         }
       } else {
-        throw new Error(
-          'FREEFORM outbound is not yet supported in shadhil-crm; use a template',
-        );
+        // FREEFORM (chat replies): send raw text. This is valid within
+        // Meta's 24h customer-service window (a reply to the customer's
+        // inbound) and does NOT require an approved template - templates
+        // are only needed OUTSIDE the window or for proactive (started-by-
+        // business) messages. The body lives in `freeformBody`.
+        //
+        // MEDIA: when the row carries mediaKey/mediaType/mediaFilename, send
+        // an attachment instead (upload bytes → Meta, then a media message).
+        const hasMedia = row.mediaKey !== null && row.mediaKey !== undefined;
+        if (hasMedia) {
+          deliveryResult = await this.sendMedia(row);
+        } else {
+          const text = row.freeformBody ?? '';
+          if (text.length === 0) {
+            throw new Error('FREEFORM outbound row has no freeformBody');
+          }
+          const delivery = await this.whatsapp.sendTextMessage(
+            await this.leadPhone(row.leadId),
+            text,
+          );
+          if (!delivery.accepted) {
+            deliveryResult = {
+              ok: false,
+              error: `Meta refused: code=${delivery.errorCode} title=${delivery.errorTitle}`,
+            };
+          } else {
+            deliveryResult = { ok: true, wamid: delivery.wamid };
+          }
+        }
       }
     } catch (err) {
       const errorMessage =
@@ -305,6 +358,71 @@ export class OutboundService {
     // the unknown name with a 400).
     return row.templateName ?? this.templateNames.chatReply;
   }
+
+  /**
+   * Send an attachment for a FREEFORM row: read the stored bytes, upload
+   * them to Meta's /media, then send a media message. Returns the same
+   * deliveryResult shape the rest of sendOne produces.
+   */
+  private async sendMedia(
+    row: OutboundMessage,
+  ): Promise<{ ok: true; wamid: string | null } | { ok: false; error: string }> {
+    if (this.storage === undefined) {
+      return { ok: false, error: 'Storage provider not configured (media outbound)' };
+    }
+    if (row.mediaKey === null || row.mediaKey === undefined) {
+      return { ok: false, error: 'mediaKey missing on outbound row' };
+    }
+    const bytes = await this.storage.read(row.mediaKey);
+    if (bytes === null) {
+      return { ok: false, error: `Stored media not found: ${row.mediaKey}` };
+    }
+
+    const mime = row.mediaType ?? 'application/octet-stream';
+    const filename = row.mediaFilename ?? 'file';
+    // Map mime → Meta message type.
+    const metaType = mediaTypeFor(mime);
+    if (metaType === null) {
+      return { ok: false, error: `Unsupported media mime: ${mime}` };
+    }
+
+    const mediaId = await this.whatsapp.uploadMedia({ buffer: bytes, mimeType: mime, filename });
+    const caption = row.freeformBody ?? undefined;
+    const delivery = await this.whatsapp.sendMediaMessage(await this.leadPhone(row.leadId), {
+      mediaId,
+      type: metaType,
+      ...(metaType === 'document' ? { filename } : {}),
+      ...(caption !== undefined && caption.length > 0 ? { caption } : {}),
+    });
+    if (!delivery.accepted) {
+      return {
+        ok: false,
+        error: `Meta refused: code=${delivery.errorCode} title=${delivery.errorTitle}`,
+      };
+    }
+    return { ok: true, wamid: delivery.wamid };
+  }
+}
+
+/** Map a MIME type to the Meta message media type, or null if unsupported. */
+function mediaTypeFor(
+  mime: string,
+): 'image' | 'document' | 'video' | 'audio' | null {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  // Documents: pdf + office types + text.
+  if (
+    mime === 'application/pdf' ||
+    mime.startsWith('text/') ||
+    mime.includes('officedocument') ||
+    mime === 'application/vnd.ms-excel' ||
+    mime === 'application/msword' ||
+    mime === 'application/vnd.ms-powerpoint'
+  ) {
+    return 'document';
+  }
+  return null;
 }
 
 export type { OutboundStatus };

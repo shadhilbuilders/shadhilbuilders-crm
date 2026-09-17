@@ -26,6 +26,13 @@ export const SendMessageDtoSchema = z.object({
   channel: MessageChannelSchema.optional(),
   kind: MessageKindSchema.optional(),
   mediaUrl: z.string().url().optional(),
+  // MEDIA (2026-09-17): staff attachment metadata. The browser uploads the
+  // file via POST /api/media (returns a storage key) then sends the key
+  // here. mediaKey is the storage key (rendered as the Message.mediaUrl);
+  // mediaMimeType + mediaFilename drive the Meta media upload for outbound.
+  mediaKey: z.string().min(1).max(500).optional(),
+  mediaMimeType: z.string().min(1).max(120).optional(),
+  mediaFilename: z.string().min(1).max(255).optional(),
 });
 export type SendMessageDto = z.infer<typeof SendMessageDtoSchema>;
 
@@ -54,6 +61,10 @@ export const MessageEventSchema = z.object({
   kind: MessageKindSchema.optional(),
   body: z.string(),
   mediaUrl: z.string().url().nullable().optional(),
+  // MEDIA (2026-09-17): attachment metadata surfaced to the web pane so it
+  // can render images inline vs documents as a download link.
+  mediaType: z.string().nullable().optional(),
+  mediaFilename: z.string().nullable().optional(),
   // Display name of the sender. OUT = the staff member who sent it
   // (Message.user.name); IN = the customer (the lead's name). Null when
   // the sender can't be resolved (e.g. a deleted user). The chat pane

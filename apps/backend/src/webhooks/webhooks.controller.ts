@@ -32,7 +32,9 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Logger,
+  Optional,
   Post,
   Query,
   UseGuards,
@@ -41,6 +43,9 @@ import { ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../auth/public.decorator';
 import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
+import { STORAGE_PROVIDER } from '../storage/storage.tokens';
+import type { StorageProvider } from '../storage/storage.provider';
+import { WhatsAppClient } from '../whatsapp/whatsapp.client';
 
 import { WhatsappSignatureGuard } from './whatsapp-signature.guard';
 
@@ -106,6 +111,20 @@ type ProcessingResult = {
 @UseGuards(WhatsappSignatureGuard)
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
+
+  constructor(
+    // MEDIA (2026-09-17, 2B): inbound media (image/doc/audio) - the client
+    // downloads bytes from Meta, the storage provider persists them, and the
+    // resulting Message row carries the mediaUrl for the chat pane.
+    // @Optional so the DB-backed text-path test constructs the controller
+    // without them (text handling doesn't touch these).
+    @Optional()
+    @Inject(WhatsAppClient)
+    private readonly whatsapp?: WhatsAppClient,
+    @Optional()
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage?: StorageProvider,
+  ) {}
 
   // ── GET handshake ─────────────────────────────────────────────────
   // Meta's verify-handshake: GET ?hub.mode=subscribe&hub.verify_token=X&hub.challenge=Y
@@ -250,13 +269,17 @@ export class WebhooksController {
   // Returns one of: 'message' (known lead, Message row created),
   // 'unknown-contact' (unknown number, WhatsappUnknownContact row
   // upserted), 'deduped' (already processed), 'ignored' (e.g. not a
-  // text message, or no message id).
+  // text/message-supported media type, or no message id).
   private async handleInboundMessage(
     message: {
       from?: string;
       id?: string;
       timestamp?: string | number;
       type?: string;
+      image?: { id?: string; mime_type?: string };
+      video?: { id?: string; mime_type?: string };
+      audio?: { id?: string; mime_type?: string };
+      document?: { id?: string; mime_type?: string; filename?: string };
       text?: { body?: string };
       [k: string]: unknown;
     },
@@ -266,20 +289,15 @@ export class WebhooksController {
     const phoneE164 = toE164(message.from);
     if (!phoneE164) return 'ignored';
 
-    // Only text messages in T-E2b; the broader media-handling
-    // (image/audio/document) is a separate task. We still record
-    // the inbound in WebhookEvent so the dedup covers it, but
-    // skip the Message insert.
     const isText = message.type === 'text' && typeof message.text?.body === 'string';
-    const body = isText ? message.text!.body! : null;
+    // MEDIA (2B): supported inbound media types carry a Meta media id.
+    const mediaInfo = isText ? null : extractMedia(message);
 
     return withRlsContext(
       barePrisma,
       { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
       async (tx) => {
         // 1) Dedup via WebhookEvent.externalId unique constraint.
-        // If the same Meta event arrives twice (Meta retries), the
-        // second insert fails with P2002 and we short-circuit.
         try {
           await tx.webhookEvent.create({
             data: {
@@ -302,61 +320,92 @@ export class WebhooksController {
         });
 
         if (lead) {
-          // 3a) Known lead - create the Message row (text only in
-          // T-E2b; media handling is a follow-up). Use $executeRaw
-          // with a parameterized INSERT to avoid Prisma's typed API
-          // path which has an RLS interaction quirk with the
-          // CRON_SERVICE bypass policy (verified empirically:
-          // typed `tx.message.create` fails 42501 even with the
-          // role set; raw `INSERT INTO` succeeds - same tx, same
-          // role, same connection).
-          if (isText) {
-            const msgId = `wa_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            await tx.$executeRawUnsafe(
-              `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, NOW())`,
-              msgId,
-              process.env['PUBLIC_ORG_ID'] ?? '',
-              lead.id,
-              body!,
-              externalId,
-            );
-            return 'message';
+          // 3a) Known lead - create the Message row. Text OR media.
+          // Use $executeRaw for consistency with the existing text path
+          // (avoids the RLS interaction quirk on typed tx.message.create).
+          let mediaUrl: string | null = null;
+          let mediaType: string | null = null;
+          let mediaFilename: string | null = null;
+          if (mediaInfo !== null) {
+            const stored = await this.downloadAndStoreInboundMedia(mediaInfo);
+            if (stored !== null) {
+              mediaUrl = stored.mediaUrl;
+              mediaType = stored.mediaType;
+              mediaFilename = stored.filename;
+            }
           }
-          // Non-text from a known lead: still record the WebhookEvent
-          // (already done above) but skip the Message insert. The
-          // user can see the event in the WebhookEvent log if they
-          // need to debug.
-          return 'ignored';
+          const body = isText ? message.text!.body! : '';
+          const msgId = `wa_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "mediaUrl", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
+            msgId,
+            process.env['PUBLIC_ORG_ID'] ?? '',
+            lead.id,
+            body,
+            externalId,
+            mediaUrl,
+            mediaType,
+            mediaFilename,
+          );
+          return 'message';
         }
 
         // 3b) Unknown number - upsert WhatsappUnknownContact. We
         // deliberately do NOT auto-create a Lead (per the T-E2b
         // product decision: don't create Leads on unknown inbound).
-        // The telecaller can process the contact from the
-        // follow-up queue (UI ships Week 8+; queryable via psql
-        // today).
-        if (isText) {
-          const ts = message.timestamp
-            ? new Date(Number(message.timestamp) * 1000)
-            : new Date();
-          await tx.whatsappUnknownContact.upsert({
-            where: { phoneE164 },
-            create: {
-              phoneE164,
-              firstMessageAt: ts,
-              lastMessageAt: ts,
-              firstMessageBody: body!,
-            },
-            update: {
-              lastMessageAt: ts,
-              messageCount: { increment: 1 },
-            },
-          });
-          return 'unknown-contact';
-        }
-        return 'ignored';
+        // MEDIA (2B): store a generic "(attachment)" body label so the
+        // follow-up queue isn't empty for non-text contact messages.
+        const ts = message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date();
+        const body = isText
+          ? message.text!.body!
+          : mediaInfo !== null
+            ? `📎 ${mediaInfo.type}`
+            : '';
+        await tx.whatsappUnknownContact.upsert({
+          where: { phoneE164 },
+          create: {
+            phoneE164,
+            firstMessageAt: ts,
+            lastMessageAt: ts,
+            firstMessageBody: body,
+          },
+          update: {
+            lastMessageAt: ts,
+            messageCount: { increment: 1 },
+          },
+        });
+        return 'unknown-contact';
       },
     );
+  }
+
+  /** Download an inbound media message from Meta + persist via storage.
+   *  Returns the mediaUrl + metadata, or null if download/storage failed
+   *  (so the webhook still acks and doesn't retry a corrupt event). */
+  private async downloadAndStoreInboundMedia(
+    media: NonNullable<ReturnType<typeof extractMedia>>,
+  ): Promise<{ mediaUrl: string; mediaType: string; filename: string } | null> {
+    if (this.whatsapp === undefined || this.storage === undefined) return null;
+    try {
+      const file = await this.whatsapp.downloadMedia(media.mediaId);
+      if (file === null) {
+        this.logger.warn(`[whatsapp] inbound media download failed id=${media.mediaId}`);
+        return null;
+      }
+      const stored = await this.storage.save(file.buffer, {
+        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+        mimeType: file.mimeType,
+        filename: media.filename ?? file.filename,
+      });
+      return {
+        mediaUrl: `/api/bff/media/${encodeURIComponent(stored.key)}`,
+        mediaType: file.mimeType,
+        filename: media.filename ?? file.filename,
+      };
+    } catch (err) {
+      this.logger.warn(`[whatsapp] inbound media store failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
   }
 
   @Public()
@@ -378,6 +427,30 @@ function toE164(raw: string): string {
   let digits = raw.replace(/[\s\-().]/g, '');
   if (digits.startsWith('+')) digits = digits.slice(1);
   return digits;
+}
+
+/** Extract supported inbound media (image/video/audio/document) from a Meta
+ *  message. Returns null when the message isn't a media type we handle. */
+function extractMedia(message: {
+  type?: string;
+  image?: { id?: string };
+  video?: { id?: string };
+  audio?: { id?: string };
+  document?: { id?: string; filename?: string };
+}): { type: string; mediaId: string; filename?: string } | null {
+  if (message.type === 'image' && typeof message.image?.id === 'string') {
+    return { type: 'image', mediaId: message.image.id };
+  }
+  if (message.type === 'video' && typeof message.video?.id === 'string') {
+    return { type: 'video', mediaId: message.video.id };
+  }
+  if (message.type === 'audio' && typeof message.audio?.id === 'string') {
+    return { type: 'audio', mediaId: message.audio.id };
+  }
+  if (message.type === 'document' && typeof message.document?.id === 'string') {
+    return { type: 'document', mediaId: message.document.id, filename: message.document.filename };
+  }
+  return null;
 }
 
 /**

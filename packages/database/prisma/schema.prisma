@@ -707,6 +707,11 @@ model Message {
   kind       MessageKind      @default(CUSTOMER)
   body       String           @db.Text
   mediaUrl   String?
+  // MEDIA (2026-09-17): attachment metadata mirrored from the upload so the
+  // web pane can render images inline vs documents as a download link, and
+  // inbound WhatsApp media (2B) can store the mime type for the same render.
+  mediaType   String?
+  mediaFilename String?
   externalId String? // WhatsApp message id (for dedupe / status sync)
   createdAt  DateTime         @default(now())
 
@@ -1033,6 +1038,14 @@ model OutboundMessage {
   // to 1000 chars by the chat service before write (leaves headroom
   // under Meta's 1024-char limit).
   freeformBody    String?   @db.Text
+  // MEDIA (2026-09-17): set when the staff message carries an attachment.
+  // mediaKey is the storage key (same value the Message.mediaUrl holds);
+  // mediaType + mediaFilename drive the Meta /media upload for outbound.
+  // When populated, the cron uploads the bytes then sends a media message
+  // instead of (or in addition to) a text body.
+  mediaKey        String?
+  mediaType       String?
+  mediaFilename   String?
   status          OutboundStatus @default(PENDING)
   attempts        Int       @default(0)
   lastAttemptAt   DateTime?

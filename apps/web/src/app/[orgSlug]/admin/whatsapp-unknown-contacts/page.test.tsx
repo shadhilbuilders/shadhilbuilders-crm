@@ -17,9 +17,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ orgId: 'org-1' }),
-}));
+// The page reads the org slug from @/lib/tenant-context (useOrgSlug), not
+// useParams - the route segment is [orgSlug], not orgId. No next/navigation
+// mock is needed; with no OrganizationProvider mounted the hook returns null,
+// which is fine for these wire-shape assertions.
 
 vi.mock('@/hooks/queries/whatsapp-unknown-contacts', () => ({
   useWaUnknownContacts: vi.fn(),

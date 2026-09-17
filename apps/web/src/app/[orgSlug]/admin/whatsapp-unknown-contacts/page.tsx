@@ -29,7 +29,6 @@ import { useMemo, useState } from 'react';
 
 import { Button, Card, CardContent, toast } from '@paalstack/react-ui';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
@@ -49,6 +48,7 @@ import type { WhatsappUnknownContactRow } from '@/hooks/queries/whatsapp-unknown
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { dateIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
+import { useOrgSlug } from '@/lib/tenant-context';
 import { LuArrowDown } from '@paalstack/react-icons/lu';
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ const STATUS_TABS: ReadonlyArray<{ value: StatusTab; label: string }> = [
 // ---------------------------------------------------------------------------
 
 export default function WhatsappUnknownContactsPage() {
-  const { orgId } = useParams<{ orgId: string }>();
+  const orgSlug = useOrgSlug();
   const [tab, setTab] = useState<StatusTab>('PENDING');
   const [convertTarget, setConvertTarget] =
     useState<WhatsappUnknownContactRow | null>(null);
@@ -87,7 +87,7 @@ export default function WhatsappUnknownContactsPage() {
   });
   const markSpam = useMarkWaUnknownSpam();
   const { data: projects } = useProjects();
-  const defaultProjectId = pickDefaultProject(projects ?? [])?.id ?? null;
+  const defaultProjectSlug = pickDefaultProject(projects ?? [])?.slug ?? null;
 
   // Merge the latest fetched page into the accumulated list. When the tab
   // changes (or the cursor resets), start fresh from the first page.
@@ -188,7 +188,7 @@ export default function WhatsappUnknownContactsPage() {
             <Row
               key={row.id}
               row={row}
-              orgId={orgId}
+              orgSlug={orgSlug}
               showActions={isPendingTab}
               pendingSpamId={
                 markSpam.isPending && markSpam.variables?.id === row.id
@@ -197,7 +197,7 @@ export default function WhatsappUnknownContactsPage() {
               }
               onConvert={setConvertTarget}
               onSpam={handleSpam}
-              projectId={defaultProjectId}
+              projectSlug={defaultProjectSlug}
             />
           ))}
         </ul>
@@ -224,7 +224,7 @@ export default function WhatsappUnknownContactsPage() {
       <WhatsappUnknownContactConvertModal
         contact={convertTarget}
         open={convertTarget !== null}
-        orgId={orgId}
+        orgId={orgSlug ?? ''}
         onOpenChange={(next) => {
           if (!next) setConvertTarget(null);
         }}
@@ -239,22 +239,22 @@ export default function WhatsappUnknownContactsPage() {
 
 type RowProps = {
   row: WhatsappUnknownContactRow;
-  orgId: string;
+  orgSlug: string | null;
   showActions: boolean;
   pendingSpamId: string | null;
   onConvert: (row: WhatsappUnknownContactRow) => void;
   onSpam: (row: WhatsappUnknownContactRow) => void;
-  projectId: string | null;
+  projectSlug: string | null;
 };
 
 function Row({
   row,
-  orgId,
+  orgSlug,
   showActions,
   pendingSpamId,
   onConvert,
   onSpam,
-  projectId,
+  projectSlug,
 }: RowProps) {
   const isSpamming = pendingSpamId === row.id;
   return (
@@ -291,7 +291,7 @@ function Row({
             <>
               {' · '}
               <Link
-                href={projectHref(orgId, projectId, `/leads/${row.convertedToLeadId}`)}
+                href={projectHref(orgSlug, projectSlug, `/leads/${row.convertedToLeadId}`)}
                 className="underline-offset-2 hover:underline"
                 data-qa="wa-unknown-converted-lead"
               >

@@ -55,6 +55,9 @@ export interface MessageRow {
   kind?: 'CUSTOMER' | 'INTERNAL';
   body: string;
   mediaUrl?: string | null | undefined;
+  // MEDIA (2026-09-17): attachment metadata for type-aware rendering.
+  mediaType?: string | null | undefined;
+  mediaFilename?: string | null | undefined;
   // Display name of the sender. OUT = the staff member (Message.user.name);
   // IN = the customer (the lead's name). Null when unresolvable.
   senderName: string | null;
@@ -132,6 +135,8 @@ export class ChatService {
             kind: true,
             body: true,
             mediaUrl: true,
+            mediaType: true,
+            mediaFilename: true,
             createdAt: true,
             user: { select: { name: true } },
           },
@@ -145,6 +150,8 @@ export class ChatService {
           kind: r.kind,
           body: r.body,
           mediaUrl: r.mediaUrl,
+          mediaType: r.mediaType,
+          mediaFilename: r.mediaFilename,
           // OUT → the staff member who sent it; IN → the customer (lead).
           senderName: r.direction === 'OUT' ? (r.user?.name ?? null) : lead.name,
           createdAt: r.createdAt.toISOString(),
@@ -186,7 +193,7 @@ export class ChatService {
         // the BFF gets a clear 404 rather than a 500.
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: dto.leadId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, phoneE164: true },
         });
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
@@ -208,7 +215,17 @@ export class ChatService {
             channel: dto.channel ?? 'IN_APP',
             kind,
             body: dto.body,
-            ...(dto.mediaUrl !== undefined ? { mediaUrl: dto.mediaUrl } : {}),
+            // mediaUrl is the storage key served to the web pane. The
+            // browser uploads via POST /api/media → returns mediaKey, which
+            // we store as the Message row's mediaUrl (a `/:key` media URL).
+            // mediaUrl is the BFF-proxied media read path (the browser fetches
+            // /api/bff/media/:key → BFF verifies the session + mints JWT →
+            // backend GET /api/media/:key). The key is URL-encoded because it
+            // may contain slashes (org/id/filename) and Nest 12's route is a
+            // single :key segment.
+            mediaUrl: dto.mediaUrl ?? (dto.mediaKey !== undefined ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}` : undefined),
+            mediaType: dto.mediaMimeType,
+            mediaFilename: dto.mediaFilename,
           },
           select: {
             id: true,
@@ -218,6 +235,8 @@ export class ChatService {
             kind: true,
             body: true,
             mediaUrl: true,
+            mediaType: true,
+            mediaFilename: true,
             createdAt: true,
           },
         });
@@ -251,32 +270,58 @@ export class ChatService {
           // each. The NotificationsService is @Optional() - if it's not
           // wired (unit tests), mentions are silently skipped.
           await this.emitMentions(tx, actor, dto, created.id);
-        } else if (created.channel === 'WHATSAPP') {
-          // T-E2b: also look up the lead's first name in-RLS so we
-          // can build the template vars without a second RLS-scoped
-          // query (which would fail because the bare prisma client is
-          // RLS-restricted).
+        } else if (
+          created.channel === 'WHATSAPP' ||
+          (created.channel === 'IN_APP' && lead.phoneE164 !== null)
+        ) {
+          // OUTBOUND-WA (2026-09-17): a staff CUSTOMER reply reaches the
+          // customer on WhatsApp whenever the lead has a reachable WhatsApp
+          // number AND the chat is the customer thread - regardless of the
+          // display channel. The pane sends channel='IN_APP' (the row renders
+          // in the panel), but the customer should still receive the reply on
+          // WhatsApp within the 24h window (shadhil_chat_reply is a UTILITY
+          // template; this is a true reply to the customer's inbound, compliant).
+          // INTERNAL is hard-excluded above (staff-only note, never leaks to
+          // the phone). Enqueueing is inside withRlsContext so the
+          // OutboundMessage INSERT has app.user_id (outbound_insert_authenticated)
+          // and the cron drains it via CRON_SERVICE.
           const firstName = (lead.name ?? '').trim().split(/\s+/)[0] ?? lead.name ?? '';
 
-          // T-E2b: if the channel is WHATSAPP, enqueue an outbound
-          // message. We do this INSIDE the withRlsContext block so
+          // T-E2b: if the channel is WHATSAPP / IN_APP-with-phone, enqueue an
+          // outbound. We do this INSIDE the withRlsContext block so
           // the OutboundMessage INSERT runs under the actor's RLS
           // (the outbound_insert_authenticated policy requires
           // app.user_id to be set, which the bare client can't
           // provide). The cron processor later picks it up via the
           // CRON_SERVICE role.
-          const templateName = process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply';
           const body = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
-          await this.outbound.enqueue({
-            messageId: created.id,
-            leadId: created.leadId,
-            sendType: 'TEMPLATE',
-            templateName,
-            templateVars: {
-              '1': firstName,
-              '2': body,
+          await this.outbound.enqueue(
+            {
+              messageId: created.id,
+              leadId: created.leadId,
+              // FREEFORM, not TEMPLATE: this is a reply inside the 24h
+              // customer-service window, so Meta accepts plain text with
+              // NO approved template. Using shadhil_chat_reply failed with
+              // 132001 "template does not exist" because the template is
+              // never created in Meta. A text reply avoids templates entirely
+              // and costs nothing within the window.
+              sendType: 'FREEFORM',
+              freeformBody: body,
+              // MEDIA (2026-09-17): when the DTO carries an attachment,
+              // persist the metadata so the cron sends the file (instead of
+              // only text). mediaUrl is the storage key for the Message row;
+              // the media* fields come from the same upload.
+              ...(dto.mediaKey !== undefined ? { mediaKey: dto.mediaKey } : {}),
+              ...(dto.mediaMimeType !== undefined ? { mediaType: dto.mediaMimeType } : {}),
+              ...(dto.mediaFilename !== undefined ? { mediaFilename: dto.mediaFilename } : {}),
             },
-          });
+            // Pass the RLS-scoped tx so the OutboundMessage INSERT runs on
+            // the same connection that carries app.user_id (set by
+            // withRlsContext). Without the override, enqueue inserts on the
+            // bare injected client → app.user_id unset → 42501 policy
+            // violation (outbound_insert_authenticated).
+            tx as unknown as PrismaClient,
+          );
         }
 
         return {
@@ -287,6 +332,8 @@ export class ChatService {
           kind: created.kind,
           body: created.body,
           mediaUrl: created.mediaUrl,
+          mediaType: created.mediaType,
+          mediaFilename: created.mediaFilename,
           // OUT → the staff member who sent it (the actor).
           senderName: actorRow?.name ?? null,
           createdAt: created.createdAt.toISOString(),

@@ -15,6 +15,7 @@
 // Eng review A5: POOL_MODE must be 'session' (RLS requirement). Boot-time
 // check throws if not.
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { verifyPoolMode } from '@shadhil/database';
@@ -40,10 +41,22 @@ async function bootstrap(): Promise<void> {
   // whitespace/encoding and break the verification). The buffer is held
   // on `req.rawBody` (Buffer) and consumed only by signature middleware
   // - the JSON body parser still produces `req.body` as normal.
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
     rawBody: true,
   });
+  // G-WhatsApp-Webhook: use the SIMPLE query parser (not Express's
+  // default extended/qs parser). The default parser treats
+  // `hub.mode`, `hub.verify_token` and `hub.challenge` (dot-named
+  // params) as nested objects `{ hub: {...} }`, so NestJS's
+  // `@Query('hub.mode')` resolves to undefined and the WhatsApp
+  // verify-handshake 500s. `simple` returns flat string params,
+  // which is exactly what the webhook controller (and every other
+  // endpoint in this app, which uses flat scalar query strings via
+  // URLSearchParams) expects. No feature relies on qs nested/bracket
+  // syntax, so this is app-safe. Set via express.set() because nest 12
+  // does not expose `queryParser` as a NestApplicationOptions field.
+  app.set('query parser', 'simple');
   const logger = new Logger('Bootstrap');
 
   // AR-8: allowlist from env, localhost only outside production. Compose sets

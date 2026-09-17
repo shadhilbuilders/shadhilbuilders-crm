@@ -157,7 +157,10 @@ interface OutboundCall {
 }
 const capturedCalls: OutboundCall[] = [];
 const outboundStub = {
-  enqueue: async (opts: OutboundCall) => {
+  enqueue: async (
+    opts: OutboundCall,
+    _clientOverride?: unknown,
+  ) => {
     capturedCalls.push(opts);
     return { id: 'mock-out-' + Date.now() };
   },
@@ -180,7 +183,7 @@ function makeService(): ChatService {
 }
 
 describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)', () => {
-  it('enqueues a TEMPLATE OutboundMessage with the chat_reply template when channel=WHATSAPP', async () => {
+  it('enqueues a FREEFORM OutboundMessage (text reply, no template) when channel=WHATSAPP', async () => {
     capturedCalls.length = 0;
     const service = makeService();
 
@@ -203,30 +206,68 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     expect(message?.channel).toBe('WHATSAPP');
     expect(message?.body).toBe('Hello Rajesh, your site visit is tomorrow at 3pm');
 
-    // 2. Outbound was enqueued with the right shape
+    // 2. Outbound was enqueued as FREEFORM (a text reply inside the 24h
+    //    customer-service window - no approved template required).
     expect(capturedCalls).toHaveLength(1);
     const call = capturedCalls[0]!;
     expect(call.leadId).toBe(TEST_LEAD_ID);
     expect(call.messageId).toBe(result.id);
-    expect(call.sendType).toBe('TEMPLATE');
-    expect(call.templateName).toBe('shadhil_chat_reply');
-    expect(call.templateVars['1']).toBe('Rajesh'); // first name
-    expect(call.templateVars['2']).toBe('Hello Rajesh, your site visit is tomorrow at 3pm');
+    expect(call.sendType).toBe('FREEFORM');
+    expect(call.freeformBody).toBe('Hello Rajesh, your site visit is tomorrow at 3pm');
 
     // 3. Returned shape is the same MessageEvent
     expect(result.channel).toBe('WHATSAPP');
     expect(result.direction).toBe('OUT');
   });
 
-  it('does NOT call outbound.enqueue when channel=IN_APP', async () => {
+  it('IN_APP CUSTOMER message to a lead with a WhatsApp number DOES enqueue a FREEFORM WhatsApp outbound (2026-09-17)', async () => {
     capturedCalls.length = 0;
     const service = makeService();
 
     await service.send(actor, {
       leadId: TEST_LEAD_ID,
-      body: 'Internal note: spoke to lead by phone',
+      body: 'The site visit is confirmed for Saturday 11 AM',
       channel: 'IN_APP',
+      kind: 'CUSTOMER',
     });
+
+    // The message row is IN_APP (renders in the panel), but because the
+    // lead has a phoneE164 the staff reply is ALSO enqueued as a WhatsApp
+    // text outbound so the customer receives it within the 24h window.
+    expect(capturedCalls).toHaveLength(1);
+    const call = capturedCalls[0]!;
+    expect(call.sendType).toBe('FREEFORM');
+    expect(call.freeformBody).toBe('The site visit is confirmed for Saturday 11 AM');
+  });
+
+  it('does NOT call outbound.enqueue when channel=IN_APP and the lead has NO phoneE164', async () => {
+    capturedCalls.length = 0;
+    // A lead without a phoneE164 (e.g. a record created with a display
+    // phone but no normalized number, or a non-messaging lead) must not
+    // enqueue a WhatsApp send - there is no reachable number.
+    if (prisma === null) throw new Error('prisma missing');
+    const service = makeService();
+    await adminSeed(async (db) => {
+      await db.lead.update({
+        where: { id: TEST_LEAD_ID },
+        data: { phoneE164: null },
+      });
+    });
+
+    try {
+      await service.send(actor, {
+        leadId: TEST_LEAD_ID,
+        body: 'Internal note: spoke to lead by phone',
+        channel: 'IN_APP',
+        kind: 'CUSTOMER',
+      });
+    } finally {
+      // Restore the fixture lead's phoneE164 for sibling tests.
+      const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      await adminSeed(async (db) => {
+        await db.lead.update({ where: { id: TEST_LEAD_ID }, data: { phoneE164: uniquePhone } });
+      });
+    }
 
     expect(capturedCalls).toHaveLength(0);
   });
@@ -243,6 +284,6 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     });
 
     expect(capturedCalls).toHaveLength(1);
-    expect(capturedCalls[0]!.templateVars['2'].length).toBe(1000);
+    expect(capturedCalls[0]!.freeformBody!.length).toBe(1000);
   });
 });

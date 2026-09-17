@@ -281,6 +281,7 @@ export function WhatsappUnknownContactConvertModal({
   // to that project's lead detail.
   const { data: projects } = useProjects();
   const defaultProject = pickDefaultProject(projects ?? []);
+  const defaultProjectSlug = pickDefaultProject(projects ?? [])?.slug ?? null;
 
   function handleSubmit(
     values: ConvertFormValues,
@@ -301,7 +302,7 @@ export function WhatsappUnknownContactConvertModal({
           onOpenChange(false);
           if (typeof newLeadId === 'string' && newLeadId.length > 0) {
             void router.push(
-              projectHref(orgId, defaultProject?.id ?? null, `/leads/${newLeadId}`),
+              projectHref(orgId, defaultProjectSlug, `/leads/${newLeadId}`),
             );
           }
         },

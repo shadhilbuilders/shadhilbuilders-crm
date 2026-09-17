@@ -128,13 +128,30 @@ async function forward(
     cache: 'no-store',
   });
 
-  const body = await upstream.text();
-  return new NextResponse(body, {
-    status: upstream.status,
-    headers: {
-      'Content-Type':
-        upstream.headers.get('content-type') ?? 'application/json',
-      'Cache-Control': 'no-store',
+  const upstreamBody = await upstream.arrayBuffer();
+  const upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
+
+  // MEDIA (2026-09-17): preserve the exact response bytes. JSON responses can
+  // go through `.text()`, but a proxied GET /api/media/:key returns binary
+  // (image/document bytes) - re-serializing to UTF-8 via .text() would corrupt
+  // non-ASCII bytes. Detect binary content-types and echo the raw ArrayBuffer.
+  const isBinary =
+    !upstreamContentType.includes('application/json') &&
+    !upstreamContentType.includes('text/');
+
+  const body =
+    isBinary && upstreamBody.byteLength > 0
+      ? Buffer.from(upstreamBody)
+      : Buffer.from(new TextDecoder().decode(upstreamBody));
+
+  return new NextResponse(
+    new Uint8Array(body),
+    {
+      status: upstream.status,
+      headers: {
+        'Content-Type': upstreamContentType,
+        'Cache-Control': 'no-store',
+      },
     },
-  });
+  );
 }

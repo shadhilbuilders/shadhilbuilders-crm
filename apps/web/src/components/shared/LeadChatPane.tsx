@@ -44,6 +44,10 @@
 // Good enough for the demo loop.
 
 import {
+  Attachment,
+  AttachmentActions,
+  AttachmentDescription,
+  AttachmentTitle,
   AvatarFallback,
   AvatarRoot,
   Bubble,
@@ -72,10 +76,10 @@ import {
   ToggleGroup,
   toast,
 } from '@paalstack/react-ui';
-import { LuArrowUp, LuLock, LuMessageSquare } from '@paalstack/react-icons/lu';
+import { LuArrowUp, LuFile, LuLock, LuMessageSquare, LuPaperclip, LuX } from '@paalstack/react-icons/lu';
 import { useMemo, useRef, useState } from 'react';
 
-import { useMessages, useMessagesRealtime, useSendMessage } from '@/hooks/queries/crm';
+import { useMessages, useMessagesRealtime, useSendMessage, uploadChatMedia } from '@/hooks/queries/crm';
 import { useTeamMembers } from '@/hooks/queries/users';
 import { useProjectId } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
@@ -93,8 +97,19 @@ type MessageRow = {
   kind?: Kind;
   body?: string;
   mediaUrl?: string | null;
+  // MEDIA (2026-09-17): attachment metadata for type-aware rendering.
+  mediaType?: string | null;
+  mediaFilename?: string | null;
   senderName?: string | null;
   createdAt?: string;
+};
+
+// MEDIA: a file the user has picked in the composer (preview before send).
+type PendingAttachment = {
+  file: File;
+  // Object URL for immediate preview; replaced by the uploaded media URL on
+  // successful send (the row then re-renders from the server).
+  previewUrl: string;
 };
 
 function isMessageDirection(value: unknown): value is Direction {
@@ -116,6 +131,15 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?';
+}
+
+/** Human-readable byte size for the attachment preview (e.g. "1.2 MB"). */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exp;
+  return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -224,6 +248,10 @@ export function LeadChatPane({
   const activeProjectId = useProjectId();
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // MEDIA (2026-09-17): attachment picked in the composer (not yet sent).
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Mention picker state (Internal composer only).
   // `mentionQuery` is the substring after the last `@` in the draft; when
   // non-null the picker is active and shows team members matching it.
@@ -256,40 +284,72 @@ export function LeadChatPane({
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = draft.trim();
-    if (body.length === 0) return;
     if (leadId === null) return;
-    sendMessage.mutate(body, {
-      onSuccess: () => {
-        setDraft('');
-        setMentionQuery(null);
-        // Reset the auto-grow textarea back to a single line.
-        const el = textareaRef.current;
-        if (el !== null) el.style.height = 'auto';
-        // Refocus so the user can keep typing seamlessly after send. Deferred
-        // to the next frame because invalidateQueries triggers a re-render
-        // that can steal focus on the same tick.
-        requestAnimationFrame(() => {
-          textareaRef.current?.focus();
-        });
-      },
-      onError: (err) => {
-        // Server validation messages come through verbatim on 400
-        // (parseBody in chat.controller.ts turns ZodError → 400).
-        // Surface them via the global sonner toast singleton.
-        //
-        // Imported statically - NOT via lazy require(): a CJS require()
-        // resolves this dual-format package's `dist/index.cjs`, whose
-        // sonner `toast` singleton is a SEPARATE module instance from
-        // the ESM build that `<Toaster/>` (app root) listens to. Toasts
-        // fired from the CJS copy never render. The component is
-        // already a client component importing `Button` from the same
-        // package, so a static import costs nothing.
-        toast.error(err instanceof Error ? err.message : 'Send failed');
-      },
+    // MEDIA: allow sending with ONLY an attachment (no text body) too, so a
+    // staff can forward an image/doc without typing a caption. Backend
+    // requires body non-empty for the Message row, so send a neutral body
+    // when there's no typed text.
+    const resolvedBody = body.length === 0 && pendingAttachment !== null ? '📎 Attachment' : body;
+    if (resolvedBody.length === 0) return;
+
+    const send = (media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string }) => {
+      sendMessage.mutate(
+        { body: resolvedBody, ...(media !== undefined ? { media } : {}) },
+        {
+          onSuccess: () => {
+            setDraft('');
+            setPendingAttachment(null);
+            setMentionQuery(null);
+            // Reset the auto-grow textarea back to a single line.
+            const el = textareaRef.current;
+            if (el !== null) el.style.height = 'auto';
+            requestAnimationFrame(() => {
+              textareaRef.current?.focus();
+            });
+          },
+          onError: (err) => {
+            toast.error(err instanceof Error ? err.message : 'Send failed');
+          },
+        },
+      );
+    };
+
+    // MEDIA: if there's an attachment, upload it first (base64 → POST
+    // /api/media → storage key), then send the message with that key.
+    if (pendingAttachment !== null) {
+      setAttachmentUploading(true);
+      uploadChatMedia(pendingAttachment.file)
+        .then((media) => send(media))
+        .catch((err) => {
+          toast.error(err instanceof Error ? `Upload failed: ${err.message}` : 'Upload failed');
+        })
+        .finally(() => setAttachmentUploading(false));
+      return;
+    }
+
+    send();
+  }
+
+  // MEDIA: pick a file and store a local preview so the composer shows what
+  // will be sent before the upload happens.
+  function onPickFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file === undefined) return;
+    setPendingAttachment({
+      file,
+      previewUrl: URL.createObjectURL(file),
     });
   }
 
-  const canSend = leadId !== null && user !== null && !sendMessage.isPending;
+  function removeAttachment() {
+    setPendingAttachment((prev) => {
+      if (prev !== null) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }
+
+  const canSend = leadId !== null && user !== null && !sendMessage.isPending && !attachmentUploading;
 
   // Enter sends; Shift+Enter inserts a newline.
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -442,6 +502,10 @@ export function LeadChatPane({
                           body={message.body ?? ''}
                           createdAt={message.createdAt}
                           channel={message.channel}
+                          // MEDIA (2026-09-17): render images inline / docs as link.
+                          mediaUrl={message.mediaUrl}
+                          mediaType={message.mediaType ?? null}
+                          mediaFilename={message.mediaFilename ?? null}
                         />
                       );
                     })
@@ -461,6 +525,56 @@ export function LeadChatPane({
           className="w-full"
           data-qa="chat-send-form"
         >
+          {/* MEDIA (2026-09-17): hidden file input driving the paperclip button. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+            onChange={onPickFile}
+            aria-hidden="true"
+            data-qa="chat-file-input"
+          />
+          {/* MEDIA: show the picked attachment with a preview + remove action
+              before it's uploaded on send. */}
+          {pendingAttachment !== null ? (
+            <div className="mb-2" data-qa="chat-attachment-preview">
+              <Attachment
+                state={attachmentUploading ? 'uploading' : 'idle'}
+                orientation="horizontal"
+                className="border-border rounded-md border bg-muted/30 p-2"
+              >
+                {pendingAttachment.file.type.startsWith('image/') ? (
+                  <img
+                    src={pendingAttachment.previewUrl}
+                    alt={pendingAttachment.file.name}
+                    className="h-14 w-14 shrink-0 rounded object-cover"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <AttachmentTitle className="text-sm font-medium">
+                    {pendingAttachment.file.name}
+                  </AttachmentTitle>
+                  <AttachmentDescription className="text-muted-foreground text-xs">
+                    {formatBytes(pendingAttachment.file.size)}
+                  </AttachmentDescription>
+                </div>
+                <AttachmentActions>
+                  <InputGroupButton
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={removeAttachment}
+                    disabled={attachmentUploading}
+                    aria-label="Remove attachment"
+                    data-qa="chat-attachment-remove"
+                  >
+                    <LuX className="size-4" />
+                  </InputGroupButton>
+                </AttachmentActions>
+              </Attachment>
+            </div>
+          ) : null}
           <InputGroup className="gap-1 items-center h-10">
             <div className="relative min-w-0 flex-1">
               <InputGroupTextarea
@@ -528,11 +642,26 @@ export function LeadChatPane({
               ) : null}
             </div>
             <InputGroupAddon align="inline-end" className="p-2">
+              {/* MEDIA (2026-09-17): paperclip opens the file picker (CUSTOMER
+                  thread only - internal notes never carry attachments). */}
+              {!isInternal ? (
+                <InputGroupButton
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!canSend}
+                  aria-label="Attach a file"
+                  data-qa="chat-attach-button"
+                >
+                  <LuPaperclip className="size-4" />
+                </InputGroupButton>
+              ) : null}
               <InputGroupButton
                 type="submit"
                 variant="default"
                 size="icon-sm"
-                disabled={!canSend || draft.trim().length === 0}
+                disabled={!canSend || (draft.trim().length === 0 && pendingAttachment === null)}
                 data-qa="chat-send-button"
                 aria-label="Send message"
               >
@@ -542,8 +671,10 @@ export function LeadChatPane({
             </InputGroupAddon>
           </InputGroup>
         </form>
-        {sendMessage.isPending ? (
-          <p className="text-muted-foreground text-right text-[10px]">Sending...</p>
+        {sendMessage.isPending || attachmentUploading ? (
+          <p className="text-muted-foreground text-right text-[10px]">
+            {attachmentUploading ? 'Uploading...' : 'Sending...'}
+          </p>
         ) : null}
       </CardFooter>
     </CardRoot>
@@ -566,6 +697,9 @@ function ChatMessage({
   body,
   createdAt,
   channel,
+  mediaUrl,
+  mediaType,
+  mediaFilename,
 }: {
   id: string;
   isOut: boolean;
@@ -574,7 +708,13 @@ function ChatMessage({
   body: string;
   createdAt?: string;
   channel?: Channel;
+  // MEDIA (2026-09-17): attachment for type-aware rendering.
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  mediaFilename?: string | null;
 }) {
+  const mediaIsImage = mediaType !== null && mediaType !== undefined && mediaType.startsWith('image/');
+  const mediaIsPdf = mediaType === 'application/pdf';
   return (
     <MessageScrollerItem messageId={id} scrollAnchor={isOut}>
       <Message align={isOut ? 'end' : 'start'}>
@@ -605,6 +745,44 @@ function ChatMessage({
             variant={isInternal ? 'muted' : isOut ? 'muted' : 'tinted'}
           >
             <BubbleContent>
+              {/* MEDIA (2026-09-17): render images inline; other files as a
+                  download link (documents, video, audio). */}
+              {mediaUrl !== null && mediaUrl !== undefined && mediaUrl.length > 0 ? (
+                <div className="mb-1.5">
+                  {mediaIsImage ? (
+                    <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={mediaUrl}
+                        alt={mediaFilename ?? 'attachment'}
+                        className="max-h-56 w-auto max-w-full rounded-lg border border-border"
+                        data-qa="chat-media-image"
+                      />
+                    </a>
+                  ) : mediaIsPdf ? (
+                    <a
+                      href={mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      data-qa="chat-media-doc"
+                    >
+                      <LuFile className="size-4 shrink-0" />
+                      <span className="min-w-0 truncate">{mediaFilename ?? 'Document'}</span>
+                    </a>
+                  ) : (
+                    <a
+                      href={mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      data-qa="chat-media-file"
+                    >
+                      <LuFile className="size-4 shrink-0" />
+                      <span className="min-w-0 truncate">{mediaFilename ?? 'Attachment'}</span>
+                    </a>
+                  )}
+                </div>
+              ) : null}
               <p
                 className="wrap-break-word text-sm"
                 data-qa="chat-message"

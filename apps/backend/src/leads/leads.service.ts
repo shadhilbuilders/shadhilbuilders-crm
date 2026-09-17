@@ -51,6 +51,12 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
+// T-E2b follow-up fix (2026-09-17): lead creation must persist phoneE164 so
+// the WhatsApp inbound webhook's findUnique({ where: { phoneE164 } }) match can
+// route a converted number's new messages into its lead chat panel / Message
+// rows. Before this, converted leads had phoneE164 null/'' (phone-only), so
+// post-convert inbound never matched → the lead's chat stayed empty.
+import { toE164 } from '../whatsapp/whatsapp.client';
 
 import {
   canRoleOwnState,
@@ -871,6 +877,15 @@ export class LeadsService {
       data: {
         name: dto.name,
         phone: dto.phone,
+        // T-E2b follow-up fix (2026-09-17): persist the E.164-normalized
+        // phone on create. The WhatsApp inbound webhook looks up leads by
+        // phoneE164 (findUnique({ where: { phoneE164 } })) to route a known
+        // number's message into its Lead chat. Without this, a lead created
+        // from convert (which sends phone only) had phoneE164 null, so
+        // post-convert inbound never matched the lead and its chat stayed
+        // empty. toE164 mirrors the webhook's normalization (digits only,
+        // leading '+' stripped) so lookup and insert agree.
+        phoneE164: toE164(dto.phone),
         email:
           dto.email && dto.email.trim().length > 0 ? dto.email : null,
         source: dto.source,

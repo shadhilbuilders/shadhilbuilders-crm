@@ -1,13 +1,25 @@
 // Webhooks module - inbound from WhatsApp (Meta) and FreJun (telephony).
 //
-// T-WEBHOOK (2026-09-07): the POST /whatsapp handler is a 202-stub
-// per the demo-runbook priority order for cuts. The full WA
-// integration (signature verification, dedup, lead creation,
-// outbound reply) ships in Week 7 - see the TODO in
-// webhooks.controller.ts.
+// T-E2b: the POST /whatsapp handler processes inbound WhatsApp events
+// (status updates, text from known/unknown numbers, and MEDIA 2B inbound
+// image/video/audio/document). The controller injects WhatsAppClient (to
+// download inbound media) + StorageProvider (to persist it) and forwards to
+// the chat/leads paths.
 import { Module } from '@nestjs/common';
+
+import { WhatsAppClient } from '../whatsapp/whatsapp.client';
 
 import { WebhooksController } from './webhooks.controller';
 
-@Module({ controllers: [WebhooksController] })
+@Module({
+  controllers: [WebhooksController],
+  providers: [
+    // Construct once from env (same factory the WhatsappModule uses) so the
+    // webhook controller can download inbound media.
+    {
+      provide: WhatsAppClient,
+      useFactory: () => WhatsAppClient.fromEnv(),
+    },
+  ],
+})
 export class WebhooksModule {}

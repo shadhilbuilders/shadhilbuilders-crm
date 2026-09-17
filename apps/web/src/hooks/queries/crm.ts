@@ -495,13 +495,69 @@ export function useMessagesRealtime(leadId: string | null, kind: 'CUSTOMER' | 'I
   });
 }
 
+// ---------------------------------------------------------------------------
+// Media upload (MEDIA 2026-09-17): staff attaches a file in the chat composer.
+// The browser reads the File → base64 → POST /api/media → receives a storage
+// key. That key + mime + filename are then sent with the chat message.
+// ---------------------------------------------------------------------------
+
+/** Base64-encode a File for the JSON upload body (no data: prefix). */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      // Strip the `data:<mime>;base64,` prefix.
+      const comma = result.indexOf(',');
+      resolve(comma === -1 ? result : result.slice(comma + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** POST /api/media to upload a chat attachment; returns the storage key. */
+export async function uploadChatMedia(
+  file: File,
+): Promise<{ mediaKey: string; mediaMimeType: string; mediaFilename: string }> {
+  const base64 = await fileToBase64(file);
+  const res = await api<{ key: string }>('/media', {
+    method: 'POST',
+    json: { filename: file.name, mimeType: file.type || 'application/octet-stream', base64 },
+  });
+  return {
+    mediaKey: res.key,
+    mediaMimeType: file.type || 'application/octet-stream',
+    mediaFilename: file.name,
+  };
+}
+
 export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: string) =>
+    // MEDIA (2026-09-17): staff can attach a file. The browser uploads the
+    // file via POST /api/media (returns mediaKey) then sends mediaKey +
+    // mediaMimeType + mediaFilename here so the backend persists the Message
+    // row with a mediaUrl and enqueues a WhatsApp media outbound.
+    mutationFn: (input: {
+      body: string;
+      media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string };
+    }) =>
       api<unknown>('/chat/send', {
         method: 'POST',
-        json: { leadId, body, channel: 'IN_APP', kind } satisfies SendMessageDto,
+        json: {
+          leadId,
+          body: input.body,
+          channel: 'IN_APP',
+          kind,
+          ...(input.media !== undefined
+            ? {
+                mediaKey: input.media.mediaKey,
+                mediaMimeType: input.media.mediaMimeType,
+                mediaFilename: input.media.mediaFilename,
+              }
+            : {}),
+        } satisfies SendMessageDto,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });

@@ -32,6 +32,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -39,6 +40,9 @@ import { AlertsModule } from './alerts/alerts.module';
     PrismaModule,
     RedisModule,
     HealthModule,
+    // MEDIA (2026-09-17): chat attachments - local disk storage now,
+    // imagekit.io behind the same interface in prod.
+    StorageModule,
 
     // T-G4: enable @Cron decorators (reminder processor uses one).
     // forRoot() with no args = default config; the cron loop is

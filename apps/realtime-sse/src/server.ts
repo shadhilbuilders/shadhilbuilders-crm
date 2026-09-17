@@ -20,7 +20,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { prisma, type PrismaClient } from '@shadhil/database';
 
 import { config } from './config.js';
-import { auditFetcher, chatFetcher, notificationsFetcher } from './fetchers.js';
+import {
+  auditFetcher,
+  chatFetcher,
+  notificationsFetcher,
+  resolveUserContext,
+  type SseUser,
+} from './fetchers.js';
 import { metrics } from './metrics.js';
 import { consumeTicket, type SseFrame } from './stream.js';
 
@@ -71,8 +77,10 @@ async function handleStream(
   res: ServerResponse,
   opts: {
     channel: string;
-    fetcher: (prisma: PrismaClient, scope: string) => (lastSeenAt: Date) => Promise<SseFrame[]>;
-    scopeFromConsumed: (consumed: { userId: string }) => string;
+    // Builder: given the resolved RLS user + an optional lead scope,
+    // return the fetcher. The user is resolved once per connection (the
+    // ticket binds a user); leadId is only set for the chat channel.
+    fetcher: (user: SseUser, leadId: string | undefined) => (lastSeenAt: Date) => Promise<SseFrame[]>;
     anchorModel: 'Notification' | 'AuditLog' | 'Message';
     anchorExtraWhere?: (req: IncomingMessage) => { leadId: string } | undefined;
   },
@@ -91,11 +99,17 @@ async function handleStream(
     res.end(JSON.stringify({ statusCode: 403, message: errMsg(err) }));
     return;
   }
-  const scope = opts.scopeFromConsumed(consumed);
-  const lastEventId = readQueryString(req, 'lastEventId');
+  // T-E2-REALTIME-RLS (2026-09-17): resolve the ticket subject's RLS context
+  // (role + org) NOW. The fetchers run inside withRlsContext so their
+  // Message / Notification / AuditLog reads honor the exact policies the
+  // REST layer applies - without this, the bare prisma client is RLS-filtered
+  // to zero rows and the stream never emits a frame (the live-chat bug).
+  const user = await resolveUserContext(prisma, consumed.userId);
   const extra = opts.anchorExtraWhere?.(req);
+  const leadId = extra?.leadId;
+  const lastEventId = readQueryString(req, 'lastEventId');
   const anchor = await anchorFor(opts.anchorModel, lastEventId, extra);
-  const fetcher = opts.fetcher(prisma, scope);
+  const fetcher = opts.fetcher(user, leadId);
 
   // T-PERF-2 #4: track active connections via a gauge. Increment on
   // stream open, decrement on close. The gauge value is the live count of
@@ -226,8 +240,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && path === '/api/sse/notifications') {
     await handleStream(req, res, {
       channel: 'notifications',
-      fetcher: (p, userId) => notificationsFetcher(p, userId),
-      scopeFromConsumed: (c) => c.userId,
+      fetcher: (user) => notificationsFetcher(prisma, user),
       anchorModel: 'Notification',
     });
     return;
@@ -236,8 +249,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && path === '/api/sse/audit') {
     await handleStream(req, res, {
       channel: 'audit',
-      fetcher: (p, userId) => auditFetcher(p, userId),
-      scopeFromConsumed: (c) => c.userId,
+      fetcher: (user) => auditFetcher(prisma, user),
       anchorModel: 'AuditLog',
     });
     return;
@@ -252,8 +264,7 @@ const server = createServer(async (req, res) => {
     }
     await handleStream(req, res, {
       channel: `chat:${leadId}`,
-      fetcher: (p, l) => chatFetcher(p, l),
-      scopeFromConsumed: () => '',
+      fetcher: (user) => chatFetcher(prisma, user, leadId),
       anchorModel: 'Message',
       anchorExtraWhere: () => ({ leadId }),
     });
