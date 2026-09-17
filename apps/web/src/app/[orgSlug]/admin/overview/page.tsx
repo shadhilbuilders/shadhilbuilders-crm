@@ -1,43 +1,41 @@
 'use client';
 
-// Admin/owner command center (dashboard split, 2026-09-08; real-data wiring
-// autoplan 2026-09-08).
+// Admin/owner command center - DAILY PROBLEM INBOX (2026-09-17). Supersedes
+// the KPI + charts overview per the owner's correction: "I don't want existing
+// cards and charts, i want something new ... to find out problems and resolve
+// issues, when leads is not calling so long time and so on."
 //
-// Cross-project overview at the top-level /overview. Because this route
-// carries NO project segment, the overview stats run unscoped and return data
-// across ALL projects (verified: RLS policies lead_select_admin,
-// site_visit_select_team admin branch, and auditlog_select_admin_or_owner have
-// no project filter - an unscoped admin query returns all projects).
+// THE JOB: one daily screen that says "these are the problems, in order, here
+// is the fix" across every project and team. Charts are gone. Instead this
+// renders four "problem class" cards, each from GET /api/dashboard/exceptions:
+//   1. Leads not called   (the flagship: real idle leads, sorted oldest first)
+//   2. Visits at risk     (open visits whose slot is today or past)
+//   3. Booking money not moving  (token paid awaiting approval, or no token)
+//   4. Team / exec health (staff gone quiet, or overloaded)
 //
-// Real-data wiring (autoplan 2026-09-08): the placeholder KPIs are replaced
-// with REAL numbers from GET /api/dashboard/overview (one role-scoped
-// aggregate query, ADMIN/OWNER only). The endpoint enforces the role guard
-// server-side (403 for staff).
+// Each row carries a projectId; the page resolves it → slug via the useProjects()
+// registry so deep-links work cross-project. Every number is server-computed; an
+// empty card means "all clear", which is a real signal, not a broken counter.
 //
-// LOW-1: the isAdminLike guard below is a UX mirror, NOT a security boundary.
-// The real data boundary is RLS + the service guard. Do not "harden" this
-// guard by removing RLS reliance - the server is the wall.
+// ADMIN/OWNER only - the route's commandCenterRedirectTarget already sends
+// non-admins to their project dashboard, and the API enforces the guard.
+//
+// LOW-1: the redirect below is a UX mirror, NOT a security boundary. The real
+// data boundary is RLS + the service guard. Do not "harden" this by removing
+// RLS reliance - the server is the wall.
 
-import { Heading, TypographyP } from '@paalstack/react-ui';
+import { Badge, Button, Heading, TypographyP } from '@paalstack/react-ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { ChartCard } from '@/components/shared/ChartCard';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { canViewAudit, useSessionUser } from '@/lib/session';
-import type { Role } from '@/apis/client';
-import { useVisits } from '@/hooks/queries/crm';
-import { useDashboardOverview } from '@/hooks/queries/dashboard';
-import { PipelineFunnelChart } from '@/components/charts/PipelineFunnelChart';
-import { VisitsThisWeekChart } from '@/components/charts/VisitsThisWeekChart';
-import { OverviewAuditAreaChart } from '@/components/charts/OverviewAuditAreaChart';
-import { OverviewSectionCards } from '@/components/dashboard/overview-section-cards';
-import { pickDefaultProject, useProjects } from '@/hooks/queries';
-import { projectHref } from '@/lib/nav';
+import { useDashboardExceptions } from '@/hooks/queries/dashboard';
+import { useProjects } from '@/hooks/queries';
+import { orgHref, projectHref } from '@/lib/nav';
+import { useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { commandCenterRedirectTarget } from '@/lib/dashboard-redirect';
-import { SectionCard } from '@/components/dashboard/dashboard-shared';
 
 export default function AdminDashboardPage() {
   const orgSlug = useOrgSlug();
@@ -79,16 +77,7 @@ export default function AdminDashboardPage() {
   if (redirectTarget !== null) {
     return <RedirectToProject href={redirectTarget} />;
   }
-  // Pass the REAL role (OWNER travels as admin-class) into the visibility
-  // checks - never hardcode 'ADMIN' (design M4).
-  const defaultProject = pickDefaultProject(projects ?? []);
-  return (
-    <AdminDashboard
-      orgSlug={orgSlug}
-      role={user.role}
-      defaultProjectSlug={defaultProject?.slug ?? null}
-    />
-  );
+  return <ProblemInbox />;
 }
 
 /** Redirect a non-admin away from /overview. */
@@ -101,92 +90,294 @@ function RedirectToProject({ href }: { href: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin command center (Wireframes #3) - cross-project KPIs + pipeline + visits
+// The problem inbox - one page, four problem cards, count-as-filter, rows link
+// to the fix. (2026-09-17, supersedes the KPI/charts command center.)
 // ---------------------------------------------------------------------------
 
-function AdminDashboard({
-  orgSlug,
-  role,
-  defaultProjectSlug,
-}: {
-  orgSlug: string | null;
-  role: Role;
-  defaultProjectSlug: string | null;
-}) {
-  const overviewQuery = useDashboardOverview();
-  const visitsQuery = useVisits({ limit: 200 });
-  const auditVisible = canViewAudit(role);
-  const overview = overviewQuery.data;
-  const overviewLoading = overviewQuery.isLoading;
-  const overviewError = overviewQuery.error;
+function ProblemInbox() {
+  const orgSlug = useOrgSlug();
+  const exceptionsQuery = useDashboardExceptions();
+  const { data: projects } = useProjects();
 
-  return (
-    <div className="space-y-8">
-      <div>
-        {/* H2 naming fix: "Overview" matches the nav label - one name. */}
-        <Heading className="mb-1">Overview</Heading>
-        <TypographyP className="text-muted-foreground text-sm">
-          All teams, all activity.
-        </TypographyP>
-      </div>
+  // Cross-project deep-links: projectId → { slug, name } from the registry.
+  const projectsById = useMemo(() => {
+    const map = new Map<string, { slug: string; name: string }>();
+    for (const p of projects ?? []) map.set(p.id, { slug: p.slug, name: p.name });
+    return map;
+  }, [projects]);
 
-      {overviewLoading ? (
-        <Skeleton variant="overview" aria-label="Loading overview KPIs" />
-      ) : overview ? (
-        <OverviewSectionCards overview={overview} />
-      ) : null}
+  const exceptions = exceptionsQuery.data;
 
-      {overviewError !== null && overviewError !== undefined ? (
+  if (exceptionsQuery.isLoading) {
+    return <Skeleton variant="overview" aria-label="Loading the problem inbox" />;
+  }
+
+  const err = exceptionsQuery.error;
+  if (err !== null && err !== undefined) {
+    return (
+      <div className="space-y-6">
+        <ProblemHeader />
         <div
           role="alert"
           className="border-destructive/50 bg-destructive/5 text-destructive rounded-lg border p-4 text-sm"
         >
-          <p className="font-semibold">Overview data unavailable</p>
+          <p className="font-semibold">Could not load the problem inbox</p>
           <p className="mt-1 opacity-90">
-            {overviewError instanceof Error
-              ? overviewError.message
-              : 'Could not load the overview. Please try again.'}
+            {err instanceof Error ? err.message : 'Please try again.'}
           </p>
         </div>
-      ) : null}
+      </div>
+    );
+  }
 
-      {/* CEO C2 fix: "See all" resolves against the default project so it
-          links to a real /{projectId}/leads route. Drop the link if no
-          default project exists. */}
-      <SectionCard
-        title="Cross-team pipeline"
-        moreHref={defaultProjectSlug !== null ? projectHref(orgSlug, defaultProjectSlug, '/leads') : undefined}
+  const idleLeads = exceptions?.idleLeads ?? [];
+  const visitRisk = exceptions?.visitRisk ?? [];
+  const bookingMoney = exceptions?.bookingMoney ?? [];
+  const teamHealth = exceptions?.teamHealth ?? [];
+
+  const projectLabel = (projectId: string): string =>
+    projectsById.get(projectId)?.name ?? 'Unknown project';
+
+  return (
+    <div className="space-y-8">
+      <ProblemHeader />
+
+      {/* Card 1 - the flagship: leads that have been sitting too long. */}
+      <ProblemCard
+        title="Leads not called"
+        count={idleLeads.length}
+        empty="All active leads were touched in the last day. All clear."
+        sub="oldest idle first"
       >
-        <ChartCard
-          title="Lead pipeline (all teams)"
-          description="Cross-team distribution of leads by status."
-          query={overviewQuery}
-        >
-          {(data) => <PipelineFunnelChart data={data.pipeline} />}
-        </ChartCard>
-      </SectionCard>
+        <ul role="list" className="divide-border divide-y">
+          {idleLeads.slice(0, 10).map((lead) => {
+            const href = leadHref(orgSlug, lead.projectId, lead.id, projectsById);
+            return (
+              <li
+                key={lead.id}
+                className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{lead.name}</span>
+                  <span className="text-muted-foreground mt-0.5 block text-sm truncate">
+                    {projectLabel(lead.projectId)}
+                    {lead.ownerName ? ` · ${lead.ownerName}` : ''}
+                  </span>
+                </span>
+                <span className="flex items-center justify-between gap-3 sm:justify-start">
+                  <span className="text-muted-foreground text-sm tabular-nums">
+                    idle {lead.idleDays}d
+                  </span>
+                  {href !== null ? (
+                    <Button
+                      as={Link}
+                      variant="link"
+                      size="sm"
+                      href={href}
+                      className="text-link p-2.5 sm:p-0"
+                    >
+                      Open
+                    </Button>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </ProblemCard>
 
-      <SectionCard
-        title="Visits this week"
-        moreHref={defaultProjectSlug !== null ? projectHref(orgSlug, defaultProjectSlug, '/visits') : undefined}
+      {/* Card 2 - visits that slipped. */}
+      <ProblemCard
+        title="Visits at risk"
+        count={visitRisk.length}
+        empty="No open visits have past their slot today. All clear."
+        sub="overdue first"
       >
-        <ChartCard
-          title="Visits this week"
-          description="Site visits across all teams, per day."
-          query={visitsQuery}
-        >
-          {(data) => <VisitsThisWeekChart data={data} />}
-        </ChartCard>
-      </SectionCard>
+        <ul role="list" className="divide-border divide-y">
+          {visitRisk.slice(0, 10).map((visit) => {
+            const href = leadHref(orgSlug, visit.projectId, visit.leadId, projectsById);
+            return (
+              <li
+                key={visit.id}
+                className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{visit.leadName}</span>
+                  <span className="text-muted-foreground mt-0.5 block text-sm truncate">
+                    {projectLabel(visit.projectId)}
+                    {visit.userName ? ` · ${visit.userName}` : ' · no exec assigned'}
+                  </span>
+                </span>
+                <span className="flex items-center justify-between gap-3 sm:justify-start">
+                  <span className="text-muted-foreground text-sm">
+                    {visit.reason === 'overdue-past-due' ? 'past due' : 'scheduled today'}
+                  </span>
+                  {href !== null ? (
+                    <Button
+                      as={Link}
+                      variant="link"
+                      size="sm"
+                      href={href}
+                      className="text-link p-2.5 sm:p-0"
+                    >
+                      Open
+                    </Button>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </ProblemCard>
 
-      {auditVisible ? (
-        <SectionCard
-          title="Audit activity"
-          moreHref={orgSlug ? `/${orgSlug}/admin/audit` : '/admin/audit'}
-        >
-          <OverviewAuditAreaChart data={overviewQuery.data?.auditTimeline} />
-        </SectionCard>
-      ) : null}
+      {/* Card 3 - money not moving. */}
+      <ProblemCard
+        title="Booking money"
+        count={bookingMoney.length}
+        empty="No booking is held on money. All clear."
+        sub="oldest stuck first"
+      >
+        <ul role="list" className="divide-border divide-y">
+          {bookingMoney.slice(0, 10).map((booking) => {
+            const proj = projectsById.get(booking.projectId);
+            const href = proj
+              ? projectHref(orgSlug, proj.slug, `/bookings/${booking.id}`)
+              : null;
+            return (
+            <li
+              key={booking.id}
+              className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">{booking.leadName}</span>
+                <span className="text-muted-foreground mt-0.5 block text-sm truncate">
+                  {booking.unitNumber ? `Unit ${booking.unitNumber} · ` : ''}
+                  {projectLabel(booking.projectId)}
+                </span>
+              </span>
+              <span className="flex items-center justify-between gap-3 sm:justify-start">
+                {booking.reason === 'token-paid-awaiting-approval' ? (
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="success" data-qa={`booking-token-paid-${booking.id}`}>
+                      Token paid
+                    </Badge>
+                    <Badge variant="warning" data-qa={`booking-approval-due-${booking.id}`}>
+                      {booking.stuckDays}d to approve
+                    </Badge>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground text-sm">
+                    {booking.stuckDays}d no token
+                  </span>
+                )}
+                {href !== null ? (
+                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2.5 sm:p-0">
+                    Approve
+                  </Button>
+                ) : null}
+              </span>
+            </li>
+            );
+          })}
+        </ul>
+      </ProblemCard>
+
+      {/* Card 4 - the systemic one: staff went quiet or are overloaded. */}
+      <ProblemCard
+        title="Team / exec health"
+        count={teamHealth.length}
+        empty="Every staff member touched a lead in the last day. All clear."
+        sub="quiet staff first"
+      >
+        <ul role="list" className="divide-border divide-y">
+          {teamHealth.slice(0, 10).map((member) => {
+            const href = member.userId
+              ? orgHref(orgSlug, `/admin/users/${member.userId}`)
+              : null;
+            return (
+            <li
+              key={member.userId}
+              className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">{member.userName}</span>
+                <span className="text-muted-foreground mt-0.5 block text-sm">
+                  {member.role.toLowerCase().replace('_', ' ')}
+                </span>
+              </span>
+              <span className="flex items-center justify-between gap-3 sm:justify-start">
+                <span className="text-muted-foreground text-sm">
+                  {member.kind === 'quiet'
+                    ? `quiet ${member.quietDays}d · ${member.activeLeadCount} leads`
+                    : `overloaded · ${member.activeLeadCount} active leads`}
+                </span>
+                {href !== null ? (
+                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2.5 sm:p-0">
+                    Review
+                  </Button>
+                ) : null}
+              </span>
+            </li>
+            );
+          })}
+        </ul>
+      </ProblemCard>
     </div>
+  );
+}
+
+function ProblemHeader() {
+  return (
+    <div>
+      {/* H2 naming fix: "Overview" matches the nav label - one name. */}
+      <Heading className="mb-1">Overview</Heading>
+      <TypographyP className="text-muted-foreground text-sm">
+        The problems that need a decision today, across every team and project.
+      </TypographyP>
+    </div>
+  );
+}
+
+/** Deep-link a row to its own project's lead page; null if that project is unresolved. */
+function leadHref(
+  orgSlug: string | null,
+  projectId: string,
+  leadId: string,
+  projectsById: Map<string, { slug: string; name: string }>,
+): string | null {
+  const proj = projectsById.get(projectId);
+  if (!proj) return null;
+  return projectHref(orgSlug, proj.slug, `/leads/${leadId}`);
+}
+
+function ProblemCard({
+  title,
+  count,
+  empty,
+  sub,
+  children,
+}: {
+  title: string;
+  count: number;
+  empty: string;
+  sub: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="min-w-0">
+      <div className="mb-2 flex items-center justify-between sm:mb-3">
+        <h2 className="text-sm font-semibold tracking-wide uppercase">{title}</h2>
+        <span className="text-muted-foreground text-sm tabular-nums">
+          {count} {count === 1 ? 'problem' : 'problems'} · {sub}
+        </span>
+      </div>
+      <div className="border-border rounded-lg border p-3 sm:p-4">
+        {count === 0 ? (
+          <p className="text-muted-foreground text-sm">{empty}</p>
+        ) : (
+          children
+        )}
+      </div>
+    </section>
   );
 }

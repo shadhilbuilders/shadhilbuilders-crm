@@ -13,6 +13,7 @@ import { BadRequestException, Controller, Get, Inject, Query, Req } from '@nestj
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   DashboardStatsQuerySchema,
+  type DashboardExceptions,
   type DashboardOverviewStats,
   type DashboardStats,
   type DashboardStatsQuery,
@@ -62,5 +63,14 @@ export class DashboardController {
   })
   async overview(@Req() req: AuthedRequest): Promise<DashboardOverviewStats> {
     return this.dashboard.getOverviewStats(req.user!);
+  }
+
+  @Get('exceptions')
+  @ApiOperation({
+    summary:
+      'Cross-project problem inbox (daily ops surface). ADMIN/OWNER only. Returns four exception arrays: idle/not-touched leads, at-risk visits, bookings whose money is not moving, and staff who have gone quiet or are overloaded. Each row carries a projectId for deep-linking.',
+  })
+  async exceptions(@Req() req: AuthedRequest): Promise<DashboardExceptions> {
+    return this.dashboard.getExceptions(req.user!);
   }
 }

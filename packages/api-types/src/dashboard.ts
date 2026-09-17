@@ -138,3 +138,89 @@ export const DashboardOverviewStatsSchema = z.object({
   auditTimeline: z.array(AuditTimelineBucketSchema),
 });
 export type DashboardOverviewStats = z.infer<typeof DashboardOverviewStatsSchema>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /api/dashboard/exceptions - the admin/owner problem inbox (2026-09-17).
+// Cross-project (no projectId filter), ADMIN/OWNER only (service guard,
+// mirrors getOverviewStats). Renders the /overview problem-and-resolution
+// surface: one array per problem class, each row a specific issue. Rows carry
+// `projectId` so the cross-project page can deep-link via the useProjects()
+// registry. Every number is real - "last touched" is Lead.updatedAt (Prisma
+// @updatedAt bumps on each state transition). No fabricated values.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** A lead sitting without a touch, sorted oldest first. */
+export const IdleLeadExceptionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  phone: z.string(),
+  status: z.string(),
+  ownerId: z.string(),
+  ownerName: z.string().nullable(),
+  projectId: z.string(),
+  /** Lead.updatedAt - the maintained "last touched" timestamp. */
+  lastTouchedAt: z.string(),
+  /** Whole days since lastTouchedAt (0 = touched today). */
+  idleDays: z.number().int().min(0),
+  /** Bucket label for grouping/filtering. */
+  bucket: z.enum(['overdue', 'idle-1-3', 'idle-4-7', 'idle-8-14', 'idle-15-30', 'idle-30-plus']),
+});
+export type IdleLeadException = z.infer<typeof IdleLeadExceptionSchema>;
+
+/** A visit that has slipped - scheduled for today or earlier, outcome not logged. */
+export const VisitRiskExceptionSchema = z.object({
+  id: z.string(),
+  leadId: z.string(),
+  leadName: z.string(),
+  projectId: z.string(),
+  scheduledFor: z.string(),
+  status: z.string(),
+  userName: z.string().nullable(),
+  /** Why this visit needs attention. */
+  reason: z.enum(['overdue-past-due', 'scheduled-today']),
+});
+export type VisitRiskException = z.infer<typeof VisitRiskExceptionSchema>;
+
+/** A booking whose money is not moving - token paid but approval held, or nothing paid. */
+export const BookingMoneyExceptionSchema = z.object({
+  id: z.string(),
+  leadName: z.string(),
+  unitNumber: z.string().nullable(),
+  projectId: z.string(),
+  amount: z.string(),
+  tokenAmount: z.string().nullable(),
+  status: z.string(),
+  /** Days since the booking was created. */
+  ageDays: z.number().int().min(0),
+  /** Whether it is waiting on a manager (token paid) or the customer (no token). */
+  reason: z.enum(['token-paid-awaiting-approval', 'hold-no-token']),
+  /** Days the approval or the token has been outstanding (0 if not yet). */
+  stuckDays: z.number().int().min(0),
+});
+export type BookingMoneyException = z.infer<typeof BookingMoneyExceptionSchema>;
+
+/** A staff member whose own leads have all gone quiet, or who is overloaded. */
+export const TeamHealthExceptionSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  role: z.string(),
+  /** Quiet: newest touch across their active leads. Overloaded: leads assigned but untouched. */
+  kind: z.enum(['quiet', 'overloaded']),
+  /** Days since their most recently touched active lead (0 if touched today). */
+  quietDays: z.number().int().min(0),
+  /** Active leads they own (non-terminal). */
+  activeLeadCount: z.number().int().min(0),
+});
+export type TeamHealthException = z.infer<typeof TeamHealthExceptionSchema>;
+
+/**
+ * Full exceptions payload. One array per problem class; empty array = no
+ * problem of that class today (a real "all clear", not a failed load).
+ */
+export const DashboardExceptionsSchema = z.object({
+  idleLeads: z.array(IdleLeadExceptionSchema),
+  visitRisk: z.array(VisitRiskExceptionSchema),
+  bookingMoney: z.array(BookingMoneyExceptionSchema),
+  teamHealth: z.array(TeamHealthExceptionSchema),
+});
+export type DashboardExceptions = z.infer<typeof DashboardExceptionsSchema>;

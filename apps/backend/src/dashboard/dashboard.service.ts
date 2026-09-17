@@ -22,9 +22,14 @@ import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient, type Role } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
+  BookingMoneyException,
+  DashboardExceptions,
   DashboardOverviewStats,
   DashboardStats,
   DashboardStatsQuery,
+  IdleLeadException,
+  TeamHealthException,
+  VisitRiskException,
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -461,6 +466,192 @@ export class DashboardService {
             90,
           ),
         };
+      },
+    );
+  }
+
+  /**
+   * GET /api/dashboard/exceptions - the admin/owner problem inbox (2026-09-17).
+   *
+   * ADMIN/OWNER only (service guard, mirrors getOverviewStats). Cross-project:
+   * no project filter, so every problem spans all teams (RLS allows admin
+   * cross-tenant reads). Returns four arrays - one per problem class - each row
+   * a specific issue with a deep-linkable `projectId`.
+   *
+   * DATA SOURCE (honest, verified not assumed): "last touched" is Lead.updatedAt
+   * (Prisma @updatedAt bumps on every state transition). The Activity table is
+   * populated by NO production code today (only tests write rows), so a true
+   * "last CALL" cannot be derived; updatedAt is the maintained signal. If a
+   * real activity writer ships later, this query can switch to it.
+   *
+   * Buckets for idle leads (owner ruling 2026-09-17): the 30-minute SLA-overdue
+   * NEW bucket is separate ("overdue"); otherwise a lead is idle after 1 day
+   * of no touch, escalating 1-3 / 4-7 / 8-14 / 15-30 / 30+ days. Out-of-any
+   * consideration are terminal states (WON/LOST/COLD) - those are archive, not
+   * forgotten work.
+   */
+  async getExceptions(actor: JwtPayload): Promise<DashboardExceptions> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'Only ADMIN or OWNER can view cross-project exceptions.',
+      );
+    }
+    return withRlsContext(
+      this.client,
+      rlsContextFrom(actor),
+      async (tx) => {
+        const txClient = tx as unknown as PrismaClient;
+        const now = new Date();
+        const oneDayMs = 86_400_000;
+        const nowDaysAge = (iso: string): number =>
+          Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / oneDayMs));
+
+        // ---- 1. Idle leads: active states, last touch older than 1 day. ----
+        const idleRaw = await txClient.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+          SELECT l."id", l."name", l."phone", l."state", l."ownerId", l."projectId",
+            l."updatedAt",
+            (SELECT u."name" FROM "User" u WHERE u."id" = l."ownerId") AS "ownerName"
+          FROM "Lead" l
+          WHERE l."state" NOT IN ('WON', 'LOST', 'COLD')
+            AND l."updatedAt" <= now() - interval '1 day'
+          ORDER BY l."updatedAt" ASC
+          LIMIT 100
+        `);
+        const idleLeads: IdleLeadException[] = idleRaw.map((r) => {
+          const touchedAt = (r.updatedAt as Date).toISOString();
+          const dirty = nowDaysAge(touchedAt);
+          // The 30-minute SLA bucket is separate from idle (owner ruling):
+          // NEW created >30m ago is "overdue first touch", not merely idle.
+          const bucket =
+            r.state === 'NEW' &&
+            (now.getTime() - new Date(touchedAt).getTime()) > 30 * 60_000
+              ? 'overdue'
+              : dirty <= 3
+                ? 'idle-1-3'
+                : dirty <= 7
+                  ? 'idle-4-7'
+                  : dirty <= 14
+                    ? 'idle-8-14'
+                    : dirty <= 30
+                      ? 'idle-15-30'
+                      : 'idle-30-plus';
+          return {
+            id: r.id as string,
+            name: r.name as string,
+            phone: r.phone as string,
+            status: r.state as string,
+            ownerId: r.ownerId as string,
+            ownerName: (r.ownerName as string | null) ?? null,
+            projectId: r.projectId as string,
+            lastTouchedAt: touchedAt,
+            idleDays: dirty,
+            bucket,
+          };
+        });
+
+        // ---- 2. Visit risk: visits still open whose slot is today or past. ----
+        const visitRows = await txClient.siteVisit.findMany({
+          where: {
+            status: { in: ['SCHEDULED', 'RESCHEDULED'] },
+            scheduledFor: { lte: now },
+          },
+          orderBy: { scheduledFor: 'asc' },
+          take: 50,
+          select: {
+            id: true,
+            leadId: true,
+            scheduledFor: true,
+            status: true,
+            lead: { select: { name: true, projectId: true } },
+            user: { select: { name: true } },
+          },
+        });
+        const startOfToday = new Date(now);
+        startOfToday.setHours(0, 0, 0, 0);
+        const visitRisk: VisitRiskException[] = visitRows.map((v) => ({
+          id: v.id,
+          leadId: v.leadId,
+          leadName: v.lead.name,
+          projectId: v.lead.projectId,
+          scheduledFor: v.scheduledFor.toISOString(),
+          status: v.status,
+          userName: v.user.name ?? null,
+          reason: v.scheduledFor.getTime() < startOfToday.getTime() ? 'overdue-past-due' : 'scheduled-today',
+        }));
+
+        // ---- 3. Booking money not moving: TOKEN awaiting approval, or HOLD with no token. ----
+        const bookingRows = await txClient.booking.findMany({
+          where: { status: { in: ['TOKEN', 'HOLD'] } },
+          orderBy: { createdAt: 'asc' },
+          take: 50,
+          select: {
+            id: true,
+            amount: true,
+            tokenAmount: true,
+            status: true,
+            createdAt: true,
+            lead: { select: { name: true, projectId: true } },
+            unit: { select: { unitNumber: true } },
+          },
+        });
+        const bookingMoney: BookingMoneyException[] = bookingRows.map((b) => {
+          const tokenPaid =
+            b.tokenAmount !== null && Number(b.tokenAmount) > 0;
+          const ageDays = nowDaysAge(b.createdAt.toISOString());
+          return {
+            id: b.id,
+            leadName: b.lead.name,
+            unitNumber: b.unit.unitNumber ?? null,
+            projectId: b.lead.projectId,
+            amount: b.amount.toString(),
+            tokenAmount: b.tokenAmount === null ? null : b.tokenAmount.toString(),
+            status: b.status,
+            ageDays,
+            // TOKEN = the customer already paid, now it is the manager dragging;
+            // HOLD-with-no-token = the money is still with the customer.
+            reason: tokenPaid ? 'token-paid-awaiting-approval' : 'hold-no-token',
+            stuckDays: ageDays,
+          };
+        });
+
+        // ---- 4. Team health: staff whose own active leads have all gone quiet,
+        // or who are carrying a large untouched backlog (systemic, not personal). ----
+        const OVERLOAD_ACTIVE_THRESHOLD = 10; // named constant, owner-tunable
+        const teamRaw = await txClient.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+          SELECT l."ownerId" AS "userId", u."name" AS "userName", u."role",
+            COUNT(*) AS "activeLeadCount",
+            MAX(l."updatedAt") AS "maxTouch"
+          FROM "Lead" l
+          JOIN "User" u ON u."id" = l."ownerId"
+          WHERE l."state" NOT IN ('WON', 'LOST', 'COLD')
+            AND u."role" IN ('TELECALLER', 'SALES_EXEC')
+          GROUP BY l."ownerId", u."name", u."role"
+        `);
+        const teamHealth: TeamHealthException[] = teamRaw
+          .map((r) => {
+            const maxTouch = (r.maxTouch as Date | null)?.toISOString() ?? null;
+            const activeLeadCount = Number(r.activeLeadCount ?? 0);
+            const quietDays = maxTouch === null ? 0 : nowDaysAge(maxTouch);
+            const kind =
+              quietDays >= 1
+                ? 'quiet'
+                : activeLeadCount > OVERLOAD_ACTIVE_THRESHOLD
+                  ? 'overloaded'
+                  : null;
+            if (kind === null) return null;
+            return {
+              userId: r.userId as string,
+              userName: r.userName as string,
+              role: r.role as string,
+              kind,
+              quietDays,
+              activeLeadCount,
+            };
+          })
+          .filter((row): row is TeamHealthException => row !== null)
+          .sort((a, b) => (a.kind === 'quiet' ? 1 : 0) - (b.kind === 'quiet' ? 1 : 0));
+
+        return { idleLeads, visitRisk, bookingMoney, teamHealth };
       },
     );
   }

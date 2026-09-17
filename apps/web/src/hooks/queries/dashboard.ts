@@ -11,7 +11,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
-import type { DashboardOverviewStats, DashboardStats } from '@shadhil/api-types';
+import type {
+  DashboardExceptions,
+  DashboardOverviewStats,
+  DashboardStats,
+} from '@shadhil/api-types';
 
 export function useDashboardStats(projectId?: string) {
   return useQuery({
@@ -34,6 +38,23 @@ export function useDashboardOverview() {
     queryKey: ['dashboard-overview'] as const,
     queryFn: ({ signal }) =>
       api<DashboardOverviewStats>('/dashboard/overview', { signal }),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Cross-project problem inbox (admin/owner). GET /api/dashboard/exceptions
+ * returns four exception arrays - idle/not-touched leads, at-risk visits,
+ * bookings whose money is not moving, and staff who have gone quiet or are
+ * overloaded. ADMIN/OWNER only (service guard). Powers the /overview problem-
+ * and-resolution surface.
+ */
+export function useDashboardExceptions() {
+  return useQuery({
+    queryKey: ['dashboard-exceptions'] as const,
+    queryFn: ({ signal }) =>
+      api<DashboardExceptions>('/dashboard/exceptions', { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
