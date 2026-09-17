@@ -14,29 +14,23 @@
 // linked team; otherwise everything starts collapsed.
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AccordionContent,
+  AccordionItem,
+  AccordionRoot,
+  AccordionTrigger,
   AlertDialog,
   Badge,
   Button,
   Combobox,
-  CollapsibleContent,
-  CollapsibleRoot,
-  CollapsibleTrigger,
   Dialog,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRoot,
   DropdownMenuTrigger,
-  Item,
-  ItemGroup,
   toast,
   TypographyP,
 } from '@paalstack/react-ui';
-import {
-  LuChevronDown,
-  LuChevronRight,
-  LuEllipsis,
-  LuPlus,
-} from '@paalstack/react-icons/lu';
+import { LuEllipsis, LuPlus } from '@paalstack/react-icons/lu';
 
 import { ApiError } from '@/apis/client';
 import { useTeams } from '@/hooks/queries/teams';
@@ -50,6 +44,7 @@ import {
 import { labelFor } from '@/lib/labels';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
+import Link from 'next/link';
 
 export function ProjectTeamList({
   projectId,
@@ -135,22 +130,51 @@ export function ProjectTeamList({
           )}
         </div>
       ) : (
-        <ItemGroup className="gap-2">
+        <AccordionRoot<string>
+          multiple
+          value={expandedTeamId === null ? [] : [expandedTeamId]}
+          onValueChange={(next) => {
+            setExpandedTeamId(next.length > 0 ? next[0]! : null);
+          }}
+          className="space-y-4"
+        >
           {teams.map((row) => (
-            <ProjectTeamRowItem
+            <AccordionItem
               key={row.teamId}
-              projectId={projectId}
-              projectName={projectName}
-              projectSlug={projectSlug}
-              row={row}
-              canManage={canManage}
-              expanded={expandedTeamId === row.teamId}
-              onToggle={() =>
-                setExpandedTeamId((current) => (current === row.teamId ? null : row.teamId))
-              }
-            />
+              value={row.teamId}
+              className="rounded-lg border"
+            >
+              <div className="flex items-center justify-between gap-2 pl-3 pr-2 [&>h3]:flex-1 hover:bg-muted">
+                <AccordionTrigger
+                  className="min-w-0 flex-1 px-3 py-2.5 **:data-[slot=accordion-trigger-icon]:hidden **:data-[slot=accordion-trigger-icon-up]:hidden"
+                  data-qa={`project-team-toggle-${row.teamId}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">
+                      {row.teamName}
+                    </span>
+                    <span className="text-muted-foreground block truncate text-xs font-normal">
+                      {row.manager?.name ?? 'No manager'} · {row.memberCount}{' '}
+                      member{row.memberCount === 1 ? '' : 's'} ·{' '}
+                      {row.leadCount} lead{row.leadCount === 1 ? '' : 's'}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                {canManage ? (
+                  <TeamRowActions
+                    projectId={projectId}
+                    projectName={projectName}
+                    projectSlug={projectSlug}
+                    row={row}
+                  />
+                ) : null}
+              </div>
+              <AccordionContent className="pt-2 pb-3">
+                <MemberRoster members={row.members} />
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </ItemGroup>
+        </AccordionRoot>
       )}
 
       <LinkTeamDialog
@@ -176,69 +200,6 @@ function TeamListSkeleton() {
   );
 }
 
-function ProjectTeamRowItem({
-  projectId,
-  projectName,
-  projectSlug,
-  row,
-  canManage,
-  expanded,
-  onToggle,
-}: {
-  projectId: string;
-  projectName: string;
-  projectSlug: string;
-  row: ProjectTeamRow;
-  canManage: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <CollapsibleRoot open={expanded} onOpenChange={onToggle}>
-      <Item
-        variant="outline"
-        size="sm"
-        title={
-          <CollapsibleTrigger
-            render={
-              <button
-                type="button"
-                className="flex min-w-0 items-center gap-1.5 text-left"
-                aria-expanded={expanded}
-                data-qa={`project-team-toggle-${row.teamId}`}
-              >
-                {expanded ? (
-                  <LuChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <LuChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate font-medium">{row.teamName}</span>
-              </button>
-            }
-          />
-        }
-        description={
-          `${row.manager?.name ?? 'No manager'} · ${row.memberCount} member${row.memberCount === 1 ? '' : 's'} · ` +
-          `${row.leadCount} lead${row.leadCount === 1 ? '' : 's'}`
-        }
-        actions={
-          canManage ? (
-            <TeamRowActions
-              projectId={projectId}
-              projectName={projectName}
-              projectSlug={projectSlug}
-              row={row}
-            />
-          ) : null
-        }
-      />
-      <CollapsibleContent className="px-1 pt-1 pb-2">
-        <MemberRoster members={row.members} />
-      </CollapsibleContent>
-    </CollapsibleRoot>
-  );
-}
-
 function MemberRoster({ members }: { members: TeamMembership[] }) {
   if (members.length === 0) {
     return (
@@ -258,11 +219,11 @@ function MemberRoster({ members }: { members: TeamMembership[] }) {
         <div key={m.userId} className="flex items-center gap-2 py-1">
           <span className="min-w-0 truncate text-sm">{m.name}</span>
           {m.isManagerSlot ? (
-            <Badge variant="secondary" data-qa={`project-team-manager-badge-${m.userId}`}>
+            <Badge variant="primary" data-qa={`project-team-manager-badge-${m.userId}`}>
               Manager
             </Badge>
           ) : null}
-          <Badge variant="outline">{labelFor('role', m.role)}</Badge>
+          {!m.isManagerSlot && <Badge variant="outline">{labelFor('role', m.role)}</Badge>}
         </div>
       ))}
     </div>
@@ -317,6 +278,7 @@ function TeamRowActions({
         />
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuItem
+            className="cursor-pointer"
             disabled={!row.canUnlink}
             onClick={() => setConfirming(true)}
             data-qa={`project-team-unlink-${row.teamId}`}
@@ -327,13 +289,14 @@ function TeamRowActions({
           </DropdownMenuItem>
           {blockedByLeads ? (
             <DropdownMenuItem
+              className="cursor-pointer"
               render={
-                <a
+                <Link
                   href={orgHref(orgSlug, `/projects/${projectSlug}/leads`)}
                   data-qa={`project-team-view-leads-${row.teamId}`}
                 >
                   View leads for this team
-                </a>
+                </Link>
               }
             />
           ) : null}
