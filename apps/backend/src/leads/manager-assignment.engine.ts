@@ -122,21 +122,29 @@ export interface LeadAttributes {
  * Engine output - discriminated union so the service can audit
  * which path matched without re-deriving it.
  *
- *   rule         - the lowest-priority rule whose criteria all
- *                  matched AND whose target is assignable. The
- *                  service records the rule id + priority in
- *                  AuditLog.metadata.
- *   team-default - no rule matched, but team.defaultAssigneeId is
- *                  set and points at an assignable role.
- *   fallback     - neither rule nor team-default matched. The
- *                  caller (service) passes actor.sub as the safe
- *                  default - a placeholder until the operator
- *                  wires a rule. Audit logged as 'fallback'.
+ *   rule          - the lowest-priority rule whose criteria all
+ *                   matched AND whose target is assignable. The
+ *                   service records the rule id + priority in
+ *                   AuditLog.metadata.
+ *   team-default  - no rule matched, but team.defaultAssigneeId is
+ *                   set and points at an assignable role.
+ *   fallback      - neither rule nor team-default matched. The
+ *                   caller (service) passes actor.sub as the safe
+ *                   default - a placeholder until the operator
+ *                   wires a rule. Audit logged as 'fallback'.
+ *   manager-owner - T-AUTOASSIGN (2026-09-17): the creating team has
+ *                   autoAssignLeads=false, so the lead is owned by the
+ *                   team's manager (pending) until they hand off.
+ *   auto-assign   - T-AUTOASSIGN (2026-09-17): the team has
+ *                   autoAssignLeads=true and the lead was auto-routed to
+ *                   the least-loaded project telecaller by openLeads/weight.
  */
 export type ResolverResult =
   | { kind: 'rule'; ruleId: string; userId: string; priority: number }
   | { kind: 'team-default'; userId: string }
-  | { kind: 'fallback'; userId: string };
+  | { kind: 'fallback'; userId: string }
+  | { kind: 'manager-owner'; userId: string }
+  | { kind: 'auto-assign'; userId: string };
 
 /**
  * Evaluate the rule chain for a (team, lead) pair.

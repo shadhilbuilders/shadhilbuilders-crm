@@ -6,15 +6,18 @@ import {
   Get,
   Inject,
   Param,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ReassignAndRemoveDtoSchema,
+  UpdateTeamMemberWeightDtoSchema,
   type ReassignAndRemoveDto,
   type ReassignAndRemoveResponse,
   type RemovalPreviewResponse,
+  type UpdateTeamMemberWeightDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
 
@@ -74,6 +77,24 @@ export class TeamMembersController {
     this.validateIds(teamId, userId);
     const dto: ReassignAndRemoveDto = parseBody(ReassignAndRemoveDtoSchema, body);
     return this.teamMembers.reassignAndRemove(req.user!, teamId, userId, dto);
+  }
+
+  // T-AUTOASSIGN (2026-09-17): update a member's routing weight. PATCH (not
+  // POST) because it's a direct field update, not an action flow.
+  @Patch('weight')
+  @ApiOperation({
+    summary:
+      'Update a member\'s auto-assign routing weight. ADMIN/OWNER or the team\'s manager only.',
+  })
+  async updateWeight(
+    @Req() req: AuthedRequest,
+    @Param('teamId') teamId: string,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+  ): Promise<{ userId: string; teamId: string; weight: number }> {
+    this.validateIds(teamId, userId);
+    const dto: UpdateTeamMemberWeightDto = parseBody(UpdateTeamMemberWeightDtoSchema, body);
+    return this.teamMembers.updateWeight(req.user!, teamId, userId, dto);
   }
 
   private validateIds(teamId: string, userId: string): void {

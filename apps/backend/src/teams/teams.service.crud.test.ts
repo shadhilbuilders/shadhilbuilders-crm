@@ -195,7 +195,7 @@ describe('TeamsService.create', () => {
     const result = await svc.create(adminActor, { name: 'New Team', managerId: 'mgr-9' });
     expect(result.managerId).toBe('mgr-9');
     expect(tx.team.create).toHaveBeenCalledWith({
-      data: { name: 'New Team', managerId: 'mgr-9', organizationId: ORG },
+      data: { name: 'New Team', managerId: 'mgr-9', organizationId: ORG, autoAssignLeads: false },
     });
   });
 
@@ -216,7 +216,7 @@ describe('TeamsService.create', () => {
       memberCount: 0,
     });
     expect(tx.team.create).toHaveBeenCalledWith({
-      data: { name: 'New Team', managerId: 'mgr-9', organizationId: ORG },
+      data: { name: 'New Team', managerId: 'mgr-9', organizationId: ORG, autoAssignLeads: false },
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -231,7 +231,7 @@ describe('TeamsService.create', () => {
     const result = await svc.create(adminActor, { name: 'Unled Team' });
     expect(result.managerId).toBeNull();
     expect(tx.team.create).toHaveBeenCalledWith({
-      data: { name: 'Unled Team', managerId: null, organizationId: ORG },
+      data: { name: 'Unled Team', managerId: null, organizationId: ORG, autoAssignLeads: false },
     });
   });
 });

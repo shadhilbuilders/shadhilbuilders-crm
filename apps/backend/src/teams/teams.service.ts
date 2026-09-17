@@ -81,6 +81,7 @@ export class TeamsService {
             id: true,
             name: true,
             defaultAssigneeId: true,
+            autoAssignLeads: true,
             managerId: true,
             manager: { select: { name: true } },
             _count: { select: { teamMembers: true } },
@@ -95,6 +96,7 @@ export class TeamsService {
             memberCount: r._count.teamMembers,
             managerId: r.managerId,
             managerName: r.manager?.name ?? null,
+            autoAssignLeads: r.autoAssignLeads,
           }),
         );
       },
@@ -162,11 +164,14 @@ export class TeamsService {
         const teamMembers = await tx.teamMember.findMany({
           where: { teamId: id, user: { deletedAt: null } },
           select: {
+            // T-AUTOASSIGN (2026-09-17): carry each member's routing weight so
+            // the roster can show/edit it.
+            weight: true,
             user: { select: { id: true, name: true, email: true, role: true } },
           },
         });
         const members = teamMembers
-          .map((tm) => tm.user)
+          .map((tm) => ({ ...tm.user, weight: tm.weight }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         return {
@@ -184,6 +189,7 @@ export class TeamsService {
             name: m.name,
             email: m.email,
             role: m.role,
+            weight: m.weight,
           })),
         };
       },
@@ -215,6 +221,8 @@ export class TeamsService {
             name: dto.name,
             managerId,
             organizationId: actor.organizationId,
+            // T-AUTOASSIGN (2026-09-17): default false when omitted.
+            autoAssignLeads: dto.autoAssignLeads ?? false,
           },
         });
         await tx.auditLog.create({
@@ -267,6 +275,11 @@ export class TeamsService {
           data: {
             ...(dto.name !== undefined ? { name: dto.name } : {}),
             ...(dto.managerId !== undefined ? { managerId } : {}),
+            // T-AUTOASSIGN (2026-09-17): explicit `undefined` keeps the
+            // current value; only a set flag changes it. (The DTO's optional
+            // boolean means a PATCH that omits it doesn't reset the team to
+            // false.)
+            ...(dto.autoAssignLeads !== undefined ? { autoAssignLeads: dto.autoAssignLeads } : {}),
           },
         });
         await tx.auditLog.create({
@@ -473,6 +486,7 @@ export class TeamsService {
       id: string;
       name: string;
       defaultAssigneeId: string | null;
+      autoAssignLeads: boolean | null;
       managerId: string | null;
     },
     managerName: string | null,
@@ -485,6 +499,7 @@ export class TeamsService {
       memberCount,
       managerId: team.managerId,
       managerName,
+      autoAssignLeads: team.autoAssignLeads ?? false,
     };
   }
 }

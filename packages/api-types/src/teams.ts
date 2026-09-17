@@ -31,6 +31,9 @@ export const TeamListItemSchema = z.object({
   memberCount: z.number().int().min(0),
   managerId: z.string().nullable().optional(),
   managerName: z.string().nullable(),
+  // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads. Surfaced on the
+  // list item so the admin roster/edit UI can toggle it.
+  autoAssignLeads: z.boolean().optional(),
 });
 export type TeamListItem = z.infer<typeof TeamListItemSchema>;
 
@@ -40,6 +43,9 @@ export const TeamMemberRowSchema = z.object({
   name: z.string(),
   email: z.string(),
   role: z.string(), // RoleSchema
+  // T-AUTOASSIGN (2026-09-17): relative routing weight for the auto-assign
+  // lead engine (higher = biased toward more leads). Default 1.
+  weight: z.number().int().min(0),
 });
 export type TeamMemberRow = z.infer<typeof TeamMemberRowSchema>;
 
@@ -85,6 +91,11 @@ export const CreateTeamDtoSchema = z.object({
     error: 'Name is required',
   }).trim().min(1).max(120),
   managerId: z.cuid2().nullable().optional(),
+  // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads. When true,
+  // new leads auto-assign to the least-loaded telecaller across ALL project
+  // teams (openLeads/weight). When false/omitted, new leads land owned by the
+  // team's manager (manager owns until handoff). Default false.
+  autoAssignLeads: z.boolean().optional(),
 });
 export type CreateTeamDto = z.infer<typeof CreateTeamDtoSchema>;
 
@@ -96,6 +107,17 @@ export type CreateTeamDto = z.infer<typeof CreateTeamDtoSchema>;
  */
 export const UpdateTeamDtoSchema = CreateTeamDtoSchema.partial();
 export type UpdateTeamDto = z.infer<typeof UpdateTeamDtoSchema>;
+
+/**
+ * PATCH /api/teams/:teamId/members/:userId body - update a member's routing
+ * weight for the auto-assign engine. ADMIN/OWNER (or the team's manager)
+ * only. Weight is a positive int; 0 disables the member from receiving
+ * auto-assigned leads (the engine filters weight <= 0).
+ */
+export const UpdateTeamMemberWeightDtoSchema = z.object({
+  weight: z.number().int().min(0),
+});
+export type UpdateTeamMemberWeightDto = z.infer<typeof UpdateTeamMemberWeightDtoSchema>;
 
 /** DELETE has no body; the id param is validated in the controller. */
 

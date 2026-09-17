@@ -29,6 +29,7 @@ import type {
   ReassignAndRemoveResponse,
   RemovalPreviewResponse,
   ReplacementCandidate,
+  UpdateTeamMemberWeightDto,
 } from '@shadhil/api-types';
 
 import { canRoleOwnState } from '../leads/leads.state-machine';
@@ -447,6 +448,54 @@ export class TeamMembersService {
   }
 
   // ── helpers ────────────────────────────────────────────────────────────
+
+  /**
+   * PATCH /api/teams/:teamId/members/:userId/weight (T-AUTOASSIGN, 2026-09-17).
+   * Update a member's routing weight for the auto-assign lead engine.
+   * ADMIN/OWNER (or the team's manager) only - mirrors `assertCanMutate`.
+   * The weight is persisted on the TeamMember row; higher = gets more leads.
+   */
+  async updateWeight(
+    actor: JwtPayload,
+    teamId: string,
+    userId: string,
+    dto: UpdateTeamMemberWeightDto,
+  ): Promise<{ userId: string; teamId: string; weight: number }> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const t = tx as unknown as Tx;
+      await this.assertCanMutate(t, actor, teamId);
+
+      const membership = await t.teamMember.findUnique({
+        where: { userId_teamId: { userId, teamId } },
+      });
+      if (membership === null) {
+        throw new CodedNotFoundException(
+          'TARGET_NOT_TEAM_MEMBER',
+          `User ${userId} is not a member of team ${teamId}.`,
+        );
+      }
+
+      const updated = await t.teamMember.update({
+        where: { userId_teamId: { userId, teamId } },
+        data: { weight: dto.weight },
+      });
+
+      await t.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'team.member.weight',
+          entityType: 'Team',
+          entityId: teamId,
+          before: { userId, teamId, weight: membership.weight },
+          after: { userId, teamId, weight: updated.weight },
+          reason: `team.member.weight by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      return { userId, teamId, weight: updated.weight };
+    });
+  }
 
   private async assertCanMutate(tx: Tx, actor: JwtPayload, teamId: string): Promise<void> {
     const allowed = await this.teamAccess.canMutateTeam(tx as never, actor, teamId);

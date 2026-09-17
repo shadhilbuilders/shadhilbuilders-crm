@@ -92,6 +92,7 @@ function makeTx(overrides: Partial<{
       }),
       findMany: vi.fn(async () => overrides.teamMembers ?? []),
       delete: vi.fn(async () => ({})),
+      update: vi.fn(async () => ({ userId: TARGET_ID, teamId: TEAM_ID, weight: 3 })),
     },
     user: {
       findUnique: vi.fn(async () => overrides.manager ?? overrides.candidateManager ?? null),
@@ -543,5 +544,54 @@ describe('TeamMembersService.reassignAndRemove', () => {
       where: { id: { in: ['lead-1'] } },
       data: { ownerId: 'mgr-1' },
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// updateWeight() (T-AUTOASSIGN, 2026-09-17)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('TeamMembersService.updateWeight', () => {
+  it('updates the membership weight + writes an audit row', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      targetMembership: { userId: TARGET_ID, teamId: TEAM_ID },
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    const result = await svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 3 });
+    expect(result).toEqual({ userId: TARGET_ID, teamId: TEAM_ID, weight: 3 });
+    expect(tx.teamMember.update).toHaveBeenCalledWith({
+      where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
+      data: { weight: 3 },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'team.member.weight',
+          entityId: TEAM_ID,
+        }),
+      }),
+    );
+  });
+
+  it('rejects a non-mutating actor', async () => {
+    makeTx({ team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null } });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(false));
+    await expect(
+      svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 2 }),
+    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+  });
+  it('404s when the user is not a member of the team', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      membershipRowPresent: false,
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    await expect(
+      svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 4 }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }),
+    });
+    expect(tx.teamMember.update).not.toHaveBeenCalled();
   });
 });

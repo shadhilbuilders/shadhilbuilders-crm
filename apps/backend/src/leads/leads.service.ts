@@ -64,6 +64,10 @@ import {
   type TargetUser,
   type Team,
 } from './manager-assignment.engine';
+import {
+  pickAutoAssignCandidate,
+  type AutoAssignCandidate,
+} from './auto-assign.engine';
 
 export interface LeadRow {
   id: string;
@@ -745,12 +749,48 @@ export class LeadsService {
 
     const teamRow = await client.team.findUnique({
       where: { id: teamId },
-      select: { id: true, defaultAssigneeId: true },
+      // T-AUTOASSIGN (2026-09-17): read the routing flag + manager for the
+      // manager-owner path. `managerId` is nullable (a team can be managerless).
+      select: {
+        id: true,
+        defaultAssigneeId: true,
+        autoAssignLeads: true,
+        managerId: true,
+      },
     });
     const teamForEngine: Team = {
       id: teamId,
       defaultAssigneeId: teamRow?.defaultAssigneeId ?? null,
     };
+
+    // T-AUTOASSIGN (2026-09-17): resolve the new lead's owner. Two new routing
+    // paths, decided by the team's flag, both running BEFORE the rule-chain
+    // engine so an auto-assign team never falls through to the deterministic
+    // rule chain for an eligible pool:
+    //
+    //   autoAssignLeads = true
+    //     Route across ALL teams linked to the lead's project (ProjectTeam),
+    //     to the least-loaded telecaller by (openLeads / weight). Managers
+    //     never own. ownerId = picked telecaller, ownerType = that user's role.
+    //
+    //   autoAssignLeads = false (and the team has a manager)
+    //     The lead lands owned by this team's MANAGER (pending state,
+    //     ownerType = MANAGER). The manager hands off by reassigning to a
+    //     specific telecaller. Owner stays the manager until handoff.
+    //
+    // When auto-assign can't route (no eligible pool, or managerless team),
+    // fall back to the existing ManagerAssignmentRule chain + team default +
+    // actor fallback exactly as before.
+    const autoAssign = teamRow ? await this.resolveAutoAssign(
+      client,
+      actor,
+      teamRow,
+      dto,
+    ) : null;
+    const autoOwner =
+      autoAssign !== null && autoAssign.kind !== 'fallback-to-engine'
+        ? autoAssign
+        : null;
 
     const resolveTarget = async (
       userId: string,
@@ -772,7 +812,13 @@ export class LeadsService {
     // still applies for every other path.
     let ownerId: string;
     let resolution: ResolverResult | null = null;
-    if (dto.assignedOwnerId !== undefined) {
+    // T-AUTOASSIGN: the team-flag path (auto-assign telecaller across the
+    // project, or manager-owner on the false path) wins when it produced an
+    // owner. A forced `assignedOwnerId` (public-leads) still overrides it.
+    if (autoOwner !== null && dto.assignedOwnerId === undefined) {
+      ownerId = autoOwner.userId;
+      resolution = autoOwner.resolution;
+    } else if (dto.assignedOwnerId !== undefined) {
       ownerId = dto.assignedOwnerId;
     } else {
       const leadAttrs: LeadAttributes = {
@@ -833,7 +879,14 @@ export class LeadsService {
         // it now and the column is NOT NULL, so use it as given - no fallback.
         projectId: dto.projectId,
         ownerId: ownerId,
-        ownerType: this.ownerTypeForRole(actor.role),
+        // T-AUTOASSIGN (2026-09-17): the ownerType must reflect the OWNER's
+        // role, not the creator's. Before this the lead always reported the
+        // actor's role (ownerTypeForRole(actor.role)); the auto-assign paths
+        // can set an owner who is NOT the actor (project-wide telecaller pick,
+        // or a manager-owned lead on the false path). Tagging the wrong
+        // ownerType would make RLS/queue surfaces treat a manager-owned lead
+        // as if a staff member owned it (or vice-versa).
+        ownerType: await this.ownerTypeForUserId(client, actor, ownerId),
         teamId,
         organizationId: actor.organizationId,
       },
@@ -863,7 +916,11 @@ export class LeadsService {
             }
           : resolution.kind === 'team-default'
             ? { kind: 'team-default' as const, teamId }
-            : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
+            : resolution.kind === 'manager-owner'
+              ? { kind: 'manager-owner' as const, managerId: resolution.userId }
+              : resolution.kind === 'auto-assign'
+                ? { kind: 'auto-assign' as const, ownerId: resolution.userId }
+                : { kind: 'fallback' as const, fallbackUserId: resolution.userId };
 
     await client.auditLog.create({
       data: {
@@ -1749,6 +1806,126 @@ export class LeadsService {
     // OWNER creating a lead (rare, only for bootstrapping) - tag as
     // ADMIN so the lead appears in admin queries.
     return 'ADMIN';
+  }
+
+  /**
+   * T-AUTOASSIGN (2026-09-17): the auto-assign path's ownerType must reflect
+   * the resolved OWNER's role, not the creator's. Looks up the user's role by
+   * id (org-scoped, mirroring resolveTarget's T-ORG-EXPLICIT guard) and maps
+   * it through ownerTypeForRole. Returns 'ADMIN' if the user can't be found
+   * or resolves to OWNER (fallback keeps the row valid - the owner write was
+   * already scoped by RLS).
+   */
+  private async ownerTypeForUserId(
+    client: PrismaClient,
+    actor: JwtPayload,
+    userId: string,
+  ): Promise<'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN'> {
+    const u = await client.user.findFirst({
+      where: { id: userId, organizationId: actor.organizationId },
+      select: { role: true },
+    });
+    return this.ownerTypeForRole(u?.role as Role);
+  }
+
+  /**
+   * T-AUTOASSIGN (2026-09-17): decide who owns a NEW lead based on the
+   * creating team's `autoAssignLeads` flag.
+   *
+   *   autoAssignLeads = true
+   *     Pool ALL telecallers/sales-execs across EVERY team linked to the
+   *     lead's project (ProjectTeam join), dedupe, score openLeads/weight,
+   *     pick the least-loaded. Managers NEVER own. ownerType = the pick's role.
+   *
+   *   autoAssignLeads = false (team has a manager)
+   *     The lead is owned by this team's manager (pending; manager reassigns
+   *     to a telecaller later). ownerType = MANAGER.
+   *
+   * Returns null when the flag path cannot resolve (no eligible pool on true,
+   * or a managerless team on false) - the caller falls back to the existing
+   * rule chain. Returns a discriminated { userId, resolution, ownerType } for
+   * the audit log.
+   */
+  private async resolveAutoAssign(
+    client: PrismaClient,
+    actor: JwtPayload,
+    teamRow: { id: string; managerId: string | null; autoAssignLeads: boolean; defaultAssigneeId: string | null },
+    dto: CreateLeadDto,
+  ): Promise<
+    | { kind: 'telecaller'; userId: string; resolution: ResolverResult; ownerType: 'TELECALLER' | 'SALES_EXEC' }
+    | { kind: 'manager'; userId: string; resolution: ResolverResult; ownerType: 'MANAGER' }
+    | { kind: 'fallback-to-engine' }
+    | null
+  > {
+    if (teamRow.autoAssignLeads !== true) {
+      // False path: manager owns, pending. Requires a manager on the team;
+      // otherwise fall back to the rule chain (nothing sensible to auto-route to).
+      // NB: `!== true` (not `=== false`) so an undefined/missing flag (pre-migration
+      // rows, test mocks) falls through to the legacy false-default behavior.
+      if (teamRow.managerId === null) return { kind: 'fallback-to-engine' };
+      return {
+        kind: 'manager',
+        userId: teamRow.managerId,
+        resolution: { kind: 'manager-owner', userId: teamRow.managerId },
+        ownerType: 'MANAGER',
+      };
+    }
+
+    // True path: pool across all project-linked teams, least-loaded telecaller.
+    const projectTeams = await client.projectTeam.findMany({
+      where: { projectId: dto.projectId, organizationId: actor.organizationId },
+      select: { teamId: true },
+    });
+    if (projectTeams.length === 0) return { kind: 'fallback-to-engine' };
+    const teamIds = projectTeams.map((t) => t.teamId);
+
+    // Members (TELECALLER/SALES_EXEC) across those teams, with weight.
+    const members = await client.teamMember.findMany({
+      where: { teamId: { in: teamIds }, organizationId: actor.organizationId },
+      select: { userId: true, teamId: true, weight: true },
+    });
+    const memberCounts = await client.lead.groupBy({
+      by: ['ownerId'],
+      where: {
+        ownerId: { in: members.map((m) => m.userId) },
+        state: { notIn: ['WON', 'LOST', 'COLD'] },
+      },
+      _count: { _all: true },
+    });
+    const openByOwner = new Map(memberCounts.map((g) => [g.ownerId, g._count._all]));
+
+    // Dedupe by user; prefer the highest weight among their memberships so a
+    // member in two teams isn't double-counted and their effective weight is
+    // the best fit.
+    const best: Map<string, AutoAssignCandidate> = new Map();
+    // Build a candidate pool restricted to staff roles only - filter out any
+    // member whose user is ADMIN/MANAGER (the join returns role; we exclude).
+    const memberUsers = await client.user.findMany({
+      where: { id: { in: members.map((m) => m.userId) }, organizationId: actor.organizationId },
+      select: { id: true, role: true },
+    });
+    const roleById = new Map(memberUsers.map((u) => [u.id, u.role]));
+    for (const m of members) {
+      const role = roleById.get(m.userId);
+      if (role !== 'TELECALLER' && role !== 'SALES_EXEC') continue;
+      const existing = best.get(m.userId);
+      if (existing === undefined || m.weight > existing.weight) {
+        best.set(m.userId, {
+          userId: m.userId,
+          openLeads: openByOwner.get(m.userId) ?? 0,
+          weight: m.weight,
+        });
+      }
+    }
+    const candidates = [...best.values()];
+    const pick = pickAutoAssignCandidate(candidates);
+    if (pick.kind === 'no-eligible') return { kind: 'fallback-to-engine' };
+    return {
+      kind: 'telecaller',
+      userId: pick.userId,
+      resolution: { kind: 'auto-assign', userId: pick.userId },
+      ownerType: 'TELECALLER',
+    };
   }
 
   private async assertCanEditLead(
