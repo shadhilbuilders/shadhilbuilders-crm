@@ -557,6 +557,16 @@ export class LeadsService {
       body: `${created.name} was assigned to you.`,
       leadId: created.id,
     });
+    // Also notify the creator (when they're not the assigned owner) so the
+    // acting user sees the result of their own create. Both get a bell row.
+    if (actor.sub !== created.ownerId) {
+      this.emitBestEffort(actor.sub, {
+        type: 'lead.created',
+        title: 'Lead created',
+        body: `${created.name} was created.`,
+        leadId: created.id,
+      });
+    }
     return {
       id: created.id,
       name: created.name,
@@ -812,20 +822,49 @@ export class LeadsService {
       return u === null ? null : { id: u.id, role: u.role as TargetUser['role'] };
     };
 
-    // Public-leads owner override: when the caller (public-leads service,
-    // which validated the id against the org) supplies `assignedOwnerId`,
-    // bypass the engine and assign to that user directly. Engine fallback
-    // still applies for every other path.
+    // Owner resolution for a NEW lead. Role-gated per the create-flow rule:
+    //   - TELECALLER / SALES_EXEC always self-assign (ownerId = actor.sub).
+    //     They may NOT pick another owner (dto.assignedOwnerId is rejected);
+    //     skipping the engine/auto-assign/rules entirely keeps this a hard
+    //     guarantee, not a fallback-only behavior.
+    //   - MANAGER / ADMIN / OWNER may pick an owner via `assignedOwnerId`
+    //     (the UI renders a combobox of assignable staff). When omitted they
+    //     fall through to auto-assign / the rule engine as before.
     let ownerId: string;
-    let resolution: ResolverResult | null = null;
-    // T-AUTOASSIGN: the team-flag path (auto-assign telecaller across the
-    // project, or manager-owner on the false path) wins when it produced an
-    // owner. A forced `assignedOwnerId` (public-leads) still overrides it.
-    if (autoOwner !== null && dto.assignedOwnerId === undefined) {
+    // resolution is assigned in every branch below before line 970 reads it;
+    // the assignedOwnerId branch intentionally sets it null (forced-override),
+    // so there is no need for (and no read of) a null initializer here.
+    let resolution: ResolverResult | null;
+    const isStaffSelfAssign =
+      actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC';
+
+    if (isStaffSelfAssign) {
+      // Hard self-assign: ignore any client-supplied owner override.
+      ownerId = actor.sub;
+      resolution = { kind: 'fallback', userId: actor.sub };
+    } else if (dto.assignedOwnerId !== undefined) {
+      // MANAGER/ADMIN/OWNER explicit pick. Validate the target exists in
+      // this org AND can own a lead. TELECALLER/SALES_EXEC own directly;
+      // MANAGER can own (the auto-assign `manager-owner` path creates
+      // manager-owned pending leads, and reassign permits managers as
+      // targets) - matches reassign's rule. ADMIN/OWNER never own leads.
+      const target = await resolveTarget(dto.assignedOwnerId);
+      if (target === null) {
+        throw new BadRequestException(
+          `assignedOwnerId ${dto.assignedOwnerId} not found in your organization`,
+        );
+      }
+      const isManager = target.role === 'MANAGER';
+      if (!isManager && !canUserBeAssignedTo(target)) {
+        throw new BadRequestException(
+          'assignedOwnerId must be a TELECALLER, SALES_EXEC, or MANAGER user (leads cannot be owned by ADMIN/OWNER)',
+        );
+      }
+      ownerId = dto.assignedOwnerId;
+      resolution = null; // forced-override path (audit logs this)
+    } else if (autoOwner !== null) {
       ownerId = autoOwner.userId;
       resolution = autoOwner.resolution;
-    } else if (dto.assignedOwnerId !== undefined) {
-      ownerId = dto.assignedOwnerId;
     } else {
       const leadAttrs: LeadAttributes = {
         source: dto.source,

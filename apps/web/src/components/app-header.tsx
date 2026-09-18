@@ -25,9 +25,10 @@ import {
   PopoverContent,
   PopoverRoot,
   PopoverTrigger,
+  ScrollArea,
   Separator,
 } from '@paalstack/react-ui';
-import { LuBell, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
+import { LuBell, LuCheckCheck, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -41,7 +42,12 @@ import { useSignOut } from '@/lib/auth-actions';
 import { projectHref } from '@/lib/nav';
 import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
-import { useNotifications } from '@/hooks/queries/crm';
+import {
+  useMarkNotificationsRead,
+  useNotifications,
+  useNotificationsRealtime,
+} from '@/hooks/queries/crm';
+import { dateIntl } from '@/lib/format';
 
 import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 
@@ -121,56 +127,163 @@ export function AppHeader() {
 }
 
 // ---------------------------------------------------------------------------
-// Notification bell - honest count from useNotifications, not a stub.
-// Until the backend module ships, useNotifications errors → count is 0.
+// Notification bell - opens a popover with the latest unread notifications,
+// per-item mark-read, mark-all-read, and a footer link to the full
+// notifications page. Live counts/realtime via useNotifications + SSE.
 // ---------------------------------------------------------------------------
+
+type NotificationRow = {
+  id: string;
+  type?: string;
+  title?: string;
+  body?: string;
+  read?: boolean;
+  createdAt?: string;
+};
 
 function NotificationBell() {
   const { data: projects } = useProjects();
   const orgSlug = useOrgSlug();
   const projectSlugCtx = useProjectSlug();
   const query = useNotifications({ unreadOnly: true });
-  const count = Array.isArray(query.data) ? query.data.length : 0;
-  // Mounted gate: on SSR (and the first client paint) useProjects hasn't
-  // resolved, so pickDefaultProject returns null and the href would be the
-  // unscoped "/notifications" template. Hydration then swaps that for the
-  // project-scoped href once projects load → "server rendered HTML didn't
-  // match". Render a stable placeholder href until after mount, exactly like
-  // the AppHeader session gate above.
+  // T-E2: SSE keeps the unread count/list fresh (same channel as the
+  // full notifications page).
+  useNotificationsRealtime();
+  const markRead = useMarkNotificationsRead();
+
+  const rows = (query.data?.rows ?? []) as NotificationRow[];
+  const unread = query.data?.unread ?? 0;
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Mounted gate (hydration): see AppHeader above. projectHref needs the
+  // resolved org + project slugs; until mounted we render a stable
+  // placeholder href.
   const projectId = mounted
     ? (projectSlugCtx ?? pickDefaultProject(projects ?? [])?.slug ?? null)
     : null;
-  const href = projectHref(
-    mounted ? orgSlug : null,
-    projectId,
-    '/notifications',
-  );
+  const href = projectHref(mounted ? orgSlug : null, projectId, '/notifications');
+
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="relative min-h-11 min-w-11 gap-1 px-2"
-      aria-label={
-        count === 0 ? 'Notifications' : `${count} unread notifications`
-      }
-      asChild
-    >
-      <Link href={href}>
-        <LuBell className="size-5" />
-        {count > 0 ? (
-          <span
-            className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
-            aria-hidden="true"
+    <PopoverRoot>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="relative min-h-11 min-w-11 gap-1 px-2"
+            aria-label={
+              unread > 0 ? `${unread} unread notifications` : 'Notifications'
+            }
+            data-qa="notifications-bell"
           >
-            {count}
-          </span>
-        ) : null}
-      </Link>
-    </Button>
+            <LuBell className="size-5" />
+            {unread > 0 ? (
+              <span
+                className="bg-primary text-primary-foreground absolute top-0.5 right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums"
+                aria-hidden="true"
+              >
+                {unread}
+              </span>
+            ) : null}
+          </Button>
+        }
+      />
+      <PopoverContent className="w-80" align="end">
+        <div className="flex items-center justify-between px-1 pb-1">
+          <p className="text-sm font-semibold">Notifications</p>
+          {/* Mark all as read - same mutation as the full page ([] = all). */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            disabled={markRead.isPending || unread === 0}
+            onClick={() => markRead.mutate([])}
+            data-qa="notifications-mark-all-read"
+          >
+            <LuCheckCheck className="size-3.5" />
+            Mark all read
+          </Button>
+        </div>
+        <Separator className="mb-1" />
+        {query.isLoading ? (
+          <Skeleton variant="text" className="p-2" />
+        ) : rows.length > 0 ? (
+          <ScrollArea className="h-80">
+            <ul className="space-y-1 p-1">
+              {rows.map((row, index) => {
+                const isRead = row.read === true;
+                const id = typeof row.id === 'string' ? row.id : null;
+                return (
+                  <li
+                    key={id ?? `n-${index}`}
+                    className="hover:bg-accent flex items-start gap-2 rounded-md px-2 py-2"
+                    data-qa="notification-popover-row"
+                  >
+                    <span
+                      aria-hidden
+                      className={
+                        isRead
+                          ? 'text-muted-foreground mt-1.5'
+                          : 'mt-1.5 text-blue-600'
+                      }
+                    >
+                      {isRead ? '○' : '●'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {typeof row.title === 'string' && row.title.length > 0
+                          ? row.title
+                          : 'Notification'}
+                      </p>
+                      {typeof row.body === 'string' && row.body.length > 0 ? (
+                        <p className="text-muted-foreground line-clamp-2 text-xs">
+                          {row.body}
+                        </p>
+                      ) : null}
+                      <p className="text-muted-foreground mt-0.5 text-[10px] uppercase tracking-wide">
+                        {typeof row.createdAt === 'string'
+                          ? dateIntl.formatDateTime(row.createdAt)
+                          : ''}
+                      </p>
+                    </div>
+                    {!isRead && id !== null ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        disabled={markRead.isPending}
+                        onClick={() => markRead.mutate([id])}
+                        data-qa="notifications-mark-read"
+                      >
+                        Mark read
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </ScrollArea>
+        ) : (
+          <div className="px-1 py-6 text-center" data-qa="notifications-popover-empty">
+            <p className="text-sm font-medium">No unread notifications.</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              New leads, handoffs, and reminders land here automatically.
+            </p>
+          </div>
+        )}
+        {/* Footer: link to the full notifications page. */}
+        <Separator className="my-1" />
+        <Link
+          href={href}
+          className="hover:bg-accent flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 text-sm"
+        >
+          View all notifications
+        </Link>
+      </PopoverContent>
+    </PopoverRoot>
   );
 }
 
