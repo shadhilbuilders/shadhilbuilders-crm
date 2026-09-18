@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
   useTeams: vi.fn(),
+  useUsers: vi.fn(),
   useCreateLead: vi.fn(),
   useProjectId: vi.fn(),
   useOrgSlug: vi.fn(),
@@ -27,6 +28,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
+}));
+
+vi.mock('@/hooks/queries/users', () => ({
+  useUsers: mocks.useUsers,
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -75,6 +80,9 @@ function baseMocks(): void {
   mocks.useOrgSlug.mockReturnValue('shadhil-builders');
   mocks.useProjectSlug.mockReturnValue('metro-heights');
   mocks.useCreateLead.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  // Default: no assignable staff rows (so the owner picker stays hidden for
+  // most cases). Override per-test when asserting the picker.
+  mocks.useUsers.mockReturnValue({ data: { rows: [], total: 0 } });
 }
 
 afterEach(async () => {
@@ -150,5 +158,48 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
     const hiddenInput = container?.querySelector('input[name="teamId"]') as HTMLInputElement | null;
     expect(hiddenInput).not.toBeNull();
     expect(hiddenInput?.value).toBe('');
+  });
+
+  it('a TELECALLER never sees the Assignee combobox (self-assigns)', async () => {
+    baseMocks();
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'tc-1', name: 'Priya', email: 'p@x', role: 'TELECALLER', teamId: 'team-a' },
+    });
+    mocks.useUsers.mockReturnValue({
+      data: { rows: [{ id: 'u1', name: 'Arjun', email: 'arjun@x', role: 'TELECALLER', teamId: 'team-a', projects: [] }], total: 1 },
+    });
+    await mount();
+    expect(container?.querySelector('[data-qa="form-field-assignedOwnerId"]')).toBeNull();
+  });
+
+  it('an ADMIN with assignable staff sees the Assignee combobox', async () => {
+    baseMocks();
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'adm-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: 'team-a' },
+    });
+    mocks.useUsers.mockReturnValue({
+      data: {
+        rows: [
+          { id: 'u1', name: 'Arjun', email: 'arjun@x', role: 'TELECALLER', teamId: 'team-a', projects: [] },
+          { id: 'u2', name: 'Sana', email: 'sana@x', role: 'SALES_EXEC', teamId: 'team-a', projects: [] },
+          { id: 'm3', name: 'Meera', email: 'meera@x', role: 'MANAGER', teamId: 'team-a', projects: [] },
+        ],
+        total: 3,
+      },
+    });
+    await mount();
+    const wrapper = container?.querySelector('[data-qa="form-field-assignedOwnerId"]');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.textContent).toContain('Assignee');
+  });
+
+  it('a MANAGER with an empty staff list sees NO Assignee combobox', async () => {
+    baseMocks();
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'mgr-1', name: 'Meera', email: 'm@x', role: 'MANAGER', teamId: 'team-a' },
+    });
+    mocks.useUsers.mockReturnValue({ data: { rows: [], total: 0 } });
+    await mount();
+    expect(container?.querySelector('[data-qa="form-field-assignedOwnerId"]')).toBeNull();
   });
 });

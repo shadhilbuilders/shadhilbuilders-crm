@@ -22,6 +22,7 @@ import { Button, Form, toast } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 
 import { useCreateLead } from '@/hooks/queries/crm';
+import { useUsers } from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
@@ -42,6 +43,10 @@ type CreatedLead = { id: string };
 // a Form field bound via react-hook-form (RHF fields need a defined
 // initial value). onSubmit strips this sentinel back out to "omit teamId".
 const NO_TEAM_OVERRIDE = '';
+// Sentinel for "let the backend assign the owner automatically". Mirrors
+// NO_TEAM_OVERRIDE - an empty string is not a valid user id, and the Form
+// needs a defined initial value.
+const NO_OWNER_OVERRIDE = '';
 
 const createLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').trim().max(120),
@@ -58,6 +63,10 @@ const createLeadSchema = z.object({
   // below. NO_TEAM_OVERRIDE means "let the backend pick" (its existing
   // oldest-managed-team default, unchanged for everyone else).
   teamId: z.string(),
+  // Assigned owner - only shown for MANAGER/ADMIN/OWNER (staff self-assign).
+  // The empty string sentinel mirrors NO_TEAM_OVERRIDE: omit from payload when
+  // unset so the backend auto-assigns/rules.
+  assignedOwnerId: z.string(),
 });
 
 type CreateLeadSchema = z.infer<typeof createLeadSchema>;
@@ -95,6 +104,7 @@ export default function NewLeadPage() {
       source: 'LANDING',
       notes: '',
       teamId: NO_TEAM_OVERRIDE,
+      assignedOwnerId: NO_OWNER_OVERRIDE,
     },
     mode: 'onSubmit',
   });
@@ -130,6 +140,9 @@ export default function NewLeadPage() {
       source: values.source.trim(),
       ...(values.notes && values.notes.trim().length > 0 ? { notes: values.notes.trim() } : {}),
       ...(values.teamId !== NO_TEAM_OVERRIDE ? { teamId: values.teamId } : {}),
+      ...(values.assignedOwnerId !== NO_OWNER_OVERRIDE
+        ? { assignedOwnerId: values.assignedOwnerId }
+        : {}),
     };
 
     createLead.mutate(payload, {
@@ -202,6 +215,19 @@ export default function NewLeadPage() {
     },
   ];
 
+  // New-lead owner assignment: TELECALLER/SALES_EXEC always self-assign
+  // (backend hard-guarantees it). MANAGER/ADMIN/OWNER may pick an owner from
+  // the assignable staff (TELECALLER/SALES_EXEC) or a MANAGER - render a
+  // combobox for those roles only. `useUsers` is scoped server-side (ADMIN
+  // sees all, MANAGER sees own team) so the picker only offers valid,
+  // in-scope staff.
+  const usersQuery = useUsers({
+    role: ['TELECALLER', 'SALES_EXEC', 'MANAGER'],
+  });
+  const canPickOwner =
+    (user?.role === 'MANAGER' || user?.role === 'ADMIN' || user?.role === 'OWNER') &&
+    (usersQuery.data?.rows ?? []).length > 0;
+
   // T-TEAM-AUTHORITATIVE (2026-09-13) follow-up: only shown for a MANAGER
   // who leads MORE THAN ONE team - a single-team manager (the common case)
   // sees no change, matching the backend's "unchanged behavior for
@@ -216,6 +242,34 @@ export default function NewLeadPage() {
         { value: NO_TEAM_OVERRIDE, label: 'Default (first team)' },
         ...managedTeams.map((t) => ({ value: t.id, label: t.name })),
       ],
+    });
+  }
+
+  // Owner picker for MANAGER/ADMIN/OWNER. Defaults to "auto-assign" (backend
+  // rule engine); selecting a specific staff user overrides it. Uses the
+  // props-API Combobox (searchable, `selectOptionAsValue`) - the same
+  // assignee pattern as LeadReassignDialog / LeadCoOwnerDialog.
+  if (canPickOwner) {
+    fields.push({
+      type: 'combobox' as const,
+      name: 'assignedOwnerId',
+      label: 'Assignee',
+      placeholder: 'Search staff by name or email...',
+      options: [
+        { value: NO_OWNER_OVERRIDE, label: 'Auto-assign (rule engine)' },
+        ...(usersQuery.data?.rows ?? [])
+          .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
+      ],
+      description:
+        'Optional. Defaults to the assignment rule; pick a specific staff member to assign directly to them.',
+      comboboxProps: {
+        selectOptionAsValue: true,
+        emptyOptionMessage: 'No assignable staff found.',
+        loadingMessage: 'Loading staff...',
+        'data-qa': 'lead-assignee',
+        className: 'min-w-0',
+      },
     });
   }
 
