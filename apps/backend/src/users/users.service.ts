@@ -29,7 +29,7 @@ import {
 } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
+import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
@@ -40,6 +40,19 @@ export interface CreatedUser {
   name: string;
   role: Role;
   teamId: string | null;
+}
+
+/**
+ * Result of a self-service profile edit (PATCH /api/users/me). Deliberately
+ * narrower than CreatedUser: a self-edit never changes role or team, so
+ * returning them would imply a capability the route does not have. `email` is
+ * echoed back because the settings page shows it read-only.
+ */
+export interface UpdatedProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
 }
 
 @Injectable()
@@ -404,6 +417,79 @@ export class UsersService {
           updated.role,
           actor.organizationId,
         ),
+      };
+    });
+  }
+
+  /**
+   * PATCH /api/users/me - SELF-service profile edit (settings page, 2026-09-18).
+   *
+   * The one profile write a user may perform on themselves. Distinct from
+   * `update()` above, which is the ADMIN surface and deliberately REFUSES
+   * self-edits ("self-profile editing is a separate surface").
+   *
+   * Authorization is by CONSTRUCTION, not by a role check: the target id comes
+   * from the verified JWT `sub` and the route takes no id parameter, so there
+   * is no id a caller could supply to reach someone else's row. The write is
+   * additionally pinned to `actor.sub` in the `where` clause rather than
+   * trusting the earlier read (a TOCTOU-safe shape).
+   *
+   * Fields: `name` only. Email is excluded because this deployment has no
+   * email-verification flow - see UpdateProfileDtoSchema's comment.
+   *
+   * RLS note: `User` carries NO row-level security (verified in the live DB:
+   * relrowsecurity = false), so - like `changePassword` - the row scope here
+   * is the code above, not a policy. The AuditLog row still runs inside the
+   * actor's RLS context, because THAT table is FORCE RLS and the insert policy
+   * gates on app.user_id.
+   */
+  async updateSelf(
+    actor: JwtPayload,
+    dto: UpdateProfileDto,
+  ): Promise<UpdatedProfile> {
+    // 1. Read the current value first so the audit row can carry a real
+    //    before/after pair (and so a no-op change can be reported as such).
+    const before = await this.client.user.findUnique({
+      where: { id: actor.sub },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    if (before === null) {
+      // The JWT is valid but the row is gone (hard-deleted account). Fail
+      // loudly rather than silently succeeding on nothing.
+      throw new NotFoundException(`User ${actor.sub} not found`);
+    }
+
+    // 2. Write + audit atomically: the audit row must not survive a failed
+    //    write, and the write must not land unaudited (AGENTS.md A2/G-1).
+    //    One RLS transaction (AuditLog is FORCE RLS; User is not, but sharing
+    //    the tx keeps the pair atomic).
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const client = tx as unknown as PrismaClient;
+
+      const updated = await client.user.update({
+        where: { id: actor.sub },
+        data: { name: dto.name },
+        select: { id: true, name: true, email: true, role: true },
+      });
+
+      await client.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'user.updateSelf',
+          organizationId: actor.organizationId,
+          entityType: 'User',
+          entityId: actor.sub,
+          before: { name: before.name },
+          after: { name: updated.name },
+          reason: `profile name updated by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      return {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        role: updated.role,
       };
     });
   }

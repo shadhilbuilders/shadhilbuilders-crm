@@ -22,12 +22,14 @@ import {
   ChangePasswordDtoSchema,
   ChangeRoleDtoSchema,
   CreateUserDtoSchema,
+  UpdateProfileDtoSchema,
   UpdateUserDtoSchema,
   UserFilterDtoSchema,
   type AssignManagerDto,
   type ChangePasswordDto,
   type ChangeRoleDto,
   type CreateUserDto,
+  type UpdateProfileDto,
   type UpdateUserDto,
   type UserDetail,
   type UserFilterDto,
@@ -35,7 +37,7 @@ import {
 } from '@shadhil/api-types';
 import { z } from 'zod';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
-import { UsersService, type CreatedUser } from './users.service';
+import { UsersService, type CreatedUser, type UpdatedProfile } from './users.service';
 
 /**
  * Parse a request body with a shared Zod schema; a ZodError becomes a 400
@@ -147,6 +149,31 @@ export class UsersController {
   ): Promise<CreatedUser> {
     const dto: AssignManagerDto = parseBody(AssignManagerDtoSchema, body);
     return this.users.assignManager(req.user!, id, dto);
+  }
+
+  /**
+   * PATCH /api/users/me - SELF-service profile edit (settings page, 2026-09-18).
+   *
+   * ROUTE ORDER IS LOAD-BEARING: this MUST stay declared BEFORE
+   * `@Patch(':id')`, because Nest matches routes in declaration order and a
+   * literal `me` would otherwise be captured by the `:id` param (the same trap
+   * already documented on GET `team` / GET `project/:projectId/sales-execs`).
+   * The regression test `users.controller.route-order.test.ts` pins the order.
+   *
+   * There is no id parameter: the service resolves the target from the JWT
+   * `sub`, so no caller can address another user's row here.
+   */
+  @Patch('me')
+  @ApiOperation({
+    summary:
+      'Edit your OWN profile (name). No id parameter - the target is the JWT subject, so this route cannot address another user.',
+  })
+  async updateMe(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<UpdatedProfile> {
+    const dto: UpdateProfileDto = parseBody(UpdateProfileDtoSchema, body);
+    return this.users.updateSelf(req.user!, dto);
   }
 
   @Patch(':id')

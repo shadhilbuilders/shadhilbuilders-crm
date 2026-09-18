@@ -48,6 +48,7 @@ const FILTER_ACTIONS: Record<string, string> = {
   // Users
   'user.create': 'User created',
   'user.update': 'User updated',
+  'user.updateSelf': 'Profile updated (self)',
   'user.changeRole': 'Role changed',
   'user.delete': 'User deleted',
   'user.changePassword': 'Password changed',

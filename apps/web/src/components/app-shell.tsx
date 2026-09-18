@@ -79,6 +79,7 @@ import {
   isAdminPathname,
   isNavItemActive,
   navItemHref,
+  orgHref,
   stripProjectSegment as stripProjectSegmentForNav,
   NAV_ITEMS,
   useNavBadge,
@@ -586,6 +587,7 @@ function NavMenuSubLink({
 function UserMenuFooter() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
+  const orgSlug = useOrgSlug();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -614,6 +616,11 @@ function UserMenuFooter() {
       name={user.name || user.email}
       email={user.email}
       role={user.role}
+      // Settings is an ORGANIZATION-scoped page (`/[orgSlug]/settings`), so the
+      // href needs the resolved slug. useOrgSlug() falls back to the URL's first
+      // segment when the context isn't mounted, and returns null off-app - in
+      // which case NavUser renders the row inert instead of linking to a 404.
+      settingsHref={orgSlug !== null ? orgHref(orgSlug, '/settings') : null}
       onSignOut={() => void signOut()}
     />
   );

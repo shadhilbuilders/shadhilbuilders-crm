@@ -28,6 +28,49 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return output;
 }
 
+/**
+ * A bounded substitute for `navigator.serviceWorker.ready`.
+ *
+ * WHY THIS EXISTS (root-caused live on the Settings page, 2026-09-18):
+ * `navigator.serviceWorker.ready` NEVER SETTLES when no service worker is
+ * registered - it stays pending forever; it does not reject. Registration is
+ * deliberately skipped in development (`ServiceWorkerRegistrar`: "Skip
+ * registration in dev"), so in dev this promise hung indefinitely, `setChecked(true)`
+ * was never reached, and every consumer was stuck showing "Checking..." - the
+ * enable-prompt could not fire and the Settings page's push state never resolved.
+ *
+ * The `try/catch` around the old call could not help: a promise that never
+ * settles never throws.
+ *
+ * Behavior: if a registration/active worker already exists, resolve immediately
+ * (ZERO added latency on the real production path). Otherwise wait briefly for
+ * one to activate, then give up with `null` so callers report "unsupported"
+ * instead of spinning forever.
+ */
+const SW_READY_TIMEOUT_MS = 3000;
+const SW_POLL_MS = 100;
+
+async function swReadyOrNull(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+  // Fast path: an active worker is already there, so no waiting at all.
+  if (navigator.serviceWorker.controller !== null) {
+    return navigator.serviceWorker.ready;
+  }
+  const deadline = Date.now() + SW_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const withActive = regs.find((r) => r.active !== null);
+    if (withActive !== undefined) {
+      // A worker is active, so `ready` resolves now - safe to await.
+      return navigator.serviceWorker.ready;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SW_POLL_MS));
+  }
+  return null;
+}
+
 export type PushCapability = {
   isSupported: boolean;
   isSubscribed: boolean;
@@ -85,8 +128,16 @@ export function usePushSubscription(): PushCapability {
       }
 
       try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await swReadyOrNull();
         if (cancelled) return;
+        // No active service worker means push is impossible on this page -
+        // resolve to unsupported NOW instead of waiting on a promise that can
+        // never settle (see swReadyOrNull's comment).
+        if (reg === null) {
+          setIsSupported(false);
+          setChecked(true);
+          return;
+        }
         // Push disabled server-side -> nothing to subscribe to.
         const { publicKey } = await api<{ publicKey: string | null }>('/push/vapid-key');
         if (cancelled) return;
@@ -117,7 +168,11 @@ export function usePushSubscription(): PushCapability {
 
   const enablePush = useCallback(async (): Promise<boolean> => {
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await swReadyOrNull();
+      // A user-initiated enable with no service worker can never succeed:
+      // return false so the caller surfaces the real reason instead of
+      // leaving the button spinning on an unsettled promise.
+      if (reg === null) return false;
       const { publicKey } = await api<{ publicKey: string | null }>('/push/vapid-key');
       if (!publicKey) return false;
 

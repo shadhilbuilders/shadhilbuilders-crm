@@ -186,6 +186,40 @@ export function useUpdateUser() {
   });
 }
 
+/** Result of PATCH /api/users/me (self-profile edit, settings page). */
+export type BackendUpdatedProfile = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+};
+
+/**
+ * PATCH /api/users/me - edit your OWN profile name (settings page, 2026-09-18).
+ *
+ * No id is passed: the backend resolves the target from the JWT subject, so
+ * this hook cannot be misused to edit someone else. Deliberately NOT built on
+ * `useUpdateUser` - PATCH /users/:id is the hierarchy-gated ADMIN route and it
+ * refuses self-edits, so routing a self-edit through it would 403.
+ *
+ * Invalidates the users list (so an admin's directory shows the new name), and
+ * the caller follows up with a session refetch - the sidebar/topbar read the
+ * name from the better-auth session, not from this query.
+ */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name }: { name: string }) =>
+      api<BackendUpdatedProfile>('/users/me', {
+        method: 'PATCH',
+        json: { name },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_KEY });
+    },
+  });
+}
+
 /**
  * PATCH /api/users/:id/manager - assign/reassign a TELECALLER/SALES_EXEC's
  * manager (autoplan 2026-09-13), by moving them into the manager's team.

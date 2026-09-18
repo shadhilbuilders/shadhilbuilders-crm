@@ -45,11 +45,18 @@ export function NavUser({
   name,
   email,
   role,
+  settingsHref,
   onSignOut,
 }: {
   name: string;
   email: string;
   role: string;
+  /**
+   * Resolved Settings URL for this page (org-prefixed). Null only when the org
+   * slug has not resolved yet - while null the item renders disabled rather
+   * than as a link that would 404 at the app root.
+   */
+  settingsHref: string | null;
   onSignOut: () => void;
 }) {
   return (
@@ -99,14 +106,27 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem data-qa="sidebar-user-settings" className="cursor-pointer">
-              <Link
-                href="/settings"
-                className="flex items-center gap-2 text-sm outline-none"
-              >
-                <LuSettings className="size-4 shrink-0" />
-                Settings
-              </Link>
+            <DropdownMenuItem
+              data-qa="sidebar-user-settings"
+              disabled={settingsHref === null}
+              className="cursor-pointer"
+            >
+              {settingsHref !== null ? (
+                <Link
+                  href={settingsHref}
+                  className="flex items-center gap-2 text-sm outline-none"
+                >
+                  <LuSettings className="size-4 shrink-0" />
+                  Settings
+                </Link>
+              ) : (
+                // Org slug not resolved yet: render the row without a target
+                // rather than linking to a bare `/settings` (which 404s).
+                <span className="text-muted-foreground flex items-center gap-2 text-sm">
+                  <LuSettings className="size-4 shrink-0" />
+                  Settings
+                </span>
+              )}
             </DropdownMenuItem>
            
             <DropdownMenuSeparator />

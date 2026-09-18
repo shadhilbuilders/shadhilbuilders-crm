@@ -1,6 +1,8 @@
 'use client';
 
 // Session plumbing - better-auth's useSession + our typed user extraction.
+import { useCallback } from 'react';
+
 import { authClient } from '@/lib/auth-client';
 
 import {
@@ -12,12 +14,22 @@ type SessionResult = {
   user: SessionUser | null;
   isPending: boolean;
   error: string | null;
+  /**
+   * Re-read the better-auth session (display name, role). Call after a
+   * self-profile write so the app shell stops showing the old name.
+   */
+  refetchSession: () => Promise<void>;
 };
 
 /** The current signed-in user, typed, with role + teamId. */
 export function useSessionUser(): SessionResult {
   const query = authClient.useSession();
-  const data = (query ?? {}) as { data?: unknown; isPending?: boolean; error?: unknown };
+  const data = (query ?? {}) as {
+    data?: unknown;
+    isPending?: boolean;
+    error?: unknown;
+    refetch?: () => Promise<void>;
+  };
   const user = sessionUserFromSession(data.data);
 
   return {
@@ -27,6 +39,19 @@ export function useSessionUser(): SessionResult {
       data.error !== null && data.error !== undefined
         ? 'Session unavailable'
         : null,
+    // better-auth 1.7's react client exposes `refetch` on the same object that
+    // carries `data`/`isPending` (verified in
+    // better-auth/dist/client/react/index.d.mts). Needed after a self-profile
+    // write: the sidebar/topbar read the display name from THIS session, not
+    // from the users query, so without a refetch a saved name would leave the
+    // shell showing the stale one until the next page load.
+    //
+    // Wrapped so a harness/binding without `refetch` degrades to a no-op
+    // instead of throwing - the save itself has already succeeded at that point.
+    refetchSession: useCallback(async () => {
+      if (typeof data.refetch !== 'function') return;
+      await data.refetch();
+    }, [data.refetch]),
   };
 }
 

@@ -40,7 +40,7 @@ import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
-import { projectHref } from '@/lib/nav';
+import { orgHref, projectHref } from '@/lib/nav';
 import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import {
@@ -56,6 +56,8 @@ export function AppHeader() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
   const searchParams = useSearchParams();
+  // Resolved org slug for the account menu's Settings link (org-scoped route).
+  const orgSlug = useOrgSlug();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -112,6 +114,9 @@ export function AppHeader() {
           <UserMenu
             name={user!.name || user!.email}
             role={user!.role}
+            // Settings is org-scoped (`/[orgSlug]/settings`); the href needs the
+            // resolved slug (which useOrgSlug falls back to from the URL).
+            settingsHref={orgSlug !== null ? orgHref(orgSlug, '/settings') : null}
             onSignOut={() => void signOut()}
           />
         ) : (
@@ -297,10 +302,13 @@ function NotificationBell() {
 function UserMenu({
   name,
   role,
+  settingsHref,
   onSignOut,
 }: {
   name: string;
   role: string;
+  /** Resolved org-scoped Settings URL; null while the slug is unresolved. */
+  settingsHref: string | null;
   onSignOut: () => void;
 }) {
   return (
@@ -330,13 +338,27 @@ function UserMenu({
           <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
         </div>
         <Separator />
-        <Link
-          href="/settings"
-          className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
-        >
-          <LuSettings className="size-4 shrink-0" />
-          Settings
-        </Link>
+        {settingsHref !== null ? (
+          <Link
+            href={settingsHref}
+            className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
+            data-qa="account-menu-settings"
+          >
+            <LuSettings className="size-4 shrink-0" />
+            Settings
+          </Link>
+        ) : (
+          // Org slug unresolved: keep the row's shape but make it inert, rather
+          // than pointing at a bare `/settings` (which has no route).
+          <span
+            aria-disabled="true"
+            className="text-muted-foreground mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
+            data-qa="account-menu-settings"
+          >
+            <LuSettings className="size-4 shrink-0" />
+            Settings
+          </span>
+        )}
         <Button
           variant="ghost"
           size="sm"

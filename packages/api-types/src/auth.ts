@@ -174,6 +174,31 @@ export const UpdateUserDtoSchema = z.object({
 export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
 
 /**
+ * PATCH /api/users/me - SELF-service profile edit (settings page, 2026-09-18).
+ *
+ * Separate from UpdateUserDtoSchema on purpose:
+ *
+ *   - `PATCH /api/users/:id` is an ADMIN action (hierarchy-gated, and it
+ *     explicitly REFUSES self-edits - see users.service.assertOutranks call
+ *     site: "self-profile editing is a separate surface"). This DTO is that
+ *     separate surface: the route resolves the target from the JWT `sub`, so a
+ *     caller can only ever edit themselves and no hierarchy check applies.
+ *
+ *   - `name` only. `email` is deliberately absent: this deployment configures
+ *     NO email verification (packages/auth-client/src/auth.ts has no
+ *     `emailVerification` block), so letting a user rewrite their own login
+ *     address would move the account to an address nobody has proven they own.
+ *     Email changes stay with ADMIN/OWNER via PATCH /api/users/:id.
+ *
+ * Reuses `nameSchema` so the self-edit rule (trim, 1..120) can never drift
+ * from the admin edit rule.
+ */
+export const UpdateProfileDtoSchema = z.object({
+  name: nameSchema,
+});
+export type UpdateProfileDto = z.infer<typeof UpdateProfileDtoSchema>;
+
+/**
  * PATCH /api/users/:id/manager - assign/reassign the manager for a
  * TELECALLER/SALES_EXEC (autoplan 2026-09-13). A user's "manager" is
  * derived from `Team.managerId` via `User.teamId`, so this DTO sets
