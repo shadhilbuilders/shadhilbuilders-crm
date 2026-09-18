@@ -128,7 +128,7 @@ export function TeamRosterMemberRow({
                 if (e.key === 'Enter') void commitWeight((e.target as HTMLInputElement).value);
               }}
               disabled={weightSaving}
-              className="border-border focus-visible:ring-ring h-7 w-16 rounded-md border bg-transparent px-2 text-right text-xs tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+              className="border-border text-foreground focus-visible:ring-ring h-7 w-16 rounded-md border bg-transparent px-2 text-right text-xs tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
               aria-label={`Routing weight for ${member.name}`}
               data-qa={`${dataQaPrefix}-weight-${member.userId}`}
             />

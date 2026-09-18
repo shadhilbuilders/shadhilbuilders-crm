@@ -135,7 +135,7 @@ function WeightRow({
               }}
               disabled={weightSaving}
               placeholder='0'
-              className="w-16 h-7 text-right text-xs tabular-nums"
+              className="w-16 h-7 text-right text-xs tabular-nums text-foreground"
               aria-label={`Routing weight for ${member.name}`}
               data-qa={`team-weight-input-${member.userId}`}
             />

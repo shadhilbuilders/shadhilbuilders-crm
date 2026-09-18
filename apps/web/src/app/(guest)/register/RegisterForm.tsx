@@ -141,7 +141,7 @@ export function RegisterForm() {
             label: 'Organization name',
             type: 'input',
             required: true,
-            placeholder: 'e.g. Acme Constructions',
+            placeholder: 'e.g. Business Name',
             disabled: pending,
             inputProps: {
               autoFocus: true,
