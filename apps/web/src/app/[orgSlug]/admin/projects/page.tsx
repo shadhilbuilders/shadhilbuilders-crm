@@ -500,6 +500,7 @@ function ProjectTable({
           placeholder: 'Search by name or slug...',
           searchValue: search,
           onSearchValueChange: onSearchChange,
+          className: 'mr-2'
         }}
         showPagination
         paginationProps={{

@@ -12,7 +12,7 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  // output: 'standalone',
   // Pages opt into dynamic rendering per-route (see src/app/page.tsx and
   // src/app/not-found.tsx) because the wrapped ThemeProvider from
   // @paalstack/react-ui reads localStorage on mount (theme persistence) and

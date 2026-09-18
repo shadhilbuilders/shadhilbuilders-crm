@@ -474,6 +474,7 @@ function RosterTable({
           placeholder: 'Search members...',
           searchValue: search,
           onSearchValueChange: (v) => setSearch(String(v ?? '')),
+          className: 'mr-2'
         }}
         isLoading={false}
         loadingContent={<Loading content="Loading members..." />}

@@ -32,6 +32,8 @@ export type PushCapability = {
   isSupported: boolean;
   isSubscribed: boolean;
   checked: boolean;
+  /** Current `Notification.permission` ('default' | 'granted' | 'denied'). */
+  permission: NotificationPermission;
   /** User-initiated: request permission (if needed) + subscribe + register. */
   enablePush: () => Promise<boolean>;
 };
@@ -40,7 +42,26 @@ export function usePushSubscription(): PushCapability {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission>(() =>
+    typeof window !== 'undefined' && 'Notification' in window
+      ? Notification.permission
+      : 'default',
+  );
   const subRef = useRef<PushSubscription | null>(null);
+
+  // Track permission changes the user makes in the browser's site settings
+  // (the address-bar / ⓘ dialog) so the prompt's guidance stays accurate even
+  // after the user fixes the block without going through our dialog.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const update = (): void => setPermission(Notification.permission);
+    update();
+    // `permission`/`persmissionchange` on Notification is not standardized
+    // across browsers; re-read on window focus instead (covers the common
+    // "user toggles it in settings, then returns to the tab" flow).
+    window.addEventListener('focus', update);
+    return () => window.removeEventListener('focus', update);
+  }, []);
 
   // On mount: detect browser capability + whether this device is already
   // subscribed. Never requests permission here.
@@ -110,6 +131,7 @@ export function usePushSubscription(): PushCapability {
       }
 
       const permission = await Notification.requestPermission();
+      setPermission(permission);
       if (permission !== 'granted') return false;
 
       const sub = await reg.pushManager.subscribe({
@@ -118,6 +140,7 @@ export function usePushSubscription(): PushCapability {
       });
       subRef.current = sub;
       setIsSubscribed(true);
+      setPermission('granted');
 
       await api('/push/subscribe', {
         method: 'POST',
@@ -134,5 +157,5 @@ export function usePushSubscription(): PushCapability {
     }
   }, []);
 
-  return { isSupported, isSubscribed, checked, enablePush };
+  return { isSupported, isSubscribed, checked, permission, enablePush };
 }

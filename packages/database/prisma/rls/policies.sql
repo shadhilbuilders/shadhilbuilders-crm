@@ -1235,6 +1235,24 @@ CREATE POLICY lead_select_cron_service ON "Lead"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-OVERDUE-ALERTS (2026-09-18): the overdue-alert cron updates
+-- Lead.lastOverduePushedAt (the every-1-hour dedupe stamp) for NEW + overdue
+-- leads. lead_select_cron_service grants SELECT; without an UPDATE bypass the
+-- cron's update() returns zero rows. Same impersonation guard as the reminder
+-- cron policy (must be role=CRON_SERVICE AND user_id='cron-service').
+CREATE POLICY lead_update_cron_service ON "Lead"
+  FOR UPDATE
+  USING (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'CRON_SERVICE'
+    AND current_setting('app.user_id', true) = 'cron-service'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
 -- WhatsappUnknownContact SELECT for the upsert: the existing
 -- cron_service_all policy already covers this (FOR ALL = all
 -- commands), so no extra policy needed.

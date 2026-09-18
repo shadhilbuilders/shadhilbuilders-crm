@@ -32,9 +32,9 @@ const getCurrentDataVersion = (): string => {
 const safeGetItem = (key: string): string | null => {
   try {
     if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(key);
+    return window.sessionStorage.getItem(key);
   } catch {
-    // Safari private mode + some embedded webviews throw on localStorage
+    // Safari private mode + some embedded webviews throw on sessionStorage
     // access. Silent fail - treat as "not dismissed" and let the toast
     // show; the user just won't have the dismiss state persisted.
     return null;
@@ -44,7 +44,7 @@ const safeGetItem = (key: string): string | null => {
 const safeSetItem = (key: string, value: string): void => {
   try {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(key, value);
+    window.sessionStorage.setItem(key, value);
   } catch {
     // Same as above.
   }
@@ -57,8 +57,10 @@ const safeSetItem = (key: string, value: string): void => {
  * NOT fire this event, see comment in install-prompt UI). When the
  * event fires, shows a sonner toast with [Install] / [Not now] buttons.
  *
- * Dismissal is persisted in localStorage; the toast re-shows only
- * when the manifest's `id` version changes (per design review D4).
+ * Dismissal is persisted in sessionStorage; the toast re-shows only
+ * when the manifest's `id` version changes (per design review D4) - and,
+ * being session-scoped, the prompt surfaces again on a fresh browser
+ * session so the install affordance is not permanently hidden.
  *
  * Implementation note (2026-09-02): the previous version stored the
  * deferred `BeforeInstallPromptEvent` in React state and read it from
@@ -116,7 +118,7 @@ export const InstallPrompt = () => {
               // does not resurrect the toast, then close the live
               // sonner toast via its id. Without toast.dismiss(toastId)
               // the toast sits on screen until reload - the user can see
-              // the X click "do nothing" even though localStorage is set.
+              // the X click "do nothing" even though sessionStorage is set.
               safeSetItem(DISMISS_KEY, currentVersion);
               toast.dismiss(toastId);
             }}
@@ -129,6 +131,7 @@ export const InstallPrompt = () => {
           duration: Infinity,
           position: 'bottom-center',
           className: 'motion-reduce:transition-none',
+          closeButton: false
         },
       );
     };

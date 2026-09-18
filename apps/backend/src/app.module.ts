@@ -17,6 +17,7 @@ import { ChatModule } from './chat/chat.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { RemindersModule } from './reminders/reminders.module';
+import { OverdueAlertsModule } from './overdue-alerts/overdue-alerts.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushModule } from './push/push.module';
 import { AuditModule } from './audit/audit.module';
@@ -69,6 +70,11 @@ import { StorageModule } from './storage/storage.module';
     BookingsModule,
     InventoryModule,
     RemindersModule,
+    // T-OVERDUE-ALERTS (2026-09-18): nag owners / team managers / org owners
+    // about NEW leads past the first-touch SLA, every 1 hour via a Redis-locked
+    // cron (mirrors RemindersModule). Depends on Notifications/Push for both the
+    // in-app inbox row and the browser push.
+    OverdueAlertsModule,
     NotificationsModule,
     PushModule,
     AuditModule,
