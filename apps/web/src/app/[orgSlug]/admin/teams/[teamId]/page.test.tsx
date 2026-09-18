@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   useTeam: vi.fn(),
   useTeams: vi.fn(),
   useReassignTeamMembers: vi.fn(),
+  useUpdateTeamMemberWeight: vi.fn(),
   useProjects: vi.fn(),
   useLinkProjectMemberToProject: vi.fn(),
   useUnlinkProjectMember: vi.fn(),
@@ -32,6 +33,10 @@ vi.mock('@/hooks/queries/teams', () => ({
   useTeam: mocks.useTeam,
   useTeams: mocks.useTeams,
   useReassignTeamMembers: mocks.useReassignTeamMembers,
+  // team-roster.tsx calls useUpdateTeamMemberWeight for the per-member
+  // weight edit in the "Move to team" action menu - the mock must export it
+  // or the import throws at module load.
+  useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
 }));
 
 vi.mock('@/hooks/queries/projects', () => ({
@@ -99,6 +104,10 @@ function baseMocks(): void {
     isPending: false,
   });
   mocks.useUnlinkProjectMember.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+  });
+  mocks.useUpdateTeamMemberWeight.mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
   });

@@ -109,6 +109,10 @@ export default function TeamRosterPage() {
           memberCount: team.members.length,
           managerId: team.manager?.id ?? null,
           managerName: team.manager?.name ?? null,
+          // T-AUTOASSIGN (2026-09-17): carry the routing flag so the
+          // edit-team dialog's auto-assign switch reflects the team's actual
+          // setting (it was silently defaulting to false before).
+          autoAssignLeads: team.autoAssignLeads ?? false,
         }
       : null;
 

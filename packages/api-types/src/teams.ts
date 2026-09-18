@@ -65,6 +65,9 @@ export const TeamDetailSchema = z.object({
     })
     .nullable(),
   members: z.array(TeamMemberRowSchema),
+  // T-AUTOASSIGN (2026-09-17): carried so the edit-team dialog's auto-assign
+  // switch reflects the team's actual setting (was silently false before).
+  autoAssignLeads: z.boolean().optional(),
 });
 export type TeamDetail = z.infer<typeof TeamDetailSchema>;
 

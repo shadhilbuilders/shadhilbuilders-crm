@@ -44,6 +44,9 @@ export type TeamDetail = {
   name: string;
   manager: { id: string; name: string; email: string } | null;
   members: TeamMemberRow[];
+  // T-AUTOASSIGN (2026-09-17): routing flag carried through so the edit-team
+  // switch reflects reality.
+  autoAssignLeads?: boolean;
 };
 
 const TEAMS_KEY = ['teams'] as const;

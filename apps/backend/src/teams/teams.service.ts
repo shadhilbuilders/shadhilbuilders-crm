@@ -177,6 +177,10 @@ export class TeamsService {
         return {
           id: team.id,
           name: team.name,
+          // T-AUTOASSIGN (2026-09-17): surface the routing flag so the
+          // edit-team dialog can render the correct switch state (it was
+          // always defaulting to false before).
+          autoAssignLeads: team.autoAssignLeads ?? false,
           manager: team.manager
             ? {
                 id: team.manager.id,

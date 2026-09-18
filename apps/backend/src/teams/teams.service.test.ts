@@ -299,6 +299,7 @@ describe('TeamsService.getTeam', () => {
     expect(result).toEqual({
       id: 'team-construction',
       name: "Manager (placeholder)'s Team",
+      autoAssignLeads: false,
       manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
       members: [
         {
