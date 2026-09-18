@@ -114,7 +114,8 @@ export default function AdminProjectDetailPage() {
   const units = Array.isArray(unitsQuery.data) ? unitsQuery.data : [];
 
   return (
-    <div className="space-y-6">
+    // T-DASH-MOBILE: tighten section gap on phones (16px) vs desktop (24px).
+    <div className="space-y-4 sm:space-y-6">
       <PageHeader
         title={detail.name}
         breadcrumb={[
@@ -141,29 +142,45 @@ export default function AdminProjectDetailPage() {
       <Card
         header={{ title: 'Details', description: 'Project identity and registry fields.' }}
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" leftIcon={<LuPencil className="size-4" />} onClick={() => setEditOpen(true)} data-qa="project-edit">
+          <div className="hidden items-center justify-end gap-2 sm:flex">
+            <Button variant="outline" size="sm" leftIcon={<LuPencil className="size-4" />} onClick={() => setEditOpen(true)} data-qa="project-edit" className="px-2.5">
               Edit
             </Button>
-            <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff">
+            <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff" className="px-2.5">
               Manage staff
             </Button>
-            <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
+            <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="px-2.5 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
               Delete
             </Button>
           </div>
         }
       >
-        <div className="space-y-1 text-sm">
-          <p><span className="text-muted-foreground">Name:</span> {detail.name}</p>
-          <p><span className="text-muted-foreground">Slug:</span> {detail.slug}</p>
-          <p><span className="text-muted-foreground">Address:</span> {detail.address}</p>
-          <p><span className="text-muted-foreground">RERA:</span> {detail.reraNumber ?? '-'}</p>
-          <p><span className="text-muted-foreground">CMDA:</span> {detail.cmdaNumber ?? '-'}</p>
+        {/* On phones the header action is hidden; render the 3 actions as a
+            full-width, equal 3-col grid below the identity fields so they
+            never overflow a narrow viewport. */}
+        <div className="space-y-3">
+          <div className="space-y-1 text-sm">
+            <p><span className="text-muted-foreground">Name:</span> {detail.name}</p>
+            <p><span className="text-muted-foreground">Slug:</span> {detail.slug}</p>
+            <p><span className="text-muted-foreground">Address:</span> {detail.address}</p>
+            <p><span className="text-muted-foreground">RERA:</span> {detail.reraNumber ?? '-'}</p>
+            <p><span className="text-muted-foreground">CMDA:</span> {detail.cmdaNumber ?? '-'}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:hidden">
+            <Button variant="outline" size="sm" leftIcon={<LuPencil className="size-4" />} onClick={() => setEditOpen(true)} data-qa="project-edit" className="w-full px-1">
+              Edit
+            </Button>
+            <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff" className="w-full px-1">
+              Staff
+            </Button>
+            <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="w-full px-1 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
+              Delete
+            </Button>
+          </div>
         </div>
       </Card>
 
-      {/* Count grid */}
+      {/* Count grid - 2 cols on phones so each KPI stays readable, denser up */}
       <section>
         <div className="mb-2">
           <h2 className="text-sm font-semibold tracking-wide uppercase">At a glance</h2>
@@ -171,7 +188,7 @@ export default function AdminProjectDetailPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           {kpiCard('Phases', String(detail.counts.phases))}
           {kpiCard('Units', String(detail.counts.units))}
-          {kpiCard('Options', String(detail.counts.options))}
+          {kpiCard('Facing & BHK', String(detail.counts.options))}
           {kpiCard('Teams', String(detail.counts.teams))}
           {kpiCard('Members', String(detail.counts.teamMembers))}
           {kpiCard('Leads', String(detail.counts.leads))}
@@ -207,9 +224,9 @@ export default function AdminProjectDetailPage() {
             {leads.map((lead) => {
               const row = lead as { id?: string; name?: string; ownerName?: string };
               return (
-                <li key={row.id ?? ''} className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+                <li key={row.id ?? ''} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm sm:gap-4 sm:px-4">
                   <span className="truncate">{row.name ?? '(no name)'}</span>
-                  <span className="text-muted-foreground text-xs">{row.ownerName ?? 'unassigned'}</span>
+                  <span className="shrink-0 text-muted-foreground text-xs">{row.ownerName ?? 'unassigned'}</span>
                 </li>
               );
             })}
@@ -217,8 +234,8 @@ export default function AdminProjectDetailPage() {
         )}
       </section>
 
-      {/* Inventory units + phases */}
-      <section className="grid gap-6 lg:grid-cols-2">
+      {/* Inventory units + phases (stacks into one column on phones) */}
+      <section className="grid gap-4 sm:gap-6 lg:grid-cols-2">
         <Card header={{ title: 'Units' }}>
           {unitsQuery.isLoading ? (
             <Skeleton variant="table" />
@@ -229,9 +246,9 @@ export default function AdminProjectDetailPage() {
               {units.map((unit) => {
                 const row = unit as { id: string; unitNumber?: string; bhk?: number; facing?: string | null; status?: string };
                 return (
-                  <li key={row.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                  <li key={row.id} className="flex items-center justify-between gap-3 py-2 text-sm sm:gap-4">
                     <span className="truncate">Unit {row.unitNumber ?? ''}</span>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="shrink-0 text-muted-foreground text-xs">
                       {row.bhk ? `${row.bhk} BHK` : ''}
                       {row.facing ? ` · ${row.facing}` : ''} · {row.status ?? ''}
                     </span>
@@ -244,8 +261,8 @@ export default function AdminProjectDetailPage() {
         <PhasesSection phases={phasesQuery.data ?? []} projectId={projectId} canManage={canManage} />
       </section>
 
-      {/* Options grid */}
-      <section className="grid gap-6 sm:grid-cols-2">
+      {/* Options grid - one column on phones, two on desktop */}
+      <section className="grid gap-4 sm:grid-cols-2 sm:gap-6">
         <FacingOptionsCard options={optionsQuery.data ?? []} projectId={projectId} canManage={canManage} />
         <BhkOptionsCard options={optionsQuery.data ?? []} projectId={projectId} canManage={canManage} />
       </section>
@@ -268,10 +285,10 @@ export default function AdminProjectDetailPage() {
       </section>
 
       {/* Edit / Delete / Staff dialogs (reuse the registry bodies) */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen} header={{ title: 'Edit project' }} trigger={<button hidden />} contentClassName="sm:max-w-lg">
+      <Dialog open={editOpen} onOpenChange={setEditOpen} header={{ title: 'Edit project' }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
         <ProjectFormBody mode="edit" project={asListItem} onDone={() => setEditOpen(false)} />
       </Dialog>
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen} header={{ title: 'Delete project' }} trigger={<button hidden />} contentClassName="sm:max-w-lg">
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen} header={{ title: 'Delete project' }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
         <ProjectDeleteBody project={asListItem} onDone={() => setDeleteOpen(false)} />
       </Dialog>
       <Dialog open={membersOpen} onOpenChange={setMembersOpen} header={{ title: 'Manage staff', description: detail.name }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
