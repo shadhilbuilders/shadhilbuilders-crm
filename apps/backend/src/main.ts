@@ -45,6 +45,14 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     rawBody: true,
   });
+  // Raise the JSON body cap for chat media uploads. The browser sends the file
+  // as base64 (~4/3 inflation), so a 10MB file is ~13.4MB on the wire.
+  // useBodyParser (not app.use(express.json())) because it RESPECTS the
+  // `rawBody: true` option set above - a hand-mounted express.json() would
+  // bypass the rawBody capture that the WhatsApp webhook's HMAC signature
+  // guard depends on.
+  app.useBodyParser('json', { limit: '25mb' });
+  app.useBodyParser('urlencoded', { limit: '25mb', extended: true });
   // G-WhatsApp-Webhook: use the SIMPLE query parser (not Express's
   // default extended/qs parser). The default parser treats
   // `hub.mode`, `hub.verify_token` and `hub.challenge` (dot-named

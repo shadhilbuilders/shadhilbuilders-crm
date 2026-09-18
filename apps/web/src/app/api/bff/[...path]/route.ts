@@ -16,6 +16,8 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { issueJwt } from '@shadhil/auth';
 import { prisma } from '@shadhil/database';
 
+import { buildBackendPath } from '@/lib/bff-path';
+
 export const dynamic = 'force-dynamic';
 
 const SESSION_COOKIE = 'better-auth.session_token';
@@ -60,7 +62,7 @@ async function forward(
   ctx: RouteContext<'/api/bff/[...path]'>,
 ): Promise<NextResponse> {
   const { path } = await ctx.params;
-  const backendPath = path.join('/');
+  const backendPath = buildBackendPath(path);
 
   // better-auth's cookie value is `<token>.<hmac>` - the DB `Session.token`
   // column stores the bare token part only. Strip the signature before the

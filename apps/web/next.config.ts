@@ -10,6 +10,37 @@ const SECURITY_HEADERS = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
 ];
 
+/**
+ * remotePatterns entry for the media CDN host, derived from env.
+ *
+ * Chat IMAGE attachments are rendered with next/image (Option A), and
+ * next/image THROWS on an unlisted hostname - so this must match whatever the
+ * backend's StorageProvider.publicUrl() produces. Reading the SAME env var the
+ * backend uses keeps the two in lockstep and makes an ImageKit -> R2 migration
+ * a single env change:
+ *
+ *   MEDIA_CDN_URL (preferred; set it to the R2 public host when you switch)
+ *   IMAGEKIT_URL_ENDPOINT (current provider - used as the fallback)
+ *
+ * Returns an entry with `pathname` omitted (allow any path) since keys are
+ * org-namespaced. Falls back to the known ImageKit host if env is absent, so a
+ * missing var cannot silently produce an unlisted-host crash.
+ */
+function mediaCdnPattern(): NonNullable<NonNullable<NextConfig['images']>['remotePatterns']> {
+  const endpoint = process.env.MEDIA_CDN_URL ?? process.env.IMAGEKIT_URL_ENDPOINT ?? 'https://ik.imagekit.io';
+  try {
+    const url = new URL(endpoint);
+    return [
+      {
+        protocol: url.protocol.replace(':', '') as 'http' | 'https',
+        hostname: url.hostname,
+      },
+    ];
+  } catch {
+    return [{ protocol: 'https', hostname: 'ik.imagekit.io' }];
+  }
+}
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // output: 'standalone',
@@ -48,11 +79,33 @@ const nextConfig: NextConfig = {
 
   images: {
     formats: ['image/avif', 'image/webp'],
-    remotePatterns: [{ protocol: 'https', hostname: 'r2.cloudflarestorage.com' }],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'r2.cloudflarestorage.com' },
+      // MEDIA (2026-09-18): chat IMAGE attachments are served straight from
+      // the storage provider's public CDN (Option A - see
+      // apps/backend/src/storage/media-display.ts), so the optimiser needs the
+      // host allow-listed. DERIVED FROM ENV deliberately: next/image THROWS
+      // ("hostname ... is not configured under images") when it meets an
+      // unlisted host, so a hardcoded entry would break the entire chat pane
+      // the moment IMAGEKIT_URL_ENDPOINT points at a custom domain. Reading the
+      // same variable keeps build config and runtime endpoint in lockstep.
+      //
+      // WHEN SWITCHING TO CLOUDFLARE R2: point MEDIA_CDN_URL (or
+      // IMAGEKIT_URL_ENDPOINT) at the bucket's PUBLIC host -
+      // `pub-<hash>.r2.dev`, or your custom domain. Do NOT use the
+      // r2.cloudflarestorage.com entry above: that is R2's authenticated S3 API
+      // endpoint and browsers cannot fetch from it unauthenticated.
+      ...mediaCdnPattern(),
+    ],
   },
 
+  // Body cap for chat media uploads (browser sends base64, ~4/3 inflation, so
+  // a 10MB file is ~13.4MB on the wire). This is the App Router's supported knob:
+  // the old `export const config = { api: { bodyParser } }` route form is
+  // deprecated AND SILENTLY IGNORED here (it only logs a warning). The backend
+  // must be raised too - each hop caps independently.
   experimental: {
-    serverActions: { bodySizeLimit: '2mb' },
+    serverActions: { bodySizeLimit: '25mb' },
   },
 
   headers: async () => [

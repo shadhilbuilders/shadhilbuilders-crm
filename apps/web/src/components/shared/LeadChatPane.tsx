@@ -76,7 +76,7 @@ import {
   ToggleGroup,
   toast,
 } from '@paalstack/react-ui';
-import { LuArrowUp, LuFile, LuLock, LuMessageSquare, LuPaperclip, LuX } from '@paalstack/react-icons/lu';
+import { LuArrowUp, LuFile, LuLock, LuMessageSquare, LuPaperclip, LuRefreshCw, LuX } from '@paalstack/react-icons/lu';
 import { useMemo, useRef, useState } from 'react';
 
 import { useMessages, useMessagesRealtime, useSendMessage, uploadChatMedia } from '@/hooks/queries/crm';
@@ -84,6 +84,8 @@ import { useTeamMembers } from '@/hooks/queries/users';
 import { useProjectId } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 import { useSessionUser } from '@/lib/session';
+
+import { AttachmentImage } from './AttachmentImage';
 
 type Direction = 'IN' | 'OUT';
 type Channel = 'WHATSAPP' | 'IN_APP';
@@ -141,6 +143,45 @@ function formatBytes(bytes: number): string {
   const value = bytes / 1024 ** exp;
   return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Client-side file validation (mirrors backend MediaController limits)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Maximum upload size in bytes (10MB, matches backend MAX_UPLOAD_BYTES). */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Allowed MIME type prefixes (matches backend ALLOWED_MIME_PREFIXES). */
+const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'text/', 'video/', 'audio/'] as const;
+
+/** Result of validating a file for chat upload. */
+type FileValidationResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Validate a file before upload. Returns { ok: true } if valid,
+ * or { ok: false, error: 'user-friendly message' } if invalid.
+ */
+function validateChatFile(file: File): FileValidationResult {
+  // Check file size
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const maxMB = MAX_UPLOAD_BYTES / (1024 * 1024);
+    return { ok: false, error: `File is too large. Maximum size is ${maxMB}MB.` };
+  }
+  if (file.size === 0) {
+    return { ok: false, error: 'File is empty.' };
+  }
+
+  // Check MIME type
+  const mimeType = file.type || 'application/octet-stream';
+  const allowed = ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix));
+  if (!allowed) {
+    return { ok: false, error: 'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.' };
+  }
+
+  return { ok: true };
+}
+
+export { validateChatFile, type FileValidationResult };
 
 // ────────────────────────────────────────────────────────────────────────────
 // Date grouping (WIREFRAMES.md:334 / DESIGN.md:708)
@@ -321,7 +362,25 @@ export function LeadChatPane({
       uploadChatMedia(pendingAttachment.file)
         .then((media) => send(media))
         .catch((err) => {
-          toast.error(err instanceof Error ? `Upload failed: ${err.message}` : 'Upload failed');
+          // Provide user-friendly error messages based on the error type
+          let message = 'Upload failed. Please try again.';
+          if (err instanceof Error) {
+            const apiError = err as { status?: number; code?: string; details?: unknown };
+            // Handle specific backend error codes
+            if (apiError.status === 413 || apiError.code === 'PAYLOAD_TOO_LARGE') {
+              message = `File is too large. Maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`;
+            } else if (apiError.status === 400) {
+              // Backend validation errors (unsupported type, empty file, etc.)
+              message = apiError.details
+                ? String(apiError.details)
+                : err.message.replace(/^API \d+:\s*/, '');
+            } else if (apiError.status === 415 || apiError.code === 'UNSUPPORTED_MEDIA_TYPE') {
+              message = 'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.';
+            } else {
+              message = err.message.replace(/^API \d+:\s*/, '');
+            }
+          }
+          toast.error(message);
         })
         .finally(() => setAttachmentUploading(false));
       return;
@@ -336,6 +395,14 @@ export function LeadChatPane({
     const file = event.target.files?.[0];
     event.target.value = '';
     if (file === undefined) return;
+
+    // Client-side validation before accepting the file
+    const validation = validateChatFile(file);
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
+
     setPendingAttachment({
       file,
       previewUrl: URL.createObjectURL(file),
@@ -642,40 +709,37 @@ export function LeadChatPane({
               ) : null}
             </div>
             <InputGroupAddon align="inline-end" className="p-2">
-              {/* MEDIA (2026-09-17): paperclip opens the file picker (CUSTOMER
-                  thread only - internal notes never carry attachments). */}
-              {!isInternal ? (
-                <InputGroupButton
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!canSend}
-                  aria-label="Attach a file"
-                  data-qa="chat-attach-button"
-                >
-                  <LuPaperclip className="size-4" />
-                </InputGroupButton>
-              ) : null}
+              {/* MEDIA (2026-09-17): paperclip opens the file picker for both
+                  CUSTOMER and INTERNAL threads. */} 
+              <InputGroupButton
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!canSend}
+                aria-label="Attach a file"
+                data-qa="chat-attach-button"
+              >
+                <LuPaperclip className="size-4" />
+              </InputGroupButton>
               <InputGroupButton
                 type="submit"
                 variant="default"
                 size="icon-sm"
-                disabled={!canSend || (draft.trim().length === 0 && pendingAttachment === null)}
+                disabled={!canSend || (draft.trim().length === 0 && pendingAttachment === null) || sendMessage.isPending || attachmentUploading}
                 data-qa="chat-send-button"
                 aria-label="Send message"
               >
-                <LuArrowUp />
+                {sendMessage.isPending || attachmentUploading ? (
+                  <LuRefreshCw className="size-4 animate-spin" />
+                ) : (
+                  <LuArrowUp />
+                )}
                 <span className="sr-only">Send</span>
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
         </form>
-        {sendMessage.isPending || attachmentUploading ? (
-          <p className="text-muted-foreground text-right text-[10px]">
-            {attachmentUploading ? 'Uploading...' : 'Sending...'}
-          </p>
-        ) : null}
       </CardFooter>
     </CardRoot>
   );
@@ -715,6 +779,11 @@ function ChatMessage({
 }) {
   const mediaIsImage = mediaType !== null && mediaType !== undefined && mediaType.startsWith('image/');
   const mediaIsPdf = mediaType === 'application/pdf';
+  // MEDIA: a stored key can outlive its bytes (e.g. MEDIA_STORAGE switched
+  // between local disk and imagekit - see the chat-media-storage skill note).
+  // Track the failure in state and render a link-shaped fallback instead of a
+  // broken-image icon, so the attachment stays clickable and diagnosable.
+  const [imageFailed, setImageFailed] = useState(false);
   return (
     <MessageScrollerItem messageId={id} scrollAnchor={isOut}>
       <Message align={isOut ? 'end' : 'start'}>
@@ -749,14 +818,33 @@ function ChatMessage({
                   download link (documents, video, audio). */}
               {mediaUrl !== null && mediaUrl !== undefined && mediaUrl.length > 0 ? (
                 <div className="mb-1.5">
-                  {mediaIsImage ? (
+                  {mediaIsImage && !imageFailed ? (
                     <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
-                      <img
+                      {/* Bytes load through the BFF (needs the session
+                          cookie), so a plain <img> is correct here. */}
+                      <AttachmentImage
                         src={mediaUrl}
                         alt={mediaFilename ?? 'attachment'}
                         className="max-h-56 w-auto max-w-full rounded-lg border border-border"
-                        data-qa="chat-media-image"
+                        onFailed={() => setImageFailed(true)}
                       />
+                    </a>
+                  ) : mediaIsImage && imageFailed ? (
+                    // Bytes are gone (dead key / storage backend switched).
+                    // Keep it a link so the file is still reachable if it
+                    // comes back, and label it honestly instead of showing
+                    // the browser's broken-image glyph.
+                    <a
+                      href={mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      data-qa="chat-media-image-failed"
+                    >
+                      <LuFile className="size-4 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {mediaFilename ?? 'Image'} (preview unavailable)
+                      </span>
                     </a>
                   ) : mediaIsPdf ? (
                     <a

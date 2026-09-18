@@ -33,9 +33,10 @@ import { STORAGE_PROVIDER } from './storage.tokens';
 import type { StorageProvider } from './storage.provider';
 
 // Meta's media caps (document 100MB, image 5MB, video 16MB, audio 16MB).
-// We cap at image/audio/video size for the base64 body (docs up to 16MB
-// keeps the JSON body manageable through the BFF). ImageKit has no lower cap.
-const MAX_UPLOAD_BYTES = 16 * 1024 * 1024; // 16MB
+// We cap at 10MB for the base64 body - base64 inflates ~4/3, so a 10MB file
+// is ~13.4MB of JSON through the BFF (both hops allow 25MB, so there is
+// headroom). ImageKit has no lower cap of its own.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'text/', 'video/', 'audio/'];
 

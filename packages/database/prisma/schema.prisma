@@ -712,6 +712,13 @@ model Message {
   kind           MessageKind      @default(CUSTOMER)
   body           String           @db.Text
   mediaUrl       String?
+  // MEDIA (2026-09-18): the PROVIDER-NEUTRAL storage key (ImageKit filePath,
+  // R2 object key, local disk path). This is canonical for rows written from
+  // now on; the display URL is DERIVED from it per request (media-display.ts)
+  // so the storage provider is never baked into a stored row - switching
+  // ImageKit -> R2 becomes an adapter change, not a data migration.
+  // Mirrors OutboundMessage.mediaKey (which the cron uses to read bytes back).
+  mediaKey       String?
   // MEDIA (2026-09-17): attachment metadata mirrored from the upload so the
   // web pane can render images inline vs documents as a download link, and
   // inbound WhatsApp media (2B) can store the mime type for the same render.

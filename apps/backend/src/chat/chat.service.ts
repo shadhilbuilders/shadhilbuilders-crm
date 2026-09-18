@@ -39,6 +39,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
+import { STORAGE_PROVIDER } from '../storage/storage.tokens';
+import type { StorageProvider } from '../storage/storage.provider';
+import { resolveMediaDisplayUrl } from '../storage/media-display';
 /**
  * Wire shape returned by every endpoint. Matches the MessageEvent
  * schema in packages/api-types/src/chat.ts - the web app reads these
@@ -78,7 +81,41 @@ export class ChatService {
     @Optional()
     @Inject(NotificationsService)
     private readonly notifications?: NotificationsService,
+    // MEDIA (2026-09-18): storage is only needed to build the PUBLIC display
+    // URL for images (Option A). @Optional() (rule 7h) so existing test
+    // factories that construct ChatService with fewer args stay green - when
+    // it is absent, media falls back to the authenticated BFF path.
+    @Optional()
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage?: StorageProvider,
   ) {}
+
+  /**
+   * Display URL for an attachment row (Option A: images go straight to the
+   * provider CDN, documents stay on the authenticated BFF path).
+   *
+   * Prefers the provider-neutral `mediaKey`; falls back to the row's stored
+   * `mediaUrl` so rows written before mediaKey existed still render. See
+   * storage/media-display.ts for the policy and the ImageKit -> R2 seam.
+   */
+  private displayMediaUrl(row: {
+    mediaKey?: string | null;
+    mediaType?: string | null;
+    mediaUrl?: string | null;
+  }): string | null {
+    const directUrl =
+      row.mediaKey !== null && row.mediaKey !== undefined && this.storage?.publicUrl !== undefined
+        ? this.storage.publicUrl(row.mediaKey)
+        : null;
+    return (
+      resolveMediaDisplayUrl({
+        mediaKey: row.mediaKey,
+        mediaType: row.mediaType,
+        directUrl,
+        storedUrl: row.mediaUrl,
+      })?.url ?? null
+    );
+  }
 
   // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed -
   // instantiating directly avoids touching every existing test's
@@ -135,6 +172,7 @@ export class ChatService {
             kind: true,
             body: true,
             mediaUrl: true,
+            mediaKey: true,
             mediaType: true,
             mediaFilename: true,
             createdAt: true,
@@ -149,7 +187,10 @@ export class ChatService {
           channel: r.channel,
           kind: r.kind,
           body: r.body,
-          mediaUrl: r.mediaUrl,
+          // DERIVED per request (Option A): images resolve to the provider's
+          // public CDN URL, documents to the authenticated BFF path. Legacy
+          // rows without mediaKey fall back to their stored mediaUrl.
+          mediaUrl: this.displayMediaUrl(r),
           mediaType: r.mediaType,
           mediaFilename: r.mediaFilename,
           // OUT → the staff member who sent it; IN → the customer (lead).
@@ -215,15 +256,16 @@ export class ChatService {
             channel: dto.channel ?? 'IN_APP',
             kind,
             body: dto.body,
-            // mediaUrl is the storage key served to the web pane. The
-            // browser uploads via POST /api/media → returns mediaKey, which
-            // we store as the Message row's mediaUrl (a `/:key` media URL).
-            // mediaUrl is the BFF-proxied media read path (the browser fetches
-            // /api/bff/media/:key → BFF verifies the session + mints JWT →
-            // backend GET /api/media/:key). The key is URL-encoded because it
-            // may contain slashes (org/id/filename) and Nest 12's route is a
-            // single :key segment.
-            mediaUrl: dto.mediaUrl ?? (dto.mediaKey !== undefined ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}` : undefined),
+            // MEDIA (2026-09-18): store the PROVIDER-NEUTRAL key (canonical)
+            // plus a derived display URL for back-compat readers. The display
+            // URL is recomputed per request by displayMediaUrl() using the
+            // Option A policy (images -> public CDN, docs -> authenticated
+            // BFF path), so a storage-provider switch never needs a row
+            // migration. `dto.mediaUrl` is honoured when a caller supplies it.
+            mediaKey: dto.mediaKey,
+            mediaUrl:
+              dto.mediaUrl ??
+              (dto.mediaKey !== undefined ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}` : undefined),
             mediaType: dto.mediaMimeType,
             mediaFilename: dto.mediaFilename,
           },
@@ -235,6 +277,7 @@ export class ChatService {
             kind: true,
             body: true,
             mediaUrl: true,
+            mediaKey: true,
             mediaType: true,
             mediaFilename: true,
             createdAt: true,
@@ -331,7 +374,9 @@ export class ChatService {
           channel: created.channel,
           kind: created.kind,
           body: created.body,
-          mediaUrl: created.mediaUrl,
+          // Same derivation as list() so the optimistic/returned row matches
+          // what a refetch will show (images -> public CDN under Option A).
+          mediaUrl: this.displayMediaUrl(created),
           mediaType: created.mediaType,
           mediaFilename: created.mediaFilename,
           // OUT → the staff member who sent it (the actor).

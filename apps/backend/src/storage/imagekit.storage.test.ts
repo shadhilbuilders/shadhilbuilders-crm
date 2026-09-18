@@ -116,4 +116,53 @@ describe('ImageKitStorage', () => {
     } as unknown as Response);
     expect(await s.read('/org/a/b.png')).toEqual(Buffer.from([1, 2, 3]));
   });
+
+  it('requests ?tr=orig-true so ImageKit does not re-encode the bytes', async () => {
+    // Verified against the real CDN: a bare URL returned a 457KB JPEG for a
+    // stored 1MB PNG. Without this parameter read() hands a lossy derivative to
+    // the outbound Meta /media upload.
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    const s = new ImageKitStorage();
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.resolve(new Uint8Array([1, 2, 3]).buffer),
+    } as unknown as Response);
+
+    await s.read('/org/a/b.txt');
+
+    expect(fetchSpy).toHaveBeenCalledWith('https://ik.imagekit.io/org/org/a/b.txt?tr=orig-true');
+  });
+
+  it('refuses to serve a re-encoded JPEG when the key says PNG', async () => {
+    // Guards the failure mode above from regressing silently: if ImageKit ever
+    // stops honouring orig-true, fail loud (null -> 404) rather than handing
+    // the customer a mutated file.
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    const s = new ImageKitStorage();
+    // JPEG magic (FF D8 FF) under a .png key.
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.resolve(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]).buffer),
+    } as unknown as Response);
+
+    expect(await s.read('/org/a/photo.png')).toBeNull();
+  });
+
+  it('serves genuine PNG bytes for a .png key', async () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    const s = new ImageKitStorage();
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.resolve(png.buffer),
+    } as unknown as Response);
+
+    expect(await s.read('/org/a/photo.png')).toEqual(Buffer.from(png));
+  });
 });

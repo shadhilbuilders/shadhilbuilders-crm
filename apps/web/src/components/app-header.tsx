@@ -34,6 +34,7 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SidebarToggleButton } from '@/components/app-shell';
+import { notificationBellLabel, renderedUnreadCount } from '@/components/app-header-helpers';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -152,7 +153,6 @@ function NotificationBell() {
   const markRead = useMarkNotificationsRead();
 
   const rows = (query.data?.rows ?? []) as NotificationRow[];
-  const unread = query.data?.unread ?? 0;
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -166,6 +166,15 @@ function NotificationBell() {
     : null;
   const href = projectHref(mounted ? orgSlug : null, projectId, '/notifications');
 
+  // Hydration (2026-09-18): `unread` MUST be gated on `mounted`, like `href`
+  // below. It comes from a client-only query, so the server rendered 0
+  // ("Notifications") while the first client paint rendered the real count
+  // ("38 unread notifications") - React reported "Hydration failed because the
+  // server rendered HTML didn't match the client" and regenerated the tree.
+  // The label and the badge both derive from this ONE gated value so they can
+  // never disagree. Logic lives in app-header-helpers.ts (unit-tested).
+  const unread = renderedUnreadCount(mounted, query.data?.unread);
+
   return (
     <PopoverRoot>
       <PopoverTrigger
@@ -174,9 +183,7 @@ function NotificationBell() {
             variant="ghost"
             size="sm"
             className="relative min-h-11 min-w-11 gap-1 px-2"
-            aria-label={
-              unread > 0 ? `${unread} unread notifications` : 'Notifications'
-            }
+            aria-label={notificationBellLabel(unread)}
             data-qa="notifications-bell"
           >
             <LuBell className="size-5" />

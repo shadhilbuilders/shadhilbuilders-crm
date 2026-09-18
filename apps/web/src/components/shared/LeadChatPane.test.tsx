@@ -40,7 +40,7 @@ vi.mock('@/lib/session', () => ({
   })),
 }));
 
-import { LeadChatPane, withDateSeparators, groupForDate, extractMentionedNames, type DateGroup } from './LeadChatPane';
+import { LeadChatPane, withDateSeparators, groupForDate, extractMentionedNames, validateChatFile, type DateGroup } from './LeadChatPane';
 import { useMessages } from '@/hooks/queries/crm';
 
 const mockedUseMessages = vi.mocked(useMessages);
@@ -266,5 +266,71 @@ describe('withDateSeparators - date grouping (WIREFRAMES.md:334)', () => {
   it('groupForDate returns null for an invalid date', () => {
     expect(groupForDate(undefined, now)).toBeNull();
     expect(groupForDate('not-a-date', now)).toBeNull();
+  });
+});
+
+describe('validateChatFile - client-side file validation', () => {
+  // Only `size` and `type` are read, so build a File-shaped stub instead of
+  // allocating megabytes of real content (the old `'x'.repeat(20MB)` version
+  // allocated ~20MB per case for no extra coverage).
+  const createFile = (size: number, type: string): File =>
+    ({ size, type, name: 'test.txt' }) as unknown as File;
+
+  const MB = 1024 * 1024;
+
+  it('accepts valid image files under 10MB', () => {
+    expect(validateChatFile(createFile(5 * MB, 'image/png'))).toEqual({ ok: true });
+  });
+
+  it('accepts valid PDF files under 10MB', () => {
+    expect(validateChatFile(createFile(10 * MB, 'application/pdf'))).toEqual({ ok: true });
+  });
+
+  it('accepts valid text files under 10MB', () => {
+    expect(validateChatFile(createFile(1024, 'text/plain'))).toEqual({ ok: true });
+  });
+
+  it('accepts valid video files under 10MB', () => {
+    expect(validateChatFile(createFile(9 * MB, 'video/mp4'))).toEqual({ ok: true });
+  });
+
+  it('accepts valid audio files under 10MB', () => {
+    expect(validateChatFile(createFile(8 * MB, 'audio/mpeg'))).toEqual({ ok: true });
+  });
+
+  it('accepts a file of exactly 10MB (the cap is inclusive)', () => {
+    // The check is `size > MAX_UPLOAD_BYTES`, so exactly 10MB passes. Pin it:
+    // an off-by-one here silently rejects a boundary-legal file.
+    expect(validateChatFile(createFile(10 * MB, 'image/png'))).toEqual({ ok: true });
+  });
+
+  it('rejects a file one byte over 10MB', () => {
+    const result = validateChatFile(createFile(10 * MB + 1, 'image/png'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('10MB');
+  });
+
+  it('rejects files larger than 10MB', () => {
+    const result = validateChatFile(createFile(20 * MB, 'image/png'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('10MB');
+  });
+
+  it('rejects empty files', () => {
+    const result = validateChatFile(createFile(0, 'image/png'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('empty');
+  });
+
+  it('rejects unsupported MIME types', () => {
+    const result = validateChatFile(createFile(1024, 'application/zip'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('Unsupported file type');
+  });
+
+  it('rejects executable files', () => {
+    const result = validateChatFile(createFile(1024, 'application/x-executable'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('Unsupported file type');
   });
 });

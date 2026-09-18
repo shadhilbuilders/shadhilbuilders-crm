@@ -323,13 +323,17 @@ export class WebhooksController {
           // 3a) Known lead - create the Message row. Text OR media.
           // Use $executeRaw for consistency with the existing text path
           // (avoids the RLS interaction quirk on typed tx.message.create).
-          let mediaUrl: string | null = null;
+          // MEDIA (2026-09-18): store the provider-neutral mediaKey; mediaUrl
+          // is left NULL for new rows and derived per request from the key
+          // (storage/media-display.ts), so the storage provider is not baked
+          // into the row.
+          let mediaKey: string | null = null;
           let mediaType: string | null = null;
           let mediaFilename: string | null = null;
           if (mediaInfo !== null) {
             const stored = await this.downloadAndStoreInboundMedia(mediaInfo);
             if (stored !== null) {
-              mediaUrl = stored.mediaUrl;
+              mediaKey = stored.mediaKey;
               mediaType = stored.mediaType;
               mediaFilename = stored.filename;
             }
@@ -337,13 +341,13 @@ export class WebhooksController {
           const body = isText ? message.text!.body! : '';
           const msgId = `wa_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           await tx.$executeRawUnsafe(
-            `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "mediaUrl", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
+            `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "mediaKey", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
             msgId,
             process.env['PUBLIC_ORG_ID'] ?? '',
             lead.id,
             body,
             externalId,
-            mediaUrl,
+            mediaKey,
             mediaType,
             mediaFilename,
           );
@@ -380,11 +384,15 @@ export class WebhooksController {
   }
 
   /** Download an inbound media message from Meta + persist via storage.
-   *  Returns the mediaUrl + metadata, or null if download/storage failed
-   *  (so the webhook still acks and doesn't retry a corrupt event). */
+   *  Returns the stored key + metadata, or null if download/storage failed
+   *  (so the webhook still acks and doesn't retry a corrupt event).
+   *
+   *  Returns the provider-neutral KEY (not a display URL) - the caller stores
+   *  it in Message.mediaKey and the display URL is derived per request by
+   *  ChatService.displayMediaUrl() (storage/media-display.ts). */
   private async downloadAndStoreInboundMedia(
     media: NonNullable<ReturnType<typeof extractMedia>>,
-  ): Promise<{ mediaUrl: string; mediaType: string; filename: string } | null> {
+  ): Promise<{ mediaKey: string; mediaType: string; filename: string } | null> {
     if (this.whatsapp === undefined || this.storage === undefined) return null;
     try {
       const file = await this.whatsapp.downloadMedia(media.mediaId);
@@ -398,7 +406,7 @@ export class WebhooksController {
         filename: media.filename ?? file.filename,
       });
       return {
-        mediaUrl: `/api/bff/media/${encodeURIComponent(stored.key)}`,
+        mediaKey: stored.key,
         mediaType: file.mimeType,
         filename: media.filename ?? file.filename,
       };
