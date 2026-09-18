@@ -259,7 +259,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
         }),
       );
       expect(lead?.lastOverduePushedAt).toBeInstanceOf(Date);
-    });
+    }, 30_000);
 
     it('every-1-hour cadence: a second tick within the hour does NOT re-push', async () => {
       // First tick pushes + stamps.
@@ -280,7 +280,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
       );
       // 1 from the first tick (owner's inbox), nothing duplicated by the second.
       expect(forOwner).toBe(1);
-    });
+    }, 30_000);
 
     it('lock contention: a second replica is rejected when the lock is held', async () => {
       const REPLICA_A = 'ovdo-replica-a';

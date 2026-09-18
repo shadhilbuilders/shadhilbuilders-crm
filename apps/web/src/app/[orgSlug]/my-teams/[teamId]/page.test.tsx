@@ -15,10 +15,17 @@ const mocks = vi.hoisted(() => ({
   useTeam: vi.fn(),
   useRemovalPreview: vi.fn(),
   useReassignAndRemove: vi.fn(),
+  useUpdateTeamMemberWeight: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
   useTeam: mocks.useTeam,
+  // team-roster.tsx calls useUpdateTeamMemberWeight for the per-member weight
+  // edit (T-AUTOASSIGN, 2026-09-17). A hand-rolled module mock REPLACES the
+  // whole module, so every hook the component imports must be exported here or
+  // the import throws "No export is defined on the mock" at render time.
+  // Mirrors admin/teams/[teamId]/page.test.tsx, which was updated with the hook.
+  useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
 }));
 
 vi.mock('@/hooks/queries/team-members', () => ({
@@ -70,6 +77,7 @@ async function unmount(): Promise<void> {
 function baseMocks(): void {
   mocks.useRemovalPreview.mockReturnValue({ isLoading: false, error: null, data: undefined, refetch: vi.fn() });
   mocks.useReassignAndRemove.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useUpdateTeamMemberWeight.mockReturnValue({ mutate: vi.fn(), isPending: false });
 }
 
 afterEach(async () => {

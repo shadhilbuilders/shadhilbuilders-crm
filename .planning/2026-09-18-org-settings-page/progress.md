@@ -105,8 +105,8 @@ Chronological record for the org-scoped Settings page (2026-09-18).
 | backend `src/users/` scope | all users suites, my changes present | green | 93 tests, 7 files | pass |
 | `my-teams/[teamId]/page.test.tsx` | unchanged file, also run on stashed HEAD | green | 2 fail both with and without my diff | pre-existing |
 | `overdue-alerts.processor.test.ts` | unchanged file, isolation run WITH my changes | green | 3/3 pass; only times out under 50-file load | pre-existing flake |
-| web full suite | `pnpm test` | green | 680 pass / 2 fail (the pre-existing pair) | 2 pre-existing |
-| backend full suite | `pnpm test` | green | 1072 pass / 2 fail (the pre-existing pair) | 2 pre-existing |
+| web full suite | `pnpm test` | green | **699 pass / 0 fail** (79 files, exit 0) | pass |
+| backend full suite | `pnpm test` | green | **1074 pass / 0 fail** (50 files, exit 0) | pass |
 | `pnpm build` (web) | production build | route table includes settings | `✓ Compiled successfully`, `/[orgSlug]/settings` listed, exit 0 | pass |
 
 ## Error Log
@@ -121,13 +121,29 @@ Chronological record for the org-scoped Settings page (2026-09-18).
 | 2026-09-18 ~11:35Z | Authenticated page: push badge stuck on "Checking..." forever | 1 | PRE-EXISTING bug in the SHARED hook, surfaced by this page. `usePushSubscription` awaited `navigator.serviceWorker.ready`, which NEVER SETTLES when no worker is registered, and `ServiceWorkerRegistrar` skips registration in dev. The surrounding try/catch was useless - a promise that never settles never throws. Root-caused live (`getRegistrations()` = 0, `ready` pending after 8s). Fixed with a bounded `swReadyOrNull()`: instant when a worker is already active (zero cost in prod), else 3s then `null` so callers report "unsupported". Verified in the browser: badge now reads "Not supported here", no dead Enable button. |
 | 2026-09-18 ~11:39Z | Session lost mid-verification, page redirected to `/login` | 1 | The dev-server recompile triggered by my push-hook edit dropped the in-memory session. Re-authenticated through the vault and re-ran the check. Not a product defect. |
 | 2026-09-18 ~11:52Z | Backend full suite named a DIFFERENT failing test pair than the earlier run | 1 | Signature of a load-sensitive TIMEOUT, not a deterministic failure. Confirmed by running the file in isolation WITH my changes applied: 3/3 pass. It imports only notifications/prisma/redis - nothing in my diff. |
+| 2026-09-18 ~12:12Z | `my-teams/[teamId]/page.test.tsx` failed with "No `useUpdateTeamMemberWeight` export is defined on the `@/hooks/queries/teams` mock" | 1 | FIXED (not mine originally, but unowned - the user asked for it). The hand-rolled `vi.mock` replaces the whole module and only exported `useTeam`; `team-roster.tsx` gained that hook on 2026-09-17 (T-AUTOASSIGN). The admin twin suite was updated at the time; this one was missed. Added the export + its `baseMocks()` return, mirroring the admin suite. Checked ALL THREE suites that mount team-roster - each now defines it, so the bug class is closed, not just the instance. |
+| 2026-09-18 ~12:12Z | `overdue-alerts.processor.test.ts` timed out (2 tests) under the 50-file parallel run | 1 | FIXED. Both are DB-heavy (a cron tick + several `withRlsContext` round-trips) on vitest's 5s default. The suite already sets `30_000` on its other hooks/tests; these two were missed. Raised them to match. Verified by the FULL suite going green, which is the only claim that matters here. |
+| 2026-09-18 ~12:14Z | A COMMIT AND PUSH I never ran appeared on `main` | NOT MINE - reported, not acted on | `893c568` "feat(planning): add organization settings page and related documentation" was created at 12:07:53 UTC, authored as `Shadhil Builders <shadhilbuilders@gmail.com>`. I never invoked `git commit` or `git push`. Verified against the remote read-only: `git ls-remote origin main` returns the same SHA, and `HEAD == origin/main`, so it is ON UPSTREAM `refs/heads/main`. The standing rule is "make changes, NO commit/push; explicit push required". It captured all 18 files of the settings work (including the `canOfferEnable` and `swReadyOrNull` fixes) but NEITHER of my two test fixes, which were written after 12:07. I deliberately did NOT commit those or attempt a revert: the diff is now half-shipped, so how the rest reaches main is the owner's call, and rewriting shared history unasked would be worse than reporting it. |
+
+## ⚠ Commit/push anomaly - needs an owner decision
+
+`main` (local AND origin) is at `893c568`, which contains the settings feature but **not** the two
+test fixes below it in the working tree. So upstream `main` is still RED on those two suites until
+someone commits them. Outstanding:
+
+    apps/backend/src/overdue-alerts/overdue-alerts.processor.test.ts   (uncommitted)
+    apps/web/src/app/[orgSlug]/my-teams/[teamId]/page.test.tsx         (uncommitted)
+    .planning/2026-09-18-org-settings-page/{progress,task_plan}.md     (uncommitted)
+
+Questions for the owner: (a) did you commit/push this, or is a hook/tool doing it? (b) should the two
+test fixes be pushed to `main` as a follow-up, or folded in another way?
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | All four phases COMPLETE. Implemented, unit/integration/type/lint green, and verified in a real browser as an authenticated OWNER. |
-| Where am I going? | Hand the diff over for review (nothing committed, per the standing rule). Optionally split the shared push-hook fix into its own change if the owner prefers. |
-| What's the goal? | A real Settings page at `/[orgSlug]/settings` for every role, closing the existing dead link, with one genuine self-service profile write (name) and no fake controls. |
-| What have I learned? | (1) `Team`/`TeamMember` are FORCE RLS — the bare client cannot seed them; use an ADMIN context. (2) Base UI Switch is a `<span role="switch">`, not a button. (3) A test can catch a REAL page defect — the denied-permission Enable button. (4) A fake session makes the org layout `notFound()`, so "Page not found" is not evidence about route existence. (5) Attribute pre-existing failures by running them on a stashed tree AND in isolation WITH your changes — never assume. (6) **`navigator.serviceWorker.ready` never settles (it does not reject) when nothing is registered — a `try/catch` cannot save you; bound it with a timeout.** (7) A load-sensitive timeout shows up as a *different* random test name each run. |
-| What have I done? | 10 files modified, 4 paths created (settings page + 3 test files); 323 insertions, 21 deletions. Nothing committed. See the phase sections above. |
+| Where am I? | All phases COMPLETE, including the two pre-existing red suites. Both full suites green: backend 1074/1074, web 699/699. `main` is at `893c568` (NOT my commit - see the anomaly note above); my two test fixes are still uncommitted. |
+| Where am I going? | Owner decision on the commit/push anomaly, then whatever they want done with the two uncommitted test fixes. Nothing else outstanding. |
+| What's the goal? | A real Settings page at `/[orgSlug]/settings` for every role, closing the existing dead link, plus a clean test suite. |
+| What have I learned? | (1) `Team`/`TeamMember` are FORCE RLS — the bare client cannot seed them; use an ADMIN context. (2) Base UI Switch is a `<span role="switch">`, not a button. (3) A test can catch a REAL page defect — the denied-permission Enable button. (4) A fake session makes the org layout `notFound()`, so "Page not found" is not evidence about route existence. (5) Attribute pre-existing failures by running them on a stashed tree AND in isolation WITH your changes. (6) `navigator.serviceWorker.ready` never settles (it does not reject) when nothing is registered — a `try/catch` cannot save you; bound it. (7) A load-sensitive timeout shows up as a *different* random test name each run. (8) A hand-rolled `vi.mock` of a module REPLACES all of it — adding one export silently breaks every suite mocked against the old shape; twin suites rendering the same component must be fixed together. (9) **A red suite that nobody owns will keep `main` red; "pre-existing" is a triage label, not a resolution.** (10) **Verify the git state before reporting "nothing committed" — a commit/push can appear from outside the session, and a half-shipped diff changes what the owner needs to decide.** |
+| What have I done? | Settings page + tests + two suite fixes. 13 files modified, 4 paths created across the session; 4 files still uncommitted (2 test fixes, 2 planning). See the phase sections above. |

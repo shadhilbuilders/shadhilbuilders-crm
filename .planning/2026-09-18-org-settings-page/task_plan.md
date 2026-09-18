@@ -43,7 +43,43 @@ Phase 1 complete - implementation starting.
 - [x] Wire the two dead `/settings` links through `orgHref(orgSlug, '/settings')`
 - **Status:** complete
 
-### Phase 4: Verification
+### Phase 5: Fixed the two pre-existing red suites — complete
+
+- **Status:** complete
+- Actions taken:
+  - `my-teams/[teamId]/page.test.tsx` — its hand-rolled `vi.mock('@/hooks/queries/teams')`
+    replaced the WHOLE module but only exported `useTeam`. `team-roster.tsx` gained
+    `useUpdateTeamMemberWeight` on 2026-09-17 (T-AUTOASSIGN), so the render threw
+    "No export is defined on the mock". The admin twin suite
+    (`admin/teams/[teamId]/page.test.tsx`) WAS updated with the hook; this one was missed.
+    Added the export + a `baseMocks()` return value, mirroring the admin suite.
+  - `overdue-alerts.processor.test.ts` — the two DB-heavy tests (each ticks the cron and
+    does multiple `withRlsContext` round-trips) ran on vitest's 5s default and blew it under
+    a 50-file parallel run. The suite already sets `30_000` on its other hooks/tests; these
+    two were missed. Raised them to `30_000` to match.
+- Verified: both FULL suites now green — backend 1074/1074 (50 files), web 699/699 (79 files),
+  both exit 0.
+- Files modified:
+  - `apps/web/src/app/[orgSlug]/my-teams/[teamId]/page.test.tsx`
+  - `apps/backend/src/overdue-alerts/overdue-alerts.processor.test.ts`
+
+## ⚠ OPEN — commit/push anomaly (owner decision required)
+
+`main` (local AND origin) is at `893c568` "feat(planning): add organization settings page and
+related documentation", created 12:07:53 UTC, authored as `Shadhil Builders
+<shadhilbuilders@gmail.com>`. **I did not run `git commit` or `git push`.** Confirmed on the
+remote read-only: `git ls-remote origin main` returns that SHA, so it is on upstream `main`.
+
+It contains the settings feature but NOT the two test fixes above (written after 12:07), so
+upstream `main` is still RED on those two suites. Those two files are intentionally left
+uncommitted — how the rest reaches `main` is the owner's call, and rewriting shared history
+unasked would be worse than reporting it.
+
+Ask the owner: did they commit/push it, or is a hook/tool doing it? Then decide how the two
+test fixes land.
+
+
+### Phase 4: Verification — complete
 
 - [x] Unit tests at each seam (schema, service, controller route order, page) - 93 backend + 17 web
 - [x] `pnpm type-check` + `pnpm lint` + targeted `pnpm test` green
