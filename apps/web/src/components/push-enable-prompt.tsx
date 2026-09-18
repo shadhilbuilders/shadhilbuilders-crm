@@ -117,14 +117,15 @@ export function PushEnablePrompt() {
           ? 'Notifications are blocked'
           : 'Enable notifications?',
         description: blocked
-          ? <span>This browser has blocked notifications for Shadhil CRM, so a prompt can no longer be shown. To enable them: click the lock/padlock icon (or <LuInfo className="size-2 inline-block" />) next to the address bar URL, open "Site settings", set Notifications to "Allow", then click below.'</span>
+          ? <span>This browser has blocked notifications for Shadhil CRM, so a prompt can no longer be shown. To enable them: click the lock/padlock icon (or <LuInfo className="size-3 inline-block" />) next to the address bar URL, open "Site settings", set Notifications to "Allow", then click below.'</span>
           : 'Get alerts for new leads, handoffs, and reminders right in this browser, even when Shadhil CRM is in another tab.',
       }}
       cancelButtonText="Not now"
       confirmButtonText={
         pending ? 'Enabling...' : blocked ? "I've enabled it" : 'Enable notifications'
       }
-      confirmButtonProps={{ disabled: pending, autoFocus: true }}
+      confirmButtonProps={{ disabled: pending, autoFocus: false }}
+      cancelButtonProps={{ autoFocus: false, tabIndex: -1 }}
       onConfirm={() => void handleEnable()}
       onCancel={handleDismiss}
     />
