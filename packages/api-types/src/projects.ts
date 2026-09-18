@@ -41,6 +41,31 @@ export const ProjectListResultSchema = z.object({
 export type ProjectListResult = z.infer<typeof ProjectListResultSchema>;
 
 /**
+ * GET /api/projects/:id - full detail for the admin/owner A-Z project page.
+ * Identity + per-project counts. ADMIN/OWNER only (service guard). Counts are
+ * RLS-scoped to the actor (for admin/owner = org-wide).
+ */
+export const ProjectDetailSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  address: z.string(),
+  reraNumber: z.string().nullable().optional(),
+  cmdaNumber: z.string().nullable().optional(),
+  createdAt: z.iso.datetime({ offset: true }),
+  counts: z.object({
+    phases: z.number().int().min(0),
+    units: z.number().int().min(0),
+    options: z.number().int().min(0),
+    teams: z.number().int().min(0),
+    teamMembers: z.number().int().min(0),
+    leads: z.number().int().min(0),
+    bookings: z.number().int().min(0),
+  }),
+});
+export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
+
+/**
  * GET /api/projects query filter - server-side search + pagination.
  * Mirrors UserFilterDto. When `limit`/`offset`/`search` are omitted the
  * controller returns the full registry (backward-compatible for the

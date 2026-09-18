@@ -40,6 +40,7 @@ type MockProjectRow = {
   reraNumber: string | null;
   cmdaNumber: string | null;
   createdAt: Date;
+  deletedAt: Date | null;
   _count?: { leads: number };
 };
 
@@ -52,6 +53,14 @@ type MockTx = {
     delete: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
     count: Mock<() => Promise<number>>;
   };
+  phase: { count: Mock<(args: MockArgs) => Promise<number>> };
+  unit: { count: Mock<(args: MockArgs) => Promise<number>> };
+  projectOption: {
+    createMany: Mock<(args: MockArgs) => Promise<{ count: number }>>;
+    count: Mock<(args: MockArgs) => Promise<number>>;
+  };
+  projectTeam: { count: Mock<(args: MockArgs) => Promise<number>> };
+  teamMember: { count: Mock<(args: MockArgs) => Promise<number>> };
   user: {
     findUnique: Mock<
       (args: MockArgs) => Promise<Record<string, unknown> | null>
@@ -65,7 +74,6 @@ type MockTx = {
     findMany: Mock<(args: MockArgs) => Promise<Array<Record<string, unknown>>>>;
   };
   booking: { count: Mock<() => Promise<number>> };
-  projectOption: { createMany: Mock<(args: MockArgs) => Promise<{ count: number }>> };
   auditLog: { create: Mock<(args: MockArgs) => Promise<unknown>> };
 };
 
@@ -76,6 +84,11 @@ function makeTx(overrides: {
   bookingCount?: number;
   leadCount?: number;
   memberLeadCount?: number;
+  phaseCount?: number;
+  unitCount?: number;
+  projectOptionCount?: number;
+  projectTeamCount?: number;
+  teamMemberCount?: number;
   findUser?: (args: MockArgs) => Record<string, unknown> | null;
 }): MockTx {
   const projectRows: Record<string, MockProjectRow> = {
@@ -87,6 +100,9 @@ function makeTx(overrides: {
       reraNumber: null,
       cmdaNumber: null,
       createdAt: new Date('2026-09-05T00:00:00.000Z'),
+      // Real schema has this column (nullable, NULL = active); the mock must
+      // carry it or getDetail's deletedAt guard misfires on undefined.
+      deletedAt: null,
     },
   };
   return {
@@ -167,7 +183,16 @@ function makeTx(overrides: {
     },
     projectOption: {
       createMany: vi.fn(async () => ({ count: 9 })),
+      count: vi.fn(async () => overrides.projectOptionCount ?? 0),
     },
+    projectTeam: {
+      count: vi.fn(async () => overrides.projectTeamCount ?? 0),
+    },
+    teamMember: {
+      count: vi.fn(async () => overrides.teamMemberCount ?? 0),
+    },
+    phase: { count: vi.fn(async () => overrides.phaseCount ?? 0) },
+    unit: { count: vi.fn(async () => overrides.unitCount ?? 0) },
     auditLog: {
       create: vi.fn(async () => ({})),
     },
@@ -366,6 +391,7 @@ describe('ProjectsService.create', () => {
           reraNumber: null,
           cmdaNumber: null,
           createdAt: new Date('2026-09-05T00:00:00.000Z'),
+          deletedAt: null,
         };
       }
       return null;
@@ -490,6 +516,55 @@ describe('ProjectsService.remove', () => {
     const svc = new ProjectsService({ $client: {} } as never);
     await expect(
       svc.remove(ownerActor, 'proj-ghost'),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('ProjectsService.getDetail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    txCapture.current = makeTx({});
+  });
+
+  it('returns identity + per-project counts for an ADMIN', async () => {
+    txCapture.current = makeTx({
+      bookingCount: 7,
+      memberLeadCount: 12,
+      phaseCount: 3,
+      unitCount: 40,
+      projectOptionCount: 9,
+      projectTeamCount: 2,
+      teamMemberCount: 5,
+    });
+    const svc = new ProjectsService({ $client: {} } as never);
+    const result = await svc.getDetail(adminActor, 'proj-metro');
+    expect(result).toMatchObject({
+      id: 'proj-metro',
+      slug: 'shadhil-metro-heights',
+      name: 'Shadhil Metro Heights',
+      counts: {
+        phases: 3,
+        units: 40,
+        options: 9,
+        teams: 2,
+        teamMembers: 5,
+        leads: 12,
+        bookings: 7,
+      },
+    });
+  });
+
+  it('rejects a non-admin (TELECALLER) with 403', async () => {
+    const svc = new ProjectsService({ $client: {} } as never);
+    await expect(
+      svc.getDetail(telecallerActor, 'proj-metro'),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('unknown project id → 404', async () => {
+    const svc = new ProjectsService({ $client: {} } as never);
+    await expect(
+      svc.getDetail(adminActor, 'proj-ghost'),
     ).rejects.toMatchObject({ status: 404 });
   });
 });

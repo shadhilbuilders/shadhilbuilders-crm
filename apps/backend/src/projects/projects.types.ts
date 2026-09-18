@@ -5,6 +5,7 @@
 import type { PrismaClient as DbPrismaClient } from '@shadhil/database';
 import type {
   CreateProjectDto as ApiCreateProjectDto,
+  ProjectDetail as ApiProjectDetail,
   ProjectFilterDto as ApiProjectFilterDto,
   ProjectListResult as ApiProjectListResult,
   ProjectRow as ApiProjectRow,
@@ -13,6 +14,7 @@ import type {
 
 export type ProjectRow = ApiProjectRow;
 export type ProjectListResult = ApiProjectListResult;
+export type ProjectDetail = ApiProjectDetail;
 export type ProjectFilterDto = ApiProjectFilterDto;
 export type CreateProjectDto = ApiCreateProjectDto;
 export type UpdateProjectDto = ApiUpdateProjectDto;

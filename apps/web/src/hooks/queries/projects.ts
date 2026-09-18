@@ -19,6 +19,7 @@ import {
 } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
+import type { ProjectDetail } from '@shadhil/api-types';
 
 export type ProjectListItem = {
   id: string;
@@ -100,6 +101,17 @@ export function useProjectsTable(filter: ProjectsFilter = {}) {
         })}`,
         { signal },
       ),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** GET /api/projects/:id - full detail (identity + counts), admin/owner. */
+export function useProjectDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ['projects', 'detail', id ?? ''] as const,
+    enabled: id !== undefined && id.length > 0,
+    queryFn: ({ signal }) => api<ProjectDetail>(`/projects/${id as string}`, { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

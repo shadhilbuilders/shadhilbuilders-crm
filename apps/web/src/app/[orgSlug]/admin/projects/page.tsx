@@ -55,7 +55,7 @@ import {
   type ProjectListItem,
   type ProjectsFilter,
 } from '@/hooks/queries';
-import { projectHref } from '@/lib/nav';
+import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 import {
@@ -410,7 +410,10 @@ function ProjectTable({
         cell: ({ row }) => (
           <div className="min-w-45">
             <Link
-              href={projectHref(orgSlug, row.original.slug, '/dashboard')}
+              // Admin project registry -> the admin/owner A-Z detail page
+              // (not the work dashboard). The detail page links back to the
+              // projects grid and out to the work dashboard.
+              href={orgHref(orgSlug, `/admin/projects/${row.original.id}`)}
               className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
               data-qa={`project-row-link-${row.original.slug}`}
             >

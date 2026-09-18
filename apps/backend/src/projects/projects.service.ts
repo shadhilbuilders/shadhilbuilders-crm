@@ -27,6 +27,7 @@ import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/data
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   CreateProjectDto,
+  ProjectDetail,
   ProjectFilterDto,
   ProjectListResult,
   ProjectRow,
@@ -169,6 +170,66 @@ export class ProjectsService {
         };
       },
     );
+  }
+
+  /**
+   * GET /api/projects/:id - full project detail for the admin/owner A-Z page.
+   * Identity + per-project counts, all RLS-scoped (admin/owner = org-wide).
+   * ADMIN/OWNER only (mirrors create/update guards); a MANAGER/staff caller
+   * gets 403. Soft-deleted projects 404 like missing ones.
+   */
+  async getDetail(actor: JwtPayload, id: string): Promise<ProjectDetail> {
+    if (!isAdminClass(actor.role)) {
+      throw new ForbiddenException('Only ADMIN/OWNER can view project details.');
+    }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const project = await tx.project.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          address: true,
+          reraNumber: true,
+          cmdaNumber: true,
+          createdAt: true,
+          deletedAt: true,
+        },
+      });
+      if (project === null || project.deletedAt !== null) {
+        throw new NotFoundException(`Project ${id} not found.`);
+      }
+
+      const [phases, units, options, teams, teamMembers, leads, bookings] =
+        await Promise.all([
+          tx.phase.count({ where: { projectId: id } }),
+          tx.unit.count({ where: { phase: { projectId: id } } }),
+          tx.projectOption.count({ where: { projectId: id } }),
+          tx.projectTeam.count({ where: { projectId: id } }),
+          tx.teamMember.count({ where: { team: { projectTeams: { some: { projectId: id } } } } }),
+          tx.lead.count({ where: { projectId: id } }),
+          tx.booking.count({ where: { unit: { phase: { projectId: id } } } }),
+        ]);
+
+      return {
+        id: project.id,
+        slug: project.slug,
+        name: project.name,
+        address: project.address,
+        reraNumber: project.reraNumber,
+        cmdaNumber: project.cmdaNumber,
+        createdAt: project.createdAt.toISOString(),
+        counts: {
+          phases,
+          units,
+          options,
+          teams,
+          teamMembers,
+          leads,
+          bookings,
+        },
+      };
+    });
   }
 
   /**

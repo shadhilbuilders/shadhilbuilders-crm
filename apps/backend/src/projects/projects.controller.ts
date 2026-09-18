@@ -28,6 +28,7 @@ import {
   ProjectFilterDtoSchema,
   UpdateProjectDtoSchema,
   type CreateProjectDto,
+  type ProjectDetail,
   type ProjectFilterDto,
   type UpdateProjectDto,
 } from '@shadhil/api-types';
@@ -127,6 +128,22 @@ export class ProjectsController {
       );
     }
     return project;
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Full project detail (identity + per-project counts) for the ' +
+      'admin/owner A-Z page. ADMIN/OWNER only.',
+  })
+  async detail(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<ProjectDetail> {
+    if (!ID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid project id: ${id}`);
+    }
+    return this.projects.getDetail(req.user!, id);
   }
 
   @Post()
