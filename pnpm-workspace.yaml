@@ -40,6 +40,17 @@ overrides:
   'mysql2': '3.23.1'
   'qs': '6.16.0'
 
+  # ── Dependabot #12 (GHSA-w5hq-g745-h8pq) - uuid buffer bounds check. ──
+  # uuid < 11.1.1 lacks a buffer-bounds guard on the v3/v5/v6 API methods.
+  # It's a TRANSITIVE dep of imagekit@6.0.0 (which pins uuid ^8.3.2). The
+  # backend pulls imagekit purely for storage and imagekit's only UUID call
+  # is uuid.v4() (see imagekit/dist/libs/signature) - v4 already throws
+  # RangeError on bad bounds, so this is inert at runtime. Override to the
+  # first patched version; imagekit's `require("uuid")` resolves the CJS
+  # build that v11.1.1 still ships. Re-evaluate when imagekit bumps the
+  # range itself.
+  'uuid': '11.1.1'
+
   # ── Dependabot 2026-09-09 - multer DoS (4 alerts: 3 high + 1 low). ─────
   # multer < 2.3.0 is vulnerable to crafted multipart field names (DoS),
   # file descriptor leak on aborted uploads, and a file-size-limit bypass.
