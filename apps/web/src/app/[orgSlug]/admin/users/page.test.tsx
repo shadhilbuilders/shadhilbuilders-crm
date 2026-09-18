@@ -227,10 +227,9 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).toContain('data-qa="data-table-row"');
     // Toolbar search input.
     expect(html).toContain('data-qa="data-table-search-input"');
-    // Server-driven role filter (MultiSelect in the toolbar left side).
-    // The MultiSelect trigger renders its placeholder text; the data-qa prop
-    // doesn't land on the trigger (it renders data-qa="multi-select-"), so
-    // assert on the visible placeholder instead.
+    // Server-driven role filter (Combobox multiple in the toolbar left side).
+    // The Combobox trigger renders its placeholder text; assert on the visible
+    // placeholder instead.
     expect(html).toContain('Filter by role');
     // User names + emails render.
     expect(html).toContain('Priya Sharma');

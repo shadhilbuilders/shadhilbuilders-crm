@@ -12,7 +12,7 @@
 // T-SRVPG (2026-09-07): the summary counts now come from the server
 // envelope (useLeadsEnvelope → overdueCount / newTodayCount), not from
 // client-side row filtering. The status filter is a server-driven
-// MultiSelect (toolbar left side) instead of the DataTable's client-side
+// Combobox multiple (toolbar left side) instead of the DataTable's client-side
 // facet filter.
 //
 // Uses renderToStaticMarkup per the standing rule (apps/web has no

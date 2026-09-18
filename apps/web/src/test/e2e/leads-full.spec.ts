@@ -145,20 +145,18 @@ test('leads inbox: search filters by phone (server-side)', async ({ page }) => {
 test('leads inbox: status filter narrows to a single state', async ({ page }) => {
   await gotoLeads(page);
 
-  // Open the status MultiSelect (data-qa=multi-select-).
-  await page.locator('[data-qa=multi-select-]').click();
+  // Open the status filter (Combobox multiple, data-qa=leads-status-filter).
+  await page.locator('[data-qa=leads-status-filter]').click();
   await page.getByRole('option', { name: 'New' }).click();
 
   // All visible rows should be NEW (the status badge in each row).
   await expect(page.locator('[data-qa=data-table-row]').first()).toContainText('New');
-  // The filter trigger shows the selected badge (data-qa=multi-select-badge-NEW).
-  await expect(page.locator('[data-qa=multi-select-badge-NEW]')).toBeVisible();
 });
 
 test('leads inbox: status filter supports multi-select', async ({ page }) => {
   await gotoLeads(page);
 
-  await page.locator('[data-qa=multi-select-]').click();
+  await page.locator('[data-qa=leads-status-filter]').click();
   await page.getByRole('option', { name: 'New' }).click();
   await page.getByRole('option', { name: 'Talked' }).click();
 

@@ -38,6 +38,20 @@
 import { Button } from '@paalstack/react-ui';
 
 import { SectionCard } from '@/components/dashboard/dashboard-shared';
+import { currencyIntl } from '@/lib/format';
+
+/**
+ * Currency for display. The API returns the amount as a decimal STRING
+ * ("4200000.00"), so it is converted before formatting - and a value that is
+ * not a finite number is passed through unchanged rather than rendered as
+ * "NaN". Same shape as the wrapper the approvals card and bookings grid use.
+ */
+function formatMoney(value: string | undefined): string {
+  if (value === undefined) return '-';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  return currencyIntl.format(num);
+}
 
 /** The fields this card reads off a booking list row. */
 type BookingListRow = {
@@ -88,7 +102,7 @@ export function PendingTokenCard({
                 className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2 text-sm"
               >
                 <span className="min-w-0 flex-1 truncate">{label}</span>
-                <span className="text-muted-foreground tabular-nums">{booking.amount ?? '-'}</span>
+                <span className="text-muted-foreground tabular-nums">{formatMoney(booking.amount)}</span>
                 <Button
                   type="button"
                   size="sm"

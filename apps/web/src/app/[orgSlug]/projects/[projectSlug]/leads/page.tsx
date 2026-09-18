@@ -11,12 +11,10 @@
 //   DataTable toolbar (storybook `ToolbarWithRightSideContent` pattern):
 //     - search lives IN the toolbar, server-side (D9) - wired to useLeads
 //       search param via onSearchValueChange (≥2 chars hits the API).
-//     - the "+ New lead" button is the toolbar's right-side content
-//       (role-gated: hidden for TELECALLER per Plan §3).
-//     - status filter is a server-driven MultiSelect (toolbar left side) -
-//       the DataTable's built-in facet filter is client-side over the loaded
-//       page, which is wrong under server pagination. Selection feeds the
-//       `state` query param.
+//     - the "New lead" button now lives in the page header (action prop),
+//       always visible (TELECALLER can create leads too).
+//     - status filter is a server-driven Combobox multiple (toolbar left
+//       side) - feeds the `state` query param.
 //   Pagination: SERVER-side. The page passes `total`/`currentPage`/
 //     `onPageChange`/`onPageSizeChange` to the DataTable; each page change
 //     refetches `{ limit, offset }` from the API. Selection OFF (D11).
@@ -28,8 +26,8 @@
 //   Row actions: View / Edit (LeadEditDialog) / Delete (canDeleteLeads
 //     only, D14) with AlertDialog confirm (Cancel gets initial focus).
 //   URL state (D23): search survives back-navigation via useSearchParams.
-import { Button, TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger, TypographyP, toast } from '@paalstack/react-ui';
-import { AlertDialog, DataTable, DataTableColumnHeaderToggle, DataTableRowActions, MultiSelect } from '@paalstack/react-ui';
+import { Button, Combobox, TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger, TypographyP, toast } from '@paalstack/react-ui';
+import { AlertDialog, DataTable, DataTableColumnHeaderToggle, DataTableRowActions } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
 import Link from 'next/link';
@@ -167,7 +165,6 @@ function LeadInboxPageInner() {
   const canAssign = user !== null && canReassign(user.role);
   const staffLane =
     user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC');
-  const canCreate = user !== null && user.role !== 'TELECALLER';
 
   const [editTarget, setEditTarget] = useState<LeadRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeadRow | null>(null);
@@ -213,6 +210,11 @@ function LeadInboxPageInner() {
           staffLane
             ? 'Your assigned leads, next action first.'
             : 'Team lead queue with overdue-first sorting.'
+        }
+        action={
+          <Button leftIcon={<LuPlus className="size-4" />} as={Link} href={projectHref(orgSlug, projectSlug, '/leads/new')} data-qa="new-lead-button">
+            New lead
+          </Button>
         }
       />
 
@@ -292,7 +294,6 @@ function LeadInboxPageInner() {
           projectSlug={projectSlug}
           orgSlug={orgSlug}
           canDelete={canDelete}
-          canCreate={canCreate}
           isFiltered={isFiltered}
           search={search}
           onSearchChange={applySearch}
@@ -420,7 +421,6 @@ function LeadTable({
   orgSlug,
   canDelete,
   canAssign,
-  canCreate,
   isFiltered,
   search,
   onSearchChange,
@@ -444,7 +444,6 @@ function LeadTable({
   orgSlug: string | null;
   canDelete: boolean;
   canAssign: boolean;
-  canCreate: boolean;
   isFiltered: boolean;
   search: string;
   onSearchChange: (next: string) => void;
@@ -636,48 +635,25 @@ function LeadTable({
         placeholder: 'Search by name or phone...',
         searchValue: search,
         onSearchValueChange: onSearchChange,
-        className: 'ml-2'
+        className: 'mr-2'
       }}
       // Server-driven status filter (T-SRVPG): the DataTable's built-in
       // facet filter is client-side over the loaded page, which is wrong
-      // under server pagination. A MultiSelect in the toolbar's left side
-      // feeds the `state` query param instead.
+      // under server pagination. A Combobox multiple in the toolbar's left
+      // side feeds the `state` query param instead.
       toolbarLeftSideContent={
-        <MultiSelect
+        <Combobox
+          multiple
+          value={selectedStates}
+          onValueChange={(next) => onStatesChange((next as string[]) ?? [])}
           options={statusOptions}
-          selectedValues={selectedStates}
-          onSelectedValueChange={onStatesChange}
           placeholder="Filter by status"
-          // Wide enough trigger + dropdown so the longest status labels
-          // ("Booking in progress", "Didn't show up") don't wrap or clip,
-          // and selected-state badges have room when multiple are picked.
-          // max-w keeps the filter from sprawling when many states are selected
-          // and keeps the dropdown readable (no ultra-wide column).
-          // maxSelectedBadges collapses the trigger to the first 3 badges +
-          // a "+N selected" summary when more than 3 states are picked, so
-          // the button doesn't overflow with every selection.
-          maxSelectedBadges={2}
-          triggerProps={{
-            size: 'sm',
-            variant: 'outline',
-            className: 'min-w-48 max-w-96',
-          }}
-          contentProps={{ className: 'min-w-56 max-w-96' }}
-          className='w-full'
+          selectOptionAsValue
+          maxSelectedChips={2}
+          className="min-w-48 max-w-96"
           data-qa="leads-status-filter"
         />
       }
-      toolbarRightSideContent={
-        canCreate ? (
-          <Button asChild>
-            <Link href={projectHref(orgSlug, projectSlug, '/leads/new')} data-qa="new-lead-button">
-             <LuPlus className='size-4' />
-              New lead
-            </Link>
-          </Button>
-        ) : null
-      }
-
       showPagination
       paginationProps={{
         total,

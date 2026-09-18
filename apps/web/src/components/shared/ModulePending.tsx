@@ -41,6 +41,8 @@ import {
 } from '@paalstack/react-ui';
 import Link from 'next/link';
 
+import { LuArrowLeft } from '@paalstack/react-icons/lu';
+
 import { ApiError } from '@/apis/client';
 
 import { Skeleton } from './Skeleton';
@@ -145,7 +147,8 @@ export function BackLink({ href, label }: { href: string; label: string }) {
       href={href}
       className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-1 px-2 text-sm"
     >
-      ← {label}
+      <LuArrowLeft className="size-4 shrink-0" aria-hidden />
+      {label}
     </Link>
   );
 }

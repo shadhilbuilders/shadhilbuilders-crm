@@ -5,21 +5,25 @@
 //   - SERVER-side pagination (T-SRVPG): the page passes total/currentPage/
 //     onPageChange/onPageSizeChange; each page change refetches { limit,
 //     offset } from the API.
-//   - Action filter is a server-driven MultiSelect in the toolbar (mirrors
+//   - Action filter is a server-driven Combobox multiple in the toolbar (mirrors
 //     the leads status filter) - the backend applies WHERE action IN (...).
 //   - Columns: Timestamp → User → Action → Entity → Before → After.
 // Audit module (T-AUDIT) returns `{ total, rows }` - useAuditLog unwraps.
 import {
   Button,
   Combobox,
-  DataTable,
+  Pagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Heading,
-  Loading,
   TypographyP,
 } from '@paalstack/react-ui';
-import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuChevronDown, LuChevronRight } from '@paalstack/react-icons/lu';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -322,165 +326,251 @@ function AuditTable({
       return next;
     });
   };
+  // Which rows have their full before/after payload shown as a child row.
+  const [expandedDetailIds, setExpandedDetailIds] = useState<Set<string>>(new Set());
+  const toggleDetail = (id: string): void => {
+    setExpandedDetailIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const displayRows = useMemo(() => buildDisplayRows(rows, expandedBatchIds), [rows, expandedBatchIds]);
 
-  const columns = useMemo<DataTableColumnDef<DisplayRow>[]>(
-    () => [
-      {
-        accessorKey: 'createdAt',
-        header: 'Timestamp',
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm tabular-nums">
-            {dateIntl.formatDateTime(row.original.createdAt)}
-          </span>
-        ),
-        enableSorting: true,
-      },
-      {
-        accessorKey: 'userName',
-        header: 'User',
-        cell: ({ row }) => (
-          <span className="text-sm font-medium">
-            {row.original.userName?.length
-              ? row.original.userName
-              : row.original.userId ?? '-'}
-          </span>
-        ),
-        enableSorting: true,
-      },
-      {
-        accessorKey: 'action',
-        header: 'Action',
-        cell: ({ row }) => {
-          const r = row.original;
-          const label = actionLabel(r.action);
-          const isMapped = label !== r.action;
-          // Batch anchor row: an expand/collapse toggle when this batch
-          // has other rows on the current page.
-          if (r.action === 'team.member.remove' && r.batchId !== null) {
-            const expanded = expandedBatchIds.has(r.batchId);
-            const hasSiblings = rows.some((o) => o.batchId === r.batchId && o.id !== r.id);
-            return (
-              <div className="min-w-40">
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-left"
-                  disabled={!hasSiblings}
-                  onClick={() => r.batchId !== null && toggleBatch(r.batchId)}
-                  data-qa={`audit-batch-toggle-${r.batchId}`}
-                >
-                  {hasSiblings ? (
-                    expanded ? (
-                      <LuChevronDown className="text-muted-foreground size-4 shrink-0" />
-                    ) : (
-                      <LuChevronRight className="text-muted-foreground size-4 shrink-0" />
-                    )
-                  ) : null}
-                  <span className="text-sm font-medium">{label}</span>
-                </button>
-              </div>
-            );
-          }
-          return (
-            <div className={r.isBatchDetail === true ? 'min-w-40 pl-6' : 'min-w-40'}>
-              <span className="text-sm font-medium">{label}</span>
-              {isMapped ? (
-                <span className="text-muted-foreground block font-mono text-xs">
-                  {r.action}
-                </span>
-              ) : null}
-            </div>
-          );
-        },
-        enableSorting: true,
-      },
-      {
-        accessorKey: 'entityType',
-        header: 'Entity',
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.entityType}
-            {row.original.entityId ? ` · ${row.original.entityId}` : ''}
-          </span>
-        ),
-        enableSorting: false,
-      },
-      {
-        accessorKey: 'before',
-        header: 'Before -> After',
-        cell: ({ row }) => {
-          const r = row.original;
-          if (r.action === 'team.member.remove' && isTeamMemberRemovePayload(r.after)) {
-            return (
-              <span className="block max-w-80 text-sm" data-qa={`audit-batch-summary-${r.batchId ?? ''}`}>
-                {batchSummaryText(r.after)}
-              </span>
-            );
-          }
-          return (
-            <span className="text-muted-foreground block max-w-80 font-mono text-xs">
-              {formatBeforeAfter(r.before, r.after)}
-            </span>
-          );
-        },
-        enableSorting: false,
-      },
-    ],
-    [expandedBatchIds, rows],
-  );
+  const emptyText =
+    actionFilter.length > 0
+      ? 'No audit entries match these filters.'
+      : total === 0
+        ? 'No audit entries yet.'
+        : 'No entries match these filters.';
+  const emptySub =
+    actionFilter.length > 0
+      ? 'Try clearing the action filter.'
+      : 'Audit rows are written by every mutation in the system - they appear here as the activity happens.';
 
   return (
     <div className="space-y-2">
-      <DataTable
-        columns={columns}
-        rows={displayRows}
-        showPagination
-        paginationProps={{
-          total,
-          currentPage: page,
-          onPageChange,
-          pageSize,
-          onPageSizeChange,
-          pageSizeOptions: [10, 25, 50],
-          showTotalResults: true,
-          showOnlyIfTotalGreaterThanPageSize: true,
-        }}
-        isLoading={isFetching}
-        loadingContent={<Loading content="Loading audit log..." />}
-        toolbarLeftSideContent={
-          <Combobox
-            multiple
-            value={actionFilter}
-            onValueChange={(next) =>
-              onActionFilterChange((next as string[]) ?? [])
-            }
-            options={actionOptions}
-            placeholder="Filter by action"
-            selectOptionAsValue
-            className="min-w-48 max-w-96"
-            data-qa="audit-action-filter"
-          />
-        }
-        emptyContent={
-          <div
-            className="rounded-lg p-10 text-center space-y-1"
-            data-qa="audit-empty"
-          >
-            <TypographyP className="text-xl font-medium">
-              {actionFilter.length > 0
-                ? 'No audit entries match these filters.'
-                : total === 0
-                  ? 'No audit entries yet.'
-                  : 'No entries match these filters.'}
-            </TypographyP>
-            <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
-              {actionFilter.length > 0
-                ? 'Try clearing the action filter.'
-                : 'Audit rows are written by every mutation in the system - they appear here as the activity happens.'}
-            </TypographyP>
-          </div>
-        }
-        tableContainerClassName="rounded-lg border"
+      <div className="flex items-center justify-start">
+        <Combobox
+          multiple
+          value={actionFilter}
+          onValueChange={(next) =>
+            onActionFilterChange((next as string[]) ?? [])
+          }
+          options={actionOptions}
+          placeholder="Filter by action"
+          selectOptionAsValue
+          maxSelectedChips={2}
+          className="min-w-48 max-w-96"
+          data-qa="audit-action-filter"
+        />
+      </div>
+
+      {isFetching && displayRows.length === 0 ? (
+        <Skeleton variant="table" />
+      ) : displayRows.length === 0 ? (
+        <div
+          className="rounded-lg border p-10 text-center space-y-1"
+          data-qa="audit-empty"
+        >
+          <TypographyP className="text-xl font-medium">{emptyText}</TypographyP>
+          <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
+            {emptySub}
+          </TypographyP>
+        </div>
+      ) : (
+        <Table
+          className="border-border w-full table-fixed rounded-lg border"
+          data-qa={
+            expandedDetailIds.size > 0 || expandedBatchIds.size > 0
+              ? 'audit-table-expanded'
+              : 'audit-table'
+          }
+        >
+          <TableHeader data-qa="audit-table-header">
+            <TableRow className="border-border border-b">
+              <TableHead className="w-10" data-qa="audit-th-expand" aria-label="Expand" />
+              <TableHead className="w-40" data-qa="audit-th-timestamp">Timestamp</TableHead>
+              <TableHead className="w-32" data-qa="audit-th-user">User</TableHead>
+              <TableHead className="w-48" data-qa="audit-th-action">Action</TableHead>
+              <TableHead className="w-48" data-qa="audit-th-entity">Entity</TableHead>
+              <TableHead data-qa="audit-th-before">Before → After</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody data-qa="audit-table-body">
+            {displayRows.map((r) => {
+              // Whether THIS row shows a full before/after child row.
+              const expandable =
+                (r.before !== null && r.before !== undefined) ||
+                (r.after !== null && r.after !== undefined) ||
+                (r.reason !== null && r.reason !== undefined);
+              const detailExpanded = r.id !== null && expandedDetailIds.has(r.id);
+
+              // Batch anchor: its own expand/collapse for the sibling rows.
+              const isBatchAnchor = r.action === 'team.member.remove' && r.batchId !== null;
+              const batchExpanded = isBatchAnchor && expandedBatchIds.has(r.batchId!);
+              const hasBatchSiblings =
+                isBatchAnchor && rows.some((o) => o.batchId === r.batchId && o.id !== r.id);
+
+              // One chevron: prefer the detail (child row) expander; show the
+              // batch expander only as a secondary toggle inside the action cell.
+              const chevron =
+                r.isBatchDetail === true ? null : expandable ? (
+                  detailExpanded ? (
+                    <LuChevronDown className="text-muted-foreground size-4" />
+                  ) : (
+                    <LuChevronRight className="text-muted-foreground size-4" />
+                  )
+                ) : null;
+
+              return (
+                <Fragment key={r.id}>
+                  <TableRow
+                    data-qa={`audit-row-${r.id}`}
+                    className={
+                      r.isBatchDetail === true
+                        ? 'bg-muted/30'
+                        : expandable
+                          ? 'hover:bg-accent cursor-pointer'
+                          : undefined
+                    }
+                    onClick={expandable ? () => toggleDetail(r.id) : undefined}
+                  >
+                    <TableCell data-qa="audit-expand-cell">
+                      {chevron !== null ? (
+                        <span
+                          className="flex items-center gap-1 text-left"
+                          aria-label={detailExpanded ? 'Collapse details' : 'Expand details'}
+                        >
+                          {chevron}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell data-qa="audit-timestamp">
+                      <span className="text-muted-foreground block text-sm tabular-nums">
+                        {dateIntl.formatDateTime(r.createdAt)}
+                      </span>
+                    </TableCell>
+                    <TableCell data-qa="audit-user" className="min-w-0">
+                      <span className="block w-full truncate text-sm font-medium" title={r.userName?.length ? r.userName : (r.userId ?? '-')}>
+                        {r.userName?.length ? r.userName : r.userId ?? '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell data-qa="audit-action" className="min-w-0">
+                      <div className={r.isBatchDetail === true ? 'min-w-40 pl-6' : 'min-w-0'}>
+                        <div className="flex items-center gap-1">
+                          {isBatchAnchor && hasBatchSiblings ? (
+                            <button
+                              type="button"
+                              className="flex shrink-0 items-center gap-1 text-left"
+                              disabled={!hasBatchSiblings}
+                              onClick={(e) => {
+                                // The row is click-to-expand; the batch toggle
+                                // must not fall through to the detail expander.
+                                e.stopPropagation();
+                                if (r.batchId !== null) toggleBatch(r.batchId);
+                              }}
+                              data-qa={`audit-batch-toggle-${r.batchId}`}
+                            >
+                              {batchExpanded ? (
+                                <LuChevronDown className="text-muted-foreground size-4 shrink-0" />
+                              ) : (
+                                <LuChevronRight className="text-muted-foreground size-4 shrink-0" />
+                              )}
+                            </button>
+                          ) : null}
+                          <span className="truncate text-sm font-medium" title={actionLabel(r.action)}>
+                            {actionLabel(r.action)}
+                          </span>
+                        </div>
+                        {actionLabel(r.action) !== r.action ? (
+                          <span className="text-muted-foreground block truncate font-mono text-xs" title={r.action}>
+                            {r.action}
+                          </span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell data-qa="audit-entity" className="min-w-0">
+                      <span className="text-muted-foreground block w-full truncate text-sm" title={r.entityType + (r.entityId ? ` · ${r.entityId}` : '')}>
+                        {r.entityType}
+                        {r.entityId ? ` · ${r.entityId}` : ''}
+                      </span>
+                    </TableCell>
+                    <TableCell data-qa="audit-before-after" className="min-w-0">
+                      {r.action === 'team.member.remove' && isTeamMemberRemovePayload(r.after) ? (
+                        <span
+                          className="block w-full truncate text-sm"
+                          title={batchSummaryText(r.after)}
+                          data-qa={`audit-batch-summary-${r.batchId ?? ''}`}
+                        >
+                          {batchSummaryText(r.after)}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-muted-foreground block w-full truncate font-mono text-xs"
+                          title={formatBeforeAfter(r.before, r.after)}
+                        >
+                          {formatBeforeAfter(r.before, r.after)}
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+
+                  {/* Child row: the full before / after payload for this entry. */}
+                  {detailExpanded ? (
+                    <TableRow>
+                      <TableCell colSpan={6} data-qa={`audit-detail-expanded-${r.id ?? ''}`}>
+                        <div className="border-border bg-muted/40 space-y-2 rounded-md border p-3">
+                          {r.before === null || r.before === undefined ? null : (
+                            <div>
+                              <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wide uppercase">
+                                Before
+                              </p>
+                              <pre className="text-foreground whitespace-pre-wrap break-all font-mono text-xs">
+                                {JSON.stringify(r.before, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                          {r.after === null || r.after === undefined ? null : (
+                            <div>
+                              <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wide uppercase">
+                                After
+                              </p>
+                              <pre className="text-foreground whitespace-pre-wrap break-all font-mono text-xs">
+                                {JSON.stringify(r.after, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                          {r.reason !== null && r.reason !== undefined ? (
+                            <div>
+                              <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wide uppercase">
+                                Reason
+                              </p>
+                              <p className="text-foreground text-xs">{r.reason}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+
+      <Pagination
+        total={total}
+        currentPage={page}
+        pageSize={pageSize}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        pageSizeOptions={[10, 25, 50]}
+        showPageSizeOptions
+        showTotalResults
+        showOnlyIfTotalGreaterThanPageSize
       />
     </div>
   );

@@ -23,6 +23,7 @@
 import {
   AlertDialog,
   Button,
+  Combobox,
   DataTable,
   Dialog,
   DropdownMenuContent,
@@ -32,7 +33,6 @@ import {
   Form,
   Heading,
   Loading,
-  MultiSelect,
   toast,
   Tooltip,
   TypographyP,
@@ -584,6 +584,7 @@ function UserTable({
           placeholder: 'Search by name or email...',
           searchValue: search,
           onSearchValueChange: onSearchChange,
+          className: 'mr-2'
         }}
         showPagination
         paginationProps={{
@@ -599,21 +600,18 @@ function UserTable({
         isLoading={isFetching}
         loadingContent={<Loading content="Loading users..." />}
         toolbarLeftSideContent={
-          <MultiSelect
-            options={roleOptions}
-            selectedValues={roleFilter}
-            onSelectedValueChange={(next) =>
-              onRoleFilterChange(next as Role[])
-            }
-            placeholder="Filter by role"
-            maxSelectedBadges={2}
-            triggerProps={{
-              size: 'sm',
-              variant: 'outline',
-              className: 'min-w-48 max-w-96',
+          <Combobox
+            multiple
+            value={roleFilter}
+            onValueChange={(next) => {
+              const arr = (next as string[]) ?? [];
+              onRoleFilterChange(arr as Role[]);
             }}
-            contentProps={{ className: 'min-w-56 max-w-96' }}
-            className="w-full"
+            options={roleOptions}
+            placeholder="Filter by role"
+            selectOptionAsValue
+            maxSelectedChips={2}
+            className="min-w-48 max-w-96"
             data-qa="users-role-filter"
           />
         }

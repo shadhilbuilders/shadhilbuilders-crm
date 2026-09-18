@@ -72,6 +72,20 @@ describe('PendingTokenCard', () => {
     expect(html).toContain('₹59,50,000.00');
   });
 
+  it('formats a raw decimal amount in the Indian currency system', () => {
+    // The API returns a decimal STRING ("4200000.00"), not a formatted one -
+    // a manager scanning money should see ₹42,00,000.00, not "4200000.00".
+    const html = render([booking({ amount: '4200000.00' })]);
+    expect(html).toContain('₹42,00,000.00');
+    expect(html).not.toContain('4200000.00');
+  });
+
+  it('passes a non-numeric amount through instead of rendering NaN', () => {
+    const html = render([booking({ amount: 'not-a-number' })]);
+    expect(html).toContain('not-a-number');
+    expect(html).not.toContain('NaN');
+  });
+
   it('shows its own empty state rather than an empty list', () => {
     const html = render([]);
     expect(html).toContain('None waiting on a token');

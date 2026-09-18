@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
+import { LuArrowLeft } from '@paalstack/react-icons/lu';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 
 import { useCreateLead } from '@/hooks/queries/crm';
@@ -323,7 +324,8 @@ export default function NewLeadPage() {
           size="sm"
           onClick={() => void router.push(projectHref(orgSlug, projectSlug, '/leads'))}
         >
-          ← Back to Lead Inbox
+          <LuArrowLeft className="size-4 shrink-0" aria-hidden />
+          Back to Lead Inbox
         </Button>
       </div>
     </div>

@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
+import { LuArrowLeft } from '@paalstack/react-icons/lu';
 
 import { useCreateUnit, useInventoryPhases, useProjectOptions } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
@@ -235,7 +236,8 @@ export default function NewUnitPage() {
           size="sm"
           onClick={() => void router.push(projectHref(orgSlug, projectSlug, '/inventory'))}
         >
-          ← Back to Inventory
+          <LuArrowLeft className="size-4 shrink-0" aria-hidden />
+          Back to Inventory
         </Button>
       </div>
     </div>

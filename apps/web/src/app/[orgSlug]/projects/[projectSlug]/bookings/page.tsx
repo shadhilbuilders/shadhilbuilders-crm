@@ -10,10 +10,8 @@
 //       300ms via useDebouncedValue).
 //     - the "+ New booking" button is the toolbar's right-side content
 //       (role-gated: hidden for TELECALLER).
-//     - status filter is a server-driven MultiSelect (toolbar left side) -
-//       the DataTable's built-in facet filter is client-side over the loaded
-//       page, which is wrong under server pagination. Selection feeds the
-//       `status` query param.
+//     - status filter is a server-driven Combobox multiple (toolbar left
+//       side) - feeds the `status` query param.
 //   Pagination: SERVER-side. The page passes `total`/`currentPage`/
 //     `onPageChange`/`onPageSizeChange` to the DataTable; each page change
 //     refetches `{ limit, offset }` from the API.
@@ -21,7 +19,7 @@
 //     (Badge) → Amount → Token → Created → Owner / Approval.
 //   Row actions: Approve/Reject (TOKEN + manager) · View details (booking) ·
 //     View lead · Edit · Delete.
-import { AlertDialog, Badge, Button, DataTable, DataTableRowActions, MultiSelect, TypographyP, toast } from '@paalstack/react-ui';
+import { AlertDialog, Badge, Button, Combobox, DataTable, DataTableRowActions, TypographyP, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2, LuUser } from '@paalstack/react-icons/lu';
@@ -121,7 +119,7 @@ export default function BookingsPage() {
 
   // Server-driven status filter (T-SRVPG): the DataTable's built-in facet
   // filter is client-side over the loaded page, which is wrong under server
-  // pagination. A MultiSelect in the toolbar feeds the `status` query param.
+  // pagination. A Combobox multiple in the toolbar feeds the `status` query param.
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   // Server-side search (D9): the toolbar search input feeds the `search`
   // query param (≥2 chars hits the API). Debounced 300ms so the API isn't
@@ -440,25 +438,21 @@ export default function BookingsPage() {
               setSearch(next);
               setPage(1); // a new search starts back at page 1
             },
-            className: 'ml-2',
+            className: 'mr-2',
           }}
           toolbarLeftSideContent={
-            <MultiSelect
-              options={statusOptions}
-              selectedValues={statusFilter}
-              onSelectedValueChange={(next) => {
-                setStatusFilter(next as string[]);
+            <Combobox
+              multiple
+              value={statusFilter}
+              onValueChange={(next) => {
+                setStatusFilter((next as string[]) ?? []);
                 setPage(1); // a new filter starts back at page 1
               }}
+              options={statusOptions}
               placeholder="Filter by status"
-              maxSelectedBadges={2}
-              triggerProps={{
-                size: 'sm',
-                variant: 'outline',
-                className: 'min-w-48 max-w-96',
-              }}
-              contentProps={{ className: 'min-w-56 max-w-96' }}
-              className="w-full"
+              selectOptionAsValue
+              maxSelectedChips={2}
+              className="min-w-48 max-w-96"
               data-qa="bookings-status-filter"
             />
           }
