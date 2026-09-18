@@ -2,14 +2,20 @@
 
 // usePushSubscription - web push (VAPID) subscription lifecycle.
 //
-// T-PUSH (2026-09-08): on mount, if the browser supports push + the service
-// worker is active, fetch the VAPID public key from the backend and subscribe
-// the current device. The subscription is POSTed to /api/push/subscribe so the
-// backend can deliver web pushes to this user.
+// T-PUSH (2026-09-08): drives the CURRENT device's web-push subscription.
+// Permission consent is a separate concern - this hook does NOT fire the
+// browser prompt. It exposes:
+//   - isSupported   whether the browser can do web push here (SW + PushManager +
+//                    Notification + VAPID key configured). The app uses this to
+//                    decide whether to SHOW an enable-push prompt.
+//   - isSubscribed  whether this device already has an active subscription.
+//   - enablePush()  user-initiated: request permission (if needed) + subscribe
+//                    + POST to /api/push/subscribe. Returns true on success.
+//   - checked       whether initial state (support + existing sub) resolved.
 //
-// Best-effort: any failure (no push support, no SW, no VAPID key, permission
-// denied) silently no-ops - the app still works, it just can't push.
-import { useEffect } from 'react';
+// Best-effort: any failure no-ops / returns false - the app still works, it
+// just can't push. The dialog that drives this lives in PushEnablePrompt.
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '@/apis/client';
 
@@ -22,48 +28,63 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return output;
 }
 
-export function usePushSubscription(): void {
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!('serviceWorker' in navigator)) return;
-    if (!('PushManager' in window)) return;
-    if (!('Notification' in window)) return;
+export type PushCapability = {
+  isSupported: boolean;
+  isSubscribed: boolean;
+  checked: boolean;
+  /** User-initiated: request permission (if needed) + subscribe + register. */
+  enablePush: () => Promise<boolean>;
+};
 
+export function usePushSubscription(): PushCapability {
+  const [isSupported, setIsSupported] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const subRef = useRef<PushSubscription | null>(null);
+
+  // On mount: detect browser capability + whether this device is already
+  // subscribed. Never requests permission here.
+  useEffect(() => {
     let cancelled = false;
 
     const run = async (): Promise<void> => {
+      // Feature detect first - no SW / PushManager / Notification in this
+      // browser means push is impossible; set checked and stop.
+      const supported =
+        typeof window !== 'undefined' &&
+        'serviceWorker' in navigator &&
+        'PushManager' in window &&
+        'Notification' in window;
+      if (!supported) {
+        if (!cancelled) {
+          setIsSupported(false);
+          setChecked(true);
+        }
+        return;
+      }
+
       try {
         const reg = await navigator.serviceWorker.ready;
         if (cancelled) return;
-
-        // Fetch the VAPID public key. Null = push disabled on the backend.
+        // Push disabled server-side -> nothing to subscribe to.
         const { publicKey } = await api<{ publicKey: string | null }>('/push/vapid-key');
         if (cancelled) return;
-        if (!publicKey) return;
-
+        if (!publicKey) {
+          setIsSupported(false);
+          setChecked(true);
+          return;
+        }
         const existing = await reg.pushManager.getSubscription();
-        if (existing) return; // already subscribed
-
-        const permission = await Notification.requestPermission();
         if (cancelled) return;
-        if (permission !== 'granted') return;
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
-        });
-
-        await api('/push/subscribe', {
-          method: 'POST',
-          json: {
-            endpoint: sub.endpoint,
-            p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')!))),
-            auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')!))),
-            platform: 'WEB',
-          },
-        });
+        subRef.current = existing;
+        setIsSupported(true);
+        setIsSubscribed(existing !== null);
+        setChecked(true);
       } catch {
-        // best-effort - swallow
+        if (!cancelled) {
+          setIsSupported(false);
+          setChecked(true);
+        }
       }
     };
 
@@ -72,4 +93,46 @@ export function usePushSubscription(): void {
       cancelled = true;
     };
   }, []);
+
+  const enablePush = useCallback(async (): Promise<boolean> => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await api<{ publicKey: string | null }>('/push/vapid-key');
+      if (!publicKey) return false;
+
+      // A fresh (not yet subscribed) device needs permission first. If it's
+      // already granted for this origin (returning user), skip the prompt.
+      const existing = (await reg.pushManager.getSubscription()) ?? subRef.current;
+      if (existing) {
+        subRef.current = existing;
+        setIsSubscribed(true);
+        return true;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return false;
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+      });
+      subRef.current = sub;
+      setIsSubscribed(true);
+
+      await api('/push/subscribe', {
+        method: 'POST',
+        json: {
+          endpoint: sub.endpoint,
+          p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')!))),
+          auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')!))),
+          platform: 'WEB',
+        },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  return { isSupported, isSubscribed, checked, enablePush };
 }

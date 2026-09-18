@@ -15,8 +15,8 @@ import { SidebarInset, SidebarProvider } from '@paalstack/react-ui';
 
 import { AppShell } from '@/components/app-shell';
 import { AppHeader } from '@/components/app-header';
+import { PushEnablePrompt } from '@/components/push-enable-prompt';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { usePushSubscription } from '@/hooks/use-push-subscription';
 
 const DESKTOP_BREAKPOINT_QUERY = '(min-width: 768px)';
 
@@ -39,9 +39,6 @@ function useIsDesktop(): boolean {
 
 export function AuthenticatedShell({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
-  // T-PUSH: subscribe this device to web push once the authenticated shell
-  // mounts (best-effort - no-ops if push is unsupported/disabled).
-  usePushSubscription();
 
   return (
     <SidebarProvider defaultOpen={isDesktop}>
@@ -54,6 +51,9 @@ export function AuthenticatedShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </SidebarInset>
+      {/* T-PUSH consent: ask the user to enable web push via an AlertDialog
+          (only when it's supported + not yet enabled + not dismissed). */}
+      <PushEnablePrompt />
     </SidebarProvider>
   );
 }
