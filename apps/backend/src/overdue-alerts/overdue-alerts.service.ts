@@ -172,48 +172,55 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
       const cutoff = new Date(Date.now() - RE_PUSH_EVERY_MS);
       const overdueCutoff = new Date(Date.now() - OVERDUE_AFTER_MIN * 60_000);
 
-      const [cronLeads, neverPushed] = await withRlsContext(
-        this.client,
-        cronCtx,
-        async (tx) =>
-          Promise.all([
-            (tx as unknown as PrismaClient).lead.findMany({
-              where: {
-                state: 'NEW',
-                createdAt: { lte: overdueCutoff },
-                lastOverduePushedAt: { lte: cutoff },
-              },
-              select: {
-                id: true,
-                name: true,
-                ownerId: true,
-                teamId: true,
-                organizationId: true,
-              },
-              take: 100,
-            }),
-            (tx as unknown as PrismaClient).lead.findMany({
-              where: {
-                state: 'NEW',
-                createdAt: { lte: overdueCutoff },
-                lastOverduePushedAt: null,
-              },
-              select: {
-                id: true,
-                name: true,
-                ownerId: true,
-                teamId: true,
-                organizationId: true,
-              },
-              take: 100,
-            }),
-          ]),
-      );
+      const [cronLeadsQueried, neverPushedQueried] = await Promise.all([
+        // Run these two scans IN PARALLEL, each in its OWN withRlsContext
+        // transaction. @prisma/adapter-pg pins ONE pooled pg client per
+        // transaction, so concurrent `.query()` calls inside a SINGLE
+        // transaction hit the same client (pg deprecation, interleave risk).
+        // Separate transactions use separate pooled connections - parallel
+        // AND warning-free.
+        withRlsContext(this.client, cronCtx, (tx) =>
+          (tx as unknown as PrismaClient).lead.findMany({
+            where: {
+              state: 'NEW',
+              createdAt: { lte: overdueCutoff },
+              lastOverduePushedAt: { lte: cutoff },
+            },
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
+              teamId: true,
+              organizationId: true,
+            },
+            take: 100,
+          }),
+        ),
+        withRlsContext(this.client, cronCtx, (tx) =>
+          (tx as unknown as PrismaClient).lead.findMany({
+            where: {
+              state: 'NEW',
+              createdAt: { lte: overdueCutoff },
+              lastOverduePushedAt: null,
+            },
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
+              teamId: true,
+              organizationId: true,
+            },
+            take: 100,
+          }),
+        ),
+      ]);
+
+      const cronLeads = cronLeadsQueried as unknown as OverdueLead[];
+      const neverPushed = neverPushedQueried as unknown as OverdueLead[];
 
       const byId = new Map<string, OverdueLead>();
       for (const l of [...cronLeads, ...neverPushed]) {
-        const row = l as unknown as OverdueLead;
-        byId.set(row.id, row);
+        byId.set(l.id, l);
       }
       tick.considered = byId.size;
 

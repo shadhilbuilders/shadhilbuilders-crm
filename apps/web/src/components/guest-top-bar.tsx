@@ -29,6 +29,7 @@
 import Image from 'next/image';
 
 import { ThemeToggle } from '@/components/theme-toggle';
+import Link from 'next/link';
 
 export function GuestTopBar() {
   return (
@@ -44,7 +45,7 @@ export function GuestTopBar() {
               both themes. bg-card is theme-dependent (near-black in dark
               mode → navy-on-navy contrast failure, found in-browser);
               bg-white + a subtle border reads as a brand plate instead. */}
-          <span className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 py-2 dark:bg-white">
+          <Link href="/" className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 py-2 dark:bg-white">
             <Image
               src="/brand/logo.png"
               alt="Shadhil Builders"
@@ -55,7 +56,7 @@ export function GuestTopBar() {
               data-qa="guest-brand-logo"
               loading="eager"
             />
-          </span>
+          </Link>
         </div>
         <ThemeToggle />
       </div>

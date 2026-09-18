@@ -495,6 +495,7 @@ export class BookingsService {
           title: 'Booking on hold',
           body: `Booking for ${created.lead.name} (${created.amount.toString()}) is awaiting approval.`,
           leadId: created.leadId,
+          bookingId: created.id,
         });
 
         return {
@@ -689,6 +690,7 @@ export class BookingsService {
             title: 'Booking status changed',
             body: `Booking for ${updated.lead.name} moved to ${updated.status}.`,
             leadId: updated.leadId,
+            bookingId: updated.id,
           });
         }
 
@@ -974,7 +976,7 @@ export class BookingsService {
    */
   private emitBestEffort(
     recipientSub: string,
-    payload: { type: string; title: string; body: string; leadId?: string },
+    payload: { type: string; title: string; body: string; leadId?: string; bookingId?: string },
   ): void {
     if (this.notifications === undefined) return;
     try {

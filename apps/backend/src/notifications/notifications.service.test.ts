@@ -225,4 +225,101 @@ describe('emit - service hook for notification creation', () => {
     ).rejects.toThrow(/recipientSub/);
     expect(client.notification.create).not.toHaveBeenCalled();
   });
+
+  it('builds the real app deep-link URL on push (orgSlug/projectSlug/leads/id)', async () => {
+    // Regression: pushBestEffort used to emit a bare `/leads/{id}` which the
+    // app does not route. It must resolve the ORG + PROJECT slugs from the lead
+    // and build `/{orgSlug}/projects/{projectSlug}/leads/{leadId}`.
+    const sendToUser = vi.fn().mockResolvedValue(1);
+    const push = { sendToUser } as never;
+    const client = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      notification: {
+        create: vi.fn().mockResolvedValue({
+          id: 'n-push',
+          type: 'lead.assigned',
+          title: 'You have a new lead',
+          body: 'Test Lead A',
+          leadId: 'l-1',
+          read: false,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+      lead: {
+        findUnique: vi.fn().mockResolvedValue({
+          organizationId: 'org-1',
+          project: { slug: 'metro-heights' },
+          organization: { slug: 'shadhil-builders' },
+        }),
+      },
+    } as never;
+    const prismaService = { $client: client } as never;
+    const service = new NotificationsService(prismaService, push);
+
+    await service.emit('recipient-1', {
+      type: 'lead.assigned',
+      title: 'You have a new lead',
+      body: 'Test Lead A',
+      leadId: 'l-1',
+    });
+
+    // pushBestEffort is fire-and-forget async; flush the microtask queue.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sendToUser).toHaveBeenCalledWith(
+      'recipient-1',
+      expect.objectContaining({
+        url: '/shadhil-builders/projects/metro-heights/leads/l-1',
+      }),
+    );
+  });
+
+  it('deep-links a booking notification to the booking page, not the lead page', async () => {
+    // Regression: booking notifications used to deep-link to the lead page.
+    // With bookingId present, the push must go to
+    // `/{orgSlug}/projects/{projectSlug}/bookings/{bookingId}`.
+    const sendToUser = vi.fn().mockResolvedValue(1);
+    const push = { sendToUser } as never;
+    const client = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      notification: {
+        create: vi.fn().mockResolvedValue({
+          id: 'n-booking',
+          type: 'booking.created',
+          title: 'Booking on hold',
+          body: 'Booking for Demo Priya',
+          leadId: 'l-1',
+          read: false,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+      lead: {
+        findUnique: vi.fn().mockResolvedValue({
+          project: { slug: 'metro-heights' },
+          organization: { slug: 'shadhil-builders' },
+        }),
+      },
+    } as never;
+    const prismaService = { $client: client } as never;
+    const service = new NotificationsService(prismaService, push);
+
+    await service.emit('recipient-1', {
+      type: 'booking.created',
+      title: 'Booking on hold',
+      body: 'Booking for Demo Priya',
+      leadId: 'l-1',
+      bookingId: 'b-42',
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sendToUser).toHaveBeenCalledWith(
+      'recipient-1',
+      expect.objectContaining({
+        url: '/shadhil-builders/projects/metro-heights/bookings/b-42',
+      }),
+    );
+  });
 });

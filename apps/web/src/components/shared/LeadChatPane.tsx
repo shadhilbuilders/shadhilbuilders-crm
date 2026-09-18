@@ -441,9 +441,9 @@ export function LeadChatPane({
       <CardContent className="min-h-0 flex-1 p-0">
         <div className="h-full overflow-hidden bg-muted/20" data-qa="chat-messages">
           {messagesQuery.isLoading ? (
-            <p className="text-muted-foreground p-4 text-xs">Loading messages...</p>
+            <p className="text-muted-foreground p-4 text-xs text-center">Loading messages...</p>
           ) : messagesQuery.error !== null && messagesQuery.error !== undefined ? (
-            <p className="text-muted-foreground p-4 text-xs">
+            <p className="text-muted-foreground p-4 text-xs text-center">
               Chat will appear when the chat module lands. (Backend not yet
               wired for this lead.)
             </p>
@@ -542,7 +542,7 @@ export function LeadChatPane({
               <Attachment
                 state={attachmentUploading ? 'uploading' : 'idle'}
                 orientation="horizontal"
-                className="border-border rounded-md border bg-muted/30 p-2"
+                className="border-border rounded-md border bg-muted/30 p-2 w-auto"
               >
                 {pendingAttachment.file.type.startsWith('image/') ? (
                   <img
