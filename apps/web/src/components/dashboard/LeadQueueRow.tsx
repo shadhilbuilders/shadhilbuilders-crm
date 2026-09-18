@@ -145,7 +145,7 @@ export function LeadQueueRow({
               </span>
               <span className={`text-xs ${secondary}`}>{labelFor('lead', status)}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
               {phone}
               {reason.length > 0 ? <span className={reasonClass}>{reason}</span> : null}
             </div>
