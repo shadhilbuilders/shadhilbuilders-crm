@@ -84,6 +84,8 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
     state,
     ownerId: typeof query['ownerId'] === 'string' ? query['ownerId'] : undefined,
     teamId: typeof query['teamId'] === 'string' ? query['teamId'] : undefined,
+    linkedUserId:
+      typeof query['linkedUserId'] === 'string' ? query['linkedUserId'] : undefined,
     projectId:
       typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
     search: typeof query['search'] === 'string' ? query['search'] : undefined,

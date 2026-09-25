@@ -11,6 +11,12 @@
 // ADMIN/OWNER/MANAGER rows omit the manager section entirely (they don't
 // report to anyone here).
 //
+// T-USER-LEADS (2026-09-24): below the Projects card, a Leads table lists
+// every lead linked to this user (owner OR co-owner - the same definition
+// `team-members.service.preview()` uses), with a server-driven project
+// filter. "Linked" deliberately includes co-ownership so a co-owner's
+// workload is not invisible on their own profile.
+//
 // Auth: same gate as the /admin/users list (ADMIN/OWNER only) - the
 // backend additionally scopes MANAGER to their own team + self, so this
 // page would also work for a manager if that gate is ever relaxed.
@@ -62,6 +68,7 @@ import { useOrgSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { UserLeadsCard } from '@/components/users/UserLeadsCard';
 
 /** Roles that report to a manager on this surface (see file header). */
 const REPORTS_TO_MANAGER = new Set(['TELECALLER', 'SALES_EXEC']);
@@ -255,6 +262,17 @@ function UserDetailContent({
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      {/* T-USER-LEADS (2026-09-24): every lead this user is linked to
+          (owner OR co-owner), filterable by project. The page is already
+          ADMIN/OWNER-gated above, and the backend keeps ADMIN/OWNER
+          filters un-narrowed by role scoping, so this shows the full set
+          rather than only the admin's own lane. */}
+      <Card data-qa="user-leads-card-shell">
+        <CardContent className="pt-6">
+          <UserLeadsCard userId={detail.id} />
         </CardContent>
       </Card>
     </div>

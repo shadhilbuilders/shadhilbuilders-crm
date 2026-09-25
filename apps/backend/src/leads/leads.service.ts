@@ -83,6 +83,15 @@ export interface LeadRow {
   source: string | null;
   ownerName: string | null;
   ownerId: string;
+  // T-USER-LEADS (2026-09-24): the project label + slug ride the row so a
+  // Project column and the per-row link into lead detail
+  // (/projects/<slug>/leads/<id>) need no second request. `projectSlug` is
+  // nullable in the type (it is the route key) even though Lead.projectId
+  // is NOT NULL at the DB level - a lead whose project row is unreadable
+  // must degrade to plain text rather than render a broken href.
+  projectId: string | null;
+  projectName: string | null;
+  projectSlug: string | null;
   // autoplan 2026-09-07 (D16): the inbox's overdue-first sort needs the
   // creation timestamp (time-to-first-touch SLA, Decision 0.2). Additive,
   // non-breaking.
@@ -109,6 +118,10 @@ export interface CreatedLead {
   ownerId: string;
   ownerName: string | null;
   teamId: string;
+  // T-USER-LEADS: loaded by the create select so the returned LeadRow can
+  // carry the project label + slug. Optional - the WhatsApp convert path
+  // builds a CreatedLead from its own shape and has no project relation.
+  project: { id: string; slug: string; name: string } | null;
   createdAt: Date;
   updatedAt: string;
 }
@@ -189,6 +202,16 @@ export class LeadsService {
     }
     if (dto.ownerId !== undefined) where['ownerId'] = dto.ownerId;
     if (dto.teamId !== undefined) where['teamId'] = dto.teamId;
+    // T-USER-LEADS (2026-09-24): "linked to this user" = owner OR co-owner.
+    // Set as its own OR key rather than merging into `where['OR']` (the
+    // search predicate below), because two assignments to the same key
+    // silently clobber one another.
+    if (dto.linkedUserId !== undefined) {
+      where['OR'] = [
+        { ownerId: dto.linkedUserId },
+        { coOwnerId: dto.linkedUserId },
+      ];
+    }
     // T-ProjectSwitch: filter by the active project (sidebar switcher
     // navigates via /[projectId]/... and every list page passes the id).
     if (dto.projectId !== undefined) where['projectId'] = dto.projectId;
@@ -243,6 +266,13 @@ export class LeadsService {
     }
     if (dto.teamId !== undefined) {
       conditions.push(Prisma.sql`"teamId" = ${dto.teamId}`);
+    }
+    if (dto.linkedUserId !== undefined) {
+      // owner OR co-owner, in one parenthesised group so it ANDs correctly
+      // with the other filters.
+      conditions.push(
+        Prisma.sql`("ownerId" = ${dto.linkedUserId} OR "coOwnerId" = ${dto.linkedUserId})`,
+      );
     }
     if (dto.projectId !== undefined) {
       conditions.push(Prisma.sql`"projectId" = ${dto.projectId}`);
@@ -337,8 +367,13 @@ export class LeadsService {
         const [rows, total, overdueCount, newTodayCount] = await Promise.all([
           tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
             SELECT "id", "name", "phone", "state", "source", "ownerId",
-              "createdAt", "updatedAt",
-              (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName"
+              "createdAt", "updatedAt", "projectId",
+              (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName",
+              -- T-USER-LEADS: the project label + slug ride the row so the
+              -- Project column and the per-row link into lead detail
+              -- (/projects/<slug>/leads/<id>) need no second request.
+              (SELECT "name" FROM "Project" p WHERE p."id" = "Lead"."projectId") AS "projectName",
+              (SELECT "slug" FROM "Project" p WHERE p."id" = "Lead"."projectId") AS "projectSlug"
             FROM "Lead"
             ${whereSql}
             ORDER BY
@@ -372,6 +407,9 @@ export class LeadsService {
             source: (r.source as string | null) ?? null,
             ownerId: r.ownerId as string,
             ownerName: (r.ownerName as string | null) ?? null,
+            projectId: (r.projectId as string | null) ?? null,
+            projectName: (r.projectName as string | null) ?? null,
+            projectSlug: (r.projectSlug as string | null) ?? null,
             createdAt: (r.createdAt as Date).toISOString(),
             updatedAt: (r.updatedAt as Date).toISOString(),
           })),
@@ -575,6 +613,9 @@ export class LeadsService {
       source: created.source,
       ownerId: created.ownerId,
       ownerName: created.ownerName,
+      projectId: created.project?.id ?? null,
+      projectName: created.project?.name ?? null,
+      projectSlug: created.project?.slug ?? null,
       createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt,
     };
@@ -956,6 +997,7 @@ export class LeadsService {
         createdAt: true,
         updatedAt: true,
         owner: { select: { name: true } },
+        project: { select: { id: true, slug: true, name: true } },
       },
     });
 
@@ -1025,6 +1067,7 @@ export class LeadsService {
       ownerId: created.ownerId,
       ownerName: created.owner?.name ?? null,
       teamId,
+      project: created.project ?? null,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt.toISOString(),
     };
@@ -1164,6 +1207,7 @@ export class LeadsService {
             name: true,
             phone: true,
             source: true,
+            project: { select: { id: true, slug: true, name: true } },
             createdAt: true,
             owner: { select: { name: true } },
           },
@@ -1260,6 +1304,9 @@ export class LeadsService {
             // Same-owner reassign: the owner hasn't changed, so
             // existing.owner.name is the right value to return.
             ownerName: existing.owner?.name ?? target.name,
+            projectId: existing.project?.id ?? null,
+            projectName: existing.project?.name ?? null,
+            projectSlug: existing.project?.slug ?? null,
             createdAt: existing.createdAt.toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -1300,6 +1347,7 @@ export class LeadsService {
             ownerId: true,
             createdAt: true,
             updatedAt: true,
+            project: { select: { id: true, slug: true, name: true } },
           },
         });
 
@@ -1342,6 +1390,9 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: target.name,
+          projectId: updated.project?.id ?? null,
+          projectName: updated.project?.name ?? null,
+          projectSlug: updated.project?.slug ?? null,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
@@ -1380,6 +1431,7 @@ export class LeadsService {
             name: true,
             phone: true,
             source: true,
+            project: { select: { id: true, slug: true, name: true } },
             createdAt: true,
             owner: { select: { name: true } },
           },
@@ -1473,6 +1525,7 @@ export class LeadsService {
             coOwnerId: true,
             createdAt: true,
             updatedAt: true,
+            project: { select: { id: true, slug: true, name: true } },
           },
         });
 
@@ -1497,6 +1550,9 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: existing.owner?.name ?? null,
+          projectId: updated.project?.id ?? null,
+          projectName: updated.project?.name ?? null,
+          projectSlug: updated.project?.slug ?? null,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
@@ -1532,6 +1588,7 @@ export class LeadsService {
             source: true,
             updatedAt: true,
             owner: { select: { name: true } },
+            project: { select: { id: true, slug: true, name: true } },
           },
         });
         if (!existing) {
@@ -1560,6 +1617,7 @@ export class LeadsService {
             createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
+            project: { select: { id: true, slug: true, name: true } },
           },
         });
 
@@ -1592,6 +1650,9 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: updated.owner?.name ?? null,
+          projectId: updated.project?.id ?? null,
+          projectName: updated.project?.name ?? null,
+          projectSlug: updated.project?.slug ?? null,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };
@@ -1622,6 +1683,7 @@ export class LeadsService {
             name: true,
             phone: true,
             source: true,
+            project: { select: { id: true, slug: true, name: true } },
             createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
@@ -1658,6 +1720,9 @@ export class LeadsService {
             source: existing.source,
             ownerId: existing.ownerId,
             ownerName: existing.owner?.name ?? null,
+            projectId: existing.project?.id ?? null,
+            projectName: existing.project?.name ?? null,
+            projectSlug: existing.project?.slug ?? null,
             createdAt: existing.createdAt.toISOString(),
             updatedAt: existing.updatedAt.toISOString(),
           };
@@ -1676,6 +1741,7 @@ export class LeadsService {
             createdAt: true,
             updatedAt: true,
             owner: { select: { name: true } },
+            project: { select: { id: true, slug: true, name: true } },
           },
         });
 
@@ -1712,6 +1778,9 @@ export class LeadsService {
           source: updated.source,
           ownerId: updated.ownerId,
           ownerName: updated.owner?.name ?? null,
+          projectId: updated.project?.id ?? null,
+          projectName: updated.project?.name ?? null,
+          projectSlug: updated.project?.slug ?? null,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         };

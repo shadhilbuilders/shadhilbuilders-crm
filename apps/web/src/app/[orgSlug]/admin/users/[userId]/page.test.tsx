@@ -55,6 +55,17 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ userId: 'user-1' }),
 }));
 
+// T-USER-LEADS (2026-09-24): the page now mounts UserLeadsCard, which reads
+// react-query (useLeads + useProjects) and needs a QueryClientProvider this
+// test does not set up. These assertions are all about the user-detail
+// panels, so stub the card with a marker - its own behaviour is covered by
+// UserLeadsCard's tests and the live-API probe.
+vi.mock('@/components/users/UserLeadsCard', () => ({
+  UserLeadsCard: ({ userId }: { userId: string }) => (
+    <div data-qa="user-leads-card-shell">leads for {userId}</div>
+  ),
+}));
+
 import UserDetailPage from './page';
 
 let container: HTMLDivElement | null = null;

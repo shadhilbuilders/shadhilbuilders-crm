@@ -282,6 +282,102 @@ describe('listWhere - filter chips compose with role scoping', () => {
   });
 });
 
+// T-USER-LEADS (2026-09-24): `linkedUserId` matches owner OR co-owner, so the
+// user-detail page can list a person's whole workload. Distinct from
+// `ownerId` (strict owner-only). This is the same definition
+// team-members.service.preview() uses for "leads linked with a member".
+describe('listWhere - linkedUserId matches owner OR co-owner', () => {
+  type ListWhere = (
+    tx: unknown,
+    actor: typeof admin,
+    dto: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+
+  function callListWhere(dto: Record<string, unknown>, actor = admin) {
+    const { service, tx } = makeService();
+    return (
+      service as unknown as { listWhere: ListWhere }
+    ).listWhere(tx, actor, dto);
+  }
+
+  it('ADMIN + linkedUserId: where.OR matches ownerId OR coOwnerId', async () => {
+    const where = await callListWhere({ linkedUserId: 'user-9', limit: 50, offset: 0 });
+    expect(where['OR']).toEqual([{ ownerId: 'user-9' }, { coOwnerId: 'user-9' }]);
+  });
+
+  it('ownerId still means owner-ONLY (the two filters must not merge)', async () => {
+    const where = await callListWhere({ ownerId: 'user-9', limit: 50, offset: 0 });
+    expect(where['ownerId']).toBe('user-9');
+    // No co-owner OR clause is added for the strict owner filter.
+    expect(where['OR']).toBeUndefined();
+  });
+
+  it('absent linkedUserId adds no OR key at all', async () => {
+    const where = await callListWhere({ limit: 50, offset: 0 });
+    expect(where['OR']).toBeUndefined();
+    expect(where['ownerId']).toBeUndefined();
+  });
+
+  it('composes with projectId (AND, not overwrite)', async () => {
+    const where = await callListWhere({
+      linkedUserId: 'user-9',
+      projectId: 'proj-7',
+      limit: 50,
+      offset: 0,
+    });
+    expect(where['OR']).toEqual([{ ownerId: 'user-9' }, { coOwnerId: 'user-9' }]);
+    expect(where['projectId']).toBe('proj-7');
+  });
+
+  it('role scoping still OVERRIDES it for a TELECALLER (no lateral read)', async () => {
+    // A staff actor asking for someone else's linked leads must be pinned
+    // back to their own leads - the explicit filter must not widen access.
+    const where = await callListWhere(
+      { linkedUserId: 'someone-else', limit: 50, offset: 0 },
+      telecaller,
+    );
+    expect(where['ownerId']).toBe(telecaller.sub);
+  });
+
+  it('emits the OR group into the SQL conditions too (both paths stay in sync)', async () => {
+    // `list()` runs off listConditions (raw SQL), not listWhere. A drift
+    // between the two would make the filter work in tests and not in the app.
+    const { service, tx } = makeService();
+    const conditions = await (
+      service as unknown as {
+        listConditions: (
+          tx: unknown,
+          actor: typeof admin,
+          dto: Record<string, unknown>,
+        ) => Promise<Array<{ sql: string; values: unknown[] }>>;
+      }
+    ).listConditions(tx, admin, { linkedUserId: 'user-9', limit: 50, offset: 0 });
+
+    const joined = conditions.map((c) => c.sql).join(' AND ');
+    expect(joined).toContain('"ownerId"');
+    expect(joined).toContain('"coOwnerId"');
+    expect(joined).toContain('OR');
+    const values = conditions.flatMap((c) => c.values);
+    expect(values).toContain('user-9');
+  });
+
+  it('SQL conditions ALSO pin a TELECALLER back to their own leads', async () => {
+    const { service, tx } = makeService();
+    const conditions = await (
+      service as unknown as {
+        listConditions: (
+          tx: unknown,
+          actor: typeof telecaller,
+          dto: Record<string, unknown>,
+        ) => Promise<Array<{ sql: string; values: unknown[] }>>;
+      }
+    ).listConditions(tx, telecaller, { linkedUserId: 'someone-else', limit: 50, offset: 0 });
+
+    const values = conditions.flatMap((c) => c.values);
+    expect(values).toContain(telecaller.sub);
+  });
+});
+
 describe('badgeCount - project-scoped NEW-lead count (sidebar badge)', () => {
   function makeBadgeService(count: number) {
     // badgeCount runs inside withRlsContext, which calls $transaction

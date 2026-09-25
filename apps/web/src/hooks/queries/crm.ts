@@ -58,6 +58,13 @@ function unwrapRows<T>(payload: unknown): T[] {
 export type LeadFilterInput = {
   state?: string[];
   ownerId?: string;
+  /**
+   * Leads the user is LINKED to: owner OR co-owner (T-USER-LEADS,
+   * 2026-09-24). Distinct from `ownerId`, which stays strict owner-only.
+   * Used by the user-detail page so a co-owner's workload shows on their
+   * own profile.
+   */
+  linkedUserId?: string;
   teamId?: string;
   // T-ProjectSwitch: the active project filter (sidebar switcher).
   projectId?: string;
@@ -80,6 +87,7 @@ export function useLeads(filter: LeadFilterInput = {}) {
         `/leads${qs({
           state: filter.state?.join(','),
           ownerId: filter.ownerId,
+          linkedUserId: filter.linkedUserId,
           teamId: filter.teamId,
           projectId: filter.projectId,
           search: filter.search,
@@ -137,6 +145,7 @@ export function useLeadsEnvelope(filter: LeadFilterInput = {}): LeadsEnvelope | 
         `/leads${qs({
           state: filter.state?.join(','),
           ownerId: filter.ownerId,
+          linkedUserId: filter.linkedUserId,
           teamId: filter.teamId,
           projectId: filter.projectId,
           search: filter.search,
