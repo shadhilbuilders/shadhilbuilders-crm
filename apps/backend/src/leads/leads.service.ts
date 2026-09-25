@@ -1942,7 +1942,7 @@ export class LeadsService {
       by: ['ownerId'],
       where: {
         ownerId: { in: members.map((m) => m.userId) },
-        state: { notIn: ['WON', 'LOST', 'COLD'] },
+        state: { notIn: ['WON', 'LOST', 'RNR'] },
       },
       _count: { _all: true },
     });

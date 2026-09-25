@@ -51,7 +51,7 @@ describe('lib/labels', () => {
         BOOKING_INITIATED: 'Booking in progress',
         WON: 'Won 🎉',
         LOST: 'Lost',
-        COLD: 'Cold',
+        RNR: 'Unresponsive',
         // autoplan 2026-09-07: full 12-state coverage (visit-outcome
         // states are also lead states; same friendly labels).
         RESCHEDULED: 'Postponed',

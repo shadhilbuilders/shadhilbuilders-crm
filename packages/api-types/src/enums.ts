@@ -49,7 +49,7 @@ export const LeadStateSchema = z.enum([
   'BOOKING_INITIATED',
   'WON',
   'LOST',
-  'COLD',
+  'RNR',
   'RESCHEDULED',
   'NO_SHOW',
 ]);

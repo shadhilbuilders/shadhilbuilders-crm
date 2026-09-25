@@ -224,7 +224,7 @@ These are independent flows. A manual reassign does NOT log a "visit outcome", s
 
 **Edge case:** Lead in WON state. Reassigning a WON lead to a new owner is unusual but allowed (Admin only). Use case: post-booking customer satisfaction calls get moved to a customer-success exec.
 
-**Edge case:** Lead in COLD state. Reassigning to "re-engage" is the normal flow.
+**Edge case:** Lead in RNR state. Reassigning to "re-engage" is the normal flow.
 
 ---
 

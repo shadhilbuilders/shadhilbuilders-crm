@@ -91,7 +91,7 @@ export type UpdateLeadDto = z.infer<typeof UpdateLeadDtoSchema>;
  * `toState` is validated against LeadStateSchema; the service then checks
  * the Model C ownership + role table to allow/reject.
  *
- * `reason` is required when transitioning to LOST or COLD (audit).
+ * `reason` is required when transitioning to LOST or RNR (audit).
  */
 export const LeadStateTransitionDtoSchema = z.object({
   leadId: z.string().cuid2(),

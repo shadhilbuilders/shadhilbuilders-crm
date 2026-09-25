@@ -11,7 +11,7 @@
 //   2. EVERY (from, to) pair that IS in TRANSITIONS returns ALLOWED for
 //      ADMIN/OWNER (they override) and for MANAGER (non-terminal).
 //   3. TELECALLER + SALES_EXEC gates reject out-of-lane transitions.
-//   4. Terminal trio (WON, LOST, COLD) has no outgoing edges for non-Admin.
+//   4. Terminal trio (WON, LOST, RNR) has no outgoing edges for non-Admin.
 //   5. SAME_STATE is always allowed (idempotent).
 //   6. ROLE_FORBIDDEN takes precedence over INVALID_TRANSITION when the
 //      edge exists but the role can't traverse it.
@@ -34,23 +34,23 @@ const ROLES: readonly Role[] = [
   'SALES_EXEC',
 ];
 
-const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'COLD'];
+const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
 
 // The transition table mirrored from the source. Duplicated deliberately
 // (the test is the spec) - if the source drifts the test fails loudly.
 const ALLOWED_EDGES: Readonly<Record<LeadState, readonly LeadState[]>> = {
-  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'COLD', 'LOST'],
-  VISITED: ['NEGOTIATION', 'COLD', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'COLD', 'LOST'],
+  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
+  VISITED: ['NEGOTIATION', 'RNR', 'LOST'],
+  NEGOTIATION: ['BOOKING_INITIATED', 'RNR', 'LOST'],
   BOOKING_INITIATED: ['WON', 'LOST'],
   WON: [],
   LOST: [],
-  COLD: [],
-  RESCHEDULED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  NO_SHOW: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
+  RNR: [],
+  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
 describe('leads.state-machine - LEAD_STATES source-of-truth', () => {
@@ -257,7 +257,7 @@ describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () =
   // The exception is exactly one edge. Everything else out of
   // VISIT_SCHEDULED stays refused, so the exec cannot take over the
   // telecaller's re-engagement outcomes (Model C).
-  for (const to of ['NO_SHOW', 'RESCHEDULED', 'COLD', 'LOST'] as const) {
+  for (const to of ['NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'] as const) {
     it(`SALES_EXEC: VISIT_SCHEDULED → ${to} is ROLE_FORBIDDEN (telecaller lane)`, () => {
       const result = canTransition({ from: 'VISIT_SCHEDULED', to, role: 'SALES_EXEC' });
       expect(result.ok).toBe(false);
@@ -279,9 +279,9 @@ describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () =
 });
 
 describe('allowedNextStates - UI helper', () => {
-  it('TELECALLER on NEW sees CONTACTED, VISIT_REQUESTED, COLD, LOST', () => {
+  it('TELECALLER on NEW sees CONTACTED, VISIT_REQUESTED, RNR, LOST', () => {
     const next = allowedNextStates('NEW', 'TELECALLER');
-    expect(next).toEqual(['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST']);
+    expect(next).toEqual(['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST']);
   });
 
   it('SALES_EXEC on NEW sees nothing (out of lane)', () => {

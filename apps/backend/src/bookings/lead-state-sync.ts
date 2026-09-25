@@ -30,7 +30,7 @@ export type BookingStatusForLead = 'HOLD' | 'TOKEN' | 'APPROVED' | 'REJECTED' | 
 
 /**
  * Rank on the MAIN pipeline so the sync can refuse to move a lead BACKWARDS.
- * Side states (COLD/LOST/RESCHEDULED/NO_SHOW) are intentionally absent - a
+ * Side states (RNR/LOST/RESCHEDULED/NO_SHOW) are intentionally absent - a
  * booking sync must not drag a lead out of those.
  */
 const PIPELINE_RANK: Partial<Record<LeadState, number>> = {
@@ -58,7 +58,7 @@ export const BOOKING_STATUS_TO_LEAD_STATE: Record<BookingStatusForLead, LeadStat
  * NEGOTIATION (or later) before a booking starts". A booking on a lead still at
  * NEW/CONTACTED/VISIT_* skips the whole sales conversation.
  *
- * COLD/LOST are excluded - reviving a dead lead is a deliberate act, not a
+ * RNR/LOST are excluded - reviving a dead lead is a deliberate act, not a
  * side effect of a booking.
  */
 export const BOOKABLE_LEAD_STATES: readonly LeadState[] = [
@@ -105,7 +105,7 @@ export function leadStateForBookings(
  * - Backward moves apply ONLY when explicitly requested (`allowRegress`) - that
  *   is the CANCELLED/REJECTED release back to NEGOTIATION. Without this guard a
  *   re-synced stale HOLD could drag a `WON` lead back to NEGOTIATION.
- * - A current state that is not on the main pipeline (COLD/LOST/...) is left
+ * - A current state that is not on the main pipeline (RNR/LOST/...) is left
  *   alone unless `allowRegress` (an explicit cancel may revive it).
  */
 export function shouldApplyLeadState(
@@ -118,7 +118,7 @@ export function shouldApplyLeadState(
   const from = PIPELINE_RANK[current];
   const to = PIPELINE_RANK[target];
 
-  // Off-pipeline current state (COLD/LOST/RESCHEDULED/NO_SHOW): never dragged
+  // Off-pipeline current state (RNR/LOST/RESCHEDULED/NO_SHOW): never dragged
   // by an ordinary sync.
   if (from === undefined) return options.allowRegress;
 

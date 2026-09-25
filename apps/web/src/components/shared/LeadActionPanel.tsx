@@ -14,7 +14,7 @@
 // current user can't perform a given transition. This avoids duplicating
 // the role table on the frontend.
 //
-// LOST and COLD transitions require a `reason` (audit policy); the form
+// LOST and RNR transitions require a `reason` (audit policy); the form
 // prompts for it inline. Other transitions allow an optional `notes`
 // field (e.g. "Discussed 3BHK options with the couple over WhatsApp").
 //
@@ -55,9 +55,9 @@ import {
   LuCircleX,
   LuHandshake,
   LuMapPin,
+  LuMoon,
   LuPhoneIncoming,
   LuRotateCcw,
-  LuSnowflake,
   LuTrophy,
 } from '@paalstack/react-icons/lu';
 
@@ -73,21 +73,21 @@ import {
  * server still wins. Re-verify on every backend state-machine change.
  */
 const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
-  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'COLD', 'LOST'],
-  VISITED: ['NEGOTIATION', 'VISIT_REQUESTED', 'COLD', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'VISIT_REQUESTED', 'COLD', 'LOST'],
-  BOOKING_INITIATED: ['WON', 'NEGOTIATION', 'COLD', 'LOST'],
+  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
+  VISITED: ['NEGOTIATION', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  NEGOTIATION: ['BOOKING_INITIATED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  BOOKING_INITIATED: ['WON', 'NEGOTIATION', 'RNR', 'LOST'],
   WON: [],
   LOST: [],
-  COLD: [],
-  NO_SHOW: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  RESCHEDULED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
+  RNR: [],
+  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
-const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'COLD']);
+const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'RNR']);
 
 /**
  * The one edge the visit handoff reserves (2026-09-16 owner ruling).
@@ -146,7 +146,9 @@ const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIAT
  * user can scan the actions without reading every label. Keys mirror the
  * backend-state machine state names (leads.state-machine.ts).
  */
-const STATE_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>>> = {
+// Exported for `lead-state-icon-coverage.test.tsx` so a newly added
+// LeadState cannot ship with a silently-iconless transition button.
+export const STATE_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>>> = {
   // Forward motions
   CONTACTED: LuPhoneIncoming, // first contact / follow-up call
   VISIT_REQUESTED: LuCalendarPlus, // ask to schedule
@@ -156,7 +158,7 @@ const STATE_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>
   BOOKING_INITIATED: LuBookOpen, // booking opened
   WON: LuTrophy, // closed-won
   // Rejection / pause
-  COLD: LuSnowflake, // deprioritized
+  RNR: LuMoon, // gone quiet - no response to contact attempts
   LOST: LuCircleX, // closed-lost
   // Re-engagement loop
   RESCHEDULED: LuRotateCcw, // reschedule visit

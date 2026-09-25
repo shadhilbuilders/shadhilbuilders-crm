@@ -26,7 +26,9 @@
 // pins every pair to CR >= 4.5.
 import { labelFor } from '@/lib/labels';
 
-const STATE_BADGE_CLASS: Record<string, string> = {
+// Exported for `lead-state-icon-coverage.test.tsx`: the map falls back
+// to UNKNOWN, so a missing entry is invisible at runtime.
+export const STATE_BADGE_CLASS: Record<string, string> = {
   NEW: 'bg-secondary text-secondary-foreground',
   CONTACTED: 'bg-info-soft text-info-soft-fg',
   VISIT_REQUESTED: 'bg-warning-soft text-warning-foreground',
@@ -36,7 +38,7 @@ const STATE_BADGE_CLASS: Record<string, string> = {
   BOOKING_INITIATED: 'bg-info-soft text-info-soft-fg',
   WON: 'bg-success text-success-foreground',
   LOST: 'bg-destructive-soft text-destructive-soft-fg',
-  COLD: 'bg-secondary text-secondary-foreground',
+  RNR: 'bg-secondary text-secondary-foreground',
   NO_SHOW: 'bg-destructive text-destructive-foreground',
   RESCHEDULED: 'bg-warning-soft text-warning-foreground',
   UNKNOWN: 'bg-secondary text-secondary-foreground',

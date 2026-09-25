@@ -126,7 +126,7 @@ export function queueActionsFor({
  * from the queue (`queueActionsFor` returns [] for all of them), so showing them
  * is archive, not a queue. Excluded from every lane on purpose.
  */
-export const TERMINAL_LEAD_STATES: readonly string[] = ['WON', 'LOST', 'COLD'];
+export const TERMINAL_LEAD_STATES: readonly string[] = ['WON', 'LOST', 'RNR'];
 
 /**
  * The states each role's queue should show, so the dashboard asks the server

@@ -30,7 +30,7 @@
 //   │ BOOKING_INITIATED   │ Booking in progress│
 //   │ WON                 │ Won 🎉             │
 //   │ LOST                │ Lost               │
-//   │ COLD                │ Cold               │
+//   │ RNR                 │ Unresponsive       │
 //   │ NO_SHOW             │ Didn't show up     │
 //   │ RESCHEDULED         │ Postponed          │
 //   │ CANCELLED           │ Cancelled          │
@@ -61,7 +61,7 @@ export const LEAD_STATUSES = [
   'BOOKING_INITIATED',
   'WON',
   'LOST',
-  'COLD',
+  'RNR',
   'RESCHEDULED',
   'NO_SHOW',
 ] as const;
@@ -175,7 +175,7 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   BOOKING_INITIATED: 'Booking in progress',
   WON: 'Won 🎉',
   LOST: 'Lost',
-  COLD: 'Cold',
+  RNR: 'Unresponsive',
   // autoplan 2026-09-07: full 12-state coverage (the inbox facets now
   // render every LeadState; these two were reachable via visit outcomes
   // but had no lead-state label, so the facet fell back to humanize()).

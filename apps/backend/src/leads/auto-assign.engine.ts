@@ -33,7 +33,7 @@
 // Ties (equal score) break to the member with FEWER open leads, then
 // lexicographically by userId for determinism.
 //
-// `openLeads` counts non-terminal leads (NOT IN WON/LOST/COLD), computed by the
+// `openLeads` counts non-terminal leads (NOT IN WON/LOST/RNR), computed by the
 // SERVICE in the same query that fetches the pool - the engine receives the
 // number, not the rows.
 

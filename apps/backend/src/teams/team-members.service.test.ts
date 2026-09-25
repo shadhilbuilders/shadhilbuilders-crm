@@ -526,7 +526,7 @@ describe('TeamMembersService.reassignAndRemove', () => {
 
   it('happy path: the team\'s manager (no separate TeamMember row) is a valid replacement', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'COLD', projectId: null },
+      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'RNR', projectId: null },
     ];
     const tx = makeTx({
       team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },

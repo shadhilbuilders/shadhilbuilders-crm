@@ -463,7 +463,7 @@ async function main() {
     { name: 'Deepa Nair',     phone: '9876500007', email: 'deepa.nair@example.in',    source: 'META_AD',    state: 'BOOKING_INITIATED' },
     { name: 'Vikram Singh',   phone: '9876500008', email: 'vikram.singh@example.in',  source: 'LANDING',    state: 'WON' },
     { name: 'Meera Joshi',    phone: '9876500009', email: 'meera.joshi@example.in',   source: 'WALK_IN',    state: 'LOST' },
-    { name: 'Rohan Gupta',    phone: '9876500010', email: 'rohan.gupta@example.in',   source: 'REFERRAL',   state: 'COLD' },
+    { name: 'Rohan Gupta',    phone: '9876500010', email: 'rohan.gupta@example.in',   source: 'REFERRAL',   state: 'RNR' },
   ] as const;
 
   for (const lead of demoLeads) {

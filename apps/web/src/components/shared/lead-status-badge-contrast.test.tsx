@@ -82,11 +82,11 @@ function contrastRatio(
 //   - VISIT_REQUESTED / RESCHEDULED still use
 //     `text-warning-foreground` (the library's dark amber fg was
 //     already AA-compliant on bg-warning-soft).
-//   - NEW / COLD / UNKNOWN are unchanged (bg-secondary +
+//   - NEW / RNR / UNKNOWN are unchanged (bg-secondary +
 //     text-secondary-foreground, both library, both AA at CR 7.39).
 const BADGE_PAIRS = [
   // [bg-class, fg-class, label]
-  ['bg-secondary', 'text-secondary-foreground', 'NEW / COLD / UNKNOWN'],
+  ['bg-secondary', 'text-secondary-foreground', 'NEW / RNR / UNKNOWN'],
   ['bg-info-soft', 'text-info-soft-fg', 'CONTACTED / NEGOTIATION / BOOKING_INITIATED'],
   ['bg-warning-soft', 'text-warning-foreground', 'VISIT_REQUESTED / RESCHEDULED'],
   ['bg-warning', 'text-warning-foreground', 'VISIT_SCHEDULED'],

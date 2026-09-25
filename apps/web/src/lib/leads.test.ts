@@ -54,7 +54,7 @@ describe('isOverdue', () => {
       isOverdue({ status: 'CONTACTED', createdAt: minutesAgo(7 * 24 * 60) }),
     ).toBe(false);
     expect(
-      isOverdue({ status: 'COLD', createdAt: minutesAgo(7 * 24 * 60) }),
+      isOverdue({ status: 'RNR', createdAt: minutesAgo(7 * 24 * 60) }),
     ).toBe(false);
   });
 

@@ -1,0 +1,36 @@
+-- RENAME (2026-09-24): LeadState 'COLD' -> 'RNR'.
+--
+-- WHY A SEPARATE MIGRATION AND NOT AN EDIT TO 20260831085813_init
+-- ---------------------------------------------------------------
+-- The init migration is ALREADY APPLIED against a live database that holds real
+-- data. Editing it in place would desync the migration journal from what the
+-- database actually contains, and Prisma's drift detection would then want to
+-- "repair" it with yet another migration. The original SQL stays as historical
+-- truth; this file carries the change forward.
+--
+-- WHY `RENAME VALUE` AND NOT ADD-NEW + DATA-MIGRATION
+-- --------------------------------------------------
+-- `ALTER TYPE ... RENAME VALUE` rewrites the enum label IN PLACE. That matters
+-- for three reasons:
+--   1. No row rewrite: Postgres updates the catalogue, not the table, so a
+--      large "Lead" table is not touched and no data can be lost in a
+--      copy-step. There is nothing to roll back if this fails.
+--   2. Existing rows holding COLD become RNR automatically - no `UPDATE
+--      "Lead" SET state = 'RNR'` is needed (and would be wrong: an UPDATE
+--      would bypass the state machine and its audit rows).
+--   3. Ordering is preserved. ADD VALUE appends to the end of the enum, which
+--      would silently change `ORDER BY state` results and any enum comparison
+--      the DB does. RENAME keeps the original position.
+--
+-- The alternative (ADD VALUE 'RNR' + UPDATE + leave 'COLD' orphaned, or
+-- recreate the type) either leaves a dead label that the API's closed-enum
+-- validation would reject on read, or requires dropping and re-adding every
+-- column/constraint that uses the type.
+--
+-- MEANING IS UNCHANGED: this is a pure rename. RNR still means the state
+-- reached after 2+ consecutive no-shows (DESIGN.md §3), remains terminal, and
+-- keeps its manager-review semantics. It is NOT the call-centre "Ring No
+-- Response" concept - see the Decision Audit Trail entry for this change.
+--
+-- ROLLBACK: ALTER TYPE "LeadState" RENAME VALUE 'RNR' TO 'COLD';
+ALTER TYPE "LeadState" RENAME VALUE 'COLD' TO 'RNR';

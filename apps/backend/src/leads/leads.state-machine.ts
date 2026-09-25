@@ -1,15 +1,15 @@
 // Lead state machine - Model C (IMPLEMENTATION-PLAN §3).
 //
 // Allowed transitions are role-aware per DESIGN.md §3:
-//   - NEW → CONTACTED, VISIT_REQUESTED, COLD, LOST
-//   - CONTACTED → VISIT_REQUESTED, VISIT_SCHEDULED, COLD, LOST
-//   - VISIT_REQUESTED → VISIT_SCHEDULED, COLD, LOST
-//   - VISIT_SCHEDULED → VISITED, NO_SHOW, RESCHEDULED, CANCELLED, COLD, LOST
-//   - VISITED → NEGOTIATION, COLD, LOST
-//   - NEGOTIATION → BOOKING_INITIATED, COLD, LOST
+//   - NEW → CONTACTED, VISIT_REQUESTED, RNR, LOST
+//   - CONTACTED → VISIT_REQUESTED, VISIT_SCHEDULED, RNR, LOST
+//   - VISIT_REQUESTED → VISIT_SCHEDULED, RNR, LOST
+//   - VISIT_SCHEDULED → VISITED, NO_SHOW, RESCHEDULED, CANCELLED, RNR, LOST
+//   - VISITED → NEGOTIATION, RNR, LOST
+//   - NEGOTIATION → BOOKING_INITIATED, RNR, LOST
 //   - BOOKING_INITIATED → WON, LOST
-//   - WON, LOST, COLD - terminal (Admin-only override, see assertCanOverrideTerminal)
-//   - RESCHEDULED, NO_SHOW → VISIT_SCHEDULED, COLD, LOST (re-engagement path)
+//   - WON, LOST, RNR - terminal (Admin-only override, see assertCanOverrideTerminal)
+//   - RESCHEDULED, NO_SHOW → VISIT_SCHEDULED, RNR, LOST (re-engagement path)
 //   - CANCELLED is a VisitStatus (per-visit outcome), not a LeadState - it
 //     does NOT appear in TRANSITIONS. The cancel-visits flow lives in the
 //     visits module and does NOT touch Lead.state.
@@ -36,7 +36,7 @@ export const LEAD_STATES = [
   'BOOKING_INITIATED',
   'WON',
   'LOST',
-  'COLD',
+  'RNR',
   'RESCHEDULED',
   'NO_SHOW',
 ] as const satisfies readonly LeadState[];
@@ -44,31 +44,31 @@ export const LEAD_STATES = [
 /**
  * States that are reachable FROM the given state. NO_SHOW and RESCHEDULED
  * route back to VISIT_SCHEDULED (the re-engagement loop in Model C); the
- * terminal trio (WON/LOST/COLD) has no outgoing edges for non-Admin roles.
+ * terminal trio (WON/LOST/RNR) has no outgoing edges for non-Admin roles.
  */
 const TRANSITIONS: Readonly<Record<LeadState, readonly LeadState[]>> = {
-  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'COLD', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'COLD', 'LOST'],
-  VISITED: ['NEGOTIATION', 'COLD', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'COLD', 'LOST'],
+  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
+  VISITED: ['NEGOTIATION', 'RNR', 'LOST'],
+  NEGOTIATION: ['BOOKING_INITIATED', 'RNR', 'LOST'],
   BOOKING_INITIATED: ['WON', 'LOST'],
   WON: [], // terminal
   LOST: [], // terminal
-  COLD: [], // terminal
-  RESCHEDULED: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
-  NO_SHOW: ['VISIT_SCHEDULED', 'COLD', 'LOST'],
+  RNR: [], // terminal
+  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
-const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'COLD'];
+const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
 
 /**
  * Role-scoping per DESIGN.md §3 ownership rules:
  *   - TELECALLER owns NEW through VISIT_SCHEDULED
  *   - SALES_EXEC owns VISITED onwards (handoff at visit outcome)
  *   - MANAGER + ADMIN can move any non-terminal lead
- *   - Only ADMIN can reopen a terminal state (WON/LOST/COLD → anything)
+ *   - Only ADMIN can reopen a terminal state (WON/LOST/RNR → anything)
  *
  * HANDOFF EXCEPTION (2026-09-16, owner ruling + dashboard design R3):
  * exactly one edge is reserved, because the visit handoff happens *while the
@@ -81,13 +81,13 @@ const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'COLD'];
  *     exec lane; the only test coverage ran as ADMIN, which masked it.
  *   - TELECALLER may NOT drive it. Only the exec (or manager/admin) marks a
  *     visit as conducted. The telecaller's outcomes from VISIT_SCHEDULED are
- *     NO_SHOW / RESCHEDULED / COLD / LOST, all of which stay permitted - the
+ *     NO_SHOW / RESCHEDULED / RNR / LOST, all of which stay permitted - the
  *     lane reuses the raw TRANSITIONS list, which is why VISITED had to be
  *     carved out explicitly rather than left to the lane check.
  *
  * Deliberately ONE edge, not "add VISIT_SCHEDULED to the exec lane": adding
  * the state would hand the exec the whole TRANSITIONS['VISIT_SCHEDULED'] list
- * (NO_SHOW / RESCHEDULED / COLD / LOST) and strip the telecaller's
+ * (NO_SHOW / RESCHEDULED / RNR / LOST) and strip the telecaller's
  * re-engagement lane, contrary to Model C. Pinned by
  * leads.state-machine.test.ts.
  */
@@ -103,14 +103,14 @@ function canRoleTransition(
   // write-free call (no audit row).
   if (from === to) return true;
 
-  // ADMIN override on terminal states - re-open a WON/LOST/COLD lead.
+  // ADMIN override on terminal states - re-open a WON/LOST/RNR lead.
   if (role === 'ADMIN' || role === 'OWNER') {
     return true;
   }
 
   // Manager can move any non-terminal state forward.
   if (role === 'MANAGER') {
-    if (from === 'WON' || from === 'LOST' || from === 'COLD') return false;
+    if (from === 'WON' || from === 'LOST' || from === 'RNR') return false;
     return TRANSITIONS[from].includes(to);
   }
 
@@ -227,7 +227,7 @@ export function allowedNextStates(
     // Admin override on terminal states - re-open allowed.
     return [
       ...TRANSITIONS[from],
-      ...(from === 'WON' || from === 'LOST' || from === 'COLD'
+      ...(from === 'WON' || from === 'LOST' || from === 'RNR'
         ? (['NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'] as LeadState[])
         : []),
     ];

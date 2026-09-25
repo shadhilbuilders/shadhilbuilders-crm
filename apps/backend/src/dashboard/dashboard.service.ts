@@ -487,7 +487,7 @@ export class DashboardService {
    * Buckets for idle leads (owner ruling 2026-09-17): the 30-minute SLA-overdue
    * NEW bucket is separate ("overdue"); otherwise a lead is idle after 1 day
    * of no touch, escalating 1-3 / 4-7 / 8-14 / 15-30 / 30+ days. Out-of-any
-   * consideration are terminal states (WON/LOST/COLD) - those are archive, not
+   * consideration are terminal states (WON/LOST/RNR) - those are archive, not
    * forgotten work.
    */
   async getExceptions(actor: JwtPayload): Promise<DashboardExceptions> {
@@ -512,7 +512,7 @@ export class DashboardService {
             l."updatedAt",
             (SELECT u."name" FROM "User" u WHERE u."id" = l."ownerId") AS "ownerName"
           FROM "Lead" l
-          WHERE l."state" NOT IN ('WON', 'LOST', 'COLD')
+          WHERE l."state" NOT IN ('WON', 'LOST', 'RNR')
             AND l."updatedAt" <= now() - interval '1 day'
           ORDER BY l."updatedAt" ASC
           LIMIT 100
@@ -623,7 +623,7 @@ export class DashboardService {
             MAX(l."updatedAt") AS "maxTouch"
           FROM "Lead" l
           JOIN "User" u ON u."id" = l."ownerId"
-          WHERE l."state" NOT IN ('WON', 'LOST', 'COLD')
+          WHERE l."state" NOT IN ('WON', 'LOST', 'RNR')
             AND u."role" IN ('TELECALLER', 'SALES_EXEC')
           GROUP BY l."ownerId", u."name", u."role"
         `);

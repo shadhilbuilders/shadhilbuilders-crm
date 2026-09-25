@@ -147,7 +147,7 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   // Every role gets an explicit lane now, INCLUDING manager/admin/owner. It used
   // to pass no filter at all, so a manager's queue was every lead in scope - of
   // which the majority were VISITED, a state only the assigned exec can move.
-  // A queue shows work; terminal states (WON/LOST/COLD) are archive and are in
+  // A queue shows work; terminal states (WON/LOST/RNR) are archive and are in
   // no lane (T-DASH-QUEUE-SCOPE, owner decision 2026-09-16).
   const queueStates = useMemo(() => {
     if (isTelecaller) return QUEUE_STATES_BY_ROLE.TELECALLER;

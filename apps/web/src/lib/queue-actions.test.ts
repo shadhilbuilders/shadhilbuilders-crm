@@ -119,8 +119,8 @@ describe('queueActionsFor - closing and terminal states', () => {
     expect(queueActionsFor({ role: 'SALES_EXEC', status: 'BOOKING_INITIATED' })).toEqual([]);
   });
 
-  it('returns nothing for terminal states (WON/LOST/COLD)', () => {
-    for (const status of ['WON', 'LOST', 'COLD']) {
+  it('returns nothing for terminal states (WON/LOST/RNR)', () => {
+    for (const status of ['WON', 'LOST', 'RNR']) {
       for (const role of ROLES) {
         expect(queueActionsFor({ role, status })).toEqual([]);
       }
@@ -179,7 +179,7 @@ describe('QUEUE_STATES_BY_ROLE', () => {
     });
 
     it('excludes terminal states from EVERY lane', () => {
-      // WON / LOST / COLD are records, not work: no role has an action for them.
+      // WON / LOST / RNR are records, not work: no role has an action for them.
       for (const states of Object.values(QUEUE_STATES_BY_ROLE)) {
         for (const terminal of TERMINAL_LEAD_STATES) {
           expect(states).not.toContain(terminal);
@@ -202,7 +202,7 @@ describe('QUEUE_STATES_BY_ROLE', () => {
     it('covers every terminal state that the state machine declares terminal', () => {
       // Drift tripwire against leads.state-machine.ts: if a new terminal state
       // ships, it must be added here or it will silently appear in queues.
-      expect([...TERMINAL_LEAD_STATES].sort()).toEqual(['COLD', 'LOST', 'WON']);
+      expect([...TERMINAL_LEAD_STATES].sort()).toEqual(['LOST', 'RNR', 'WON']);
     });
   });
 

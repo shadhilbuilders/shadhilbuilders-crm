@@ -22,7 +22,7 @@ export const LEAD_STATES: readonly LeadState[] = [
   'BOOKING_INITIATED',
   'WON',
   'LOST',
-  'COLD',
+  'RNR',
   'RESCHEDULED',
   'NO_SHOW',
 ];

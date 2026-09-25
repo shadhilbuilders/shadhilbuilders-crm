@@ -8,7 +8,7 @@
 // hidden behind a click. That is a deliberate response to the research finding
 // that hiding interaction cuts discoverability roughly in half and raises
 // perceived difficulty - and this population is working in a CRM for the first
-// time. Only the RARE, negative actions (Lost, Cold) live in the expansion.
+// time. Only the RARE, negative actions (Lost, RNR) live in the expansion.
 //
 // Reveal, not navigation: clicking the row body expands the rest of that lead's
 // workspace IN PLACE. The row never becomes a navigation event, and the primary

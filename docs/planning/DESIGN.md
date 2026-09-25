@@ -18,7 +18,7 @@ behind any decision.
 | **Admin** | 1 | Manages all user accounts (managers, telecallers, sales executives), sees everything across the system, configures WhatsApp + telephony integrations, manages projects and inventory. | Act on leads directly unless also assigned Sales Executive role. Create other Admin accounts (seeded out-of-band by Shadhil leadership). |
 | **Manager** | 1+ | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / initiates bookings. | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot approve bookings (admin/owner only, 2026-09-24). Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
 | **Telecaller** | N | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that - Model C). |
-| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / Cold." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (admin/owner approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
+| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / RNR." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (admin/owner approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
 
 ---
 
@@ -97,7 +97,7 @@ SALES EXEC OWNS:                          NO_SHOW → telecaller owns
 | `VISITED` | Sales Exec | Customer showed up, outcome logged by exec. Lead officially hands off to exec. |
 | `RESCHEDULED` | Sales Exec | Customer asked to reschedule during the visit (e.g., "let me think, can I come back next week?"). Old `SiteVisit` marked RESCHEDULED, new one created with `rescheduledFromId` set. Lead stays with exec. |
 | `NO_SHOW` | Telecaller (reverts) | Customer didn't show up. Lead hands BACK to the telecaller for re-engagement and rescheduling. The exec didn't waste time on a no-show. Auto WhatsApp + push to customer + push to telecaller + notification to manager. |
-| `COLD` | (review) | 2+ consecutive no-shows. Manager notified. Manager decides: re-engage (back to VISIT_SCHEDULED with telecaller) or `LOST`. |
+| `RNR` | (review) | 2+ consecutive no-shows. Manager notified. Manager decides: re-engage (back to VISIT_SCHEDULED with telecaller) or `LOST`. (`RNR` = renamed from `COLD` 2026-09-24; meaning unchanged - NOT the call-centre "Ring No Response" concept.) |
 | `NEGOTIATION` | Sales Exec | Price or terms being discussed. |
 | `BOOKING_INITIATED` | Sales Exec | Token payment received. |
 | `WON` | (closed) | Agreement signed, booking finalized. |
@@ -142,7 +142,7 @@ Or, with a no-show:
 - **2h after `VISIT_SCHEDULED` with no outcome:** WhatsApp template `missed_visit_followup` fires to customer. Push to telecaller + manager. Lead stays in VISIT_SCHEDULED with `noShowPending: true` until the exec logs the outcome OR the telecaller marks no-show.
 - **Outcome = VISITED:** Lead auto-hands to exec. Push trigger #4 fires.
 - **Outcome = NO_SHOW:** Lead auto-reverts to telecaller. New WhatsApp follow-up to customer. Push to telecaller + manager.
-- **2nd consecutive no-show on a lead:** Lead moves to `COLD`. Manager gets notification.
+- **2nd consecutive no-show on a lead:** Lead moves to `RNR`. Manager gets notification.
 
 ---
 
@@ -351,7 +351,7 @@ action, not a rebuild.
 ### Enums
 
 - `Role` - `ADMIN | MANAGER | TELECALLER | SALES_EXECUTIVE`
-- `LeadStatus` - 13 states (NEW, CONTACTED, VISIT_REQUESTED, VISIT_SCHEDULED, VISITED, RESCHEDULED, NO_SHOW, NEGOTIATION, BOOKING_INITIATED, WON, LOST, COLD, plus the implicit shared visibility of VISIT_SCHEDULED)
+- `LeadStatus` - 13 states (NEW, CONTACTED, VISIT_REQUESTED, VISIT_SCHEDULED, VISITED, RESCHEDULED, NO_SHOW, NEGOTIATION, BOOKING_INITIATED, WON, LOST, RNR, plus the implicit shared visibility of VISIT_SCHEDULED)
 - `VisitOutcome` - `SCHEDULED | VISITED | NO_SHOW | CANCELLED | RESCHEDULED`
 - `MessageDirection` - `INBOUND | OUTBOUND`
 - `MessageChannel` - `WHATSAPP | IN_APP | SMS`

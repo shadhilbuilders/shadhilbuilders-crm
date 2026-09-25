@@ -70,7 +70,7 @@ describe('isBookableLeadState - "lead must be NEGOTIATION or later"', () => {
   });
 
   it('refuses dead / off-pipeline leads (reviving is a deliberate act)', () => {
-    for (const s of ['COLD', 'LOST', 'RESCHEDULED', 'NO_SHOW'] as const) {
+    for (const s of ['RNR', 'LOST', 'RESCHEDULED', 'NO_SHOW'] as const) {
       expect(isBookableLeadState(s)).toBe(false);
     }
   });
@@ -93,14 +93,14 @@ describe('shouldApplyLeadState - direction guard', () => {
     expect(shouldApplyLeadState('NEGOTIATION', 'NEGOTIATION', { allowRegress: false })).toBe(false);
   });
 
-  it('never drags a COLD/LOST lead on an ordinary sync', () => {
-    for (const s of ['COLD', 'LOST'] as const) {
+  it('never drags a RNR/LOST lead on an ordinary sync', () => {
+    for (const s of ['RNR', 'LOST'] as const) {
       expect(shouldApplyLeadState(s, 'NEGOTIATION', { allowRegress: false })).toBe(false);
       expect(shouldApplyLeadState(s, 'WON', { allowRegress: false })).toBe(false);
     }
   });
 
-  it('an explicit release may revive a COLD/LOST lead', () => {
+  it('an explicit release may revive a RNR/LOST lead', () => {
     expect(shouldApplyLeadState('LOST', 'NEGOTIATION', { allowRegress: true })).toBe(true);
   });
 

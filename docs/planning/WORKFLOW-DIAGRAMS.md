@@ -222,7 +222,7 @@ SALES EXECUTIVE LANE  (conducts visit, closes)            │  │
    └──────┬───────┘   │INITIATED     │     │
           │           └──────┬───────┘     ▼
           │                  │      ┌──────────────┐
-          │                  │      │  COLD        │──▶ Manager reviews,
+          │                  │      │  RNR         │──▶ Manager reviews,
           │                  │      └──────────────┘    re-engage or LOST
           ▼                  ▼
        ┌──────┐          ┌──────┐
@@ -276,9 +276,9 @@ stateDiagram-v2
         NO_SHOW --> VISIT_SCHEDULED : telecaller re-engages, reschedules
     }
 
-    NO_SHOW --> COLD : 2nd NO_SHOW within 14 days (auto)
-    COLD --> LOST : (auto, after 14 days no reply)
-    COLD --> VISIT_SCHEDULED : Manager decides to re-engage
+    NO_SHOW --> RNR : 2nd NO_SHOW within 14 days (auto)
+    RNR --> LOST : (auto, after 14 days no reply)
+    RNR --> VISIT_SCHEDULED : Manager decides to re-engage
 
     RESCHEDULED --> VISIT_SCHEDULED : new date picked
 
@@ -454,7 +454,7 @@ Step  What happens (human action)              System actions
                                                     Manager
                                                   • SSE → both apps update queues
                                                   • Counter: lead.noShowCount += 1
-                                                    (2 in 14 days → COLD state)
+                                                    (2 in 14 days → RNR state)
 
   4.  Sales Executive (VISITED case) or          • First outbound message triggers
       Telecaller (NO_SHOW case) sends first         Lead.engagementAt = now()
