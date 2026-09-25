@@ -9,18 +9,19 @@ import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   usePushSubscription: vi.fn(),
-  AlertDialog: vi.fn((_props: {
-    open?: boolean;
-    header?: { title?: string; description?: string };
-    onConfirm?: (arg: unknown) => void;
-    onCancel?: () => void;
-    onOpenChange?: (open: boolean) => void;
-  }): ReactNode | null => null),
+  AlertDialog: vi.fn(
+    (_props: {
+      open?: boolean;
+      header?: { title?: string; description?: string };
+      onConfirm?: (arg: unknown) => void;
+      onCancel?: () => void;
+      onOpenChange?: (open: boolean) => void;
+    }): ReactNode | null => null
+  ),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
@@ -72,8 +73,9 @@ afterEach(async () => {
   vi.clearAllMocks();
   try {
     window.sessionStorage.clear();
+    window.localStorage.clear();
   } catch {
-    // jsdom in some setups lacks sessionStorage; the prompt's safeGetItem/
+    // jsdom in some setups lacks storage; the prompt's safeGetItem/
     // safeSetItem already guard against this.
   }
 });
@@ -103,13 +105,61 @@ describe('PushEnablePrompt - consent gating', () => {
     expect(props?.open).toBe(false);
   });
 
-  it('does not open after a prior dismissal this session', async () => {
-    window.sessionStorage.setItem('shadhil:push-prompt-dismissed', '1');
+  it('does not open after a prior dismissal', async () => {
+    window.localStorage.setItem('shadhil:push-prompt-dismissed', 'v1');
     mocks.usePushSubscription.mockReturnValue(basePush());
     await mount();
-    // Session-scoped dismissal: with the flag set, the dialog stays closed.
+    // Bumped-latch dismissal: with the flag set, the dialog stays closed.
     const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
     expect(props?.open).toBe(false);
+  });
+
+  it('stays dismissed in a NEW browser session (durable, not session-scoped)', async () => {
+    // The regression this pins: dismissal used to live in sessionStorage, so a
+    // user who declined on Monday was asked again on Tuesday. The latch must
+    // survive a fresh session - which localStorage does and sessionStorage
+    // does not. Clearing sessionStorage alone must therefore NOT reopen it.
+    window.localStorage.setItem('shadhil:push-prompt-dismissed', 'v1');
+    window.sessionStorage.clear();
+    mocks.usePushSubscription.mockReturnValue(basePush());
+    await mount();
+    const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
+    expect(props?.open).toBe(false);
+  });
+
+  it('re-opens when PROMPT_VERSION is bumped past the stored value', async () => {
+    // A stale value (an earlier prompt version) must NOT suppress the current
+    // offer - that is the deliberate re-offer path.
+    window.localStorage.setItem('shadhil:push-prompt-dismissed', 'v0');
+    mocks.usePushSubscription.mockReturnValue(basePush());
+    await mount();
+    const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
+    expect(props?.open).toBe(true);
+  });
+
+  it('persists the value the open-gate actually compares against, via the real dismiss path', async () => {
+    // Guards a bug that shipped briefly: the open-gate compared against
+    // PROMPT_VERSION while handleDismiss wrote a bare '1'. That mismatch made
+    // the dialog re-open on every mount - strictly worse than the
+    // session-scoped behaviour it replaced. The earlier tests seeded storage
+    // directly and so could not catch it; this one drives onCancel and then
+    // asserts BOTH the stored value and that a remount stays closed.
+    window.sessionStorage.clear();
+    mocks.usePushSubscription.mockReturnValue(basePush());
+    await mount();
+
+    const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
+    await act(async () => props?.onCancel?.());
+
+    const stored = window.localStorage.getItem('shadhil:push-prompt-dismissed');
+    expect(stored).not.toBeNull();
+    expect(stored).not.toBe('1');
+
+    // Remount: the gate must read what the dismiss wrote and stay shut.
+    await unmount();
+    mocks.AlertDialog.mockClear();
+    await mount();
+    expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.open).toBe(false);
   });
 
   it('enabling calls enablePush and closes the dialog on success', async () => {
@@ -132,9 +182,7 @@ describe('PushEnablePrompt - consent gating', () => {
     // will never re-prompt, so the dialog must switch to a "blocked" guidance
     // state (NOT close with a dead-end error toast).
     const enablePush = vi.fn(async () => false);
-    mocks.usePushSubscription.mockReturnValue(
-      basePush({ permission: 'denied', enablePush }),
-    );
+    mocks.usePushSubscription.mockReturnValue(basePush({ permission: 'denied', enablePush }));
     await mount();
 
     const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
@@ -171,7 +219,7 @@ describe('PushEnablePrompt - consent gating', () => {
     let props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
     await act(async () => props?.onConfirm?.({}));
     expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.header?.title).toContain(
-      'Notifications are blocked',
+      'Notifications are blocked'
     );
     expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.open).toBe(true);
 

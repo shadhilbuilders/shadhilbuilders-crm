@@ -62,33 +62,13 @@ let toastContainer: HTMLDivElement | null = null;
 let toastRoot: Root | null = null;
 
 /**
- * jsdom in this repo's Vitest setup exposes `sessionStorage` but NOT
- * `localStorage` (Node's built-in localStorage shadows jsdom's and refuses to
- * work without `--localstorage-file`). The component reads localStorage to
- * remember that the app has been installed, so install an in-memory Storage
- * here to test that path - the component's own try/catch is what covers the
- * genuinely-unavailable case (Safari private mode).
+ * localStorage is polyfilled globally for apps/web tests in
+ * `src/test/idb-setup.ts` (jsdom exposes sessionStorage but NOT localStorage
+ * here, because Node's built-in shadows it without `--localstorage-file`).
+ * This wrapper just makes the availability explicit at each use site.
  */
-function ensureLocalStorage(): Storage {
-  const existing = (window as { localStorage?: Storage }).localStorage;
-  if (existing) return existing;
-  const store = new Map<string, string>();
-  const storage: Storage = {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (k: string) => store.get(k) ?? null,
-    key: (i: number) => Array.from(store.keys())[i] ?? null,
-    removeItem: (k: string) => void store.delete(k),
-    setItem: (k: string, v: string) => void store.set(k, String(v)),
-  };
-  Object.defineProperty(window, 'localStorage', {
-    value: storage,
-    configurable: true,
-    writable: true,
-  });
-  return storage;
+function requireLocalStorage(): Storage {
+  return window.localStorage;
 }
 
 async function mount(): Promise<void> {
@@ -155,7 +135,9 @@ async function fireInstallPrompt(
 }
 
 beforeEach(() => {
-  ensureLocalStorage();
+  // Fail loudly if the global polyfill from src/test/idb-setup.ts ever goes
+  // missing, rather than letting the component's safeGet silently no-op.
+  expect(requireLocalStorage()).toBeDefined();
   // jsdom has no matchMedia; the component must tolerate its absence and it
   // must report "not installed" by default.
   window.matchMedia = vi.fn(

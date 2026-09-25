@@ -2,11 +2,18 @@
 
 // PushEnablePrompt - ask the user to enable web push, via an AlertDialog.
 //
-// Mirrors install-prompt.tsx's dismiss pattern (but in sessionStorage):
-// show the dialog once per browser session unless the user has already
-// dismissed it this session or already enabled push. Session-scoped so
-// the prompt returns on a fresh browser session rather than being
-// permanently hidden.
+// Dismissal is DURABLE (localStorage), not session-scoped. It previously used
+// sessionStorage, which meant a field user who declined once was asked again on
+// every fresh browser session - read by the user as "the prompt keeps showing
+// up", the same complaint as the PWA install prompt. A durable latch is safe
+// here because declining is NOT a dead end: Settings -> Notifications carries a
+// permanent "Enable" button for this device (apps/web/src/app/[orgSlug]/settings/page.tsx),
+// so anyone who changes their mind has a visible path back.
+//
+// Bump PROMPT_VERSION to re-offer deliberately (e.g. when a new alert type
+// ships and the value of enabling goes up); the stored value is compared against
+// it so an older dismissal does not suppress the new offer.
+//
 // Drives the same usePushSubscription hook as the shell; permission is a
 // user gesture (the browser prompt fires only after they click "Enable"),
 // satisfying the platform requirement that requestPermission be inside a
@@ -19,11 +26,13 @@ import { usePushSubscription } from '@/hooks/use-push-subscription';
 import { LuInfo } from '@paalstack/react-icons/lu';
 
 const DISMISS_KEY = 'shadhil:push-prompt-dismissed';
+/** Bump to deliberately re-offer push to users who previously declined. */
+const PROMPT_VERSION = 'v1';
 
 function safeGetItem(key: string): string | null {
   try {
     if (typeof window === 'undefined') return null;
-    return window.sessionStorage.getItem(key);
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -32,7 +41,7 @@ function safeGetItem(key: string): string | null {
 function safeSetItem(key: string, value: string): void {
   try {
     if (typeof window === 'undefined') return;
-    window.sessionStorage.setItem(key, value);
+    window.localStorage.setItem(key, value);
   } catch {
     // ignore - dismissal just won't persist in restrictive contexts
   }
@@ -48,15 +57,15 @@ export function PushEnablePrompt() {
   const [blocked, setBlocked] = useState(false);
 
   // Show the dialog once push capability resolves: the browser supports push,
-  // it's not yet enabled, and the user hasn't dismissed this before. Fired in
-  // an effect (not during render) to avoid a state-update-during-render
+  // it's not yet enabled, and the user hasn't dismissed this version before.
+  // Fired in an effect (not during render) to avoid a state-update-during-render
   // warning, and only after the initial capability check resolves.
   useEffect(() => {
     if (
       push.checked &&
       push.isSupported &&
       !push.isSubscribed &&
-      safeGetItem(DISMISS_KEY) !== '1' &&
+      safeGetItem(DISMISS_KEY) !== PROMPT_VERSION &&
       !open
     ) {
       setOpen(true);
@@ -99,7 +108,11 @@ export function PushEnablePrompt() {
 
   const handleDismiss = (): void => {
     setBlocked(false);
-    safeSetItem(DISMISS_KEY, '1');
+    // Must write the SAME value the open-gate compares against
+    // (PROMPT_VERSION), not a bare '1': a mismatch here makes the dialog
+    // re-open on every mount, which is strictly worse than the session-scoped
+    // behaviour this replaced.
+    safeSetItem(DISMISS_KEY, PROMPT_VERSION);
     setOpen(false);
   };
 
@@ -113,12 +126,17 @@ export function PushEnablePrompt() {
       }}
       trigger={null}
       header={{
-        title: blocked
-          ? 'Notifications are blocked'
-          : 'Enable notifications?',
-        description: blocked
-          ? <span>This browser has blocked notifications for Shadhil CRM, so a prompt can no longer be shown. To enable them: click the lock/padlock icon (or <LuInfo className="size-3 inline-block" />) next to the address bar URL, open "Site settings", set Notifications to "Allow", then click below.'</span>
-          : 'Get alerts for new leads, handoffs, and reminders right in this browser, even when Shadhil CRM is in another tab.',
+        title: blocked ? 'Notifications are blocked' : 'Enable notifications?',
+        description: blocked ? (
+          <span>
+            This browser has blocked notifications for Shadhil CRM, so a prompt can no longer be
+            shown. To enable them: click the lock/padlock icon (or{' '}
+            <LuInfo className="inline-block size-3" />) next to the address bar URL, open "Site
+            settings", set Notifications to "Allow", then click below.'
+          </span>
+        ) : (
+          'Get alerts for new leads, handoffs, and reminders right in this browser, even when Shadhil CRM is in another tab.'
+        ),
       }}
       cancelButtonText="Not now"
       confirmButtonText={
