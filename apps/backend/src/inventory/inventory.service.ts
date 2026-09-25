@@ -42,6 +42,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { unitStatusRank } from './unit-status-rank';
 import {
   canManageProjectMembers,
   isAdminClass,
@@ -92,33 +93,74 @@ export class InventoryService {
             : dto.status;
         }
 
+        // T-INV-SORT: on-hold first, then available, then the rest.
+        //
+        // Ordering MUST happen server-side: this grid is paginated (page size
+        // 10 of 16+ units), so sorting the loaded page in the browser would
+        // order 10 rows and scatter the rest across the wrong pages.
+        //
+        // Prisma cannot express it: `orderBy: { status: 'asc' }` sorts by the
+        // enum's DECLARATION order (AVAILABLE, HOLD, TOKEN, SOLD) - nearly the
+        // reverse. Rather than hand-build a raw WHERE (which silently drops
+        // filters if it drifts), the matching rows' SORT KEYS are read through
+        // Prisma, ranked here, then the page is hydrated by id. The villa
+        // inventory is hundreds of rows, so reading the keys is cheap and the
+        // filter handling stays exactly as Prisma builds it.
+        const keys = await (tx as unknown as PrismaClient).unit.findMany({
+          where,
+          select: { id: true, status: true, phaseId: true, unitNumber: true },
+        });
+
+        const ranked = [...keys].sort((a, b) => {
+          const ra = unitStatusRank(a.status);
+          const rb = unitStatusRank(b.status);
+          if (ra !== rb) return ra - rb;
+          if (a.phaseId !== b.phaseId) return a.phaseId < b.phaseId ? -1 : 1;
+          return a.unitNumber.localeCompare(b.unitNumber);
+        });
+        const pageIds = ranked
+          .slice(dto.offset, dto.offset + dto.limit)
+          .map((r) => r.id);
+
         const [rows, total] = await Promise.all([
-          (tx as unknown as PrismaClient).unit.findMany({
-            where,
-            take: dto.limit,
-            skip: dto.offset,
-            orderBy: [{ phaseId: 'asc' }, { unitNumber: 'asc' }],
-            select: {
-              id: true,
-              phaseId: true,
-              unitNumber: true,
-              bhk: true,
-              facing: true,
-              sqft: true,
-              price: true,
-              status: true,
-              createdAt: true,
-              phase: {
-                select: { name: true, projectId: true, project: { select: { name: true } } },
-              },
-            },
-          }),
+          pageIds.length === 0
+            ? Promise.resolve([])
+            : (tx as unknown as PrismaClient).unit.findMany({
+                // Re-assert `where`: the ids are already scoped, and keeping
+                // the filters makes this read safe on its own.
+                where: { ...where, id: { in: pageIds } },
+                select: {
+                  id: true,
+                  phaseId: true,
+                  unitNumber: true,
+                  bhk: true,
+                  facing: true,
+                  sqft: true,
+                  price: true,
+                  status: true,
+                  createdAt: true,
+                  phase: {
+                    select: {
+                      name: true,
+                      projectId: true,
+                      project: { select: { name: true } },
+                    },
+                  },
+                },
+              }),
           (tx as unknown as PrismaClient).unit.count({ where }),
         ]);
 
+        // `in:` does not preserve array order - restore the ranked order so the
+        // page renders HOLD -> AVAILABLE -> TOKEN -> SOLD.
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        const orderedRows = pageIds
+          .map((id) => byId.get(id))
+          .filter((r): r is (typeof rows)[number] => r !== undefined);
+
         return {
           total,
-          rows: rows.map((r) => ({
+          rows: orderedRows.map((r) => ({
             id: r.id,
             phaseId: r.phaseId,
             phaseName: r.phase.name,

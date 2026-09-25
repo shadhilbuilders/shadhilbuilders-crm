@@ -7,6 +7,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 import { Prisma } from '@shadhil/database';
+import { UnitStatusSchema } from '@shadhil/api-types';
+
+import { UNIT_STATUS_RANK } from './unit-status-rank';
 
 import { InventoryService } from './inventory.service';
 
@@ -171,6 +174,158 @@ describe('list - role-scoped grid with filters', () => {
       price: '5800000.00',
       status: 'AVAILABLE',
     });
+  });
+});
+
+// ─── list ordering (T-INV-SORT) ──────────────────────────────────────
+//
+// The grid lists on-hold units first, then the still-sellable ones, then the
+// sold ones. The ORDERING has to come from the server: the grid paginates 10
+// at a time, so a client-side sort would order the loaded page and leave the
+// remaining units on the wrong pages.
+//
+// `makeService` is called once per test; two findMany calls happen - first the
+// sort keys, then the hydrated page - so the mock is sequenced.
+
+/** Build a sort-key row (the first findMany: id + sort keys only). */
+function keyRow(id: string, status: string, phaseId = 'phase-1', unitNumber = id) {
+  return { id, status, phaseId, unitNumber };
+}
+
+/** Build a hydrated page row. */
+function pageRow(id: string, status: string, phaseId = 'phase-1', unitNumber = id) {
+  return { ...unitRow(), id, status, phaseId, unitNumber };
+}
+
+/** Run list() with the key query returning `keys`, and echo the ids back. */
+async function listWithKeys(
+  keys: Array<{ id: string; status: string; phaseId: string; unitNumber: string }>,
+  dto: { limit: number; offset: number } = { limit: 50, offset: 0 },
+) {
+  const { service, client } = makeService();
+  client.unit.findMany
+    .mockResolvedValueOnce(keys)
+    .mockImplementationOnce(async (args: { where: { id: { in: string[] } } }) =>
+      args.where.id.in.map((id) => {
+        const k = keys.find((x) => x.id === id)!;
+        return pageRow(k.id, k.status, k.phaseId, k.unitNumber);
+      }),
+    );
+  client.unit.count.mockResolvedValue(keys.length);
+  const result = await service.list(makeActor(), dto);
+  return { result, client };
+}
+
+describe('list - unit ordering (HOLD first, then AVAILABLE, then SOLD)', () => {
+  it('orders HOLD before AVAILABLE before SOLD', async () => {
+    const { result } = await listWithKeys([
+      keyRow('u-sold', 'SOLD'),
+      keyRow('u-avail', 'AVAILABLE'),
+      keyRow('u-hold', 'HOLD'),
+    ]);
+    expect(result.rows.map((r) => r.id)).toEqual(['u-hold', 'u-avail', 'u-sold']);
+    expect(result.rows.map((r) => r.status)).toEqual(['HOLD', 'AVAILABLE', 'SOLD']);
+  });
+
+  it('places TOKEN after AVAILABLE (still unsold, but not the first call to action)', async () => {
+    const { result } = await listWithKeys([
+      keyRow('u-token', 'TOKEN'),
+      keyRow('u-hold', 'HOLD'),
+      keyRow('u-avail', 'AVAILABLE'),
+    ]);
+    expect(result.rows.map((r) => r.status)).toEqual(['HOLD', 'AVAILABLE', 'TOKEN']);
+  });
+
+  it('keeps phase then unit number as the tie-break inside one status', async () => {
+    const { result } = await listWithKeys([
+      keyRow('u-a2', 'AVAILABLE', 'phase-1', 'A-2'),
+      keyRow('u-a1', 'AVAILABLE', 'phase-1', 'A-1'),
+      keyRow('u-b1', 'AVAILABLE', 'phase-2', 'B-1'),
+    ]);
+    expect(result.rows.map((r) => r.id)).toEqual(['u-a1', 'u-a2', 'u-b1']);
+  });
+
+  it('sorts an unrecognised status last instead of throwing', async () => {
+    // Defensive: a status the rank map does not know must not 500 the grid -
+    // it sorts to the tail, where it is visible as a wrong order but harmless.
+    const { result } = await listWithKeys([
+      keyRow('u-weird', 'MYSTERY'),
+      keyRow('u-hold', 'HOLD'),
+    ]);
+    expect(result.rows.map((r) => r.id)).toEqual(['u-hold', 'u-weird']);
+  });
+
+  // The ordering is paginated, so the ORDER BY must be applied BEFORE the
+  // slice. If a future change sorted the fetched page instead, page 1 of a
+  // sold-first dataset would look right by accident on small data and wrong on
+  // real data. This pins the correct page boundaries.
+  it('applies the ranking before paginating (page 1 starts with the HOLD unit)', async () => {
+    const keys = [
+      keyRow('u-sold', 'SOLD'),
+      keyRow('u-avail1', 'AVAILABLE'),
+      keyRow('u-avail2', 'AVAILABLE'),
+      keyRow('u-hold', 'HOLD'),
+    ];
+    const page1 = await listWithKeys(keys, { limit: 2, offset: 0 });
+    expect(page1.result.rows.map((r) => r.id)).toEqual(['u-hold', 'u-avail1']);
+
+    const page2 = await listWithKeys(keys, { limit: 2, offset: 2 });
+    expect(page2.result.rows.map((r) => r.id)).toEqual(['u-avail2', 'u-sold']);
+  });
+
+  it('hydrates only the requested page, not the whole filtered set', async () => {
+    const keys = Array.from({ length: 12 }, (_, i) =>
+      keyRow(`u-${String(i).padStart(2, '0')}`, 'AVAILABLE'),
+    );
+    const { client } = await listWithKeys(keys, { limit: 10, offset: 0 });
+    // 1st findMany = keys (no take), 2nd = the page.
+    const pageCall = client.unit.findMany.mock.calls[1]![0]!;
+    expect(pageCall.where.id.in).toHaveLength(10);
+  });
+
+  it('re-asserts the filters on the hydrating query', async () => {
+    // The id list is already scoped, but the second query must not become an
+    // unscoped read: keep the caller's filters on it too.
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValueOnce([keyRow('u-1', 'HOLD')]);
+    client.unit.findMany.mockResolvedValueOnce([pageRow('u-1', 'HOLD')]);
+    client.unit.count.mockResolvedValue(1);
+
+    await service.list(makeActor(), {
+      projectId: 'proj-1',
+      bhk: 3,
+      limit: 50,
+      offset: 0,
+    });
+
+    const pageCall = client.unit.findMany.mock.calls[1]![0]!;
+    expect(pageCall.where).toMatchObject({
+      phase: { projectId: 'proj-1' },
+      bhk: 3,
+    });
+  });
+
+  it('skips the hydrating query entirely when the page is empty', async () => {
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValueOnce([]);
+    client.unit.count.mockResolvedValue(0);
+
+    const result = await service.list(makeActor(), { limit: 10, offset: 0 });
+
+    expect(result.rows).toEqual([]);
+    expect(result.total).toBe(0);
+    // Only the key query ran - no pointless `IN ()` round trip.
+    expect(client.unit.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('ranks EVERY UnitStatus in the Prisma enum', async () => {
+    // Guards the single-source-of-truth claim: if a status is added to the
+    // schema and not to UNIT_STATUS_RANK it would silently sort last. This
+    // fails until it is ranked, which is the point.
+    const ranked = new Set(UNIT_STATUS_RANK.map(([s]) => s));
+    for (const status of UnitStatusSchema.options) {
+      expect(ranked.has(status)).toBe(true);
+    }
   });
 });
 
