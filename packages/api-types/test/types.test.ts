@@ -26,6 +26,9 @@ import {
   CreateUnitDtoSchema,
   UpdateUnitDtoSchema,
   UnitFilterDtoSchema,
+  ChatConversationsQuerySchema,
+  MarkChatReadDtoSchema,
+  SendContactMessageDtoSchema,
 } from '../src';
 
 describe('@shadhil/api-types - enums', () => {
@@ -70,11 +73,19 @@ describe('@shadhil/api-types - auth DTOs', () => {
 });
 
 describe('@shadhil/api-types - lead DTOs', () => {
+  // T-LEAD-PROJECT-REQUIRED (2026-09-16, owner ruling): `projectId` is
+  // REQUIRED on CreateLeadDto, mirroring `Lead.projectId` being NOT NULL.
+  // Every fixture below must supply it - omitting it is a ZodError, not a
+  // valid "no project" case. (140 project-less leads were created by raw
+  // INSERTs before the column constraint, which is why this is enforced.)
+  const PROJECT_ID = 'oe6g1xkagiisnn4oeefpdyhk';
+
   it('CreateLeadDto accepts valid lead with 10-digit phone (normalized to E.164)', () => {
     const r = CreateLeadDtoSchema.parse({
       name: 'Rajesh',
       phone: '9876543210',
       source: 'Meta',
+      projectId: PROJECT_ID,
     });
     // Landing-page normalizePhone: bare 10-digit Indian mobile → +91 prefix.
     expect(r.phone).toBe('919876543210');
@@ -84,6 +95,7 @@ describe('@shadhil/api-types - lead DTOs', () => {
       name: 'Priya',
       phone: '+91 98765 43210',
       source: 'Google',
+      projectId: PROJECT_ID,
     });
     expect(r.phone).toBe('919876543210');
   });
@@ -98,6 +110,7 @@ describe('@shadhil/api-types - lead DTOs', () => {
       phone: '9876543210',
       source: 'Google',
       email: '',
+      projectId: PROJECT_ID,
     });
     expect(r.email).toBe('');
   });
@@ -106,6 +119,7 @@ describe('@shadhil/api-types - lead DTOs', () => {
       name: 'Priya',
       phone: '9876543210',
       source: 'Google',
+      projectId: PROJECT_ID,
     });
     expect(r.email).toBeUndefined();
   });
@@ -133,16 +147,50 @@ describe('@shadhil/api-types - lead DTOs', () => {
       name: 'Rajesh',
       phone: '9876543210',
       source: 'Referral',
-      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+      projectId: PROJECT_ID,
     });
-    expect(r.projectId).toBe('oe6g1xkagiisnn4oeefpdyhk');
+    expect(r.projectId).toBe(PROJECT_ID);
   });
   it('LeadFilterDto accepts the seeded Metro Heights project id (cuid2)', () => {
     const r = LeadFilterDtoSchema.parse({
-      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+      projectId: PROJECT_ID,
     });
-    expect(r.projectId).toBe('oe6g1xkagiisnn4oeefpdyhk');
+    expect(r.projectId).toBe(PROJECT_ID);
   });
+  // The regression that this whole block exists to catch: a fixture (or a
+  // caller) that omits projectId must FAIL, not silently create a
+  // project-less lead. Without this assertion the requirement is only
+  // implied by other tests passing, and a reverted schema would go green.
+  it('CreateLeadDto REQUIRES projectId (T-LEAD-PROJECT-REQUIRED)', () => {
+    expect(() =>
+      CreateLeadDtoSchema.parse({
+        name: 'Rajesh',
+        phone: '9876543210',
+        source: 'Meta',
+      }),
+    ).toThrow(/projectId/i);
+  });
+  it('CreateLeadDto rejects an explicit undefined projectId', () => {
+    expect(() =>
+      CreateLeadDtoSchema.parse({
+        name: 'Rajesh',
+        phone: '9876543210',
+        source: 'Meta',
+        projectId: undefined,
+      }),
+    ).toThrow(/projectId/i);
+  });
+  it('CreateLeadDto rejects a null projectId', () => {
+    expect(() =>
+      CreateLeadDtoSchema.parse({
+        name: 'Rajesh',
+        phone: '9876543210',
+        source: 'Meta',
+        projectId: null,
+      }),
+    ).toThrow();
+  });
+
   it('CreateLeadDto rejects a readable (non-cuid2) project id', () => {
     expect(() =>
       CreateLeadDtoSchema.parse({
@@ -519,5 +567,89 @@ describe('@shadhil/api-types - inventory DTOs', () => {
         projectId: 'seed-project-metro-heights',
       }),
     ).toThrow();
+  });
+});
+
+
+describe('chat inbox query schema (T-WA-INBOX)', () => {
+  // The BFF forwards query strings VERBATIM, so every numeric filter arrives as
+  // a string. A plain z.number() rejects "50" with "expected number, received
+  // string" and 400s the whole request - which is exactly how the inbox page
+  // shipped rendering an empty list while the endpoint looked healthy when
+  // called with no params at all.
+  it('accepts limit/offset as strings (query-string coercion)', () => {
+    const parsed = ChatConversationsQuerySchema.parse({ limit: '50', offset: '10' });
+    expect(parsed.limit).toBe(50);
+    expect(parsed.offset).toBe(10);
+  });
+
+  it('applies the default limit when the param is absent', () => {
+    expect(ChatConversationsQuerySchema.parse({}).limit).toBe(50);
+  });
+
+  it('rejects a non-numeric limit and an out-of-range limit', () => {
+    expect(() => ChatConversationsQuerySchema.parse({ limit: 'abc' })).toThrow();
+    expect(() => ChatConversationsQuerySchema.parse({ limit: '0' })).toThrow();
+    expect(() => ChatConversationsQuerySchema.parse({ limit: '101' })).toThrow();
+  });
+
+  // z.coerce.boolean() is Boolean(value), so "false" coerces to TRUE. Using it
+  // here would invert the caller's intent: `?unreadOnly=false` would show only
+  // unread chats. These two cases are the whole point of the literal union.
+  it('reads unreadOnly=false as false, not Boolean("false") = true', () => {
+    expect(ChatConversationsQuerySchema.parse({ unreadOnly: 'false' }).unreadOnly).toBe(false);
+    expect(ChatConversationsQuerySchema.parse({ unreadOnly: 'true' }).unreadOnly).toBe(true);
+    expect(ChatConversationsQuerySchema.parse({ unreadOnly: true }).unreadOnly).toBe(true);
+    expect(ChatConversationsQuerySchema.parse({ unreadOnly: false }).unreadOnly).toBe(false);
+  });
+
+  it('leaves unreadOnly undefined when not supplied (no accidental filter)', () => {
+    expect(ChatConversationsQuerySchema.parse({}).unreadOnly).toBeUndefined();
+  });
+
+  it('rejects a garbage unreadOnly value rather than coercing it to true', () => {
+    expect(() => ChatConversationsQuerySchema.parse({ unreadOnly: '1' })).toThrow();
+  });
+
+  it('narrows kind to the two thread kinds', () => {
+    expect(ChatConversationsQuerySchema.parse({ kind: 'LEAD' }).kind).toBe('LEAD');
+    expect(ChatConversationsQuerySchema.parse({ kind: 'CONTACT' }).kind).toBe('CONTACT');
+    expect(() => ChatConversationsQuerySchema.parse({ kind: 'LEADS' })).toThrow();
+  });
+});
+
+describe('MarkChatReadDto - exactly one thread identity', () => {
+  it('accepts a leadId alone and a contactId alone', () => {
+    expect(MarkChatReadDtoSchema.parse({ leadId: 'abc123defg' }).leadId).toBe('abc123defg');
+    expect(MarkChatReadDtoSchema.parse({ contactId: 'contact-1' }).contactId).toBe('contact-1');
+  });
+
+  it('rejects BOTH (a row is one thread, never two)', () => {
+    expect(() =>
+      MarkChatReadDtoSchema.parse({ leadId: 'abc123defg', contactId: 'contact-1' }),
+    ).toThrow(/exactly one/);
+  });
+
+  it('rejects NEITHER (the write would not know which thread to move)', () => {
+    expect(() => MarkChatReadDtoSchema.parse({})).toThrow(/exactly one/);
+  });
+});
+
+describe('SendContactMessageDto', () => {
+  it('requires contactId and a non-empty body', () => {
+    expect(
+      SendContactMessageDtoSchema.parse({ contactId: 'contact-1', body: 'hello' }).body,
+    ).toBe('hello');
+    expect(() => SendContactMessageDtoSchema.parse({ contactId: 'contact-1', body: '' })).toThrow();
+    expect(() => SendContactMessageDtoSchema.parse({ body: 'hello' })).toThrow();
+  });
+
+  it('never accepts a leadId (the contact endpoint is contact-only)', () => {
+    const parsed = SendContactMessageDtoSchema.parse({
+      contactId: 'contact-1',
+      body: 'hi',
+      leadId: 'abc123defg',
+    });
+    expect(parsed).not.toHaveProperty('leadId');
   });
 });

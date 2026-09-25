@@ -87,9 +87,9 @@ import { useSessionUser } from '@/lib/session';
 
 import { AttachmentImage } from './AttachmentImage';
 
-type Direction = 'IN' | 'OUT';
-type Channel = 'WHATSAPP' | 'IN_APP';
-type Kind = 'CUSTOMER' | 'INTERNAL';
+export type Direction = 'IN' | 'OUT';
+export type Channel = 'WHATSAPP' | 'IN_APP';
+export type Kind = 'CUSTOMER' | 'INTERNAL';
 
 type MessageRow = {
   id: string;
@@ -182,6 +182,12 @@ function validateChatFile(file: File): FileValidationResult {
 }
 
 export { validateChatFile, type FileValidationResult };
+// T-WA-INBOX (2026-09-25): the inbox reuses these rather than reimplementing
+// message rendering, so WhatsApp/contact bubbles look identical everywhere.
+// (ChatMessage is exported at its own definition above; only the helpers and
+// the type aliases need re-exporting here.)
+export { formatMessageTime, initials };
+export type { Direction as ChatDirection, Channel as ChatChannel, Kind as ChatKind };
 
 // ────────────────────────────────────────────────────────────────────────────
 // Date grouping (WIREFRAMES.md:334 / DESIGN.md:708)
@@ -753,7 +759,7 @@ export function LeadChatPane({
  * Internal notes render with a distinct badge + tint so staff can tell
  * them apart from the customer thread at a glance.
  */
-function ChatMessage({
+export function ChatMessage({
   id,
   isOut,
   isInternal,

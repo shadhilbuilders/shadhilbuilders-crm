@@ -33,6 +33,10 @@ import type { JwtPayload } from '@shadhil/auth';
 import type {
   MessageEvent,
   SendMessageDto,
+  ChatConversationsQuery,
+  ChatConversationsResult,
+  SendContactMessageDto,
+  MarkChatReadDto,
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -52,7 +56,10 @@ import { resolveMediaDisplayUrl } from '../storage/media-display';
  */
 export interface MessageRow {
   id: string;
-  leadId: string;
+  // T-WA-INBOX (2026-09-25): a message belongs to exactly ONE thread - a Lead
+  // or a WhatsappUnknownContact. Exactly one of these is non-null.
+  leadId: string | null;
+  contactId: string | null;
   direction: 'IN' | 'OUT';
   channel: 'WHATSAPP' | 'IN_APP';
   kind?: 'CUSTOMER' | 'INTERNAL';
@@ -167,6 +174,7 @@ export class ChatService {
           select: {
             id: true,
             leadId: true,
+            contactId: true,
             direction: true,
             channel: true,
             kind: true,
@@ -183,6 +191,7 @@ export class ChatService {
         return rows.map((r) => ({
           id: r.id,
           leadId: r.leadId,
+          contactId: r.contactId,
           direction: r.direction,
           channel: r.channel,
           kind: r.kind,
@@ -272,6 +281,7 @@ export class ChatService {
           select: {
             id: true,
             leadId: true,
+            contactId: true,
             direction: true,
             channel: true,
             kind: true,
@@ -341,7 +351,9 @@ export class ChatService {
           await this.outbound.enqueue(
             {
               messageId: created.id,
-              leadId: created.leadId,
+              // A CUSTOMER send is always on a known-lead thread here, so
+              // leadId is present; narrow it rather than passing null.
+              leadId: created.leadId ?? dto.leadId,
               // FREEFORM, not TEMPLATE: this is a reply inside the 24h
               // customer-service window, so Meta accepts plain text with
               // NO approved template. Using shadhil_chat_reply failed with
@@ -370,6 +382,7 @@ export class ChatService {
         return {
           id: created.id,
           leadId: created.leadId,
+          contactId: created.contactId,
           direction: created.direction,
           channel: created.channel,
           kind: created.kind,
@@ -421,6 +434,476 @@ export class ChatService {
    * here without touching the Message model - the resolution already
    * produces the recipient's userId.
    */
+  // ──────────────────────────────────────────────────────────────────────────
+  // WhatsApp inbox (T-WA-INBOX, 2026-09-25)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/chat/conversations - every WhatsApp thread this actor may see,
+   * newest activity first. Covers BOTH thread types:
+   *
+   *   LEAD    - a known customer (the thread the lead detail page already shows)
+   *   CONTACT - an unknown number that has not been converted to a lead yet
+   *
+   * Unread is per-USER: a thread is unread when its last inbound is newer than
+   * THIS user's ChatReadState.lastReadAt. Three managers sharing a thread each
+   * keep their own badge.
+   *
+   * Implemented in raw SQL for one reason: the list must be ordered by a
+   * computed "last message at" across two thread columns with a per-user
+   * unread sub-count, which Prisma's typed query cannot express without N+1
+   * round trips. Every predicate is parameterised; the RLS policies still
+   * apply (the actor's GUCs are set by withRlsContext), so this cannot widen
+   * visibility beyond what the policies allow.
+   */
+  async conversations(
+    actor: JwtPayload,
+    dto: ChatConversationsQuery,
+  ): Promise<ChatConversationsResult> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const search = dto.search?.trim();
+      const searchLike = search !== undefined && search.length > 0 ? `%${search}%` : null;
+
+      // The UNION builds one row per thread with a common shape, then the
+      // outer query applies search / kind / unread filters and paging. Doing
+      // the filters out here (rather than inside each branch) keeps the two
+      // branches symmetric and the LIMIT honest.
+      const rows = await (tx as unknown as PrismaClient).$queryRawUnsafe<
+        Array<{
+          thread_kind: string;
+          thread_id: string;
+          display_name: string;
+          phone_e164: string;
+          linked_lead_id: string | null;
+          project_name: string | null;
+          last_message_body: string;
+          last_message_direction: string;
+          last_message_at: Date;
+          last_inbound_at: Date | null;
+          unread_count: bigint | number;
+        }>
+      >(
+        `
+        WITH threads AS (
+          -- Known-customer threads: one per lead that has WhatsApp traffic.
+          SELECT
+            'LEAD'                                    AS thread_kind,
+            l.id                                      AS thread_id,
+            l.name                                    AS display_name,
+            COALESCE(l."phoneE164", l.phone)          AS phone_e164,
+            l.id                                      AS linked_lead_id,
+            p.name                                    AS project_name,
+            COALESCE(last_msg.body, '')               AS last_message_body,
+            COALESCE(last_msg.direction::text, 'IN')  AS last_message_direction,
+            last_msg."createdAt"                      AS last_message_at,
+            last_in."createdAt"                       AS last_inbound_at,
+            COALESCE(unread.cnt, 0)                   AS unread_count
+          FROM "Lead" l
+          LEFT JOIN "Project" p ON p.id = l."projectId"
+          -- Only leads that actually have WhatsApp traffic belong in a
+          -- WhatsApp inbox; a lead with no messages is not a conversation.
+          JOIN LATERAL (
+            SELECT m.body, m.direction, m."createdAt"
+            FROM "Message" m
+            WHERE m."leadId" = l.id AND m.channel = 'WHATSAPP' AND m.kind = 'CUSTOMER'
+            ORDER BY m."createdAt" DESC
+            LIMIT 1
+          ) last_msg ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT m."createdAt"
+            FROM "Message" m
+            WHERE m."leadId" = l.id AND m.direction = 'IN' AND m.channel = 'WHATSAPP'
+            ORDER BY m."createdAt" DESC
+            LIMIT 1
+          ) last_in ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT count(*) AS cnt
+            FROM "Message" m
+            WHERE m."leadId" = l.id
+              AND m.direction = 'IN'
+              AND m.channel = 'WHATSAPP'
+              AND m."createdAt" > COALESCE(
+                    (SELECT rs."lastReadAt" FROM "ChatReadState" rs
+                     WHERE rs."userId" = $1 AND rs."leadId" = l.id),
+                    TIMESTAMP '1970-01-01')
+          ) unread ON TRUE
+
+          UNION ALL
+
+          -- Not-yet-converted numbers. A number that is ALREADY linked to a
+          -- lead by phone is deliberately EXCLUDED here: it would show the
+          -- same conversation twice, once under the lead's name and once under
+          -- the bare number. The product rule is "if the number is linked to a
+          -- lead, show the lead" - so the lead row above wins.
+          SELECT
+            'CONTACT'                                 AS thread_kind,
+            c.id                                      AS thread_id,
+            c."phoneE164"                             AS display_name,
+            c."phoneE164"                             AS phone_e164,
+            linked.id                                 AS linked_lead_id,
+            NULL                                      AS project_name,
+            COALESCE(last_msg.body, '')               AS last_message_body,
+            COALESCE(last_msg.direction::text, 'IN')  AS last_message_direction,
+            last_msg."createdAt"                      AS last_message_at,
+            last_in."createdAt"                       AS last_inbound_at,
+            COALESCE(unread.cnt, 0)                   AS unread_count
+          FROM "WhatsappUnknownContact" c
+          LEFT JOIN "Lead" linked ON linked."phoneE164" = c."phoneE164"
+          JOIN LATERAL (
+            SELECT m.body, m.direction, m."createdAt"
+            FROM "Message" m
+            WHERE m."contactId" = c.id AND m.channel = 'WHATSAPP'
+            ORDER BY m."createdAt" DESC
+            LIMIT 1
+          ) last_msg ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT m."createdAt"
+            FROM "Message" m
+            WHERE m."contactId" = c.id AND m.direction = 'IN'
+            ORDER BY m."createdAt" DESC
+            LIMIT 1
+          ) last_in ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT count(*) AS cnt
+            FROM "Message" m
+            WHERE m."contactId" = c.id
+              AND m.direction = 'IN'
+              AND m."createdAt" > COALESCE(
+                    (SELECT rs."lastReadAt" FROM "ChatReadState" rs
+                     WHERE rs."userId" = $1 AND rs."contactId" = c.id),
+                    TIMESTAMP '1970-01-01')
+          ) unread ON TRUE
+          WHERE linked.id IS NULL
+        )
+        SELECT * FROM threads
+        WHERE ($2::text IS NULL
+               OR display_name ILIKE $2
+               OR phone_e164 ILIKE $2)
+          AND ($3::text IS NULL OR thread_kind = $3)
+          AND ($4::boolean IS NOT TRUE OR unread_count > 0)
+        ORDER BY last_message_at DESC
+        LIMIT $5 OFFSET $6
+        `,
+        actor.sub,
+        searchLike,
+        dto.kind ?? null,
+        dto.unreadOnly ?? null,
+        dto.limit,
+        dto.offset,
+      );
+
+      // Unread across ALL the actor's threads (not just this page) so the
+      // "N unread" badge is honest regardless of paging or the active filter.
+      // Deliberately NOT a message count: `total` below is a thread count, and
+      // an unused second aggregate here would only drift from it.
+      const totals = await (tx as unknown as PrismaClient).$queryRawUnsafe<
+        Array<{ total_unread: bigint | number }>
+      >(
+        `
+        SELECT (
+          SELECT count(*) FROM "Message" m
+          WHERE m.direction = 'IN' AND m.channel = 'WHATSAPP'
+            AND m."createdAt" > COALESCE(
+                  (SELECT rs."lastReadAt" FROM "ChatReadState" rs
+                   WHERE rs."userId" = $1
+                     AND ((m."leadId" IS NOT NULL AND rs."leadId" = m."leadId")
+                       OR (m."contactId" IS NOT NULL AND rs."contactId" = m."contactId"))),
+                  TIMESTAMP '1970-01-01')
+        ) AS total_unread
+        `,
+        actor.sub,
+      );
+
+      const totalRows = totals[0];
+      const conversationCount = await (tx as unknown as PrismaClient).$queryRawUnsafe<
+        Array<{ cnt: bigint | number }>
+      >(
+        `SELECT count(*) AS cnt FROM (
+           SELECT l.id FROM "Lead" l
+             WHERE EXISTS (SELECT 1 FROM "Message" m
+                           WHERE m."leadId" = l.id AND m.channel = 'WHATSAPP')
+           UNION ALL
+           SELECT c.id FROM "WhatsappUnknownContact" c
+             WHERE NOT EXISTS (SELECT 1 FROM "Lead" x WHERE x."phoneE164" = c."phoneE164")
+               AND EXISTS (SELECT 1 FROM "Message" m WHERE m."contactId" = c.id)
+         ) t`,
+      );
+
+      return {
+        rows: rows.map((r) => {
+          const threadKind = r.thread_kind === 'CONTACT' ? 'CONTACT' : 'LEAD';
+          return {
+            threadKind,
+            threadId: r.thread_id,
+            threadKey: `${threadKind}:${r.thread_id}`,
+            displayName: r.display_name,
+            phoneE164: r.phone_e164,
+            linkedLeadId: r.linked_lead_id,
+            projectName: r.project_name,
+            lastMessageBody: r.last_message_body,
+            lastMessageDirection: r.last_message_direction === 'OUT' ? 'OUT' : 'IN',
+            lastMessageAt: r.last_message_at.toISOString(),
+            lastInboundAt: r.last_inbound_at === null ? null : r.last_inbound_at.toISOString(),
+            unreadCount: Number(r.unread_count),
+          };
+        }),
+        total: Number(conversationCount[0]?.cnt ?? 0),
+        totalUnread: Number(totalRows?.total_unread ?? 0),
+      };
+    });
+  }
+
+  /**
+   * List messages on a CONTACT thread. Mirrors list() but keys on contactId;
+   * kept as a sibling rather than a branch inside list() so the lead path
+   * (which the lead detail page depends on) is not destabilised.
+   */
+  async listContact(
+    actor: JwtPayload,
+    contactId: string,
+    limit: number,
+  ): Promise<MessageListResult> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const contact = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
+        where: { id: contactId },
+        select: { id: true },
+      });
+      if (contact === null) {
+        throw new NotFoundException(`Whatsapp contact ${contactId} not found`);
+      }
+
+      const rows = await (tx as unknown as PrismaClient).message.findMany({
+        where: { contactId },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          leadId: true,
+          contactId: true,
+          direction: true,
+          channel: true,
+          kind: true,
+          body: true,
+          mediaUrl: true,
+          mediaKey: true,
+          mediaType: true,
+          mediaFilename: true,
+          createdAt: true,
+          user: { select: { name: true } },
+        },
+      });
+
+      // Resolved ONCE per request, not per row: every inbound message on a
+      // contact thread shares the same sender display name.
+      const inboundSenderName = await this.contactSenderName(tx, contactId);
+
+      return rows.map((r) => ({
+        id: r.id,
+        leadId: r.leadId,
+        contactId: r.contactId,
+        direction: r.direction,
+        channel: r.channel,
+        kind: r.kind,
+        body: r.body,
+        mediaUrl: this.displayMediaUrl(r),
+        mediaType: r.mediaType,
+        mediaFilename: r.mediaFilename,
+        // OUT -> the staff member who sent it. IN -> the customer, who on a
+        // contact thread has no name until the number is converted, so the
+        // phone number stands in (the pane shows it in the MessageHeader).
+        senderName:
+          r.direction === 'OUT' ? (r.user?.name ?? null) : inboundSenderName,
+        createdAt: r.createdAt.toISOString(),
+      }));
+    });
+  }
+
+  /** Display name for an inbound contact-thread sender: the lead's name when
+   *  the number is already linked to a lead, otherwise the phone number. */
+  private async contactSenderName(
+    tx: unknown,
+    contactId: string,
+  ): Promise<string | null> {
+    const client = tx as unknown as PrismaClient;
+    const contact = await client.whatsappUnknownContact.findUnique({
+      where: { id: contactId },
+      select: { phoneE164: true, convertedToLeadId: true },
+    });
+    if (contact === null) return null;
+    if (contact.convertedToLeadId !== null) {
+      const lead = await client.lead.findUnique({
+        where: { id: contact.convertedToLeadId },
+        select: { name: true },
+      });
+      if (lead !== null) return lead.name;
+    }
+    return contact.phoneE164;
+  }
+
+  /**
+   * Send a reply on a CONTACT thread. Writes the Message row and enqueues the
+   * WhatsApp outbound in ONE transaction, exactly like the lead path, so a
+   * reply can never be stored without being sent (or vice versa).
+   *
+   * A contact thread has no `kind`, so it is always a customer conversation -
+   * the INTERNAL-notes concept does not apply here.
+   */
+  async sendToContact(
+    actor: JwtPayload,
+    dto: SendContactMessageDto,
+  ): Promise<MessageRow> {
+    if (dto.body.trim().length === 0) {
+      throw new BadRequestException('Message body cannot be empty');
+    }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const contact = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
+        where: { id: dto.contactId },
+        select: { id: true, phoneE164: true },
+      });
+      if (contact === null) {
+        throw new NotFoundException(`Whatsapp contact ${dto.contactId} not found`);
+      }
+
+      const created = await (tx as unknown as PrismaClient).message.create({
+        data: {
+          contactId: dto.contactId,
+          organizationId: actor.organizationId,
+          userId: actor.sub,
+          direction: 'OUT',
+          channel: 'WHATSAPP',
+          kind: 'CUSTOMER',
+          body: dto.body,
+          mediaKey: dto.mediaKey,
+          mediaUrl:
+            dto.mediaKey !== undefined
+              ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}`
+              : undefined,
+          mediaType: dto.mediaMimeType,
+          mediaFilename: dto.mediaFilename,
+        },
+        select: {
+          id: true,
+          leadId: true,
+          contactId: true,
+          direction: true,
+          channel: true,
+          kind: true,
+          body: true,
+          mediaUrl: true,
+          mediaKey: true,
+          mediaType: true,
+          mediaFilename: true,
+          createdAt: true,
+        },
+      });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'chat.send',
+          entityType: 'Message',
+          entityId: created.id,
+          after: {
+            contactId: created.contactId,
+            direction: created.direction,
+            channel: created.channel,
+          },
+          reason: `WhatsApp reply to unknown contact ${dto.contactId} by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      // Enqueue the outbound on the same transaction (same RLS connection).
+      // FREEFORM because this is a reply inside Meta's 24h customer-service
+      // window; outside it Meta rejects the send, which is why the UI warns
+      // and blocks before reaching here.
+      const outBody = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
+      await this.outbound.enqueue(
+        {
+          messageId: created.id,
+          contactId: created.contactId as string,
+          sendType: 'FREEFORM',
+          freeformBody: outBody,
+          ...(dto.mediaKey !== undefined ? { mediaKey: dto.mediaKey } : {}),
+          ...(dto.mediaMimeType !== undefined ? { mediaType: dto.mediaMimeType } : {}),
+          ...(dto.mediaFilename !== undefined ? { mediaFilename: dto.mediaFilename } : {}),
+        },
+        tx as unknown as PrismaClient,
+      );
+
+      return {
+        id: created.id,
+        leadId: created.leadId,
+        contactId: created.contactId,
+        direction: created.direction,
+        channel: created.channel,
+        kind: created.kind,
+        body: created.body,
+        mediaUrl: this.displayMediaUrl(created),
+        mediaType: created.mediaType,
+        mediaFilename: created.mediaFilename,
+        senderName: null,
+        createdAt: created.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * POST /api/chat/read - move THIS user's read position on a thread to now.
+   * Upsert rather than update: the first visit to a thread has no row yet.
+   */
+  async markRead(actor: JwtPayload, dto: MarkChatReadDto): Promise<{ ok: true }> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const client = tx as unknown as PrismaClient;
+      const now = new Date();
+      if (dto.leadId !== undefined) {
+        // The thread must be one this user can actually see; the RLS policy
+        // on ChatReadState also enforces userId = app.user_id, so a forged
+        // userId cannot be written.
+        const existing = await client.chatReadState.findFirst({
+          where: { userId: actor.sub, leadId: dto.leadId },
+          select: { id: true },
+        });
+        if (existing === null) {
+          await client.chatReadState.create({
+            data: {
+              userId: actor.sub,
+              leadId: dto.leadId,
+              lastReadAt: now,
+            },
+          });
+        } else {
+          await client.chatReadState.update({
+            where: { id: existing.id },
+            data: { lastReadAt: now },
+          });
+        }
+        return { ok: true as const };
+      }
+
+      const contactId = dto.contactId as string;
+      const existing = await client.chatReadState.findFirst({
+        where: { userId: actor.sub, contactId },
+        select: { id: true },
+      });
+      if (existing === null) {
+        await client.chatReadState.create({
+          data: {
+            userId: actor.sub,
+            contactId,
+            lastReadAt: now,
+          },
+        });
+      } else {
+        await client.chatReadState.update({
+          where: { id: existing.id },
+          data: { lastReadAt: now },
+        });
+      }
+      return { ok: true as const };
+    });
+  }
+
   private async emitMentions(
     tx: unknown,
     actor: JwtPayload,

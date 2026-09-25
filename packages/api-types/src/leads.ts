@@ -143,6 +143,13 @@ export const LeadFilterDtoSchema = z.object({
     .optional(),
   ownerId: z.string().cuid2().optional(),
   teamId: z.cuid2().optional(),
+  // T-USER-LEADS (2026-09-24): match a lead the user is LINKED to, meaning
+  // owner OR co-owner. `ownerId` above stays strict owner-only (its existing
+  // contract - reassign flows read it). This is the filter the user-detail
+  // page uses so a co-owner's workload is visible on their own profile,
+  // matching how team-members.service.preview() defines "leads linked with
+  // a member".
+  linkedUserId: z.string().cuid2().optional(),
   // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
   // so filter strictly - a non-cuid2 value is a 400, not a silent pass.
   projectId: z.cuid2().optional(),

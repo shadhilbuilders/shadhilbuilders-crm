@@ -17,6 +17,7 @@ import { useRealtimeChannel } from '@/hooks/use-realtime-channel';
 
 import type {
   BookingTransitionDto,
+  ChatConversationsResult,
   CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
@@ -24,6 +25,7 @@ import type {
   LeadDetail,
   LeadStateTransitionDto,
   RescheduleVisitDto,
+  SendContactMessageDto,
   UpdateBookingDto,
   SendMessageDto,
   UpdateLeadDto,
@@ -570,6 +572,106 @@ export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = '
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp inbox (T-WA-INBOX, 2026-09-25)
+//
+// The two-pane chat system: a conversation list on the left (leads + unknown
+// contacts) and the chat panel on the right. Distinct from the per-lead chat
+// hooks above, which stay as they are for the lead detail page.
+// ---------------------------------------------------------------------------
+
+export type ChatConversationFilter = {
+  search?: string;
+  kind?: 'LEAD' | 'CONTACT';
+  unreadOnly?: boolean;
+  limit?: number;
+  offset?: number;
+};
+
+/** GET /api/chat/conversations - the inbox list (server-filtered). */
+export function useChatConversations(filter: ChatConversationFilter = {}) {
+  return useQuery({
+    queryKey: ['chat-conversations', filter] as const,
+    queryFn: ({ signal }) =>
+      api<ChatConversationsResult>(
+        `/chat/conversations${qs({
+          search: filter.search,
+          kind: filter.kind,
+          unreadOnly: filter.unreadOnly === true ? 'true' : undefined,
+          limit: filter.limit,
+          offset: filter.offset,
+        })}`,
+        { signal },
+      ),
+    // Inbox freshness matters (a customer reply must appear without a manual
+    // refresh); SSE invalidates this key, and a short poll is the backstop.
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** GET /api/chat/contact/:id - messages on an unknown-contact thread. */
+export function useContactMessages(contactId: string | null) {
+  return useQuery({
+    queryKey: ['chat-contact', contactId] as const,
+    enabled: contactId !== null && contactId.length > 0,
+    queryFn: ({ signal }) =>
+      api<unknown[]>(`/chat/contact/${contactId as string}`, { signal }),
+  });
+}
+
+/** SSE: invalidate the open contact thread + the list when a message lands. */
+export function useContactMessagesRealtime(contactId: string | null): void {
+  const queryClient = useQueryClient();
+  useRealtimeChannel(
+    contactId !== null && contactId.length > 0 ? `chat:${contactId}` : null,
+    () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat-contact', contactId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+    },
+  );
+}
+
+/** POST /api/chat/send-to-contact - reply on an unknown-contact thread. */
+export function useSendContactMessage(contactId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      body: string;
+      media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string };
+    }) =>
+      api<unknown>('/chat/send-to-contact', {
+        method: 'POST',
+        json: {
+          contactId,
+          body: input.body,
+          ...(input.media !== undefined
+            ? {
+                mediaKey: input.media.mediaKey,
+                mediaMimeType: input.media.mediaMimeType,
+                mediaFilename: input.media.mediaFilename,
+              }
+            : {}),
+        } satisfies SendContactMessageDto,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat-contact', contactId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+    },
+  });
+}
+
+/** POST /api/chat/read - clear THIS user's unread badge for a thread. */
+export function useMarkChatRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (thread: { leadId?: string; contactId?: string }) =>
+      api<{ ok: true }>('/chat/read', { method: 'POST', json: thread }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
     },
   });
 }

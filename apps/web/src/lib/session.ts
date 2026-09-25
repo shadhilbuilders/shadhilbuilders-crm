@@ -149,6 +149,19 @@ export function canConvertWhatsappUnknownContact(
   return isAdminLike(role) || role === 'MANAGER';
 }
 
+/**
+ * T-WA-INBOX (2026-09-25): the WhatsApp chat system is manager-and-above.
+ *
+ * Mirrors the backend gate (`canUseWhatsappInbox` in
+ * apps/backend/src/users/roles.ts) and the RLS policies on Message /
+ * OutboundMessage / ChatReadState, which grant non-lead threads to
+ * ADMIN/OWNER/MANAGER only. TELECALLER and SALES_EXEC keep using the per-lead
+ * chat pane on leads they own; they must not reach the org-wide inbox.
+ */
+export function canUseWhatsappInbox(role: Role | undefined): boolean {
+  return isAdminLike(role) || isManager(role);
+}
+
 /** Users module: admin-class creates any role below; manager → staff only. */
 export function canManageUsers(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';

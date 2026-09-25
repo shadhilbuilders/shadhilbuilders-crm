@@ -65,6 +65,7 @@ import {
   LuMessageSquareText,
   LuSatellite,
   LuSend,
+  LuMessagesSquare,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -72,7 +73,7 @@ import { useEffect } from 'react';
 
 import { useSidebar } from '@paalstack/react-ui';
 
-import { isAdminLike } from '@/lib/session';
+import { canUseWhatsappInbox, isAdminLike } from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -118,7 +119,7 @@ export type NavItem = {
 
 /** Badge source identifiers. The actual count fetch lives in
  *  `useNavBadge` so the data layer can be swapped without touching this file. */
-export type NavBadgeKey = 'leadCount' | 'unreadNotifications';
+export type NavBadgeKey = 'leadCount' | 'unreadNotifications' | 'unreadChats';
 
 // ---------------------------------------------------------------------------
 // Authoritative nav tree (T1 - single source of truth)
@@ -155,6 +156,27 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Bookings',
     icon: LuHandshake,
     group: 'work',
+  },
+  // T-WA-INBOX (2026-09-25): the WhatsApp chat system. MANAGER/ADMIN/OWNER
+  // only - a WORK item (staff surface) rather than an Admin one, because a
+  // manager works out of it day to day. Per-item visibility is enforced in
+  // isNavItemVisible below; the badge counts the current user's unread chats.
+  {
+    href: '/whatsapp-chat',
+    label: 'WhatsApp Chats',
+    icon: LuMessagesSquare,
+    group: 'work',
+    // Org-level, NOT project-scoped (same as /my-teams): the inbox lists every
+    // conversation in the org, so it must not be nested under a project.
+    //
+    // `scoped: false` is load-bearing, not cosmetic: `navItemHref` sends
+    // default-scoped items through `projectHref`, which returns the template
+    // href UNCHANGED when the path is absent from PROJECT_SCOPED_PATHS - so the
+    // sidebar linked to a bare `/whatsapp-chat`, which matches no route (all
+    // pages live under /[orgSlug]/...) and 404'd. With `scoped: false` the href
+    // resolves through `orgHref` to `/{orgSlug}/whatsapp-chat`.
+    scoped: false,
+    badgeKey: 'unreadChats',
   },
   {
     href: '/notifications',
@@ -304,6 +326,12 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
   if (item.href === '/my-teams') {
     return role === 'MANAGER';
   }
+  // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE
+  // the catch-all `group === 'work' => true` at the end of this function,
+  // which would otherwise show it to every authenticated role.
+  if (item.href === '/whatsapp-chat') {
+    return canUseWhatsappInbox(role);
+  }
   // Remaining work items are visible to every authenticated role (and the
   // undefined-role SSR default, which matches the previous work-group
   // always-visible contract).
@@ -344,15 +372,23 @@ export function useNavBadge(
   // Lazy-require to avoid a circular import in the test harness (T15 builds
   // a pure-function test that never mounts the app, so the queries module's
   // session/BFF dependencies must not be loaded at import time).
-  const { useNewLeadsBadge, useNotifications } = require('@/hooks/queries/crm') as {
+  const { useNewLeadsBadge, useNotifications, useChatConversations } = require(
+    '@/hooks/queries/crm',
+  ) as {
     useNewLeadsBadge: (projectId: string | null) => { data: { newLeads: number } | undefined };
     useNotifications: (params: { unreadOnly?: boolean }) => {
       data: { rows: unknown[]; total: number; unread: number };
+    };
+    useChatConversations: (params: { limit?: number }) => {
+      data: { totalUnread: number } | undefined;
     };
   };
 
   const newLeads = useNewLeadsBadge(projectId);
   const notifications = useNotifications({ unreadOnly: true });
+  // Hook order must be stable across renders, so this is called
+  // unconditionally and only its VALUE is used for the chat badge.
+  const chats = useChatConversations({ limit: 1 });
 
   if (key === undefined) return FALLBACK_BADGE;
   if (key === 'leadCount') {
@@ -367,6 +403,15 @@ export function useNavBadge(
     // `useNotifications` returns `{ rows, total, unread }`. The badge should
     // show the server-computed `unread` count, not the rows array length.
     const unread = notifications.data?.unread;
+    return typeof unread === 'number' ? unread : FALLBACK_BADGE;
+  }
+  if (key === 'unreadChats') {
+    // The inbox's per-user unread count. `totalUnread` is computed across ALL
+    // the actor's threads server-side, so the badge is right regardless of the
+    // page size - ask for a single row. Without this branch the key fell
+    // through to FALLBACK_BADGE (0) and the badge never rendered, even though
+    // the backend was returning the count.
+    const unread = chats.data?.totalUnread;
     return typeof unread === 'number' ? unread : FALLBACK_BADGE;
   }
   return FALLBACK_BADGE;

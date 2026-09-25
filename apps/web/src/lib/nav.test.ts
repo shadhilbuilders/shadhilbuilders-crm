@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getVisibleNav,
   isNavItemActive,
+  navItemHref,
   NAV_ITEMS,
   type NavItem,
 } from '@/lib/nav';
@@ -81,7 +82,22 @@ describe('lib/nav', () => {
     ];
     // T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER additionally sees
     // My Teams (design doc UI1) - every other staff role does not.
-    const managerHrefs = [...workHrefs, '/my-teams'];
+    // T-WA-INBOX (2026-09-25): the WhatsApp Chats inbox is
+    // MANAGER/ADMIN/OWNER only, so it is NOT in workHrefs (which every staff
+    // role sees) - it joins the manager set instead.
+    // Received order is the NAV_ITEMS declaration order: /whatsapp-chat sits
+    // in the work group before /notifications, and /my-teams comes last.
+    const managerHrefs = [
+      '/dashboard',
+      '/leads',
+      '/visits',
+      '/staff',
+      '/inventory',
+      '/bookings',
+      '/whatsapp-chat',
+      '/notifications',
+      '/my-teams',
+    ];
 
     it('TELECALLER sees only the work group (no Admin launcher, no admin items)', () => {
       const items = getVisibleNav('TELECALLER');
@@ -172,6 +188,58 @@ describe('lib/nav', () => {
     it('Admin launcher (`/admin`) is exact-only so `/admin/users` does not highlight it', () => {
       expect(isNavItemActive('/admin', '/admin')).toBe(true);
       expect(isNavItemActive('/admin', '/admin/users')).toBe(false);
+    });
+
+    it('WhatsApp Chats (`/whatsapp-chat`) is active on the page and nested paths', () => {
+      expect(isNavItemActive('/whatsapp-chat', '/whatsapp-chat')).toBe(true);
+      expect(isNavItemActive('/whatsapp-chat', '/whatsapp-chat/abc')).toBe(true);
+      expect(isNavItemActive('/whatsapp-chat', '/whatsapp-chats')).toBe(false);
+    });
+  });
+
+  // T-WA-INBOX: the chat inbox is a managers-and-above page. The nav item is
+  // the FIRST of three gates (nav hidden -> page re-checks -> backend 403), so
+  // this rule is worth pinning: a role regression here would expose a page
+  // whose whole purpose is customer conversations.
+  describe('WhatsApp Chats visibility (MANAGER/ADMIN/OWNER only)', () => {
+    const href = '/whatsapp-chat';
+
+    it('is visible to MANAGER, ADMIN and OWNER', () => {
+      for (const role of ['MANAGER', 'ADMIN', 'OWNER'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).toContain(href);
+      }
+    });
+
+    it('is hidden from TELECALLER and SALES_EXEC', () => {
+      for (const role of ['TELECALLER', 'SALES_EXEC'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).not.toContain(href);
+      }
+    });
+
+    it('is hidden from an undefined role (no session yet)', () => {
+      expect(flattenNavHrefs(getVisibleNav(undefined))).not.toContain(href);
+    });
+
+    // The href attribute is what the sidebar actually navigates to, and it is
+    // NOT the same as `item.href`: every page lives under /[orgSlug]/, so an
+    // item that resolves to the bare template path matches no route and 404s.
+    // This is how the inbox shipped broken - the nav item lacked
+    // `scoped: false`, so navItemHref returned '/whatsapp-chat' unchanged.
+    it('resolves to an org-scoped href (a bare /whatsapp-chat 404s)', () => {
+      const item = getVisibleNav('OWNER').find((i) => i.href === href)!;
+      expect(navItemHref(item, 'shadhil-builders', 'any-project')).toBe(
+        '/shadhil-builders/whatsapp-chat',
+      );
+      // ...and it must NOT be project-nested, which is what the default
+      // scoping would do if the path were ever added to PROJECT_SCOPED_PATHS.
+      expect(navItemHref(item, 'shadhil-builders', 'any-project')).not.toContain('/projects/');
+    });
+
+    it('stays org-level even with no active project (inbox is org-wide)', () => {
+      const item = getVisibleNav('MANAGER').find((i) => i.href === href)!;
+      expect(navItemHref(item, 'shadhil-builders', null)).toBe(
+        '/shadhil-builders/whatsapp-chat',
+      );
     });
   });
 });

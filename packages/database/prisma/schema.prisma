@@ -289,6 +289,7 @@ model User {
   coOwnedLeads              Lead[]             @relation("LeadCoOwner")
   activities                Activity[]
   messages                  Message[]
+  chatReadStates            ChatReadState[]
   reminders                 Reminder[]
   notifications             Notification[]
   siteVisits                SiteVisit[]
@@ -631,6 +632,7 @@ model Lead {
   visits           SiteVisit[]
   messages         Message[]
   outboundMessages OutboundMessage[]
+  chatReadStates   ChatReadState[]
   bookings         Booking[]
   reminders        Reminder[]
   consents         Consent[]
@@ -703,8 +705,23 @@ model SiteVisit {
 
 model Message {
   id             String           @id @default(cuid())
-  leadId         String
-  // T-ORG: denormalized from parent Lead.
+  // T-WA-INBOX (2026-09-25): a Message belongs to EXACTLY ONE thread:
+  // either a Lead (the 1:1 staff<->customer thread for a known contact) or a
+  // WhatsappUnknownContact (a number that is not a lead yet). Previously
+  // leadId was NOT NULL, which made non-lead WhatsApp traffic impossible to
+  // store as history - the unknown-contact table only kept counters
+  // (messageCount + firstMessageBody), so a conversation with an unknown
+  // number could not exist and could not be displayed.
+  //
+  // Both columns are nullable because either may be unset; the
+  // message_thread_exactly_one CHECK constraint in the migration enforces
+  // that exactly one IS set. Keeping ONE message table (rather than a second
+  // conversation table) means the chat pane, the SSE chat:<id> channel, the
+  // media path, unread counting and the outbound cron all work on both
+  // thread types with no parallel implementation.
+  leadId         String?
+  contactId      String?
+  // T-ORG: denormalized from parent thread.
   organizationId String
   userId         String? // null = inbound from customer
   direction      MessageDirection
@@ -727,16 +744,55 @@ model Message {
   externalId     String? // WhatsApp message id (for dedupe / status sync)
   createdAt      DateTime         @default(now())
 
-  lead         Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lead         Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      WhatsappUnknownContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   outbound     OutboundMessage?
 
   @@index([leadId])
+  @@index([contactId])
   @@index([organizationId])
   @@index([userId])
   @@index([channel, createdAt])
   @@index([externalId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 10b. ChatReadState (per-USER read position on a chat thread) - T-WA-INBOX
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Read position for ONE user on ONE thread.
+ *
+ * Why per-user and not a `lastReadAt` column on the thread: three managers
+ * share the same WhatsApp thread, and one reading it must not clear the
+ * others' unread badges. Unread is a property of (user, thread), so it is
+ * its own row. Keyed on whichever thread column is set - the
+ * chat_read_state_thread_exactly_one CHECK mirrors Message's.
+ *
+ * `lastReadAt` is a high-water mark, NOT a list of read message ids: a
+ * message counts as unread when `createdAt > lastReadAt` AND it is inbound
+ * (direction = IN). Outbound messages never contribute to unread.
+ */
+model ChatReadState {
+  id        String   @id @default(cuid())
+  userId    String
+  leadId    String?
+  contactId String?
+  lastReadAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // One row per user per thread. Postgres treats NULLs as distinct, so these
+  // are complemented by two partial unique indexes in the migration
+  // (a plain @@unique would allow duplicate rows where one column is NULL).
+  @@index([userId, leadId])
+  @@index([userId, contactId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1033,8 +1089,12 @@ model OutboundMessage {
   // delete so removing a Message also removes its outbox row (e.g. on
   // a chat retract - not implemented yet but the schema supports it).
   messageId      String           @unique
-  leadId         String
-  // T-ORG: denormalized from parent Lead.
+  // T-WA-INBOX (2026-09-25): mirrors Message - an outbound row targets the
+  // same single thread (lead OR unknown contact). The cron resolves the
+  // destination phone from whichever is set.
+  leadId         String?
+  contactId      String?
+  // T-ORG: denormalized from parent thread.
   organizationId String
   // Send type: FREEFORM (within 24h of lead's last inbound) or TEMPLATE
   // (after 24h, or for proactive outreach like the visit_followup and
@@ -1070,12 +1130,14 @@ model OutboundMessage {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  message      Message                  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  lead         Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      WhatsappUnknownContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([status, lastAttemptAt]) // cron scan: PENDING rows that aren't being retried too soon
   @@index([leadId])
+  @@index([contactId])
   @@index([organizationId])
   @@index([wamid])
 }
@@ -1262,6 +1324,13 @@ model WhatsappUnknownContact {
   updatedAt         DateTime                     @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  // T-WA-INBOX (2026-09-25): the real message history for this number.
+  // Before this, an unknown contact had only messageCount + firstMessageBody,
+  // so the conversation could not be reconstructed or displayed.
+  messages         Message[]
+  outboundMessages OutboundMessage[]
+  readStates       ChatReadState[]
 
   @@index([organizationId])
   @@index([status])

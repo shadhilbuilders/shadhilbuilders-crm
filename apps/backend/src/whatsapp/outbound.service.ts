@@ -80,7 +80,11 @@ export class OutboundService {
   async enqueue(
     opts: {
       messageId: string;
-      leadId: string;
+      // T-WA-INBOX (2026-09-25): exactly one of leadId/contactId is set -
+      // mirrors Message's thread columns and the outbound_message_thread_exactly_one
+      // CHECK constraint. A reply to an unknown number targets contactId.
+      leadId?: string;
+      contactId?: string;
       sendType: OutboundSendType;
       freeformBody?: string;
       templateName?: string;
@@ -100,10 +104,21 @@ export class OutboundService {
     clientOverride?: PrismaClient,
   ): Promise<OutboundMessage> {
     const client = clientOverride ?? this.client;
+    // Enforce the single-thread rule in code as well as in the DB CHECK, so a
+    // caller that forgets one gets a clear error instead of a constraint
+    // violation surfacing as an opaque 500.
+    const hasLead = opts.leadId !== undefined;
+    const hasContact = opts.contactId !== undefined;
+    if (hasLead === hasContact) {
+      throw new Error(
+        `OutboundService.enqueue requires exactly one of leadId/contactId (got leadId=${hasLead}, contactId=${hasContact})`,
+      );
+    }
     return client.outboundMessage.create({
       data: {
         messageId: opts.messageId,
-        leadId: opts.leadId,
+        ...(opts.leadId !== undefined ? { leadId: opts.leadId } : {}),
+        ...(opts.contactId !== undefined ? { contactId: opts.contactId } : {}),
         sendType: opts.sendType,
         organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
         ...(opts.freeformBody !== undefined ? { freeformBody: opts.freeformBody } : {}),
@@ -228,7 +243,7 @@ export class OutboundService {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([, text]) => ({ type: 'text' as const, text }));
         const delivery = await this.whatsapp.sendTemplateMessage(
-          await this.leadPhone(row.leadId),
+          await this.threadPhone(row),
           templateName,
           parameters,
         );
@@ -262,7 +277,7 @@ export class OutboundService {
             throw new Error('FREEFORM outbound row has no freeformBody');
           }
           const delivery = await this.whatsapp.sendTextMessage(
-            await this.leadPhone(row.leadId),
+            await this.threadPhone(row),
             text,
           );
           if (!delivery.accepted) {
@@ -322,6 +337,35 @@ export class OutboundService {
    *  lead_select_cron_service policy from the T-E2b inbound commit
    *  matches - the bare shadhil_app role has no RLS context, so
    *  a direct findUnique would return null. */
+  /** T-WA-INBOX (2026-09-25): resolve the destination phone for whichever
+   *  thread an outbound row targets. A row has exactly one of leadId/contactId
+   *  (DB CHECK), so this dispatches rather than duplicating the send path. */
+  private async threadPhone(row: OutboundMessage): Promise<string> {
+    if (row.contactId !== null && row.contactId !== undefined) {
+      const contact = await withRlsContext(
+        this.client,
+        { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+        async (tx) =>
+          (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
+            where: { id: row.contactId as string },
+            select: { phoneE164: true },
+          }),
+      );
+      if (contact === null) {
+        throw new Error(
+          `WhatsappUnknownContact ${row.contactId} not found in OutboundService.threadPhone`,
+        );
+      }
+      return contact.phoneE164;
+    }
+    if (row.leadId === null || row.leadId === undefined) {
+      throw new Error(
+        `OutboundMessage ${row.id} has neither leadId nor contactId - cannot resolve a destination`,
+      );
+    }
+    return this.leadPhone(row.leadId);
+  }
+
   private async leadPhone(leadId: string): Promise<string> {
     const lead = await withRlsContext(
       this.client,
@@ -388,7 +432,7 @@ export class OutboundService {
 
     const mediaId = await this.whatsapp.uploadMedia({ buffer: bytes, mimeType: mime, filename });
     const caption = row.freeformBody ?? undefined;
-    const delivery = await this.whatsapp.sendMediaMessage(await this.leadPhone(row.leadId), {
+    const delivery = await this.whatsapp.sendMediaMessage(await this.threadPhone(row), {
       mediaId,
       type: metaType,
       ...(metaType === 'document' ? { filename } : {}),

@@ -141,7 +141,12 @@ export class IntegrationsService {
           select: {
             id: true,
             leadId: true,
+            contactId: true,
             lead: { select: { name: true } },
+            // T-WA-INBOX: an outbound reply to an unknown number has no lead,
+            // so the feed resolves a display name from the contact's phone
+            // instead of the lead join.
+            contact: { select: { phoneE164: true } },
             sendType: true,
             templateName: true,
             status: true,
@@ -161,7 +166,10 @@ export class IntegrationsService {
         rows: rows.map((r) => ({
           id: r.id,
           leadId: r.leadId,
-          leadName: r.lead?.name ?? '',
+          contactId: r.contactId,
+          // Lead thread -> the lead's name. Contact thread -> the phone (there
+          // is no name for an unresolved number). Never a blank cell.
+          leadName: r.lead?.name ?? r.contact?.phoneE164 ?? '',
           sendType: r.sendType,
           templateName: r.templateName,
           status: r.status,

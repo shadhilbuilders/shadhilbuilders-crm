@@ -164,6 +164,9 @@ Or, with a no-show:
 | Approve booking | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Send WhatsApp message to customer | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
 | Read chat on a lead | ✅ | ✅ | ✅ (in team) | ✅ (own leads + shared) | ✅ (own leads + shared) |
+| Use the WhatsApp Chats inbox (T-WA-INBOX) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Reply to an unknown number (contact thread) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Convert an unknown number to a lead (from the inbox) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | View reports (own KPIs) | ✅ (org KPIs) | ✅ (org KPIs) | ✅ (team KPIs) | ✅ (own KPIs) | ✅ (own KPIs) |
 | Edit projects / units / inventory | ✅ | ✅ | ❌ | ❌ | ❌ |
 | View audit log | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -199,6 +202,23 @@ Or, with a no-show:
   the creator as `ownerId` (ownerType from their role);
   manager-created leads land in the manager's team and get
   assigned; admin-created leads can be assigned to any team.
+
+- **WhatsApp Chats inbox (T-WA-INBOX, 2026-09-25):** a dedicated
+  two-pane WhatsApp-Web-style page (contact list left, chat panel
+  right, panel switches on selection) for MANAGER / ADMIN / OWNER
+  only - it exposes every WhatsApp conversation org-wide, not just
+  the leads an actor owns, so it is deliberately NOT opened up to
+  TELECALLER / SALES_EXEC (they keep their per-owner chat panel on
+  the lead page, which stays scoped to their own leads). It shows
+  BOTH thread types: known leads (by name) and numbers not yet
+  linked to a lead (by number, with a "Convert to lead" action that
+  reuses the existing triage flow). A number already linked to a
+  lead appears ONCE, as the lead thread. Enforced at three layers:
+  nav visibility (`canUseWhatsappInbox`), a page-level re-check,
+  and the backend controller (403). Replies enqueue a FREEFORM
+  WhatsApp outbound and the composer blocks outside Meta's 24h
+  customer-service window rather than letting the send fail in the
+  outbound cron.
 
 - A **Telecaller** is responsible for: booking, confirming,
   re-engaging after no-show. They lose credit when a no-show

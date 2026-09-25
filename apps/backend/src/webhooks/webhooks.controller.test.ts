@@ -271,7 +271,11 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
 
     expect(result.received).toBe(true);
     expect(result.unknownContactsUpserted).toBe(1);
-    expect(result.messagesCreated).toBe(0);
+    // T-WA-INBOX (2026-09-25): this USED to be 0, because an unknown number's
+    // message was discarded after bumping the counters. The WhatsApp inbox has
+    // to show the conversation, so the inbound is now stored as a Message row
+    // on the contact thread too - a created message.
+    expect(result.messagesCreated).toBe(1);
 
     // The contact row was created
     const contact = await withRlsContext(
@@ -280,14 +284,38 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
       async (tx) =>
         tx.whatsappUnknownContact.findUnique({
           where: { phoneE164: unknownPhone },
-          select: { status: true, firstMessageBody: true, messageCount: true },
+          select: { id: true, status: true, firstMessageBody: true, messageCount: true },
         }),
     );
     expect(contact?.status).toBe('PENDING');
     expect(contact?.firstMessageBody).toBe('is this available?');
     expect(contact?.messageCount).toBe(1);
 
+    // The message itself is now on the contact thread, readable by the inbox.
+    // Scoped to THIS run's externalId: the test DB is not reset between runs,
+    // so the thread accumulates rows and a bare count would drift.
+    const stored = await withRlsContext(
+      runtimePrisma as unknown as PrismaClient,
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      async (tx) =>
+        tx.message.findMany({
+          where: { externalId },
+          select: { contactId: true, direction: true, channel: true, body: true, leadId: true, externalId: true },
+        }),
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.contactId).toBe(contact!.id);
+    expect(stored[0]).toMatchObject({
+      direction: 'IN',
+      channel: 'WHATSAPP',
+      body: 'is this available?',
+      externalId,
+      // A contact thread must never carry a leadId (exactly one thread per row).
+      leadId: null,
+    });
+
     // A second message from the same number bumps the count
+    const secondExternalId = `wamid.test.${Date.now()}.unknown2`;
     await controller.whatsappInbound({
       object: 'whatsapp_business_account',
       entry: [
@@ -299,7 +327,7 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
                 messages: [
                   {
                     from: unknownPhone,
-                    id: `wamid.test.${Date.now()}.unknown2`,
+                    id: secondExternalId,
                     timestamp: '1700000001',
                     type: 'text',
                     text: { body: 'still there?' },
@@ -323,6 +351,19 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
     expect(updated?.messageCount).toBe(2);
     // firstMessageBody should NOT change on the 2nd+ message
     expect(updated?.firstMessageBody).toBe('is this available?');
+
+    // ...and BOTH messages are on the thread (history, not just a counter).
+    const all = await withRlsContext(
+      runtimePrisma as unknown as PrismaClient,
+      { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      async (tx) =>
+        tx.message.findMany({
+          where: { externalId: { in: [externalId, secondExternalId] } },
+          select: { body: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+    );
+    expect(all.map((m) => m.body)).toEqual(['is this available?', 'still there?']);
   });
 
   it('updates the matching OutboundMessage when a status update arrives', async () => {

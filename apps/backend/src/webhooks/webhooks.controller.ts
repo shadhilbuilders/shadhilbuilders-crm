@@ -204,6 +204,12 @@ export class WebhooksController {
             const r = await this.handleInboundMessage(message);
             if (r === 'deduped') result.deduped += 1;
             else if (r === 'message') result.messagesCreated += 1;
+            // T-WA-INBOX: an unknown number's inbound is now BOTH a triage
+            // contact and a stored message, so it increments both counters.
+            else if (r === 'unknown-contact-message') {
+              result.messagesCreated += 1;
+              result.unknownContactsUpserted += 1;
+            }
             else if (r === 'unknown-contact') result.unknownContactsUpserted += 1;
             else result.ignored += 1;
           } catch (e) {
@@ -283,7 +289,7 @@ export class WebhooksController {
       text?: { body?: string };
       [k: string]: unknown;
     },
-  ): Promise<'message' | 'unknown-contact' | 'deduped' | 'ignored'> {
+  ): Promise<'message' | 'unknown-contact' | 'unknown-contact-message' | 'deduped' | 'ignored'> {
     if (!message.id || !message.from) return 'ignored';
     const externalId = message.id;
     const phoneE164 = toE164(message.from);
@@ -365,20 +371,79 @@ export class WebhooksController {
           : mediaInfo !== null
             ? `📎 ${mediaInfo.type}`
             : '';
-        await tx.whatsappUnknownContact.upsert({
+        // T-WA-INBOX (2026-09-25): store the message itself, not just counters.
+        //
+        // Before this, an unknown number's individual messages were DISCARDED -
+        // the upsert only bumped lastMessageAt/messageCount and kept
+        // firstMessageBody, so a manager could see "5 messages from this
+        // number" and nothing else. The WhatsApp inbox needs the actual
+        // conversation to read and reply to, so the inbound is persisted as a
+        // real Message row (contactId thread; the migration made leadId
+        // nullable and added the exactly-one-thread CHECK).
+        //
+        // The upsert is kept AS WELL: WhatsappUnknownContact.status is what the
+        // existing triage queue (PENDING -> CONVERTED/SPAM) keys on, and
+        // messageCount/lastMessageAt still drive that list's sorting. This is a
+        // superset of the old behaviour, not a replacement.
+        //
+        // Media is stored the same way as the known-lead branch so the inbox
+        // can render inbound attachments for unknown numbers too.
+        const contact = await tx.whatsappUnknownContact.upsert({
           where: { phoneE164 },
           create: {
             phoneE164,
             firstMessageAt: ts,
             lastMessageAt: ts,
             firstMessageBody: body,
+            // messageCount is NOT set here on purpose: the column defaults to
+            // 1 (schema.prisma), which is exactly right for a contact created
+            // by its first inbound. The update branch below increments it.
+            // T-ORG: first sighting assigns the org (the column is the one
+            // intentionally-nullable org column). Without this the contact
+            // thread would be org-less and unreachable by every RLS policy
+            // that compares organizationId to app.user_org_id.
+            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
           },
           update: {
             lastMessageAt: ts,
             messageCount: { increment: 1 },
           },
+          select: { id: true },
         });
-        return 'unknown-contact';
+
+        // Media is stored with the same provider-neutral key + type + filename
+        // shape the known-lead branch uses, so the inbox renders inbound
+        // attachments for unknown numbers identically (images inline,
+        // documents as a download link).
+        let contactMediaKey: string | null = null;
+        let contactMediaType: string | null = null;
+        let contactMediaFilename: string | null = null;
+        if (mediaInfo !== null) {
+          const stored = await this.downloadAndStoreInboundMedia(mediaInfo);
+          if (stored !== null) {
+            contactMediaKey = stored.mediaKey;
+            contactMediaType = stored.mediaType;
+            contactMediaFilename = stored.filename;
+          }
+        }
+        // One placeholder per bound value: the column list has 12 columns, of
+        // which userId is NULL and createdAt is NOW(), leaving 9 bound params.
+        const contactMsgId = `wa_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "Message" (id, "organizationId", "contactId", "userId", direction, channel, body, "externalId", "mediaKey", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
+          contactMsgId,
+          process.env['PUBLIC_ORG_ID'] ?? '',
+          contact.id,
+          body,
+          externalId,
+          contactMediaKey,
+          contactMediaType,
+          contactMediaFilename,
+        );
+        // A stored history row IS a created message. The old contract counted
+        // it 0 because the message was thrown away; keeping that number would
+        // under-report every inbound from a new number.
+        return 'unknown-contact-message';
       },
     );
   }

@@ -28,6 +28,17 @@ export function isAdminClass(role: Role): boolean {
 }
 
 /** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
+/**
+ * T-WA-INBOX (2026-09-25): the WhatsApp chat system is manager-and-above.
+ * Mirrors the RLS policies on Message/OutboundMessage/ChatReadState
+ * (ADMIN/OWNER/MANAGER only for non-lead threads) and the web helper
+ * `canUseWhatsappInbox` in apps/web/src/lib/session.ts. Kept in lockstep on
+ * purpose: if these disagree, the UI offers a surface the API refuses.
+ */
+export function canUseWhatsappInbox(role: Role): boolean {
+  return isAdminClass(role) || role === 'MANAGER';
+}
+
 export function canManageProjectMembers(role: Role): boolean {
   return isAdminClass(role) || role === 'MANAGER';
 }

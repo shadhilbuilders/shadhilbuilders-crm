@@ -39,7 +39,12 @@ export type WebhookEventRow = z.infer<typeof WebhookEventRowSchema>;
 /** GET /api/integrations/whatsapp-delivery row. */
 export const WhatsAppDeliveryRowSchema = z.object({
   id: z.string(),
-  leadId: z.string(),
+  // T-WA-INBOX (2026-09-25): an outbound row targets a Lead OR a
+  // WhatsappUnknownContact. leadId is null for a contact thread; leadName
+  // then falls back to the contact's phone number (an unresolved number has
+  // no name to show).
+  leadId: z.string().nullable(),
+  contactId: z.string().nullable(),
   leadName: z.string(),
   sendType: z.string(), // OutboundSendType
   templateName: z.string().nullable(),

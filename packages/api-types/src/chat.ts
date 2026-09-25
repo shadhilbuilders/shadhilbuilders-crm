@@ -55,7 +55,11 @@ export type MessageFilterDto = z.infer<typeof MessageFilterDtoSchema>;
  */
 export const MessageEventSchema = z.object({
   id: z.string().cuid2(),
-  leadId: z.string().cuid2(),
+  // T-WA-INBOX (2026-09-25): exactly one thread is set. A message on a
+  // known customer carries leadId; one on a not-yet-converted number
+  // carries contactId. The chat pane renders both identically.
+  leadId: z.string().cuid2().nullable(),
+  contactId: z.string().nullable(),
   direction: MessageDirectionSchema,
   channel: MessageChannelSchema,
   kind: MessageKindSchema.optional(),
@@ -73,3 +77,116 @@ export const MessageEventSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
 });
 export type MessageEvent = z.infer<typeof MessageEventSchema>;
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// WhatsApp inbox (T-WA-INBOX, 2026-09-25)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// The inbox lists EVERY WhatsApp thread for a manager/admin/owner: known-lead
+// threads and not-yet-converted numbers, side by side, so staff can read and
+// reply from one chat window. A thread is identified by a `threadKey` rather
+// than a lead id, because half the threads have no lead.
+
+/** Which kind of thread a row/selection refers to. */
+export const ChatThreadKindSchema = z.enum(['LEAD', 'CONTACT']);
+export type ChatThreadKind = z.infer<typeof ChatThreadKindSchema>;
+
+/**
+ * GET /api/chat/conversations row - one WhatsApp conversation.
+ *
+ * `displayName` already encodes the product rule: a number that IS linked to a
+ * lead shows the lead's name (with the number secondary); a number that is NOT
+ * in the lead records shows the number alone.
+ */
+export const ChatConversationRowSchema = z.object({
+  threadKind: ChatThreadKindSchema,
+  /** The leadId or contactId - identifies the thread to open. */
+  threadId: z.string(),
+  /** Stable composite key for React lists: `LEAD:<id>` / `CONTACT:<id>`. */
+  threadKey: z.string(),
+  /** Lead name when the number is linked to a lead, else the phone number. */
+  displayName: z.string(),
+  /** Always the E.164 phone, shown as a subtitle in the list. */
+  phoneE164: z.string(),
+  /** Set when this contact thread is already linked to a lead by phone. */
+  linkedLeadId: z.string().nullable(),
+  /** Project name for a lead thread; null for a contact thread. */
+  projectName: z.string().nullable(),
+  /** Last message body ('' when the last item was media-only). */
+  lastMessageBody: z.string(),
+  /** IN = the customer spoke last, OUT = we spoke last. */
+  lastMessageDirection: MessageDirectionSchema,
+  /** When the last message landed - drives list ordering. */
+  lastMessageAt: z.string().datetime({ offset: true }),
+  /**
+   * Most recent INBOUND timestamp. Null when the customer has never written.
+   * Drives the 24h WhatsApp reply-window indicator: Meta only accepts a
+   * freeform reply within 24h of this, and outside it a send would fail.
+   */
+  lastInboundAt: z.string().datetime({ offset: true }).nullable(),
+  /** Unread for the REQUESTING user only (per-user read state). */
+  unreadCount: z.number().int().min(0),
+});
+export type ChatConversationRow = z.infer<typeof ChatConversationRowSchema>;
+
+/** GET /api/chat/conversations filter (server-side, per the repo convention).
+ *
+ *  limit/offset use z.coerce because QUERY STRINGS always arrive as strings -
+ *  a plain z.number() rejects "50" with "expected number, received string",
+ *  which 400s every request that passes a limit. That is exactly what the
+ *  inbox page did (it always sends limit=50), so the list rendered empty while
+ *  the endpoint looked healthy when called with no params.
+ */
+export const ChatConversationsQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  /** Narrow to one thread kind. Omitted = both. */
+  kind: ChatThreadKindSchema.optional(),
+  /** Unread-only view.
+   *
+   *  NOT z.coerce.boolean(): Boolean("false") is true, so `?unreadOnly=false`
+   *  would silently mean "unread only" - the opposite of what the caller
+   *  asked for. Accept the two literal strings (and a real boolean for
+   *  direct/in-process callers) and reject anything else.
+   */
+  unreadOnly: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .transform((v) => v === true || v === 'true')
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type ChatConversationsQuery = z.infer<typeof ChatConversationsQuerySchema>;
+
+export const ChatConversationsResultSchema = z.object({
+  rows: z.array(ChatConversationRowSchema),
+  total: z.number().int().min(0),
+  /** Total unread across ALL threads for this user (drives the nav badge). */
+  totalUnread: z.number().int().min(0),
+});
+export type ChatConversationsResult = z.infer<typeof ChatConversationsResultSchema>;
+
+/**
+ * POST /api/chat/send for a CONTACT thread. Mirrors SendMessageDto but
+ * identifies the thread by contactId instead of leadId.
+ */
+export const SendContactMessageDtoSchema = z.object({
+  contactId: z.string().min(1).max(60),
+  body: z.string().trim().min(1).max(4000),
+  mediaKey: z.string().min(1).max(500).optional(),
+  mediaMimeType: z.string().min(1).max(120).optional(),
+  mediaFilename: z.string().min(1).max(255).optional(),
+});
+export type SendContactMessageDto = z.infer<typeof SendContactMessageDtoSchema>;
+
+/** POST /api/chat/read - mark a thread read up to now for the current user. */
+export const MarkChatReadDtoSchema = z
+  .object({
+    leadId: z.string().cuid2().optional(),
+    contactId: z.string().min(1).max(60).optional(),
+  })
+  .refine(
+    (v) => (v.leadId === undefined) !== (v.contactId === undefined),
+    { message: 'Provide exactly one of leadId or contactId' },
+  );
+export type MarkChatReadDto = z.infer<typeof MarkChatReadDtoSchema>;
