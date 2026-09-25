@@ -18,10 +18,18 @@
 //     Module not found: Can't resolve '@shadhil/auth/auth-client'
 //
 // This test:
-//   1. Pre-flight: skips (with a clear message) if zombie tsc-watch
+//   1. Pre-flight: skips (with a clear message) if ZOMBIE tsc-watch
 //      processes are detected, because in that state the build IS
 //      expected to fail. The fix is `pkill -f 'tsc.*--watch'` or
 //      reattaching to the dev shell and Ctrl-C'ing the watch.
+//
+//      A zombie is an ORPHANED watch (its launching `pnpm dev` is gone).
+//      A watch that is a live child of a running `pnpm run dev` is the
+//      NORMAL dev state, not a fault: killing it breaks the developer's
+//      server, and `clean` + rebuild is exactly what that watch is meant
+//      to survive. Earlier revisions matched on the command line alone,
+//      so a running `pnpm dev` made this test fail spuriously. See
+//      isZombieWatch() below.
 //   2. Runs the full prebuild chain sequence (clean all 3 + build all 3)
 //      via execSync from the repo root, exactly as `pnpm --filter
 //      @shadhil/web build` invokes it.
@@ -63,26 +71,82 @@ function run(cmd: string, cwd: string = REPO_ROOT): string {
   });
 }
 
-function countZombieWatchProcesses(): string[] {
+/** pid -> parent pid, for every live process. */
+function processTable(): Map<number, number> {
+  const parents = new Map<number, number>();
   try {
-    const out = run('ps -eo pid,comm,args', '/tmp');
-    return out
-      .split('\n')
-      .filter((line) => /tsc.*tsconfig\.build\.json.*--watch/.test(line))
-      .map((line) => line.trim());
+    const out = run('ps -eo pid,ppid', '/tmp');
+    for (const line of out.split('\n').slice(1)) {
+      const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+      if (Number.isFinite(pid) && Number.isFinite(ppid)) parents.set(pid, ppid);
+    }
   } catch {
-    return [];
+    /* no ps -> treat as no processes known */
   }
+  return parents;
+}
+
+/** True when a live ancestor is a `pnpm ... dev` process, i.e. the watch
+ *  belongs to a developer's running dev server rather than being leaked. */
+function hasLiveDevAncestor(pid: number, parents: Map<number, number>): boolean {
+  let current = parents.get(pid);
+  const seen = new Set<number>([pid]);
+  while (current !== undefined && current > 1 && !seen.has(current)) {
+    seen.add(current);
+    let args = '';
+    try {
+      args = run(`ps -o args= -p ${current}`, '/tmp');
+    } catch {
+      return false; // ancestor vanished mid-walk -> not a live dev ancestor
+    }
+    if (/pnpm(\s|$)[^\n]*\bdev\b/.test(args)) return true;
+    current = parents.get(current);
+  }
+  return false;
+}
+
+/** All tsc-watch processes, partitioned into leaked vs dev-owned. */
+function classifyWatchProcesses(): {
+  leaked: string[];
+  devOwned: string[];
+} {
+  const leaked: string[] = [];
+  const devOwned: string[] = [];
+  try {
+    const parents = processTable();
+    const out = run('ps -eo pid=,args=', '/tmp');
+    for (const line of out.split('\n')) {
+      const match = line.trim().match(/^(\d+)\s+(.*)$/);
+      if (!match) continue;
+      const pid = Number(match[1]);
+      const args = match[2];
+      if (!/tsc.*tsconfig\.build\.json.*--watch/.test(args)) continue;
+      (hasLiveDevAncestor(pid, parents) ? devOwned : leaked).push(
+        line.trim(),
+      );
+    }
+  } catch {
+    /* no ps -> nothing known */
+  }
+  return { leaked, devOwned };
 }
 
 describe('@shadhil/auth - prebuild chain emits all source files', () => {
-  let zombies: string[];
+  let leaked: string[];
+  let devOwned: string[];
+  // Only true once the destructive body (clean + rebuild) has actually run.
+  // afterAll must NOT delete dist/ on a skipped run: dist/ is what a running
+  // dev server serves, and wiping it there is the very outage this test is
+  // supposed to prevent.
+  let ranBuildChain = false;
 
   beforeAll(() => {
-    zombies = countZombieWatchProcesses();
+    ({ leaked, devOwned } = classifyWatchProcesses());
   });
 
   afterAll(() => {
+    // Nothing to undo when the destructive body never ran.
+    if (!ranBuildChain) return;
     // Leave the package in the same state we found it. The prebuild
     // chain leaves dist/ populated (database/auth/api-types all have
     // fresh dists); we just need to not leak stale tsbuildinfo or
@@ -92,19 +156,38 @@ describe('@shadhil/auth - prebuild chain emits all source files', () => {
     if (existsSync(buildinfo)) rmSync(buildinfo);
   });
 
-  it('emits all 6 source .js files to dist/ after the prebuild chain', () => {
-    if (zombies.length > 0) {
+  it('emits all 6 source .js files to dist/ after the prebuild chain', (ctx) => {
+    if (leaked.length > 0) {
       // Don't fail the test - fail the OPERATOR. The build is correctly
       // expected to fail in this state. Surface the issue clearly.
       throw new Error(
-        `Zombie tsc --watch process(es) detected (${zombies.length}).\n` +
-          `The prebuild chain's clean step is racing with these watch\n` +
-          `processes and will leave dist/ in a broken state. Fix:\n` +
-          `  pkill -f 'tsc.*tsconfig.build.json.*--watch'\n` +
-          `or reattach to the dev shell and Ctrl-C the watch.\n\n` +
-          zombies.join('\n'),
+        `Leaked tsc --watch process(es) detected (${leaked.length}) -\n` +
+          `no live \`pnpm dev\` owns them. Their in-memory tsbuildinfo\n` +
+          `will outlive the prebuild's clean step and leave dist/\n` +
+          `broken. Fix:\n` +
+          `  pkill -f 'tsc.*tsconfig.build.json.*--watch'\n\n` +
+          leaked.join('\n'),
       );
     }
+
+    if (devOwned.length > 0) {
+      // A running dev server owns these watches. That is a normal state,
+      // NOT a fault - but this test is DESTRUCTIVE (it cleans and
+      // rebuilds the very dists the dev server is serving, then removes
+      // auth-client/dist in afterAll). Running it here would disrupt the
+      // developer's session for no benefit, so skip rather than fail.
+      // Run this test with `pnpm dev` stopped to get real coverage.
+      ctx.skip(
+        `Skipped: a live \`pnpm dev\` owns ${devOwned.length} tsc --watch\n` +
+          `process(es). This test cleans + rebuilds their dists, so it\n` +
+          `cannot run safely alongside a dev server. Stop \`pnpm dev\`\n` +
+          `and re-run for real coverage.\n\n` +
+          devOwned.join('\n'),
+      );
+      return;
+    }
+
+    ranBuildChain = true;
 
     // Step 1: clean all 3 packages (the exact prebuild invocation).
     run(
