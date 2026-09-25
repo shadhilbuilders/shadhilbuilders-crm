@@ -190,7 +190,10 @@ export const LeadDetailSchema = z.object({
   coOwnerId: z.string().cuid2().nullable(),
   coOwnerName: z.string().nullable(),
   teamId: z.string(),
-  projectId: z.string().nullable(),
+  // T-LEAD-PROJECT-REQUIRED: Lead.projectId is NOT NULL, so a lead detail
+  // can never carry a null project. Typing this nullable made every consumer
+  // handle a case the database cannot produce.
+  projectId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

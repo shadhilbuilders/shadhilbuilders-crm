@@ -79,7 +79,10 @@ export class PublicLeadsService {
     // Resolve the org: prefer the landing-supplied slug, else PUBLIC_ORG_ID.
     const orgId = await this.resolveOrgId(dto.orgSlug);
     // Resolve the project: prefer the landing-supplied slug, else the
-    // configured fallback project. projectId is optional on Lead (nullable).
+    // configured fallback project. `Lead.projectId` is NOT NULL
+    // (T-LEAD-PROJECT-REQUIRED) and resolveProjectId() is typed
+    // `Promise<string>` - it throws on every failure branch rather than
+    // returning null - so this is always a real project id.
     const projectId = await this.resolveProjectId(dto.projectSlug, orgId);
 
     // Validate an optional caller-supplied owner against the resolved org.
@@ -114,7 +117,7 @@ export class PublicLeadsService {
       phone: dto.phone,
       email: dto.email || undefined,
       source: 'LANDING', // forced - analytics + routing must be correct
-      projectId: projectId ?? undefined,
+      projectId,
       notes: notes || undefined,
       // Validated owner override threaded into the DTO. The lead service
       // bypasses the engine only when this is present (internal field).
