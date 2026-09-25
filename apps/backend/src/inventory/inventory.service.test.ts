@@ -329,6 +329,84 @@ describe('list - unit ordering (HOLD first, then AVAILABLE, then SOLD)', () => {
   });
 });
 
+// ─── search by villa number (T-INV-SEARCH) ───────────────────────────
+describe('list - search by villa number', () => {
+  it('passes a case-insensitive contains on unitNumber to BOTH queries', async () => {
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValueOnce([]);
+    client.unit.count.mockResolvedValue(0);
+
+    await service.list(makeActor(), { search: 'b-2', limit: 10, offset: 0 });
+
+    const keyCall = client.unit.findMany.mock.calls[0]![0]!;
+    expect(keyCall.where.OR).toEqual([
+      { unitNumber: { contains: 'b-2', mode: 'insensitive' } },
+    ]);
+    // The count must carry the SAME filter, or the pagination total would
+    // advertise rows the grid cannot show.
+    const countCall = client.unit.count.mock.calls[0]![0]!;
+    expect(countCall.where.OR).toEqual([
+      { unitNumber: { contains: 'b-2', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('combines search with the other filters instead of replacing them', async () => {
+    // The `OR` key is the classic collision point: users.service.ts carries a
+    // warning because its search block re-assigned an `OR` that already held
+    // the project scope, silently dropping it. Here the project filter nests
+    // under `phase`, so both must survive.
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValueOnce([]);
+    client.unit.count.mockResolvedValue(0);
+
+    await service.list(makeActor(), {
+      projectId: 'oe6g1xkagiisnn4oeefpdyhk',
+      status: 'AVAILABLE',
+      search: 'A-1',
+      limit: 10,
+      offset: 0,
+    });
+
+    const where = client.unit.findMany.mock.calls[0]![0]!.where;
+    expect(where).toMatchObject({
+      phase: { projectId: 'oe6g1xkagiisnn4oeefpdyhk' },
+      status: 'AVAILABLE',
+      OR: [{ unitNumber: { contains: 'A-1', mode: 'insensitive' } }],
+    });
+  });
+
+  it('omits the OR clause entirely when no search is given', async () => {
+    // An empty search must not degrade into "match everything" via an empty
+    // OR array, and must not add dead SQL to every unfiltered page load.
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValueOnce([]);
+    client.unit.count.mockResolvedValue(0);
+
+    await service.list(makeActor(), { limit: 10, offset: 0 });
+
+    const where = client.unit.findMany.mock.calls[0]![0]!.where;
+    expect(where.OR).toBeUndefined();
+  });
+
+  it('keeps the status ranking on a searched page (search does not bypass T-INV-SORT)', async () => {
+    const { service, client } = makeService();
+    client.unit.findMany
+      .mockResolvedValueOnce([
+        keyRow('u-sold', 'SOLD', 'phase-1', 'A-101'),
+        keyRow('u-hold', 'HOLD', 'phase-1', 'A-102'),
+        keyRow('u-avail', 'AVAILABLE', 'phase-1', 'A-103'),
+      ])
+      .mockImplementationOnce(async (args: { where: { id: { in: string[] } } }) =>
+        args.where.id.in.map((id) => pageRow(id, id === 'u-hold' ? 'HOLD' : id === 'u-sold' ? 'SOLD' : 'AVAILABLE')),
+      );
+    client.unit.count.mockResolvedValue(3);
+
+    const result = await service.list(makeActor(), { search: 'A-1', limit: 50, offset: 0 });
+
+    expect(result.rows.map((r) => r.status)).toEqual(['HOLD', 'AVAILABLE', 'SOLD']);
+  });
+});
+
 // ─── findOne - detail ────────────────────────────────────────────────
 
 describe('findOne - unit detail', () => {

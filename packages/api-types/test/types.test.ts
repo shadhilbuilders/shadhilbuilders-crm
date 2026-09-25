@@ -559,6 +559,29 @@ describe('@shadhil/api-types - inventory DTOs', () => {
     expect(r.status).toEqual(['AVAILABLE', 'HOLD']);
   });
 
+  it('T-INV-SEARCH: UnitFilterDto accepts a villa-number search', () => {
+    const r = UnitFilterDtoSchema.parse({ search: 'A-103' });
+    expect(r.search).toBe('A-103');
+  });
+
+  it('T-INV-SEARCH: UnitFilterDto trims the search', () => {
+    const r = UnitFilterDtoSchema.parse({ search: '  b-2  ' });
+    expect(r.search).toBe('b-2');
+  });
+
+  it('T-INV-SEARCH: UnitFilterDto rejects an empty-string search', () => {
+    // min(1) after trim: an empty search must be a 400, not a filter that
+    // silently matches every row (the UI omits the param instead, at <2 chars).
+    expect(() => UnitFilterDtoSchema.parse({ search: '' })).toThrow();
+    expect(() => UnitFilterDtoSchema.parse({ search: '   ' })).toThrow();
+  });
+
+  it('T-INV-SEARCH: UnitFilterDto rejects an over-long search', () => {
+    expect(() =>
+      UnitFilterDtoSchema.parse({ search: 'x'.repeat(121) }),
+    ).toThrow();
+  });
+
   it('UnitFilterDto rejects a non-cuid2 project id', () => {
     // cuid2-only contract (2026-09-11): slug/readable seed ids were purged,
     // so a non-cuid2 projectId is a 400, not silently accepted.

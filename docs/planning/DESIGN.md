@@ -29,7 +29,7 @@ behind any decision.
 | 1 | **Lead Inbox** | Sortable/filterable list, assign/reassign, bulk actions, status filters | Telecaller, Manager, Sales Exec | Lead |
 | 2 | **Lead Detail** | Single lead view: contact, timeline, notes, status, next action, embedded chat pane, site visit widget, booking panel | All | Lead, Activity, SiteVisit, Message, Booking |
 | 3 | **Site Visit Scheduler** | Calendar slots for sites, agent availability, confirmations, no-show/reschedule outcomes | Manager, Sales Exec | SiteVisit, Lead, User |
-| 4 | **Inventory / Unit availability** | Villa grid (project/phase/BHK/facing/price/status), listed on-hold first, then available, then token/sold - ranked by the server so the order holds across pages | Manager, Sales Exec, Admin | Unit, Project, Booking |
+| 4 | **Inventory / Unit availability** | Villa grid (project/phase/BHK/facing/price/status) with **search by villa number**, listed on-hold first, then available, then token/sold - ranking and search both applied by the server so they hold across pages | Manager, Sales Exec, Admin | Unit, Project, Booking |
 | 5 | **In-app Chat** | Per-lead chat pane. All customer messages flow through here. Manager reads threads live. SSE realtime updates. | All | Message, Lead |
 | 6 | **Booking Pipeline (thin slice)** | Unit hold → token receipt capture → admin/owner approval. NOT agreement generation (deferred to v1.1). | Manager, Sales Exec | Booking, Lead, Unit |
 | 7 | **Reminders** | Automated reminders: pre-visit staff, pre-visit customer, reschedule follow-up, no-show. In-app banner + push + email fallback. | All | Reminder, SiteVisit, Lead |

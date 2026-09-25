@@ -76,6 +76,8 @@ export type InventoryFilter = {
   bhk?: number;
   facing?: string;
   status?: string[];
+  /** T-INV-SEARCH: villa-number search, server-side. */
+  search?: string;
   limit?: number;
   offset?: number;
 };
@@ -90,6 +92,7 @@ export function useInventoryUnits(filter: InventoryFilter = {}) {
           phaseId: filter.phaseId,
           bhk: filter.bhk,
           facing: filter.facing,
+          search: filter.search,
           status: filter.status?.join(','),
           limit: filter.limit,
           offset: filter.offset,
@@ -114,6 +117,7 @@ export function useInventoryUnitsEnvelope(filter: InventoryFilter = {}): number 
           phaseId: filter.phaseId,
           bhk: filter.bhk,
           facing: filter.facing,
+          search: filter.search,
           status: filter.status?.join(','),
           limit: filter.limit,
           offset: filter.offset,

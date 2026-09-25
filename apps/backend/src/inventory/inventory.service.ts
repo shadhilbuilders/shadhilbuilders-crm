@@ -92,6 +92,20 @@ export class InventoryService {
             ? { in: dto.status }
             : dto.status;
         }
+        // T-INV-SEARCH: match the villa number, case-insensitively. The villa
+        // number is the identifier staff read off a booking sheet or a
+        // brochure, so this is the one field that needs free-text lookup.
+        //
+        // `OR` is a top-level key here and nothing else in this `where`
+        // claims it (the project filter nests under `phase`), so there is no
+        // risk of one clause overwriting another - the trap users.service.ts
+        // carries a warning about, where the search block re-assigned an `OR`
+        // that already held the project scope.
+        if (dto.search !== undefined && dto.search.length > 0) {
+          where['OR'] = [
+            { unitNumber: { contains: dto.search, mode: 'insensitive' } },
+          ];
+        }
 
         // T-INV-SORT: on-hold first, then available, then the rest.
         //

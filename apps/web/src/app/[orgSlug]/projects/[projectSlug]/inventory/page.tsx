@@ -16,6 +16,7 @@ import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
+import { useDebouncedValue } from '@paalstack/react-hooks';
 import { z } from 'zod';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -99,6 +100,14 @@ export default function InventoryPage() {
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
   const [bhkFilter, setBhkFilter] = useState<string>('ALL');
   const [facingFilter, setFacingFilter] = useState<string>('ALL');
+  // T-INV-SEARCH: villa-number search. Same contract as the leads/users grids
+  // (`admin/users`, `UserLeadsCard`): debounce 300ms so typing does not fire a
+  // request per keystroke, and require >= 2 chars so a single character does
+  // not query the whole project.
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const serverSearch =
+    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
@@ -114,6 +123,7 @@ export default function InventoryPage() {
     bhk: bhkFilter !== 'ALL' ? Number(bhkFilter) : undefined,
     facing: facingFilter !== 'ALL' ? facingFilter : undefined,
     status: statusFilter.length > 0 ? statusFilter : undefined,
+    search: serverSearch,
     limit: pageSize,
     offset: (page - 1) * pageSize,
   } as const;
@@ -139,7 +149,8 @@ export default function InventoryPage() {
     statusFilter.length > 0 ||
     phaseFilter !== 'ALL' ||
     bhkFilter !== 'ALL' ||
-    facingFilter !== 'ALL';
+    facingFilter !== 'ALL' ||
+    serverSearch !== undefined;
 
   const statusOptions = useMemo(
     () =>
@@ -325,6 +336,33 @@ export default function InventoryPage() {
         <DataTable
           columns={columns}
           rows={rows}
+          // Search is SERVER-side (onSearchValueChange -> API). The DataTable's
+          // built-in client-side global filter is redundant here AND would hide
+          // matches over the already-filtered page - make it a no-op so it
+          // never filters client-side (the backend already returns the
+          // filtered set). Same convention as admin/users.
+          globalFilterFn={() => true}
+          search={{
+            // The library routes a SINGLE accessorKey to
+            // `column.setFilterValue(...)`, which is a TanStack COLUMN filter -
+            // `globalFilterFn` does not govern it, so rows still get trimmed
+            // client-side while the pagination total (from the server) says
+            // otherwise: searching "A" rendered 3 rows with the pager reading
+            // "of 16". Two keys take the `setGlobalFilter` branch instead,
+            // which is what makes `globalFilterFn={() => true}` effective.
+            // `unitNumber` is listed twice deliberately: search is on the
+            // villa number ONLY, and naming a second real column
+            // (`phaseName`/`projectName` are on the row) would widen the
+            // client filter beyond what the server searched.
+            accessorKey: ['unitNumber', 'unitNumber'],
+            placeholder: 'Search by villa...',
+            searchValue: search,
+            onSearchValueChange: (next: string) => {
+              setSearch(next);
+              setPage(1);
+            },
+            className: 'mr-2',
+          }}
           toolbarRightSideContainerClassName='flex-1 justify-start'
           toolbarLeftSideContent={
             <div className="flex flex-wrap flex-1 items-center gap-2">
@@ -393,10 +431,14 @@ export default function InventoryPage() {
             isFiltered ? (
               <div className="rounded-lg p-10 text-center space-y-1">
                 <TypographyP className="text-xl font-medium">
-                  No units match these filters.
+                  {serverSearch !== undefined
+                    ? `No villa matches "${serverSearch}".`
+                    : 'No units match these filters.'}
                 </TypographyP>
                 <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
-                  Try clearing a filter.
+                  {serverSearch !== undefined
+                    ? 'Check the villa number, or clear the search.'
+                    : 'Try clearing a filter.'}
                 </TypographyP>
               </div>
             ) : (

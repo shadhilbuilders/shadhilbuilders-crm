@@ -122,6 +122,13 @@ export class InventoryController {
       bhk,
       facing: typeof query['facing'] === 'string' ? query['facing'] : undefined,
       status,
+      // T-INV-SEARCH: forwarded explicitly - this controller builds the DTO
+      // from a hand-picked candidate object, so a field the DTO accepts but
+      // this line omits would be silently dropped (the grid would render the
+      // unfiltered set with no error, the same failure mode as a misnamed
+      // query param).
+      search:
+        typeof query['search'] === 'string' ? query['search'] : undefined,
       limit,
       offset,
     };

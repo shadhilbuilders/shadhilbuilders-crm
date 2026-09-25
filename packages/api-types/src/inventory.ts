@@ -59,6 +59,14 @@ export const UnitFilterDtoSchema = z.object({
   status: z
     .union([UnitStatusSchema, z.array(UnitStatusSchema)])
     .optional(),
+  /**
+   * T-INV-SEARCH (2026-09-25): free-text search over the villa NUMBER.
+   * Matches the grid's "Search by villa" input. Server-side (the grid is
+   * paginated), and >= 2 chars is enforced by the UI, per the repo contract
+   * in leads/users (`useDebouncedValue` + a minimum length so a single
+   * keystroke does not fire a request).
+   */
+  search: z.string().trim().min(1).max(120).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
