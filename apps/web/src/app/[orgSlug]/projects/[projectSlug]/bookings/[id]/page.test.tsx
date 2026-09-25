@@ -24,12 +24,13 @@ vi.mock('@/hooks/queries/crm', () => ({
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: vi.fn(() => ({
-    user: { id: 'u1', role: 'MANAGER', name: 'Mgr', email: 'm@x' },
+    user: { id: 'u1', role: 'ADMIN', name: 'Admin', email: 'a@x' },
     isPending: false,
   })),
-  canApproveBookings: vi.fn((role: string | undefined) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
-  ),
+  // Mirrors the REAL helpers so the page's gating is actually exercised.
+  // MANAGER was revoked from approval 2026-09-24; keeping it in this mock would
+  // hide a regression in the page's use of the helper.
+  canApproveBookings: vi.fn((role: string | undefined) => role === 'ADMIN' || role === 'OWNER'),
   // T-BOOK-ROLES: mirrors the real helper (DESIGN.md §4 "Initiate booking").
   // A partial mock here would make `canInitiate` undefined and silently drop
   // the TOKEN action from every case.
@@ -40,11 +41,21 @@ vi.mock('@/lib/session', () => ({
 
 import BookingDetailPage from './page';
 import { useBooking } from '@/hooks/queries/crm';
+import { useSessionUser } from '@/lib/session';
 
 const mockedUseBooking = vi.mocked(useBooking);
 
+const DEFAULT_USER = { id: 'u1', role: 'ADMIN', name: 'Admin', email: 'a@x' };
+
 afterEach(() => {
   vi.clearAllMocks();
+  // `clearAllMocks` clears calls but NOT implementations, so a test that swapped
+  // the session role (e.g. the MANAGER approval-hiding cases) would otherwise
+  // leak into every later test in this file. Restore the default explicitly.
+  vi.mocked(useSessionUser).mockReturnValue({
+    user: DEFAULT_USER,
+    isPending: false,
+  } as never);
 });
 
 describe('BookingDetailPage - wire-shape contract (T-BOOK)', () => {
@@ -139,7 +150,7 @@ describe('BookingDetailPage - wire-shape contract (T-BOOK)', () => {
     expect(html).toContain('Priya Sharma');
   });
 
-  it('offers APPROVED/REJECTED/CANCELLED for a TOKEN booking to a manager', () => {
+  it('offers APPROVED/REJECTED/CANCELLED for a TOKEN booking to an admin', () => {
     mockedUseBooking.mockReturnValue({
       data: {
         id: 'b-1',
@@ -164,6 +175,73 @@ describe('BookingDetailPage - wire-shape contract (T-BOOK)', () => {
     expect(html).toMatch(/data-qa="booking-to-APPROVED"/);
     expect(html).toMatch(/data-qa="booking-to-REJECTED"/);
     expect(html).toMatch(/data-qa="booking-to-CANCELLED"/);
+  });
+
+  // ── Approval is ADMIN/OWNER only (owner decision, 2026-09-24) ────────────
+  // The Actions card must hide the approval controls from a MANAGER while
+  // keeping the non-approval actions that role still legitimately holds. This is
+  // the "hide from non-admin members" requirement, pinned at the UI layer.
+  it('a MANAGER sees no Approve/Reject on a TOKEN booking, but keeps Cancel', () => {
+    vi.mocked(useSessionUser).mockReturnValue({
+      user: { id: 'u1', role: 'MANAGER', name: 'Mgr', email: 'm@x' },
+      isPending: false,
+    } as never);
+    mockedUseBooking.mockReturnValue({
+      data: {
+        id: 'b-1',
+        leadId: 'lead-1',
+        leadName: 'Priya Sharma',
+        unitId: 'unit-1',
+        userId: 'u-1',
+        userName: 'Sales Exec',
+        amount: '7500000',
+        tokenAmount: '500000',
+        status: 'TOKEN',
+        approvedById: null,
+        approvedByName: null,
+        createdAt: '2026-09-04T08:30:00Z',
+        updatedAt: '2026-09-04T08:30:00Z',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingDetailPage />);
+    // The approval decision is NOT offered.
+    expect(html).not.toMatch(/data-qa="booking-to-APPROVED"/);
+    expect(html).not.toMatch(/data-qa="booking-to-REJECTED"/);
+    // Cancel is not an approval and must survive (the owner scoped the hide to
+    // approval controls only - hiding the whole card would strand Cancel).
+    expect(html).toMatch(/data-qa="booking-to-CANCELLED"/);
+  });
+
+  it('a MANAGER still sees the initiate (HOLD → TOKEN) action', () => {
+    vi.mocked(useSessionUser).mockReturnValue({
+      user: { id: 'u1', role: 'MANAGER', name: 'Mgr', email: 'm@x' },
+      isPending: false,
+    } as never);
+    mockedUseBooking.mockReturnValue({
+      data: {
+        id: 'b-1',
+        leadId: 'lead-1',
+        leadName: 'Priya Sharma',
+        unitId: 'unit-1',
+        userId: 'u-1',
+        userName: 'Sales Exec',
+        amount: '7500000',
+        tokenAmount: null,
+        status: 'HOLD',
+        approvedById: null,
+        approvedByName: null,
+        createdAt: '2026-09-04T08:30:00Z',
+        updatedAt: '2026-09-04T08:30:00Z',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingDetailPage />);
+    expect(html).toMatch(/data-qa="booking-to-TOKEN"/);
   });
 
   it('renders ModulePending when the query has an error', () => {

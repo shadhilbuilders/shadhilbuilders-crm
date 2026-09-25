@@ -7,16 +7,17 @@
 // page had grown past a reviewable size, and this section is self-contained.
 //
 // VISIBILITY IS THE SERVER'S DECISION, mirrored on the client. The page only
-// renders this card when `canApproveBookings(role)` is true (ADMIN / OWNER /
-// MANAGER), which mirrors the backend gate. A telecaller never sees it, so the
-// queue is not diluted with work that is not theirs.
+// renders this card when `canApproveBookings(role)` is true (ADMIN / OWNER -
+// MANAGER was revoked 2026-09-24), which mirrors the backend gate. A telecaller
+// or manager never sees it, so the queue is not diluted with work that is not
+// theirs.
 //
 // Approval is the one action on the dashboard that genuinely needs a dialog: it
 // has an amount, a reason, and consequences. Rather than flatten it into a
-// queue-row button, the row opens the real BookingApprovalDialog so the manager
-// gets the same confirmation surface the bookings page gives them. This is the
-// deliberate exception to "actions live on the row" - a decision with money on
-// it deserves a confirmation step.
+// queue-row button, the row opens the real BookingApprovalDialog so the
+// approver gets the same confirmation surface the bookings page gives them. This
+// is the deliberate exception to "actions live on the row" - a decision with
+// money on it deserves a confirmation step.
 
 import { Button } from '@paalstack/react-ui';
 

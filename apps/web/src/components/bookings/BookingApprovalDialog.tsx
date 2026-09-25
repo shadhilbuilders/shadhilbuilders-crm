@@ -7,9 +7,10 @@
 // the bookings table, and only when the row happened to be TOKEN. This makes it
 // a first-class row action in the table's Actions menu.
 //
-// Who may approve: MANAGER / ADMIN / OWNER (DESIGN.md §4 "Approve booking";
-// the service gate uses the shared isAdminClass() helper and the page passes
-// `canApproveBookings`). SALES_EXEC initiates but cannot approve.
+// Who may approve: ADMIN / OWNER (DESIGN.md §4 "Approve booking"; the service
+// gate uses the shared isAdminClass() helper and the page passes
+// `canApproveBookings`). MANAGER was revoked 2026-09-24 and SALES_EXEC never
+// could - exec initiates but cannot approve.
 //
 // REJECTED requires a reason here (mirrors the detail page + the audit policy:
 // the reason lands in the AuditLog row). APPROVED does not.

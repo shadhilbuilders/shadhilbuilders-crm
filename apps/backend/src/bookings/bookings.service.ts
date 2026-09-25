@@ -573,12 +573,18 @@ export class BookingsService {
         //
         //   Initiate booking (HOLD → TOKEN):  ADMIN/OWNER/MANAGER/SALES_EXEC
         //     - TELECALLER is excluded (DESIGN.md §4 "Initiate booking" ❌).
-        //   Approve booking (→ APPROVED/REJECTED): MANAGER/ADMIN/OWNER only.
+        //   Approve booking (→ APPROVED/REJECTED): ADMIN/OWNER only.
+        //     - MANAGER was revoked 2026-09-24 (owner decision): approving is an
+        //       admin/owner act, not a manager one. DESIGN.md §4 + the module
+        //       table were updated in the same change (AGENTS.md: the plan is
+        //       the spec, so code and matrix must move together).
         //     - Uses isAdminClass() so OWNER is included: OWNER downcasts to
-        //       ADMIN at the RLS layer, the UI already offers OWNER the
-        //       Approve button (canApproveBookings), and the permission matrix
-        //       grants Super Admin ✅. The old literal role check let an owner
-        //       press Approve and get a 400 saying they are neither.
+        //       ADMIN at the RLS layer, and the permission matrix grants Super
+        //       Admin ✅. An earlier literal `!== 'ADMIN'` check let an owner
+        //       press Approve and get a 400 saying they were neither.
+        //     - RLS is deliberately NOT involved: role rules stay in the service
+        //       (see references/authorization-role-gates.md). booking_write_admin
+        //       already covers ADMIN/OWNER at the row level.
         //
         // The full plan §0.11 approval flow (separate modal + audit reason)
         // ships later; for now the gate lives here, in the same transaction as
@@ -596,11 +602,10 @@ export class BookingsService {
 
         if (
           (dto.toStatus === 'APPROVED' || dto.toStatus === 'REJECTED') &&
-          actor.role !== 'MANAGER' &&
           !isAdminClass(actor.role)
         ) {
           throw new ForbiddenException(
-            `Only MANAGER/ADMIN/OWNER can approve or reject a booking (actor is ${actor.role})`,
+            `Only ADMIN/OWNER can approve or reject a booking (actor is ${actor.role})`,
           );
         }
 

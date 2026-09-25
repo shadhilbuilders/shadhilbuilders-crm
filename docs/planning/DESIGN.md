@@ -16,9 +16,9 @@ behind any decision.
 | Role | Count | What they do | What they cannot do |
 |---|---|---|---|
 | **Admin** | 1 | Manages all user accounts (managers, telecallers, sales executives), sees everything across the system, configures WhatsApp + telephony integrations, manages projects and inventory. | Act on leads directly unless also assigned Sales Executive role. Create other Admin accounts (seeded out-of-band by Shadhil leadership). |
-| **Manager** | 1+ | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / approves bookings. | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
+| **Manager** | 1+ | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / initiates bookings. | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot approve bookings (admin/owner only, 2026-09-24). Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
 | **Telecaller** | N | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that - Model C). |
-| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / Cold." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (manager approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
+| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / Cold." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (admin/owner approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
 
 ---
 
@@ -31,7 +31,7 @@ behind any decision.
 | 3 | **Site Visit Scheduler** | Calendar slots for sites, agent availability, confirmations, no-show/reschedule outcomes | Manager, Sales Exec | SiteVisit, Lead, User |
 | 4 | **Inventory / Unit availability** | Villa grid (project/phase/BHK/facing/price/status) | Manager, Sales Exec, Admin | Unit, Project, Booking |
 | 5 | **In-app Chat** | Per-lead chat pane. All customer messages flow through here. Manager reads threads live. SSE realtime updates. | All | Message, Lead |
-| 6 | **Booking Pipeline (thin slice)** | Unit hold → token receipt capture → manager approval. NOT agreement generation (deferred to v1.1). | Manager, Sales Exec | Booking, Lead, Unit |
+| 6 | **Booking Pipeline (thin slice)** | Unit hold → token receipt capture → admin/owner approval. NOT agreement generation (deferred to v1.1). | Manager, Sales Exec | Booking, Lead, Unit |
 | 7 | **Reminders** | Automated reminders: pre-visit staff, pre-visit customer, reschedule follow-up, no-show. In-app banner + push + email fallback. | All | Reminder, SiteVisit, Lead |
 | 8 | **Audit Log** | Every login, every lead view, every state transition, every message, every call, every consent change. 7-year retention. Writes in v1, full UI in v1.1. | (system writes; Admin reads) | AuditLog |
 | 9 | **Notification Center** | In-app inbox for all events from all 12 triggers. Bell icon + unread badge. Real-time SSE updates. 90-day visibility, 7-year retention. | All | Notification |
@@ -161,7 +161,7 @@ Or, with a no-show:
 | Re-engage after no-show | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
 | Log activity (call, note, WhatsApp) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
 | Initiate booking | ✅ | ✅ (any lead, post-visit) | ✅ (in team, post-visit) | ❌ | ✅ (post-visit only) |
-| Approve booking | ✅ | ✅ | ✅ (in team) | ❌ | ❌ |
+| Approve booking | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Send WhatsApp message to customer | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
 | Read chat on a lead | ✅ | ✅ | ✅ (in team) | ✅ (own leads + shared) | ✅ (own leads + shared) |
 | View reports (own KPIs) | ✅ (org KPIs) | ✅ (org KPIs) | ✅ (team KPIs) | ✅ (own KPIs) | ✅ (own KPIs) |

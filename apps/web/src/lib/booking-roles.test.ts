@@ -19,7 +19,7 @@ import {
 
 // DESIGN.md §4 columns: SuperAdmin | Admin | Manager | Telecaller | SalesExec
 //   Initiate booking: ✅ ✅ ✅(in team) ❌ ✅(post-visit)
-//   Approve booking:  ✅ ✅ ✅(in team) ❌ ❌
+//   Approve booking:  ✅ ✅ ❌ ❌ ❌   <- Manager revoked 2026-09-24 (owner decision)
 const ALL_ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 
 describe('canInitiateBookings (DESIGN.md §4 "Initiate booking")', () => {
@@ -44,10 +44,17 @@ describe('canInitiateBookings (DESIGN.md §4 "Initiate booking")', () => {
 });
 
 describe('canApproveBookings (DESIGN.md §4 "Approve booking")', () => {
-  it('allows SuperAdmin/Admin/Manager', () => {
-    for (const role of ['OWNER', 'ADMIN', 'MANAGER'] as const) {
+  it('allows SuperAdmin/Admin', () => {
+    for (const role of ['OWNER', 'ADMIN'] as const) {
       expect(canApproveBookings(role)).toBe(true);
     }
+  });
+
+  it('refuses MANAGER - approval is an admin/owner act (revoked 2026-09-24)', () => {
+    // Previously true ("in team"). The owner revoked manager approval, so the
+    // UI must not offer Approve/Reject on the detail card, the list row menu,
+    // or the dashboard approvals queue.
+    expect(canApproveBookings('MANAGER')).toBe(false);
   });
 
   it('includes OWNER - the service used to 400 an owner who pressed Approve', () => {
@@ -66,8 +73,15 @@ describe('canApproveBookings (DESIGN.md §4 "Approve booking")', () => {
         expect(canInitiateBookings(role)).toBe(true);
       }
     }
-    // SALES_EXEC initiates but does not approve.
+    // MANAGER and SALES_EXEC initiate but do not approve.
+    expect(canInitiateBookings('MANAGER')).toBe(true);
+    expect(canApproveBookings('MANAGER')).toBe(false);
     expect(canInitiateBookings('SALES_EXEC')).toBe(true);
     expect(canApproveBookings('SALES_EXEC')).toBe(false);
+  });
+
+  it('covers every role in the enum (no accidental default-allow)', () => {
+    const allowed = ALL_ROLES.filter((r) => canApproveBookings(r));
+    expect([...allowed].sort()).toEqual(['ADMIN', 'OWNER']);
   });
 });

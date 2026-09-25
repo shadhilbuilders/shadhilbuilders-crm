@@ -94,9 +94,21 @@ export function canReassign(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';
 }
 
-/** Manager approval queue visibility (bookings). */
+/**
+ * Booking approval is an ADMIN/OWNER act.
+ *
+ * MANAGER was revoked 2026-09-24 (owner decision) - it previously returned
+ * `isAdminLike(role) || role === 'MANAGER'`, per the then-current DESIGN.md §4.
+ * Approving (APPROVED *and* REJECTED - the same decision) now needs admin class.
+ * Mirrors the service gate in BookingsService.transition() exactly, so the UI
+ * never offers a control the API answers 403 for.
+ *
+ * Drives: the booking detail Actions card, the bookings list row menu, and the
+ * dashboard PendingApprovalsCard. Cancel and "Move to Token" are NOT approval
+ * and remain governed by canInitiateBookings / row visibility.
+ */
 export function canApproveBookings(role: Role | undefined): boolean {
-  return isAdminLike(role) || role === 'MANAGER';
+  return isAdminLike(role);
 }
 
 /**

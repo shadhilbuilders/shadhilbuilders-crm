@@ -572,7 +572,7 @@ describe('transition - advance booking state', () => {
     );
   });
 
-  it('TOKEN → APPROVED: only MANAGER/ADMIN, sets approvedById', async () => {
+  it('TOKEN → APPROVED: only ADMIN/OWNER, sets approvedById', async () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
@@ -598,30 +598,30 @@ describe('transition - advance booking state', () => {
       userId: 'tc-1',
       amount: { toString: () => '5000000.00' },
       tokenAmount: { toString: () => '100000.00' },
-      approvedById: 'mgr-1',
+      approvedById: 'admin-1',
       createdAt: new Date(),
       updatedAt: new Date(),
       lead: { name: 'Lead 1' },
       unit: { unitNumber: 'A-101' },
       user: { name: 'TC 1' },
-      approvedBy: { name: 'Mgr 1' },
+      approvedBy: { name: 'Admin 1' },
     });
 
-    const result = await service.transition(makeActor(), 'b-1', {
+    const result = await service.transition(makeActor({ role: 'ADMIN', sub: 'admin-1' }), 'b-1', {
       toStatus: 'APPROVED',
     });
     expect(result.status).toBe('APPROVED');
-    expect(result.approvedById).toBe('mgr-1');
+    expect(result.approvedById).toBe('admin-1');
     expect(client.booking.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ approvedById: 'mgr-1' }),
+        data: expect.objectContaining({ approvedById: 'admin-1' }),
       }),
     );
     // T-INV-SYNC: the unit SOLD transition is applied by the DB trigger.
     expect(client.unit.update).not.toHaveBeenCalled();
   });
 
-  it('TOKEN → APPROVED: rejects TELECALLER (not MANAGER/ADMIN)', async () => {
+  it('TOKEN → APPROVED: rejects TELECALLER (not ADMIN/OWNER)', async () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1',
@@ -646,8 +646,110 @@ describe('transition - advance booking state', () => {
         'b-1',
         { toStatus: 'APPROVED' },
       ),
-    ).rejects.toThrow(/Only MANAGER\/ADMIN\/OWNER can approve/);
+    ).rejects.toThrow(/Only ADMIN\/OWNER can approve/);
     expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  // ── Approval revoked from MANAGER (owner decision, 2026-09-24) ──────────
+  // The gate previously allowed MANAGER (DESIGN.md §4 then said ✅ "in team").
+  // Approval is now ADMIN/OWNER only, so both outcomes must refuse a manager -
+  // APPROVED and REJECTED are the same decision and are gated together.
+  it('TOKEN → APPROVED: rejects MANAGER (approval is ADMIN/OWNER only)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'TOKEN',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), 'b-1', {
+        toStatus: 'APPROVED',
+      }),
+    ).rejects.toThrow(/Only ADMIN\/OWNER can approve/);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('TOKEN → REJECTED: rejects MANAGER (the negative outcome is the same decision)', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'TOKEN',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), 'b-1', {
+        toStatus: 'REJECTED',
+        reason: 'unit not available for the quoted price',
+      } as never),
+    ).rejects.toThrow(/Only ADMIN\/OWNER can approve/);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('HOLD → TOKEN: MANAGER may still initiate (approval revocation must not over-tighten)', async () => {
+    // Guards against over-tightening: revoking approval must NOT revoke the
+    // initiate step, which the matrix still grants Manager.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1',
+      status: 'HOLD',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+    client.booking.update.mockResolvedValue({
+      id: 'b-1',
+      status: 'TOKEN',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      approvedById: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+    });
+
+    const result = await service.transition(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), 'b-1', {
+      toStatus: 'TOKEN',
+    });
+    expect(result.status).toBe('TOKEN');
   });
 
   // ── T-BOOK-ROLES (2026-09-15): the two role-gate defects ────────────────
@@ -1142,7 +1244,12 @@ describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
     });
     client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }]);
 
-    await service.transition(makeActor(), 'b-1', { toStatus: 'APPROVED' });
+    // Approval is ADMIN/OWNER only (2026-09-24); makeActor() defaults to
+    // MANAGER, so this lead-sync assertion must use an admin actor. The test's
+    // subject is the lead.state sync, not the role gate.
+    await service.transition(makeActor({ role: 'ADMIN', sub: 'admin-1' }), 'b-1', {
+      toStatus: 'APPROVED',
+    });
 
     expect(client.lead.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'lead-1' }, data: { state: 'WON' } }),
@@ -1203,7 +1310,9 @@ describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
     // sync must be a complete no-op, not a write.
     client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }, { status: 'CANCELLED' }]);
 
-    await service.transition(makeActor(), 'b-1', { toStatus: 'APPROVED' });
+    await service.transition(makeActor({ role: 'ADMIN', sub: 'admin-1' }), 'b-1', {
+      toStatus: 'APPROVED',
+    });
 
     expect(client.lead.update).not.toHaveBeenCalled();
   });
@@ -1299,8 +1408,11 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
 
   it('rejects REJECTED with no reason', async () => {
     const { service } = makeCancelService('TOKEN');
+    // Rejection is an approval decision -> ADMIN/OWNER (2026-09-24). The
+    // subject here is the reason requirement, which is checked AFTER the role
+    // gate, so the actor must clear the gate for the reason rule to be reached.
     await expect(
-      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', { toStatus: 'REJECTED' } as never),
+      service.transition(makeActor({ role: 'ADMIN' }), 'bk1', { toStatus: 'REJECTED' } as never),
     ).rejects.toThrow(/reason is required/i);
   });
 

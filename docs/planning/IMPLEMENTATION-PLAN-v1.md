@@ -26,7 +26,7 @@ These 11 P1 decisions are baked into this plan with recommended defaults. Overri
 | 0.8 | Model C handoff choreography | Toast on both screens + bell notification + banner on Lead Detail ("You took over from <name>") | Emotional acknowledgment matters |
 | 0.9 | First-time login onboarding | Admin: empty setup; Other roles: 1-screen intro ("Your queue. Tap a lead.") | Admin is configurator; others are operators |
 | 0.10 | Visit-approaching state (T-2h) | Sticky banner: "Visit at <time>, <location>. [Directions] [On my way]" | Increases conversion |
-| 0.11 | Booking approval flow | Manager: full-screen modal (not drawer) for context; Sales exec: drawer for quick approve | Manager needs to see booking details + lead context |
+| 0.11 | Booking approval flow | Admin/Owner: full-screen modal (not drawer) for context (2026-09-24: Manager revoked, and the earlier "Sales exec: drawer for quick approve" was never true - exec initiates, does not approve) | Approver needs to see booking details + lead context |
 
 ---
 
@@ -231,13 +231,13 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
   - Filters: Project, Phase, BHK, Facing, Status
   - Click unit → detail panel with hold + booking flow
 - [ ] Booking pipeline (thin slice):
-  - Stepper: Hold → Token receipt → Manager approval
+  - Stepper: Hold → Token receipt → Admin/Owner approval
   - Token receipt upload (file input → S3-compatible storage)
-  - Manager approval modal (Decision 0.11: full-screen, not drawer)
+  - Admin/Owner approval modal (Decision 0.11: full-screen, not drawer)
 - [ ] Audit log writer: every login, lead view, state transition, message, call, consent change
 - [ ] **Deliverable:** Reminders + Inbox work on web
 
-**Verification:** Schedule visit → T-2h push fires to exec → reminder banner shows on Lead Detail (Decision 0.10). Create booking → manager receives notification → approves → audit log entry.
+**Verification:** Schedule visit → T-2h push fires to exec → reminder banner shows on Lead Detail (Decision 0.10). Create booking → admin/owner receives notification → approves → audit log entry.
 
 ### Phase 6 - Mobile Push + Notifications + Manager Dashboard (Weeks 8–9)
 
@@ -252,7 +252,7 @@ Each phase has a clear deliverable, a checkpoint, and a verification gate.
 - [ ] All 12 push triggers wired (DESIGN.md §10)
 - [ ] Push receipt polling (every 5 min) - update `DELIVERED` / `FAILED` status
 - [ ] Quiet hours logic (22:00–07:00 local) - reminder triggers defer, state-transition triggers fire anyway
-- [ ] Manager handoff flow E2E (manager reviews team pipeline, reassigns, approves)
+- [ ] Manager handoff flow E2E (manager reviews team pipeline, reassigns, initiates bookings)
 - [ ] **Deliverable:** Push + Inbox work on mobile
 
 **Verification:** Trigger event on web → push arrives on phone within 30s. Quiet hours enforced. Receipt confirms delivery.
@@ -478,7 +478,7 @@ From `~/.hermes/skills/devops/paalstack-react-ui/SKILL.md` (the consumer-side Pa
 | Chat pane | `ScrollArea`, `Avatar`, `EmptyState`, `Toast`, custom message bubbles via `Box` |
 | Site Visit Scheduler | `Calendar` (custom from primitives), `Dialog` (reschedule modal), `Badge` |
 | Inventory | `DataTable`, `Card` (unit card on mobile), `MultiSelect` (project/phase/BHK/facing) |
-| Booking Pipeline | `Stepper`, `Form`, `Dialog` (manager approval), `Badge` |
+| Booking Pipeline | `Stepper`, `Form`, `Dialog` (admin/owner approval), `Badge` |
 | Reminders | `Card` (banner), `Switch`, `Select` (timing) |
 | Audit Log | `DataTable`, `DateRangePicker`, filter chips |
 | Notification Center | `DropdownMenu` (bell panel), `DataTable` (full page), `Tabs` (filter), `Badge` (count) |
@@ -1727,7 +1727,7 @@ For each business table (Lead, SiteVisit, Booking, Message, Reminder, Notificati
 | Lead Detail | `apps/web/e2e/leads/detail.spec.ts` | Open lead → all 6 tabs render → send chat message → Message appears in timeline |
 | Site Visit Scheduler | `apps/web/e2e/visits/scheduler.spec.ts` | Open scheduler → pick slot → book → confirmation |
 | Inventory | `apps/web/e2e/inventory.spec.ts` | Open inventory → filter by BHK+facing → click unit → see detail |
-| Booking Pipeline | `apps/web/e2e/booking/pipeline.spec.ts` | Sales exec initiates booking → uploads token receipt → manager approves |
+| Booking Pipeline | `apps/web/e2e/booking/pipeline.spec.ts` | Sales exec initiates booking → uploads token receipt → admin/owner approves |
 | Reminders | `apps/web/e2e/reminders/banner.spec.ts` | T-2h banner appears on Lead Detail → click "On my way" |
 | Audit Log | `apps/web/e2e/audit/log.spec.ts` | Admin opens audit log → filter by user → see latest reassign with reason |
 | Notification Center | `apps/web/e2e/notifications/center.spec.ts` | Trigger notification → bell badge updates → click item → deep-links to entity |
@@ -2201,6 +2201,7 @@ client-locked) → surfaced at gate.
 | 63 | Eng (2026-09-16) | **The lead row-tint tests assert the tier's own classes, not hardcoded Tailwind shades.** `page.test.tsx` reads `LEAD_AGE_TIER_CLASS[tier]` and extracts its `bg-*` utility, plus a new case asserting the three windows produce three DISTINCT backgrounds. | mechanical | P6 | The overdue red was tuned `bg-red-100` -> `bg-red-200` on 2026-09-16, which failed a test that pinned the literal. A test coupled to a design constant breaks on every colour tweak while proving nothing about the tiering it exists to protect. Now the source of truth is the single map, and the new distinctness case catches the failure that actually matters - the staircase collapsing onto one colour (verified: forcing all three tiers to the same class turns it red). | (A) update the literal to `bg-red-200` - rejected, it re-arms the same brittleness for the next tweak; (B) drop the shade assertions entirely - rejected, then nothing proves the tier reaches the row; (C) snapshot the row class - rejected, a snapshot fails on any unrelated class change and invites blind re-recording |
 | 64 | Eng (2026-09-16) | **T-DASH-KPI-COLUMN: the four dashboard counts STACK into a column on a phone and return to four-in-a-row from `sm` (640px), with NOTHING hidden on a card.** `KpiStrip` is `grid-cols-1 sm:grid-cols-4`; the card keeps one stacked shape at every width (label, value, sub-line, filter affordance all visible) and only padding and value type respond. **Supersedes an earlier owner ruling ("keep all four counts on one row at 320px")** - that ruling existed to keep the queue above the fold, and two of its assertions (here plus `dashboard-audit.spec.ts`) were updated rather than deleted. | taste | P1,P3 | Owner direction 2026-09-16, twice refined: "make kpi card rows into column for mobile view" then "don't hide anything for kpi card in mobile, just make it responsiveness". The one-row rule was itself a fix for a CLIPPED label (uppercase + tracking-wide needed four lines in a 66px card), so the cause was the card width, not the row count - stacking removes the cause. Each stacked card is also a full-width 44px tap target, which a 66px column could never be. Cost, measured and accepted: four full cards are ~500px tall, so on a 568px phone the queue now starts BELOW the counts (~712px). The queue was previously at 448px, and the per-role page ORDER (visits-first for a sales exec, queue-first for telecaller/manager) is kept, but a "queue above the fold at 320px" invariant is no longer achievable without hiding part of a card - which was explicitly ruled out. Recorded rather than silently dropped. | (A) keep four-on-one-row and shrink the label - rejected, the owner asked for a column twice and shrinking type trades a clipped word for an unreadable one; (B) stack AND hide the sub-line/affordance on mobile - rejected, that is the exact behaviour the owner told me to stop; (C) add a 480px tier to get 2-up on a phone - rejected after MEASURING it wrong twice: `min-[30rem]:` is an arbitrary-value media query that sorts AFTER the named breakpoints and so beat `sm:grid-cols-4` at 844px (landscape phone + tablet rendered 2-up), and a custom `@theme { --breakpoint-xs }` is emitted at its own position rather than sorted between `base` and `sm`, so it still won at 844px. Dropping the tier removes the trap and still stacks on a portrait phone, which is where stacking was asked for |
 | 65 | Eng (2026-09-16) | **`prettier-plugin-tailwindcss` is now an installed devDependency of `apps/web`.** `pnpm format` and `format:check` had been SILENTLY DOING NOTHING: `apps/web/prettier.config.js` declares `plugins: ['prettier-plugin-tailwindcss']`, the package was neither installed nor in the lockfile, and Prettier errored (`Cannot find package`) while `--check` still exited 0. | mechanical | P1,P5 | A checker that cannot fail is worse than no checker - it reports success while formatting nothing, so every "formatting is clean" signal in this repo was meaningless. Verified the tool is live after installing: an intentionally unformatted file now FAILS `--check` with exit 1 and a clean file passes. Installing it reveals the repo was never formatted with it: 209 files fail the sort-order check, 178 of them untouched by any of this work, which is why I formatted only the files this changeset creates rather than the whole tree. | (A) leave it uninstalled and drop the `plugins` key from the config - rejected, it changes the project's declared formatting intent to match a broken install; (B) install it and reformat all 209 files in this changeset - rejected, it would bury the client-facing dashboard changes under a repo-wide whitespace diff; (C) leave the config as-is - rejected, that is the status quo that silently no-ops |
+| 66 | Eng (2026-09-24) | **Booking approval narrowed to ADMIN/OWNER: MANAGER revoked.** `BookingsService.transition()` drops the `actor.role !== 'MANAGER'` exemption (now `!isAdminClass(actor.role)`), and web `canApproveBookings()` becomes `isAdminLike()` only, so Approve/Reject disappear from the booking detail Actions card, the bookings row menu, and the dashboard approvals queue for non-admins. `DESIGN.md` §3 (Manager/Sales Exec rows), the module-6 row and the §4 matrix were updated in the same change. Cancel and HOLD → TOKEN are untouched. | security | P1,P5 | Owner direction: approving a booking is an admin/owner act, not a manager one - the same class as T-BOOK-ROLES (#43), which had left MANAGER in place because the matrix then said ✅ "in team". AGENTS.md makes the plan the spec, so the code and the matrix had to move together rather than drift. Both outcomes are gated (APPROVED *and* REJECTED - rejecting ends the deal and is the same decision). RLS was deliberately NOT touched: role rules stay in the service (`references/authorization-role-gates.md`), and `booking_write_admin` is already ADMIN-only at the row level. | (A) Widen RLS to carry the role rule - rejected, it would grant cross-team writes and conflate row scope with action permission; (B) hide only the buttons in the detail page - rejected, the list row menu and the dashboard approval queue would still offer a control the API 403s; (C) hide the entire Actions card from non-admins - rejected by the owner as too broad, it would revoke Sales Exec's specified booking initiation and leave nobody but admin/owner able to Cancel; (D) leave the matrix alone and change only the code - rejected, the next reader would re-derive ✅ Manager from the spec |
 
 ## Cross-Phase Themes
 

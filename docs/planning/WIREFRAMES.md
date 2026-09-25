@@ -412,7 +412,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
-- 3-step `Stepper`: Hold → Token receipt → Manager approval.
+- 3-step `Stepper`: Hold → Token receipt → Admin/Owner approval.
 - Visual stepper shows current state + completed states.
 - Upload area uses `Form` + `Input type="file"` from `@paalstack/react-ui`.
 - File storage target: S3-compatible (Backblaze B2 / Cloudflare R2 - per §10).
