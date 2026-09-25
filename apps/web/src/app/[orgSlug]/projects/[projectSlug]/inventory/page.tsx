@@ -9,9 +9,9 @@
 // { total, rows }. useInventoryUnits unwraps the rows (T-F1). Filters are
 // SERVER-driven (T-SRVPG): the DataTable's built-in facet filter is
 // client-side over the loaded page, which is wrong under server
-// pagination - so a Combobox (status) + Selects (phase/BHK/facing)
-// feed the query params instead.
-import { Badge, Button, Combobox, DataTable, Select, TypographyP, AlertDialog, DataTableRowActions, toast } from '@paalstack/react-ui';
+// pagination - so Selects (status/phase/BHK/facing) feed the query params
+// instead.
+import { Badge, Button, DataTable, Select, TypographyP, AlertDialog, DataTableRowActions, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
@@ -96,7 +96,7 @@ export default function InventoryPage() {
   }, []);
 
   // Server-driven filters (T-SRVPG).
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
   const [bhkFilter, setBhkFilter] = useState<string>('ALL');
   const [facingFilter, setFacingFilter] = useState<string>('ALL');
@@ -122,7 +122,7 @@ export default function InventoryPage() {
     phaseId: phaseFilter !== 'ALL' ? phaseFilter : undefined,
     bhk: bhkFilter !== 'ALL' ? Number(bhkFilter) : undefined,
     facing: facingFilter !== 'ALL' ? facingFilter : undefined,
-    status: statusFilter.length > 0 ? statusFilter : undefined,
+    status: statusFilter !== 'ALL' ? [statusFilter] : undefined,
     search: serverSearch,
     limit: pageSize,
     offset: (page - 1) * pageSize,
@@ -146,18 +146,23 @@ export default function InventoryPage() {
     mounted && user !== null && canManageProjectMembers(user.role);
 
   const isFiltered =
-    statusFilter.length > 0 ||
+    statusFilter !== 'ALL' ||
     phaseFilter !== 'ALL' ||
     bhkFilter !== 'ALL' ||
     facingFilter !== 'ALL' ||
     serverSearch !== undefined;
 
+  // T-INV-STATUS-SELECT: 'ALL' is the no-filter sentinel, matching the
+  // phase/BHK/facing Selects beside it. The hook re-wraps a real choice into
+  // the `string[]` the API expects (the backend accepts both shapes).
   const statusOptions = useMemo(
-    () =>
-      INVENTORY_STATUSES.map((s) => ({
+    () => [
+      { value: 'ALL', label: 'All statuses' },
+      ...INVENTORY_STATUSES.map((s) => ({
         value: s,
         label: labelFor('inventory', s),
       })),
+    ],
     [],
   );
 
@@ -361,23 +366,22 @@ export default function InventoryPage() {
               setSearch(next);
               setPage(1);
             },
-            className: 'mr-2',
+            className: 'mr-2 w-full',
           }}
-          toolbarRightSideContainerClassName='flex-1 justify-start'
+          toolbarContainerClassName="flex-col sm:flex-row items-start sm:items-center gap-2"
+          toolbarRightSideContainerClassName='flex-2 justify-start'
           toolbarLeftSideContent={
-            <div className="flex flex-wrap flex-1 items-center gap-2">
-              <Combobox
-                multiple
+            <div className="flex flex-wrap flex-1 sm:items-center items-start justify-start sm:justify-end gap-2">
+              <Select
                 value={statusFilter}
                 onValueChange={(next) => {
-                  setStatusFilter((next as string[]) ?? []);
+                  setStatusFilter(next ?? 'ALL');
                   setPage(1);
                 }}
                 options={statusOptions}
-                placeholder="Filter by status"
-                className="sm:max-w-64"
+                placeholder="All statuses"
+                className="w-40"
                 data-qa="inventory-status-filter"
-                maxSelectedChips={1}
               />
               <Select
                 value={phaseFilter}

@@ -83,6 +83,23 @@ describe('inventory search - DataTable wiring in the page source', () => {
     expect(src).toMatch(/useDebouncedValue\(search, 300\)/);
   });
 
+  it('the status filter is a Select with an ALL sentinel, like its siblings', () => {
+    // T-INV-STATUS-SELECT: the status filter used to be a Combobox (multiple).
+    // It is now a single-value Select whose options lead with 'ALL', matching
+    // phase/BHK/facing - so all four toolbar filters are the same control.
+    expect(src).toMatch(/statusFilter !== 'ALL'/);
+    // 'ALL' must be the no-filter sentinel, never sent as a real status.
+    expect(src).toMatch(/status: statusFilter !== 'ALL' \? \[statusFilter\] : undefined/);
+    expect(src).toMatch(/value: 'ALL', label: 'All statuses'/);
+  });
+
+  it('re-wraps the single choice into the array the API expects', () => {
+    // The backend accepts a single status or an array; the hook sends
+    // `status` joined by comma. Keeping the array shape here means the wire
+    // contract is unchanged by the Combobox -> Select swap.
+    expect(src).toMatch(/status:\s*statusFilter !== 'ALL' \? \[statusFilter\] : undefined/);
+  });
+
   it('isFiltered includes EVERY toolbar filter (or the empty state lies)', () => {
     // The empty state branches on isFiltered: if a filter is omitted from it,
     // filtering to zero rows shows "No inventory yet." - telling the user the
