@@ -2221,7 +2221,72 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
-### T-VISIT-CLOSE + T-TOKEN-GATE (2026-09-28): settle the deal, record the money
+### T-TOKEN-GATE repair (2026-09-28): existing TOKEN bookings with no amount
+
+Reported: "Fix it Existing TOKEN bookings with a NULL amount".
+
+**THE AMOUNT IS NOT RECOVERABLE FROM THE DATABASE - this is the whole answer.** I
+checked every possible source before writing anything:
+
+- no payment / token / transaction model exists in the schema (verified by
+  searching every `model` and `enum`);
+- `Booking.tokenAmount` is null on these rows by definition;
+- the `booking.create` audit row records only `leadId/unitId/amount/status` - it
+  does not capture `tokenAmount`;
+- the `booking.transition` audit row records only the status pair.
+
+So the only source for the figure is outside the system - the bank entry or
+receipt. Filling it with a placeholder (0, the booking amount, anything) would make
+the data LOOK complete and be wrong, corrupting the "Booking money" card in the
+opposite direction by reporting a token paid that never was. **The repair therefore
+takes an operator-supplied amount rather than inventing one.**
+
+**Two real defects found and fixed rather than assumed:**
+
+1. **`update()` could CLEAR `tokenAmount` on a TOKEN booking.** The bookings EDIT
+   form is the only UI that writes `tokenAmount` - i.e. it is the repair tool - and
+   it accepted `tokenAmount: null`, so the first edit would silently undo any
+   repair and re-create the anomaly. Now refused when the booking is TOKEN;
+   correcting the amount is still allowed. (Found by reading the write path instead
+   of assuming the transition rule was the only hole.)
+2. **The dashboard reported these rows as `hold-no-token`.** That reason reads as
+   "the money is still with the customer" - backwards for a booking marked as paid
+   - and it made the defect invisible to anyone looking for it. The card now has a
+   distinct `token-recorded-missing-amount` reason rendering "Amount missing /
+   marked received · Nd" with a "Fix amount" action, so the rows are findable and
+   each one points at the screen where it can be repaired.
+
+**The repair tool**: `apps/backend/scripts/repair-token-amounts.ts`. Diagnoses by
+default; writes only with `--apply`, which additionally requires `--actor` (an
+unattributed change to money is not acceptable) and a positive `--amount`. Only
+`tokenAmount` is written - never `status`, because `syncLeadState` derives the
+LEAD's state from all of a lead's booking statuses, so touching a status could move
+a lead. It re-reads the row inside the transaction and refuses if the status
+changed or an amount is already recorded, and writes an AuditLog row per repair
+(`booking.token_amount_repair`, before/after) so the change is attributable and
+reversible.
+
+**A trap this script had to defend against, which invalidated an earlier report of
+mine.** The app connects as the non-owner `shadhil_app` role, which is subject to
+RLS; with no `app.user_id` set, policies filter every row away. A naive version
+would print "None. Every token-received booking records how much was received."
+while the defect sat untouched - a reassuring lie, the worst output for a repair
+tool. `assertCanSeeData()` counts rows first and refuses to report otherwise. This
+is also why I earlier told the owner the dev database was empty: I queried the app
+role, saw 0 rows, and wrongly concluded there was no data. The dev DB in fact holds
+31 leads, 3 bookings and 4 visits, and **one of them is the real defect**: Unit
+A-103 · Arjun Reddy · booking 4100000.00 · `tokenAmount = NULL`. Inspect data with
+`DIRECT_DATABASE_URL` (owner, bypasses RLS), never `DATABASE_URL`.
+
+**Verified end to end against the local DB** with a real fixture row in the exact
+broken state: detected; refused to write without `--actor`; refused a zero amount;
+skipped a booking whose status was not TOKEN; repaired; wrote the audit row; left
+the lead's state untouched; and was idempotent on re-run (`skipped-not-broken`).
+The fixture was then removed. **The real Arjun Reddy row was deliberately NOT
+touched** - its amount must come from the payment record, which is the owner's to
+supply.
+
+
 
 Scope: `docs/planning/SCOPE-visit-close-and-token-gate.md`.
 

@@ -1510,6 +1510,48 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     );
   });
 
+  it('T-TOKEN-GATE: an edit cannot CLEAR the token amount on a TOKEN booking', async () => {
+    // The repair for an existing NULL-amount row is made from the bookings EDIT
+    // form (the only UI that writes tokenAmount). Without this guard the same
+    // form would clear it again, silently undoing the repair - and re-creating
+    // the anomaly where a booking is marked received with nothing to verify.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.update(makeActor({ role: 'ADMIN' }), 'b-1', { tokenAmount: null } as never),
+    ).rejects.toThrow(/cannot be cleared/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE: an edit can still CORRECT the amount on a TOKEN booking', async () => {
+    // Only removal is blocked. Correcting a wrong figure must remain possible -
+    // that is exactly how a missing amount gets fixed.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    client.booking.update.mockResolvedValue({
+      id: 'b-1', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '777000.00' },
+      status: 'TOKEN', approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await service.update(makeActor({ role: 'ADMIN' }), 'b-1', { tokenAmount: 777000 } as never);
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tokenAmount: '777000.00' }),
+      }),
+    );
+  });
+
   it('T-TOKEN-GATE: a zero amount is refused even when one is sent', async () => {
     const { service } = makeCancelService('HOLD');
     await expect(

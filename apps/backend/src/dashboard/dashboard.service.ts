@@ -637,7 +637,8 @@ export class DashboardService {
           reason: v.scheduledFor.getTime() < todayStart.getTime() ? 'overdue-past-due' : 'scheduled-today',
         }));
 
-        // ---- 3. Booking money not moving: TOKEN awaiting approval, or HOLD with no token. ----
+        // ---- 3. Booking money not moving: awaiting approval, settled-but-no-
+        // token, or a TOKEN booking with its amount missing (a data defect). ----
         const bookingRows = await txClient.booking.findMany({
           where: { status: { in: ['TOKEN', 'HOLD'] } },
           orderBy: { createdAt: 'asc' },
@@ -656,6 +657,19 @@ export class DashboardService {
           const tokenPaid =
             b.tokenAmount !== null && Number(b.tokenAmount) > 0;
           const ageDays = nowDaysAge(b.createdAt.toISOString());
+          // T-TOKEN-GATE (2026-09-28): three cases, not two. A booking in TOKEN
+          // with no amount is a DATA DEFECT - the status asserts money was
+          // received and there is nothing recording how much - and it used to be
+          // reported as 'hold-no-token', which reads as "the money is still with
+          // the customer" for a booking marked as paid. Naming it separately is
+          // what lets an operator find these rows and correct the amount from the
+          // actual record (no payment table exists to derive it from).
+          const reason =
+            b.status === 'TOKEN' && !tokenPaid
+              ? 'token-recorded-missing-amount'
+              : tokenPaid
+                ? 'token-paid-awaiting-approval'
+                : 'hold-no-token';
           return {
             id: b.id,
             leadName: b.lead.name,
@@ -665,9 +679,7 @@ export class DashboardService {
             tokenAmount: b.tokenAmount === null ? null : b.tokenAmount.toString(),
             status: b.status,
             ageDays,
-            // TOKEN = the customer already paid, now it is the manager dragging;
-            // HOLD-with-no-token = the money is still with the customer.
-            reason: tokenPaid ? 'token-paid-awaiting-approval' : 'hold-no-token',
+            reason,
             stuckDays: ageDays,
           };
         });

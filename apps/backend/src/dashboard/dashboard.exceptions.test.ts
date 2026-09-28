@@ -196,6 +196,34 @@ describe('DashboardService.getExceptions', () => {
     expect(result.visitRisk[0]!.leadStatus).toBe('NO_SHOW');
   });
 
+  it('T-TOKEN-GATE: a TOKEN booking with NO amount is its own reason, not hold-no-token', async () => {
+    // The defect these rows represent: the booking IS marked token-received, and
+    // there is nothing recording how much. Reporting it as 'hold-no-token' read
+    // as "the money is still with the customer" - backwards, and it hid the rows
+    // from anyone looking for them. Naming it separately is what makes them
+    // findable and fixable.
+    fixture.bookings.push([
+      { id: 'b-broken', lead: { name: 'Missing', projectId: 'p-1' }, unit: { unitNumber: 'C3' },
+        amount: { toString: () => '4100000.00' }, tokenAmount: null, status: 'TOKEN', createdAt: daysAgo(4) },
+    ]);
+    const svc = new DashboardService({ $client: {} } as never);
+    const result = await svc.getExceptions(ownerActor);
+    expect(result.bookingMoney[0]!.reason).toBe('token-recorded-missing-amount');
+    expect(result.bookingMoney[0]!.tokenAmount).toBeNull();
+  });
+
+  it('T-TOKEN-GATE: a HOLD booking with no token is still hold-no-token', async () => {
+    // The new reason must not swallow the legitimate case: a HOLD booking simply
+    // has no token yet, which is normal work rather than a data defect.
+    fixture.bookings.push([
+      { id: 'b-hold', lead: { name: 'Waiting', projectId: 'p-1' }, unit: { unitNumber: 'C4' },
+        amount: { toString: () => '5100000.00' }, tokenAmount: null, status: 'HOLD', createdAt: daysAgo(2) },
+    ]);
+    const svc = new DashboardService({ $client: {} } as never);
+    const result = await svc.getExceptions(ownerActor);
+    expect(result.bookingMoney[0]!.reason).toBe('hold-no-token');
+  });
+
   it('bookingMoney distinguishes token-paid (awaiting approval) from hold-no-token', async () => {
     fixture.bookings.push([
       { id: 'b-tok', lead: { name: 'Paid', projectId: 'p-1' }, unit: { unitNumber: 'A1' }, amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '400000.00' }, status: 'TOKEN', createdAt: daysAgo(3) },

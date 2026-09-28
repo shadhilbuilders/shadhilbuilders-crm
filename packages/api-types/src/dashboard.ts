@@ -202,7 +202,23 @@ export const BookingMoneyExceptionSchema = z.object({
   /** Days since the booking was created. */
   ageDays: z.number().int().min(0),
   /** Whether it is waiting on a manager (token paid) or the customer (no token). */
-  reason: z.enum(['token-paid-awaiting-approval', 'hold-no-token']),
+  reason: z.enum([
+    'token-paid-awaiting-approval',
+    'hold-no-token',
+    /**
+     * T-TOKEN-GATE (2026-09-28): a booking sitting in TOKEN with no amount
+     * recorded. It is a DATA DEFECT, not a queue item: `tokenAmount` was never
+     * written by the HOLD -> TOKEN transition (it recorded the status and nothing
+     * else), so these rows exist in production data and were previously reported
+     * as `hold-no-token` - which is backwards, since the booking IS token-marked.
+     *
+     * Surfacing it is the point: the fix for an existing row is an operator
+     * entering the amount actually received (correcting from the record - a bank
+     * entry or a receipt - is exactly what a human can do and the schema cannot,
+     * because no payment table exists to derive it from).
+     */
+    'token-recorded-missing-amount',
+  ]),
   /** Days the approval or the token has been outstanding (0 if not yet). */
   stuckDays: z.number().int().min(0),
 });

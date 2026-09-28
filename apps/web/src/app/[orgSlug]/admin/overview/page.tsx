@@ -283,6 +283,23 @@ function ProblemInbox() {
                       {booking.stuckDays}d to approve
                     </Badge>
                   </span>
+                ) : booking.reason === 'token-recorded-missing-amount' ? (
+                  // T-TOKEN-GATE (2026-09-28): a DATA DEFECT, not a queue item.
+                  // The booking is marked token-received with no amount recorded,
+                  // so it cannot be verified and used to read as "no token" (money
+                  // still with the customer) for a booking marked as paid. It is
+                  // named distinctly so it can be found and FIXED - the operator
+                  // enters the amount actually received (from the bank entry or
+                  // receipt), which is the one thing a human can supply and the
+                  // schema cannot derive, since no payment table exists.
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="destructive" data-qa={`booking-token-missing-amount-${booking.id}`}>
+                      Amount missing
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      marked received · {booking.stuckDays}d
+                    </span>
+                  </span>
                 ) : (
                   <span className="text-muted-foreground text-sm">
                     {booking.stuckDays}d no token
@@ -290,7 +307,9 @@ function ProblemInbox() {
                 )}
                 {href !== null ? (
                   <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2.5 sm:p-0">
-                    Approve
+                    {booking.reason === 'token-recorded-missing-amount'
+                      ? 'Fix amount'
+                      : 'Approve'}
                   </Button>
                 ) : null}
               </span>

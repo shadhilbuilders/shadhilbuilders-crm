@@ -822,6 +822,20 @@ export class BookingsService {
         const data: Record<string, unknown> = {};
         if (dto.amount !== undefined) data['amount'] = dto.amount.toFixed(2);
         if (dto.tokenAmount !== undefined) {
+          // T-TOKEN-GATE (2026-09-28): a booking that is already TOKEN was marked
+          // token-received because money came in - its amount is therefore
+          // REQUIRED, and clearing it here re-creates exactly the anomaly the
+          // transition rule exists to prevent (an unverifiable "paid" booking
+          // that the admin "Booking money" card reads as "no token", i.e. money
+          // still with the customer). Without this guard the edit form could
+          // silently undo a repair made from this same form.
+          //
+          // Correcting the amount is still allowed; only REMOVING it is not.
+          if (existing.status === 'TOKEN' && dto.tokenAmount === null) {
+            throw new BadRequestException(
+              'This booking is marked as token received, so the token amount cannot be cleared. Enter the amount actually received instead.',
+            );
+          }
           data['tokenAmount'] =
             dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
         }
