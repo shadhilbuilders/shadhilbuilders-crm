@@ -1,5 +1,11 @@
 // Test-only database isolation (T-TEST-DB-ISOLATION, 2026-09-16).
 //
+// This module is the package's SANCTIONED TEST-ONLY SURFACE, reachable as the
+// `@shadhil/database/test-db-isolation` subpath export. Anything RLS-adjacent
+// that only tests should do (redirecting the process at the test database,
+// connecting as the bypass-RLS owner role) belongs here rather than in the
+// production barrel, where it would be a loaded gun in a business-data path.
+//
 // WHY THIS EXISTS
 // Every DB-backed suite connects through `DIRECT_DATABASE_URL` / `DATABASE_URL`
 // from the repo-root `.env` - which point at the DEVELOPMENT database. Nothing
@@ -41,6 +47,16 @@
 // security matrix then reported a clean run while enforcing nothing (a MANAGER
 // could see both fixture leads instead of one). Never copy one URL over the
 // other: rewrite name/port only, and let each keep its own role.
+//
+// NOTE: this module must NOT import `./index`. Importing the barrel CONSTRUCTS
+// the pooled client at module-evaluation time, which both defeats the isolation
+// below (it would connect before the rewrite runs) and breaks suites whose
+// Prisma client is built after their setup file loads env. Everything here
+// depends on `process.env` at CALL time instead, and the client class comes
+// straight from the generated client.
+import { PrismaPg } from '@prisma/adapter-pg';
+
+import { PrismaClient } from './generated/prisma/client';
 
 /**
  * Rewrite a postgres connection URL for the test database, PRESERVING ITS ROLE.
@@ -118,6 +134,40 @@ export function shouldRedirect(url: string | undefined): url is string {
   if (url === undefined || url.length === 0) return false;
   if (process.env['TEST_DB_ALLOW_DEV'] === '1') return false;
   return !databaseNameOf(url).endsWith('_test');
+}
+
+/**
+ * A Prisma client bound to `DIRECT_DATABASE_URL` (the owner role, BYPASSRLS)
+ * instead of the pooled application role, for seeding tables whose RLS is
+ * SELECT-only by design - most notably `ManagerAssignmentRule`, where rule
+ * management is an admin-class concern and there is deliberately NO INSERT
+ * policy (see prisma/rls/policies.sql). Any INSERT from the app role on such a
+ * table fails with 42501, and the seed/bootstrap path already writes rules
+ * through the owner role for exactly this reason.
+ *
+ * T-TEST-DB-ISOLATION (2026-09-28): extracted from the RLS matrix, which had
+ * this construction inline, because more than one suite now needs it.
+ *
+ * This lives in the TEST-ONLY module on purpose. It steps outside RLS, so it
+ * must not be reachable from the production barrel: import it from
+ * `@shadhil/database/test-db-isolation` (the package's `./test-db-isolation`
+ * subpath export), never from `@shadhil/database`. scripts/check-bare-prisma.mjs
+ * enforces that in CI - app code naming this helper is a guardrail failure.
+ *
+ * Falls back to the pooled `DATABASE_URL` when `DIRECT_DATABASE_URL` is unset,
+ * so a caller that checks for the variable can skip cleanly instead of
+ * crashing. The class comes from the generated client rather than the package
+ * barrel - see the NOTE above on why importing `./index` here is not an option.
+ */
+export function createDirectPrismaClient(): PrismaClient {
+  const directUrl = process.env['DIRECT_DATABASE_URL'] ?? '';
+  const url =
+    directUrl !== ''
+      ? directUrl
+      : (process.env['DATABASE_URL'] ?? '');
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: url }),
+  });
 }
 
 /**

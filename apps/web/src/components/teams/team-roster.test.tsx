@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   useRemovalPreview: vi.fn(),
   useReassignAndRemove: vi.fn(),
   useUpdateTeamMemberWeight: vi.fn(() => ({ mutateAsync: vi.fn(), isLoading: false })),
+  useUpdateTeamMemberCap: vi.fn(() => ({ mutateAsync: vi.fn(), isLoading: false })),
 }));
 
 vi.mock('@/hooks/queries/team-members', () => ({
@@ -32,7 +33,11 @@ vi.mock('@/hooks/queries/team-members', () => ({
 vi.mock('@/hooks/queries/teams', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@/hooks/queries/teams')>();
-  return { ...actual, useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight };
+  return {
+    ...actual,
+    useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
+    useUpdateTeamMemberCap: mocks.useUpdateTeamMemberCap,
+  };
 });
 
 import { TeamRosterMemberRow } from './team-roster';
@@ -142,6 +147,55 @@ describe('TeamRosterMemberRow', () => {
     await unmount();
     await mount({ member: managerMember, managerId: 'mgr-a', canRemove: true });
     expect(container?.querySelector('[data-qa="team-member-weight-mgr-a"]')).toBeNull();
+  });
+
+  it('gives a sales exec no weight editor - they are outside the auto-assign pool', async () => {
+    // 2026-09-28: auto-assign is telecaller-only, so an editable weight on an
+    // exec row would promise routing that no longer happens. The row says so
+    // instead of offering a control.
+    await mount({
+      member: { userId: 'se-1', name: 'Vikram', email: 'vikram@x.in', role: 'SALES_EXEC', weight: 3 },
+      managerId: 'mgr-a',
+      canRemove: true,
+    });
+    expect(container?.querySelector('[data-qa="team-member-weight-se-1"]')).toBeNull();
+    expect(container?.querySelector('[data-qa="team-member-weight-inert-se-1"]')).not.toBeNull();
+    expect(container?.textContent).toContain('Not auto-assigned');
+  });
+
+  it('shows the open-lead cap editor on a telecaller, and hides it from the manager', async () => {
+    // T-MAXOPENLEADS (2026-09-28): weight is a share, the cap is a ceiling -
+    // two separate controls. Same routability rule as the weight editor.
+    await mount({
+      member: { ...ordinaryMember, weight: 1, maxOpenLeads: 12 },
+      managerId: 'mgr-a',
+      canRemove: true,
+    });
+    const capInput = container?.querySelector(
+      '[data-qa="team-member-cap-tc-1"]',
+    ) as HTMLInputElement | null;
+    expect(capInput).not.toBeNull();
+    // Seeded from the member's stored ceiling.
+    expect(capInput?.value).toBe('12');
+
+    await unmount();
+    await mount({ member: managerMember, managerId: 'mgr-a', canRemove: true });
+    expect(container?.querySelector('[data-qa="team-member-cap-mgr-a"]')).toBeNull();
+  });
+
+  it('renders an empty cap input (placeholder) for an uncapped member', async () => {
+    // null must read as "no cap", not as 0 - which would mean "send nothing".
+    await mount({
+      member: { ...ordinaryMember, weight: 1, maxOpenLeads: null },
+      managerId: 'mgr-a',
+      canRemove: true,
+    });
+    const capInput = container?.querySelector(
+      '[data-qa="team-member-cap-tc-1"]',
+    ) as HTMLInputElement | null;
+    expect(capInput).not.toBeNull();
+    expect(capInput?.value).toBe('');
+    expect(capInput?.placeholder).toBe('No cap');
   });
 
   it('commits a changed weight via useUpdateTeamMemberWeight on blur', async () => {

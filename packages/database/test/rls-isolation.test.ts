@@ -30,10 +30,10 @@
 // RLS_MATRIX_REQUIRED=true the suite HARD-FAILS at startup instead.
 // CI is wired at .github/workflows/ci.yml:rls-matrix.
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { PrismaPg } from '@prisma/adapter-pg';
 
 import { prisma } from '../src/index';
 import { withRlsContext, type RlsContext } from '../src/rls';
+import { createDirectPrismaClient } from '../src/test-db-isolation';
 
 import { DATABASE_AVAILABLE } from './setup';
 
@@ -48,12 +48,12 @@ import { DATABASE_AVAILABLE } from './setup';
 // DIRECT_DATABASE_URL is set by CI (see .github/workflows/ci.yml:rls-matrix)
 // and by local dev (.env). If it's missing, DATABASE_AVAILABLE is false
 // and the test skips - same fail-fast path as missing DATABASE_URL.
-const adminUrl = process.env.DIRECT_DATABASE_URL ?? '';
-const adminPrisma = adminUrl
-  ? new (prisma.constructor as new (opts: { adapter: PrismaPg }) => typeof prisma)({
-      adapter: new PrismaPg({ connectionString: adminUrl }),
-    })
-  : prisma;
+//
+// The construction now lives in `@shadhil/database` as
+// createDirectPrismaClient() because other suites need the same owner-role
+// client to seed tables whose RLS is SELECT-only by design (see that helper's
+// doc comment); it falls back to the pooled client when the var is unset.
+const adminPrisma = createDirectPrismaClient();
 
 type Role = 'ADMIN' | 'MANAGER' | 'SALES_EXEC' | 'TELECALLER';
 type Action = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';

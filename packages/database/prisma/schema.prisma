@@ -329,8 +329,10 @@ model Team {
   // match any rule stay unassigned (notification trigger fires).
   defaultAssigneeId String?
   // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads.
-  //   true  = auto-assign across ALL project teams (least-loaded telecaller
-  //          by openLeads/weight; managers never own).
+  //   true  = auto-assign across ALL project teams (least-loaded TELECALLER
+  //          by openLeads/weight; sales execs are NOT candidates - a NEW lead
+  //          is telecaller work, so with no eligible telecaller the lead goes
+  //          to this team's manager as a pending handoff).
   //   false = new leads land owned by this team's MANAGER (pending state),
   //          who then reassigns to a specific telecaller. Manager owns until
   //          handoff (LeadOwnerType.MANAGER).
@@ -379,7 +381,20 @@ model TeamMember {
   // everyone; an admin can bias toward an experienced telecaller (e.g. 2 =
   // twice the share of a weight-1 member). Availability = open-lead count;
   // the engine assigns to the member with the lowest openLeads / weight.
+  // Only TELECALLER membership rows are routed (2026-09-28): sales execs are
+  // outside the auto-assign pool, so their weight is stored but inert.
   weight         Int      @default(1)
+  // T-MAXOPENLEADS (2026-09-28): hard ceiling on how many OPEN leads (non-
+  // terminal states) this member may hold before auto-assign stops routing to
+  // them. A different axis from `weight`: weight decides the SHARE among
+  // eligible members, this decides ELIGIBILITY. Once openLeads >= maxOpenLeads
+  // the member is skipped entirely, and if every telecaller in the project is
+  // capped the lead goes to the creating team's manager (pending handoff) -
+  // never a sales exec, never silently over the cap.
+  // NULL = no cap (opt-in), so every existing row keeps its current behavior.
+  // NOT 0-as-default: 0 is a meaningful "takes no more leads" ceiling, and
+  // conflating it with "unset" would silently strand a team.
+  maxOpenLeads   Int?
 
   user         User         @relation("TeamMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
   team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -444,6 +459,13 @@ model ManagerAssignmentRule {
   phaseId        String?
   language       String? // ISO 639-1 short code: "en", "hi", "ta"
   region         String? // ISO 3166-1 / UN region: "IN-TN", "IN-KA"
+  // targetUserId may point at a TELECALLER or a SALES_EXEC. Role is NOT
+  // constrained here on purpose (2026-09-28): the rule records operator
+  // intent, and the create-time engine decides whether it may fire. A NEW
+  // lead is telecaller work (plan §3), so `evaluateAssignment(...,
+  // 'new-lead')` skips an exec target on lead-create; the same rule would be
+  // honoured by a wider-mode caller. See AssignmentMode in
+  // apps/backend/src/leads/manager-assignment.engine.ts.
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 

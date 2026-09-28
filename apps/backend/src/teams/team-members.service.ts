@@ -29,6 +29,7 @@ import type {
   ReassignAndRemoveResponse,
   RemovalPreviewResponse,
   ReplacementCandidate,
+  UpdateTeamMemberCapDto,
   UpdateTeamMemberWeightDto,
 } from '@shadhil/api-types';
 
@@ -494,6 +495,58 @@ export class TeamMembersService {
       });
 
       return { userId, teamId, weight: updated.weight };
+    });
+  }
+
+  /**
+   * PATCH /api/teams/:teamId/members/:userId/cap (T-MAXOPENLEADS, 2026-09-28).
+   * Set or clear a member's hard ceiling on open leads for the auto-assign
+   * engine. ADMIN/OWNER (or the team's manager) only - mirrors `updateWeight`.
+   *
+   * `maxOpenLeads: null` clears the cap. 0 is a real ceiling ("send them
+   * nothing"), not "unset" - see the DTO.
+   */
+  async updateCap(
+    actor: JwtPayload,
+    teamId: string,
+    userId: string,
+    dto: UpdateTeamMemberCapDto,
+  ): Promise<{ userId: string; teamId: string; maxOpenLeads: number | null }> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const t = tx as unknown as Tx;
+      await this.assertCanMutate(t, actor, teamId);
+
+      const membership = await t.teamMember.findUnique({
+        where: { userId_teamId: { userId, teamId } },
+      });
+      if (membership === null) {
+        throw new CodedNotFoundException(
+          'TARGET_NOT_TEAM_MEMBER',
+          `User ${userId} is not a member of team ${teamId}.`,
+        );
+      }
+
+      const updated = await t.teamMember.update({
+        where: { userId_teamId: { userId, teamId } },
+        data: { maxOpenLeads: dto.maxOpenLeads },
+      });
+
+      // Audit in the SAME transaction as the write (AGENTS.md high-stakes rule):
+      // a ceiling change silently alters who receives new leads.
+      await t.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'team.member.cap',
+          entityType: 'Team',
+          entityId: teamId,
+          before: { userId, teamId, maxOpenLeads: membership.maxOpenLeads },
+          after: { userId, teamId, maxOpenLeads: updated.maxOpenLeads },
+          reason: `team.member.cap by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      return { userId, teamId, maxOpenLeads: updated.maxOpenLeads };
     });
   }
 

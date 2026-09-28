@@ -1,0 +1,11 @@
+-- T-MAXOPENLEADS (2026-09-28): per-member ceiling on OPEN leads for auto-assign.
+--
+-- Additive and nullable on purpose. `weight` is a SHARE (a divisor in the
+-- openLeads/weight score); this is an ELIGIBILITY gate, checked before scoring:
+-- a member at or over their ceiling is skipped, and when every telecaller in the
+-- project is capped the lead goes to the creating team's manager.
+--
+-- NULL = no cap. Existing rows must keep their current behavior, so there is no
+-- DEFAULT: 0 would be a meaningful ceiling ("takes no more leads") and would
+-- change routing for every member the moment this migration lands.
+ALTER TABLE "TeamMember" ADD COLUMN "maxOpenLeads" INTEGER;

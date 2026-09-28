@@ -64,6 +64,7 @@ import {
 } from './leads.state-machine';
 import {
   canUserBeAssignedTo,
+  type AssignmentMode,
   type LeadAttributes,
   type ManagerAssignmentRule,
   type ResolverResult,
@@ -827,8 +828,11 @@ export class LeadsService {
     //
     //   autoAssignLeads = true
     //     Route across ALL teams linked to the lead's project (ProjectTeam),
-    //     to the least-loaded telecaller by (openLeads / weight). Managers
-    //     never own. ownerId = picked telecaller, ownerType = that user's role.
+    //     to the least-loaded TELECALLER by (openLeads / weight). TELECALLERS
+    //     ONLY (fixed 2026-09-28; a NEW lead is telecaller work per plan §3) -
+    //     when no telecaller is eligible the lead goes to this team's MANAGER
+    //     as a pending handoff, never to a sales exec. ownerId = the pick,
+    //     ownerType = TELECALLER (or MANAGER on the handoff).
     //
     //   autoAssignLeads = false (and the team has a manager)
     //     The lead lands owned by this team's MANAGER (pending state,
@@ -919,6 +923,10 @@ export class LeadsService {
         leadAttrs,
         resolveTarget,
         actor.sub,
+        // A NEW lead is telecaller-owned (plan §3): the rule chain and the team
+        // default may only auto-pick a TELECALLER here, so an exec configured as
+        // a rule target / team default can no longer take first touch.
+        'new-lead',
       );
 
       ownerId = resolution.userId;
@@ -1083,6 +1091,13 @@ export class LeadsService {
    * This mirrors the engine's evaluation logic exactly - kept here
    * so the engine stays pure (no async deps) and the service owns
    * DB I/O.
+   *
+   * @param mode  Mirrors the engine's AssignmentMode. This is the CREATE path,
+   *              so it passes 'new-lead': a NEW lead is telecaller work (plan
+   *              §3) and neither a rule nor the team default may auto-pick a
+   *              sales exec here. The only way a NEW lead reaches an exec is an
+   *              explicit operator act - an admin/manager `assignedOwnerId`
+   *              pick (handled before this call) or a later manual reassign.
    */
   private async resolveOwnerFromEngine(
     rules: readonly ManagerAssignmentRule[],
@@ -1090,7 +1105,9 @@ export class LeadsService {
     lead: LeadAttributes,
     resolveTarget: (userId: string) => Promise<TargetUser | null>,
     fallbackUserId: string,
+    mode: AssignmentMode = 'any',
   ): Promise<ResolverResult> {
+    const allowedRole = mode === 'new-lead' ? 'TELECALLER' : null;
     // Sort: priority ASC, then createdAt ASC. The engine does the
     // same sort; we duplicate it here so the resolver walks in the
     // same order the engine would.
@@ -1110,6 +1127,9 @@ export class LeadsService {
       const target = await resolveTarget(rule.targetUserId);
       if (target === null) continue;
       if (!canUserBeAssignedTo(target)) continue;
+      // NEW-lead mode: a sales-exec target does not fire - keep walking so a
+      // lower-priority telecaller rule can still win, instead of dead-ending.
+      if (allowedRole !== null && target.role !== allowedRole) continue;
       return {
         kind: 'rule',
         ruleId: rule.id,
@@ -1122,12 +1142,16 @@ export class LeadsService {
     const defaultUserId = team.defaultAssigneeId ?? null;
     if (defaultUserId !== null) {
       const target = await resolveTarget(defaultUserId);
-      if (target !== null && canUserBeAssignedTo(target)) {
+      if (
+        target !== null &&
+        canUserBeAssignedTo(target) &&
+        (allowedRole === null || target.role === allowedRole)
+      ) {
         return { kind: 'team-default', userId: target.id };
       }
-      // Default points at ADMIN/MANAGER or deleted user - fall through
-      // to the actor fallback rather than risk assigning to the wrong
-      // role.
+      // Default points at ADMIN/MANAGER, a deleted user, or (new-lead mode) a
+      // sales exec - fall through to the actor fallback rather than risk
+      // assigning to the wrong role.
     }
 
     return { kind: 'fallback', userId: fallbackUserId };
@@ -1956,18 +1980,21 @@ export class LeadsService {
    * creating team's `autoAssignLeads` flag.
    *
    *   autoAssignLeads = true
-   *     Pool ALL telecallers/sales-execs across EVERY team linked to the
-   *     lead's project (ProjectTeam join), dedupe, score openLeads/weight,
-   *     pick the least-loaded. Managers NEVER own. ownerType = the pick's role.
+   *     Pool the TELECALLERs across EVERY team linked to the lead's project
+   *     (ProjectTeam), dedupe, score openLeads/weight, pick the least-loaded.
+   *     TELECALLERS ONLY (fixed 2026-09-28): a NEW lead is telecaller work per
+   *     plan §3, so a sales exec is never a candidate here. When no telecaller
+   *     is eligible the lead goes to THIS team's MANAGER as a pending handoff
+   *     (never to a sales exec); the rule chain is only reached when the team
+   *     has no manager either.
    *
    *   autoAssignLeads = false (team has a manager)
    *     The lead is owned by this team's manager (pending; manager reassigns
    *     to a telecaller later). ownerType = MANAGER.
    *
-   * Returns null when the flag path cannot resolve (no eligible pool on true,
-   * or a managerless team on false) - the caller falls back to the existing
-   * rule chain. Returns a discriminated { userId, resolution, ownerType } for
-   * the audit log.
+   * Returns null only when neither path can resolve - the caller falls back to
+   * the existing rule chain. Returns a discriminated { userId, resolution,
+   * ownerType } for the audit log.
    */
   private async resolveAutoAssign(
     client: PrismaClient,
@@ -1975,16 +2002,21 @@ export class LeadsService {
     teamRow: { id: string; managerId: string | null; autoAssignLeads: boolean; defaultAssigneeId: string | null },
     dto: CreateLeadDto,
   ): Promise<
-    | { kind: 'telecaller'; userId: string; resolution: ResolverResult; ownerType: 'TELECALLER' | 'SALES_EXEC' }
+    | { kind: 'telecaller'; userId: string; resolution: ResolverResult; ownerType: 'TELECALLER' }
     | { kind: 'manager'; userId: string; resolution: ResolverResult; ownerType: 'MANAGER' }
     | { kind: 'fallback-to-engine' }
     | null
   > {
-    if (teamRow.autoAssignLeads !== true) {
-      // False path: manager owns, pending. Requires a manager on the team;
-      // otherwise fall back to the rule chain (nothing sensible to auto-route to).
-      // NB: `!== true` (not `=== false`) so an undefined/missing flag (pre-migration
-      // rows, test mocks) falls through to the legacy false-default behavior.
+    // Manager-owned pending handoff. Used by BOTH flag values: a
+    // false-flag team routes everything to its manager, and a true-flag team
+    // with no eligible telecaller routes there too. A managerless team has
+    // nobody to hand off to, so the caller falls back to the rule chain.
+    // NB: the false path uses `!== true` (not `=== false`) so an
+    // undefined/missing flag (pre-migration rows, test mocks) keeps the legacy
+    // false-default behavior.
+    const managerOwned = ():
+      | { kind: 'manager'; userId: string; resolution: ResolverResult; ownerType: 'MANAGER' }
+      | { kind: 'fallback-to-engine' } => {
       if (teamRow.managerId === null) return { kind: 'fallback-to-engine' };
       return {
         kind: 'manager',
@@ -1992,25 +2024,51 @@ export class LeadsService {
         resolution: { kind: 'manager-owner', userId: teamRow.managerId },
         ownerType: 'MANAGER',
       };
+    };
+
+    if (teamRow.autoAssignLeads !== true) {
+      return managerOwned();
     }
 
-    // True path: pool across all project-linked teams, least-loaded telecaller.
+    // True path: pool the project's telecallers, least-loaded wins.
     const projectTeams = await client.projectTeam.findMany({
       where: { projectId: dto.projectId, organizationId: actor.organizationId },
       select: { teamId: true },
     });
-    if (projectTeams.length === 0) return { kind: 'fallback-to-engine' };
+    if (projectTeams.length === 0) return managerOwned();
     const teamIds = projectTeams.map((t) => t.teamId);
 
-    // Members (TELECALLER/SALES_EXEC) across those teams, with weight.
+    // Members across those teams, with weight + cap. The role filter is applied
+    // below against User.role - TeamMember itself carries no role.
     const members = await client.teamMember.findMany({
       where: { teamId: { in: teamIds }, organizationId: actor.organizationId },
-      select: { userId: true, teamId: true, weight: true },
+      select: { userId: true, teamId: true, weight: true, maxOpenLeads: true },
     });
+    if (members.length === 0) return managerOwned();
+
+    const memberUserIds = members.map((m) => m.userId);
+    // TELECALLERs ONLY. Sales execs are deliberately NOT candidates: a NEW lead
+    // is telecaller work (plan §3), and pooling both roles let an idle exec's
+    // 0.0 score beat every working telecaller. Sending a NEW lead to a sales
+    // exec stays possible, but only through an explicit operator decision
+    // (a ManagerAssignmentRule target, the team's defaultAssigneeId, or an
+    // admin/manager `assignedOwnerId` pick) - never this automatic path.
+    const memberUsers = await client.user.findMany({
+      where: {
+        id: { in: memberUserIds },
+        organizationId: actor.organizationId,
+        role: 'TELECALLER',
+      },
+      select: { id: true },
+    });
+    const telecallerIds = new Set(memberUsers.map((u) => u.id));
+    const telecallerMembers = members.filter((m) => telecallerIds.has(m.userId));
+    if (telecallerMembers.length === 0) return managerOwned();
+
     const memberCounts = await client.lead.groupBy({
       by: ['ownerId'],
       where: {
-        ownerId: { in: members.map((m) => m.userId) },
+        ownerId: { in: [...telecallerIds] },
         state: { notIn: ['WON', 'LOST', 'RNR'] },
       },
       _count: { _all: true },
@@ -2020,29 +2078,44 @@ export class LeadsService {
     // Dedupe by user; prefer the highest weight among their memberships so a
     // member in two teams isn't double-counted and their effective weight is
     // the best fit.
+    // T-MAXOPENLEADS (2026-09-28): the ceiling resolves to the MOST PERMISSIVE
+    // value across memberships - `null` (uncapped) on either row wins, otherwise
+    // the larger cap. Rationale: the cap protects a person's workload, so if any
+    // team they belong to has cleared them for more, they are available for
+    // more; taking the strictest would let an unrelated team's stale low cap
+    // silently remove someone from a project's routing entirely.
+    //
+    // NB: merging must NOT happen against an absent entry - `null` means
+    // "uncapped", so folding a first row into `undefined` would read as
+    // "uncapped wins" and silently discard the cap on every single-membership
+    // member. Absence is handled by the `existing === undefined` branch below.
+    const mergeCap = (
+      a: number | null,
+      b: number | null,
+    ): number | null => (a === null || b === null ? null : Math.max(a, b));
     const best: Map<string, AutoAssignCandidate> = new Map();
-    // Build a candidate pool restricted to staff roles only - filter out any
-    // member whose user is ADMIN/MANAGER (the join returns role; we exclude).
-    const memberUsers = await client.user.findMany({
-      where: { id: { in: members.map((m) => m.userId) }, organizationId: actor.organizationId },
-      select: { id: true, role: true },
-    });
-    const roleById = new Map(memberUsers.map((u) => [u.id, u.role]));
-    for (const m of members) {
-      const role = roleById.get(m.userId);
-      if (role !== 'TELECALLER' && role !== 'SALES_EXEC') continue;
+    for (const m of telecallerMembers) {
+      const cap = m.maxOpenLeads ?? null;
       const existing = best.get(m.userId);
-      if (existing === undefined || m.weight > existing.weight) {
+      if (existing === undefined) {
         best.set(m.userId, {
           userId: m.userId,
           openLeads: openByOwner.get(m.userId) ?? 0,
           weight: m.weight,
+          maxOpenLeads: cap,
         });
+        continue;
       }
+      // Same user on another team: keep the higher weight, widen the cap.
+      if (m.weight > existing.weight) existing.weight = m.weight;
+      existing.maxOpenLeads = mergeCap(existing.maxOpenLeads ?? null, cap);
     }
     const candidates = [...best.values()];
     const pick = pickAutoAssignCandidate(candidates);
-    if (pick.kind === 'no-eligible') return { kind: 'fallback-to-engine' };
+    // No eligible pick: every telecaller is at/over their cap (or weight 0) -
+    // the same manager handoff as an empty pool. Never a sales exec, and never
+    // silently over a configured ceiling.
+    if (pick.kind === 'no-eligible') return managerOwned();
     return {
       kind: 'telecaller',
       userId: pick.userId,

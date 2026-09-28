@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   useTeams: vi.fn(),
   useReassignTeamMembers: vi.fn(),
   useUpdateTeamMemberWeight: vi.fn(),
+  useUpdateTeamMemberCap: vi.fn(),
   useProjects: vi.fn(),
   useLinkProjectMemberToProject: vi.fn(),
   useUnlinkProjectMember: vi.fn(),
@@ -37,6 +38,8 @@ vi.mock('@/hooks/queries/teams', () => ({
   // weight edit in the "Move to team" action menu - the mock must export it
   // or the import throws at module load.
   useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
+  // T-MAXOPENLEADS (2026-09-28): and the cap hook, imported by the same row.
+  useUpdateTeamMemberCap: mocks.useUpdateTeamMemberCap,
 }));
 
 vi.mock('@/hooks/queries/projects', () => ({

@@ -37,6 +37,9 @@ export type TeamMemberRow = {
   role: string;
   // T-AUTOASSIGN (2026-09-17): relative routing weight (higher = more leads).
   weight?: number;
+  // T-MAXOPENLEADS (2026-09-28): hard ceiling on open leads before auto-assign
+  // stops routing here. null/undefined = no cap.
+  maxOpenLeads?: number | null;
 };
 
 export type TeamDetail = {
@@ -158,6 +161,33 @@ export function useUpdateTeamMemberWeight() {
       void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, teamId] });
       // The team list row badges only read autoAssignLeads (unchanged), but
       // invalidating TEAMS_KEY keeps any derived weight surfaces consistent.
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+    },
+  });
+}
+
+// T-MAXOPENLEADS (2026-09-28): set or clear a member's hard ceiling on open
+// leads. `maxOpenLeads: null` clears it (unlimited). Same admin/manager gate as
+// the weight update (service-enforced).
+export function updateTeamMemberCap(args: {
+  teamId: string;
+  userId: string;
+  maxOpenLeads: number | null;
+}): Promise<{ userId: string; teamId: string; maxOpenLeads: number | null }> {
+  return api<{ userId: string; teamId: string; maxOpenLeads: number | null }>(
+    `/teams/${args.teamId}/members/${args.userId}/cap`,
+    { method: 'PATCH', json: { maxOpenLeads: args.maxOpenLeads } },
+  );
+}
+
+// Same invalidation contract as useUpdateTeamMemberWeight: the cached team
+// detail (staleTime 30s) would otherwise keep serving the old ceiling.
+export function useUpdateTeamMemberCap() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateTeamMemberCap,
+    onSuccess: (_data, { teamId }) => {
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, teamId] });
       void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
     },
   });

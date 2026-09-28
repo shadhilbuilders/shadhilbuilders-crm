@@ -30,7 +30,7 @@ import { Badge, Button, toast } from '@paalstack/react-ui';
 
 import type { TeamMemberRow } from '@/hooks/queries/teams';
 import { labelFor } from '@/lib/labels';
-import { useUpdateTeamMemberWeight } from '@/hooks/queries/teams';
+import { useUpdateTeamMemberCap, useUpdateTeamMemberWeight } from '@/hooks/queries/teams';
 import { TeamMemberRemovalDialog } from './TeamMemberRemovalDialog';
 
 export function TeamRosterMemberRow({
@@ -61,13 +61,26 @@ export function TeamRosterMemberRow({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [weight, setWeight] = useState<string>(String(member.weight ?? 1));
   const [weightSaving, setWeightSaving] = useState(false);
+  // T-MAXOPENLEADS (2026-09-28): the ceiling editor. '' means no cap (null).
+  const [cap, setCap] = useState<string>(
+    member.maxOpenLeads === null || member.maxOpenLeads === undefined
+      ? ''
+      : String(member.maxOpenLeads),
+  );
+  const [capSaving, setCapSaving] = useState(false);
   const isManagerRow = member.userId === managerId;
   const updateWeight = useUpdateTeamMemberWeight();
+  const updateCap = useUpdateTeamMemberCap();
 
-  // T-AUTOASSIGN (2026-09-17): the manager row never gets a weight editor
-  // (a manager doesn't take auto-assigned leads as a telecaller), and only
-  // the viewer who may mutate members may edit weight.
-  const canEditWeight = canRemove && !isManagerRow;
+  // T-AUTOASSIGN (2026-09-17): only TELECALLER rows are routable, so only they
+  // get a weight editor; the manager row never does (a manager doesn't take
+  // auto-assigned leads as a telecaller) and neither does a SALES_EXEC row
+  // (2026-09-28: the auto-assign pool is telecaller-only, so an exec's weight
+  // is inert - the roster shows "Not auto-assigned" instead). Only the viewer
+  // who may mutate members may edit weight at all.
+  // Weight is a SHARE of new leads, not a cap - see the input's title below.
+  const canEditWeight =
+    canRemove && !isManagerRow && member.role === 'TELECALLER';
 
   async function commitWeight(next: string) {
     const parsed = Number(next);
@@ -92,6 +105,44 @@ export function TeamRosterMemberRow({
     }
   }
 
+  /**
+   * T-MAXOPENLEADS (2026-09-28): commit the open-lead ceiling.
+   *
+   * BLANK means "no cap" (null), which is different from 0 ("send nothing") -
+   * so an empty field is a VALID value here, not an invalid one to revert. The
+   * stored value is compared against the parsed intent, not the raw string, so
+   * blanking an uncapped member is a no-op rather than a pointless write.
+   */
+  async function commitCap(next: string) {
+    const trimmed = next.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    const current = member.maxOpenLeads ?? null;
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 0)) {
+      setCap(current === null ? '' : String(current));
+      return;
+    }
+    if (parsed === current) return;
+    setCapSaving(true);
+    try {
+      await updateCap.mutateAsync({
+        teamId,
+        userId: member.userId,
+        maxOpenLeads: parsed,
+      });
+      setCap(parsed === null ? '' : String(parsed));
+      toast.success(
+        parsed === null
+          ? 'Open-lead cap removed'
+          : `Capped at ${parsed} open ${parsed === 1 ? 'lead' : 'leads'}`,
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not update the cap');
+      setCap(current === null ? '' : String(current));
+    } finally {
+      setCapSaving(false);
+    }
+  }
+
   return (
     <div
       className="border-border flex items-center justify-between gap-2 rounded-lg border p-3"
@@ -111,11 +162,17 @@ export function TeamRosterMemberRow({
       </div>
       <div className="flex flex-col items-end gap-1">
         {canEditWeight ? (
-          // T-AUTOASSIGN (2026-09-17): inline routing-weight editor. Higher
-          // weight = this telecaller gets more auto-assigned leads. Commits
-          // on blur/Enter; reverts on invalid input.
+          // T-AUTOASSIGN (2026-09-17): inline routing-weight editor. Weight is
+          // a SHARE of new leads (higher = a bigger share of the same incoming
+          // flow), never a cap - a telecaller is not closed after N leads.
+          // Commits on blur/Enter; reverts on invalid input.
           <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
-            Weight
+            <span
+              title="Share of new leads, not a limit: leads go to whoever has the fewest open leads per weight point. 0 takes this person out of auto-assign."
+              className="cursor-help"
+            >
+              Weight
+            </span>
             <input
               type="number"
               min={0}
@@ -131,6 +188,46 @@ export function TeamRosterMemberRow({
               className="border-border text-foreground focus-visible:ring-ring h-7 w-16 rounded-md border bg-transparent px-2 text-right text-xs tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
               aria-label={`Routing weight for ${member.name}`}
               data-qa={`${dataQaPrefix}-weight-${member.userId}`}
+            />
+          </label>
+        ) : !isManagerRow && member.role === 'SALES_EXEC' ? (
+          // Sales exec: not in the auto-assign pool (new leads are telecaller
+          // work), so show the stored weight read-only rather than pretending
+          // it routes anything. Leads reach an exec by handoff or reassign.
+          <span
+            className="text-muted-foreground text-xs"
+            title="Sales execs don't receive auto-assigned new leads; these come from handoff or reassignment."
+            data-qa={`${dataQaPrefix}-weight-inert-${member.userId}`}
+          >
+            Not auto-assigned
+          </span>
+        ) : null}
+        {canEditWeight ? (
+          // T-MAXOPENLEADS (2026-09-28): the hard ceiling, on its own row so it
+          // reads as a separate control from the share. Blank = no cap.
+          <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <span
+              title="Stop auto-assigning to this person once they hold this many open leads. Leave blank for no limit; 0 sends them nothing. When everyone is at their cap the lead goes to the team manager."
+              className="cursor-help"
+            >
+              Max open
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={cap}
+              placeholder="No cap"
+              onChange={(e) => setCap(e.target.value)}
+              onBlur={(e) => void commitCap(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitCap((e.target as HTMLInputElement).value);
+              }}
+              disabled={capSaving}
+              className="border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring h-7 w-16 rounded-md border bg-transparent px-2 text-right text-xs tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+              aria-label={`Maximum open leads for ${member.name}`}
+              data-qa={`${dataQaPrefix}-cap-${member.userId}`}
             />
           </label>
         ) : null}

@@ -127,6 +127,11 @@ export type {
 
 // T-TEST-DB-ISOLATION (2026-09-16): re-exported so suites can import it from the
 // package root (`@shadhil/database`) as well as the focused subpath.
+//
+// NOTE (2026-09-28): `createDirectPrismaClient` deliberately does NOT live here.
+// It connects as the bypass-RLS owner role, so it belongs on the test-only
+// surface (`@shadhil/database/test-db-isolation`) - see its doc comment there.
+// scripts/check-bare-prisma.mjs fails CI if app code reaches for it.
 export {
   isolateTestDatabase,
   toTestDatabaseUrl,

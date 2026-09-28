@@ -2,9 +2,11 @@
 // routing-weight management. Pins:
 //   1. loading             → <Loading> placeholder
 //   2. no members          → "No members in this team yet."
-//   3. members             → a weight input per non-manager member
+//   3. members             → a weight input per routable TELECALLER member
 //   4. manager row         → no weight input (a manager isn't routable)
-//   5. commit on blur      → calls updateTeamMemberWeight({teamId,userId,weight})
+//   5. sales exec row      → no weight input, "Not auto-assigned" instead
+//                            (2026-09-28: the auto-assign pool is telecaller-only)
+//   6. commit on blur      → calls updateTeamMemberWeight({teamId,userId,weight})
 //
 // Mount with createRoot + act (the dialog's useTeam must run).
 import { act } from 'react';
@@ -20,12 +22,17 @@ const mocks = vi.hoisted(() => ({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isLoading: false,
   })),
+  useUpdateTeamMemberCap: vi.fn(() => ({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isLoading: false,
+  })),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
   useTeam: mocks.useTeam,
   useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
+  useUpdateTeamMemberCap: mocks.useUpdateTeamMemberCap,
 }));
 
 vi.mock('@paalstack/react-ui', async (importOriginal) => {
@@ -93,6 +100,7 @@ describe('TeamWeightDialog', () => {
         manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
         members: [
           { userId: 'tc-1', name: 'Priya', email: 'priya@x', role: 'TELECALLER', weight: 2 },
+          { userId: 'se-1', name: 'Vikram', email: 'vikram@x', role: 'SALES_EXEC', weight: 4 },
           { userId: 'mgr-1', name: 'Maya Rao', email: 'maya@x', role: 'MANAGER', weight: 1 },
         ],
       },
@@ -101,13 +109,23 @@ describe('TeamWeightDialog', () => {
     });
     await mount();
     const html = document.body.innerHTML;
-    // Non-manager telecaller gets a weight input seeded from the DB value.
+    // Telecaller gets a weight input seeded from the DB value.
     expect(html).toContain('data-qa="team-weight-input-tc-1"');
     expect(html).toContain('value="2"');
     expect(html).toContain('Priya');
     // Manager row is present but has NO weight editor.
     expect(html).toContain('Maya Rao');
     expect(html).not.toContain('data-qa="team-weight-input-mgr-1"');
+    // Sales exec row: no editor either, labelled instead - their weight is
+    // inert because new leads are never auto-assigned to an exec.
+    expect(html).not.toContain('data-qa="team-weight-input-se-1"');
+    expect(html).toContain('data-qa="team-weight-inert-se-1"');
+    expect(html).toContain('Not auto-assigned');
+    // T-MAXOPENLEADS (2026-09-28): the ceiling editor sits beside the weight
+    // one for routable members, and nowhere else.
+    expect(html).toContain('data-qa="team-cap-input-tc-1"');
+    expect(html).not.toContain('data-qa="team-cap-input-mgr-1"');
+    expect(html).not.toContain('data-qa="team-cap-input-se-1"');
   });
 
   it('shows an empty state when the team has no members', async () => {

@@ -13,10 +13,12 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ReassignAndRemoveDtoSchema,
+  UpdateTeamMemberCapDtoSchema,
   UpdateTeamMemberWeightDtoSchema,
   type ReassignAndRemoveDto,
   type ReassignAndRemoveResponse,
   type RemovalPreviewResponse,
+  type UpdateTeamMemberCapDto,
   type UpdateTeamMemberWeightDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
@@ -95,6 +97,25 @@ export class TeamMembersController {
     this.validateIds(teamId, userId);
     const dto: UpdateTeamMemberWeightDto = parseBody(UpdateTeamMemberWeightDtoSchema, body);
     return this.teamMembers.updateWeight(req.user!, teamId, userId, dto);
+  }
+
+  // T-MAXOPENLEADS (2026-09-28): member's open-lead ceiling. A field update,
+  // not an action flow - same PATCH shape as `weight`.
+  @Patch('cap')
+  @ApiOperation({
+    summary:
+      'Set or clear a member\'s hard ceiling on open leads for auto-assign. ' +
+      'ADMIN/OWNER or the team\'s manager only; `maxOpenLeads: null` clears it.',
+  })
+  async updateCap(
+    @Req() req: AuthedRequest,
+    @Param('teamId') teamId: string,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+  ): Promise<{ userId: string; teamId: string; maxOpenLeads: number | null }> {
+    this.validateIds(teamId, userId);
+    const dto: UpdateTeamMemberCapDto = parseBody(UpdateTeamMemberCapDtoSchema, body);
+    return this.teamMembers.updateCap(req.user!, teamId, userId, dto);
   }
 
   private validateIds(teamId: string, userId: string): void {

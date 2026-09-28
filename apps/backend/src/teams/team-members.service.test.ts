@@ -66,7 +66,7 @@ type Lead = {
 
 function makeTx(overrides: Partial<{
   team: { id: string; managerId: string | null; deletedAt: Date | null } | null;
-  targetMembership: { userId: string; teamId: string } | null;
+  targetMembership: { userId: string; teamId: string; maxOpenLeads?: number | null } | null;
   leads: Array<Lead & { project?: { name: string } | null }>;
   teamMembers: Array<{ userId: string; user: { name: string; role: string } }>;
   manager: { name: string; role: string } | null;
@@ -92,7 +92,24 @@ function makeTx(overrides: Partial<{
       }),
       findMany: vi.fn(async () => overrides.teamMembers ?? []),
       delete: vi.fn(async () => ({})),
-      update: vi.fn(async () => ({ userId: TARGET_ID, teamId: TEAM_ID, weight: 3 })),
+      update: vi.fn(
+        async (args: {
+          where: { userId_teamId: { userId: string; teamId: string } };
+          data?: { weight?: number; maxOpenLeads?: number | null };
+        }) => {
+          const { userId, teamId } = args.where.userId_teamId;
+          // Echo what was written, like Prisma does. A hardcoded shape here
+          // silently lies about any field a new test writes (it reported
+          // `weight: 3` regardless of input, so updateCap's assertions on
+          // `maxOpenLeads` read `undefined`).
+          return {
+            userId,
+            teamId,
+            weight: args.data?.weight ?? 1,
+            maxOpenLeads: args.data?.maxOpenLeads ?? null,
+          };
+        },
+      ),
     },
     user: {
       findUnique: vi.fn(async () => overrides.manager ?? overrides.candidateManager ?? null),
@@ -558,11 +575,16 @@ describe('TeamMembersService.updateWeight', () => {
       targetMembership: { userId: TARGET_ID, teamId: TEAM_ID },
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
-    const result = await svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 3 });
-    expect(result).toEqual({ userId: TARGET_ID, teamId: TEAM_ID, weight: 3 });
+    // Not 1, and not the value the double used to hardcode. The mock originally
+    // returned `weight: 3` regardless of its arguments, so this assertion was
+    // green by coincidence and would have passed for ANY weight - including one
+    // the service never sent. The double now echoes what it was told to write,
+    // so the value must actually round-trip.
+    const result = await svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 7 });
+    expect(result).toEqual({ userId: TARGET_ID, teamId: TEAM_ID, weight: 7 });
     expect(tx.teamMember.update).toHaveBeenCalledWith({
       where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
-      data: { weight: 3 },
+      data: { weight: 7 },
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -589,6 +611,109 @@ describe('TeamMembersService.updateWeight', () => {
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(
       svc.updateWeight(adminActor, TEAM_ID, TARGET_ID, { weight: 4 }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }),
+    });
+    expect(tx.teamMember.update).not.toHaveBeenCalled();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// updateCap() (T-MAXOPENLEADS, 2026-09-28)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('TeamMembersService.updateCap', () => {
+  /**
+   * The mock double is the subject of THIS test as much as the ceiling is: it
+   * used to hardcode its return and only echo `where`, which made every
+   * assertion about a written field vacuous. Pin the echo behaviour first, so a
+   * future refactor back to a canned return fails here with a clear reason
+   * instead of silently turning the updateCap cases green.
+   */
+  it('the teamMember.update double echoes the data it was given', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      targetMembership: { userId: TARGET_ID, teamId: TEAM_ID },
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    const first = await svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: 4 });
+    expect(first.maxOpenLeads).toBe(4);
+    const second = await svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: null });
+    // A different input MUST give a different answer; a canned double cannot.
+    expect(second.maxOpenLeads).toBeNull();
+    expect(tx.teamMember.update).toHaveBeenLastCalledWith({
+      where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
+      data: { maxOpenLeads: null },
+    });
+  });
+
+  it('sets the open-lead ceiling + writes an audit row', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      targetMembership: { userId: TARGET_ID, teamId: TEAM_ID },
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    const result = await svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: 15 });
+    expect(result).toEqual({ userId: TARGET_ID, teamId: TEAM_ID, maxOpenLeads: 15 });
+    expect(tx.teamMember.update).toHaveBeenCalledWith({
+      where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
+      data: { maxOpenLeads: 15 },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'team.member.cap',
+          entityId: TEAM_ID,
+        }),
+      }),
+    );
+  });
+
+  it('accepts null to clear the cap (distinct from 0)', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      targetMembership: { userId: TARGET_ID, teamId: TEAM_ID, maxOpenLeads: 7 },
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    const result = await svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: null });
+    expect(result.maxOpenLeads).toBeNull();
+    expect(tx.teamMember.update).toHaveBeenCalledWith({
+      where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
+      data: { maxOpenLeads: null },
+    });
+  });
+
+  it('accepts 0 as a real ceiling ("send them nothing")', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      targetMembership: { userId: TARGET_ID, teamId: TEAM_ID },
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    const result = await svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: 0 });
+    expect(result.maxOpenLeads).toBe(0);
+    expect(tx.teamMember.update).toHaveBeenCalledWith({
+      where: { userId_teamId: { userId: TARGET_ID, teamId: TEAM_ID } },
+      data: { maxOpenLeads: 0 },
+    });
+  });
+
+  it('rejects a non-mutating actor and writes nothing', async () => {
+    const tx = makeTx({ team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null } });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(false));
+    await expect(
+      svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: 3 }),
+    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    expect(tx.teamMember.update).not.toHaveBeenCalled();
+  });
+
+  it('404s when the user is not a member of the team', async () => {
+    const tx = makeTx({
+      team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
+      membershipRowPresent: false,
+    });
+    const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
+    await expect(
+      svc.updateCap(adminActor, TEAM_ID, TARGET_ID, { maxOpenLeads: 5 }),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }),
     });

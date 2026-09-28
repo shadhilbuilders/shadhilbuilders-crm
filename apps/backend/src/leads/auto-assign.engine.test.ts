@@ -2,8 +2,8 @@
 //
 // Pins the pure selection logic: weighted least-loaded selection, the
 // determinism tie-breaks, and the no-eligible guard. The pooling/dedup is
-// exercised at the SERVICE layer (it owns the Prisma queries); this file only
-// proves the score rule holds.
+// exercised at the SERVICE layer (it owns the Prisma queries and the
+// telecaller-only eligibility rule); this file only proves the score rule holds.
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -64,5 +64,106 @@ describe('pickAutoAssignCandidate', () => {
     expect(
       pickAutoAssignCandidate([{ userId: 'tc-0', openLeads: 1, weight: 0 }]),
     ).toEqual({ kind: 'no-eligible' });
+  });
+
+  it('ignores a member who opted out with weight 0 instead of treating them as idle', () => {
+    // Weight 0 = "takes no auto-assigned leads". Such a member must not win by
+    // scoring 0/0-ish, and must not block an eligible colleague.
+    const pool: AutoAssignCandidate[] = [
+      { userId: 'tc-off', openLeads: 0, weight: 0 },
+      { userId: 'tc-on', openLeads: 7, weight: 1 },
+    ];
+    expect(pickAutoAssignCandidate(pool)).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-on',
+    });
+  });
+});
+
+describe('T-MAXOPENLEADS: the cap is an eligibility gate, not a score penalty', () => {
+  const TC = (
+    userId: string,
+    openLeads: number,
+    maxOpenLeads: number | null,
+    weight = 1,
+  ): AutoAssignCandidate => ({ userId, openLeads, weight, maxOpenLeads });
+
+  it('excludes a member at or over their ceiling, even when they score lowest', () => {
+    // The capped member would win on score (0.0) but is full, so the lead must
+    // go to the loaded-but-uncapped colleague. This is the whole point of the
+    // cap: it overrides the weighted ratio rather than merely biasing it.
+    const pool: AutoAssignCandidate[] = [
+      TC('tc-full', 5, 5), // at ceiling, score 5.0 - ineligible
+      TC('tc-loaded', 9, 20), // under ceiling, score 9.0 - wins
+    ];
+    expect(pickAutoAssignCandidate(pool)).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-loaded',
+    });
+  });
+
+  it('a member under their ceiling is eligible (boundary is strict)', () => {
+    const pool: AutoAssignCandidate[] = [TC('tc-at-4', 4, 5)];
+    expect(pickAutoAssignCandidate(pool)).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-at-4',
+    });
+    // ...and one more lead (openLeads === cap) makes them full.
+    const full: AutoAssignCandidate[] = [TC('tc-at-5', 5, 5)];
+    expect(pickAutoAssignCandidate(full)).toEqual({ kind: 'no-eligible' });
+  });
+
+  it('a cap of 0 excludes the member entirely (a real ceiling, not "unset")', () => {
+    expect(pickAutoAssignCandidate([TC('tc-zero-cap', 0, 0)])).toEqual({
+      kind: 'no-eligible',
+    });
+  });
+
+  it('null and undefined ceilings are uncapped (every pre-existing row)', () => {
+    // The opt-in contract: an un-migrated/undefined cap must never exclude.
+    expect(
+      pickAutoAssignCandidate([TC('tc-null', 99, null)]),
+    ).toMatchObject({ kind: 'picked', userId: 'tc-null' });
+    expect(
+      pickAutoAssignCandidate([{ userId: 'tc-undef', openLeads: 99, weight: 1 }]),
+    ).toMatchObject({ kind: 'picked', userId: 'tc-undef' });
+  });
+
+  it('returns no-eligible when EVERY candidate is at their ceiling', () => {
+    // The caller turns this into the manager handoff (pending), never a
+    // sales-exec pick and never an over-cap assignment.
+    const pool: AutoAssignCandidate[] = [
+      TC('tc-a', 3, 3),
+      TC('tc-b', 7, 7),
+      TC('tc-c', 1, 1),
+    ];
+    expect(pickAutoAssignCandidate(pool)).toEqual({ kind: 'no-eligible' });
+  });
+
+  it('a capped member does not block uncapped colleagues in the same pool', () => {
+    const pool: AutoAssignCandidate[] = [
+      TC('tc-full', 2, 2),
+      TC('tc-free-a', 8, null),
+      TC('tc-free-b', 4, null),
+    ];
+    expect(pickAutoAssignCandidate(pool)).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-free-b',
+    });
+  });
+
+  it('the cap and weight compose: eligibility first, then the weighted ratio', () => {
+    // Among the eligible, weight still decides the share. tc-expert is heavier
+    // (score 4/2 = 2.0) and beats tc-novice (3/1 = 3.0); tc-capped is excluded
+    // despite carrying the best raw score (1/1 = 1.0).
+    const pool: AutoAssignCandidate[] = [
+      TC('tc-capped', 1, 1, 1),
+      TC('tc-novice', 3, 10, 1),
+      TC('tc-expert', 4, 10, 2),
+    ];
+    expect(pickAutoAssignCandidate(pool)).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-expert',
+    });
   });
 });

@@ -63,6 +63,21 @@ function main() {
     const rel = relative(ROOT, file).replaceAll('\\', '/');
     const src = readFileSync(file, 'utf8');
 
+    // (a0) Does the file reach for the BYPASS-RLS owner-role client? That helper
+    // exists only for test fixtures on tables whose RLS has no INSERT policy, and
+    // it is exported from the test-only subpath precisely so business code cannot
+    // mistake it for a normal client. Naming it anywhere under apps/backend/src
+    // (tests included) is a violation - suites import it from
+    // '@shadhil/database/test-db-isolation', which this pattern does not match.
+    if (/\bcreateDirectPrismaClient\b/.test(src)) {
+      violations.push(
+        `${rel}: references createDirectPrismaClient, the BYPASS-RLS owner-role client. ` +
+          `It is a TEST-ONLY fixture helper (import it from '@shadhil/database/test-db-isolation'); ` +
+          `business queries MUST run under withRlsContext (AGENTS.md).`,
+      );
+      continue;
+    }
+
     // (a) Does the file get hold of a bare prisma client at all?
     const importsBarePrisma =
       /import\s+\{[^}]*\bprisma\b[^}]*\}\s+from\s+['"]@shadhil\/database['"]/.test(src) ||

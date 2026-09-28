@@ -46,6 +46,10 @@ export const TeamMemberRowSchema = z.object({
   // T-AUTOASSIGN (2026-09-17): relative routing weight for the auto-assign
   // lead engine (higher = biased toward more leads). Default 1.
   weight: z.number().int().min(0),
+  // T-MAXOPENLEADS (2026-09-28): hard ceiling on open leads before auto-assign
+  // stops routing here. null = no cap. Distinct from `weight`, which only
+  // decides the share among members who are still eligible.
+  maxOpenLeads: z.number().int().min(0).nullable(),
 });
 export type TeamMemberRow = z.infer<typeof TeamMemberRowSchema>;
 
@@ -121,6 +125,20 @@ export const UpdateTeamMemberWeightDtoSchema = z.object({
   weight: z.number().int().min(0),
 });
 export type UpdateTeamMemberWeightDto = z.infer<typeof UpdateTeamMemberWeightDtoSchema>;
+
+/**
+ * PATCH /api/teams/:teamId/members/:userId/cap (T-MAXOPENLEADS, 2026-09-28).
+ * Set or clear a member's hard ceiling on open leads for auto-assign.
+ * ADMIN/OWNER (or the team's manager) only.
+ *
+ * `null` clears the cap (unlimited). 0 means "send them nothing", which is a
+ * meaningful ceiling rather than an absence of one - hence nullable rather than
+ * optional-with-a-default.
+ */
+export const UpdateTeamMemberCapDtoSchema = z.object({
+  maxOpenLeads: z.number().int().min(0).nullable(),
+});
+export type UpdateTeamMemberCapDto = z.infer<typeof UpdateTeamMemberCapDtoSchema>;
 
 /** DELETE has no body; the id param is validated in the controller. */
 

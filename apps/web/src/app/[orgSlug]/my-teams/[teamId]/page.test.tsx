@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   useRemovalPreview: vi.fn(),
   useReassignAndRemove: vi.fn(),
   useUpdateTeamMemberWeight: vi.fn(),
+  useUpdateTeamMemberCap: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -26,6 +27,9 @@ vi.mock('@/hooks/queries/teams', () => ({
   // the import throws "No export is defined on the mock" at render time.
   // Mirrors admin/teams/[teamId]/page.test.tsx, which was updated with the hook.
   useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
+  // T-MAXOPENLEADS (2026-09-28): the roster now also imports the cap hook, so
+  // this mock has to carry it too - the same trap as above, one field later.
+  useUpdateTeamMemberCap: mocks.useUpdateTeamMemberCap,
 }));
 
 vi.mock('@/hooks/queries/team-members', () => ({

@@ -38,12 +38,17 @@
 //   │   TELECALLER or SALES_EXEC (ADMIN   │
 //   │   / MANAGER are rejected - they     │
 //   │   don't own leads directly).        │
+//   │ On a NEW lead (mode='new-lead') the │
+//   │   target must additionally be a     │
+//   │   TELECALLER - a sales exec can     │
+//   │   never take first touch (plan §3). │
 //   └──────────────┬──────────────────────┘
 //                  │ no match
 //                  ▼
 //   ┌─────────────────────────────────────┐
 //   │ Team.defaultAssigneeId              │
-//   │ (also must be TELECALLER / SE).     │
+//   │ (also must be TELECALLER / SE; on a │
+//   │  NEW lead, TELECALLER only).        │
 //   └──────────────┬──────────────────────┘
 //                  │ no default
 //                  ▼
@@ -147,6 +152,23 @@ export type ResolverResult =
   | { kind: 'auto-assign'; userId: string };
 
 /**
+ * Why the caller is resolving an owner - it decides which roles may be
+ * auto-picked. (2026-09-28)
+ *
+ *   'new-lead' - a NEW lead is being routed at creation. Per plan §3, NEW..
+ *                VISIT_SCHEDULED is TELECALLER-owned, so the rule chain and
+ *                the team default may only auto-pick a TELECALLER here; a
+ *                sales exec is skipped.
+ *   'any'      - the caller's own contract already names the target (manual
+ *                reassign, an admin/manager's explicit pick). Full assignable
+ *                set: TELECALLER or SALES_EXEC.
+ *
+ * Default is 'any' so this widening does not silently change behavior for
+ * callers that were never meant to be restricted.
+ */
+export type AssignmentMode = 'new-lead' | 'any';
+
+/**
  * Evaluate the rule chain for a (team, lead) pair.
  *
  * @param rules  Active rules for this team (the caller filters
@@ -162,6 +184,9 @@ export type ResolverResult =
  *               engine returns this as a `fallback` result. The
  *               service passes actor.sub - a placeholder until the
  *               operator wires a rule or default assignee.
+ * @param mode   Which roles this call may auto-pick. Pass 'new-lead' when
+ *               routing a lead at creation so a sales exec can never take
+ *               first touch (plan §3). Defaults to 'any'.
  */
 export function evaluateAssignment(
   rules: readonly ManagerAssignmentRule[],
@@ -169,7 +194,9 @@ export function evaluateAssignment(
   lead: LeadAttributes,
   targetResolver: (userId: string) => TargetUser | null,
   fallbackUserId: string,
+  mode: AssignmentMode = 'any',
 ): ResolverResult {
+  const allowedRole = mode === 'new-lead' ? 'TELECALLER' : null;
   // Sort: priority ASC, then createdAt ASC (oldest first wins ties).
   const sorted = [...rules].sort((a, b) => {
     const pa = a.priority ?? 0;
@@ -186,6 +213,11 @@ export function evaluateAssignment(
     const target = targetResolver(rule.targetUserId);
     if (target === null) continue; // target was deleted - skip
     if (!isAssignableRole(target.role)) continue; // ADMIN/MANAGER can't own leads
+    // NEW-lead mode: a rule that names a sales exec does not fire, so a lower
+    // priority rule for the same lead gets its chance. Skipping (not
+    // aborting) is deliberate - the operator's rule is respected as a
+    // preference, it just cannot win first touch for the wrong role.
+    if (allowedRole !== null && target.role !== allowedRole) continue;
     return {
       kind: 'rule',
       ruleId: rule.id,
@@ -198,12 +230,18 @@ export function evaluateAssignment(
   const defaultUserId = team.defaultAssigneeId ?? null;
   if (defaultUserId !== null) {
     const target = targetResolver(defaultUserId);
-    if (target !== null && isAssignableRole(target.role)) {
+    if (
+      target !== null &&
+      isAssignableRole(target.role) &&
+      // Same role gate as the rules above: on a NEW lead the team default must
+      // be a telecaller, or the lead falls through (never to a sales exec).
+      (allowedRole === null || target.role === allowedRole)
+    ) {
       return { kind: 'team-default', userId: defaultUserId };
     }
-    // Default exists but points at ADMIN/MANAGER / deleted user -
-    // fall through to the actor fallback rather than risk assigning
-    // to the wrong role.
+    // Default exists but points at ADMIN/MANAGER / deleted user / (new-lead
+    // mode) a sales exec - fall through to the actor fallback rather than risk
+    // assigning to the wrong role.
   }
 
   return { kind: 'fallback', userId: fallbackUserId };
@@ -273,6 +311,11 @@ export function extractCriteriaFromSource(
  * TELECALLER and SALES_EXEC are the roles that can own a Lead
  * (per Plan §3 ownership rules). ADMIN/MANAGER can reassign and
  * read but never own directly.
+ *
+ * This is the WIDEST assignable set. Automatic routing of a NEW lead is
+ * narrower (TELECALLER only) and enforced by `AssignmentMode` in
+ * evaluateAssignment - a lead that a telecaller owns at creation only moves
+ * to a sales exec via handoff or an explicit manual reassign.
  */
 function isAssignableRole(role: Role): boolean {
   return role === 'TELECALLER' || role === 'SALES_EXEC';
@@ -282,6 +325,11 @@ function isAssignableRole(role: Role): boolean {
  * Convenience: validate a target user id for the rule-write
  * path. Used by the Admin UI rules page (future PR) to reject
  * "targetUserId = some-admin-id" before the rule is saved.
+ *
+ * Role-only: it answers "may this user own a lead at all", not "may auto
+ * routing pick them for a NEW lead" (see AssignmentMode). Keeping the rule
+ * form able to record a sales-exec target is intentional - the rule stays a
+ * statement of intent, and the create-time mode decides whether it may fire.
  */
 export function canUserBeAssignedTo(user: TargetUser | null): boolean {
   return user !== null && isAssignableRole(user.role);

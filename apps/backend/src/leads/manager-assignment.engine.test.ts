@@ -12,6 +12,11 @@
 // Plus: edge cases the plan didn't name but a real engine must
 // handle: missing rules for the team, deleted target user,
 // rules that have targets of the wrong role.
+//
+// T-ARM #8 (2026-09-28): evaluateAssignment takes an AssignmentMode. The create
+// path passes 'new-lead' so a NEW lead can never be auto-routed to a sales exec
+// (plan §3); the default 'any' keeps the older, wider contract for callers whose
+// own rules already name the target (manual reassign, explicit picks).
 
 import { describe, expect, it } from 'vitest';
 
@@ -450,6 +455,75 @@ describe('T-ARM #7: manual reassign after auto-assign (engine contract)', () => 
     const rule1 = rule({ id: 'r1', targetUserId: 'tc-1' });
     const result = evaluateAssignment([rule1], TEAM_A, leadMETA, resolve, FALLBACK);
     expect(result).toMatchObject({ kind: 'rule', userId: 'tc-1', ruleId: 'r1' });
+  });
+});
+
+describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-09-28)', () => {
+  it('a sales-exec rule does NOT fire on a NEW lead; the next telecaller rule wins', () => {
+    const rules = [
+      rule({ id: 'r-se', priority: 1, targetUserId: 'se-1' }),
+      rule({ id: 'r-tc', priority: 5, targetUserId: 'tc-1' }),
+    ];
+    expect(
+      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'rule', ruleId: 'r-tc', userId: 'tc-1', priority: 5 });
+    // ...whereas the default mode (a caller whose own contract named the
+    // target) still honors the operator's exec rule.
+    expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
+      kind: 'rule',
+      ruleId: 'r-se',
+      userId: 'se-1',
+      priority: 1,
+    });
+  });
+
+  it('only a sales-exec rule + no telecaller rule → actor fallback, never the exec', () => {
+    const rules = [rule({ id: 'r-se', targetUserId: 'se-1' })];
+    expect(
+      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'fallback', userId: FALLBACK });
+  });
+
+  it('a sales-exec team default does NOT own a NEW lead', () => {
+    // TEAM_A_WITH_DEFAULT points at se-1: rejected in new-lead mode, honoured
+    // in the default mode.
+    expect(
+      evaluateAssignment([], TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'fallback', userId: FALLBACK });
+    expect(
+      evaluateAssignment([], TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK),
+    ).toEqual({ kind: 'team-default', userId: 'se-1' });
+  });
+
+  it('a telecaller team default still wins on a NEW lead', () => {
+    const team: Team = { id: 'team-a', defaultAssigneeId: 'tc-1' };
+    expect(
+      evaluateAssignment([], team, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'team-default', userId: 'tc-1' });
+  });
+
+  it('new-lead mode still honours a telecaller rule and a telecaller default', () => {
+    const rules = [rule({ id: 'r-tc', priority: 1, targetUserId: 'tc-1' })];
+    expect(
+      evaluateAssignment(rules, TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'rule', ruleId: 'r-tc', userId: 'tc-1', priority: 1 });
+  });
+
+  it('ADMIN/MANAGER rejection applies in both modes (unchanged)', () => {
+    const rules = [
+      rule({ id: 'r-admin', priority: 1, targetUserId: 'admin-1' }),
+      rule({ id: 'r-tc', priority: 9, targetUserId: 'tc-1' }),
+    ];
+    expect(
+      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
+    ).toEqual({ kind: 'rule', ruleId: 'r-tc', userId: 'tc-1', priority: 9 });
+  });
+
+  it('canUserBeAssignedTo stays role-widest - the rule form may still record an exec target', () => {
+    // The gate is the create-time mode, not the write-time validator: rejecting
+    // an exec target at write time would also block the legitimate rule (an exec
+    // handoff rule is fine; it just cannot win first touch).
+    expect(canUserBeAssignedTo(SE)).toBe(true);
   });
 });
 

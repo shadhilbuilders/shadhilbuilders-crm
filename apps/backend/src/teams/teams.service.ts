@@ -167,11 +167,13 @@ export class TeamsService {
             // T-AUTOASSIGN (2026-09-17): carry each member's routing weight so
             // the roster can show/edit it.
             weight: true,
+            // T-MAXOPENLEADS (2026-09-28): and their open-lead ceiling.
+            maxOpenLeads: true,
             user: { select: { id: true, name: true, email: true, role: true } },
           },
         });
         const members = teamMembers
-          .map((tm) => ({ ...tm.user, weight: tm.weight }))
+          .map((tm) => ({ ...tm.user, weight: tm.weight, maxOpenLeads: tm.maxOpenLeads }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         return {
@@ -194,6 +196,7 @@ export class TeamsService {
             email: m.email,
             role: m.role,
             weight: m.weight,
+            maxOpenLeads: m.maxOpenLeads,
           })),
         };
       },

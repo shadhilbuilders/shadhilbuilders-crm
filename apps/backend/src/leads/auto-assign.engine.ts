@@ -3,13 +3,26 @@
 // T-AUTOASSIGN (2026-09-17): complements the ManagerAssignmentRule engine.
 // A team with `autoAssignLeads=true` routes each NEW lead to the single most
 // available telecaller across the routing scope (see below), instead of the
-// deterministic rule chain. Managers NEVER own a lead on this path - matching
-// the D2 ownership ruling and the existing `isAssignableRole` (TELECALLER /
-// SALES_EXEC only).
+// deterministic rule chain.
 //
 // This module is PURE - no DB / no Nest / no Prisma. The service feeds in the
 // candidate pool with their current load; the engine returns the pick (or null
 // when nobody is eligible). The service persists + audits.
+//
+// ## Who is eligible (fixed 2026-09-28)
+//
+// TELECALLERS ONLY. A NEW lead is first-touch work: plan §3 owns
+// NEW..VISIT_SCHEDULED by a telecaller, and a sales exec only takes over from
+// VISITED onwards (Model C handoff) or via a deliberate manual reassign.
+// Sales execs used to share this pool and be scored by the same
+// openLeads/weight ratio, so an idle sales exec (score 0.0) beat every working
+// telecaller and took first touch - the reported bug.
+//
+// Eligibility is the CALLER's job (leads.service#resolveAutoAssign), not this
+// module's: the engine stays pure and simply ranks the pool it is handed. The
+// caller also owns the "no eligible telecaller" outcome - it hands the lead to
+// the creating team's MANAGER as a pending handoff (never to a sales exec) and
+// only falls back to the rule chain when that team has no manager.
 //
 // ## Routing scope
 //
@@ -21,7 +34,7 @@
 //     telecallers sit light.
 //   - `autoAssignLeads=false` → leads land owned by the creating team's MANAGER
 //     (pending state); the manager hands off manually. (Handled in the service,
-//     not here - this engine only ever returns TELECALLER/SALES_EXEC.)
+//     not here - this engine only ever returns a telecaller.)
 //
 // ## Weight & availability
 //
@@ -33,11 +46,31 @@
 // Ties (equal score) break to the member with FEWER open leads, then
 // lexicographically by userId for determinism.
 //
+// ## Hard cap (T-MAXOPENLEADS, 2026-09-28)
+//
+// `weight` is a SHARE; `maxOpenLeads` is a CEILING. They answer different
+// questions, which is why they are separate:
+//
+//   weight        - among members who CAN take this lead, who should?
+//                   (a divisor: higher weight absorbs more of the same flow)
+//   maxOpenLeads  - can this member take it at all?
+//                   (an eligibility gate, checked BEFORE scoring)
+//
+// A member at or over their ceiling is filtered out of the pool entirely, so
+// they neither receive the lead nor distort the ratio for everyone else. The
+// boundary is `openLeads < maxOpenLeads`: at exactly the ceiling they are full.
+// `null`/`undefined` = uncapped, which is every pre-existing row.
+//
+// When EVERY candidate is capped the pool is empty and the engine returns
+// `no-eligible`. The caller's response is to hand the lead to the creating
+// team's MANAGER as a pending handoff - never a sales exec, and never silently
+// exceeding a configured ceiling.
+//
 // `openLeads` counts non-terminal leads (NOT IN WON/LOST/RNR), computed by the
 // SERVICE in the same query that fetches the pool - the engine receives the
 // number, not the rows.
 
-/** A candidate telecaller or sales exec with their current open-lead load. */
+/** A candidate telecaller with their current open-lead load. */
 export interface AutoAssignCandidate {
   /** TeamMember.userId (the assignable user). */
   userId: string;
@@ -45,6 +78,13 @@ export interface AutoAssignCandidate {
   openLeads: number;
   /** Relative routing weight (>0; default 1). */
   weight: number;
+  /**
+   * T-MAXOPENLEADS (2026-09-28): hard ceiling on open leads. A member at or
+   * over their ceiling is INELIGIBLE, not merely lower-scored - the cap is an
+   * availability gate, while `weight` only decides the share among those still
+   * available. `null`/`undefined` = no cap.
+   */
+  maxOpenLeads?: number | null;
 }
 
 /**
@@ -53,11 +93,26 @@ export interface AutoAssignCandidate {
  *
  *   picked         - a candidate was selected (their id + the score used).
  *   no-eligible    - the pool was empty / every candidate had weight <= 0.
- *                    Caller falls back to the existing rule chain.
+ *                    Caller takes the no-eligible-telecaller path (manager
+ *                    handoff), or the rule chain when that is unavailable.
  */
 export type AutoAssignResult =
   | { kind: 'picked'; userId: string; openLeads: number; weight: number; score: number }
   | { kind: 'no-eligible' };
+
+/**
+ * T-MAXOPENLEADS (2026-09-28): is this candidate still under their ceiling?
+ *
+ * The cap is a hard gate, and the boundary is `openLeads < maxOpenLeads`:
+ * a member at EXACTLY the ceiling is full, because the ceiling is "how many
+ * open leads they may hold" and this lead would become the (max+1)th. A
+ * `null`/`undefined` ceiling means uncapped.
+ */
+function withinCap(c: AutoAssignCandidate): boolean {
+  const cap = c.maxOpenLeads;
+  if (cap === null || cap === undefined) return true;
+  return c.openLeads < cap;
+}
 
 /**
  * Pick the least-loaded eligible member, weighted.
@@ -65,14 +120,19 @@ export type AutoAssignResult =
  * @param candidates  The pooled candidates (deduped by userId) with load.
  *                    The service is responsible for:
  *                      - pooling across the routing scope (project vs team),
+ *                      - restricting the pool to TELECALLERs (never sales execs),
  *                      - deduping a telecaller who sits in multiple teams,
  *                      - excluding ADMIN / MANAGER / roles that cannot own leads.
- * @returns the best candidate, or no-eligible when none qualify.
+ * @returns the best candidate, or no-eligible when none qualify. `no-eligible`
+ *          is also what an all-capped pool returns, and the caller treats it as
+ *          "hand the lead to the team's manager" (T-MAXOPENLEADS).
  */
 export function pickAutoAssignCandidate(
   candidates: readonly AutoAssignCandidate[],
 ): AutoAssignResult {
-  const eligible = candidates.filter((c) => c.weight > 0 && c.openLeads >= 0);
+  const eligible = candidates.filter(
+    (c) => c.weight > 0 && c.openLeads >= 0 && withinCap(c),
+  );
   if (eligible.length === 0) return { kind: 'no-eligible' };
 
   let best: AutoAssignCandidate = eligible[0]!;
