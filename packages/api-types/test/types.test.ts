@@ -324,12 +324,49 @@ describe('@shadhil/api-types - booking DTOs', () => {
   });
 
   it('BookingTransitionDto allows forward moves with no reason', () => {
+    // TOKEN carries no REASON requirement - it is a forward step, not an end or
+    // reversal of the deal. (It does now require `tokenAmount`, which is a
+    // different rule and is pinned separately below.)
     for (const toStatus of ['TOKEN', 'APPROVED'] as const) {
       expect(
-        BookingTransitionDtoSchema.safeParse({ toStatus }).success,
+        BookingTransitionDtoSchema.safeParse({ toStatus, tokenAmount: 500_000 }).success,
         `${toStatus} should not need a reason`,
       ).toBe(true);
     }
+  });
+
+  it('T-TOKEN-GATE: marking the token received REQUIRES the amount', () => {
+    // The invariant: HOLD → TOKEN asserts the token WAS received, and
+    // `tokenAmount` is the only record of how much. Without it the booking is
+    // unverifiable AND misread downstream - the admin "Booking money" card
+    // derives its meaning from the column, so a NULL token renders as "no
+    // token" (money still with the customer) for a booking just marked paid.
+    const missing = BookingTransitionDtoSchema.safeParse({ toStatus: 'TOKEN' });
+    expect(missing.success).toBe(false);
+    // The issue must land ON `tokenAmount` so the form can highlight the right
+    // control - the same reason the `reason` rule is a parent-level superRefine.
+    if (!missing.success) {
+      expect(missing.error.issues.map((i) => i.path.join('.'))).toContain('tokenAmount');
+    }
+  });
+
+  it('T-TOKEN-GATE: a zero or negative amount is rejected', () => {
+    for (const tokenAmount of [0, -1]) {
+      expect(
+        BookingTransitionDtoSchema.safeParse({ toStatus: 'TOKEN', tokenAmount }).success,
+        `${tokenAmount} must not count as a received token`,
+      ).toBe(false);
+    }
+  });
+
+  it('T-TOKEN-GATE: other moves need no amount', () => {
+    // Only the move INTO TOKEN asserts a payment. CANCELLED needs its reason;
+    // APPROVED needs nothing at all.
+    expect(
+      BookingTransitionDtoSchema.safeParse({ toStatus: 'CANCELLED', reason: 'customer backed out' })
+        .success,
+    ).toBe(true);
+    expect(BookingTransitionDtoSchema.safeParse({ toStatus: 'APPROVED' }).success).toBe(true);
   });
 
   it('reason over 500 characters is rejected', () => {

@@ -21,19 +21,26 @@
 // `canInitiateBookings` mirrors the token one, so the card is only rendered for
 // roles the API would accept.
 //
-// WHY THERE IS NO DIALOG HERE (the approvals card DOES use one):
-// Recording a token is a single forward step with no decision in it - there is
-// nothing to review, and the transition requires no reason
-// (`TransitionReasonRequired` is CANCELLED/REJECTED only). A confirmation modal
-// would be friction with no information in it. The one thing it must not do is
-// fire by accident while scrolling, so the button names BOTH the verb and the
-// unit ("Record token for D-102"), and the dialog is reserved for the action
-// that genuinely needs a confirmation step - a decision with money on it.
+// T-TOKEN-GATE (2026-09-28): THIS CARD NOW OPENS A DIALOG, and the old comment
+// arguing against one is worth recording because the reasoning was sound but the
+// premise changed. Recording a token was "a single forward step with no decision
+// in it" - true only while the transition recorded NO AMOUNT. It set
+// `status = 'TOKEN'` and never touched `tokenAmount`, so a booking could be
+// marked token-received with the amount left NULL: unverifiable, and misread
+// downstream as "no token" (money still with the customer) on the admin "Booking
+// money" card. The amount is now required, which makes this a form - so the row
+// opens RecordTokenDialog, exactly as the approvals row opens its dialog. A
+// dashboard control that changes money asks for the money the same way wherever
+// it appears.
 //
-// The card never calls the API itself: it owns no mutation. The page passes
-// `onRecord` and `busyBookingId`, because the mutation hook is a useMutation and
-// calling one per row would make the hook count vary with the row count (see the
-// QueueItem note in page.tsx).
+// The card still owns no mutation: it reports WHICH booking to act on via
+// `onRecord`, and the page holds the dialog. The mutation hook is a useMutation,
+// and calling one per row would make the hook count vary with the row count (see
+// the QueueItem note in page.tsx).
+//
+// The accessible name still carries the unit ("Record token for Unit D-102"), so
+// a screen-reader user hearing a list of identical buttons cannot fire the wrong
+// one.
 
 import { Button } from '@paalstack/react-ui';
 
@@ -66,14 +73,22 @@ type BookingListRow = {
 export function PendingTokenCard({
   bookings,
   isLoading,
-  busyBookingId,
   onRecord,
 }: {
   bookings: unknown[];
   isLoading: boolean;
-  /** The booking currently being moved, so only ITS button shows the spinner. */
-  busyBookingId?: string | null;
-  onRecord: (booking: { id: string; unitNumber?: string; leadName?: string }) => void;
+  /**
+   * Opens the record-token dialog for this booking. No `busyBookingId` any more:
+   * the in-flight state belongs to the DIALOG (it holds the mutation), so the
+   * row button never needs a spinner.
+   */
+  onRecord: (booking: {
+    id: string;
+    unitNumber?: string;
+    leadName?: string;
+    amount?: string;
+    tokenAmount?: string | null;
+  }) => void;
 }) {
   const rows = bookings as BookingListRow[];
 
@@ -95,7 +110,6 @@ export function PendingTokenCard({
             // the customer name is secondary - same ordering as the approvals
             // card and the bookings grid.
             const label = unit === null ? leadName : `Unit ${unit} · ${leadName}`;
-            const busy = busyBookingId === booking.id;
             return (
               <li
                 key={booking.id}
@@ -107,8 +121,6 @@ export function PendingTokenCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  isLoading={busy}
-                  loadingText="Recording..."
                   // T-DASH-MOBILE: 28px tall as `size="sm"`; 44px on a coarse
                   // pointer (see the approvals card for why `min-h-` not `h-`).
                   className="min-h-11 pointer-fine:min-h-0"
@@ -120,6 +132,10 @@ export function PendingTokenCard({
                     onRecord({
                       id: booking.id,
                       leadName: booking.leadName,
+                      amount: booking.amount,
+                      // Carried through so the dialog can prefill an amount that
+                      // was already captured and show what is on record.
+                      tokenAmount: booking.tokenAmount,
                       ...(unit === null ? {} : { unitNumber: unit }),
                     })
                   }

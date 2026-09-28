@@ -21,6 +21,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEAD_LEAD_STATES,
+  isDeadLeadState,
   isNewToday,
   isOverdue,
   isTerminalLeadState,
@@ -175,5 +177,45 @@ describe('terminal states', () => {
     expect(isTerminalLeadState(undefined)).toBe(false);
     expect(isTerminalLeadState('')).toBe(false);
     expect(isTerminalLeadState('SOMETHING_ELSE')).toBe(false);
+  });
+});
+
+describe('dead states vs terminal states (T-VISIT-CLOSE)', () => {
+  it('WON is terminal but NOT dead', () => {
+    // The distinction that matters: a won deal is finished but REALISED - its
+    // handover or site meeting may still be pending. Confusing the two once
+    // already caused the cascade to cancel the handover visit on won deals.
+    expect(isTerminalLeadState('WON')).toBe(true);
+    expect(isDeadLeadState('WON')).toBe(false);
+  });
+
+  it('LOST and RNR are both terminal AND dead', () => {
+    for (const s of ['LOST', 'RNR']) {
+      expect(isTerminalLeadState(s)).toBe(true);
+      expect(isDeadLeadState(s)).toBe(true);
+    }
+  });
+
+  it('dead is a strict subset of terminal', () => {
+    for (const s of DEAD_LEAD_STATES) {
+      expect(TERMINAL_LEAD_STATES).toContain(s);
+    }
+    expect(DEAD_LEAD_STATES.length).toBeLessThan(TERMINAL_LEAD_STATES.length);
+  });
+
+  it('no active state is dead', () => {
+    for (const s of [
+      'NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED',
+      'NEGOTIATION', 'BOOKING_INITIATED', 'RESCHEDULED', 'NO_SHOW',
+    ]) {
+      expect(isDeadLeadState(s)).toBe(false);
+    }
+  });
+
+  it('fails CLOSED on unknown input', () => {
+    expect(isDeadLeadState(null)).toBe(false);
+    expect(isDeadLeadState(undefined)).toBe(false);
+    expect(isDeadLeadState('')).toBe(false);
+    expect(isDeadLeadState('WON')).toBe(false);
   });
 });

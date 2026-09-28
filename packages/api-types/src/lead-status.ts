@@ -58,6 +58,30 @@ export function isTerminalLeadState(state: string | null | undefined): boolean {
   );
 }
 
+/**
+ * DEAD lead states - nothing further will happen on this deal.
+ *
+ * A strict subset of {@link TERMINAL_LEAD_STATES}, and the distinction is not
+ * pedantry: `WON` is finished but REALISED (the unit is booked and a handover or
+ * site meeting may still be pending), whereas `LOST`/`RNR` are finished and
+ * DEAD. Work attached to a dead deal can be closed automatically; work attached
+ * to a won one cannot, because cancelling it would destroy something real.
+ *
+ * This exists because the two were conflated once already: a cascade guarded by
+ * `isTerminalLeadState` silently cancelled the handover visit on every won deal,
+ * which is exactly what this predicate prevents. Use `isTerminalLeadState` for
+ * "leave it out of a needs-attention count" and `isDeadLeadState` for "close what
+ * is attached to it".
+ */
+export const DEAD_LEAD_STATES: readonly LeadState[] = ['LOST', 'RNR'];
+
+/** True when the deal is dead and attached work should be closed. */
+export function isDeadLeadState(state: string | null | undefined): boolean {
+  return (
+    typeof state === 'string' && (DEAD_LEAD_STATES as readonly string[]).includes(state)
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Freshness windows
 // ────────────────────────────────────────────────────────────────────────────

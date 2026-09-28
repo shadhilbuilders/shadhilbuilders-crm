@@ -78,13 +78,54 @@ export type ApproveBookingDto = z.infer<typeof ApproveBookingDtoSchema>;
  * required - so a cancel with no reason (or a whitespace-only one) went
  * straight through and the audit log substituted a placeholder. Verified
  * against the live service.
+ *
+ * T-TOKEN-GATE (2026-09-28): `tokenAmount` is REQUIRED on HOLD → TOKEN. That
+ * move means "the token payment was received", and the amount is the only record
+ * of HOW MUCH was received - yet the transition accepted no amount at all and
+ * never wrote the column, so a booking could sit in TOKEN with
+ * `tokenAmount = NULL`. That is unverifiable on its own, and it actively
+ * corrupts the admin "Booking money" card, which derives its meaning from the
+ * column (`tokenPaid = tokenAmount !== null && > 0`): a NULL token renders as
+ * "HOLD - no token", i.e. money still with the customer, for a booking the
+ * operator just marked as paid.
+ *
+ * Not simply "always required": `CreateBookingDto` already accepts a token
+ * amount at HOLD time, so the value can legitimately exist before this call.
+ * The service therefore accepts an already-stored positive amount - the rule is
+ * that one must EXIST, from either place.
  */
 export const BookingTransitionDtoSchema = z
   .object({
     toStatus: BookingStatusSchema,
     reason: z.string().trim().max(500).optional(),
+    /**
+     * Token received, in rupees. Required for HOLD → TOKEN unless a positive
+     * amount is already stored on the booking.
+     */
+    tokenAmount: z
+      .number()
+      .positive('Token amount must be greater than zero')
+      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
+      .optional(),
   })
   .superRefine((values, ctx) => {
+    // T-TOKEN-GATE: a move INTO TOKEN must state the amount received. Checked
+    // here (not only in the service) so the error attaches to the `tokenAmount`
+    // field and the form highlights the control that is missing the value -
+    // the same reason the `reason` rule below lives at this layer.
+    //
+    // Strict at the boundary on purpose: this DTO is the CLIENT contract, and a
+    // client always knows the booking's stored amount, so it can always send one
+    // (the UI prefills it). The service keeps a more tolerant rule - see
+    // `transition()` - because a direct service call may legitimately rely on an
+    // amount already recorded at HOLD time. Boundary strict, invariant tolerant.
+    if (values.toStatus === 'TOKEN' && values.tokenAmount === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message: 'Enter the token amount received before marking the token as received',
+      });
+    }
     if (!TransitionReasonRequired.has(values.toStatus)) return;
     if ((values.reason ?? '').trim().length > 0) return;
     ctx.addIssue({

@@ -50,6 +50,12 @@ import {
   BookingApprovalDialog,
   type BookingApprovalTarget,
 } from '@/components/bookings/BookingApprovalDialog';
+// T-TOKEN-GATE (2026-09-28): recording a token now captures the amount received,
+// so the dashboard row opens this dialog instead of firing the transition inline.
+import {
+  RecordTokenDialog,
+  type RecordTokenTarget,
+} from '@/components/bookings/RecordTokenDialog';
 import { KpiStrip, SectionCard } from '@/components/dashboard/dashboard-shared';
 import { TodayVisitsCard } from '@/components/dashboard/TodayVisitsCard';
 import { LeadQueueRow, type QueueAction } from '@/components/dashboard/LeadQueueRow';
@@ -65,7 +71,6 @@ import {
   useLeads,
   useLeadsEnvelope,
   useTransitionLead,
-  useUpdateBooking,
   useVisits,
 } from '@/hooks/queries/crm';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
@@ -230,10 +235,10 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
     status: ['HOLD'],
     projectId: projectId ?? undefined,
   });
-  const updateBooking = useUpdateBooking();
-  // WHICH booking is mid-flight, so only that row's button shows a spinner
-  // instead of every button in the card.
-  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  // T-TOKEN-GATE: WHICH booking the record-token dialog is open for, and (for
+  // the approvals dialog) the row it acts on. Both are dialog state now - the
+  // token row no longer fires a mutation inline, so there is no per-row busy id.
+  const [tokenTarget, setTokenTarget] = useState<RecordTokenTarget | null>(null);
 
   const [approvalTarget, setApprovalTarget] = useState<BookingApprovalTarget | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -457,32 +462,11 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
         <PendingTokenCard
           bookings={Array.isArray(tokenQuery.data) ? tokenQuery.data : []}
           isLoading={tokenQuery.isLoading}
-          busyBookingId={busyBookingId}
-          onRecord={(booking) => {
-            setBusyBookingId(booking.id);
-            updateBooking.mutate(
-              // TOKEN carries no `reason` requirement (TransitionReasonRequired
-              // is CANCELLED/REJECTED only), so this is a single forward step -
-              // which is why it needs no confirmation dialog.
-              { id: booking.id, body: { toStatus: 'TOKEN' } },
-              {
-                onSuccess: () => {
-                  const which =
-                    booking.unitNumber === undefined
-                      ? (booking.leadName ?? 'booking')
-                      : `Unit ${booking.unitNumber}`;
-                  toast.success(`Token recorded for ${which}`);
-                  // The list is invalidated by the mutation itself; refetch the
-                  // approvals card too, since the booking may now be waiting on
-                  // a manager and should appear there without a page reload.
-                  void bookingsQuery.refetch();
-                },
-                onError: (e: unknown) =>
-                  toast.error(e instanceof Error ? e.message : 'Could not record the token'),
-                onSettled: () => setBusyBookingId(null),
-              }
-            );
-          }}
+          // T-TOKEN-GATE: the row now opens a dialog to capture the amount
+          // received (it is required by the transition), instead of firing
+          // `{ toStatus: 'TOKEN' }` with no amount - which the API now rejects
+          // and which used to record a token payment with nothing to verify it.
+          onRecord={setTokenTarget}
         />
       ) : null}
 
@@ -508,6 +492,20 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
         onCreated={() => {
           void visitsQuery.refetch();
           void leadsQuery.refetch();
+        }}
+      />
+      {/* T-TOKEN-GATE: the record-token dialog. On success the booking list must
+          be refetched too, because the row LEAVES this card (it is no longer
+          HOLD) and may now belong to the approvals card - the mutation's own
+          invalidation does not know about this page's two separate queries. */}
+      <RecordTokenDialog
+        booking={tokenTarget}
+        onOpenChange={(next) => {
+          if (!next) setTokenTarget(null);
+        }}
+        onRecorded={() => {
+          void tokenQuery.refetch();
+          void bookingsQuery.refetch();
         }}
       />
     </div>

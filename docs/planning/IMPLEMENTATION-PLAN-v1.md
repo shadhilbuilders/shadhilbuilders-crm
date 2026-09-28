@@ -2221,6 +2221,61 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### T-VISIT-CLOSE + T-TOKEN-GATE (2026-09-28): settle the deal, record the money
+
+Scope: `docs/planning/SCOPE-visit-close-and-token-gate.md`.
+
+**T-VISIT-CLOSE.** A `SiteVisit` was closed only by `updateOutcome`, which the UI
+offers per visit, and nothing tied a visit's life to its lead's. So a deal that
+ended left its open visit behind, with a past `scheduledFor`, forever - surfacing
+on the "Visits at risk" card, the visit list and the calendar (the latter two
+apply no lead-state filter; verified), consuming the list's 100-row LIMIT, and
+worst, letting a stale `updateOutcome` advance a terminal LEAD (`LOST → VISITED`)
+which the state machine forbids and the visit-level guard could not see. Confirmed
+by grep that `CANCELLED` - a real `VisitStatus` named in both state machines - is
+never written by any production code.
+
+Fix: `closeOpenVisitsForLead(tx, actor, leadId, reason)` in the visits module,
+called inside the SAME transaction as the state change that caused it, from
+`LeadsService.transition` and `BookingsService.transition`; plus a backstop in
+`VisitsService.updateOutcome` refusing a terminal lead.
+
+**The judgement call, and a bug my own test caught.** The first draft guarded the
+cascade with `isTerminalLeadState` (WON/LOST/RNR) while its docs said "WON does
+NOT close visits" - the predicate and the intent contradicted each other, and the
+cascade silently cancelled the handover visit on every won deal. Fixed by
+splitting the concepts in `@shadhil/api-types`: `isTerminalLeadState` (leave out
+of a needs-attention count) vs `isDeadLeadState` (LOST/RNR only - close what is
+attached). Both are now pinned by test. Booking `TOKEN` likewise does not cascade:
+the token is paid but approval is pending, so the deal is live.
+
+**T-TOKEN-GATE.** `PATCH /bookings/:id` → `TOKEN` set `status = 'TOKEN'` and never
+read or wrote `tokenAmount`; the transition DTO had no such field. A booking could
+therefore be marked token-received with `tokenAmount = NULL` - unverifiable, and
+actively misread: the admin "Booking money" card computes
+`tokenPaid = tokenAmount !== null && > 0`, so a NULL token renders as "HOLD - no
+token" (money still with the customer) for a booking the operator just marked
+paid. Fix: `tokenAmount` required on HOLD → TOKEN, enforced at the DTO (error on
+the `tokenAmount` field), at the service (the invariant, so a direct call cannot
+bypass it), and in the UI (a new `RecordTokenDialog`, since the amount makes the
+action a form rather than a one-click step). The value is written in the SAME
+update as the status, so the two cannot drift.
+
+**Not "always required"**: `CreateBookingDto` accepts a token amount at HOLD
+time, so a stored positive amount already satisfies the invariant. Rule = one must
+EXIST, from either place. Boundary strict, invariant tolerant.
+
+**Deliberately out of scope** (owner data, not this repo): repairing existing
+`TOKEN` bookings with a NULL amount, and backfilling orphan visits. Both are
+one-off data tasks once the write paths are correct.
+
+**Verification.** api-types 98, backend 1176, db 158, web 780; type-check exit 0;
+lint 7/7; guardrail pass. Tampers: removing the service token guard reddens 1 test;
+removing the visit cascade reddens 1; making the cascade fire on every state
+reddens the WON exception. The dashboard's "Record token" no longer fires
+`{ toStatus: 'TOKEN' }` bare - that call is now REJECTED by design, and the row
+opens the dialog.
+
 ### T-VISIT-RISK-STATUS (2026-09-28): a settled deal must not be a visit risk
 
 Reported: "In admin/overview Visits at risk section, Arjun Reddy lead status is won

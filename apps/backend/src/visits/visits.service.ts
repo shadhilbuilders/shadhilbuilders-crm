@@ -36,6 +36,10 @@ import type {
   UpdateVisitOutcomeDto,
   VisitFilterDto,
 } from '@shadhil/api-types';
+// T-VISIT-CLOSE (2026-09-28): the shared "is this lead finished?" predicate.
+// Same source as the cascade that cancels open visits, so the guard here and the
+// cascade in leads/bookings cannot disagree about what "settled" means.
+import { isTerminalLeadState } from '@shadhil/api-types';
 
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.module';
@@ -473,6 +477,22 @@ export class VisitsService {
         });
         if (existing === null) {
           throw new NotFoundException(`Visit ${visitId} not found`);
+        }
+
+        // T-VISIT-CLOSE (2026-09-28) defence in depth: never advance the parent
+        // LEAD out of a terminal state because of a visit write. Since this
+        // change the cascade cancels open visits when a lead settles, so these
+        // rows should not exist - but a direct service call, an in-flight
+        // request, or a race against a concurrent cancel could still get here,
+        // and `LOST -> VISITED` is a state-machine violation that the conflict
+        // rule below (which only inspects the VISIT's own status) cannot catch.
+        //
+        // Refuse rather than silently skip: the caller asked for something that
+        // must not happen, and a silent success would hide it.
+        if (isTerminalLeadState(existing.lead.state)) {
+          throw new ConflictException(
+            `Lead ${existing.leadId} is ${existing.lead.state} - a settled deal cannot have its visit outcome recorded. Re-open the lead first if this visit really happened.`,
+          );
         }
 
         // ── Conflict rule (T-D4): idempotent replay ──────────────────

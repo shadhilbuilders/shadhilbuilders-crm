@@ -16,6 +16,7 @@
 import type { ComponentType } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { Button, Form } from '@paalstack/react-ui';
+import type { FormFieldItemType } from '@paalstack/react-ui';
 import type { BookingStatus } from '@shadhil/api-types';
 
 import { labelFor } from '@/lib/labels';
@@ -28,6 +29,15 @@ export type BookingTransitionTarget = Exclude<BookingStatus, 'HOLD'>;
 export type TransitionFormValues = {
   toStatus: BookingTransitionTarget;
   reason?: string;
+  /**
+   * T-TOKEN-GATE (2026-09-28): the token amount received, as a FORM STRING.
+   * Held as a string because that is what an input yields; the page parses it to
+   * a number only after validation, so an empty field can be distinguished from
+   * a zero one (an empty string is "not entered", `0` is a real - and invalid -
+   * amount). Without this field the UI could mark a token received with no
+   * amount recorded, which is unverifiable and renders downstream as "no token".
+   */
+  tokenAmount?: string;
 };
 
 /** Row-badge colours, mirrored from the page so this block stays presentational. */
@@ -45,6 +55,7 @@ export function BookingTransitionConfirmStep({
   currentStatus,
   toStatus,
   reasonRequired,
+  tokenAmountRequired,
   isPending,
   ConfirmIcon,
   onCancelStep,
@@ -54,10 +65,54 @@ export function BookingTransitionConfirmStep({
   currentStatus: string;
   toStatus: BookingTransitionTarget;
   reasonRequired: boolean;
+  /** True only for HOLD → TOKEN: the amount received must be stated. */
+  tokenAmountRequired?: boolean;
   isPending: boolean;
   ConfirmIcon?: ComponentType<{ className?: string }>;
   onCancelStep: () => void;
 }) {
+  // Repo convention (leads/new, settings, admin/users): a TYPED locals array.
+  // The annotation also matters for correctness - without it the conditional
+  // spread widens `type` to `string` and the Form's discriminated union rejects
+  // the whole array.
+  //
+  // T-TOKEN-GATE: the amount comes FIRST on a HOLD → TOKEN move, before the
+  // optional note, because it is the fact the status change asserts ("the token
+  // was received"). Without it the move is unverifiable.
+  const fields: FormFieldItemType<TransitionFormValues>[] = [
+    ...(tokenAmountRequired
+      ? ([
+          {
+            type: 'number',
+            name: 'tokenAmount',
+            label: 'Token amount received',
+            required: true,
+            description: 'The amount actually received. Recorded with the status change.',
+            placeholder: 'e.g. 500000',
+            // The library's own guard: the control is free-text, so this keeps a
+            // negative or a stray "-" out before zod ever sees it. The value is a
+            // form STRING by design; the page parses it after validation.
+            numberInputProps: { isPositiveFloat: true, 'data-qa': 'booking-token-amount' },
+          },
+        ] satisfies FormFieldItemType<TransitionFormValues>[])
+      : []),
+    {
+      type: 'textarea',
+      name: 'reason',
+      label: reasonRequired ? 'Reason' : 'Reason (optional)',
+      required: reasonRequired,
+      description: reasonRequired
+        ? 'Required. Recorded in the audit log and sent to the booking owner.'
+        : 'Optional note for the audit trail.',
+      placeholder: 'e.g. customer backed out, payment not received',
+      textareaProps: {
+        rows: 2,
+        maxLength: 500,
+        'data-qa': 'booking-reason',
+      },
+    },
+  ];
+
   return (
     <div className="space-y-4" data-qa="booking-transition-step">
       {/* Context FIRST, input SECOND. Do not reorder: the operator should read
@@ -89,23 +144,7 @@ export function BookingTransitionConfirmStep({
         // hide the Form's own buttons so the submit isn't duplicated.
         hideSubmitButton
         hideResetButton
-        fields={[
-          {
-            type: 'textarea',
-            name: 'reason',
-            label: reasonRequired ? 'Reason' : 'Reason (optional)',
-            required: reasonRequired,
-            description: reasonRequired
-              ? 'Required. Recorded in the audit log and sent to the booking owner.'
-              : 'Optional note for the audit trail.',
-            placeholder: 'e.g. customer backed out, payment not received',
-            textareaProps: {
-              rows: 2,
-              maxLength: 500,
-              'data-qa': 'booking-reason',
-            },
-          },
-        ]}
+        fields={fields}
       />
 
       <div className="flex justify-end gap-2">

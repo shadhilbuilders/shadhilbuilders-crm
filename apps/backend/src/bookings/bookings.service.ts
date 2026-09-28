@@ -45,6 +45,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 import { isAdminClass } from '../users/roles';
+// T-VISIT-CLOSE (2026-09-28): a settled booking leaves no open visits behind.
+// One shared helper with the lead-terminal path, so both agree on the meaning.
+import { closeOpenVisitsForLead } from '../visits/close-visits-for-lead';
 import {
   BOOKABLE_LEAD_STATES,
   isBookableLeadState,
@@ -624,12 +627,44 @@ export class BookingsService {
           );
         }
 
+        // T-TOKEN-GATE (2026-09-28): the invariant behind HOLD → TOKEN is that
+        // the token WAS received, and `tokenAmount` is the only record of how
+        // much. The DTO requires it from a client, but the service enforces the
+        // INVARIANT too, so a direct service call or a racing older client
+        // cannot leave a booking marked token-received with no amount - which is
+        // both unverifiable and actively misread downstream (the admin "Booking
+        // money" card renders a NULL token as "HOLD - no token", i.e. money
+        // still with the customer).
+        //
+        // Tolerant where the DTO is strict: an amount recorded at HOLD time
+        // (CreateBookingDto accepts one) already satisfies the invariant, so a
+        // transition that omits it is fine as long as the stored value is
+        // positive. The rule is "one must EXIST", not "one must be sent".
+        const stored = existing.tokenAmount === null ? 0 : Number(existing.tokenAmount);
+        const incoming = dto.tokenAmount;
+        if (incoming !== undefined && !(incoming > 0)) {
+          throw new BadRequestException(
+            'Token amount must be greater than zero when marking the token as received',
+          );
+        }
+        if (dto.toStatus === 'TOKEN' && incoming === undefined && !(stored > 0)) {
+          throw new BadRequestException(
+            'A token amount is required to mark the token as received. Enter the amount received (or record it on the booking first).',
+          );
+        }
+
         const updated = await (tx as unknown as PrismaClient).booking.update({
           where: { id: bookingId },
           data: {
             status: dto.toStatus,
             ...(dto.toStatus === 'APPROVED'
               ? { approvedById: actor.sub }
+              : {}),
+            // Written in the SAME update as the status, so the two can never
+            // drift into "TOKEN with no amount". `toFixed(2)` matches how the
+            // column is written everywhere else (Prisma Decimal over a string).
+            ...(dto.toStatus === 'TOKEN' && incoming !== undefined
+              ? { tokenAmount: incoming.toFixed(2) }
               : {}),
           },
           select: {
@@ -650,6 +685,28 @@ export class BookingsService {
             approvedBy: { select: { name: true } },
           },
         });
+
+        // T-VISIT-CLOSE (2026-09-28): once the booking is settled - approved
+        // (the unit is sold) or cancelled/rejected (the deal is dead) - any open
+        // visit on its lead is no longer pending work. Nothing used to close
+        // them, so they lingered with a past `scheduledFor` and showed up in the
+        // "Visits at risk" card, the visit list and the calendar.
+        //
+        // TOKEN is deliberately EXCLUDED: the token is paid but approval is
+        // still pending, so the deal is live and a scheduled visit may be
+        // exactly what closes it.
+        if (
+          dto.toStatus === 'APPROVED' ||
+          dto.toStatus === 'REJECTED' ||
+          dto.toStatus === 'CANCELLED'
+        ) {
+          await closeOpenVisitsForLead(
+            tx as unknown as PrismaClient,
+            actor,
+            updated.leadId,
+            'booking-settled',
+          );
+        }
 
         // T-INV-SYNC: the Unit.status follow-through (APPROVED → SOLD,
         // CANCELLED/REJECTED → back to AVAILABLE/HOLD/TOKEN depending on the

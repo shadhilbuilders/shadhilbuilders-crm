@@ -41,6 +41,8 @@ function makeService(): {
     unit: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     team: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     auditLog: { create: ReturnType<typeof vi.fn> };
+    // T-VISIT-CLOSE (2026-09-28): a settled booking closes its lead's open visits.
+    siteVisit: { findMany: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
   };
 } {
   const client = {
@@ -65,6 +67,11 @@ function makeService(): {
     // calls findMany (a manager may lead multiple teams), not findFirst.
     team: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+    // T-VISIT-CLOSE (2026-09-28): a settled booking (APPROVED / REJECTED /
+    // CANCELLED) also closes any open visits on its lead, so the service now
+    // touches `siteVisit`. The default is "no open visits" - the tests here are
+    // about the booking/lead sync, and the visit cascade has its own suite.
+    siteVisit: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
   };
   const prismaService = { $client: client } as never;
   const service = new BookingsService(prismaService);
@@ -553,12 +560,17 @@ describe('transition - advance booking state', () => {
     const result = await service.transition(
       makeActor({ role: 'SALES_EXEC', sub: 'se-1' }),
       'b-1',
-      { toStatus: 'TOKEN' },
+      // T-TOKEN-GATE: the amount is now part of the move into TOKEN.
+      { toStatus: 'TOKEN', tokenAmount: 500_000 },
     );
     expect(result.status).toBe('TOKEN');
+    // T-TOKEN-GATE: `data` now also carries the amount, in the SAME update as the
+    // status - so "token received" and "how much" can never be recorded apart.
+    // The OLD expectation was `data: { status: 'TOKEN' }` with nothing else,
+    // which is exactly the state this change removes.
     expect(client.booking.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: 'TOKEN' },
+        data: { status: 'TOKEN', tokenAmount: '500000.00' },
       }),
     );
     expect(client.auditLog.create).toHaveBeenCalledWith(
@@ -748,6 +760,7 @@ describe('transition - advance booking state', () => {
 
     const result = await service.transition(makeActor({ role: 'MANAGER', sub: 'mgr-1' }), 'b-1', {
       toStatus: 'TOKEN',
+      tokenAmount: 500_000,
     });
     expect(result.status).toBe('TOKEN');
   });
@@ -856,7 +869,9 @@ describe('transition - advance booking state', () => {
       service.transition(
         makeActor({ role: 'TELECALLER', sub: 'tc-1' }),
         'b-1',
-        { toStatus: 'TOKEN' },
+        // Amount supplied so the ONLY thing this can fail on is the ROLE gate -
+        // otherwise the new token-amount rule would mask what is being tested.
+        { toStatus: 'TOKEN', tokenAmount: 500_000 },
       ),
     ).rejects.toThrow(/can start a booking/);
     expect(client.booking.update).not.toHaveBeenCalled();
@@ -1269,6 +1284,7 @@ describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
 
     await service.transition(makeActor({ role: 'SALES_EXEC', sub: 'se-1' }), 'b-1', {
       toStatus: 'TOKEN',
+      tokenAmount: 500_000,
     });
 
     expect(client.lead.update).toHaveBeenCalledWith(
@@ -1429,9 +1445,78 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
   });
 
   it('still allows a forward move with NO reason (HOLD -> TOKEN)', async () => {
+    // T-TOKEN-GATE does not change the REASON rule (only CANCELLED/REJECTED need
+    // one). The amount is now required, so it is supplied here - the point of
+    // this test is that no REASON is demanded.
     const { service } = makeCancelService('HOLD');
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', {
+        toStatus: 'TOKEN',
+        tokenAmount: 500_000,
+      } as never),
+    ).resolves.toBeDefined();
+  });
+
+  it('T-TOKEN-GATE: refuses HOLD -> TOKEN when no amount is given and none is stored', async () => {
+    // The invariant the service enforces itself, so a direct service call (or an
+    // older client that predates the DTO rule) cannot mark a token received with
+    // nothing recorded to verify it.
+    const { service, client } = makeCancelService('HOLD');
+    client.booking.findUnique.mockResolvedValue({
+      id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
+      notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', { toStatus: 'TOKEN' } as never),
+    ).rejects.toThrow(/token amount is required/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE: accepts HOLD -> TOKEN when an amount is ALREADY stored', async () => {
+    // The tolerant half, and the reason the rule is not simply "always send one":
+    // `CreateBookingDto` can record a token at HOLD time, so a stored positive
+    // amount already satisfies the invariant. The rule is that one must EXIST.
+    const { service, client } = makeCancelService('HOLD');
+    client.booking.findUnique.mockResolvedValue({
+      id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
     await expect(
       service.transition(makeActor({ role: 'MANAGER' }), 'bk1', { toStatus: 'TOKEN' } as never),
     ).resolves.toBeDefined();
+  });
+
+  it('T-TOKEN-GATE: writes the amount in the SAME update as the status', async () => {
+    // The two can never drift into "TOKEN with no amount" if they are one write.
+    const { service, client } = makeCancelService('HOLD');
+    client.booking.findUnique.mockResolvedValue({
+      id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
+      notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await service.transition(makeActor({ role: 'MANAGER' }), 'bk1', {
+      toStatus: 'TOKEN',
+      tokenAmount: 750_000,
+    } as never);
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'TOKEN', tokenAmount: '750000.00' }),
+      }),
+    );
+  });
+
+  it('T-TOKEN-GATE: a zero amount is refused even when one is sent', async () => {
+    const { service } = makeCancelService('HOLD');
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'bk1', {
+        toStatus: 'TOKEN',
+        tokenAmount: 0,
+      } as never),
+    ).rejects.toThrow(/greater than zero/i);
   });
 });

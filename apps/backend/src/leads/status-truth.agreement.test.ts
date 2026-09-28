@@ -37,6 +37,7 @@ import { OVERDUE_AFTER_MIN } from '@shadhil/api-types';
 
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PrismaService } from '../prisma/prisma.module';
+import { VisitsService } from '../visits/visits.service';
 import { LeadsService } from './leads.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -443,5 +444,130 @@ describe('"Visits at risk" excludes settled deals', () => {
     expect(overdue?.reason).toBe('overdue-past-due');
     const today = result.visitRisk.find((v) => v.id === VISITS.onActiveToday);
     expect(today?.reason).toBe('scheduled-today');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-VISIT-CLOSE (2026-09-28)
+// A settled deal must not leave open visits behind. Nothing used to close them:
+// `updateOutcome` was the only closer, and it is offered per-visit, so a lead
+// that went LOST (or a booking that was approved/cancelled) left its scheduled
+// visit open forever with a past `scheduledFor` - surfacing as phantom work on
+// the "Visits at risk" card, the visit list and the calendar.
+// ────────────────────────────────────────────────────────────────────────────
+describe('settling a deal closes its open visits', () => {
+  it('lead -> LOST cancels the open visit and audits WHY', async () => {
+    // Uses the real service against the real DB, so the cascade is exercised
+    // through withRlsContext (the same path production takes).
+    const leads = new LeadsService(new PrismaService());
+    const target = FIXTURE.find((r) => r.id.includes('overdue'))!;
+    // Give the lead a fresh open visit so this test owns its own state.
+    const visitId = `statustruth-v-close-${RUN}`;
+    await adminSeed(async (db) => {
+      await db.$executeRaw`
+        INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
+          "scheduledFor", "status", "createdAt", "updatedAt")
+        VALUES (${visitId}, ${target.id}, ${ORG}, ${TC_ID},
+          ${new Date(NOW.getTime() + 86_400_000)}, 'SCHEDULED', ${NOW}, ${NOW})
+      `;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'NEGOTIATION' } });
+    });
+
+    await leads.transition(actorFor(ADMIN_ID, 'ADMIN'), {
+      leadId: target.id,
+      toState: 'LOST',
+      reason: 'customer went cold',
+    } as never);
+
+    const visit = await adminSeed((db) =>
+      db.siteVisit.findUnique({ where: { id: visitId }, select: { status: true } }),
+    );
+    expect(visit?.status).toBe('CANCELLED');
+
+    // The audit row names the CAUSE, so a reader can judge whether cancelling
+    // was right rather than just seeing that it happened.
+    const audit = await adminSeed((db) =>
+      db.auditLog.findFirst({
+        where: { entityId: visitId, action: 'visit.cancel' },
+        select: { after: true },
+      }),
+    );
+    expect((audit?.after as { closedBecause?: string })?.closedBecause).toBe('lead-terminal');
+
+    await adminSeed(async (db) => {
+      await db.$executeRaw`DELETE FROM "AuditLog" WHERE "entityId" = ${visitId}`;
+      await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ${visitId}`;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'NEW' } });
+    });
+  });
+
+  it('lead -> WON does NOT close visits (a handover may still be pending)', async () => {
+    // The one deliberate exception. A won deal can still have a handover or site
+    // meeting to conduct, so silently cancelling it would destroy real work.
+    const leads = new LeadsService(new PrismaService());
+    const target = FIXTURE.find((r) => r.id.includes('fresh'))!;
+    const visitId = `statustruth-v-won-keep-${RUN}`;
+    await adminSeed(async (db) => {
+      await db.$executeRaw`
+        INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
+          "scheduledFor", "status", "createdAt", "updatedAt")
+        VALUES (${visitId}, ${target.id}, ${ORG}, ${TC_ID},
+          ${new Date(NOW.getTime() + 86_400_000)}, 'SCHEDULED', ${NOW}, ${NOW})
+      `;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'BOOKING_INITIATED' } });
+    });
+
+    await leads.transition(actorFor(ADMIN_ID, 'ADMIN'), {
+      leadId: target.id,
+      toState: 'WON',
+      reason: 'deal closed',
+    } as never);
+
+    const visit = await adminSeed((db) =>
+      db.siteVisit.findUnique({ where: { id: visitId }, select: { status: true } }),
+    );
+    expect(visit?.status).toBe('SCHEDULED');
+
+    await adminSeed(async (db) => {
+      await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ${visitId}`;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'NEW' } });
+    });
+  });
+
+  it('refuses a visit outcome on a terminal lead (defence in depth)', async () => {
+    // The cascade should have removed these rows, so this is the backstop: a
+    // direct service call (or a race) must not advance a LOST lead to VISITED,
+    // which the state machine forbids and the visit-level guard cannot see.
+    const visits = new VisitsService(new PrismaService(), new LeadsService(new PrismaService()));
+    const target = FIXTURE.find((r) => r.id.includes('contacted'))!;
+    const visitId = `statustruth-v-term-${RUN}`;
+    await adminSeed(async (db) => {
+      await db.$executeRaw`
+        INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
+          "scheduledFor", "status", "createdAt", "updatedAt")
+        VALUES (${visitId}, ${target.id}, ${ORG}, ${TC_ID},
+          ${new Date(NOW.getTime() - 60 * 60 * 1000)}, 'SCHEDULED', ${NOW}, ${NOW})
+      `;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'LOST' } });
+    });
+
+    await expect(
+      visits.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+        visitId,
+        outcome: 'COMPLETED',
+        notes: 'should be refused',
+      } as never),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
+
+    // The lead is untouched - the point of the guard.
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: target.id }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('LOST');
+
+    await adminSeed(async (db) => {
+      await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ${visitId}`;
+      await db.lead.update({ where: { id: target.id }, data: { state: 'CONTACTED' } });
+    });
   });
 });

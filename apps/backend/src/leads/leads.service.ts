@@ -47,10 +47,18 @@ import type {
   SetLeadCoOwnerDto,
   UpdateLeadDto,
 } from '@shadhil/api-types';
+// T-VISIT-CLOSE (2026-09-28): the shared "is this lead finished?" predicate and
+// the cascade that closes its open visits. Importing the predicate (rather than
+// re-listing WON/LOST/RNR here) keeps this in step with the exceptions inbox,
+// which already excludes the same trio.
+import { isDeadLeadState } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
+// T-VISIT-CLOSE: closing visits is the visits module's concern, exposed as one
+// shared helper so every "the deal settled" path agrees on what that means.
+import { closeOpenVisitsForLead } from '../visits/close-visits-for-lead';
 // T-E2b follow-up fix (2026-09-17): lead creation must persist phoneE164 so
 // the WhatsApp inbound webhook's findUnique({ where: { phoneE164 } }) match can
 // route a converted number's new messages into its lead chat panel / Message
@@ -1786,6 +1794,26 @@ export class LeadsService {
             reason: dto.reason ?? `state change by ${actor.email} (${actor.role})`,
           },
         });
+
+        // T-VISIT-CLOSE (2026-09-28): a lead that can no longer be worked must
+        // not leave open visits behind. Nothing used to close them, so they piled
+        // up with a past `scheduledFor` and surfaced as phantom work (the admin
+        // "Visits at risk" card, the visit list and calendar, which apply no
+        // lead-state filter) - and completing one would have tried to advance a
+        // terminal LEAD, which the state machine forbids.
+        //
+        // Same transaction as the state write, so the two cannot come apart.
+        // `isDeadLeadState` (LOST/RNR), NOT `isTerminalLeadState`: a WON deal is
+        // finished but realised - its handover or site meeting may still be
+        // pending, and cancelling those silently would destroy real work.
+        if (isDeadLeadState(updated.state)) {
+          await closeOpenVisitsForLead(
+            tx as unknown as PrismaClient,
+            actor,
+            updated.id,
+            'lead-terminal',
+          );
+        }
 
         // Notify the lead's owner that its state changed (e.g. a visit was
         // booked, a deal moved to negotiation). Skip when the actor IS the

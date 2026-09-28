@@ -17,14 +17,12 @@ const booking = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const render = (bookings: unknown[], busyBookingId?: string | null) =>
+// T-TOKEN-GATE (2026-09-28): the card no longer takes `busyBookingId` - the
+// in-flight state moved into RecordTokenDialog, which owns the mutation. The row
+// button only OPENS the dialog now, so it never shows a spinner of its own.
+const render = (bookings: unknown[]) =>
   renderToStaticMarkup(
-    <PendingTokenCard
-      bookings={bookings}
-      isLoading={false}
-      busyBookingId={busyBookingId}
-      onRecord={vi.fn()}
-    />
+    <PendingTokenCard bookings={bookings} isLoading={false} onRecord={vi.fn()} />,
   );
 
 describe('PendingTokenCard', () => {
@@ -94,7 +92,7 @@ describe('PendingTokenCard', () => {
 
   it('shows a loading state instead of a misleading empty one', () => {
     const html = renderToStaticMarkup(
-      <PendingTokenCard bookings={[]} isLoading busyBookingId={null} onRecord={vi.fn()} />
+      <PendingTokenCard bookings={[]} isLoading onRecord={vi.fn()} />
     );
     expect(html).toContain('Loading');
     // An in-flight load must NOT read as "nothing to do" - that is how a user

@@ -293,8 +293,32 @@ const transitionSchema = z
       .trim()
       .max(500, 'Reason must be under 500 characters')
       .optional(),
+    // T-TOKEN-GATE (2026-09-28): mirrors the server rule - a HOLD → TOKEN move
+    // must state the amount received. Validated here as a STRING (an input
+    // yields strings) so an empty field is distinguishable from a `0`: empty is
+    // "not entered", `0` is a real but invalid amount, and the two deserve
+    // different messages. The page converts to a number only after this passes.
+    tokenAmount: z.string().trim().optional(),
   })
   .superRefine((values, ctx) => {
+    if (values.toStatus === 'TOKEN') {
+      const raw = (values.tokenAmount ?? '').trim();
+      const parsed = raw.length > 0 ? Number(raw) : Number.NaN;
+      if (raw.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message:
+            'Enter the token amount received before marking the token as received',
+        });
+      } else if (!Number.isFinite(parsed) || parsed <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message: 'Token amount must be a number greater than zero',
+        });
+      }
+    }
     if (!TransitionReasonRequired.has(values.toStatus)) return;
     if ((values.reason ?? '').trim().length > 0) return;
     ctx.addIssue({
@@ -341,9 +365,18 @@ function BookingActions({
   // the reason rule to the right target.
   const form = useForm<TransitionFormValues>({
     resolver: zodResolver(transitionSchema),
-    defaultValues: { toStatus: 'TOKEN', reason: '' },
+    defaultValues: { toStatus: 'TOKEN', reason: '', tokenAmount: '' },
     mode: 'onSubmit',
   });
+
+  // T-TOKEN-GATE: prefill the amount from the booking's own record, so an
+  // operator re-confirming a token that was captured at HOLD time (or corrected
+  // earlier) cannot silently blank it - which is the state this whole change
+  // exists to make impossible.
+  const storedTokenAmount =
+    typeof booking.tokenAmount === 'string' && booking.tokenAmount.length > 0
+      ? booking.tokenAmount
+      : '';
 
   // Confirmation step: the icon for the state being moved INTO, so the confirm
   // button repeats the same visual cue the operator clicked to get here.
@@ -368,12 +401,14 @@ function BookingActions({
   }
 
   function chooseTarget(target: BookingTransitionTarget) {
-    form.reset({ toStatus: target, reason: '' });
+    // T-TOKEN-GATE: `tokenAmount` starts from what the booking already records
+    // (empty when there is none), so the field is prefilled rather than blank.
+    form.reset({ toStatus: target, reason: '', tokenAmount: storedTokenAmount });
     setToStatus(target);
   }
 
   function closeStep() {
-    form.reset({ toStatus: 'TOKEN', reason: '' });
+    form.reset({ toStatus: 'TOKEN', reason: '', tokenAmount: '' });
     setToStatus(null);
   }
 
@@ -382,8 +417,17 @@ function BookingActions({
     // The resolver guaranteed a reason when one is required; `toStatus` is the
     // form's own value, so the payload can never drift from what was validated.
     const reason = (values.reason ?? '').trim();
-    const body: { toStatus: BookingStatus; reason?: string } = { toStatus: target };
+    const body: { toStatus: BookingStatus; reason?: string; tokenAmount?: number } = {
+      toStatus: target,
+    };
     if (reason.length > 0) body.reason = reason;
+    // T-TOKEN-GATE: the amount the resolver already validated travels WITH the
+    // status change, in the same request - so "token received" and "how much"
+    // are recorded together and cannot diverge. `Number()` after validation
+    // (the form holds strings); the schema has already proven it is finite > 0.
+    if (target === 'TOKEN') {
+      body.tokenAmount = Number((values.tokenAmount ?? '').trim());
+    }
 
     updateBooking.mutate(
       { id: booking.id, body },
@@ -434,6 +478,7 @@ function BookingActions({
             currentStatus={status}
             toStatus={toStatus}
             reasonRequired={reasonRequired}
+            tokenAmountRequired={toStatus === 'TOKEN'}
             isPending={updateBooking.isPending}
             ConfirmIcon={ConfirmIcon}
             onCancelStep={closeStep}
