@@ -12,10 +12,20 @@
 // primary surface (the visits they are conducting today); for a TELECALLER it
 // is confirmation work on visits they booked; for a manager it is the team's day.
 //
-// The row leads with the TIME, then the lead name, then the assigned exec. The
+// The row leads with the TIME, then the lead name, then WHO IS INVOLVED. The
 // lead name links to the lead's own page rather than opening anything inline:
 // this card is a schedule, and the action surface for a visit lives in the
 // queue row and the lead page.
+//
+// T-VISIT-OWNER-LABEL (2026-09-28): the trailing name used to be the visit's
+// exec printed bare, which read as "the lead's owner" and contradicted the
+// lead page - where Owner is `Lead.ownerId`. Those are two different people
+// and legitimately so: plan §3 keeps the TELECALLER as owner through
+// VISIT_SCHEDULED, while the visit is conducted by a SALES_EXEC. So on a
+// scheduled visit the dashboard said "Vikram" and the lead page said "Asha",
+// both correct, with nothing on screen explaining why. Now each name is
+// LABELLED, owner first (matching the lead page's field order and its
+// prominence), so the two surfaces agree instead of appearing to disagree.
 
 import { Button } from '@paalstack/react-ui';
 import Link from 'next/link';
@@ -30,6 +40,11 @@ type VisitListRow = {
   id: string;
   leadId?: string;
   leadName?: string;
+  /**
+   * T-VISIT-OWNER-LABEL (2026-09-28): the LEAD's owner. Distinct from
+   * `userName` - see the note on the row rendering below.
+   */
+  leadOwnerName?: string | null;
   scheduledFor?: string;
   userName?: string;
 };
@@ -96,8 +111,31 @@ export function TodayVisitsCard({
                     )}
                   </span>
                 </div>
-                <span className="text-muted-foreground text-xs">
-                  {visit.userName ?? 'unassigned'}
+                <span className="flex flex-col sm:flex-row shrink-0 items-start sm:items-center gap-2 text-muted-foreground text-xs">
+                  {/* T-VISIT-OWNER-LABEL (2026-09-28): both names labelled.
+                      `leadOwnerName` is the SAME field the lead page renders as
+                      "Owner", so this row and that page can never appear to
+                      disagree; `userName` is the exec conducting the visit.
+                      Owner first: it is the identity the lead page leads with,
+                      and the value a reader is most likely comparing against. */}
+                  <span>
+                    Owner:{' '}
+                    <span className="text-foreground">
+                      {/* '-' covers null/undefined AND a blank name - an empty
+                          value must read as "unknown", never as nothing (which
+                          looks like a rendering bug) and never as the exec. */}
+                      {visit.leadOwnerName !== null &&
+                      visit.leadOwnerName !== undefined &&
+                      visit.leadOwnerName.trim() !== ''
+                        ? visit.leadOwnerName
+                        : '-'}
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="hidden sm:block">·</span>
+                  <span>
+                    Visit exec:{' '}
+                    <span className="text-foreground">{visit.userName ?? 'unassigned'}</span>
+                  </span>
                 </span>
               </li>
             );

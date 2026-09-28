@@ -53,6 +53,17 @@ export interface VisitRow {
   id: string;
   leadId: string;
   leadName: string;
+  /**
+   * T-VISIT-OWNER-LABEL (2026-09-28): the LEAD's owner - a different person
+   * from `userName` (the exec conducting the visit). Plan §3 keeps the
+   * telecaller as owner through VISIT_SCHEDULED, so on a scheduled visit these
+   * two names legitimately differ; the dashboard shows both, labelled.
+   *
+   * Non-null on purpose: `Lead.ownerId` is NOT NULL with a required relation
+   * (the schema's terminal-state note about ownership is not enforced as a
+   * nullable column), so an owner always resolves.
+   */
+  leadOwnerName: string;
   scheduledFor: string; // ISO
   userId: string;
   userName: string;
@@ -181,7 +192,7 @@ export class VisitsService {
               outcome: true,
               notes: true,
               updatedAt: true,
-              lead: { select: { name: true } },
+              lead: { select: { name: true, owner: { select: { name: true } } } },
               user: { select: { name: true } },
             },
           }),
@@ -194,6 +205,7 @@ export class VisitsService {
             id: r.id,
             leadId: r.leadId,
             leadName: r.lead.name,
+            leadOwnerName: r.lead.owner.name,
             scheduledFor: r.scheduledFor.toISOString(),
             userId: r.userId,
             userName: r.user.name,
@@ -205,6 +217,70 @@ export class VisitsService {
         };
       },
     );
+  }
+
+  /**
+   * T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): grant the conducting exec sight
+   * of the lead their visit is on.
+   *
+   * WHY: plan §3 says "VISIT_SCHEDULED: Telecaller owns, Sales Exec has shared
+   * visibility", and the schema records the mechanism on the column itself
+   * ("coOwnerId ... For VISIT_SCHEDULED shared visibility") - but nothing wrote
+   * it. `lead_select_telecaller` admits TELECALLER/SALES_EXEC only when
+   * `ownerId` OR `coOwnerId` matches `app.user_id`, so without this the exec
+   * could read the SiteVisit they were assigned and NOT its parent Lead: every
+   * `lead` relation resolved to null (a TypeError on `r.lead.name` in `list()`,
+   * breaking the dashboard card for exactly the role it is built for) and they
+   * could not open the lead at all.
+   *
+   * Written once when the visit is created, so it survives later transitions -
+   * which matters because `leads.transition()` deliberately does NOT move
+   * ownership (that is `reassign`'s job, and the handoff edge is reserved for
+   * the exec), so the exec's own VISIT_SCHEDULED → VISITED write would
+   * otherwise update a lead they cannot read.
+   *
+   * Narrow on purpose:
+   *   - SALES_EXEC only. A MANAGER/ADMIN assignee can already read the lead via
+   *     their own policy, so no grant is needed.
+   *   - Skipped when the assignee is already the owner (a telecaller
+   *     self-scheduling normally is).
+   *   - Never clobbers an existing co-owner: `Lead.coOwnerId` is a single id,
+   *     and silently replacing someone else's co-ownership to make room would
+   *     revoke an access the operator granted deliberately.
+   *
+   * Throws `ConflictException` when the slot is held by an unrelated party
+   * rather than proceeding to create a visit whose exec cannot see its own lead
+   * - the same class of silent half-state this change exists to remove. The one
+   * exception is `transferFrom`: re-scheduling moves the visit to a different
+   * exec, and the slot should follow the exec actually conducting it, so when
+   * the current co-owner is the PREVIOUS exec of this very visit the slot
+   * transfers instead of colliding. `lead_update_telecaller` gates UPDATE on
+   * owner-or-co-owner, so this grant is what lets the exec's own later writes
+   * (VISIT_SCHEDULED → VISITED) land at all.
+   */
+  private async grantExecLeadVisibility(
+    tx: PrismaClient,
+    leadId: string,
+    assignee: { id: string; role: string },
+    lead: { ownerId: string; coOwnerId: string | null },
+    opts?: { transferFrom?: string },
+  ): Promise<void> {
+    if (assignee.role !== 'SALES_EXEC') return;
+    if (lead.ownerId === assignee.id) return;
+    if (lead.coOwnerId === assignee.id) return;
+    const isHandover =
+      lead.coOwnerId !== null &&
+      opts?.transferFrom !== undefined &&
+      opts.transferFrom === lead.coOwnerId;
+    if (lead.coOwnerId !== null && !isHandover) {
+      throw new ConflictException(
+        `Lead ${leadId} already has a co-owner; that slot is what carries the conducting exec's access. Reassign the lead (or clear the co-owner) before scheduling a different exec.`,
+      );
+    }
+    await tx.lead.update({
+      where: { id: leadId },
+      data: { coOwnerId: assignee.id },
+    });
   }
 
   /**
@@ -223,7 +299,10 @@ export class VisitsService {
         // Verify the lead exists + RLS-gated read of the parent.
         const lead = await tx.lead.findUnique({
           where: { id: dto.leadId },
-          select: { id: true, state: true },
+          // ownerId/coOwnerId are read for the exec-visibility grant below
+          // (T-VISIT-EXEC-LEAD-VISIBILITY): we only write coOwnerId when the
+          // assignee cannot already see the lead.
+          select: { id: true, state: true, ownerId: true, coOwnerId: true },
         });
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
@@ -263,6 +342,16 @@ export class VisitsService {
           );
         }
 
+        // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): give the conducting exec
+        // access to the lead (see the helper's doc comment for why the
+        // co-owner slot carries it).
+        await this.grantExecLeadVisibility(
+          tx as unknown as PrismaClient,
+          dto.leadId,
+          assignee,
+          lead,
+        );
+
         const created = await tx.siteVisit.create({
           data: {
             leadId: dto.leadId,
@@ -281,7 +370,7 @@ export class VisitsService {
             outcome: true,
             notes: true,
             updatedAt: true,
-            lead: { select: { name: true } },
+            lead: { select: { name: true, owner: { select: { name: true } } } },
             user: { select: { name: true } },
           },
         });
@@ -310,6 +399,15 @@ export class VisitsService {
               scheduledFor: created.scheduledFor.toISOString(),
               userId: created.userId,
               notes: created.notes,
+              // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): record whether this
+              // schedule also granted the exec access to the lead, so the
+              // access change is answerable from the audit log alone.
+              execLeadAccess:
+                assignee.role === 'SALES_EXEC' &&
+                lead.ownerId !== assignee.id &&
+                (lead.coOwnerId === null || lead.coOwnerId === assignee.id)
+                  ? 'co-owner'
+                  : 'not-needed',
             },
             reason: `Visit created by ${actor.email} (${actor.role})`,
           },
@@ -327,6 +425,7 @@ export class VisitsService {
           id: created.id,
           leadId: created.leadId,
           leadName: created.lead.name,
+            leadOwnerName: created.lead.owner.name,
           scheduledFor: created.scheduledFor.toISOString(),
           userId: created.userId,
           userName: created.user.name,
@@ -368,7 +467,7 @@ export class VisitsService {
             leadId: true,
             status: true,
             outcome: true,
-            lead: { select: { name: true, state: true } },
+            lead: { select: { name: true, state: true, owner: { select: { name: true } } } },
             user: { select: { name: true } },
           },
         });
@@ -414,7 +513,7 @@ export class VisitsService {
               outcome: true,
               notes: true,
               updatedAt: true,
-              lead: { select: { name: true } },
+              lead: { select: { name: true, owner: { select: { name: true } } } },
               user: { select: { name: true } },
             },
           });
@@ -434,6 +533,7 @@ export class VisitsService {
             id: current.id,
             leadId: current.leadId,
             leadName: current.lead.name,
+            leadOwnerName: current.lead.owner.name,
             scheduledFor: current.scheduledFor.toISOString(),
             userId: current.userId,
             userName: current.user.name,
@@ -488,7 +588,7 @@ export class VisitsService {
             outcome: true,
             notes: true,
             updatedAt: true,
-            lead: { select: { name: true } },
+            lead: { select: { name: true, owner: { select: { name: true } } } },
             user: { select: { name: true } },
           },
         });
@@ -519,6 +619,7 @@ export class VisitsService {
           id: updated.id,
           leadId: updated.leadId,
           leadName: updated.lead.name,
+          leadOwnerName: updated.lead.owner.name,
           scheduledFor: updated.scheduledFor.toISOString(),
           userId: updated.userId,
           userName: updated.user.name,
@@ -547,7 +648,9 @@ export class VisitsService {
       async (tx) => {
         const existing = await tx.siteVisit.findUnique({
           where: { id: visitId },
-          select: { id: true, leadId: true, status: true },
+          // `userId` is the outgoing exec, needed to decide whether the lead's
+          // co-owner slot should transfer to the new assignee.
+          select: { id: true, leadId: true, status: true, userId: true },
         });
         if (existing === null) {
           throw new NotFoundException(`Visit ${visitId} not found`);
@@ -566,6 +669,27 @@ export class VisitsService {
         if (assignee === null) {
           throw new NotFoundException(`User ${userId} not found`);
         }
+
+        // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): a re-scheduled visit can
+        // move to a DIFFERENT exec, who needs the same access the original
+        // grant gave - otherwise the new exec inherits a visit they can see but
+        // whose lead they cannot.
+        const rescheduleLead = await tx.lead.findUnique({
+          where: { id: existing.leadId },
+          select: { id: true, ownerId: true, coOwnerId: true },
+        });
+        if (rescheduleLead === null) {
+          throw new NotFoundException(`Lead ${existing.leadId} not found`);
+        }
+        await this.grantExecLeadVisibility(
+          tx as unknown as PrismaClient,
+          existing.leadId,
+          assignee,
+          rescheduleLead,
+          // The slot follows the exec actually conducting the visit, so a
+          // re-schedule to a different exec transfers it rather than colliding.
+          { transferFrom: existing.userId },
+        );
 
         // Close the old visit.
         await tx.siteVisit.update({
@@ -595,7 +719,7 @@ export class VisitsService {
             outcome: true,
             notes: true,
             updatedAt: true,
-            lead: { select: { name: true } },
+            lead: { select: { name: true, owner: { select: { name: true } } } },
             user: { select: { name: true } },
           },
         });
@@ -620,6 +744,7 @@ export class VisitsService {
           id: created.id,
           leadId: created.leadId,
           leadName: created.lead.name,
+          leadOwnerName: created.lead.owner.name,
           scheduledFor: created.scheduledFor.toISOString(),
           userId: created.userId,
           userName: created.user.name,

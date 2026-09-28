@@ -31,6 +31,14 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 const RUN = Date.now();
 const ADMIN_ID = `test-voc-admin-${RUN}`;
 const SE_ID = `test-voc-se-${RUN}`;
+// T-VISIT-OWNER-LABEL (2026-09-28): a SECOND person, distinct from SE_ID, so the
+// fixture can express the real scheduled-visit shape (plan §3 keeps the
+// telecaller as OWNER while a sales exec CONDUCTS the visit) instead of having
+// `Lead.ownerId` and `SiteVisit.userId` collapse to the same row. Without this
+// the two names could never differ in a test, which is exactly why the
+// dashboard's mislabelling went unnoticed.
+const TC_ID = `test-voc-tc-${RUN}`;
+const SE2_ID = `test-voc-se2-${RUN}`;
 const TEAM_ID = `test-voc-team-${RUN}`;
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
@@ -58,7 +66,15 @@ const TEST_LEAD_IDS: string[] = [];
 const TEST_VISIT_IDS: string[] = [];
 
 let seq = 0;
-async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }> {
+async function seedLeadWithVisit(
+  /**
+   * T-VISIT-OWNER-LABEL (2026-09-28): when true the lead is owned by the
+   * TELECALLER and the visit is conducted by the SALES_EXEC - the real
+   * VISIT_SCHEDULED shape per plan §3. Off by default because the rest of this
+   * suite tests the exec's own lanes, where owner and exec are one person.
+   */
+  { splitOwnerFromExec = false }: { splitOwnerFromExec?: boolean } = {},
+): Promise<{ leadId: string; visitId: string }> {
   if (prisma === null) throw new Error('prisma missing');
   seq += 1;
   const leadId = `test-voc-lead-${RUN}-${seq}`;
@@ -72,8 +88,21 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
         phoneE164: `919${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`,
         source: 'WHATSAPP',
         state: 'VISIT_SCHEDULED',
-        ownerId: SE_ID,
-        ownerType: 'SALES_EXEC',
+        // Default stays `SE_ID` for both: most of this suite exercises the
+        // exec's own lanes (they act on a visit they both own and conduct), so
+        // changing it globally would rewrite their subject. The owner/exec
+        // SPLIT is opt-in via `splitOwnerFromExec` below - see
+        // T-VISIT-OWNER-LABEL (2026-09-28).
+        ownerId: splitOwnerFromExec ? TC_ID : SE_ID,
+        ownerType: splitOwnerFromExec ? 'TELECALLER' : 'SALES_EXEC',
+        // T-VISIT-OWNER-LABEL (2026-09-28): the exec's access to this lead comes
+        // from `coOwnerId`, which is the plan §3 "shared visibility at
+        // VISIT_SCHEDULED" mechanism (schema comment on Lead.coOwnerId). Without
+        // it the exec sees the VISIT but not its LEAD - `lead_select_telecaller`
+        // matches on ownerId/coOwnerId only - and `list()`'s `lead` relation
+        // resolves to null. Pinned here because it is a real coupling, not a
+        // fixture convenience: see the gap reported with this change.
+        coOwnerId: splitOwnerFromExec ? SE_ID : null,
         teamId: TEAM_ID,
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
 
@@ -173,6 +202,33 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
           organizationId: 'ceid01lpfe1esm8jwsxid41k28',
         },
       });
+      await db.user.upsert({
+        where: { id: TC_ID },
+        update: { role: 'TELECALLER' },
+        create: {
+          id: TC_ID,
+          email: `${TC_ID}@example.com`,
+          name: 'VOC Test Telecaller',
+          role: 'TELECALLER',
+          mustChangePassword: false,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      // A SECOND exec, so a re-schedule can move a visit from one exec to
+      // another (T-VISIT-EXEC-LEAD-VISIBILITY): the co-owner slot has to follow
+      // the exec actually conducting the visit.
+      await db.user.upsert({
+        where: { id: SE2_ID },
+        update: { role: 'SALES_EXEC' },
+        create: {
+          id: SE2_ID,
+          email: `${SE2_ID}@example.com`,
+          name: 'VOC Test SE Two',
+          role: 'SALES_EXEC',
+          mustChangePassword: false,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
       await db.teamMember.upsert({
         where: { userId_teamId: { userId: SE_ID, teamId: TEAM_ID } },
         update: {},
@@ -194,16 +250,32 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       for (const visitId of TEST_VISIT_IDS) {
         const visit = await db.siteVisit.findUnique({
           where: { id: visitId },
-          select: { leadId: true },
+          select: { leadId: true, userId: true },
         });
         if (visit === null) continue;
         await db.siteVisit.update({
           where: { id: visitId },
           data: { status: 'SCHEDULED', outcome: null, notes: null },
         });
+        // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28): restore the co-owner grant
+        // too. `create()` grants the conducting exec the co-owner slot and the
+        // tests below assert the exec can then reach the lead; a reset that
+        // only restored state would leave a stale grant and hide a regression
+        // in the grant itself.
+        const seeded = await db.lead.findUnique({
+          where: { id: visit.leadId },
+          select: { ownerId: true, coOwnerId: true },
+        });
         await db.lead.update({
           where: { id: visit.leadId },
-          data: { state: 'VISIT_SCHEDULED' },
+          data: {
+            state: 'VISIT_SCHEDULED',
+            coOwnerId:
+              seeded !== null &&
+              seeded.ownerId === visit.userId
+                ? null
+                : visit.userId,
+          },
         });
       }
     });
@@ -434,5 +506,205 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     });
     expect(page.rows.map((r) => r.id)).not.toContain(visitId);
     expect(other).not.toBeNull();
+  });
+
+  /**
+   * T-VISIT-OWNER-LABEL (2026-09-28). The dashboard's "Today's visits" card
+   * printed `userName` bare, which read as the lead's owner and contradicted the
+   * lead page (which shows `Lead.ownerId`). On a SCHEDULED visit those are two
+   * different, correct people, so `list()` must carry BOTH - and carry the
+   * lead's owner, not a second copy of the exec.
+   */
+  it('reports the lead owner and the visit exec as two different people', async () => {
+    const { visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
+      limit: 200,
+      offset: 0,
+    });
+    const row = page.rows.find((r) => r.id === visitId);
+    expect(row).toBeDefined();
+    // The fixture deliberately gives the lead and the visit DIFFERENT people:
+    // telecaller owns, sales exec conducts (plan §3).
+    expect(row?.leadOwnerName).toBe('VOC Test Telecaller');
+    expect(row?.userName).toBe('VOC Test SE');
+    // The whole point: these must not be the same value. If a future change
+    // wires leadOwnerName to the visit's user (or drops it), this fails.
+    expect(row?.leadOwnerName).not.toBe(row?.userName);
+  });
+
+  it('always reports the lead owner (Lead.ownerId is NOT NULL)', async () => {
+    const { visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
+      limit: 200,
+      offset: 0,
+    });
+    const row = page.rows.find((r) => r.id === visitId);
+    // Non-null on both rows: the schema makes Lead.ownerId a required relation,
+    // so the dashboard can rely on the value existing rather than rendering a
+    // fallback that would look like a data gap.
+    expect(row?.leadOwnerName).toBe('VOC Test Telecaller');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // T-VISIT-EXEC-LEAD-VISIBILITY (2026-09-28)
+  // ──────────────────────────────────────────────────────────────────────────
+  // The exec's access to a lead they do not own is carried by `Lead.coOwnerId`.
+  // Before this, the exec could read the SiteVisit assigned to them and NOT its
+  // parent Lead: `lead_select_telecaller` matches ownerId/coOwnerId only, so
+  // every `lead` relation resolved to null and `list()` threw a TypeError -
+  // i.e. the dashboard card was broken for the very role it is built for.
+
+  it('create() grants the conducting exec access to a lead they do not own', async () => {
+    // TC_ID owns the lead; SE_ID conducts. Start with NO co-owner.
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed((db) =>
+      db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
+    );
+    // Schedule a fresh visit as the telecaller, naming the exec.
+    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { ownerId: true, coOwnerId: true } }),
+    );
+    // The grant is what makes the exec able to read the lead at all.
+    expect(lead?.coOwnerId).toBe(SE_ID);
+    // Ownership is untouched - §3 keeps the telecaller as owner at this state.
+    expect(lead?.ownerId).toBe(TC_ID);
+    expect(visitId).toBeTruthy();
+  });
+
+  it('the exec can then actually READ the lead and its visits (the regression)', async () => {
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed((db) =>
+      db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }),
+    );
+    // list() as the exec: this is the call that used to throw because `lead`
+    // resolved to null for a lead they did not own.
+    const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
+      limit: 200,
+      offset: 0,
+    });
+    const row = page.rows.find((r) => r.id === visitId);
+    expect(row).toBeDefined();
+    // Both names come off the parent lead - proving the join resolved.
+    expect(row?.leadName).toBeTruthy();
+    expect(row?.leadOwnerName).toBe('VOC Test Telecaller');
+  });
+
+  it('does NOT grant co-ownership to a non-exec assignee', async () => {
+    // A manager/admin can already read the lead through their own policy, so
+    // writing coOwnerId for them would be an unnecessary, wider grant.
+    const { leadId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed((db) =>
+      db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
+    );
+    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: ADMIN_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
+    );
+    expect(lead?.coOwnerId).toBeNull();
+  });
+
+  it('refuses to clobber an existing co-owner instead of half-granting access', async () => {
+    // Lead.coOwnerId is a single slot. Silently overwriting it would revoke an
+    // access the operator granted, so scheduling a DIFFERENT exec has to fail
+    // loudly rather than create a visit whose exec cannot see its lead.
+    const { leadId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed((db) =>
+      db.lead.update({ where: { id: leadId }, data: { coOwnerId: ADMIN_ID } }),
+    );
+    await expect(
+      service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
+    // The pre-existing co-owner is untouched.
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
+    );
+    expect(lead?.coOwnerId).toBe(ADMIN_ID);
+  });
+
+  it('is idempotent - re-scheduling for the SAME exec needs no new grant', async () => {
+    const { leadId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed((db) =>
+      db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }),
+    );
+    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
+    );
+    expect(lead?.coOwnerId).toBe(SE_ID);
+  });
+  it('re-schedule moves the lead access to the NEW exec (the slot follows the visit)', async () => {
+    // The real drag-and-drop flow: a visit conducted by SE_ID is rescheduled
+    // onto SE2_ID. The slot must transfer, otherwise either the new exec
+    // inherits a visit whose lead they cannot read, or the reschedule is
+    // rejected outright.
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed(async (db) => {
+      await db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } });
+      await db.siteVisit.update({ where: { id: visitId }, data: { userId: SE_ID } });
+    });
+    await service.reschedule(actorFor(TC_ID, 'SALES_EXEC') as never, visitId, {
+      visitId,
+      scheduledFor: new Date(Date.now() + 172_800_000).toISOString(),
+      salesExecId: SE2_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({
+        where: { id: leadId },
+        select: { ownerId: true, coOwnerId: true },
+      }),
+    );
+    expect(lead?.coOwnerId).toBe(SE2_ID);
+    expect(lead?.ownerId).toBe(TC_ID);
+  });
+  it('an exec conducting a visit can record the outcome on a lead they do not own (end-to-end)', async () => {
+    // The integration this whole change exists for. `lead_update_telecaller`
+    // gates UPDATE on owner-OR-co-owner, and the outcome path advances the lead
+    // to VISITED - so without the co-owner grant the exec's own write on a lead
+    // owned by the telecaller is refused by RLS (42501), and the visit can never
+    // be completed by the person who conducted it.
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    await adminSeed(async (db) => {
+      await db.lead.update({
+        where: { id: leadId },
+        data: { coOwnerId: SE_ID, state: 'VISIT_SCHEDULED' },
+      });
+      await db.siteVisit.update({ where: { id: visitId }, data: { userId: SE_ID } });
+    });
+
+    const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visitId, {
+      visitId,
+      outcome: 'COMPLETED',
+      notes: 'conducted by the exec',
+    } as never);
+    expect(row.status).toBe('COMPLETED');
+
+    // The lead advanced - proving the exec's UPDATE landed through RLS, and the
+    // telecaller remains the owner (the grant is access, not a handover).
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({
+        where: { id: leadId },
+        select: { state: true, ownerId: true, coOwnerId: true },
+      }),
+    );
+    expect(lead?.state).toBe('VISITED');
+    expect(lead?.ownerId).toBe(TC_ID);
   });
 });

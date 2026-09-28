@@ -20,8 +20,12 @@ import { useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
 import type { IEvent, IUser } from './interfaces';
 import type { TCalendarView } from './types';
 
-// Stable color per exec so the calendar color-codes by owner (matches the
-// original wireframe's "color-coded by exec").
+// Stable color per exec so the calendar color-codes by the visit's exec
+// (matches the original wireframe's "color-coded by exec"). Note this is
+// `SiteVisit.userId`, NOT the lead's owner - the two differ on a scheduled
+// visit, where the telecaller still owns the lead (plan §3). T-VISIT-OWNER-LABEL
+// (2026-09-28) renamed the surrounding wording after the dashboard printed the
+// exec under an unlabelled column that read as "owner".
 const EXEC_COLORS = [
   'blue',
   'green',
