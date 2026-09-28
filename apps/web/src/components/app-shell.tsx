@@ -88,6 +88,7 @@ import {
 } from '@/lib/nav';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { isAdminLike, useSessionUser } from '@/lib/session';
+import Image from 'next/image';
 
 export function AppShell() {
   // T37: close the mobile Sheet whenever the route changes.
@@ -136,15 +137,25 @@ export function AppShell() {
             data-qa="sidebar-brand"
           >
             {isCollapsed ? (
-              <span className="text-3xl font-bold">SB</span>
+               <Image
+               src="/icons/brand-icon.png"
+               alt="Shadhil Builders"
+               width={28}
+               height={28}
+               className="size-10 object-contain"
+               data-qa="sidebar-brand-icon-collapsed"
+             />
             ) : (
-              <span className="text-4xl font-bold md:text-3xl">Shadhil CRM</span>
+              <Image
+              src="/brand/logo.png"
+              alt="Shadhil Builders"
+              width={130}
+              height={34}
+              className="w-38 h-auto object-contain"
+              data-qa="sidebar-brand-logo-expanded"
+              />
             )}
           </Link>
-          {/* The chip carries the full brand lockup (wordmark + tagline);
-              the duplicate "Shadhil CRM" text label is redundant at this
-              size and truncates awkwardly next to a 143px chip. Hidden
-              entirely - the chip IS the brand. */}
         </div>
         {/* Separator between the brand chip and whatever follows it -
             the project switcher on work routes, or the "Go to Work" link
