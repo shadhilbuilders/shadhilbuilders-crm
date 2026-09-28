@@ -2221,7 +2221,42 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
-### T-TOKEN-GATE repair (2026-09-28): existing TOKEN bookings with no amount
+### Approval requires a recorded token amount (2026-09-28)
+
+Owner instruction: "Don't approve booking without token amount A-103".
+
+Approving asserts the token was RECEIVED, so it is only meaningful against a
+recorded amount. Until now `TOKEN → APPROVED` was reachable on a booking whose
+`tokenAmount` was NULL - including A-103 - which closed the deal with the payment
+permanently unrecorded. Enforced in two places, because they are two different
+holes:
+
+- `BookingsService.transition`: `toStatus === 'APPROVED'` is refused when the
+  stored amount is not positive. Independent of the HOLD → TOKEN rule, which
+  prevents CREATING the defect; this prevents CEMENTING an existing one.
+- The booking detail page: Approve is not offered while `tokenAmount` is
+  missing/zero, so the UI never presents an action the API refuses - and the card
+  STATES why and how to fix it, because a control that silently vanishes reads as
+  a broken tool. Reject and Cancel stay available: refusing approval must not trap
+  the booking in TOKEN.
+
+`0` counts as missing, not present - a zeroed column must not unlock approval.
+Note `ApproveBookingDtoSchema` exists in `@shadhil/api-types` but is referenced
+nowhere: approval goes through `transition`, so a guard added there would have been
+dead code. Verified 85 bookings tests, 18 page tests, plus tampers on both layers
+(removing the service guard reddens 2; removing the UI gate reddens 2).
+
+**Also fixed in passing - a fragility in my own earlier test.** The
+`status-truth.agreement` discriminator had been placed relative to midnight, and
+the band `[now-24h, midnight)` narrows to 60 seconds by the end of the day, so from
+~23:30 the fixture stopped discriminating and the suite PASSED AGAINST the bug
+(observed at 23:51 with a real red on the guard-the-guard assertion). It is now
+placed one minute before midnight and the guard assertion SKIPS visibly in the
+final minute, since no fixture can discriminate then - a visible skip rather than
+a silent pass or a false failure. Re-verified at 23:51: tampering the rolling-24h
+query now reddens 2 tests where it previously reddened none.
+
+
 
 Reported: "Fix it Existing TOKEN bookings with a NULL amount".
 

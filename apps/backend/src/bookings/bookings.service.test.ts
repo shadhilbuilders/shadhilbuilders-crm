@@ -528,7 +528,8 @@ describe('transition - advance booking state', () => {
       unitId: 'unit-1',
       userId: 'tc-1',
       amount: { toString: () => '5000000.00' },
-      tokenAmount: null,
+      // T-TOKEN-GATE: approval requires the token amount to be recorded.
+      tokenAmount: { toString: () => '500000.00' },
       approvedById: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -781,7 +782,9 @@ describe('transition - advance booking state', () => {
       unitId: 'unit-1',
       userId: 'tc-1',
       amount: { toString: () => '5000000.00' },
-      tokenAmount: null,
+      // T-TOKEN-GATE: approval requires the token amount to be recorded, so this
+      // row carries one to reach the role-gate assertion being tested.
+      tokenAmount: { toString: () => '500000.00' },
       approvedById: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -797,7 +800,8 @@ describe('transition - advance booking state', () => {
       unitId: 'unit-1',
       userId: 'tc-1',
       amount: { toString: () => '5000000.00' },
-      tokenAmount: null,
+      // Echoed consistently with the row we approved (which now records a token).
+      tokenAmount: { toString: () => '500000.00' },
       approvedById: 'owner-1',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1231,7 +1235,10 @@ describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
       unitId: 'unit-1',
       userId: 'tc-1',
       amount: { toString: () => '5000000.00' },
-      tokenAmount: null,
+      // T-TOKEN-GATE: a TOKEN booking must carry a recorded amount, or approval
+      // is refused (owner instruction). These tests exercise the LEAD SYNC and
+      // the role gate, so the row has to satisfy the token rule to reach them.
+      tokenAmount: { toString: () => '500000.00' },
       approvedById: null,
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -1508,6 +1515,91 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
         data: expect.objectContaining({ status: 'TOKEN', tokenAmount: '750000.00' }),
       }),
     );
+  });
+
+  it('T-TOKEN-GATE: does NOT approve a booking with no token amount recorded', async () => {
+    // Owner instruction 2026-09-28: "Don't approve booking without token amount".
+    // TOKEN -> APPROVED was reachable on a booking whose tokenAmount was NULL -
+    // exactly the rows the old transition produced - which closed the deal with
+    // the payment permanently unrecorded.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'ADMIN' }), 'b-1', { toStatus: 'APPROVED' } as never),
+    ).rejects.toThrow(/token amount must be recorded/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE: a ZERO token amount does not count - approval still refused', async () => {
+    // 0 is not a received payment. The guard tests `> 0`, not `!== null`, so a
+    // zeroed column cannot be used to slip an approval through.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '0.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'ADMIN' }), 'b-1', { toStatus: 'APPROVED' } as never),
+    ).rejects.toThrow(/token amount must be recorded/i);
+  });
+
+  it('T-TOKEN-GATE: approving WITH a recorded amount still works', async () => {
+    // The guard must block only the defect. Once the money is on the booking the
+    // approval is exactly what should happen - and it sets approvedById.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    // The visit cascade reads updated.leadId, so the update must echo a full row.
+    client.booking.update.mockResolvedValue({
+      id: 'b-1', status: 'APPROVED', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
+      approvedById: 'admin-1', notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await service.transition(makeActor({ role: 'ADMIN', sub: 'admin-1' }), 'b-1', {
+      toStatus: 'APPROVED',
+    } as never);
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'APPROVED', approvedById: 'admin-1' }),
+      }),
+    );
+  });
+
+  it('T-TOKEN-GATE: rejecting is NOT blocked by a missing amount', async () => {
+    // Rejecting does not assert a payment, so it must stay available even on a
+    // booking whose amount is missing - otherwise such a booking could never
+    // leave TOKEN at all, including by the honest route.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    client.booking.update.mockResolvedValue({
+      id: 'b-1', status: 'REJECTED', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'ADMIN' }), 'b-1', {
+        toStatus: 'REJECTED',
+        reason: 'payment never arrived',
+      } as never),
+    ).resolves.toBeDefined();
   });
 
   it('T-TOKEN-GATE: an edit cannot CLEAR the token amount on a TOKEN booking', async () => {

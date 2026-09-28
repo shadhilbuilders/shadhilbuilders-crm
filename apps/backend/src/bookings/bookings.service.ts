@@ -653,6 +653,29 @@ export class BookingsService {
           );
         }
 
+        // T-TOKEN-GATE (2026-09-28, owner instruction): "Don't approve booking
+        // without token amount".
+        //
+        // Approving asserts that the token was RECEIVED, so it is only meaningful
+        // against a recorded amount - and approving without one is exactly how a
+        // money figure gets lost. Until this, `TOKEN → APPROVED` was reachable on
+        // a booking whose `tokenAmount` was NULL (the very rows the old transition
+        // produced), which meant the deal could be closed with the payment
+        // permanently unrecorded: the "Booking money" card then reports a paid
+        // booking as "no token".
+        //
+        // Checked independently of the HOLD → TOKEN rule above, because the two
+        // are different holes: that one prevents CREATING the defect, this one
+        // prevents CEMENTING an existing one. A booking already in TOKEN with a
+        // NULL amount (from production data) therefore cannot be approved until
+        // its amount is recorded - the bookings edit form writes that field, and
+        // `update()` refuses to clear it again.
+        if (dto.toStatus === 'APPROVED' && !(stored > 0)) {
+          throw new BadRequestException(
+            'A token amount must be recorded before this booking can be approved. Enter the amount actually received on the booking first.',
+          );
+        }
+
         const updated = await (tx as unknown as PrismaClient).booking.update({
           where: { id: bookingId },
           data: {

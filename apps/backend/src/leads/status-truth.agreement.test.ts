@@ -86,29 +86,28 @@ type FixtureRow = { id: string; state: string; createdAt: Date };
  * `[now - 24h, midnight)`: a lead created there is "in the last 24h" (so the
  * old rolling query counted it) but NOT "today" (so the correct one must not).
  * The width of that band is `24h - (time since midnight)`, so it shrinks as the
- * day advances - a row pinned at "midnight minus 2 hours" falls OUTSIDE it after
- * 22:00 local, and the test then cannot tell the two definitions apart at all
- * (it passes against the bug, which is worse than failing).
+ * day advances: one minute before midnight it is 60 seconds wide. A fixed offset
+ * from midnight therefore stops discriminating at some point in the evening -
+ * "midnight minus 30 minutes" is already outside the band after 23:30 local, and
+ * the test then passes AGAINST the bug (verified: it did, at 23:51).
  *
- * So place it adaptively, as late as possible while staying strictly inside the
- * band:
- *   - `NOW - 23h` is always inside `[now-24h, now)` and is before midnight
- *     whenever the current time is before 23:00 local. Preferred because it is
- *     guaranteed to be inside the 24h window.
- *   - after 23:00 local that value crosses midnight, so fall back to
- *     `midnight - 30min`, which is before midnight and still inside the 24h
- *     window until 23:30 local.
- * Verified by the assertion below: if the chosen instant is not strictly before
- * midnight, the fixture is degenerate and this test says so instead of passing
- * vacuously.
+ * So place it as late as the band allows - one minute before midnight - which is
+ * inside `[now-24h, midnight)` for every run except the final minute of the day.
+ * In that one minute the suite cannot tell the definitions apart at all, and says
+ * so by SKIPPING (a visible skip, never a silent pass).
  */
-function discriminatorCreatedAt(now: Date, midnightAt: Date): Date {
-  const twentyThreeHoursAgo = new Date(now.getTime() - 23 * 60 * MIN);
-  if (twentyThreeHoursAgo.getTime() < midnightAt.getTime()) return twentyThreeHoursAgo;
-  return new Date(midnightAt.getTime() - 30 * MIN);
+function discriminatorCreatedAt(midnightAt: Date): Date {
+  return new Date(midnightAt.getTime() - 60_000);
 }
 
-const DISCRIMINATOR_AT = discriminatorCreatedAt(NOW, MIDNIGHT);
+const DISCRIMINATOR_AT = discriminatorCreatedAt(MIDNIGHT);
+
+/**
+ * Whether a discriminator exists at all: the band `[now-24h, midnight)` must
+ * contain a usable instant. It is empty only in the last minute before midnight.
+ */
+const BAND_START = new Date(NOW.getTime() - 24 * 60 * MIN);
+const CAN_DISCRIMINATE = DISCRIMINATOR_AT.getTime() > BAND_START.getTime();
 
 const FIXTURE: FixtureRow[] = [
   { id: `statustruth-l-fresh-${RUN}`, state: 'NEW', createdAt: new Date(NOW.getTime() - 5 * MIN) },
@@ -304,12 +303,16 @@ async function bothSurfaces() {
 }
 
 describe('the two endpoints agree on "new today"', () => {
-  it('the fixture can actually tell the two definitions apart', async () => {
+  it.skipIf(!CAN_DISCRIMINATE)('the fixture can actually tell the two definitions apart', async () => {
     // Guards the guard. The rolling-24h bug is only detectable if the
     // discriminator lead sits inside `[now - 24h, midnight)`. If it does not,
     // this suite would pass against the bug - the worst possible outcome for a
     // regression test - so assert the preconditions explicitly and fail loudly
     // rather than reporting green.
+    //
+    // Skipped (visibly) in the last minute before midnight, when the band is
+    // empty and no fixture can discriminate. That is the one honest option: a
+    // pass there would be a lie and a failure would be a false alarm.
     expect(DISCRIMINATOR_AT.getTime()).toBeLessThan(MIDNIGHT.getTime());
     expect(DISCRIMINATOR_AT.getTime()).toBeGreaterThan(NOW.getTime() - 24 * 60 * MIN);
     expect(EXPECTED_NEW_TODAY).toBeLessThan(

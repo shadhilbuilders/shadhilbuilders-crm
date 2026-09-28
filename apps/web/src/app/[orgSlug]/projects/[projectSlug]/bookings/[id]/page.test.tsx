@@ -406,3 +406,96 @@ describe('BookingDetailPage - transition form wiring', () => {
     }
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-TOKEN-GATE (2026-09-28, owner instruction): "Don't approve booking without
+// token amount". Approval asserts the token was RECEIVED, so it is withheld until
+// the amount is on the booking - and the UI must SAY why rather than silently
+// dropping the button, or it reads as a broken tool.
+// ────────────────────────────────────────────────────────────────────────────
+describe('approval requires a recorded token amount', () => {
+  it('does NOT offer Approve on a TOKEN booking with no token amount', () => {
+    // The exact row the old transition produced, and the row in production data
+    // (Unit A-103). Approving it would close the deal with the payment
+    // permanently unrecorded.
+    vi.mocked(useBooking).mockReturnValue({
+      data: {
+        id: 'b-1',
+        leadId: 'lead-1',
+        leadName: 'Arjun Reddy',
+        unitId: 'unit-1',
+        userId: 'u-1',
+        userName: 'Sales Exec',
+        amount: '4100000',
+        tokenAmount: null,
+        status: 'TOKEN',
+        approvedById: null,
+        approvedByName: null,
+        createdAt: '2026-09-04T08:30:00Z',
+        updatedAt: '2026-09-04T08:30:00Z',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingDetailPage />);
+    expect(html).not.toMatch(/data-qa="booking-to-APPROVED"/);
+    // ...but it must not read as a dead end either: the reason and the fix are
+    // stated, and the honest exit (Cancel) is still offered.
+    expect(html).toContain('Approval is unavailable');
+    expect(html).toContain('no token amount is recorded');
+    expect(html).toMatch(/data-qa="booking-to-CANCELLED"/);
+  });
+
+  it('offers Approve once the token amount is recorded', () => {
+    // The guard must block the defect, not the normal flow.
+    vi.mocked(useBooking).mockReturnValue({
+      data: {
+        id: 'b-1',
+        leadId: 'lead-1',
+        leadName: 'Arjun Reddy',
+        unitId: 'unit-1',
+        userId: 'u-1',
+        userName: 'Sales Exec',
+        amount: '4100000',
+        tokenAmount: '500000',
+        status: 'TOKEN',
+        approvedById: null,
+        approvedByName: null,
+        createdAt: '2026-09-04T08:30:00Z',
+        updatedAt: '2026-09-04T08:30:00Z',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingDetailPage />);
+    expect(html).toMatch(/data-qa="booking-to-APPROVED"/);
+  });
+
+  it('treats a ZERO token amount as missing', () => {
+    // 0 is not a received payment, so it must not unlock approval.
+    vi.mocked(useBooking).mockReturnValue({
+      data: {
+        id: 'b-1',
+        leadId: 'lead-1',
+        leadName: 'Arjun Reddy',
+        unitId: 'unit-1',
+        userId: 'u-1',
+        userName: 'Sales Exec',
+        amount: '4100000',
+        tokenAmount: '0.00',
+        status: 'TOKEN',
+        approvedById: null,
+        approvedByName: null,
+        createdAt: '2026-09-04T08:30:00Z',
+        updatedAt: '2026-09-04T08:30:00Z',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderToStaticMarkup(<BookingDetailPage />);
+    expect(html).not.toMatch(/data-qa="booking-to-APPROVED"/);
+  });
+});

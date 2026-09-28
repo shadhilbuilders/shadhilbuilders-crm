@@ -354,9 +354,28 @@ function BookingActions({
   //   TOKEN             -> initiate booking  (MANAGER/SALES_EXEC/ADMIN/OWNER)
   //   APPROVED/REJECTED -> manager decision  (MANAGER/ADMIN/OWNER)
   //   CANCELLED         -> any role that can see the booking (no role gate)
+  // T-TOKEN-GATE (2026-09-28, owner instruction): "Don't approve booking without
+  // token amount". Approving asserts the token was RECEIVED, so it is only
+  // meaningful against a recorded amount - and a booking stuck in TOKEN with no
+  // amount (the rows the old transition produced) must be fixed before it can be
+  // closed, not approved past with the payment permanently unrecorded.
+  //
+  // Mirrors the service guard. `tokenAmount` arrives as a decimal string, so it is
+  // converted before the check; 0 counts as missing, since a zero token is not a
+  // received payment.
+  const hasTokenAmount =
+    typeof booking.tokenAmount === 'string' &&
+    booking.tokenAmount.length > 0 &&
+    Number.isFinite(Number(booking.tokenAmount)) &&
+    Number(booking.tokenAmount) > 0;
+
   const offered = outgoing.filter((s) => {
     if (s === 'TOKEN') return canInitiate;
-    if (s === 'APPROVED' || s === 'REJECTED') return canApprove;
+    // Blocked until an amount is recorded - the UI must not offer an action the
+    // API refuses, and the reason is stated in the card below rather than left as
+    // a dead button.
+    if (s === 'APPROVED') return canApprove && hasTokenAmount;
+    if (s === 'REJECTED') return canApprove;
     return true;
   });
 
@@ -383,6 +402,17 @@ function BookingActions({
   const ConfirmIcon = toStatus !== null ? STATUS_ICONS[toStatus] : undefined;
   const reasonRequired = toStatus !== null && TransitionReasonRequired.has(toStatus);
 
+  // T-TOKEN-GATE: approval is withheld until an amount is recorded, so say so.
+  // A control that silently disappears reads as a broken tool; the operator needs
+  // to know the booking is fine and the MONEY record is what is missing - and
+  // which screen fixes it.
+  const approvalBlockedByMissingToken =
+    current === 'TOKEN' && canApprove && !hasTokenAmount;
+  // `offered` is empty but the booking is not terminal: the only blocker is the
+  // missing amount, which deserves its own message rather than "terminal state".
+  const nothingOfferedButNotTerminal =
+    current !== null && offered.length === 0 && outgoing.length > 0;
+
   if (current === null || offered.length === 0) {
     return (
       <Card data-qa="booking-actions">
@@ -390,11 +420,30 @@ function BookingActions({
           <CardTitle className="text-base">Actions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-muted-foreground text-xs">
-            {current === null
-              ? 'Unknown booking status.'
-              : `No actions available from ${labelFor('booking', current)} (terminal state).`}
-          </div>
+          {nothingOfferedButNotTerminal ? (
+            <div className="space-y-2" data-qa="booking-approval-blocked">
+              <div className="text-sm">
+                {approvalBlockedByMissingToken
+                  ? 'This booking cannot be approved yet: no token amount is recorded.'
+                  : 'No actions available for your role.'}
+              </div>
+              {approvalBlockedByMissingToken ? (
+                <p className="text-muted-foreground text-xs">
+                  Approving confirms the token was received, so the amount actually
+                  received must be on the booking first. Add it with the booking's
+                  Edit action, then approve. The booking can still be{' '}
+                  {labelFor('booking', 'CANCELLED').toLowerCase()} if the deal fell
+                  through.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-muted-foreground text-xs">
+              {current === null
+                ? 'Unknown booking status.'
+                : `No actions available from ${labelFor('booking', current)} (terminal state).`}
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -451,25 +500,42 @@ function BookingActions({
       </CardHeader>
       <CardContent className="space-y-4">
         {toStatus === null ? (
-          <div className="flex flex-wrap gap-2">
-            {offered.map((target) => {
-              const Icon = STATUS_ICONS[target];
-              const isApprove = target === 'APPROVED';
-              return (
-                <Button
-                  key={target}
-                  type="button"
-                  size="sm"
-                  variant={isApprove ? 'default' : 'outline'}
-                  onClick={() => chooseTarget(target)}
-                  data-qa={`booking-to-${target}`}
-                  className="gap-1.5"
-                >
-                  {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
-                  {isApprove ? 'Approve' : labelFor('booking', target)}
-                </Button>
-              );
-            })}
+          <div className="space-y-3">
+            {/* T-TOKEN-GATE: the Approve button is withheld while no token amount
+                is recorded. A control that simply vanishes reads as a broken
+                tool, so the reason and the fix are stated in the normal view -
+                not only in the all-blocked branch, which never fires here
+                because Reject and Cancel stay available. */}
+            {approvalBlockedByMissingToken && offered.length > 0 ? (
+              <p
+                className="text-muted-foreground text-xs"
+                data-qa="booking-approval-blocked"
+              >
+                Approval is unavailable: no token amount is recorded, and approving
+                confirms the token was received. Add the amount actually received
+                with the booking&rsquo;s Edit action, then approve.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {offered.map((target) => {
+                const Icon = STATUS_ICONS[target];
+                const isApprove = target === 'APPROVED';
+                return (
+                  <Button
+                    key={target}
+                    type="button"
+                    size="sm"
+                    variant={isApprove ? 'default' : 'outline'}
+                    onClick={() => chooseTarget(target)}
+                    data-qa={`booking-to-${target}`}
+                    className="gap-1.5"
+                  >
+                    {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                    {isApprove ? 'Approve' : labelFor('booking', target)}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <BookingTransitionConfirmStep
