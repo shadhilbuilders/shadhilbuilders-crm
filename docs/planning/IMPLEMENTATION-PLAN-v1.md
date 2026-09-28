@@ -2221,6 +2221,46 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### T-VISIT-RISK-STATUS (2026-09-28): a settled deal must not be a visit risk
+
+Reported: "In admin/overview Visits at risk section, Arjun Reddy lead status is won
+and but this leads shows in visit at risk".
+
+**Not a stale cache, and not the lead's fault.** The card's query filtered only on
+the VISIT (`status IN (SCHEDULED, RESCHEDULED) AND scheduledFor <= now()`) and
+ignored the parent lead's state entirely. Confirmed against real rows: a
+SCHEDULED visit on a WON lead and one on a LOST lead both came back.
+
+**Why the rows exist.** A `SiteVisit` is a per-visit artifact that NOTHING closes
+when its lead goes terminal. Recording a visit outcome drives the LEAD (COMPLETED
+→ VISITED) but never touches other visits, `reassign`/`setCoOwner` do not touch
+visits, and the state machine's `VISIT_SCHEDULED → CANCELLED` is a *lead* edge -
+`CANCELLED` is a `VisitStatus` that is never actually written. So a visit can
+outlive its deal indefinitely with a `scheduledFor` stuck in the past.
+
+**Fix.** `lead: { state: { notIn: TERMINAL_LEAD_STATES } }` on the query, so the
+stale rows cannot fill the `take: 50` and hide live ones. `RESCHEDULED` and
+`NO_SHOW` are deliberately NOT excluded - the deal is still live there, so the
+visit genuinely needs attention. `VisitRiskException` also gains `leadStatus`, and
+the card shows it: the visit's own `status` is permanently
+SCHEDULED/RESCHEDULED, which is why the operator could not tell what state the
+deal was in.
+
+**The jargon.** "past due" was undocumented internal wording. The row now reads
+`overdue · was due 25/09/2026` (the slot is before today) or `due today` (the slot
+is earlier today but not before midnight) - and the empty state, which read "No
+open visits have past their slot today" (a broken sentence), is now "No scheduled
+visit is overdue or due today."
+
+**Verification.** Pinned twice, because the two harnesses prove different things:
+`dashboard.exceptions.test.ts` asserts the query's `where` carries the relation
+filter (a mocked client never applies it), and `status-truth.agreement.test.ts`
+asserts against REAL rows that the WON/LOST visits are absent while the live ones
+survive - the only harness that can show a Prisma relation filter actually works.
+Tamper: removing the filter reddens 1 test in each.
+
+
+
 ### T-STATUS-ONE-TRUTH (2026-09-28): one definition per number
 
 Reported as "Leads status is mismatch between leads and admin/overview". Four

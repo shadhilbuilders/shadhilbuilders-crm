@@ -140,6 +140,30 @@ const EXPECTED_NEW_TODAY = FIXTURE.filter(
 
 const ALL_LEAD_IDS = FIXTURE.map((r) => r.id);
 
+/**
+ * Visits for the "Visits at risk" card (T-VISIT-RISK-STATUS, 2026-09-28).
+ *
+ * The reported bug: a lead whose status is WON still appeared in the card.
+ * Reproducing that needs REAL rows, because the defect was in a Prisma
+ * relation filter (`lead: { state: ... }`) - a mocked client returns whatever
+ * the fixture holds and never applies the `where` at all, so only a real
+ * database can show whether the filter works.
+ */
+const VISITS = {
+  /** The bug: a SCHEDULED visit on a lead that is already WON, slot long past. */
+  onWon: `statustruth-v-won-${RUN}`,
+  /** Same shape on a LOST lead. */
+  onLost: `statustruth-v-lost-${RUN}`,
+  /** Genuinely at risk: live lead, slot yesterday -> must be listed "overdue". */
+  onActiveOverdue: `statustruth-v-active-${RUN}`,
+  /** Live lead, slot earlier today -> must be listed "due today". */
+  onActiveToday: `statustruth-v-today-${RUN}`,
+  /** Already-concluded visit (COMPLETED) -> not open, must never be listed. */
+  completed: `statustruth-v-done-${RUN}`,
+};
+
+const ALL_VISIT_IDS = Object.values(VISITS);
+
 function actorFor(sub: string, role: JwtPayload['role']): JwtPayload {
   return {
     sub,
@@ -224,12 +248,33 @@ beforeAll(async () => {
           ${ORG}, ${row.createdAt}, ${row.createdAt})
       `;
     }
+
+    // SiteVisits for the "Visits at risk" card. `scheduledFor` is set in the
+    // past for every one of them (it is the ONLY time filter on the query), so
+    // any row that appears must have been allowed through by the lead-state
+    // filter - which is exactly what the reported bug violated.
+    const visits: Array<[string, string, string, Date]> = [
+      [VISITS.onWon, FIXTURE[3].id, 'SCHEDULED', new Date(NOW.getTime() - 3 * 24 * 60 * MIN)],
+      [VISITS.onLost, FIXTURE[4].id, 'SCHEDULED', new Date(NOW.getTime() - 2 * 24 * 60 * MIN)],
+      [VISITS.onActiveOverdue, FIXTURE[2].id, 'SCHEDULED', new Date(NOW.getTime() - 24 * 60 * MIN)],
+      [VISITS.onActiveToday, FIXTURE[0].id, 'RESCHEDULED', new Date(MIDNIGHT.getTime() + 60 * MIN)],
+      [VISITS.completed, FIXTURE[5].id, 'COMPLETED', new Date(NOW.getTime() - 4 * 24 * 60 * MIN)],
+    ];
+    for (const [id, leadId, status, scheduledFor] of visits) {
+      await db.$executeRaw`
+        INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
+          "scheduledFor", "status", "createdAt", "updatedAt")
+        VALUES (${id}, ${leadId}, ${ORG}, ${TC_ID}, ${scheduledFor}, ${status},
+          ${scheduledFor}, ${scheduledFor})
+      `;
+    }
   });
 }, 60_000);
 
 afterAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
+    await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ANY(${ALL_VISIT_IDS})`;
     await db.$executeRaw`DELETE FROM "Lead" WHERE "id" = ANY(${ALL_LEAD_IDS})`;
     await db.$executeRaw`DELETE FROM "TeamMember" WHERE "teamId" = ${TEAM_ID}`;
     await db.$executeRaw`DELETE FROM "Team" WHERE "id" = ${TEAM_ID}`;
@@ -350,5 +395,53 @@ describe('the two endpoints agree on "overdue"', () => {
     expect(nonNew).toBe(3);
     expect(envelope.overdueCount).toBe(EXPECTED_OVERDUE);
     expect(stats.kpis.overdueLeads).toBe(EXPECTED_OVERDUE);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-VISIT-RISK-STATUS (2026-09-28)
+// "lead status is won and but this leads shows in visit at risk"
+// ────────────────────────────────────────────────────────────────────────────
+describe('"Visits at risk" excludes settled deals', () => {
+  it('a SCHEDULED visit on a WON or LOST lead is NOT listed', async () => {
+    // The reported bug, against real rows. These visits are open (SCHEDULED)
+    // and their slot is long past, so only the lead-state filter keeps them off
+    // the card. Nothing closes a visit when its lead goes terminal, which is why
+    // they existed in the first place.
+    const dashboard = new DashboardService(new PrismaService());
+    const result = await dashboard.getExceptions(actorFor(ADMIN_ID, 'ADMIN'));
+    const ids = result.visitRisk.map((v) => v.id);
+    expect(ids).not.toContain(VISITS.onWon);
+    expect(ids).not.toContain(VISITS.onLost);
+  });
+
+  it('a CONCLUDED visit is not listed, however old its lead is', async () => {
+    const dashboard = new DashboardService(new PrismaService());
+    const result = await dashboard.getExceptions(actorFor(ADMIN_ID, 'ADMIN'));
+    expect(result.visitRisk.map((v) => v.id)).not.toContain(VISITS.completed);
+  });
+
+  it('STILL lists live work - over-filtering would be the opposite bug', async () => {
+    // The card must keep doing its job. A visit on an active lead is exactly
+    // what it is for, so assert the genuine rows survive.
+    const dashboard = new DashboardService(new PrismaService());
+    const result = await dashboard.getExceptions(actorFor(ADMIN_ID, 'ADMIN'));
+    const ids = result.visitRisk.map((v) => v.id);
+    expect(ids).toContain(VISITS.onActiveOverdue);
+    expect(ids).toContain(VISITS.onActiveToday);
+  });
+
+  it('carries the LEAD status so the row is explainable', async () => {
+    // Before this the card showed only the visit's own status, which is
+    // permanently SCHEDULED/RESCHEDULED - so an operator could not see what
+    // state the deal was in, which is exactly why the report was "I don't
+    // understand why this is here".
+    const dashboard = new DashboardService(new PrismaService());
+    const result = await dashboard.getExceptions(actorFor(ADMIN_ID, 'ADMIN'));
+    const overdue = result.visitRisk.find((v) => v.id === VISITS.onActiveOverdue);
+    expect(overdue?.leadStatus).toBe(FIXTURE[2].state);
+    expect(overdue?.reason).toBe('overdue-past-due');
+    const today = result.visitRisk.find((v) => v.id === VISITS.onActiveToday);
+    expect(today?.reason).toBe('scheduled-today');
   });
 });

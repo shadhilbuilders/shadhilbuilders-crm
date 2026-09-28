@@ -172,11 +172,20 @@ export const VisitRiskExceptionSchema = z.object({
   id: z.string(),
   leadId: z.string(),
   leadName: z.string(),
+  /**
+   * The LEAD's state (T-VISIT-RISK-STATUS, 2026-09-28). Carried so the card can
+   * show it: the visit's own `status` only ever says SCHEDULED/RESCHEDULED, so
+   * without this the operator sees a settled deal listed as an open risk and has
+   * no way to tell why. Terminal leads are now filtered out server-side, so in
+   * practice this is an active state - but the field is what makes that visible
+   * rather than trusted.
+   */
+  leadStatus: z.string(),
   projectId: z.string(),
   scheduledFor: z.string(),
   status: z.string(),
   userName: z.string().nullable(),
-  /** Why this visit needs attention. */
+  /** Why this visit needs attention. @see VisitRiskReasonSchema for the exact meaning. */
   reason: z.enum(['overdue-past-due', 'scheduled-today']),
 });
 export type VisitRiskException = z.infer<typeof VisitRiskExceptionSchema>;

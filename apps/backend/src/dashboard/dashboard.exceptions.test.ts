@@ -21,8 +21,8 @@ import { DashboardService } from './dashboard.service';
 
 type MockTx = {
   $queryRaw: Mock<() => Promise<unknown[]>>;
-  siteVisit: Mock<(args: unknown) => Promise<unknown[]>>;
-  booking: Mock<(args: unknown) => Promise<unknown[]>>;
+  siteVisit: { findMany: Mock<(args: Record<string, unknown>) => Promise<unknown[]>> };
+  booking: { findMany: Mock<(args: Record<string, unknown>) => Promise<unknown[]>> };
 };
 
 // The service computes ages against the REAL wall clock (new Date() at call
@@ -144,15 +144,56 @@ describe('DashboardService.getExceptions', () => {
 
   it('visitRisk flags open visits today-or-past with the correct reason', async () => {
     fixture.visits.push([
-      { id: 'v-past', leadId: 'l-1', lead: { name: 'Lead Past', projectId: 'p-1' }, scheduledFor: daysAgo(1), status: 'SCHEDULED', user: { name: null } },
-      { id: 'v-today', leadId: 'l-2', lead: { name: 'Lead Today', projectId: 'p-2' }, scheduledFor: new Date(NOW.getTime() - 60 * 60 * 1000), status: 'RESCHEDULED', user: { name: 'Exec' } },
+      { id: 'v-past', leadId: 'l-1', lead: { name: 'Lead Past', projectId: 'p-1', state: 'NEGOTIATION' }, scheduledFor: daysAgo(1), status: 'SCHEDULED', user: { name: null } },
+      { id: 'v-today', leadId: 'l-2', lead: { name: 'Lead Today', projectId: 'p-2', state: 'VISIT_SCHEDULED' }, scheduledFor: new Date(NOW.getTime() - 60 * 60 * 1000), status: 'RESCHEDULED', user: { name: 'Exec' } },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);
     expect(result.visitRisk[0]!.id).toBe('v-past');
     expect(result.visitRisk[0]!.reason).toBe('overdue-past-due');
+    // T-VISIT-RISK-STATUS: the lead's own state rides the row, so the card can
+    // SHOW why a visit is listed instead of leaving the operator to guess.
+    expect(result.visitRisk[0]!.leadStatus).toBe('NEGOTIATION');
     expect(result.visitRisk[1]!.reason).toBe('scheduled-today');
+    expect(result.visitRisk[1]!.leadStatus).toBe('VISIT_SCHEDULED');
     expect(result.visitRisk[1]!.userName).toBe('Exec');
+  });
+
+  it('excludes a visit whose lead is already terminal (WON/LOST/RNR)', async () => {
+    // THE regression, reported as "lead status is won but this leads shows in
+    // visit at risk". Nothing cascades a visit when its lead reaches a terminal
+    // state, so a SCHEDULED visit with a past `scheduledFor` outlives the deal
+    // and used to sit on the card forever.
+    //
+    // The filter is asserted on the QUERY (the mock returns whatever the fixture
+    // holds, so a post-hoc row filter would not be covered) - the service must
+    // narrow server-side, or a 50-row `take` could be filled entirely by stale
+    // rows and hide the live ones.
+    fixture.visits.push([]);
+    const svc = new DashboardService({ $client: {} } as never);
+    await svc.getExceptions(ownerActor);
+
+    const findManyArgs = (tx.siteVisit.findMany as Mock).mock.calls[0]![0];
+    expect(findManyArgs.where).toMatchObject({
+      status: { in: ['SCHEDULED', 'RESCHEDULED'] },
+    });
+    // The lead-relation filter is what makes the WON lead disappear. It must be
+    // exactly the shared terminal trio - not an ad-hoc list.
+    expect(findManyArgs.where).toMatchObject({
+      lead: { state: { notIn: ['WON', 'LOST', 'RNR'] } },
+    });
+  });
+
+  it('still lists a RESCHEDULED/NO_SHOW lead - the deal is live, so is the visit', async () => {
+    // Guards against over-filtering: re-engagement states are ACTIVE, and a visit
+    // on such a lead genuinely needs attention. Only WON/LOST/RNR are excluded.
+    fixture.visits.push([
+      { id: 'v-re', leadId: 'l-3', lead: { name: 'Re-engage', projectId: 'p-1', state: 'NO_SHOW' }, scheduledFor: daysAgo(2), status: 'RESCHEDULED', user: { name: 'Exec' } },
+    ]);
+    const svc = new DashboardService({ $client: {} } as never);
+    const result = await svc.getExceptions(ownerActor);
+    expect(result.visitRisk).toHaveLength(1);
+    expect(result.visitRisk[0]!.leadStatus).toBe('NO_SHOW');
   });
 
   it('bookingMoney distinguishes token-paid (awaiting approval) from hold-no-token', async () => {

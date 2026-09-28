@@ -32,6 +32,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useDashboardExceptions } from '@/hooks/queries/dashboard';
 import { useProjects } from '@/hooks/queries';
+import { dateIntl } from '@/lib/format';
+import { labelFor } from '@/lib/labels';
 import { orgHref, projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
@@ -194,12 +196,18 @@ function ProblemInbox() {
         </ul>
       </ProblemCard>
 
-      {/* Card 2 - visits that slipped. */}
+      {/* Card 2 - visits that slipped.
+          T-VISIT-RISK-STATUS (2026-09-28): "past due" was private jargon nobody
+          outside the codebase could decode, and the two states it distinguishes
+          were never explained. The row now reads "overdue · was due 25/09/2026"
+          or "due today", and the lead's own status is shown so a settled deal
+          appearing here is explainable at a glance (terminal leads are filtered
+          server-side, so anything listed is genuinely live work). */}
       <ProblemCard
         title="Visits at risk"
         count={visitRisk.length}
-        empty="No open visits have past their slot today. All clear."
-        sub="overdue first"
+        empty="No scheduled visit is overdue or due today. All clear."
+        sub="most overdue first · all projects"
       >
         <ul role="list" className="divide-border divide-y">
           {visitRisk.slice(0, 10).map((visit) => {
@@ -212,13 +220,15 @@ function ProblemInbox() {
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{visit.leadName}</span>
                   <span className="text-muted-foreground mt-0.5 block text-sm truncate">
-                    {projectLabel(visit.projectId)}
+                    {labelFor('lead', visit.leadStatus)} · {projectLabel(visit.projectId)}
                     {visit.userName ? ` · ${visit.userName}` : ' · no exec assigned'}
                   </span>
                 </span>
                 <span className="flex items-center justify-between gap-3 sm:justify-start">
-                  <span className="text-muted-foreground text-sm">
-                    {visit.reason === 'overdue-past-due' ? 'past due' : 'scheduled today'}
+                  <span className="text-muted-foreground text-sm tabular-nums">
+                    {visit.reason === 'overdue-past-due'
+                      ? `overdue · was due ${dateIntl.formatDate(visit.scheduledFor)}`
+                      : 'due today'}
                   </span>
                   {href !== null ? (
                     <Button

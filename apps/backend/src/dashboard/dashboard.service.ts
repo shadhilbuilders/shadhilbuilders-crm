@@ -25,7 +25,7 @@ import type { JwtPayload } from '@shadhil/auth';
 // definitions the leads page and the KPI strip both use. Importing them (rather
 // than restating midnight or a 24h window here) is what keeps the two screens
 // from disagreeing.
-import { NEW_TODAY_STATE, OVERDUE_AFTER_MIN, startOfToday } from '@shadhil/api-types';
+import { NEW_TODAY_STATE, OVERDUE_AFTER_MIN, startOfToday, TERMINAL_LEAD_STATES } from '@shadhil/api-types';
 import type {
   BookingMoneyException,
   DashboardExceptions,
@@ -590,10 +590,26 @@ export class DashboardService {
         });
 
         // ---- 2. Visit risk: visits still open whose slot is today or past. ----
+        //
+        // T-VISIT-RISK-STATUS (2026-09-28): filtered on the LEAD state too.
+        // Without it the card listed visits whose deal was already settled -
+        // reported as "lead status is won but this leads shows in visit at risk".
+        // The visit row is a per-visit artifact that NOTHING closes when its
+        // lead goes terminal: recording a visit outcome never cascades to the
+        // lead, and `reassign`/`setCoOwner` do not touch visits, so a
+        // SCHEDULED visit survives its lead reaching WON or LOST and its
+        // `scheduledFor` stays in the past forever. Re-engagement states
+        // (RESCHEDULED, NO_SHOW) are deliberately NOT excluded - there the deal
+        // is still live and the visit genuinely needs attention.
+        //
+        // `lead.state` is selected so the row can SHOW the status; without it
+        // the operator cannot tell a stale row from a live one on the card, and
+        // the whole report is "why is this here?".
         const visitRows = await txClient.siteVisit.findMany({
           where: {
             status: { in: ['SCHEDULED', 'RESCHEDULED'] },
             scheduledFor: { lte: now },
+            lead: { state: { notIn: [...TERMINAL_LEAD_STATES] } },
           },
           orderBy: { scheduledFor: 'asc' },
           take: 50,
@@ -602,21 +618,23 @@ export class DashboardService {
             leadId: true,
             scheduledFor: true,
             status: true,
-            lead: { select: { name: true, projectId: true } },
+            lead: { select: { name: true, projectId: true, state: true } },
             user: { select: { name: true } },
           },
         });
-        const startOfToday = new Date(now);
-        startOfToday.setHours(0, 0, 0, 0);
+        // "Today" comes from the shared `startOfToday()` (T-STATUS-ONE-TRUTH),
+        // not a second local re-derivation.
+        const todayStart = startOfToday(now);
         const visitRisk: VisitRiskException[] = visitRows.map((v) => ({
           id: v.id,
           leadId: v.leadId,
           leadName: v.lead.name,
+          leadStatus: v.lead.state,
           projectId: v.lead.projectId,
           scheduledFor: v.scheduledFor.toISOString(),
           status: v.status,
           userName: v.user.name ?? null,
-          reason: v.scheduledFor.getTime() < startOfToday.getTime() ? 'overdue-past-due' : 'scheduled-today',
+          reason: v.scheduledFor.getTime() < todayStart.getTime() ? 'overdue-past-due' : 'scheduled-today',
         }));
 
         // ---- 3. Booking money not moving: TOKEN awaiting approval, or HOLD with no token. ----
