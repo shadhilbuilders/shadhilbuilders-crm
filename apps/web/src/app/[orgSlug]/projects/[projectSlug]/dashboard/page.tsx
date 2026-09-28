@@ -255,6 +255,18 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   const queueTotal = leadsEnvelope?.total ?? ordered.length;
   const visits = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
 
+  // T-STATUS-ONE-TRUTH (2026-09-28): the KPI strip's overdue count. Both
+  // numbers come from the SERVER, but from two different endpoints - and they
+  // must agree, because the card and the list it filters are read side by side.
+  //
+  //   - The count uses `stats.kpis.overdueLeads` (project-wide).
+  //   - The list uses the `overdue` FILTER, whose length is capped by the
+  //     fetch limit (100). Using `ordered.length` here capped the KPI at 100
+  //     and under-reported silently, because a plausible number is worse than a
+  //     visibly wrong one.
+  //
+  // Both definitions are now the shared `OVERDUE_AFTER_MIN` + isOverdue()
+  // contract from @shadhil/api-types, so count and list cannot drift.
   const overdueCount = stats?.kpis.overdueLeads ?? 0;
   const newToday = stats?.kpis.newLeadsToday ?? 0;
   const visitsToday = stats?.kpis.visitsToday ?? 0;
@@ -309,7 +321,12 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
             {
               label: 'New today',
               value: String(newToday),
-              sub: 'created in the last 24h',
+              // T-STATUS-ONE-TRUTH (2026-09-28): says what the server actually
+              // counts. The value is now "created since midnight AND still NEW"
+              // - the old sub-text read "created in the last 24h" while the
+              // query used midnight and ignored state, so the caption and the
+              // number disagreed on every card.
+              sub: 'still new, since midnight',
             },
             {
               label: "Today's visits",

@@ -2221,6 +2221,53 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### T-STATUS-ONE-TRUTH (2026-09-28): one definition per number
+
+Reported as "Leads status is mismatch between leads and admin/overview". Four
+surfaces each computed "which leads are new / overdue / idle" their own way, so
+the numbers on screen disagreed for the same words:
+
+| surface | label | definition before |
+|---|---|---|
+| admin/overview | "Leads not called" | `state NOT IN (WON,LOST,RNR) AND updatedAt <= now() - 1 day` |
+| leads page | "N overdue" | `state='NEW' AND createdAt <= now() - 30 min` |
+| leads page | "N new today" | `state='NEW' AND createdAt >= now() - 24h` |
+| work dashboard | "New today" | `createdAt >= midnight`, **ALL states** |
+
+Two of these were outright defects. The dashboard's "New today" ignored state, so
+**marking a deal WON raised the count**; and its caption read "created in the last
+24h" while its query used midnight. The leads page used a rolling 24h window for
+the same words the dashboard defined as a calendar day. Four numbers, none
+agreeing, over overlapping concepts - and each endpoint's own test happily
+asserted its own definition, which is why nothing caught it.
+
+**The fix is structural, not arithmetic.** `packages/api-types/src/lead-status.ts`
+now owns `TERMINAL_LEAD_STATES`, `OVERDUE_AFTER_MIN`, `NEW_TODAY_STATE`,
+`startOfToday()`, `isOverdue()` and `isNewToday()`; both NestJS services and the
+Next views import it. `apps/web/src/lib/leads.ts` re-exports the same bindings so
+its existing callers are unchanged.
+
+**Decisions.** (1) "New today" = created since LOCAL MIDNIGHT **and** still NEW -
+the leads page's own tooltip already promised this, and a calendar window is what
+an operator reconciles at end of shift, whereas a rolling window would drop
+yesterday's leads off the number mid-morning. (2) The idle card keeps its own
+question - "nobody has touched this in a day" is genuinely different from "a NEW
+lead missed its 30-minute SLA" - so it is **renamed** rather than aligned, and now
+states its threshold and scope. (3) It reads `Lead.updatedAt`, which bumps on ANY
+write, so it was retitled "Going stale" (from "Leads not called"): the Activity
+table that would carry a real call timestamp is still unwritten by production
+code, and the old title promised data that does not exist. Fix the label, not the
+number. (4) The card stays cross-project - a correct difference from the
+single-project leads page - and now says so in its subtitle.
+
+**Verification.** `apps/backend/src/leads/status-truth.agreement.test.ts` calls
+BOTH real services against a REAL database over one shared fixture and asserts the
+counts agree AND equal a hand-derived truth. Both halves were tamper-checked: with
+the state filter removed 3 tests go red, with the rolling window restored 2 go red.
+The rolling-window discriminator is placed adaptively inside `[now-24h, midnight)`
+- a fixed "midnight minus 2 hours" silently passes against the bug after 22:00
+local, which the first version of this test did until the tamper check caught it.
+
 - **Theme: silent security gaps** - flagged in CEO (§2/§3), Design (offline states), Eng (G-1/G-2/G-3/G-5).
   High-confidence signal: the scaffold's RLS layer is the crown jewel AND the most fragile part
   (never-applied policies, fail-open edges, bypass paths).

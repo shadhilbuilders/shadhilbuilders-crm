@@ -389,10 +389,15 @@ export class LeadsService {
             ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
               "state"='NEW' AND "createdAt" <= now() - interval '30 minutes'
           `),
+          // newTodayCount: created since local midnight AND still NEW - the
+          // SAME definition as the dashboard KPI and `isNewToday()`
+          // (T-STATUS-ONE-TRUTH, 2026-09-28). Was a rolling 24h window, which
+          // meant this line and the dashboard's "New today" counted different
+          // populations for the same words.
           tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
             SELECT COUNT(*) AS c FROM "Lead"
             ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
-              "state"='NEW' AND "createdAt" >= now() - interval '24 hours'
+              "state"='NEW' AND "createdAt" >= date_trunc('day', now())
           `),
         ]);
 

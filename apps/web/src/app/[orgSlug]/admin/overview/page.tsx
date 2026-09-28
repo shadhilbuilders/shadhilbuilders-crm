@@ -142,12 +142,20 @@ function ProblemInbox() {
     <div className="space-y-8">
       <ProblemHeader />
 
-      {/* Card 1 - the flagship: leads that have been sitting too long. */}
+      {/* Card 1 - the flagship: leads nobody has touched in a day.
+          T-STATUS-ONE-TRUTH (2026-09-28): titled "Going stale", NOT "Leads not
+          called". The server window reads Lead.updatedAt, which bumps on any
+          write, so this cannot claim to know about calls - the Activity table
+          that would carry a real call timestamp is still unwritten by
+          production code. The old title promised data that does not exist, and
+          the leads page's "overdue" (a 30-minute first-touch SLA) is a
+          different question again, so the card states its own threshold and
+          scope instead of inviting the comparison. */}
       <ProblemCard
-        title="Leads not called"
+        title="Going stale"
         count={idleLeads.length}
         empty="All active leads were touched in the last day. All clear."
-        sub="oldest idle first"
+        sub="no write in 24h+ · oldest first · all projects"
       >
         <ul role="list" className="divide-border divide-y">
           {idleLeads.slice(0, 10).map((lead) => {
@@ -166,8 +174,8 @@ function ProblemInbox() {
                 </span>
                 <span className="flex items-center justify-between gap-3 sm:justify-start">
                   <span className="text-muted-foreground text-sm tabular-nums">
-                    idle {lead.idleDays}d
-                  </span>
+                  {lead.idleDays}d since last write
+                </span>
                   {href !== null ? (
                     <Button
                       as={Link}

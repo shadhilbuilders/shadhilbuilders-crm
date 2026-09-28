@@ -5,11 +5,36 @@
 // pinned by lib/leads.test.ts (drift tripwire) because the enum values
 // themselves are NOT exported as a runtime array from the zod schema.
 //
-// Overdue semantics (IMPLEMENTATION-PLAN Decision 0.2 + §13 KPI #1):
-// a lead is overdue when it is still NEW and its time-to-first-touch
-// breached the 30-minute target. Applies to NEW only - aging
-// NO_SHOW/RESCHEDULED leads are a named non-goal (plan D25, T-AGING).
+// T-STATUS-ONE-TRUTH (2026-09-28): the overdue/refresh SEMANTICS moved to
+// `@shadhil/api-types` (packages/api-types/src/lead-status.ts) and are
+// re-exported below. They used to be defined here AND restated in
+// `dashboard.service.ts` as inline SQL (`interval '30 minutes'`,
+// `interval '24 hours'`, `date_trunc('day', now())`) - so the card and the list
+// it summarised could count different populations while both claiming to be
+// "overdue"/"new today". The definitions now live once and both layers import
+// them; this file keeps the React-free re-export surface its callers already
+// use, so nothing else has to change.
 import type { LeadState } from '@shadhil/api-types';
+// Imported (for local use by `leadAgeTier` below) AND re-exported, so every
+// existing caller of `@/lib/leads` keeps working against the ONE definition.
+import {
+  OVERDUE_AFTER_MIN,
+  isOverdue,
+  isNewToday,
+  startOfToday,
+  TERMINAL_LEAD_STATES,
+  isTerminalLeadState,
+  type LeadFreshnessRow,
+} from '@shadhil/api-types';
+export {
+  OVERDUE_AFTER_MIN,
+  isOverdue,
+  isNewToday,
+  startOfToday,
+  TERMINAL_LEAD_STATES,
+  isTerminalLeadState,
+  type LeadFreshnessRow,
+};
 
 /** All 12 LeadStates in enum declaration order (api-types/src/enums.ts). */
 export const LEAD_STATES: readonly LeadState[] = [
@@ -27,36 +52,8 @@ export const LEAD_STATES: readonly LeadState[] = [
   'NO_SHOW',
 ];
 
-/**
- * Time-to-first-touch SLA target (minutes). IMPLEMENTATION-PLAN §13:
- * median target <30 min in v1. Constant so T-AGING can widen the
- * definition later without touching call sites.
- */
-export const OVERDUE_AFTER_MIN = 30;
-
-/** The minimal row shape isOverdue needs (LeadRow + createdAt, D16). */
-export type OverdueCheckRow = {
-  status?: string | null;
-  createdAt?: string | null;
-};
-
-/**
- * True when the lead breached first-touch SLA: still NEW and created
- * more than OVERDUE_AFTER_MIN minutes ago. Missing/unknown data is
- * never overdue (fail-closed so a contract change can't fabricate
- * urgency). Exactly-30-min counts as overdue (>= boundary, pinned by
- * lib/leads.test.ts).
- */
-export function isOverdue(row: OverdueCheckRow | null | undefined): boolean {
-  if (row === null || row === undefined) return false;
-  if (row.status !== 'NEW') return false;
-  if (typeof row.createdAt !== 'string' || row.createdAt.length === 0) {
-    return false;
-  }
-  const createdMs = Date.parse(row.createdAt);
-  if (Number.isNaN(createdMs)) return false;
-  return Date.now() - createdMs >= OVERDUE_AFTER_MIN * 60_000;
-}
+/** Alias kept for the existing call sites (`isOverdue(row)` shape). */
+export type OverdueCheckRow = { status?: string | null; createdAt?: string | null };
 
 /**
  * Row-tint tiers for the leads table (user request 2026-09-15): a NEW lead's

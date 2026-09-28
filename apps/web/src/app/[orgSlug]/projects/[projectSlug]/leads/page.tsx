@@ -239,7 +239,7 @@ function LeadInboxPageInner() {
                 </p>
                 <p>
                   <span className="font-medium">New today</span> - leads created
-                  today that are still in the NEW state.
+                  since midnight that are still in the NEW state.
                 </p>
               </div>
             </TooltipContent>

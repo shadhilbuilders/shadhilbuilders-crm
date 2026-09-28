@@ -21,6 +21,11 @@
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient, type Role } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+// T-STATUS-ONE-TRUTH (2026-09-28): NEW_TODAY_STATE / startOfToday are the shared
+// definitions the leads page and the KPI strip both use. Importing them (rather
+// than restating midnight or a 24h window here) is what keeps the two screens
+// from disagreeing.
+import { NEW_TODAY_STATE, OVERDUE_AFTER_MIN, startOfToday } from '@shadhil/api-types';
 import type {
   BookingMoneyException,
   DashboardExceptions,
@@ -128,8 +133,9 @@ export class DashboardService {
         const leadWhere = await this.leadWhere(txClient, actor, query.projectId);
 
         const now = new Date();
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
+        // "Today" is defined in ONE place (@shadhil/api-types `startOfToday`),
+        // not re-derived here - T-STATUS-ONE-TRUTH (2026-09-28).
+        const todayStart = startOfToday(now);
         const weekStart = startOfWeek(now);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 7);
@@ -183,16 +189,29 @@ export class DashboardService {
           bookingsByStatus,
           avgTimeToFirstTouch,
         ] = await Promise.all([
-          // newLeadsToday: leads created today in scope.
-          txClient.lead.count({
-            where: { ...leadWhere, createdAt: { gte: todayStart } },
-          }),
-          // overdueLeads: NEW + created > 30 min ago (mirrors leads.service).
+          // newLeadsToday: created since local midnight AND still NEW
+          // (T-STATUS-ONE-TRUTH, 2026-09-28).
+          //
+          // Two defects fixed here. (1) It counted `createdAt >= midnight` with
+          // NO state filter, so leads already WON or LOST today were counted as
+          // "new" - closing a deal made the number go UP. (2) The leads page
+          // counted a rolling 24h window instead, so the same words meant
+          // different populations on two screens. Both now call the shared
+          // `startOfToday()` + `newTodayState` contract in @shadhil/api-types.
           txClient.lead.count({
             where: {
               ...leadWhere,
-              state: 'NEW',
-              createdAt: { lte: new Date(now.getTime() - 30 * 60 * 1000) },
+              state: NEW_TODAY_STATE,
+              createdAt: { gte: startOfToday(now) },
+            },
+          }),
+          // overdueLeads: NEW + created > 30 min ago. Same SLA constant as
+          // leads.service's overdueCount and the client's isOverdue().
+          txClient.lead.count({
+            where: {
+              ...leadWhere,
+              state: NEW_TODAY_STATE,
+              createdAt: { lte: new Date(now.getTime() - OVERDUE_AFTER_MIN * 60 * 1000) },
             },
           }),
 
@@ -489,6 +508,27 @@ export class DashboardService {
    * of no touch, escalating 1-3 / 4-7 / 8-14 / 15-30 / 30+ days. Out-of-any
    * consideration are terminal states (WON/LOST/RNR) - those are archive, not
    * forgotten work.
+   *
+   * T-STATUS-ONE-TRUTH (2026-09-28) - two things the operator must be able to
+   * read off the screen, because both made this card look "wrong" next to the
+   * leads page:
+   *
+   *   - this card is CROSS-PROJECT and the leads page is single-project, so
+   *     equal definitions still produce different totals. That difference is
+   *     correct; each row carries its project.
+   *   - the window is "a full day since the last write", not "nobody called".
+   *     It reads `Lead.updatedAt`, which bumps on ANY write (a note, a
+   *     reassignment), so a lead called five times without a state change still
+   *     drifts in, and a lead nobody called but whose notes were edited drops
+   *     out. The Activity table that would carry a real call timestamp is still
+   *     unwritten by production code, so the honest fix is the label: the UI
+   *     titles this card "Going stale" and states the threshold instead of
+   *     promising call data that does not exist.
+   *
+   * This is deliberately NOT the `overdue` definition the leads page and KPI
+   * strip use (a NEW lead missing its 30-minute first-touch SLA) - different
+   * question, so a different card. Both windows are named constants in
+   * @shadhil/api-types, so neither is a magic number in a query string.
    */
   async getExceptions(actor: JwtPayload): Promise<DashboardExceptions> {
     if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
@@ -506,7 +546,7 @@ export class DashboardService {
         const nowDaysAge = (iso: string): number =>
           Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / oneDayMs));
 
-        // ---- 1. Idle leads: active states, last touch older than 1 day. ----
+        // ---- 1. Going stale: active states, last write older than 1 day. ----
         const idleRaw = await txClient.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
           SELECT l."id", l."name", l."phone", l."state", l."ownerId", l."projectId",
             l."updatedAt",
@@ -614,8 +654,13 @@ export class DashboardService {
           };
         });
 
-        // ---- 4. Team health: staff whose own active leads have all gone quiet,
-        // or who are carrying a large untouched backlog (systemic, not personal). ----
+        // ---- 4. Team health: staff whose own ACTIVE leads have all gone quiet,
+        // or who are carrying a large untouched backlog (systemic, not personal).
+        //
+        // `activeLeadCount` excludes terminal states, matching the "Open"
+        // counter on admin/teams (T-STATUS-ONE-TRUTH, 2026-09-28) - a member's
+        // open load must not include the deals they already closed, or the
+        // overload threshold fires on a rep having a good week. ----
         const OVERLOAD_ACTIVE_THRESHOLD = 10; // named constant, owner-tunable
         const teamRaw = await txClient.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
           SELECT l."ownerId" AS "userId", u."name" AS "userName", u."role",

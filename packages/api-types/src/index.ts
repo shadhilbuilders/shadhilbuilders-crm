@@ -9,6 +9,11 @@
 // Enums
 export * from './enums';
 
+// Lead state + freshness semantics (single source of truth for
+// "overdue" / "new today" / terminal states - imported by BOTH the NestJS
+// services and the Next views so the numbers cannot drift apart).
+export * from './lead-status';
+
 // Per-module DTOs
 export * from './auth';
 export * from './leads';
