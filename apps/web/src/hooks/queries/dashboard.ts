@@ -11,33 +11,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
-import type {
-  DashboardExceptions,
-  DashboardOverviewStats,
-  DashboardStats,
-} from '@shadhil/api-types';
+import type { DashboardExceptions, DashboardStats } from '@shadhil/api-types';
 
 export function useDashboardStats(projectId?: string) {
   return useQuery({
     queryKey: ['dashboard-stats', projectId ?? null] as const,
     queryFn: ({ signal }) =>
       api<DashboardStats>(`/dashboard/stats${qs({ projectId })}`, { signal }),
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
-  });
-}
-
-/**
- * Cross-project overview (admin/owner command center). GET /api/dashboard/overview
- * returns total leads, reassignments (7d), audit events (24h), users by role,
- * pipeline, visits, and audit timeline in one role-scoped query. The endpoint
- * enforces ADMIN/OWNER server-side (403 for staff).
- */
-export function useDashboardOverview() {
-  return useQuery({
-    queryKey: ['dashboard-overview'] as const,
-    queryFn: ({ signal }) =>
-      api<DashboardOverviewStats>('/dashboard/overview', { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

@@ -23,10 +23,9 @@
 import { isOverdue, leadAgeTier, OVERDUE_AFTER_MIN } from '@/lib/leads';
 
 /**
- * The minimal row shape ordering needs. Deliberately NOT `LeadRow` from
- * components/leads/LeadRowActions.tsx: this module is pure ordering logic and
- * should not depend on a component's prop type. Anything with a state and a
- * createdAt satisfies it.
+ * The minimal row shape ordering needs. Deliberately structural rather than a
+ * component's prop type: this module is pure ordering logic and should not
+ * depend on a component. Anything with a state and a createdAt satisfies it.
  */
 export type QueueRow = {
   status?: string | null;

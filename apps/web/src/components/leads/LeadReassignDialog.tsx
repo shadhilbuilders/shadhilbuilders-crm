@@ -1,9 +1,8 @@
 'use client';
 
 // LeadReassignDialog - assign a lead to another staff member (manager →
-// teammate, or admin → any assignable user). Triggered from BOTH:
-//   - the lead detail action panel (LeadActionPanel), and
-//   - the lead inbox row actions (LeadRowActions).
+// teammate, or admin → any assignable user). Triggered from the lead detail
+// action panel (LeadActionPanel).
 //
 // Uses the props-API `<Form>` (react-hook-form + zodResolver) with:
 //   - a native `type: 'combobox'` field that lists 10 assignable users by

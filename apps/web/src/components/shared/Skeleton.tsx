@@ -106,9 +106,10 @@ export const SKELETON_SHAPES = {
     lines: 2,
     chevron: 'h-4 w-4',
   },
-  // Overview command-center KPI cards (2026-09-10): 4 card-shaped
-  // placeholders matching OverviewSectionCards - each with a description
-  // label, a large value, a badge action, and a footer line.
+  // Overview KPI cards: 4 card-shaped placeholders - each with a description
+  // label, a large value, a badge action, and a footer line. (Originally sized
+  // to mirror the now-deleted OverviewSectionCards; the shape is still what
+  // this variant is for, so it stays.)
   overview: {
     count: 4,
     card: 'rounded-xl ring-1 ring-foreground/10',
@@ -385,11 +386,11 @@ export function Skeleton({
         );
 
       case 'overview':
-        // Overview command-center KPI cards (2026-09-10): 4 card-shaped
-        // placeholders matching OverviewSectionCards. Each card mirrors the
-        // real layout - description label, large value, badge action, and a
-        // footer line - so the skeleton is a faithful shape-match, not a
-        // generic grid.
+        // 4 card-shaped placeholders - description label, large value, badge
+        // action, and a footer line - so the skeleton is a faithful shape-match
+        // for a KPI card grid, not a generic grid. (Sized to mirror the deleted
+        // OverviewSectionCards; nine live pages still mount this variant, so the
+        // shape is what matters, not its original source.)
         return (
           <div
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"

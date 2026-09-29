@@ -160,24 +160,16 @@
   }
 }
 
-/* recharts 3.10.1 ResponsiveContainer regression fix.
+/* The recharts 3.10.1 ResponsiveContainer 0-width workaround was removed
+ * 2026-09-29 with the app's last recharts consumer. `@paalstack/react-ui`
+ * still ships recharts (its own dependency, not a peer), so if a chart is
+ * ever rendered again through the library's Chart primitives, this rule
+ * needs to come back verbatim:
  *
- * recharts' `getInnerDivStyle` returns `bothOverflow` (width:0; height:0;
- * overflow:visible) when BOTH width and height are percentages. The chart
- * SVG inside has inline `style="width:100%;height:100%"`, which resolves
- * against that 0x0 parent -> the chart renders at 0 width (invisible).
+ *   .recharts-responsive-container > div { width: 100% !important;
+ *                                          height: 100% !important; }
  *
- * The fix: force the inner div to fill its parent. The ResponsiveContainer
- * outer div already has the real measured size (e.g. 374px wide); the inner
- * div just needs to inherit it. `!important` beats the inline 0x0 style.
- *
- * Verified live: with this rule, all dashboard charts render at full width
- * (e.g. 374x210, 878x494) instead of 0x210. Without it they are 0-wide.
- */
-.recharts-responsive-container > div {
-  width: 100% !important;
-  height: 100% !important;
-}
+ * Without it the chart renders at 0 width and is invisible. */
 
 /* ────────────────────────────────────────────────────────────────────────
  * Site-visit calendar (vendored from lramos33/big-calendar).
