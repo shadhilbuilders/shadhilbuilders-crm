@@ -23,6 +23,12 @@ import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@sha
 import { ChatService } from './chat.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+// T-WA-WINDOW: the welcome template name comes from env (never a literal in
+// code - a hardcoded name Meta has not approved fails every send with 132001,
+// which is how `shadhil_chat_reply` ended up referenced but nonexistent). Set a
+// name here so the happy-path test exercises a configured deployment; the
+// unconfigured case deletes it explicitly.
+process.env['WA_TEMPLATE_WELCOME'] = 'test_welcome_template';
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
 // every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
 const TEST_PROJECT_ID = 'chatservicpr' + Date.now().toString();
@@ -141,6 +147,38 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * T-WA-WINDOW (2026-09-29): open Meta's 24h customer-service window for the
+ * fixture lead by writing a CUSTOMER inbound message.
+ *
+ * WHY THE OTHER TESTS NEED THIS: the send guard refuses a customer message when
+ * the window is closed, and the window is opened ONLY by the customer's inbound
+ * (Meta: "When a WhatsApp user messages you or calls you, a 24-hour timer called
+ * a customer service window starts"). A business template does NOT open it.
+ *
+ * These tests previously sent a customer reply into a thread with NO inbound at
+ * all - i.e. into a thread whose window was closed. They were asserting the old,
+ * defective contract (accept the send, let Meta reject it with 131047 and let the
+ * cron bury the failure), so they had to be re-pointed rather than worked around.
+ */
+async function openReplyWindow(): Promise<void> {
+  await adminSeed(async (db) => {
+    await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+    await db.message.create({
+      data: {
+        leadId: TEST_LEAD_ID,
+        // null userId = inbound from the customer (see the WhatsApp webhook).
+        userId: null,
+        direction: 'IN',
+        channel: 'WHATSAPP',
+        kind: 'CUSTOMER',
+        body: 'Yes, I am interested. Please share the details.',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
+    });
+  });
+}
+
 beforeEach(() => {
   // No global mock reset needed - we use real DB.
 });
@@ -184,6 +222,7 @@ function makeService(): ChatService {
 
 describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)', () => {
   it('enqueues a FREEFORM OutboundMessage (text reply, no template) when channel=WHATSAPP', async () => {
+    await openReplyWindow();
     capturedCalls.length = 0;
     const service = makeService();
 
@@ -221,6 +260,7 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
   });
 
   it('IN_APP CUSTOMER message to a lead with a WhatsApp number DOES enqueue a FREEFORM WhatsApp outbound (2026-09-17)', async () => {
+    await openReplyWindow();
     capturedCalls.length = 0;
     const service = makeService();
 
@@ -241,6 +281,7 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
   });
 
   it('does NOT call outbound.enqueue when channel=IN_APP and the lead has NO phoneE164', async () => {
+    await openReplyWindow();
     capturedCalls.length = 0;
     // A lead without a phoneE164 (e.g. a record created with a display
     // phone but no normalized number, or a non-messaging lead) must not
@@ -273,6 +314,7 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
   });
 
   it('truncates body at 1000 chars to leave headroom under Meta 1024 limit', async () => {
+    await openReplyWindow();
     capturedCalls.length = 0;
     const service = makeService();
     const longBody = 'a'.repeat(1500);
@@ -285,5 +327,131 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
 
     expect(capturedCalls).toHaveLength(1);
     expect(capturedCalls[0]!.freeformBody!.length).toBe(1000);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // T-WA-WINDOW (2026-09-29): the server-side 24h gate + the welcome template.
+  // ──────────────────────────────────────────────────────────────────────────
+  //
+  // The gate lives on the SERVER because the API is the real hole: the UI gated
+  // only the whatsapp-chat pane, so a customer reply sent at any hour was
+  // accepted, queued, and then rejected by Meta (131047) - the operator saw the
+  // message appear and the customer never received it.
+
+  it('REFUSES a customer message when the customer has never written', async () => {
+    // Close the window by removing any inbound.
+    await adminSeed(async (db) => {
+      await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+    });
+    capturedCalls.length = 0;
+    const service = makeService();
+
+    await expect(
+      service.send(actor, { leadId: TEST_LEAD_ID, body: 'Are you still interested?', channel: 'WHATSAPP' }),
+    ).rejects.toThrow(/has not written yet/);
+    // Nothing queued: the whole point is that Meta never sees it.
+    expect(capturedCalls).toHaveLength(0);
+  });
+
+  it('REFUSES a customer message once the window has EXPIRED', async () => {
+    // A customer inbound 25h ago: the window opened and closed again.
+    await adminSeed(async (db) => {
+      await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+      await db.message.create({
+        data: {
+          leadId: TEST_LEAD_ID,
+          userId: null,
+          direction: 'IN',
+          channel: 'WHATSAPP',
+          kind: 'CUSTOMER',
+          body: 'old inbound',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        },
+      });
+    });
+    capturedCalls.length = 0;
+    const service = makeService();
+
+    await expect(
+      service.send(actor, { leadId: TEST_LEAD_ID, body: 'Following up', channel: 'WHATSAPP' }),
+    ).rejects.toThrow(/24-hour/);
+    expect(capturedCalls).toHaveLength(0);
+  });
+
+  it('still accepts an INTERNAL note with a closed window (never reaches WhatsApp)', async () => {
+    // The gate must not lock staff out of their own internal notes: an INTERNAL
+    // note is staff-only and never enqueues an outbound.
+    await adminSeed(async (db) => {
+      await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+    });
+    capturedCalls.length = 0;
+    const service = makeService();
+
+    const result = await service.send(actor, {
+      leadId: TEST_LEAD_ID,
+      body: 'Internal: customer went quiet, try next week.',
+      channel: 'IN_APP',
+      kind: 'INTERNAL',
+    });
+    expect(result.kind).toBe('INTERNAL');
+    expect(capturedCalls).toHaveLength(0);
+  });
+
+  it('threadState reports the window and who opened it', async () => {
+    await openReplyWindow();
+    const service = makeService();
+
+    const state = await service.threadState(actor, TEST_LEAD_ID);
+    expect(state.leadId).toBe(TEST_LEAD_ID);
+    expect(state.lastInboundAt).not.toBeNull();
+    expect(state.windowOpen).toBe(true);
+    expect(state.windowExpiresAt).not.toBeNull();
+  });
+
+  it('threadState reports a CLOSED window for a lead who never wrote', async () => {
+    await adminSeed(async (db) => {
+      await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+    });
+    const service = makeService();
+
+    const state = await service.threadState(actor, TEST_LEAD_ID);
+    expect(state.lastInboundAt).toBeNull();
+    expect(state.windowOpen).toBe(false);
+    // No inbound => no window, so there is nothing to expire.
+    expect(state.windowExpiresAt).toBeNull();
+  });
+
+  it('sendWelcome queues a TEMPLATE row (the only compliant cold outreach)', async () => {
+    // A closed window is the POINT of this path - it must not be gated by it.
+    await adminSeed(async (db) => {
+      await db.message.deleteMany({ where: { leadId: TEST_LEAD_ID, direction: 'IN' } });
+    });
+    capturedCalls.length = 0;
+    const service = makeService();
+
+    const res = await service.sendWelcome(actor, { leadId: TEST_LEAD_ID });
+    expect(res.templateName).toBe('test_welcome_template');
+    expect(capturedCalls).toHaveLength(1);
+    const call = capturedCalls[0]!;
+    // TEMPLATE, not FREEFORM: that is what makes a closed-window send legal.
+    expect(call.sendType).toBe('TEMPLATE');
+    expect(call.templateName).toBe('test_welcome_template');
+    // {{1}} = the customer's first name, per the approved template's param order.
+    expect(call.templateVars).toEqual({ '1': 'Rajesh' });
+  });
+
+  it('sendWelcome fails loudly when the template is not configured', async () => {
+    const saved = process.env['WA_TEMPLATE_WELCOME'];
+    delete process.env['WA_TEMPLATE_WELCOME'];
+    try {
+      const service = makeService();
+      // A clear 400 naming the env var, not an opaque 500 and not a silent no-op.
+      await expect(service.sendWelcome(actor, { leadId: TEST_LEAD_ID })).rejects.toThrow(
+        /WA_TEMPLATE_WELCOME/,
+      );
+    } finally {
+      if (saved !== undefined) process.env['WA_TEMPLATE_WELCOME'] = saved;
+    }
   });
 });

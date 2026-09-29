@@ -37,7 +37,13 @@ import type {
   ChatConversationsResult,
   SendContactMessageDto,
   MarkChatReadDto,
+  ChatThreadState,
+  SendWelcomeMessageDto,
 } from '@shadhil/api-types';
+// T-WA-WINDOW (2026-09-29): Meta's 24h customer-service window is enforced by
+// the SAME predicate the composers use, so the UI cannot offer a send the API
+// refuses - or, worse, the API accept one Meta will reject with 131047.
+import { CLOSED_WINDOW_MESSAGE, isServiceWindowOpen, serviceWindowExpiry } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
@@ -149,6 +155,165 @@ export class ChatService {
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
+  }
+
+  /**
+   * GET /api/chat/:leadId/state - everything the composer needs to gate itself.
+   *
+   * Computed in ONE place on the server rather than inferred in the pane, because
+   * the rule decides whether a message reaches the customer:
+   *
+   *   - `lastInboundAt`: the customer's last inbound message. THIS is what opens
+   *     Meta's 24h window (Meta: "When a WhatsApp user messages you or calls
+   *     you, a 24-hour timer called a customer service window starts"). It was
+   *     previously computed only inside the WhatsApp-inbox conversations query,
+   *     so the lead pane had no way to know its own window state.
+   *   - `lastTemplateSentAt`: when this thread was last sent a business-initiated
+   *     template, so the pane can say "welcome sent, waiting for them" instead of
+   *     offering the button again.
+   *   - `windowOpen` / `windowExpiresAt`: derived from the shared predicate.
+   *
+   * OUTBOUND is the discriminator for inbound: the customer's messages are the
+   * ones with direction IN (a Message row with userId=null is inbound from the
+   * customer - see the WhatsApp webhook).
+   */
+  async threadState(actor: JwtPayload, leadId: string): Promise<ChatThreadState> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const client = tx as unknown as PrismaClient;
+      // RLS-scoped: a lead the actor cannot see resolves null and is reported as
+      // not-found rather than silently returning an empty state.
+      const lead = await client.lead.findUnique({
+        where: { id: leadId },
+        // owner/coOwner/team are what the WRITE rule is expressed in, so they
+        // are read here to answer canWriteThread (the mention grant is read-only).
+        select: {
+          id: true,
+          ownerId: true,
+          coOwnerId: true,
+          team: { select: { managerId: true } },
+        },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
+
+      const [lastInbound, lastTemplate] = await Promise.all([
+        client.message.findFirst({
+          where: { leadId, direction: 'IN' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+        client.outboundMessage.findFirst({
+          where: { leadId, sendType: 'TEMPLATE' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+      ]);
+
+      const expiry = serviceWindowExpiry(lastInbound?.createdAt ?? null);
+      return {
+        leadId,
+        lastInboundAt: lastInbound?.createdAt.toISOString() ?? null,
+        lastTemplateSentAt: lastTemplate?.createdAt.toISOString() ?? null,
+        windowOpen: isServiceWindowOpen(lastInbound?.createdAt ?? null),
+        windowExpiresAt: expiry?.toISOString() ?? null,
+        canWriteThread: canWriteLeadThread(actor, lead),
+      };
+    });
+  }
+
+  /**
+   * POST /api/chat/welcome - send the approved WELCOME template to a lead.
+   *
+   * The ONLY compliant way to contact a lead who has gone quiet: a business may
+   * always send an approved TEMPLATE, whereas freeform text requires an open
+   * window. So this path deliberately does NOT check the window - the whole point
+   * is to reach someone whose window is shut.
+   *
+   * It writes a Message row (so the outreach appears in the thread the customer
+   * will eventually reply into) and an OutboundMessage row with sendType
+   * TEMPLATE for the cron to deliver. The template NAME comes from env
+   * (`WA_TEMPLATE_WELCOME`) rather than a literal, because a hardcoded name that
+   * Meta has not approved fails every send with 132001 - which is exactly how
+   * `shadhil_chat_reply` came to be referenced in this codebase but never exist.
+   *
+   * NOTE: this does NOT open the reply window. Nothing the business sends can -
+   * only the customer's own reply does.
+   */
+  async sendWelcome(actor: JwtPayload, dto: SendWelcomeMessageDto): Promise<{ ok: true; templateName: string }> {
+    const templateName = process.env['WA_TEMPLATE_WELCOME'] ?? '';
+    if (templateName.length === 0) {
+      // Loud, actionable: an operator clicking the button before the template is
+      // configured should hear exactly what is missing, not see a generic 500.
+      throw new BadRequestException(
+        'The welcome template is not configured. Set WA_TEMPLATE_WELCOME to the name of an approved Meta template.',
+      );
+    }
+
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const client = tx as unknown as PrismaClient;
+      const lead = await client.lead.findUnique({
+        where: { id: dto.leadId },
+        select: { id: true, name: true, phoneE164: true, phone: true },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${dto.leadId} not found`);
+      }
+      const phone = lead.phoneE164 ?? lead.phone;
+      if (phone === null || phone.length === 0) {
+        throw new BadRequestException(
+          'This lead has no WhatsApp number, so a welcome message cannot be sent.',
+        );
+      }
+
+      // A visible thread entry, so the outreach is part of the conversation the
+      // customer's reply will land in. INTERNAL would hide it from the customer
+      // thread; CUSTOMER is correct - the customer DOES receive this.
+      const firstName = (lead.name ?? '').trim().split(/\s+/)[0] ?? lead.name ?? '';
+      const created = await client.message.create({
+        data: {
+          leadId: dto.leadId,
+          organizationId: actor.organizationId,
+          userId: actor.sub,
+          direction: 'OUT',
+          // WHATSAPP: this really does go to the customer's phone, unlike an
+          // IN_APP staff reply.
+          channel: 'WHATSAPP',
+          kind: 'CUSTOMER',
+          body: `Welcome message sent (${templateName}).`,
+        },
+        select: { id: true, leadId: true },
+      });
+
+      await this.outbound.enqueue(
+        {
+          messageId: created.id,
+          leadId: created.leadId ?? dto.leadId,
+          sendType: 'TEMPLATE',
+          templateName,
+          // {{1}} = the customer's first name, matching the approved template's
+          // declared parameter order. Changing the template's placeholder count
+          // in Meta without updating this breaks the send (Cloud API sends body
+          // params as an ordered array).
+          templateVars: { '1': firstName },
+        },
+        tx as unknown as PrismaClient,
+      );
+
+      await client.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'chat.welcome.send',
+          entityType: 'Lead',
+          entityId: dto.leadId,
+          after: { templateName },
+          reason: `Welcome template "${templateName}" queued for lead ${dto.leadId} by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      return { ok: true as const, templateName };
+    });
   }
 
   /**
@@ -266,10 +431,46 @@ export class ChatService {
         // the BFF gets a clear 404 rather than a 500.
         const lead = await (tx as unknown as PrismaClient).lead.findUnique({
           where: { id: dto.leadId },
-          select: { id: true, name: true, phoneE164: true },
+          select: { id: true, name: true, phoneE164: true, phone: true },
         });
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
+        }
+
+        // T-WA-WINDOW (2026-09-29): refuse a customer message Meta will reject.
+        //
+        // Before this guard the API accepted a freeform reply at ANY time and
+        // queued it for the cron; outside the 24h window Meta rejects it with
+        // 131047 (re-engagement message) and the OutboundMessage row died as a
+        // silent FAILED - the operator saw "sent", the customer received nothing.
+        // The UI only gated the whatsapp-chat pane, so the API was the real hole.
+        //
+        // Enforced for the customer thread only, and only when the message would
+        // actually reach the phone: an INTERNAL note never leaves the app, and an
+        // IN_APP message on a lead with no WhatsApp number is not a WhatsApp send.
+        // Mirrors the OUTBOUND ENQUEUE condition EXACTLY (see the enqueue call
+        // below): a customer message reaches WhatsApp when the channel is
+        // WHATSAPP, or when it is IN_APP on a lead with a phoneE164. Using
+        // `phoneE164 ?? phone` here would have gated leads the enqueue would not
+        // even try to send to - the gate must match the thing it protects.
+        const resolvedChannel: 'WHATSAPP' | 'IN_APP' = dto.channel ?? 'IN_APP';
+        const wouldReachWhatsApp =
+          kind === 'CUSTOMER' &&
+          (resolvedChannel === 'WHATSAPP' ||
+            (resolvedChannel === 'IN_APP' && lead.phoneE164 !== null));
+        if (wouldReachWhatsApp) {
+          const lastInbound = await (tx as unknown as PrismaClient).message.findFirst({
+            where: { leadId: dto.leadId, direction: 'IN' },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          });
+          if (!isServiceWindowOpen(lastInbound?.createdAt ?? null)) {
+            throw new BadRequestException(
+              lastInbound === null
+                ? 'This customer has not written yet, so the 24-hour WhatsApp reply window is closed. Send the welcome message first; you can reply freely once they answer.'
+                : CLOSED_WINDOW_MESSAGE,
+            );
+          }
         }
 
         // The sender of an OUT message is the staff member (actor). Look up
@@ -1021,6 +1222,39 @@ export class ChatService {
       });
     }
   }
+}
+
+/**
+ * T-READONLY-READER (2026-09-29): may this actor WRITE messages on this lead?
+ *
+ * A deliberate MIRROR of the `message_insert_team` RLS policy:
+ *
+ *   ADMIN                                        -> yes
+ *   MANAGER where lead.team.managerId === actor   -> yes
+ *   TELECALLER/SALES_EXEC where ownerId or coOwnerId === actor -> yes
+ *   otherwise                                     -> no
+ *
+ * Why a mirror is acceptable here: RLS stays the ENFORCER - this only decides
+ * whether the UI OFFERS the action. If the two ever disagree the write is still
+ * refused by the database, so drift costs a confusing UI, never an unauthorised
+ * write.
+ *
+ * It exists because a mention grants READ of the lead and its whole thread
+ * WITHOUT granting write, so "can see this" stopped meaning "can reply here".
+ * Without it the pane rendered a working composer for a mentioned teammate and
+ * their reply died on a 42501 shown as a generic error.
+ */
+function canWriteLeadThread(
+  actor: JwtPayload,
+  lead: {
+    ownerId: string;
+    coOwnerId: string | null;
+    team: { managerId: string | null } | null;
+  },
+): boolean {
+  if (actor.role === 'ADMIN' || actor.role === 'OWNER') return true;
+  if (actor.role === 'MANAGER') return lead.team?.managerId === actor.sub;
+  return lead.ownerId === actor.sub || lead.coOwnerId === actor.sub;
 }
 
 /** Pull a display name for the actor (used in mention notifications). */

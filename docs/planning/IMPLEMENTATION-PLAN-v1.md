@@ -2221,6 +2221,65 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### T-WA-WINDOW (2026-09-29): the 24h reply window is enforced, and a Welcome button
+
+Owner instruction: on the lead's customer chat panel, a thread with no messages
+shows a "Welcome Message" button that sends an approved WhatsApp template; the
+correct flow (after being told the Meta constraint) is that the composer stays
+blocked until the CUSTOMER replies.
+
+**The feature was half-built, in one place.** `ChatThreadPanel` (the
+`/whatsapp-chat` page) already had `replyWindowState()`, `closedWindowMessage()`
+and a composer that is replaced by a notice rather than left as a dead input.
+`LeadChatPane` (the lead detail page) had none of it - no inbound timestamp, no
+window awareness. The shared contract now lives in `@shadhil/api-types`
+(`isServiceWindowOpen`, `serviceWindowExpiry`, `CLOSED_WINDOW_MESSAGE`) so the
+server guard and both composers cannot disagree.
+
+**A live defect this closed.** The window was NOT enforced server-side: `send()`
+enqueued a FREEFORM outbound for any customer message when the lead had a phone.
+Outside the window Meta rejects it with `131047`, the OutboundMessage row died as
+a silent `FAILED`, and the operator saw a message that the customer never
+received. The API is now the enforcement point, and it mirrors the enqueue
+condition EXACTLY (`channel === 'WHATSAPP' || (IN_APP && phoneE164)`) - a gate
+that is wider than the thing it protects would refuse legitimate sends, and a
+narrower one lets doomed sends through.
+
+**The correction that shaped the design.** Owner initially asked for: click
+welcome → then allow freeform for 24h. That has no valid state. Meta's docs:
+"When a WhatsApp user messages you or calls you, a 24-hour timer called a
+customer service window starts." Only the CUSTOMER's inbound opens it; a
+business template does not, and neither does the customer receiving one. So
+enabling the composer after the template would let staff type freely into a
+closed window and every message would fail at Meta - the exact silent-failure
+above. The button still earns its place as the only compliant cold-outreach path
+(a business may ALWAYS send an approved template), it just does not unlock the
+composer.
+
+**States:** no inbound → Welcome button, no composer. Template sent, still no
+reply → "opens when the customer replies". Customer replied → composer, freeform
+for 24h. Window expired → closed notice + Welcome again (labelled "Send welcome
+again"). Loading → CLOSED (fail closed: a slow request must never briefly enable
+a composer the API refuses).
+
+**The template is the operator's to create.** `WA_TEMPLATE_WELCOME` names it; the
+body, category and parameter mapping are in `docs/planning/WA-WELCOME-TEMPLATE.md`.
+Not hardcoded, because a literal name Meta has not approved fails every send with
+`132001` - which is exactly how `shadhil_chat_reply` came to be referenced in this
+codebase while never existing. Unset → a 400 naming the env var, never a silent
+no-op or a success toast.
+
+**Tests re-pointed, not worked around.** Four existing suites sent a CUSTOMER
+message into a thread with no inbound - i.e. they were asserting the old
+defective contract. They now open the window with a real customer inbound, or use
+an INTERNAL note when the test is about the insert path rather than WhatsApp
+delivery.
+
+**Verified:** api-types 110, backend 1197, db 163, web 794; lint 7/7; guardrail
+pass; type-check exit 0. Tampers: remove the pane gate → 4 web red; remove the
+server guard + flip the welcome send to FREEFORM → 3 backend red. CI still dead
+on the Actions billing failure.
+
 ### T-MENTION-TARGET (2026-09-29): an @mention is a real access grant
 
 Owner instruction: "3" - the targeted-mention option, then option **A** for the

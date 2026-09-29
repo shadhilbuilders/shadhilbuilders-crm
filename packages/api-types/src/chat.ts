@@ -64,6 +64,108 @@ export const MessageFilterDtoSchema = z.object({
 export type MessageFilterDto = z.infer<typeof MessageFilterDtoSchema>;
 
 /**
+ * GET /api/chat/:leadId/state - the composer's gating state for one lead.
+ *
+ * WHY THIS EXISTS. Meta only accepts a FREEFORM reply inside the 24h
+ * customer-service window, and the window is opened ONLY by the customer's own
+ * inbound message - Meta's docs: "When a WhatsApp user messages you or calls
+ * you, a 24-hour timer called a customer service window starts". A
+ * business-initiated template does NOT open it.
+ *
+ * So the pane cannot infer "can I type?" from "did I send something?"; it needs
+ * the customer's last inbound. That timestamp is per-thread and was previously
+ * only computed inside the WhatsApp-inbox conversations query, so the lead
+ * detail pane had no way to know its own window state.
+ */
+export const ChatThreadStateSchema = z.object({
+  leadId: z.string(),
+  /** The customer's last inbound message. null = they have never written. */
+  lastInboundAt: z.string().datetime({ offset: true }).nullable(),
+  /** When this thread was last sent a business-initiated template (null = never). */
+  lastTemplateSentAt: z.string().datetime({ offset: true }).nullable(),
+  /** True only while Meta will accept a freeform reply. */
+  windowOpen: z.boolean(),
+  /** When the window closes; null when it has never been opened. */
+  windowExpiresAt: z.string().datetime({ offset: true }).nullable(),
+  /**
+   * T-READONLY-READER (2026-09-29): may this actor WRITE to this lead's thread?
+   *
+   * Mirrors the `message_insert_team` RLS policy exactly. Needed because the two
+   * capabilities came apart: an @mention GRANTS READ of the lead and its whole
+   * thread but NOT write. Without this flag the pane rendered a fully working
+   * composer for a mentioned teammate, and their reply failed on the RLS insert
+   * with a 42501 surfaced as a generic error - the app inviting an action it
+   * would refuse.
+   *
+   * Computed SERVER-side (a client cannot evaluate an RLS policy) and verified
+   * against that policy by a live role-by-role probe.
+   */
+  canWriteThread: z.boolean(),
+});
+export type ChatThreadState = z.infer<typeof ChatThreadStateSchema>;
+
+/**
+ * POST /api/chat/welcome - send the approved WELCOME template to a lead.
+ *
+ * This is the only compliant way to contact a lead who has gone quiet: a
+ * business may always send an approved TEMPLATE, whereas a freeform message
+ * requires an open window. Used by the "Welcome Message" button on a thread
+ * with no conversation yet.
+ */
+export const SendWelcomeMessageDtoSchema = z.object({
+  leadId: z.string().cuid2(),
+});
+export type SendWelcomeMessageDto = z.infer<typeof SendWelcomeMessageDtoSchema>;
+
+/**
+ * The 24h customer-service window, defined ONCE.
+ *
+ * Both the server-side send guard and the client composer gate use these, so a
+ * change to the rule cannot leave the UI offering a send the API refuses (or
+ * worse: the API accepting a send Meta will reject with 131047).
+ */
+export const WHATSAPP_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Is Meta's customer-service window open for this thread?
+ *
+ * `lastInboundAt === null` (the customer has never written) is CLOSED: there is
+ * no window to reply into, no matter how recently the business sent something.
+ * An unparseable timestamp is also closed - fail closed, because the failure
+ * mode of guessing wrong is a message the customer never receives.
+ */
+export function isServiceWindowOpen(
+  lastInboundAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const expiresAt = serviceWindowExpiry(lastInboundAt);
+  if (expiresAt === null) return false;
+  return expiresAt.getTime() > now.getTime();
+}
+
+/** When the window closes, or null if it was never opened / is unparseable. */
+export function serviceWindowExpiry(
+  lastInboundAt: string | Date | null | undefined,
+): Date | null {
+  if (lastInboundAt === null || lastInboundAt === undefined) return null;
+  const last =
+    lastInboundAt instanceof Date ? lastInboundAt : new Date(lastInboundAt);
+  if (Number.isNaN(last.getTime())) return null;
+  return new Date(last.getTime() + WHATSAPP_SERVICE_WINDOW_MS);
+}
+
+/** The single wording for a closed window, so server and client agree. */
+export const CLOSED_WINDOW_MESSAGE =
+  'The 24-hour WhatsApp reply window has closed. Meta only delivers a freeform ' +
+  'reply within 24h of the customer\u2019s last message, so this message cannot ' +
+  'be sent until they write again.';
+
+/** Explanation shown after a welcome template goes out (window still closed). */
+export const AWAITING_CUSTOMER_REPLY_MESSAGE =
+  'Welcome message sent. The 24-hour reply window opens when the customer ' +
+  'replies, so you can message them freely from then.';
+
+/**
  * Internal shape of a Message row as serialized to the SSE client.
  * `id` is the SSE event-id (eng review A9 - Last-Event-ID resume).
  */

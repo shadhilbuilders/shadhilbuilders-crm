@@ -148,10 +148,17 @@ afterAll(async () => {
 describe.skipIf(!HAS_DB)('ChatService.send - teamless ADMIN (T-CHAT-ADMIN-INSERT)', () => {
   it('ADMIN with no teamId sends a message to a lead (no 42501)', async () => {
     const service = makeService();
+    // T-WA-WINDOW (2026-09-29): kind INTERNAL. This test is about the RLS INSERT
+    // path for a teamless ADMIN (the 42501 it pins), not about WhatsApp
+    // delivery - and a CUSTOMER message on a phone-bearing lead is now refused
+    // when Meta's 24h window is closed. An internal note is staff-only and never
+    // enqueues an outbound, so it exercises the same insert without depending on
+    // a customer having written first.
     const result = await service.send(teamlessActor(), {
       leadId: LEAD_ID,
       body: 'Hello from a teamless admin',
       channel: 'IN_APP',
+      kind: 'INTERNAL',
     });
 
     expect(result.id).toBeTruthy();

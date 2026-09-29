@@ -37,6 +37,9 @@ function makeService(): {
     message: {
       findMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
+      // T-WA-WINDOW (2026-09-29): the send guard reads the customer's last
+      // inbound to decide whether Meta's 24h window is open.
+      findFirst: ReturnType<typeof vi.fn>;
     };
     auditLog: {
       create: ReturnType<typeof vi.fn>;
@@ -55,6 +58,7 @@ function makeService(): {
     message: {
       findMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
     };
     auditLog: {
       create: ReturnType<typeof vi.fn>;
@@ -78,6 +82,7 @@ function makeService(): {
     },
     message: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
     },
     auditLog: {
@@ -166,7 +171,11 @@ describe('list - RLS-scoped message history for a lead', () => {
 describe('send - staff message + audit row', () => {
   it('writes a Message row with direction=OUT and audit row in one call', async () => {
     const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', name: 'Lead X' });
+    // phoneE164 set so the customer thread IS a WhatsApp send, and an inbound
+    // from the customer so the 24h window is OPEN - this test is about the
+    // Message/audit write, not the gate (which has its own suite).
+    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', name: 'Lead X', phoneE164: '919000000000' });
+    client.message.findFirst.mockResolvedValue({ createdAt: new Date() });
     client.user.findUnique.mockResolvedValue({ name: 'Asha T.' });
     client.message.create.mockResolvedValue({
       id: 'm-new',
@@ -236,7 +245,12 @@ describe('send - staff message + audit row', () => {
 
   it('defaults channel to IN_APP when DTO omits it', async () => {
     const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-x' });
+    // No phoneE164: the lead is not WhatsApp-reachable, so this IN_APP message
+    // is NOT a WhatsApp send and the 24h window gate does not apply. (An
+    // explicit fixture also stops a sibling test's phone-bearing mock leaking in
+    // via vi.clearAllMocks not resetting mockResolvedValue defaults.)
+    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', phoneE164: null });
+    client.message.findFirst.mockResolvedValue(null);
     client.message.create.mockResolvedValue({
       id: 'm-new',
       leadId: 'lead-x',

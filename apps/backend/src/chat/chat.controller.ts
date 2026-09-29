@@ -29,10 +29,13 @@ import {
   MessageKindSchema,
   SendContactMessageDtoSchema,
   SendMessageDtoSchema,
+  SendWelcomeMessageDtoSchema,
   type ChatConversationsResult,
   type MarkChatReadDto,
+  type ChatThreadState,
   type SendContactMessageDto,
   type SendMessageDto,
+  type SendWelcomeMessageDto,
 } from '@shadhil/api-types';
 import { z } from 'zod';
 
@@ -163,6 +166,47 @@ export class ChatController {
     this.assertInboxAccess(actor);
     const dto: MarkChatReadDto = parseBody(MarkChatReadDtoSchema, body);
     return this.chat.markRead(actor, dto);
+  }
+
+  /**
+   * GET /api/chat/:leadId/state - composer gating state for one lead.
+   *
+   * T-WA-WINDOW (2026-09-29): declared BEFORE `@Get(':leadId')` below, because
+   * Nest matches in declaration order - the same route-order rule that already
+   * applies to /conversations and /contact/:contactId in this controller.
+   */
+  @Get(':leadId/state')
+  @ApiOperation({
+    summary:
+      "A lead thread's WhatsApp reply-window state (last customer inbound, last template sent, window open/expiry). Drives the composer gate.",
+  })
+  async threadState(
+    @Req() req: AuthedRequest,
+    @Param('leadId') leadId: string,
+  ): Promise<ChatThreadState> {
+    if (!ChatController.CUID_RE.safeParse(leadId).success) {
+      throw new BadRequestException(`Invalid leadId: ${leadId}`);
+    }
+    return this.chat.threadState(req.user!, leadId);
+  }
+
+  /**
+   * POST /api/chat/welcome - send the approved welcome template.
+   *
+   * The only compliant way to contact a customer with a closed window. Not gated
+   * by the window itself - reaching a silent lead is the entire purpose.
+   */
+  @Post('welcome')
+  @ApiOperation({
+    summary:
+      'Send the approved welcome WhatsApp template to a lead (for threads with no conversation yet).',
+  })
+  async sendWelcome(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<{ ok: true; templateName: string }> {
+    const dto: SendWelcomeMessageDto = parseBody(SendWelcomeMessageDtoSchema, body);
+    return this.chat.sendWelcome(req.user!, dto);
   }
 
   @Get(':leadId')

@@ -18,6 +18,9 @@ import { useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import type {
   BookingTransitionDto,
   ChatConversationsResult,
+  // T-WA-WINDOW (2026-09-29): the thread's WhatsApp reply-window state and the
+  // welcome-template send payload.
+  ChatThreadState,
   CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
@@ -26,6 +29,7 @@ import type {
   LeadStateTransitionDto,
   RescheduleVisitDto,
   SendContactMessageDto,
+  SendWelcomeMessageDto,
   UpdateBookingDto,
   SendMessageDto,
   UpdateLeadDto,
@@ -499,6 +503,49 @@ export function useMessages(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL'
 // send-triggered refetch only. Mount inside the lead detail page; the
 // subscription invalidates the chat query whenever a new Message row
 // appears (inbound WhatsApp, another staff member, or the customer).
+/**
+ * T-WA-WINDOW (2026-09-29): a lead thread's WhatsApp reply-window state.
+ *
+ * The composer cannot infer "can I type?" from local state: Meta opens the 24h
+ * window on the CUSTOMER's inbound, so the answer depends on their last message,
+ * which only the server knows. `enabled` on a null id keeps the two-pane
+ * pattern (hooks are never called conditionally).
+ *
+ * Polls on an interval because this state EXPIRES on its own - a window that was
+ * open when the page loaded closes 24h later with no user action, and a stale
+ * "you can reply" would be the exact silent-failure the gate exists to prevent.
+ */
+export function useChatThreadState(leadId: string | null) {
+  return useQuery({
+    queryKey: ['chat-state', leadId] as const,
+    enabled: leadId !== null && leadId.length > 0,
+    queryFn: ({ signal }) =>
+      api<ChatThreadState>(`/chat/${leadId as string}/state`, { signal }),
+    refetchInterval: 60_000,
+  });
+}
+
+/**
+ * T-WA-WINDOW: send the approved welcome template to a lead.
+ *
+ * Invalidates the thread state too - the send updates `lastTemplateSentAt`, which
+ * is what swaps the welcome button for "waiting for their reply".
+ */
+export function useSendWelcomeMessage(leadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<{ ok: true; templateName: string }>('/chat/welcome', {
+        method: 'POST',
+        json: { leadId } satisfies SendWelcomeMessageDto,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-state', leadId] });
+    },
+  });
+}
+
 export function useMessagesRealtime(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER'): void {
   const queryClient = useQueryClient();
   useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {

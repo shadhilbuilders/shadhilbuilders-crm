@@ -52,6 +52,7 @@ import {
   AvatarRoot,
   Bubble,
   BubbleContent,
+  Button,
   CardContent,
   CardFooter,
   CardRoot,
@@ -76,14 +77,37 @@ import {
   ToggleGroup,
   toast,
 } from '@paalstack/react-ui';
-import { LuArrowUp, LuFile, LuLock, LuMessageSquare, LuPaperclip, LuRefreshCw, LuX } from '@paalstack/react-icons/lu';
+import {
+  LuArrowUp,
+  LuCircleAlert,
+  LuFile,
+  LuLock,
+  LuMessageSquare,
+  LuPaperclip,
+  LuRefreshCw,
+  LuX,
+} from '@paalstack/react-icons/lu';
 import { useMemo, useRef, useState } from 'react';
 
-import { useMessages, useMessagesRealtime, useSendMessage, uploadChatMedia } from '@/hooks/queries/crm';
+import {
+  useChatThreadState,
+  useMessages,
+  useMessagesRealtime,
+  useSendMessage,
+  useSendWelcomeMessage,
+  uploadChatMedia,
+} from '@/hooks/queries/crm';
 import { useTeamMembers } from '@/hooks/queries/users';
 import { useProjectId } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 import { useSessionUser } from '@/lib/session';
+// T-WA-WINDOW (2026-09-29): the 24h customer-service window. Shared with the API
+// so the pane cannot offer a send the server refuses.
+import {
+  AWAITING_CUSTOMER_REPLY_MESSAGE,
+  CLOSED_WINDOW_MESSAGE,
+  isServiceWindowOpen,
+} from '@shadhil/api-types';
 
 import { AttachmentImage } from './AttachmentImage';
 
@@ -245,6 +269,69 @@ export function separatorLabel(iso: string | undefined, now: Date = new Date()):
  * Insert a date-separator row before the first message of each group.
  * Returns a flat list of `{ type: 'separator', label } | { type: 'message', row, index }`.
  */
+/**
+ * T-MENTION-TARGET (2026-09-29): the users a draft actually ADDRESSES.
+ *
+ * Exported as a pure function so it can be tested directly - the pane's own
+ * suite uses `renderToStaticMarkup`, which cannot type into the composer, so
+ * logic buried in the component would stay untested (and this logic decides who
+ * receives a grant to a customer's record).
+ *
+ * `picked` maps a display name -> user id for every teammate the @ picker
+ * inserted. A name is only addressed when it is STILL PRESENT in the body, so
+ * deleting `@Name` before sending does not grant anything.
+ *
+ * MATCHED AS A WHOLE TOKEN, not by substring. `@Asha` is a substring of
+ * `@Asha T.`, so a naive `body.includes('@Asha')` would address the wrong
+ * person whenever two teammates share a name prefix - and here "addressed"
+ * means "granted read access to the lead and its customer thread". The negative
+ * lookahead rejects a longer name; the character class mirrors the name charset
+ * the composer produces.
+ */
+export function resolveMentionedUserIds(
+  body: string,
+  picked: Record<string, string>,
+): string[] {
+  // LONGEST NAME FIRST, consuming each match as it is found.
+  //
+  // Two teammates can share a name prefix ("Asha" and "Asha T."). A per-name
+  // substring test addresses BOTH from a single "@Asha T." - and "addressed"
+  // here means "granted read access to the lead and its customer thread", so a
+  // stray match is a real over-grant, not a cosmetic bug. Consuming the longer
+  // name first removes its span, so the shorter name can no longer match inside
+  // it.
+  const names = Object.keys(picked)
+    .filter((n) => n.length > 0)
+    .sort((a, b) => b.length - a.length);
+
+  let remaining = body;
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const name of names) {
+    // Escape regex metacharacters: display names contain `.`, `'` and `-`.
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // The lookahead stops a name matching inside a LONGER WORD ("@Ravi" inside
+    // "@Ravikumar"). A trailing space is deliberately allowed: whitespace is the
+    // delimiter the picker inserts after a mention.
+    const token = new RegExp(`@${escaped}(?![A-Za-z.'-])`);
+    if (!token.test(remaining)) continue;
+    remaining = remaining.replace(
+      new RegExp(`@${escaped}(?![A-Za-z.'-])`, 'g'),
+      (m) => ' '.repeat(m.length),
+    );
+    const userId = picked[name];
+    if (userId !== undefined && !seen.has(userId)) {
+      seen.add(userId);
+      ids.push(userId);
+    }
+  }
+  // Order is not significant (this is a recipient SET - the server de-dupes and
+  // writes one row per user). Sorted anyway so the value is deterministic: an
+  // unstable order makes the sent payload, the tests and any audit diff churn
+  // for no reason.
+  return ids.sort();
+}
+
 export function withDateSeparators(
   rows: MessageRow[],
   now: Date = new Date(),
@@ -304,7 +391,11 @@ export function LeadChatPane({
   // Keyed by token because the body is free text: a typed-but-unpicked `@Name`
   // has no id and must not be treated as addressing anyone. On removal the token
   // disappears from the body and the entry is dropped.
+  // Keyed by DISPLAY NAME -> user id. Names, not ids, because the same teammate
+  // can only be named one way, and the resolver (below) needs to match the name
+  // back against the draft text to honour deletions.
   const [pickedMentions, setPickedMentions] = useState<Record<string, string>>({});
+
   // T-USER-PROJECT-SCOPE: pass the ACTIVE project so an ADMIN/OWNER - who has no
   // natural team - is offered that project's staff instead of the whole
   // directory. Staff roles are unaffected (their scope is already their team).
@@ -345,9 +436,7 @@ export function LeadChatPane({
     // Deriving from the current text (rather than sending every id ever picked)
     // means deleting `@Name` from the draft also un-addresses them - otherwise a
     // teammate could be granted a lead by text the sender removed before sending.
-    const mentionedUserIds = Object.entries(pickedMentions)
-      .filter(([token]) => resolvedBody.includes(token))
-      .map(([, id]) => id);
+    const mentionedUserIds = resolveMentionedUserIds(resolvedBody, pickedMentions);
     if (mentionedUserIds.length === 0) {
       // Nothing addressed (or all mentions were deleted): no grants to write.
       setPickedMentions({});
@@ -477,7 +566,7 @@ export function LeadChatPane({
     setMentionQuery(null);
     // Record the picked identity against the EXACT token inserted, so the send
     // can resolve it without name-matching.
-    setPickedMentions((prev) => ({ ...prev, [`@${name}`]: userId }));
+    setPickedMentions((prev) => ({ ...prev, [name]: userId }));
     // Restore focus + cursor after the mention.
     requestAnimationFrame(() => {
       el?.focus();
@@ -488,6 +577,32 @@ export function LeadChatPane({
 
   const displayName = leadName ?? 'Lead';
   const isInternal = kind === 'INTERNAL';
+  // T-WA-WINDOW (2026-09-29): Meta's 24h customer-service window, from the
+  // server (the pane cannot infer it locally - it opens on the CUSTOMER's
+  // inbound, not on anything staff do).
+  //
+  // Why the composer is gated at all: outside the window Meta rejects a freeform
+  // reply with 131047, and before the server-side guard existed that failure was
+  // invisible - the row was queued, the operator saw it appear, and the customer
+  // never received it.
+  const threadStateQuery = useChatThreadState(leadId);
+  const sendWelcome = useSendWelcomeMessage(leadId ?? '');
+  // `undefined` while the state is still loading. Treated as CLOSED below, so a
+  // slow request can never briefly enable a composer that the API will refuse.
+  const windowOpen = isServiceWindowOpen(threadStateQuery.data?.lastInboundAt ?? null);
+  // Was the welcome template already sent on this thread? Drives the CLOSED
+  // notice's copy only - the Welcome BUTTON lives in the empty state and is
+  // gated on `rows.length === 0`, so it needs no flag and does not wait on this
+  // query to render.
+  const templateAlreadySent = threadStateQuery.data?.lastTemplateSentAt != null;
+  // T-READONLY-READER (2026-09-29): a mention grants READ of this lead and its
+  // whole thread but NOT write, so "can see this" no longer means "can reply
+  // here". Defaulting to TRUE while the flag is unknown keeps the composer
+  // usable for the common case (owner/manager/admin) instead of flashing a
+  // restriction; a reader who truly cannot write is corrected when the state
+  // lands, and the API refuses the write regardless - the flag is UX, RLS is
+  // the enforcer.
+  const canWriteThread = threadStateQuery.data?.canWriteThread ?? true;
   const teamMembers = Array.isArray(teamQuery.data) ? teamQuery.data : [];
   // Filter team members by the active mention query. Empty query shows all.
   const filteredTeamMembers = useMemo(() => {
@@ -555,6 +670,49 @@ export function LeadChatPane({
                   isInternal
                     ? 'Loop your team with @mentions.'
                     : 'Send the first message below.'
+                }
+                // T-WA-WINDOW: the Welcome button belongs HERE, under the
+                // "Send the first message below" copy - it is the "first
+                // message" for a thread with nothing in it. It is rendered only
+                // while the thread is EMPTY (this branch), so it disappears
+                // permanently once anything has been sent - including after a
+                // welcome, where it has done its job and must not invite a
+                // second one.
+                content={
+                  // Customer thread only: an INTERNAL note never touches
+                  // WhatsApp, so a welcome template is meaningless there.
+                  !isInternal && leadId !== null ? (
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      disabled={sendWelcome.isPending}
+                      onClick={() => {
+                        sendWelcome.mutate(undefined, {
+                          onSuccess: (res) => {
+                            toast.success(
+                              `Welcome message sent (${res.templateName}). You can reply freely once the customer does.`,
+                            );
+                          },
+                          onError: (err) => {
+                            toast.error(
+                              err instanceof Error
+                                ? err.message
+                                : 'Could not send the welcome message',
+                            );
+                          },
+                        });
+                      }}
+                      data-qa="chat-welcome-button"
+                    >
+                      {sendWelcome.isPending ? (
+                        <LuRefreshCw className="size-4 animate-spin" />
+                      ) : (
+                        <LuMessageSquare className="size-4" />
+                      )}
+                      Welcome Message
+                    </Button>
+                  ) : undefined
                 }
               />
             </div>
@@ -670,6 +828,52 @@ export function LeadChatPane({
               </Attachment>
             </div>
           ) : null}
+          {/* T-WA-WINDOW: for a customer thread with a CLOSED window, the
+              composer is replaced by an explanation. An input the user cannot
+              submit is worse than a clear statement of what to do instead - and
+              a freeform send here would be REJECTED by Meta (131047) after the
+              app accepted it, so the customer would never receive it.
+              The Welcome action itself lives in the EMPTY STATE above (owner
+              instruction 2026-09-29), so it vanishes once the thread has any
+              message rather than lingering as a "send welcome again". */}
+          {/* T-READONLY-READER: a mentioned teammate can read this thread but
+              cannot write to it. Showing them a working composer produced a
+              reply that died on the RLS insert with an opaque error, so the
+              composer is replaced by the reason - same principle as the closed
+              WhatsApp window below. Checked FIRST because for this reader the
+              blocking reason is permission, not the 24h window. */}
+          {!canWriteThread ? (
+            <div
+              className="border-border bg-muted/40 flex items-start gap-2 rounded border p-3"
+              data-qa="chat-read-only"
+            >
+              <LuLock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="text-muted-foreground text-xs">
+                You were mentioned on this lead, so you can read the conversation -
+                but {isInternal ? 'notes on it are' : 'replies are'} written by
+                whoever owns it. Ask the lead&rsquo;s owner or your manager to
+                follow up.
+              </span>
+            </div>
+          ) : !isInternal && !windowOpen ? (
+            <div
+              className="border-amber-500/30 bg-amber-500/5 flex items-start gap-2 rounded border p-3"
+              data-qa="chat-window-closed"
+            >
+              <LuCircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <span className="text-muted-foreground text-xs">
+                {rows.length === 0
+                  ? // Nothing in the thread at all: point at the button above
+                    // rather than only saying "cannot send".
+                    'Use Welcome Message above to start this conversation. The 24-hour reply window opens when the customer replies, so you can message them freely from then.'
+                  : templateAlreadySent
+                    ? // The welcome went out and is visible above; say what the
+                      // silence means and that the window is NOT open yet.
+                      AWAITING_CUSTOMER_REPLY_MESSAGE
+                    : CLOSED_WINDOW_MESSAGE}
+              </span>
+            </div>
+          ) : (
           <InputGroup className="gap-1 items-center h-10">
             <div className="relative min-w-0 flex-1">
               <InputGroupTextarea
@@ -767,6 +971,7 @@ export function LeadChatPane({
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
+          )}
         </form>
       </CardFooter>
     </CardRoot>

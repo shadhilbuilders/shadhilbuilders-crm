@@ -21,6 +21,25 @@ vi.mock('@/hooks/queries/crm', () => ({
     mutate: vi.fn(),
     isPending: false,
   })),
+  // T-WA-WINDOW (2026-09-29): the pane now reads the thread's reply-window state
+  // and can send the welcome template. Default = window OPEN, so every existing
+  // render test keeps exercising the ordinary composer (a closed window replaces
+  // it with the welcome/blocked state, which would silently change what those
+  // tests assert). The gate tests below override this per case.
+  useChatThreadState: vi.fn(() => ({
+    data: {
+      leadId: 'lead-1',
+      lastInboundAt: new Date().toISOString(),
+      lastTemplateSentAt: null,
+      windowOpen: true,
+      windowExpiresAt: null,
+      // Writable by default: most tests exercise the ordinary owner/manager
+      // composer. The read-only case is set explicitly where it is tested.
+      canWriteThread: true,
+    },
+    isLoading: false,
+  })),
+  useSendWelcomeMessage: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock('@/hooks/queries/users', () => ({
@@ -40,10 +59,18 @@ vi.mock('@/lib/session', () => ({
   })),
 }));
 
-import { LeadChatPane, withDateSeparators, groupForDate, validateChatFile, type DateGroup } from './LeadChatPane';
-import { useMessages } from '@/hooks/queries/crm';
+import {
+  LeadChatPane,
+  withDateSeparators,
+  groupForDate,
+  validateChatFile,
+  resolveMentionedUserIds,
+  type DateGroup,
+} from './LeadChatPane';
+import { useChatThreadState, useMessages } from '@/hooks/queries/crm';
 
 const mockedUseMessages = vi.mocked(useMessages);
+const mockedThreadState = vi.mocked(useChatThreadState);
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -319,5 +346,300 @@ describe('validateChatFile - client-side file validation', () => {
     const result = validateChatFile(createFile(1024, 'application/x-executable'));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('Unsupported file type');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-MENTION-TARGET (2026-09-29): who a draft actually ADDRESSES.
+// ────────────────────────────────────────────────────────────────────────────
+//
+// This decides who receives an RLS grant to the lead and its customer thread,
+// so it is tested directly rather than through the pane: the pane's suite uses
+// `renderToStaticMarkup`, which cannot type into the composer, and logic hidden
+// inside the component would stay untested.
+describe('resolveMentionedUserIds - who a draft addresses', () => {
+  // NOTE the deliberate prefix collision: "Asha" and "Asha T." are two distinct
+  // teammates. A naive substring test addresses BOTH from a single "@Asha T.",
+  // which is a real over-grant rather than a cosmetic bug.
+  const picked = {
+    'Asha T.': 'ID-asha-t',
+    Asha: 'ID-asha',
+    'Ravi Kumar': 'ID-ravi',
+    "O'Brien": 'ID-obrien',
+  };
+
+  it('addresses only the teammate whose exact name was picked', () => {
+    expect(resolveMentionedUserIds('loop @Asha T. now', picked)).toEqual(['ID-asha-t']);
+  });
+
+  it('does NOT also address a shorter name that prefixes the picked one', () => {
+    // The bug this pins: "@Asha T." must not grant anything to "Asha".
+    expect(resolveMentionedUserIds('loop @Asha T. now', picked)).not.toContain('ID-asha');
+    expect(resolveMentionedUserIds('loop @Asha now', picked)).toEqual(['ID-asha']);
+  });
+
+  it('handles a name at the end of the draft', () => {
+    expect(resolveMentionedUserIds('over to you @Asha T.', picked)).toEqual(['ID-asha-t']);
+  });
+
+  it('handles a display name containing an apostrophe', () => {
+    expect(resolveMentionedUserIds("please ping @O'Brien now", picked)).toEqual(['ID-obrien']);
+  });
+
+  it('is NOT a mention without the @ (typed names address nobody)', () => {
+    // Only a picked mention carries an id, so a bare name cannot grant access.
+    expect(resolveMentionedUserIds('I will ask Asha about it', picked)).toEqual([]);
+    expect(resolveMentionedUserIds('', picked)).toEqual([]);
+  });
+
+  it('addresses every picked teammate still present in the draft', () => {
+    expect(resolveMentionedUserIds('@Asha T. and @Ravi Kumar please', picked)).toEqual([
+      'ID-asha-t',
+      'ID-ravi',
+    ]);
+  });
+
+  it('addresses a teammate ONCE when mentioned repeatedly', () => {
+    expect(resolveMentionedUserIds('@Asha T. x @Asha T.', picked)).toEqual(['ID-asha-t']);
+  });
+
+  it('drops a mention DELETED from the draft before sending', () => {
+    // Deriving from the current text is what makes deletion meaningful: a name
+    // the sender removed must not still hand over a lead.
+    expect(resolveMentionedUserIds('removed it, never mind', picked)).toEqual([]);
+    // ...and a name still present is still addressed.
+    expect(resolveMentionedUserIds('kept @Ravi Kumar', picked)).toEqual(['ID-ravi']);
+  });
+
+  it('is deterministic (a stable payload for the same draft)', () => {
+    const body = '@Ravi Kumar and @Asha T. and @Asha';
+    expect(resolveMentionedUserIds(body, picked)).toEqual(
+      resolveMentionedUserIds(body, picked),
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-WA-WINDOW (2026-09-29): the 24h reply-window gate + Welcome Message button.
+// ────────────────────────────────────────────────────────────────────────────
+//
+// This decides whether a staff message can reach the customer at all. Meta opens
+// the 24h window on the CUSTOMER's inbound and on nothing else - so a brand-new
+// lead has a CLOSED window no matter what the business has sent, and freeform
+// text sent then is rejected with 131047 after the app has accepted it.
+describe('LeadChatPane - WhatsApp reply-window gate', () => {
+  /**
+   * `messages` defaults to an EMPTY thread (the state this whole suite is
+   * about), but takes rows for the cases that need a non-empty one - passing
+   * them here rather than mocking separately, because this helper OWNS the
+   * messages mock and would otherwise overwrite a per-test value.
+   */
+  function renderPane(messages: unknown[] = []) {
+    mockedUseMessages.mockReturnValue({ data: messages, isLoading: false, error: null } as never);
+    return renderToStaticMarkup(<LeadChatPane leadId="lead-1" leadName="Priya Sharma" />);
+  }
+
+  function withThreadState(data: Record<string, unknown>) {
+    mockedThreadState.mockReturnValue({ data, isLoading: false, error: null } as never);
+  }
+
+  it('an EMPTY customer thread gets the Welcome button under the empty-state copy', () => {
+    // Owner instruction (2026-09-29): the welcome action belongs INSIDE the
+    // empty state, under "Send the first message below" - it IS the first
+    // message on a thread with nothing in it.
+    withThreadState({
+      leadId: 'lead-1',
+      lastInboundAt: null,
+      lastTemplateSentAt: null,
+      windowOpen: false,
+      windowExpiresAt: null,
+    });
+    const html = renderPane();
+    expect(html).toContain('data-qa="chat-welcome-button"');
+    expect(html).toContain('Welcome Message');
+    expect(html).toContain('Send the first message below.');
+    // The welcome action must appear AFTER that copy in the markup, i.e. below
+    // it in the rendered state.
+    expect(html.indexOf('Send the first message below.')).toBeLessThan(
+      html.indexOf('data-qa="chat-welcome-button"'),
+    );
+    // The composer must be GONE, not merely disabled: an input the user cannot
+    // submit invites them to type a message that would never be delivered.
+    expect(html).not.toContain('data-qa="chat-input"');
+    expect(html).toContain('data-qa="chat-window-closed"');
+  });
+
+  it('an OPEN window shows the composer and NOT the Welcome button', () => {
+    withThreadState({
+      leadId: 'lead-1',
+      lastInboundAt: new Date().toISOString(),
+      lastTemplateSentAt: new Date().toISOString(),
+      windowOpen: true,
+      windowExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    // An open window implies the customer wrote, so the thread has rows.
+    const html = renderPane([
+      {
+        id: 'm-in',
+        leadId: 'lead-1',
+        direction: 'IN',
+        channel: 'WHATSAPP',
+        body: 'Yes, please share the details.',
+        senderName: 'Priya Sharma',
+        createdAt: '2026-09-29T09:00:00Z',
+      },
+    ]);
+    expect(html).toContain('data-qa="chat-input"');
+    expect(html).not.toContain('data-qa="chat-welcome-button"');
+  });
+
+  it('after a welcome send the copy says the window opens on THEIR reply', () => {
+    // The correction that matters: sending a template does NOT open the window.
+    // Offering "type freely now" here would produce a message Meta rejects.
+    // A welcome writes a Message row, so the thread is no longer empty - and the
+    // notice must say the window still is not open.
+    withThreadState({
+      leadId: 'lead-1',
+      lastInboundAt: null,
+      lastTemplateSentAt: new Date().toISOString(),
+      windowOpen: false,
+      windowExpiresAt: null,
+    });
+    const html = renderPane([
+      {
+        id: 'm-welcome',
+        leadId: 'lead-1',
+        direction: 'OUT',
+        channel: 'WHATSAPP',
+        body: 'Welcome message sent (shadhil_welcome_enquiry).',
+        senderName: 'Exec',
+        createdAt: '2026-09-29T10:00:00Z',
+      },
+    ]);
+    expect(html).toMatch(/opens when the customer replies/i);
+    expect(html).not.toContain('data-qa="chat-input"');
+  });
+
+  it('shows NO Welcome button once the thread has any message', () => {
+    // Owner instruction: "Once first message sent, don't show that button."
+    // This is the whole point of moving it into the empty state - a lingering
+    // "send welcome again" invites a second cold template the customer did not
+    // ask for.
+    // Window shut, so this is exactly the state that used to show the button.
+    withThreadState({
+      leadId: 'lead-1',
+      lastInboundAt: null,
+      lastTemplateSentAt: new Date().toISOString(),
+      windowOpen: false,
+      windowExpiresAt: null,
+    });
+    const html = renderPane([
+      {
+        id: 'm-1',
+        leadId: 'lead-1',
+        direction: 'OUT',
+        channel: 'WHATSAPP',
+        body: 'Hello, happy to help with your enquiry.',
+        senderName: 'Exec',
+        createdAt: '2026-09-29T10:00:00Z',
+      },
+    ]);
+    expect(html).not.toContain('data-qa="chat-welcome-button"');
+    expect(html).not.toContain('Welcome Message');
+  });
+
+  it('a window that expired shows the closed notice, not the composer', () => {
+    const lastInbound = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    withThreadState({
+      leadId: 'lead-1',
+      lastInboundAt: lastInbound,
+      lastTemplateSentAt: null,
+      windowOpen: false,
+      windowExpiresAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const html = renderPane();
+    expect(html).toContain('data-qa="chat-window-closed"');
+    expect(html).not.toContain('data-qa="chat-input"');
+    expect(html).toContain('24-hour');
+  });
+
+  it('fails CLOSED while the state is still loading', () => {
+    // A slow request must never briefly enable a composer the API will refuse.
+    mockedThreadState.mockReturnValue({ data: undefined, isLoading: true, error: null } as never);
+    const html = renderPane();
+    expect(html).not.toContain('data-qa="chat-input"');
+    expect(html).toContain('data-qa="chat-window-closed"');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-READONLY-READER (2026-09-29): a mentioned teammate can READ this thread but
+// cannot WRITE to it.
+// ────────────────────────────────────────────────────────────────────────────
+//
+// An @mention grants read access to the lead and its whole thread, but does NOT
+// set coOwnerId, so `message_insert_team` still refuses their reply. Before this
+// gate the pane showed them a fully working composer and the send died on the
+// RLS insert with an opaque 42501 - the app inviting an action it would refuse
+// (the same class of bug as the closed WhatsApp window).
+describe('LeadChatPane - read-only reader (mentioned, not the owner)', () => {
+  function renderPane() {
+    mockedUseMessages.mockReturnValue({ data: [], isLoading: false, error: null } as never);
+    return renderToStaticMarkup(<LeadChatPane leadId="lead-1" leadName="Priya Sharma" />);
+  }
+
+  it('replaces the composer with the reason, for a reader who cannot write', () => {
+    mockedThreadState.mockReturnValue({
+      data: {
+        leadId: 'lead-1',
+        // Window OPEN: only the PERMISSION blocks this reader, which is what
+        // makes this test independent of the 24h-window gate.
+        lastInboundAt: new Date().toISOString(),
+        lastTemplateSentAt: null,
+        windowOpen: true,
+        windowExpiresAt: null,
+        canWriteThread: false,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderPane();
+    expect(html).toContain('data-qa="chat-read-only"');
+    // The composer must be GONE, not merely disabled.
+    expect(html).not.toContain('data-qa="chat-input"');
+    // ...and it must not be replaced by the WINDOW explanation, which would
+    // blame the 24h rule for a permission problem.
+    expect(html).not.toContain('data-qa="chat-window-closed"');
+    expect(html).toMatch(/mentioned/i);
+  });
+
+  it('a writable actor still gets the composer (the gate is not always-on)', () => {
+    mockedThreadState.mockReturnValue({
+      data: {
+        leadId: 'lead-1',
+        lastInboundAt: new Date().toISOString(),
+        lastTemplateSentAt: null,
+        windowOpen: true,
+        windowExpiresAt: null,
+        canWriteThread: true,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const html = renderPane();
+    expect(html).toContain('data-qa="chat-input"');
+    expect(html).not.toContain('data-qa="chat-read-only"');
+  });
+
+  it('stays writable while the state is still loading (no false lock)', () => {
+    // Fail-OPEN for this flag, unlike the window gate: an unknown permission must
+    // not lock an owner out of their own lead mid-load. The API still refuses a
+    // write the policy denies, so the worst case is an error message, not a lost
+    // capability.
+    mockedThreadState.mockReturnValue({ data: undefined, isLoading: true, error: null } as never);
+    const html = renderPane();
+    expect(html).not.toContain('data-qa="chat-read-only"');
   });
 });

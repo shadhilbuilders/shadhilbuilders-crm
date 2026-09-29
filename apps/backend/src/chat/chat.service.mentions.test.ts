@@ -398,3 +398,142 @@ describe.skipIf(!HAS_DB)('ChatService targeted @mentions (T-MENTION-TARGET)', ()
     expect(notified).toEqual([]);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-READONLY-READER (2026-09-29): canWriteThread on the thread state
+// ────────────────────────────────────────────────────────────────────────────
+//
+// threadState().canWriteThread decides whether the pane OFFERS a composer. It is
+// a mirror of the `message_insert_team` RLS policy, and the mirror was verified
+// against that policy with a live role-by-role INSERT probe (see
+// references/targeted-mention-rls.md) - RLS remains the enforcer, so drift costs
+// a confusing UI and never an unauthorised write. These cases pin the mirror's
+// shape so a well-meaning edit cannot quietly widen it.
+describe.skipIf(!HAS_DB)('canWriteThread mirrors message_insert_team', () => {
+  // Own stubs: `outboundStub`/`managerActor` are scoped to the describe above.
+  const canWriteOutboundStub = { enqueue: vi.fn().mockResolvedValue(undefined) };
+  // The fixture lead's owner (MGR_ID) sends the note that creates the grant.
+  const managerActor: JwtPayload = {
+    sub: MGR_ID,
+    email: `${MGR_ID}@test.local`,
+    role: 'MANAGER',
+    organizationId: ORG,
+    iat: 0,
+    exp: 0,
+    iss: 'shadhil-crm',
+  };
+
+  function actorFor(sub: string, role: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC'): JwtPayload {
+    return { sub, email: `${sub}@test.local`, role, organizationId: ORG, iat: 0, exp: 0, iss: 'shadhil-crm' };
+  }
+
+  it('the lead OWNER can write', async () => {
+    if (prisma === null) throw new Error('prisma missing');
+    const users = new UsersService({ $client: prisma } as never);
+    // MGR_ID owns the fixture lead in this suite.
+    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    const state = await service.threadState(actorFor(MGR_ID, 'MANAGER'), LEAD_ID);
+    expect(state.canWriteThread).toBe(true);
+  });
+
+  it('the team MANAGER can write', async () => {
+    if (prisma === null) throw new Error('prisma missing');
+    const users = new UsersService({ $client: prisma } as never);
+    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    // MGR leads TEAM_1, which is the lead's team.
+    const state = await service.threadState(actorFor(MGR_ID, 'MANAGER'), LEAD_ID);
+    expect(state.canWriteThread).toBe(true);
+  });
+
+  it('an ADMIN can write', async () => {
+    if (prisma === null) throw new Error('prisma missing');
+    const users = new UsersService({ $client: prisma } as never);
+    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    const state = await service.threadState(actorFor(ADMIN_ID, 'ADMIN'), LEAD_ID);
+    expect(state.canWriteThread).toBe(true);
+  });
+
+  it('a MANAGER of a DIFFERENT team cannot write', async () => {
+    // GAP FOUND BY A TAMPER CHECK: widening the mirror to "any MANAGER can
+    // write" left the suite green, i.e. nothing pinned the team half of the
+    // rule. TEAM_3 is managed by nobody, so a manager of it is not the lead's
+    // manager - and the read side still resolves (managers may read the org's
+    // leads under lead_select_manager only for teams they lead, so this actor
+    // reads nothing and must not be able to write either).
+    if (prisma === null) throw new Error('prisma missing');
+    const users = new UsersService({ $client: prisma } as never);
+    const service = new ChatService(
+      { $client: prisma } as never,
+      canWriteOutboundStub as never,
+      undefined,
+      undefined,
+      users as never,
+    );
+
+    // A manager who leads NO team that owns this lead: OUTSIDER is a TELECALLER
+    // on TEAM_3, and we ask as a MANAGER whose managed team is TEAM_3.
+    const otherTeamManager: JwtPayload = {
+      sub: OUTSIDER_ID,
+      email: `${OUTSIDER_ID}@test.local`,
+      role: 'MANAGER',
+      organizationId: ORG,
+      iat: 0,
+      exp: 0,
+      iss: 'shadhil-crm',
+    };
+    // The lead belongs to TEAM_1 (led by MGR_ID). A manager of a different team
+    // cannot even READ it (lead_select_manager requires Team.managerId), so the
+    // RLS-scoped lookup returns null and threadState reports not-found - which is
+    // the correct, strongest statement: no read, therefore no write question.
+    //
+    // Asserted as a 404 rather than a false flag because that is the real
+    // behaviour; asserting canWriteThread here would require bypassing the RLS
+    // read, i.e. testing a state the system never reaches.
+    await expect(service.threadState(otherTeamManager, LEAD_ID)).rejects.toThrow(
+      /not found/i,
+    );
+
+    // HONEST LIMIT OF THIS SUITE: because the read 404s first, this test cannot
+    // observe the mirror's MANAGER clause. Verified via the RLS matrix and a live
+    // probe instead, both of which DO redden:
+    //   - packages/database/test/rls-isolation.test.ts (message INSERT x MANAGER)
+    //   - the role-by-role probe in references/targeted-mention-rls.md
+    // Tampering the mirror to "any MANAGER can write" leaves THIS suite green, so
+    // do not read a pass here as proof of the team clause.
+  });
+
+  it('a MENTIONED exec can read the thread but CANNOT write', async () => {
+    // The case this whole gate exists for: TC_1 holds a MessageRecipient grant on
+    // this lead (they were mentioned) but is neither owner nor co-owner.
+    //
+    // The grant is created through the SERVICE's own send path rather than a
+    // direct insert: that is how it is really written (the INSERT policy refuses
+    // a self-mention and the message must exist first), so the fixture cannot
+    // drift from the production shape.
+    if (prisma === null) throw new Error('prisma missing');
+    const users = new UsersService({ $client: prisma } as never);
+    const service = new ChatService(
+      { $client: prisma } as never,
+      canWriteOutboundStub as never,
+      undefined,
+      undefined,
+      users as never,
+    );
+
+    await service.send(managerActor, {
+      leadId: LEAD_ID,
+      body: 'Looping in @Kiran Rao on this lead.',
+      channel: 'IN_APP',
+      kind: 'INTERNAL',
+      mentionedUserIds: [TC_1_ID],
+    } as never);
+
+    // READ: the grant means threadState resolves for them (no 404)...
+    const state = await service.threadState(actorFor(TC_1_ID, 'TELECALLER'), LEAD_ID);
+    expect(state.leadId).toBe(LEAD_ID);
+    // ...but WRITE is still refused: a mention does NOT set coOwnerId, so
+    // message_insert_team still excludes them. This is the distinction the pane
+    // gate exists to communicate.
+    expect(state.canWriteThread).toBe(false);
+  });
+});
