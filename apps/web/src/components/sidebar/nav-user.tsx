@@ -67,7 +67,7 @@ export function NavUser({
             render={
               <SidebarMenuButton
                 size="lg"
-                className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground min-w-0"
+                className="cursor-pointer data-[state=open]:bg-sidebar-accent-normal data-[state=open]:text-sidebar-accent-normal-foreground min-w-0"
                 data-qa="sidebar-user-trigger"
                 aria-label="Account menu"
                 title={name}
