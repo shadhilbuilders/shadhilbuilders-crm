@@ -33,7 +33,7 @@ import {
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { TransitionReasonRequired } from '@shadhil/api-types';
+import { TransitionReasonRequired, isTokenWithinTotal, TOKEN_EXCEEDS_TOTAL_MESSAGE } from '@shadhil/api-types';
 import type {
   BookingFilterDto,
   BookingTransitionDto,
@@ -676,6 +676,20 @@ export class BookingsService {
           );
         }
 
+        // T-TOKEN-GATE cap (owner instruction): the token is a PART payment, so
+        // it can never be more than the booking's total. Checked here (not only
+        // in the DTO) because this is the path that sets a token on an EXISTING
+        // booking, where the total is the stored `amount` rather than something
+        // in the payload. Approving an over-token is refused too: the payment
+        // figure is what the approval is FOR, so waving it through would record
+        // more money than the unit costs.
+        if (incoming !== undefined) {
+          const total = Number(existing.amount);
+          if (!isTokenWithinTotal(incoming, total)) {
+            throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
+          }
+        }
+
         const updated = await (tx as unknown as PrismaClient).booking.update({
           where: { id: bookingId },
           data: {
@@ -859,8 +873,28 @@ export class BookingsService {
               'This booking is marked as token received, so the token amount cannot be cleared. Enter the amount actually received instead.',
             );
           }
+          // T-TOKEN-GATE cap: the token must fit inside the booking's total even
+          // when only ONE of the two figures is being edited - so compare against
+          // whichever side this request is not supplying. The DTO can only check
+          // the case where both arrive together.
+          const effectiveTotal = dto.amount ?? Number(existing.amount);
+          const effectiveToken = dto.tokenAmount ?? (existing.tokenAmount === null ? null : Number(existing.tokenAmount));
+          if (!isTokenWithinTotal(effectiveToken, effectiveTotal)) {
+            throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
+          }
           data['tokenAmount'] =
             dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
+        } else if (dto.amount !== undefined) {
+          // Lowering the TOTAL can strand an existing token above it, so the cap
+          // has to hold from this direction too - otherwise a booking could be
+          // edited into "token 5L of a 4L unit" one field at a time.
+          const existingToken =
+            existing.tokenAmount === null ? null : Number(existing.tokenAmount);
+          if (!isTokenWithinTotal(existingToken, dto.amount)) {
+            throw new BadRequestException(
+              `${TOKEN_EXCEEDS_TOTAL_MESSAGE}. Raise the booking total or lower the token first.`,
+            );
+          }
         }
         if (dto.notes !== undefined) data['notes'] = dto.notes;
 

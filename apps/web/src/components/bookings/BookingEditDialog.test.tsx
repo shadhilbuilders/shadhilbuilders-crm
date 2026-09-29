@@ -32,7 +32,9 @@ describe('BookingEditFormBody - props-API Form surface (T-BOOK)', () => {
     const html = renderToStaticMarkup(<TestForm />);
 
     expect(html).toContain('Total amount (₹)');
-    expect(html).toContain('Token amount (₹, optional)');
+    // T-TOKEN-GATE: the label lost its ", optional" suffix - the amount is
+    // required on a TOKEN booking, so calling it optional was already wrong.
+    expect(html).toContain('Token amount (₹)');
     expect(html).toContain('Notes');
     expect(html).toMatch(/data-qa="booking-edit-amount"/);
     expect(html).toMatch(/data-qa="booking-edit-token-amount"/);

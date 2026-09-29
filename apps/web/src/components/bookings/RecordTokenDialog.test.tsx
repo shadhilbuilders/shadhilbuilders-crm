@@ -19,24 +19,21 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
+import { TokenAmountSchema } from '@shadhil/api-types';
+
 import { bookingLabel, RecordTokenFormBody } from './RecordTokenDialog';
 
-const schema = z
-  .object({ tokenAmount: z.string().trim().optional() })
-  .superRefine((values, ctx) => {
-    const raw = (values.tokenAmount ?? '').trim();
-    if (raw.length === 0) {
-      ctx.addIssue({ code: 'custom', path: ['tokenAmount'], message: 'Enter the token amount' });
-      return;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      ctx.addIssue({ code: 'custom', path: ['tokenAmount'], message: 'must be greater than zero' });
-    }
-  });
+// The dialog's schema, minus the `undefined`-when-blank refinement: this harness
+// exercises the FIELD and the VALUE TYPE, which is where the bug was.
+//
+// T-TOKEN-GATE fix (2026-09-28): the harness used to declare `z.string()`, copying
+// the same wrong assumption as the production form, so it never caught "Invalid
+// input: expected string, received number". A test that mirrors the mistake cannot
+// detect it - which is why the schema is now IMPORTED from @shadhil/api-types.
+const schema = z.object({ tokenAmount: TokenAmountSchema.optional() });
 
-function Harness({ defaultValue = '' }: { defaultValue?: string }) {
-  const form = useForm<z.infer<typeof schema>>({
+function Harness({ defaultValue }: { defaultValue?: number }) {
+  const form = useForm<{ tokenAmount?: number }>({
     resolver: zodResolver(schema),
     defaultValues: { tokenAmount: defaultValue },
   });
@@ -61,25 +58,29 @@ describe('RecordTokenFormBody', () => {
   });
 });
 
-describe('the token amount rule (mirrors BookingTransitionDtoSchema)', () => {
-  it('rejects an empty amount', () => {
-    expect(schema.safeParse({ tokenAmount: '' }).success).toBe(false);
+describe('the token amount type (the bug this fixes)', () => {
+  it('accepts a NUMBER - what the library field actually emits', () => {
+    // The `@paalstack/react-ui` number field writes
+    // `event.currentTarget.valueAsNumber` into the form. A `z.string()` schema
+    // rejected it with "Invalid input: expected string, received number" on every
+    // submit. This is the regression pin for that.
+    expect(schema.safeParse({ tokenAmount: 500_000 }).success).toBe(true);
+    expect(schema.safeParse({ tokenAmount: 500_000.5 }).success).toBe(true);
   });
 
-  it('rejects zero and negatives', () => {
-    for (const v of ['0', '-5']) {
-      expect(schema.safeParse({ tokenAmount: v }).success, `${v} must be rejected`).toBe(false);
+  it('still rejects zero, negatives and non-numbers', () => {
+    for (const v of [0, -5, 'abc']) {
+      expect(schema.safeParse({ tokenAmount: v }).success, `${String(v)} must be rejected`).toBe(
+        false,
+      );
     }
   });
 
-  it('rejects a non-numeric value', () => {
-    expect(schema.safeParse({ tokenAmount: 'abc' }).success).toBe(false);
-  });
-
-  it('accepts a positive amount, as a whole number or with paise', () => {
-    for (const v of ['500000', '500000.50']) {
-      expect(schema.safeParse({ tokenAmount: v }).success, `${v} must be accepted`).toBe(true);
-    }
+  it('treats a blank field as "not entered" (undefined), not as invalid', () => {
+    // The field emits `undefined` when cleared, so absence must be representable -
+    // the "an amount is required" rule lives one level up, where it can tell a
+    // blank field from a zero one.
+    expect(schema.safeParse({ tokenAmount: undefined }).success).toBe(true);
   });
 });
 

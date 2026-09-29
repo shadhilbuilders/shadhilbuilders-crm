@@ -1377,7 +1377,9 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
       leadId: 'ld1',
       unitId: 'un1',
       userId: 'u-1',
-      amount: '1000.00',
+      // T-TOKEN-GATE cap: the total must be a realistic figure - a token cannot
+      // exceed it, and these tests use token amounts in the lakhs.
+      amount: '5000000.00',
       tokenAmount: null,
       approvedById: null,
       notes: null,
@@ -1515,6 +1517,80 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
         data: expect.objectContaining({ status: 'TOKEN', tokenAmount: '750000.00' }),
       }),
     );
+  });
+
+  it('T-TOKEN-GATE cap: transition refuses a token LARGER than the booking total', async () => {
+    // Owner instruction: "if tokenAmount provided that shouldn't be greater than
+    // totalAmount". On a transition the total is not in the payload, so this
+    // compares against the STORED row - the DTO cannot see it.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'b-1', {
+        toStatus: 'TOKEN',
+        tokenAmount: 5_000_000,
+      } as never),
+    ).rejects.toThrow(/cannot be more than the booking total/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE cap: a token EQUAL to the total is allowed', async () => {
+    // A full payment is still a payment; the rule is "not greater", not "less".
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    client.booking.update.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4100000.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.transition(makeActor({ role: 'MANAGER' }), 'b-1', {
+        toStatus: 'TOKEN',
+        tokenAmount: 4_100_000,
+      } as never),
+    ).resolves.toBeDefined();
+  });
+
+  it('T-TOKEN-GATE cap: an EDIT refuses a token above the stored total', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.update(makeActor({ role: 'ADMIN' }), 'b-1', { tokenAmount: 5_000_000 } as never),
+    ).rejects.toThrow(/cannot be more than the booking total/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE cap: lowering the TOTAL below an existing token is refused', async () => {
+    // The other direction, and the one a per-field check alone would miss: a
+    // booking could otherwise be edited into "token 5L of a 4L unit" one field at
+    // a time.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue({
+      id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
+      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4000000.00' },
+      approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
+    });
+    await expect(
+      service.update(makeActor({ role: 'ADMIN' }), 'b-1', { amount: 3_000_000 } as never),
+    ).rejects.toThrow(/cannot be more than the booking total/i);
+    expect(client.booking.update).not.toHaveBeenCalled();
   });
 
   it('T-TOKEN-GATE: does NOT approve a booking with no token amount recorded', async () => {

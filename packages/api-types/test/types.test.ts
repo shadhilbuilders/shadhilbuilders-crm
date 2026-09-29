@@ -13,6 +13,8 @@ import {
   CreateBookingDtoSchema,
   BookingTransitionDtoSchema,
   TransitionReasonRequired,
+  // T-TOKEN-GATE cap: the shared comparison, exercised directly.
+  isTokenWithinTotal,
   CreateReminderDtoSchema,
   MarkReadDtoSchema,
   AuditLogQueryDtoSchema,
@@ -357,6 +359,48 @@ describe('@shadhil/api-types - booking DTOs', () => {
         `${tokenAmount} must not count as a received token`,
       ).toBe(false);
     }
+  });
+
+  it('T-TOKEN-GATE cap: a token larger than the total is rejected on CREATE', () => {
+    // Owner instruction: "if tokenAmount provided that shouldn't be greater than
+    // totalAmount". A token is a PART payment of this booking, so both figures are
+    // in the payload and the rule is checkable right here.
+    const over = CreateBookingDtoSchema.safeParse({
+      leadId: 'cmabcdefghijklmnopqrstuv',
+      unitId: 'cmabcdefghijklmnopqrstuv',
+      amount: 4_100_000,
+      tokenAmount: 5_000_000,
+    });
+    expect(over.success).toBe(false);
+    if (!over.success) {
+      // The issue must land on `tokenAmount` so the form highlights the value to fix.
+      expect(over.error.issues.map((i) => i.path.join('.'))).toContain('tokenAmount');
+    }
+    // Exactly equal is allowed: a full payment IS a payment.
+    expect(
+      CreateBookingDtoSchema.safeParse({
+        leadId: 'cmabcdefghijklmnopqrstuv',
+        unitId: 'cmabcdefghijklmnopqrstuv',
+        amount: 4_100_000,
+        tokenAmount: 4_100_000,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('T-TOKEN-GATE cap: the predicate is the single definition', () => {
+    // Exported so the DTOs, the service and the three client forms all compare the
+    // same way - restating the comparison per call site is how the client and the
+    // server drifted on the token TYPE once already.
+    expect(isTokenWithinTotal(500_000, 4_100_000)).toBe(true);
+    expect(isTokenWithinTotal(4_100_000, 4_100_000)).toBe(true);
+    expect(isTokenWithinTotal(5_000_000, 4_100_000)).toBe(false);
+    // A missing token is someone else's rule - this predicate answers only
+    // "is the cap broken?", so absence passes.
+    expect(isTokenWithinTotal(undefined, 4_100_000)).toBe(true);
+    expect(isTokenWithinTotal(null, 4_100_000)).toBe(true);
+    // Non-finite input must not fabricate a pass OR a failure.
+    expect(isTokenWithinTotal(Number.NaN, 4_100_000)).toBe(true);
+    expect(isTokenWithinTotal(500_000, Number.NaN)).toBe(true);
   });
 
   it('T-TOKEN-GATE: other moves need no amount', () => {

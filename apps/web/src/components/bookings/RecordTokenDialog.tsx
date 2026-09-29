@@ -34,45 +34,51 @@ import { z } from 'zod';
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 
+import {
+  isTokenWithinTotal,
+  TOKEN_EXCEEDS_TOTAL_MESSAGE,
+  TokenAmountSchema,
+} from '@shadhil/api-types';
 import { useUpdateBooking } from '@/hooks/queries/crm';
 import { currencyIntl } from '@/lib/format';
 
 const FORM_ID = 'booking-record-token-form';
 
 /**
- * Client-side mirror of the server rule (`BookingTransitionDtoSchema`): a move
- * into TOKEN must state the amount received.
+ * Client-side form for a move into TOKEN: the amount received is required.
  *
- * Validated as a STRING because that is what an input yields, so an empty field
- * is distinguishable from a `0`: empty is "not entered", `0` is a real but
- * invalid amount, and the two deserve different messages. The number is produced
- * only after this passes.
+ * `TokenAmountSchema` is IMPORTED, not restated - the positive/positive-cap rule
+ * has one home in @shadhil/api-types. It is also a NUMBER, because that is what
+ * the `@paalstack/react-ui` number field writes into the form
+ * (`event.currentTarget.valueAsNumber`; `undefined` when blank). Declaring it
+ * `z.string()` here is what produced "Invalid input: expected string, received
+ * number" on every submit.
+ *
+ * `required_error` carries the "not entered" case, so a blank field still gets a
+ * message aimed at the operator rather than zod's default.
  */
-const recordTokenSchema = z
-  .object({
-    tokenAmount: z.string().trim().optional(),
-  })
-  .superRefine((values, ctx) => {
-    const raw = (values.tokenAmount ?? '').trim();
-    if (raw.length === 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['tokenAmount'],
-        message: 'Enter the token amount received before marking the token as received',
-      });
-      return;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['tokenAmount'],
-        message: 'Token amount must be a number greater than zero',
-      });
-    }
-  });
+const recordTokenSchemaFor = (totalAmount: number) =>
+  z
+    .object({
+      tokenAmount: TokenAmountSchema.optional(),
+    })
+    .superRefine((values, ctx) => {
+      // T-TOKEN-GATE cap (owner instruction): a token is a PART payment, so it can
+      // never exceed the booking's total. The dialog knows the total, so it says so
+      // before the request; the service re-checks it authoritatively.
+      if (
+        values.tokenAmount !== undefined &&
+        !isTokenWithinTotal(values.tokenAmount, totalAmount)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+        });
+      }
+    });
 
-export type RecordTokenFormValues = z.infer<typeof recordTokenSchema>;
+export type RecordTokenFormValues = { tokenAmount?: number };
 
 /** The booking row the dialog acts on. */
 export type RecordTokenTarget = {
@@ -163,9 +169,15 @@ export function RecordTokenDialog({
   const updateBooking = useUpdateBooking();
   const pending = updateBooking.isPending;
 
+  // The cap needs the booking total, so the schema is built per booking. A
+  // non-finite total falls back to 0, which rejects any token - the safe
+  // direction.
+  const totalRaw = Number(booking?.amount);
+  const bookingTotal = Number.isFinite(totalRaw) ? totalRaw : 0;
+
   const form = useForm<RecordTokenFormValues>({
-    resolver: zodResolver(recordTokenSchema),
-    defaultValues: { tokenAmount: '' },
+    resolver: zodResolver(recordTokenSchemaFor(bookingTotal)),
+    defaultValues: { tokenAmount: undefined },
     mode: 'onSubmit',
   });
 
@@ -174,11 +186,18 @@ export function RecordTokenDialog({
   // someone else's token figure.
   useEffect(() => {
     if (booking === null) return;
-    const stored =
-      typeof booking.tokenAmount === 'string' && booking.tokenAmount.length > 0
-        ? booking.tokenAmount
-        : '';
-    form.reset({ tokenAmount: stored });
+    // The booking row carries decimals as STRINGS ("500000.00"); the field is
+    // numeric, so convert - and treat non-positive/absent as "nothing recorded".
+    const stored = Number(booking.tokenAmount);
+    form.reset({
+      tokenAmount:
+        typeof booking.tokenAmount === 'string' &&
+        booking.tokenAmount.length > 0 &&
+        Number.isFinite(stored) &&
+        stored > 0
+          ? stored
+          : undefined,
+    });
   }, [booking?.id, booking?.tokenAmount]);
 
   if (booking === null) return null;
@@ -186,8 +205,10 @@ export function RecordTokenDialog({
   const label = bookingLabel(target);
 
   function submit(values: RecordTokenFormValues) {
-    // Validated by the resolver; Number() only after it has proved finite > 0.
-    const tokenAmount = Number((values.tokenAmount ?? '').trim());
+    // Already a number (the field writes `valueAsNumber`) and already validated
+    // positive by the shared schema.
+    const tokenAmount = values.tokenAmount;
+    if (tokenAmount === undefined) return;
 
     updateBooking.mutate(
       // The amount travels WITH the status change, in one request, so "token

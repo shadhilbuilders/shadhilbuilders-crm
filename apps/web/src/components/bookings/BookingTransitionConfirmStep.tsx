@@ -30,14 +30,14 @@ export type TransitionFormValues = {
   toStatus: BookingTransitionTarget;
   reason?: string;
   /**
-   * T-TOKEN-GATE (2026-09-28): the token amount received, as a FORM STRING.
-   * Held as a string because that is what an input yields; the page parses it to
-   * a number only after validation, so an empty field can be distinguished from
-   * a zero one (an empty string is "not entered", `0` is a real - and invalid -
-   * amount). Without this field the UI could mark a token received with no
-   * amount recorded, which is unverifiable and renders downstream as "no token".
+   * T-TOKEN-GATE (2026-09-28): the token amount received. A NUMBER, because that
+   * is what the `@paalstack/react-ui` number field writes into the form
+   * (`event.currentTarget.valueAsNumber`, or `undefined` when blank) - see the
+   * Form's number branch. It was declared a string, which made every submit fail
+   * with "Invalid input: expected string, received number". `undefined` is the
+   * "not entered" case; the schema rejects it when an amount is required.
    */
-  tokenAmount?: string;
+  tokenAmount?: number;
 };
 
 /** Row-badge colours, mirrored from the page so this block stays presentational. */
@@ -90,8 +90,8 @@ export function BookingTransitionConfirmStep({
             description: 'The amount actually received. Recorded with the status change.',
             placeholder: 'e.g. 500000',
             // The library's own guard: the control is free-text, so this keeps a
-            // negative or a stray "-" out before zod ever sees it. The value is a
-            // form STRING by design; the page parses it after validation.
+            // negative or a stray "-" out before zod ever sees it. The field
+            // writes a NUMBER into the form (not a string).
             numberInputProps: { isPositiveFloat: true, 'data-qa': 'booking-token-amount' },
           },
         ] satisfies FormFieldItemType<TransitionFormValues>[])

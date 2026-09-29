@@ -257,7 +257,12 @@ beforeAll(async () => {
       [VISITS.onWon, FIXTURE[3].id, 'SCHEDULED', new Date(NOW.getTime() - 3 * 24 * 60 * MIN)],
       [VISITS.onLost, FIXTURE[4].id, 'SCHEDULED', new Date(NOW.getTime() - 2 * 24 * 60 * MIN)],
       [VISITS.onActiveOverdue, FIXTURE[2].id, 'SCHEDULED', new Date(NOW.getTime() - 24 * 60 * MIN)],
-      [VISITS.onActiveToday, FIXTURE[0].id, 'RESCHEDULED', new Date(MIDNIGHT.getTime() + 60 * MIN)],
+      // MIDNIGHT ITSELF, not "midnight + 1h": the card filters
+      // `scheduledFor <= now`, so a fixed offset into the morning is in the
+      // FUTURE for the first hours of the day and the row silently drops out
+      // (observed at 00:37). Midnight is "today" AND "not after now" at every
+      // hour, which makes this the only offset that always works.
+      [VISITS.onActiveToday, FIXTURE[0].id, 'RESCHEDULED', MIDNIGHT],
       [VISITS.completed, FIXTURE[5].id, 'COMPLETED', new Date(NOW.getTime() - 4 * 24 * 60 * MIN)],
     ];
     for (const [id, leadId, status, scheduledFor] of visits) {

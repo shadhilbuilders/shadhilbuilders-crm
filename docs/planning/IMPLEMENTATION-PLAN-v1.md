@@ -2221,6 +2221,50 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### Token amount cannot exceed the booking total (2026-09-28)
+
+Owner instruction: "if tokenAmount provided that shouldn't be greater than
+totalAmount". A token is a PART payment of that booking, so the cap is a
+correctness rule on the money, not a nicety.
+
+Enforced at every path that can set a token, with the comparison defined ONCE
+(`isTokenWithinTotal`) so the layers cannot drift:
+
+| path | where the total comes from |
+|---|---|
+| `CreateBookingDto` | same payload - `superRefine` on both fields |
+| `BookingsService.transition` | the STORED `amount` (the DTO has no total) |
+| `BookingsService.update` (token set) | stored total, or the incoming `amount` |
+| `BookingsService.update` (total lowered) | stored token - see below |
+| create form / detail page / RecordTokenDialog | the booking's own `amount` |
+
+**The second direction is the one a per-field check misses.** Lowering the TOTAL
+can strand an existing token above it, so editing a booking one field at a time
+could otherwise produce "token 5L of a 4L unit". `update` therefore also validates
+when only `amount` arrives. Caught while writing the rule, not in production.
+
+**Also fixed: the client/server token TYPE mismatch** - the reported error
+"Invalid input: expected string, received number". The `@paalstack/react-ui`
+number field writes `event.currentTarget.valueAsNumber` into the form (a NUMBER,
+`undefined` when blank) - verified by reading the library's compiled Form - while
+my schemas declared `z.string()`, so every submit failed before reaching the API.
+The rule now lives once as `TokenAmountSchema` and is imported by the DTOs, the
+detail page, the dashboard dialog and the tests. My own dialog test had copied the
+same wrong assumption, which is why it did not catch it: a test that mirrors the
+mistake cannot detect it.
+
+Note `BookingEditDialog` deliberately keeps its string-based fields - it uses
+`type: 'input', inputType: 'number'`, which emits a STRING and coerces on submit.
+The repo has BOTH numeric patterns; `type: 'number'` is the one that emits numbers.
+
+**Time-of-day fragility, again.** The full suite reddened 4 tests at 00:37 that
+passed at 23:51: fixtures placed at "midnight + 1h" (a future instant just after
+midnight, so the `scheduledFor <= now` filter dropped them) and "now minus 1h" (an
+instant on the PREVIOUS day shortly after midnight, flipping a reason to
+`overdue-past-due`). Both now use midnight itself, which is "today" and "not after
+now" at every hour. That is the third instance of this class in this session - all
+three from time-relative fixtures, none from the application.
+
 ### Approval requires a recorded token amount (2026-09-28)
 
 Owner instruction: "Don't approve booking without token amount A-103".

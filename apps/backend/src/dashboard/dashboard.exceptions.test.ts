@@ -145,7 +145,11 @@ describe('DashboardService.getExceptions', () => {
   it('visitRisk flags open visits today-or-past with the correct reason', async () => {
     fixture.visits.push([
       { id: 'v-past', leadId: 'l-1', lead: { name: 'Lead Past', projectId: 'p-1', state: 'NEGOTIATION' }, scheduledFor: daysAgo(1), status: 'SCHEDULED', user: { name: null } },
-      { id: 'v-today', leadId: 'l-2', lead: { name: 'Lead Today', projectId: 'p-2', state: 'VISIT_SCHEDULED' }, scheduledFor: new Date(NOW.getTime() - 60 * 60 * 1000), status: 'RESCHEDULED', user: { name: 'Exec' } },
+      // MIDNIGHT, not "now minus an hour": the service splits on start-of-today,
+      // so a one-hour-ago instant lands on YESTERDAY when the suite runs shortly
+      // after midnight and the reason flips to 'overdue-past-due'. Midnight is
+      // both "today" and "not after now" at every hour (observed at 00:37).
+      { id: 'v-today', leadId: 'l-2', lead: { name: 'Lead Today', projectId: 'p-2', state: 'VISIT_SCHEDULED' }, scheduledFor: (() => { const d = new Date(NOW); d.setHours(0, 0, 0, 0); return d; })(), status: 'RESCHEDULED', user: { name: 'Exec' } },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);

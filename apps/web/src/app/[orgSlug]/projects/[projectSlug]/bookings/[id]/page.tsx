@@ -28,7 +28,12 @@ import {
   LuCircleDollarSign,
   LuCircleX,
 } from '@paalstack/react-icons/lu';
-import { TransitionReasonRequired } from '@shadhil/api-types';
+import {
+  isTokenWithinTotal,
+  TOKEN_EXCEEDS_TOTAL_MESSAGE,
+  TokenAmountSchema,
+  TransitionReasonRequired,
+} from '@shadhil/api-types';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -285,7 +290,8 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
  * `reasonRequired` mirrors `TransitionReasonRequired` from @shadhil/api-types -
  * one definition shared by DTO, service guard and this form.
  */
-const transitionSchema = z
+const transitionSchemaFor = (totalAmount: number) =>
+  z
   .object({
     toStatus: z.enum(['TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED']),
     reason: z
@@ -293,31 +299,30 @@ const transitionSchema = z
       .trim()
       .max(500, 'Reason must be under 500 characters')
       .optional(),
-    // T-TOKEN-GATE (2026-09-28): mirrors the server rule - a HOLD → TOKEN move
-    // must state the amount received. Validated here as a STRING (an input
-    // yields strings) so an empty field is distinguishable from a `0`: empty is
-    // "not entered", `0` is a real but invalid amount, and the two deserve
-    // different messages. The page converts to a number only after this passes.
-    tokenAmount: z.string().trim().optional(),
+    // T-TOKEN-GATE cap (owner instruction): the token is a part payment, so it
+    // cannot exceed the booking's total. The total is not part of this form, so
+    // it is threaded in as a factory argument - the client shows the problem
+    // before the request, and the service re-checks it authoritatively.
+    tokenAmount: TokenAmountSchema.optional(),
   })
   .superRefine((values, ctx) => {
-    if (values.toStatus === 'TOKEN') {
-      const raw = (values.tokenAmount ?? '').trim();
-      const parsed = raw.length > 0 ? Number(raw) : Number.NaN;
-      if (raw.length === 0) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['tokenAmount'],
-          message:
-            'Enter the token amount received before marking the token as received',
-        });
-      } else if (!Number.isFinite(parsed) || parsed <= 0) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['tokenAmount'],
-          message: 'Token amount must be a number greater than zero',
-        });
-      }
+    if (values.toStatus === 'TOKEN' && values.tokenAmount === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message:
+          'Enter the token amount received before marking the token as received',
+      });
+    }
+    if (
+      values.tokenAmount !== undefined &&
+      !isTokenWithinTotal(values.tokenAmount, totalAmount)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+      });
     }
     if (!TransitionReasonRequired.has(values.toStatus)) return;
     if ((values.reason ?? '').trim().length > 0) return;
@@ -379,12 +384,21 @@ function BookingActions({
     return true;
   });
 
+  // The booking total the token must fit inside, resolved BEFORE the form: the
+  // resolver is built from it. A non-finite value falls back to 0, which makes the
+  // cap reject any token - the safe direction, since a blocked save beats a silent
+  // over-payment.
+  const bookingTotalRaw = Number(booking.amount);
+  const bookingTotal = Number.isFinite(bookingTotalRaw) ? bookingTotalRaw : 0;
+
   // Single useForm instance for the card (the props-API Form does not create
   // its own). `toStatus` is mirrored into the form so the resolver can apply
   // the reason rule to the right target.
   const form = useForm<TransitionFormValues>({
-    resolver: zodResolver(transitionSchema),
-    defaultValues: { toStatus: 'TOKEN', reason: '', tokenAmount: '' },
+    // The token cap needs the booking's total, so the schema is built per
+    // booking rather than declared once at module scope.
+    resolver: zodResolver(transitionSchemaFor(bookingTotal)),
+    defaultValues: { toStatus: 'TOKEN', reason: '', tokenAmount: undefined },
     mode: 'onSubmit',
   });
 
@@ -392,10 +406,14 @@ function BookingActions({
   // operator re-confirming a token that was captured at HOLD time (or corrected
   // earlier) cannot silently blank it - which is the state this whole change
   // exists to make impossible.
+  const storedTokenNumber = Number(booking.tokenAmount);
   const storedTokenAmount =
-    typeof booking.tokenAmount === 'string' && booking.tokenAmount.length > 0
-      ? booking.tokenAmount
-      : '';
+    typeof booking.tokenAmount === 'string' &&
+    booking.tokenAmount.length > 0 &&
+    Number.isFinite(storedTokenNumber) &&
+    storedTokenNumber > 0
+      ? storedTokenNumber
+      : undefined;
 
   // Confirmation step: the icon for the state being moved INTO, so the confirm
   // button repeats the same visual cue the operator clicked to get here.
@@ -457,7 +475,7 @@ function BookingActions({
   }
 
   function closeStep() {
-    form.reset({ toStatus: 'TOKEN', reason: '', tokenAmount: '' });
+    form.reset({ toStatus: 'TOKEN', reason: '', tokenAmount: undefined });
     setToStatus(null);
   }
 
@@ -472,10 +490,10 @@ function BookingActions({
     if (reason.length > 0) body.reason = reason;
     // T-TOKEN-GATE: the amount the resolver already validated travels WITH the
     // status change, in the same request - so "token received" and "how much"
-    // are recorded together and cannot diverge. `Number()` after validation
-    // (the form holds strings); the schema has already proven it is finite > 0.
-    if (target === 'TOKEN') {
-      body.tokenAmount = Number((values.tokenAmount ?? '').trim());
+    // are recorded together and cannot diverge. It is already a number: the form
+    // field writes `valueAsNumber`, and the schema has proven it positive.
+    if (target === 'TOKEN' && values.tokenAmount !== undefined) {
+      body.tokenAmount = values.tokenAmount;
     }
 
     updateBooking.mutate(

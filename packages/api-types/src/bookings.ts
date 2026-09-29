@@ -20,19 +20,81 @@ export const TransitionReasonRequired: ReadonlySet<BookingStatus> = new Set([
 ]);
 
 /**
+ * THE token-amount rule, in one place.
+ *
+ * A token amount is a positive rupee figure, capped like every other money field
+ * on this module. Exported so the DTOs AND the client form schemas all validate
+ * with the same shape - they previously disagreed, and the disagreement was a real
+ * bug: the `@paalstack/react-ui` number field writes
+ * `event.currentTarget.valueAsNumber` into the form (a NUMBER, or `undefined` when
+ * blank - see the Form's number branch), while the client schemas declared
+ * `z.string()`. Every submit therefore failed with "Invalid input: expected
+ * string, received number" before it reached the API.
+ *
+ * The lesson is not "make the client match the server": it is that ONE definition
+ * belongs in one place. Re-declaring `z.number().positive()` per call site is how
+ * the two drifted.
+ */
+export const TokenAmountSchema = z
+  .number()
+  .positive('Token amount must be greater than zero')
+  .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)');
+export type TokenAmount = z.infer<typeof TokenAmountSchema>;
+
+/**
+ * A token is a PART payment, so it can never exceed the booking's total.
+ * Owner instruction 2026-09-28: "if tokenAmount provided that shouldn't be
+ * greater than totalAmount".
+ *
+ * Exported as the single definition of the comparison, for the same reason
+ * `TokenAmountSchema` is: the rule is needed at every path that can set a token
+ * (booking create, the transition into TOKEN, the transition into APPROVED, and
+ * the edit form) and re-writing the comparison per call site is how the client
+ * and the DTO drifted on the token TYPE once already.
+ *
+ * `undefined`/`null` and non-finite values return true - this predicate answers
+ * only "is the cap broken?", and a missing amount is someone else's rule.
+ */
+export function isTokenWithinTotal(
+  tokenAmount: number | null | undefined,
+  totalAmount: number,
+): boolean {
+  if (tokenAmount === null || tokenAmount === undefined) return true;
+  if (!Number.isFinite(tokenAmount) || !Number.isFinite(totalAmount)) return true;
+  return tokenAmount <= totalAmount;
+}
+
+/** Message used wherever the cap is enforced, so the wording cannot drift. */
+export const TOKEN_EXCEEDS_TOTAL_MESSAGE =
+  'Token amount cannot be more than the booking total';
+
+/**
  * POST /api/bookings - start a new booking (HOLD state).
  * Sales Exec initiates. Manager approves later via /approve.
  */
-export const CreateBookingDtoSchema = z.object({
-  leadId: z.string().cuid2(),
-  unitId: z.string().cuid2(),
-  amount: z
-    .number()
-    .positive()
-    .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)'),
-  tokenAmount: z.number().positive().optional(),
-  notes: z.string().trim().max(2000).optional(),
-});
+export const CreateBookingDtoSchema = z
+  .object({
+    leadId: z.string().cuid2(),
+    unitId: z.string().cuid2(),
+    amount: z
+      .number()
+      .positive()
+      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)'),
+    tokenAmount: TokenAmountSchema.optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .superRefine((values, ctx) => {
+    // The token is a part payment of THIS booking, so it cannot exceed the total.
+    // Both figures are present in the same payload, so this is the ideal place to
+    // catch it - the error lands on `tokenAmount`, where the form can show it.
+    if (!isTokenWithinTotal(values.tokenAmount, values.amount)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+      });
+    }
+  });
 export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
 
 /**
@@ -42,15 +104,33 @@ export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
  *   - unit/lead reassignment is out of scope for v1
  * Editable: amount / tokenAmount / notes.
  */
-export const UpdateBookingDtoSchema = z.object({
-  amount: z
-    .number()
-    .positive()
-    .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
-    .optional(),
-  tokenAmount: z.number().positive().nullable().optional(),
-  notes: z.string().trim().max(2000).nullable().optional(),
-});
+export const UpdateBookingDtoSchema = z
+  .object({
+    amount: z
+      .number()
+      .positive()
+      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
+      .optional(),
+    tokenAmount: z.number().positive().nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+  })
+  .superRefine((values, ctx) => {
+    // T-TOKEN-GATE cap: both fields can arrive together, and when they do the
+    // token must fit inside the total. When only ONE arrives this cannot be
+    // judged here - `BookingsService.update` compares against the STORED row.
+    if (
+      values.amount !== undefined &&
+      values.tokenAmount !== undefined &&
+      values.tokenAmount !== null &&
+      !isTokenWithinTotal(values.tokenAmount, values.amount)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+      });
+    }
+  });
 export type UpdateBookingDto = z.infer<typeof UpdateBookingDtoSchema>;
 
 /**
@@ -101,12 +181,12 @@ export const BookingTransitionDtoSchema = z
     /**
      * Token received, in rupees. Required for HOLD → TOKEN unless a positive
      * amount is already stored on the booking.
+     *
+     * NUMBER, not a string: that is what the client form field emits (see
+     * TokenAmountSchema). Declaring it a string here is what produced
+     * "Invalid input: expected string, received number" on every submit.
      */
-    tokenAmount: z
-      .number()
-      .positive('Token amount must be greater than zero')
-      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
-      .optional(),
+    tokenAmount: TokenAmountSchema.optional(),
   })
   .superRefine((values, ctx) => {
     // T-TOKEN-GATE: a move INTO TOKEN must state the amount received. Checked
@@ -126,6 +206,10 @@ export const BookingTransitionDtoSchema = z
         message: 'Enter the token amount received before marking the token as received',
       });
     }
+    // The cap cannot be checked here: this DTO does not carry the booking total,
+    // and the transition is precisely the path where a token is set on an
+    // EXISTING booking. `BookingsService.transition` compares against the stored
+    // `amount` - see the token-cap block there.
     if (!TransitionReasonRequired.has(values.toStatus)) return;
     if ((values.reason ?? '').trim().length > 0) return;
     ctx.addIssue({

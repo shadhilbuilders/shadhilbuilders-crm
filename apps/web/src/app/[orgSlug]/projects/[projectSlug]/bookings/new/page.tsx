@@ -36,6 +36,8 @@ import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
+import { isTokenWithinTotal, TOKEN_EXCEEDS_TOTAL_MESSAGE } from '@shadhil/api-types';
+
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LuArrowLeft } from '@paalstack/react-icons/lu';
 
@@ -65,7 +67,21 @@ const createBookingSchema = z.object({
       { message: 'Token amount must be a positive number' },
     ),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
-});
+})
+  // T-TOKEN-GATE cap (owner instruction): the token is a part payment, so it can
+  // never exceed the booking total - both figures are on this form, so the client
+  // can catch it before the request (the DTO enforces it authoritatively).
+  .superRefine((values, ctx) => {
+    const token = values.tokenAmount === undefined || values.tokenAmount === '' ? undefined : Number(values.tokenAmount);
+    const total = Number(values.amount);
+    if (!isTokenWithinTotal(token, total)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['tokenAmount'],
+        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+      });
+    }
+  });
 
 type CreateBookingSchema = z.infer<typeof createBookingSchema>;
 

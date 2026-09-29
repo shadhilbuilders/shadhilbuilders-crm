@@ -58,6 +58,8 @@ export type BookingEditTarget = {
   leadName?: string;
   amount?: string;
   tokenAmount?: string | null;
+  /** T-TOKEN-GATE: a TOKEN booking's amount cannot be cleared (server rule). */
+  status?: string;
   notes?: string | null;
 };
 
@@ -77,9 +79,21 @@ export type BookingEditDialogProps = {
 export function BookingEditFormBody({
   form,
   onSubmit,
+  canClearTokenAmount,
 }: {
   form: UseFormReturn<EditBookingSchema>;
   onSubmit: (values: EditBookingSchema) => void;
+  /**
+   * T-TOKEN-GATE (2026-09-28): whether the token amount may be REMOVED.
+   *
+   * False for a booking already marked TOKEN, because the server refuses to
+   * clear it - the amount is the only record of money received, and clearing it
+   * re-creates the very defect this work removed. The field's copy used to read
+   * "Leave blank to clear the token amount." unconditionally, which promised an
+   * operation the server rejects and sent the operator into a failed save for
+   * following the form's own instructions.
+   */
+  canClearTokenAmount?: boolean;
 }) {
   return (
     <Form
@@ -109,9 +123,12 @@ export function BookingEditFormBody({
         {
           type: 'input',
           name: 'tokenAmount',
-          label: 'Token amount (₹, optional)',
+          label: 'Token amount (₹)',
           inputType: 'number',
-          description: 'Leave blank to clear the token amount.',
+          description:
+            canClearTokenAmount === false
+              ? 'Required once a booking is marked token received. You can correct the figure, but not remove it.'
+              : 'Optional. Leave blank to clear the token amount.',
           placeholder: 'Enter token amount here...',
           inputProps: {
             min: 0,
@@ -241,7 +258,13 @@ export function BookingEditDialog({
         </div>
       }
     >
-      <BookingEditFormBody form={form} onSubmit={handleSubmit} />
+      <BookingEditFormBody
+        form={form}
+        onSubmit={handleSubmit}
+        // T-TOKEN-GATE: the server refuses to clear the amount while the booking
+        // is TOKEN, so the form must not invite it.
+        canClearTokenAmount={target.status !== 'TOKEN'}
+      />
     </Dialog>
   );
 }
