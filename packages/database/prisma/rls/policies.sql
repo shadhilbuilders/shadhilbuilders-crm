@@ -563,6 +563,76 @@ CREATE POLICY message_insert_admin ON "Message"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- ── MessageRecipient (TARGETED @mention) - T-MENTION-TARGET (2026-09-29) ────
+--
+-- RECURSION CONSTRAINT: "Lead" has a policy (lead_select_mentioned) that reads
+-- this table, so this table's policies MUST NOT read "Lead" or "Message" back -
+-- Postgres would raise `infinite recursion detected in policy for relation
+-- "Lead"`. That is why leadId/organizationId are denormalized here and every
+-- predicate below tests this table's OWN columns. See the migration of the same
+-- name for the full rationale.
+ALTER TABLE "MessageRecipient" ENABLE ROW LEVEL SECURITY;
+
+-- Recipients see their OWN grant rows; no admin branch (an admin already sees
+-- every note via message_select_team, so a wider policy would grant nothing new
+-- while becoming a second, divergent statement of who can see what).
+CREATE POLICY message_recipient_select_own ON "MessageRecipient"
+  FOR SELECT
+  USING (
+    "MessageRecipient"."organizationId" = current_setting('app.user_org_id', true)
+    AND "MessageRecipient"."userId" = current_setting('app.user_id', true)
+  );
+
+-- The sender writes the rows, in the same transaction as the message. Excludes
+-- a self-mention (meaningless: the sender can already see the lead).
+CREATE POLICY message_recipient_insert_author ON "MessageRecipient"
+  FOR INSERT
+  WITH CHECK (
+    "MessageRecipient"."organizationId" = current_setting('app.user_org_id', true)
+    AND "MessageRecipient"."userId" <> current_setting('app.user_id', true)
+    AND current_setting('app.user_role', true) IN ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC')
+  );
+
+-- No UPDATE policy: a grant is immutable. Editing who was mentioned would
+-- silently change who can read a past note, so revocation is deliberately not
+-- expressible; only the FK's ON DELETE CASCADE removes rows.
+
+-- A mention grants the lead record (OWNER INSTRUCTION 2026-09-29: option A).
+-- Separate permissive policy, so lead_select_telecaller and the manager/admin
+-- branches are untouched. Self-contained - reads MessageRecipient's own columns.
+CREATE POLICY lead_select_mentioned ON "Lead"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+    AND "Lead"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "MessageRecipient" mr
+      WHERE mr."leadId" = "Lead"."id"
+        AND mr."userId" = current_setting('app.user_id', true)
+        AND mr."organizationId" = current_setting('app.user_org_id', true)
+    )
+  );
+
+-- ...and the whole thread (option A). KEYED ON THE LEAD, not the message: the
+-- first draft matched the mentioned message only, and the live probe showed the
+-- exec could read the internal note but not the customer's message on the same
+-- lead - a notification sending them to a thread they still could not read.
+--
+-- Consequence, deliberate: once mentioned on a lead, the recipient reads ALL
+-- messages on that lead - past, present and future. That is what a grant means.
+CREATE POLICY message_select_recipient ON "Message"
+  FOR SELECT
+  USING (
+    "Message"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "MessageRecipient" mr
+      WHERE mr."leadId" = "Message"."leadId"
+        AND mr."userId" = current_setting('app.user_id', true)
+        AND mr."organizationId" = current_setting('app.user_org_id', true)
+        AND mr."leadId" IS NOT NULL
+    )
+  );
+
 -- ── Booking (team-scoped via lead + denormalized org) ───────────────────────
 ALTER TABLE "Booking" ENABLE ROW LEVEL SECURITY;
 
@@ -956,7 +1026,7 @@ BEGIN
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
     'ProjectOption','WhatsappUnknownContact','Organization',
-    'TeamMember','ProjectTeam'
+    'TeamMember','ProjectTeam','MessageRecipient'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -988,7 +1058,7 @@ BEGIN
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
     'ProjectOption','WhatsappUnknownContact','Organization',
-    'TeamMember','ProjectTeam'
+    'TeamMember','ProjectTeam','MessageRecipient'
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);

@@ -42,7 +42,9 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { TeamAccessService } from '../teams/team-access.service';
+// T-MENTION-TARGET (2026-09-29): the mention picker's scope, reused so the
+// server accepts exactly who the UI can offer (see the constructor note).
+import { UsersService } from '../users/users.service';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
 import { resolveMediaDisplayUrl } from '../storage/media-display';
@@ -71,6 +73,12 @@ export interface MessageRow {
   // Display name of the sender. OUT = the staff member (Message.user.name);
   // IN = the customer (the lead's name). Null when unresolvable.
   senderName: string | null;
+  /**
+   * T-MENTION-TARGET (2026-09-29): users explicitly @mentioned in this note,
+   * so the pane can highlight `@you`. Present only for INTERNAL notes that
+   * actually addressed someone.
+   */
+  mentionedUserIds?: string[];
   createdAt: string;
 }
 
@@ -95,6 +103,21 @@ export class ChatService {
     @Optional()
     @Inject(STORAGE_PROVIDER)
     private readonly storage?: StorageProvider,
+    // T-MENTION-TARGET (2026-09-29): the mention picker's OWN scope, reused so
+    // the server accepts exactly who the UI can offer. @Optional() (rule 7h)
+    // for the existing test factories that construct ChatService with fewer
+    // args; absent = no extra narrowing beyond the org check.
+    //
+    // This is the "bounded to the actor's team scope" half of the option-A
+    // decision: an @mention grants a lead and its thread, so WHO may be
+    // addressed is an authorization boundary, not a UI nicety. Reusing
+    // UsersService.teamMembers rather than re-deriving the team rules here is
+    // deliberate - a second copy of those rules would drift from the picker,
+    // and the failure mode of drift is either a rejected legitimate mention or
+    // an offered teammate the server refuses.
+    @Optional()
+    @Inject(UsersService)
+    private readonly users?: UsersService,
   ) {}
 
   /**
@@ -123,12 +146,6 @@ export class ChatService {
       })?.url ?? null
     );
   }
-
-  // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed -
-  // instantiating directly avoids touching every existing test's
-  // `new ChatService(...)` constructor call (same pattern as
-  // leads.service.ts/dashboard.service.ts/etc.).
-  private readonly teamAccess = new TeamAccessService();
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -185,6 +202,9 @@ export class ChatService {
             mediaFilename: true,
             createdAt: true,
             user: { select: { name: true } },
+            // T-MENTION-TARGET: the addressed recipients, so the pane can show
+            // who a note was directed at and highlight the current user.
+            recipients: { select: { userId: true } },
           },
         });
 
@@ -204,6 +224,9 @@ export class ChatService {
           mediaFilename: r.mediaFilename,
           // OUT → the staff member who sent it; IN → the customer (lead).
           senderName: r.direction === 'OUT' ? (r.user?.name ?? null) : lead.name,
+          // Defensive `?? []`: the relation is always selected in production,
+          // but a partial test mock must not crash the whole thread render.
+          mentionedUserIds: (r.recipients ?? []).map((rc) => rc.userId),
           createdAt: r.createdAt.toISOString(),
         }));
       },
@@ -904,52 +927,96 @@ export class ChatService {
     });
   }
 
+  /**
+   * T-MENTION-TARGET (2026-09-29): write the ADDRESSED recipients of an
+   * INTERNAL note and notify each one.
+   *
+   * Replaces the old name-guessing resolver. That version re-parsed `@Name`
+   * from the body, matched it against `User.name` with NO team narrowing for
+   * ordinary staff, and put `body.slice(0, 100)` in the notification. Two
+   * defects followed, and both are fixed here:
+   *
+   *   1. A telecaller could surface a lead's internal note to ANY same-named
+   *      user in the organization. Identity now comes from the composer's
+   *      picked row (`dto.mentionedUserIds`), so a display name can no longer
+   *      address a stranger.
+   *   2. The mentioned teammate could not open the lead, so the notification
+   *      quoted text they had no way to read the rest of or act on. The
+   *      `MessageRecipient` row is now an RLS grant (lead + full thread), so
+   *      the notification deep-links somewhere the recipient can actually open.
+   *
+   * Runs INSIDE the caller's transaction, so a note and its grants commit
+   * together: a crash cannot leave a note that notifies nobody, or a grant
+   * pointing at a message that was never written.
+   *
+   * Recipients are verified against the actor's own organization here rather
+   * than trusted from the payload. RLS on `User` is absent, so this is the
+   * check that stops a forged id from another tenant being addressed and
+   * granted a lead.
+   */
   private async emitMentions(
     tx: unknown,
     actor: JwtPayload,
     dto: SendMessageDto,
     messageId: string,
   ): Promise<void> {
-    if (this.notifications === undefined) return;
-    const names = extractMentionedNames(dto.body);
-    if (names.length === 0) return;
+    const requested = dto.mentionedUserIds ?? [];
+    if (requested.length === 0) return;
 
     const client = tx as unknown as PrismaClient;
 
-    let teamFilter: Record<string, unknown> = {};
-    if (actor.role === 'MANAGER') {
-      const managedTeamIds = await this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
-      // A manager with no managed team (config error) resolves nobody,
-      // same as the pre-existing "no team, no mentions" behavior.
-      if (managedTeamIds.length === 0) {
-        teamFilter = { id: '__none__' };
-      } else {
-        teamFilter = {
-          OR: [
-            { teamMemberships: { some: { teamId: { in: managedTeamIds } } } },
-            { managedTeams: { some: { id: { in: managedTeamIds } } } },
-          ],
-        };
-      }
-    }
-    // ADMIN/OWNER and ordinary staff: no team filter (org-wide) - see the
-    // doc comment above for why staff can no longer be narrowed further.
+    // De-duplicate: the same teammate mentioned twice is one recipient (the
+    // unique index would reject the second row anyway) and one notification.
+    const uniqueIds = Array.from(new Set(requested)).filter(
+      (id) => id !== actor.sub, // a self-mention grants nothing; the actor sees the lead already
+    );
+    if (uniqueIds.length === 0) return;
 
-    const mentioned = await client.user.findMany({
-      where: {
-        name: { in: names },
+    const recipients = await client.user.findMany({
+      where: { id: { in: uniqueIds }, organizationId: actor.organizationId },
+      select: { id: true },
+    });
+    if (recipients.length === 0) return;
+
+    // "Bounded to the actor's team scope" (option-A decision): only address
+    // someone the actor could have picked in the composer. Checked against
+    // UsersService.teamMembers - the picker's own source - so the server and
+    // the UI cannot disagree about who is addressable.
+    let allowed = recipients;
+    if (this.users !== undefined) {
+      const team = await this.users.teamMembers(actor);
+      const allowedIds = new Set(team.map((u) => u.id));
+      allowed = recipients.filter((r) => allowedIds.has(r.id));
+      if (allowed.length === 0) return;
+    }
+
+    await client.messageRecipient.createMany({
+      data: allowed.map((r) => ({
+        messageId,
+        userId: r.id,
+        // Denormalized so every policy on this table reads its OWN columns -
+        // see the MessageRecipient doc. Without leadId the Lead policy would
+        // have to traverse Message, which is the recursion trap.
+        leadId: dto.leadId,
         organizationId: actor.organizationId,
-        ...teamFilter,
-      },
-      select: { id: true, name: true },
+      })),
+      skipDuplicates: true,
     });
 
-    for (const user of mentioned) {
-      if (user.id === actor.sub) continue; // don't notify yourself
-      await this.notifications.emit(user.id, {
+    // Notifications are best-effort (the NotificationsService is @Optional():
+    // unit tests run without it). The GRANT above is not best-effort - it is
+    // written in the same transaction regardless, so access never depends on a
+    // notification succeeding.
+    if (this.notifications === undefined) return;
+    for (const r of allowed) {
+      await this.notifications.emit(r.id, {
         type: 'chat.mention',
         title: `${actorRowName(actor)} mentioned you`,
-        body: `In a note on lead ${dto.leadId}: ${dto.body.slice(0, 100)}`,
+        // The FULL note, not a 100-char tease. The recipient now has the grant
+        // to read it, so truncating a note they are allowed to read only
+        // obscures it. (The old truncation existed because they could NOT read
+        // it - it leaked a snippet to someone with no access.)
+        body: dto.body,
         leadId: dto.leadId,
       });
     }
@@ -959,18 +1026,4 @@ export class ChatService {
 /** Pull a display name for the actor (used in mention notifications). */
 function actorRowName(actor: JwtPayload): string {
   return actor.email?.split('@')[0] ?? 'A teammate';
-}
-
-/**
- * Extract `@Name` tokens from a message body. Matches `@` followed by a
- * proper-noun name (capitalized words, e.g. "Asha T."), stopping at the
- * next `@` or a lowercase word (so "loop @Asha T. and @Ravi" yields
- * ["Asha T.", "Ravi"]). The mention picker inserts `@Name ` with the
- * exact DB name, which is capitalized - this heuristic matches that.
- */
-export function extractMentionedNames(body: string): string[] {
-  const matches = body.match(/@([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)/g) ?? [];
-  return matches
-    .map((m) => m.slice(1).trim())
-    .filter((n) => n.length > 0);
 }

@@ -40,7 +40,7 @@ vi.mock('@/lib/session', () => ({
   })),
 }));
 
-import { LeadChatPane, withDateSeparators, groupForDate, extractMentionedNames, validateChatFile, type DateGroup } from './LeadChatPane';
+import { LeadChatPane, withDateSeparators, groupForDate, validateChatFile, type DateGroup } from './LeadChatPane';
 import { useMessages } from '@/hooks/queries/crm';
 
 const mockedUseMessages = vi.mocked(useMessages);
@@ -201,19 +201,6 @@ describe('LeadChatPane - wire-shape + direction contract (T-F6)', () => {
     expect(html).toContain('Internal');
     expect(html).toMatch(/data-kind="internal"/);
     expect(html).toContain('loop @Ravi Kumar');
-  });
-});
-
-describe('extractMentionedNames - @mention parsing (frontend)', () => {
-  it('extracts capitalized @Name tokens', () => {
-    expect(extractMentionedNames('loop @Asha T. and @Ravi')).toEqual([
-      'Asha T.',
-      'Ravi',
-    ]);
-  });
-
-  it('returns empty for no mentions', () => {
-    expect(extractMentionedNames('no mentions here')).toEqual([]);
   });
 });
 

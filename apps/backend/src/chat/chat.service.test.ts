@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 
-import { ChatService, extractMentionedNames } from './chat.service';
+import { ChatService } from './chat.service';
 
 function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
@@ -297,22 +297,5 @@ describe('send - staff message + audit row', () => {
         where: { leadId: 'lead-x', kind: 'INTERNAL' },
       }),
     );
-  });
-});
-
-describe('extractMentionedNames - @mention parsing', () => {
-  it('extracts @Name tokens', () => {
-    expect(extractMentionedNames('loop @Asha T. and @Ravi')).toEqual([
-      'Asha T.',
-      'Ravi',
-    ]);
-  });
-
-  it('returns empty for no mentions', () => {
-    expect(extractMentionedNames('no mentions here')).toEqual([]);
-  });
-
-  it('ignores a bare @ with no name', () => {
-    expect(extractMentionedNames('email me @')).toEqual([]);
   });
 });

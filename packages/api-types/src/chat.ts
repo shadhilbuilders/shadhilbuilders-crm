@@ -33,6 +33,20 @@ export const SendMessageDtoSchema = z.object({
   mediaKey: z.string().min(1).max(500).optional(),
   mediaMimeType: z.string().min(1).max(120).optional(),
   mediaFilename: z.string().min(1).max(255).optional(),
+  /**
+   * T-MENTION-TARGET (2026-09-29): the ADDRESSED recipients of this note, as
+   * resolved by the composer's `@` picker.
+   *
+   * User IDS, not names. The previous implementation re-parsed `@Name` out of
+   * the body and matched `User.name`, which is why a mention could land on a
+   * stranger with the same display name anywhere in the organization. The pane
+   * already knows which row was clicked, so the identity travels with the
+   * request and no name-matching happens on the server.
+   *
+   * Validated as cuid2 because every User.id is a cuid; a client bug that sends
+   * a display name here fails loudly instead of silently addressing nobody.
+   */
+  mentionedUserIds: z.array(z.string().cuid2()).max(25).optional(),
 });
 export type SendMessageDto = z.infer<typeof SendMessageDtoSchema>;
 
@@ -75,6 +89,11 @@ export const MessageEventSchema = z.object({
   // renders this in the MessageHeader.
   senderName: z.string().nullable(),
   createdAt: z.string().datetime({ offset: true }),
+  /**
+   * T-MENTION-TARGET (2026-09-29): user ids explicitly @mentioned in this
+   * note, so the pane can highlight `@you`. Only INTERNAL notes carry these.
+   */
+  mentionedUserIds: z.array(z.string()).optional(),
 });
 export type MessageEvent = z.infer<typeof MessageEventSchema>;
 

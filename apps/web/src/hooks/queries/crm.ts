@@ -553,6 +553,9 @@ export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = '
     mutationFn: (input: {
       body: string;
       media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string };
+      /** T-MENTION-TARGET (2026-09-29): addressed recipients, as picked from the
+       *  @ menu. Their ids, not their names - the server no longer name-matches. */
+      mentionedUserIds?: string[];
     }) =>
       api<unknown>('/chat/send', {
         method: 'POST',
@@ -561,6 +564,9 @@ export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = '
           body: input.body,
           channel: 'IN_APP',
           kind,
+          ...(input.mentionedUserIds !== undefined
+            ? { mentionedUserIds: input.mentionedUserIds }
+            : {}),
           ...(input.media !== undefined
             ? {
                 mediaKey: input.media.mediaKey,

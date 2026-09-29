@@ -262,17 +262,6 @@ export function withDateSeparators(
   return out;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Mention parsing (mirrors the backend's extractMentionedNames)
-// ────────────────────────────────────────────────────────────────────────────
-
-/** Extract `@Name` tokens from a message body (mirrors the backend). */
-export function extractMentionedNames(body: string): string[] {
-  const matches = body.match(/@([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)/g) ?? [];
-  return matches
-    .map((m) => m.slice(1).trim())
-    .filter((n) => n.length > 0);
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -303,6 +292,19 @@ export function LeadChatPane({
   // `mentionQuery` is the substring after the last `@` in the draft; when
   // non-null the picker is active and shows team members matching it.
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  // T-MENTION-TARGET (2026-09-29): the IDS of the teammates actually picked from
+  // the @ picker, keyed by the EXACT `@Name` token inserted into the draft.
+  //
+  // Why ids and not names: the backend used to re-parse `@Name` out of the body
+  // and match it against User.name org-wide, so a telecaller could address (and
+  // now, with the grant, expose a lead to) any same-named stranger. The picker
+  // already knows which row was clicked, so the identity is recorded here and
+  // travels with the send.
+  //
+  // Keyed by token because the body is free text: a typed-but-unpicked `@Name`
+  // has no id and must not be treated as addressing anyone. On removal the token
+  // disappears from the body and the entry is dropped.
+  const [pickedMentions, setPickedMentions] = useState<Record<string, string>>({});
   // T-USER-PROJECT-SCOPE: pass the ACTIVE project so an ADMIN/OWNER - who has no
   // natural team - is offered that project's staff instead of the whole
   // directory. Staff roles are unaffected (their scope is already their team).
@@ -339,14 +341,31 @@ export function LeadChatPane({
     const resolvedBody = body.length === 0 && pendingAttachment !== null ? '📎 Attachment' : body;
     if (resolvedBody.length === 0) return;
 
+    // T-MENTION-TARGET: only mentions STILL PRESENT in the body are addressed.
+    // Deriving from the current text (rather than sending every id ever picked)
+    // means deleting `@Name` from the draft also un-addresses them - otherwise a
+    // teammate could be granted a lead by text the sender removed before sending.
+    const mentionedUserIds = Object.entries(pickedMentions)
+      .filter(([token]) => resolvedBody.includes(token))
+      .map(([, id]) => id);
+    if (mentionedUserIds.length === 0) {
+      // Nothing addressed (or all mentions were deleted): no grants to write.
+      setPickedMentions({});
+    }
+
     const send = (media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string }) => {
       sendMessage.mutate(
-        { body: resolvedBody, ...(media !== undefined ? { media } : {}) },
+        {
+          body: resolvedBody,
+          ...(media !== undefined ? { media } : {}),
+          ...(mentionedUserIds.length > 0 ? { mentionedUserIds } : {}),
+        },
         {
           onSuccess: () => {
             setDraft('');
             setPendingAttachment(null);
             setMentionQuery(null);
+            setPickedMentions({});
             // Reset the auto-grow textarea back to a single line.
             const el = textareaRef.current;
             if (el !== null) el.style.height = 'auto';
@@ -444,7 +463,7 @@ export function LeadChatPane({
   // Insert a @Name mention at the cursor (Internal composer only).
   // Replaces the active `@query` token up to the cursor (e.g. `@De` →
   // `@Demo Manager `) so the query text isn't duplicated.
-  function insertMention(name: string) {
+  function insertMention(name: string, userId: string) {
     const el = textareaRef.current;
     const start = el?.selectionStart ?? draft.length;
     const end = el?.selectionEnd ?? draft.length;
@@ -456,6 +475,9 @@ export function LeadChatPane({
     const next = `${head}@${name} ${draft.slice(end)}`;
     setDraft(next);
     setMentionQuery(null);
+    // Record the picked identity against the EXACT token inserted, so the send
+    // can resolve it without name-matching.
+    setPickedMentions((prev) => ({ ...prev, [`@${name}`]: userId }));
     // Restore focus + cursor after the mention.
     requestAnimationFrame(() => {
       el?.focus();
@@ -690,7 +712,7 @@ export function LeadChatPane({
                       <button
                         key={member.id}
                         type="button"
-                        onClick={() => insertMention(member.name)}
+                        onClick={() => insertMention(member.name, member.id)}
                         className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                         data-qa="mention-option"
                       >

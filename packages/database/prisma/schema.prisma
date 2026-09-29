@@ -229,6 +229,7 @@ model Organization {
   managerAssignmentRules  ManagerAssignmentRule[]
   teamMembers             TeamMember[]
   projectTeams            ProjectTeam[]
+  messageRecipients       MessageRecipient[]
 
   @@index([slug])
 }
@@ -289,6 +290,7 @@ model User {
   coOwnedLeads              Lead[]             @relation("LeadCoOwner")
   activities                Activity[]
   messages                  Message[]
+  messageRecipients         MessageRecipient[] @relation("MessageRecipientUser")
   chatReadStates            ChatReadState[]
   reminders                 Reminder[]
   notifications             Notification[]
@@ -653,6 +655,7 @@ model Lead {
   activities       Activity[]
   visits           SiteVisit[]
   messages         Message[]
+  messageRecipients MessageRecipient[] @relation("MessageRecipientLead")
   outboundMessages OutboundMessage[]
   chatReadStates   ChatReadState[]
   bookings         Booking[]
@@ -771,6 +774,7 @@ model Message {
   organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   outbound     OutboundMessage?
+  recipients   MessageRecipient[]
 
   @@index([leadId])
   @@index([contactId])
@@ -778,6 +782,58 @@ model Message {
   @@index([userId])
   @@index([channel, createdAt])
   @@index([externalId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 10c. MessageRecipient (TARGETED @mention) - T-MENTION-TARGET (2026-09-29)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One addressed recipient of an INTERNAL note - the record that makes an
+ * `@mention` a real grant rather than a name-shaped guess.
+ *
+ * WHY IT EXISTS. `emitMentions` used to resolve `@Name` against `User.name`
+ * with NO team narrowing for ordinary staff, then put `body.slice(0, 100)` in a
+ * `chat.mention` notification. Two defects followed:
+ *   1. A telecaller could surface a lead's internal note to ANY same-named user
+ *      in the whole organization.
+ *   2. The mentioned teammate could not open the lead (RLS gates Message on the
+ *      parent Lead's owner/co-owner), so the notification quoted text they had
+ *      no way to read the rest of - or to act on.
+ *
+ * `userId` is the recipient picked in the composer, not a name match, so a
+ * mention can no longer land on a stranger with the same display name.
+ *
+ * DENORMALIZED COLUMNS ARE LOAD-BEARING, not denormalization for speed:
+ *   - `leadId` mirrors the parent Message's leadId.
+ *   - `organizationId` mirrors the parent Message's org (same reason
+ *     Message.organizationId exists).
+ * Both let EVERY policy on this table test its OWN columns only. If the policies
+ * joined back through `Message` or `Lead`, Postgres would have a policy cycle:
+ * `Lead`'s policy reads this table and this table's policy reads `Lead` back -
+ * `infinite recursion detected in policy for relation "Lead"`, raised only at
+ * SELECT time, so a clean migration is not evidence of safety.
+ */
+model MessageRecipient {
+  id             String   @id @default(cuid())
+  messageId      String
+  userId         String
+  /// Parent message's lead, denormalized so policies never traverse Message.
+  leadId         String?
+  /// Parent message's org, denormalized (mirrors Message.organizationId).
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user         User         @relation("MessageRecipientUser", fields: [userId], references: [id], onDelete: Cascade)
+  lead         Lead?        @relation("MessageRecipientLead", fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// A user is addressed once per message.
+  @@unique([messageId, userId])
+  @@index([userId, leadId])
+  @@index([leadId])
+  @@index([organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

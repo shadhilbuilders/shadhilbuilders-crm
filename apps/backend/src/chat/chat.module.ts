@@ -12,10 +12,17 @@
 // service constructor.
 import { Module } from '@nestjs/common';
 
+import { UsersModule } from '../users/users.module';
+
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 
 @Module({
+  // T-MENTION-TARGET (2026-09-29): ChatService injects UsersService to bound
+  // @mention targets to the actor's team scope (the picker's own source), so
+  // the module must import it or DI resolves the @Optional() dep to undefined
+  // and the bound silently disappears in production while tests stay green.
+  imports: [UsersModule],
   controllers: [ChatController],
   providers: [ChatService],
   exports: [ChatService],

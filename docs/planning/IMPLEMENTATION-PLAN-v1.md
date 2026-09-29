@@ -2221,6 +2221,58 @@ client-locked) → surfaced at gate.
 
 ## Cross-Phase Themes
 
+### T-MENTION-TARGET (2026-09-29): an @mention is a real access grant
+
+Owner instruction: "3" - the targeted-mention option, then option **A** for the
+scope question. Both decisions are load-bearing, and the second one changes the
+security model.
+
+**The defect this closes.** A telecaller writes an INTERNAL note on a lead they
+own and mentions a sales_exec. Before this work:
+
+| what happened | why it was wrong |
+|---|---|
+| `emitMentions` re-parsed `@Name` from the body and matched `User.name` | identity by display name - a mention landed on ANY same-named user in the org (ordinary staff resolved **org-wide**) |
+| the notification body was `body.slice(0, 100)` | the note's first 100 chars were quoted to someone with no access to the rest |
+| the recipient could not open the lead | `message_select_team` gates on the parent Lead's owner/co-owner, so the mention granted nothing and the notification dead-ended |
+
+**What it does now.** The composer sends the picked row's `mentionedUserIds`; the
+service writes a `MessageRecipient` row **in the same transaction** as the
+message; that row is an RLS grant of the lead **and its full thread**.
+
+**Option A is the security decision, not a UI nicety.** A mention hands over the
+lead AND the customer WhatsApp conversation, so WHO may be addressed is an
+authorization boundary. Targets are bounded to the actor's team scope by reusing
+`UsersService.teamMembers` - the mention picker's OWN source - so the server
+accepts exactly who the UI can offer. A second copy of those rules would drift,
+and drift here means either a refused legitimate mention or an offered teammate
+the server rejects.
+
+**The recursion trap, and the fix.** `Message`'s policy already reads `Lead`. A
+`Lead` policy that reads the grant table through `Message` closes the cycle
+`Lead -> MessageRecipient -> Message -> Lead`, which Postgres reports only at
+SELECT time (`infinite recursion detected in policy for relation "Lead"`) - the
+migration applies cleanly and looks fine. So `leadId` + `organizationId` are
+DENORMALIZED onto the grant table and every policy on it reads its OWN columns.
+That is the same reason `Message.organizationId` exists; it is not an
+optimisation.
+
+**Key on the LEAD, not the message.** The first draft matched the mentioned
+message, and the live probe caught it: the exec could read the note but got **0
+rows** for the customer's message on the same lead - a notification pointing at a
+thread they still could not read. Consequence, stated rather than discovered
+later: once mentioned on a lead the recipient reads ALL its messages, past and
+future. That is what a grant means, and it is why the target bound matters.
+
+**Verified.** api-types 100, backend 1195, db 158, web 782. Tamper checks: remove
+the team bound -> the out-of-scope test reddens (and only that one); remove the
+grant write / restore the 100-char teaser -> 4 red. Two-connection RLS probe:
+baseline without the grant row lead 0 / note 0 / customer 0; with it 1 / 1 / 1;
+stranger 0; a manager cannot enumerate another user's grant rows; no recursion on
+full scans. Test-DB caveat: `shadhil_crm_test` is NOT migrated by the suite, so
+the migration had to be applied there by hand and recorded in `_prisma_migrations`
+- otherwise every RLS-backed chat test fails with "table does not exist".
+
 ### Token amount cannot exceed the booking total (2026-09-28)
 
 Owner instruction: "if tokenAmount provided that shouldn't be greater than
