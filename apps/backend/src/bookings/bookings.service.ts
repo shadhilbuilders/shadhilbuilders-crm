@@ -937,7 +937,16 @@ export class BookingsService {
               tokenAmount: updated.tokenAmount?.toString() ?? null,
               notes: updated.notes,
             },
-            reason: `Booking ${updated.id} updated by ${actor.email} (${actor.role})`,
+            // T-TOKEN-GATE (2026-09-29): prefer an operator-supplied reason. This
+            // is a MONEY write path (amount / tokenAmount), so "updated by
+            // <email>" is not enough to explain a change to a payment figure -
+            // the caller must be able to record WHICH bank entry or receipt the
+            // corrected number came from. Falls back to the generated string for
+            // an ordinary edit that supplied no reason.
+            reason:
+              (dto.reason ?? '').trim().length > 0
+                ? (dto.reason as string)
+                : `Booking ${updated.id} updated by ${actor.email} (${actor.role})`,
           },
         });
 

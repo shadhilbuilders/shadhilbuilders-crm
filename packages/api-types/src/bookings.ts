@@ -113,6 +113,18 @@ export const UpdateBookingDtoSchema = z
       .optional(),
     tokenAmount: z.number().positive().nullable().optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
+    /**
+     * T-TOKEN-GATE (2026-09-29): why the money figures changed.
+     *
+     * Added because `update()` could never record a rationale - it wrote a
+     * generated "updated by <email>" string - so a correction to `amount` or
+     * `tokenAmount` was unattributable. That is the wrong shape for a money
+     * write: a token figure comes from a bank entry or a receipt, and the record
+     * of WHICH one is the difference between a correction and a silent edit.
+     * Deliberately optional (an ordinary notes-only edit has nothing to explain)
+     * but carried through to the audit row whenever supplied.
+     */
+    reason: z.string().trim().min(1).max(500).optional(),
   })
   .superRefine((values, ctx) => {
     // T-TOKEN-GATE cap: both fields can arrive together, and when they do the

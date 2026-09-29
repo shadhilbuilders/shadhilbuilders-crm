@@ -1142,6 +1142,42 @@ describe('update - edit booking fields', () => {
     ).rejects.toThrow(/Booking missing not found/);
     expect(client.booking.update).not.toHaveBeenCalled();
   });
+
+  it('T-TOKEN-GATE: the UPDATE audit row records an operator-supplied reason', async () => {
+    // A MONEY write must be attributable. Before this, update() could only write
+    // a generated "updated by <email>" string, so correcting amount/tokenAmount
+    // carried no reference to WHICH bank entry or receipt the figure came from -
+    // the difference between a correction and a silent edit.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.update.mockResolvedValue(bookingRow({ tokenAmount: { toString: () => '1112.00' } }));
+
+    await service.update(makeActor({ role: 'ADMIN' }), 'b-1', {
+      tokenAmount: 1112,
+      reason: 'bank ref 1234',
+    } as never);
+
+    const auditCall = client.auditLog.create.mock.calls.at(-1)?.[0] as
+      | { data: { reason: string; action: string } }
+      | undefined;
+    // The operator's words, NOT the generated fallback.
+    expect(auditCall?.data.reason).toBe('bank ref 1234');
+  });
+
+  it('T-TOKEN-GATE: an UPDATE with no reason still audits (generated fallback)', async () => {
+    // `reason` is optional - a notes-only edit has nothing to explain - but the
+    // audit row must always exist.
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(bookingRow());
+    client.booking.update.mockResolvedValue(bookingRow({ tokenAmount: { toString: () => '1112.00' } }));
+
+    await service.update(makeActor({ role: 'ADMIN' }), 'b-1', { tokenAmount: 1112 } as never);
+
+    const auditCall = client.auditLog.create.mock.calls.at(-1)?.[0] as
+      | { data: { reason: string } }
+      | undefined;
+    expect(auditCall?.data.reason).toMatch(/updated by/);
+  });
 });
 
 // ─── delete - admin-only + unit free + audit row ─────────────────────
