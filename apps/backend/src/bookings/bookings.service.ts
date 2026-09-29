@@ -405,6 +405,20 @@ export class BookingsService {
           );
         }
 
+        // T-TOKEN-GATE (2026-09-29): enforce the token cap HERE, not only in the
+        // DTO. `create()` wrote `dto.tokenAmount` straight through, so the rule
+        // held only for callers that went through the schema - a direct service
+        // call, an older client, or a seeded row could create a booking whose
+        // token exceeds its own total (the shape that reached production). The
+        // service is the authority for the amount already; the token is the same
+        // kind of money invariant and belongs in the same place.
+        if (
+          dto.tokenAmount !== undefined &&
+          !isTokenWithinTotal(dto.tokenAmount, unitPrice)
+        ) {
+          throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
+        }
+
         let created;
         try {
           created = await (tx as unknown as PrismaClient).booking.create({

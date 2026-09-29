@@ -1178,6 +1178,50 @@ describe('update - edit booking fields', () => {
       | undefined;
     expect(auditCall?.data.reason).toMatch(/updated by/);
   });
+
+  it('T-TOKEN-GATE: create() REFUSES a token above the unit price (service, not just DTO)', async () => {
+    // `create()` wrote dto.tokenAmount straight through, so the cap held only for
+    // callers that passed through the Zod schema. A direct service call, an older
+    // client, or a seed script could create a booking whose token exceeded its own
+    // total - the exact shape that reached production (B-103: 16525612 against a
+    // 6050000 unit). The service owns the amount invariant already; the token is
+    // the same kind of money rule and now lives in the same place.
+    const { service, client } = makeServiceWithLeadSync();
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1', unitNumber: 'B-103', price: { toString: () => '6050000' }, status: 'AVAILABLE',
+    });
+
+    await expect(
+      service.create(makeActor(), {
+        leadId: 'lead-1', unitId: 'unit-1', amount: 6050000, tokenAmount: 16525612,
+      } as never),
+    ).rejects.toThrow(/cannot be more than the booking total/i);
+
+    // Nothing was written: the guard runs BEFORE the insert, so no booking exists
+    // to leak into the unit's derived status.
+    expect(client.booking.create).not.toHaveBeenCalled();
+  });
+
+  it('T-TOKEN-GATE: create() ACCEPTS a token equal to the total', async () => {
+    // A full payment is still a payment; the rule is "not greater", not "less".
+    const { service, client } = makeServiceWithLeadSync();
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1', unitNumber: 'A-101', price: { toString: () => '5000000' }, status: 'AVAILABLE',
+    });
+    client.booking.create.mockResolvedValue({
+      id: 'b-new', leadId: 'lead-1', unitId: 'unit-1', userId: 'tc-1',
+      amount: { toString: () => '5000000.00' }, tokenAmount: { toString: () => '5000000.00' },
+      status: 'HOLD', approvedById: null, notes: null,
+      createdAt: new Date(), updatedAt: new Date(),
+      lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
+    });
+
+    await expect(
+      service.create(makeActor(), {
+        leadId: 'lead-1', unitId: 'unit-1', amount: 5000000, tokenAmount: 5000000,
+      } as never),
+    ).resolves.toBeDefined();
+  });
 });
 
 // ─── delete - admin-only + unit free + audit row ─────────────────────

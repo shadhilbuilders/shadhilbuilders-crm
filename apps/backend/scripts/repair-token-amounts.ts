@@ -219,10 +219,24 @@ async function repairOne(
   return prisma.$transaction(async (tx) => {
     const current = await tx.booking.findUnique({
       where: { id: repair.bookingId },
-      select: { id: true, status: true, tokenAmount: true, organizationId: true },
+      // `amount` is read so the token cap can be checked HERE rather than left to
+      // the "booking_token_within_total" CHECK constraint (migration
+      // 20260929140000). The constraint is what actually protects the data, but
+      // without this comparison an operator who mistypes a figure gets a raw
+      // `violates check constraint "booking_token_within_total"` instead of a
+      // sentence telling them the token cannot exceed the total.
+      select: { id: true, status: true, tokenAmount: true, amount: true, organizationId: true },
     });
     if (current === null) {
       throw new Error(`Refusing: booking ${repair.bookingId} not found`);
+    }
+    const bookingTotal = Number(current.amount);
+    if (Number.isFinite(bookingTotal) && repair.amount > bookingTotal) {
+      throw new Error(
+        `Refusing: ${repair.amount} exceeds this booking's total (${bookingTotal}). ` +
+          'A token is a PART payment, so it can never be more than the booking total. ' +
+          'Check the figure against the payment record - one of the two numbers is wrong.',
+      );
     }
     if (current.status !== 'TOKEN') {
       // Guard against repairing a booking that has since moved on - and, more
