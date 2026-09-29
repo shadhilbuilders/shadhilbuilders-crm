@@ -43,6 +43,7 @@
 // 0s, never a fabricated value).
 
 import { Button, TypographyP, toast } from '@paalstack/react-ui';
+import { LuCalendarCheck, LuListChecks, LuPhoneMissed, LuUserPlus } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -322,6 +323,11 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
                   : 'overdue first touch',
               onClick: () => setFilter((f) => (f === 'overdue' ? 'all' : 'overdue')),
               active: filter === 'overdue',
+              // Urgent red + a missed-call glyph: for the exec view this is "my
+              // pipeline", which is not urgent, but it is still the card they
+              // act on first - so it keeps the leading, most-prominent tone.
+              tone: 'urgent',
+              Icon: LuPhoneMissed,
             },
             {
               label: 'New today',
@@ -332,6 +338,8 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
               // query used midnight and ignored state, so the caption and the
               // number disagreed on every card.
               sub: 'still new, since midnight',
+              tone: 'new',
+              Icon: LuUserPlus,
             },
             {
               label: "Today's visits",
@@ -339,12 +347,16 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
               sub: visits.length > 0 ? `${visits.length} listed below` : 'none scheduled',
               onClick: () => setFilter((f) => (f === 'visits' ? 'all' : 'visits')),
               active: filter === 'visits',
+              tone: 'today',
+              Icon: LuCalendarCheck,
             },
             {
               label: isTelecaller ? 'In my queue' : 'Leads to work',
               // Server total, NOT `ordered.length` - see `queueTotal`.
               value: String(queueTotal),
               sub: 'need action',
+              tone: 'pipeline',
+              Icon: LuListChecks,
             },
           ]}
         />

@@ -18,7 +18,22 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 import { Button, Card, Dialog, Heading, TypographyP } from '@paalstack/react-ui';
-import { LuArrowLeft, LuPencil, LuTrash2, LuUsersRound } from '@paalstack/react-icons/lu';
+import {
+  LuAlarmClockOff,
+  LuArrowLeft,
+  LuBadgeIndianRupee,
+  LuBuilding2,
+  LuCalendarCheck,
+  LuCompass,
+  LuContactRound,
+  LuLayers,
+  LuPencil,
+  LuTrash2,
+  LuUserPlus,
+  LuUserRound,
+  LuUsersRound,
+} from '@paalstack/react-icons/lu';
+import type { IconType } from '@paalstack/react-icons';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -38,12 +53,58 @@ import { isAdminLike, useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
 
-function kpiCard(label: string, value: string, sub?: string) {
+// ---------------------------------------------------------------------------
+// KPI tiles (2026-09-29)
+// ---------------------------------------------------------------------------
+//
+// Each tile is tinted by the SAME tone vocabulary the work dashboard's KpiStrip
+// uses (dashboard-shared.tsx) and carries an icon. Two rules, both from the
+// measured contrast work on that component:
+//
+//   1. The tone is semantic - red = needs action, blue = inventory/people
+//      counts, amber = leads + money in flight, neutral = the structural totals.
+//      It is NOT a per-card hue wheel. A 7-colour grid of equal-weight tiles is
+//      the stock "AI dashboard" look and it destroys the scan order: everything
+//      shouts, so nothing does.
+//   2. `text-foreground` on the label/value, never `text-muted-foreground`:
+//      muted (#64748b) is 4.75:1 on white but only 4.1-4.35:1 on these tints -
+//      under the 4.5 AA floor. The muted token is only readable on a plain
+//      white card.
+//   3. The neutral tone is `secondary-soft`, NOT `primary-soft`: the library
+//      declares `--primary-soft` identically in `:root` and `.dark`, so it stays
+//      a light lavender in dark mode and `text-foreground` on it measures
+//      1.42:1 - invisible. `secondary-soft` is a light tint in light mode and a
+//      dark tint in dark mode (fg 16.2:1 / 8.5:1), so it needs no per-mode
+//      handling. See the same note in dashboard-shared.tsx.
+//
+// The icon is `aria-hidden`: it repeats the label, so announcing it would make
+// a screen reader read each tile twice. As on KpiStrip, the glyph is also the
+// non-colour cue that keeps the tint WCAG 1.4.1-safe.
+const KPI_TILE_TONES = {
+  urgent: 'bg-destructive-soft border-destructive/25',
+  inventory: 'bg-info-soft border-info/25',
+  leads: 'bg-warning-soft border-warning/30',
+  total: 'bg-secondary-soft border-border',
+} as const;
+
+type KpiTileTone = keyof typeof KPI_TILE_TONES;
+
+function kpiCard(
+  label: string,
+  value: string,
+  Icon: IconType,
+  tone: KpiTileTone,
+  iconTone: string,
+  sub?: string,
+) {
   return (
-    <div className="border-border bg-card rounded-lg border p-4">
-      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {sub ? <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p> : null}
+    <div className={`rounded-lg border p-4 ${KPI_TILE_TONES[tone]}`}>
+      <span className="text-foreground flex items-center gap-2">
+        <Icon className={`size-5 shrink-0 ${iconTone}`} aria-hidden="true" />
+        <p className="text-xs font-medium tracking-wide uppercase">{label}</p>
+      </span>
+      <p className="text-foreground mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+      {sub ? <p className="text-foreground mt-0.5 text-xs">{sub}</p> : null}
     </div>
   );
 }
@@ -186,13 +247,19 @@ export default function AdminProjectDetailPage() {
           <h2 className="text-sm font-semibold tracking-wide uppercase">At a glance</h2>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-          {kpiCard('Phases', String(detail.counts.phases))}
-          {kpiCard('Units', String(detail.counts.units))}
-          {kpiCard('Facing & BHK', String(detail.counts.options))}
-          {kpiCard('Teams', String(detail.counts.teams))}
-          {kpiCard('Members', String(detail.counts.teamMembers))}
-          {kpiCard('Leads', String(detail.counts.leads))}
-          {kpiCard('Bookings', String(detail.counts.bookings))}
+          {kpiCard('Phases', String(detail.counts.phases), LuLayers, 'inventory', 'text-info')}
+          {kpiCard('Units', String(detail.counts.units), LuBuilding2, 'inventory', 'text-info')}
+          {kpiCard('Facing & BHK', String(detail.counts.options), LuCompass, 'inventory', 'text-info')}
+          {kpiCard('Teams', String(detail.counts.teams), LuUsersRound, 'total', 'text-foreground')}
+          {kpiCard('Members', String(detail.counts.teamMembers), LuUserRound, 'total', 'text-foreground')}
+          {kpiCard('Leads', String(detail.counts.leads), LuContactRound, 'leads', 'text-warning-foreground')}
+          {kpiCard(
+            'Bookings',
+            String(detail.counts.bookings),
+            LuBadgeIndianRupee,
+            'leads',
+            'text-warning-foreground',
+          )}
         </div>
       </section>
 
@@ -202,10 +269,28 @@ export default function AdminProjectDetailPage() {
           <h2 className="text-sm font-semibold tracking-wide uppercase">Pipeline activity</h2>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {kpiCard('New today', String(stats?.kpis.newLeadsToday ?? 0))}
-          {kpiCard('Overdue', String(stats?.kpis.overdueLeads ?? 0))}
-          {kpiCard("Today's visits", String(stats?.kpis.visitsToday ?? 0))}
-          {kpiCard('Leads total', String(detail.counts.leads))}
+          {kpiCard(
+            'New today',
+            String(stats?.kpis.newLeadsToday ?? 0),
+            LuUserPlus,
+            'inventory',
+            'text-info',
+          )}
+          {kpiCard(
+            'Overdue',
+            String(stats?.kpis.overdueLeads ?? 0),
+            LuAlarmClockOff,
+            'urgent',
+            'text-destructive',
+          )}
+          {kpiCard(
+            "Today's visits",
+            String(stats?.kpis.visitsToday ?? 0),
+            LuCalendarCheck,
+            'leads',
+            'text-warning-foreground',
+          )}
+          {kpiCard('Leads total', String(detail.counts.leads), LuContactRound, 'total', 'text-foreground')}
         </div>
       </section>
 

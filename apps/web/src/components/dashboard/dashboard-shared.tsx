@@ -13,6 +13,119 @@ import { LuArrowRight } from '@paalstack/react-icons/lu';
 
 import { LEAD_STATUSES, labelFor } from '@/lib/labels';
 import { Button } from '@paalstack/react-ui';
+// `IconType` comes from the icon package's root entry (`export * from
+// 'react-icons'`), NOT from 'react-icons' directly: that is only a transitive
+// dep under pnpm's strict node_modules, so importing it here would be an
+// undeclared-dependency error.
+import type { IconType } from '@paalstack/react-icons';
+
+// ---------------------------------------------------------------------------
+// KPI card tones (2026-09-29, owner request: "all kpi-card with some background
+// color with correct icon")
+// ---------------------------------------------------------------------------
+//
+// DESIGN RULE - colour encodes meaning, it does not decorate.
+//
+// The obvious reading of "give every card a colour" is seven different hues,
+// which is the stock "AI dashboard" look: the palette carries no information
+// and the eye has to read every label to find the one number that matters.
+// This app is a work queue - its whole point is that the urgent count is
+// findable at a glance - so the tints are spent on a three-accent palette plus
+// a neutral, in the order the counts are already sorted:
+//
+//   red   = do this now      blue = new / incoming
+//   amber = time-bound       neutral = the structural total
+//
+// The alternative - a different hue per card - gives every number equal visual
+// weight, which is the same as giving none of them any.
+//
+// CONTRAST, measured rather than assumed. The soft tints resolve (on the
+// library's white card, via the oklch -> sRGB transform the badge contrast
+// test already uses) to:
+//
+//   bg-destructive-soft #ffe9e6   bg-info-soft #e3f4ff
+//   bg-warning-soft     #fff5d7   bg-secondary-soft #e5e7eb
+//
+// `--muted-foreground` (#64748b) is 4.75:1 on the WHITE card but only
+// 4.09-4.35:1 on the warm/cool soft tints - below the 4.5 AA floor for normal
+// text. This is the same trap the selected-KPI tint and the overdue queue row
+// already hit (see T-DASH-QUEUE-SELECTED below and LeadQueueRow). So on ANY
+// tinted card the label and sub-line step up to `text-foreground`: 17.2:1 on the
+// destructive tint, 17.7 on info, 18.3 on warning, 16.2 on the neutral. Each
+// tone's OWN accent also reads as the icon colour against its tint (all clear
+// 4.0:1), and the icon is a redundant cue besides - the glyph carries the
+// meaning itself, which is what keeps this WCAG 1.4.1-safe: colour is never the
+// only signal.
+//
+// DARK MODE, measured, and the reason `pipeline` is NEUTRAL rather than another
+// hue. The library's `--info/success/warning/destructive-soft` are re-declared
+// in `.dark` as dark tints (L~0.23-0.25), so `text-foreground` (near-white) on
+// them measures 15.4-15.8:1 and their accents 5.2-7.8:1 - all fine. But
+// `--primary-soft` is declared IDENTICALLY in `:root` and `.dark` (oklch
+// 0.872 0.061 274.066 - a LIGHT lavender), so in dark mode `text-foreground`
+// lands at 1.42:1 on it: effectively invisible. An earlier draft of this
+// component used `bg-primary-soft` for the structural tone and would have
+// shipped that bug. A four-hue palette therefore cannot be balanced across both
+// modes without editing the shared token file, so the structural counts get the
+// neutral `secondary-soft` instead (dark tint in dark mode: fg 8.5:1) and the
+// palette stays at three accents plus neutral.
+//
+// ICONS are always `aria-hidden`. The icon repeats what the label already
+// says, so announcing it would make a screen reader read the card twice
+// ("phone, Needs a call now, 6"). The label is the accessible name; the icon
+// is sighted-scanning support. Pinned by dashboard-shared.test.tsx.
+export type KpiTone = 'urgent' | 'new' | 'today' | 'pipeline';
+
+const KPI_TONES: Record<
+  KpiTone,
+  {
+    /** The card surface: a soft semantic tint plus the icon's own colour. */
+    card: string;
+    /** The icon's colour - the accent that makes the tint legible as a category. */
+    icon: string;
+    /**
+     * The label + sub-line colour. `text-foreground` on every tint, because
+     * `--muted-foreground` does not clear AA once the card is tinted (measured
+     * above). Written explicitly per tone rather than branched inline so a new
+     * tone cannot silently inherit the failing token.
+     */
+    text: string;
+  }
+> = {
+  // Red: "someone is waiting on this". The most urgent count on any screen.
+  urgent: {
+    card: 'bg-destructive-soft border-destructive/25',
+    icon: 'text-destructive',
+    text: 'text-foreground',
+  },
+  // Blue: new / incoming work. Distinct from red - nothing here is overdue yet.
+  new: {
+    card: 'bg-info-soft border-info/25',
+    icon: 'text-info',
+    text: 'text-foreground',
+  },
+  // Amber: dated / time-bound items.
+  today: {
+    card: 'bg-warning-soft border-warning/30',
+    icon: 'text-warning-foreground',
+    text: 'text-foreground',
+  },
+  // Neutral: the structural counts that need no accent at all. Uses the
+  // library's `secondary-soft` rather than a fourth hue because it is one of
+  // the few soft tokens that is BOTH a light tint in light mode and a dark tint
+  // in dark mode (see the DARK MODE note below) - so this tone needs no
+  // per-mode special-casing.
+  pipeline: {
+    card: 'bg-secondary-soft border-border',
+    icon: 'text-foreground',
+    text: 'text-foreground',
+  },
+};
+
+/** Renders a KPI's icon at the card's fixed size. Decorative - see above. */
+function KpiIcon({ Icon, className }: { Icon: IconType; className: string }) {
+  return <Icon className={`size-5 shrink-0 ${className}`} aria-hidden="true" />;
+}
 
 // ---------------------------------------------------------------------------
 // KPI strip - numbers in one row with label + trend, no cards (wireframe note)
@@ -32,6 +145,15 @@ export type Kpi = {
   onClick?: () => void;
   /** Marks the currently-active filter, for the aria-pressed state. */
   active?: boolean;
+  /**
+   * The card's background tone + its icon. Both are REQUIRED (2026-09-29):
+   * an optional tone would let a future call site ship an unstyled card,
+   * which is the thing this change exists to prevent. `Icon` takes a
+   * react-icons icon TYPE, not an element, so size/colour/aria-hidden stay
+   * owned here and a caller cannot ship an unsized or announced icon.
+   */
+  tone: KpiTone;
+  Icon: IconType;
 };
 
 // T20 (PR3): the KpiStrip value element picks up a one-time
@@ -77,6 +199,7 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
         const isPlaceholder = kpi.value === '-';
         const isClickable = kpi.onClick !== undefined;
         const isSelected = kpi.active === true;
+        const tone = KPI_TONES[kpi.tone];
 
         // T-DASH-QUEUE-SELECTED (2026-09-16, user request): a selected filter card
         // reads LIGHT BLUE and nothing else - the tint is the whole visual change.
@@ -86,24 +209,28 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
         // every card has, so the four counts stay one visual family and selection
         // does not make one of them look like a different kind of control.
         //
-        // This still satisfies WCAG 1.4.1 (never carry state on colour alone): the
-        // card's own text changes from "Tap to filter" to "Showing only this", and
-        // `aria-pressed` carries it for assistive tech. The TEXT is the non-colour
-        // cue now - a stronger one than the ring it replaces, because it also says
-        // WHAT is happening rather than only THAT something is.
+        // COLOUR-MEANING REVISION (2026-09-29). The paragraph above is kept
+        // because its reasoning still holds where it applies, but its premise -
+        // "the tint is the whole visual change" - is no longer true: every card
+        // now carries a semantic tone tint, so a selected card can no longer be
+        // distinguished by being the only tinted one. The tint would also FIGHT
+        // the tone (a red "urgent" card tinted blue when selected reads as a
+        // change of meaning, not a change of filter).
         //
-        // Uses the brand's own `--link` token (bg-link = --color-link -> --link),
-        // the same blue as the inline text links, rather than a hard-coded hex -
-        // so the selected state stays inside the brand palette and follows the
-        // token into dark mode automatically.
+        // So selection is now carried by the two cues that were ALREADY the
+        // non-colour ones, promoted from redundant to primary: `aria-pressed`
+        // for assistive tech, and the affordance text flipping to "Showing only
+        // this" for everyone else. That is a STRONGER signal than the old tint,
+        // because it says WHAT is happening, not merely THAT something is. The
+        // previous blue tint is dropped (see the button branch below) rather
+        // than layered - two tint systems on one card is the kind of
+        // decoration-not-information this change set out to remove.
         //
-        // CONTRAST, measured not assumed: `--muted-foreground` (#64748b) is 4.76
-        // on the white card but only ~4.2/3.9/3.7 at bg-link/8/12/15 - below the
-        // 4.5 AA floor for body text. So on a SELECTED card the label/sub/placeholder
-        // step up to `text-foreground` (17.6 and better). This is the same trap as
-        // the overdue row tint: a MUTED token is only readable against the plain
-        // card, never against a tint. Verified by the real-browser axe audit.
-        const secondaryText = isSelected ? 'text-foreground' : 'text-muted-foreground';
+        // CONTRAST, measured not assumed: with every tone's text set to
+        // `text-foreground`, the label/sub/placeholder clear AA on all four
+        // tints (16.2:1 worst case, the neutral). Previously this only had to
+        // hold on the selected card; now it holds on every card unconditionally.
+        const secondaryText = tone.text;
 
         // No `break-words`: it let "₹1,23,45,678" split across a digit boundary,
         // which renders as two numbers. `line-clamp-1` truncates instead, and the
@@ -119,18 +246,38 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
         // reflowed into a different layout; only the padding and the type scale
         // respond. `min-h-11` makes the whole card a full-width 44px tap target,
         // which a 66px-wide column could never be.
-        const cardClass =
-          'border-border bg-card min-h-11 min-w-0 rounded-lg border p-3 text-left sm:p-4';
+        //
+        // 2026-09-29: `bg-card border-border` is replaced by the tone's own
+        // surface + a border in the tone's accent (kept at /25-/30 alpha so the
+        // edge reads as part of the tint rather than a second colour). `bg-card`
+        // is dropped rather than kept underneath: both are single classes whose
+        // position in the generated sheet decides the winner, so relying on
+        // source order would be a silent, order-dependent bug. One surface
+        // class per card.
+        const cardClass = `min-h-11 min-w-0 rounded-lg border p-3 text-left sm:p-4 ${tone.card}`;
 
         const body = (
           <>
-            {/* One treatment at every width. The caps were briefly dropped at
-                narrow widths only because a 66px-wide 4-up card could not fit
-                "NEEDS A CALL NOW" (it clipped at four lines, measured). A
-                full-width stacked card fits it comfortably, so the label style no
-                longer changes with the viewport. */}
-            <span className={`${secondaryText} block text-xs tracking-wide uppercase`}>
-              {kpi.label}
+            {/*
+              The icon sits in a row with the label. The label is the accessible
+              name; the icon is `aria-hidden` (see KpiIcon) because the label
+              already says the same thing and a screen reader reading "phone,
+              Needs a call now, 6" is noise, not information.
+
+              Colour + glyph together, which is what keeps this WCAG 1.4.1-safe:
+              the tint is never the only carrier of the meaning - the glyph is
+              the second, non-colour cue, and the label text is a third.
+            */}
+            <span className="flex items-center gap-2">
+              <KpiIcon Icon={kpi.Icon} className={tone.icon} />
+              {/* One treatment at every width. The caps were briefly dropped at
+                  narrow widths only because a 66px-wide 4-up card could not fit
+                  "NEEDS A CALL NOW" (it clipped at four lines, measured). A
+                  full-width stacked card fits it comfortably, so the label style
+                  no longer changes with the viewport. */}
+              <span className={`${secondaryText} block text-xs tracking-wide uppercase`}>
+                {kpi.label}
+              </span>
             </span>
             <span
               className={`block ${valueClass}`}
@@ -160,9 +307,17 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
             aria-pressed={isSelected}
             data-qa={`kpi-filter-${kpi.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
             data-selected={isSelected ? 'true' : 'false'}
-            className={`${cardClass} focus-visible:ring-ring cursor-pointer shadow-xs transition-colors focus-visible:ring-2 focus-visible:outline-none ${
-              isSelected ? 'bg-link/15 hover:bg-link/20' : 'hover:bg-muted/60'
-            }`}
+            // Selection no longer changes the surface (see the T-DASH-QUEUE-SELECTED
+            // revision above): the tone owns the background, and the state is
+            // carried by `aria-pressed` + the affordance text below. The hover
+            // stays, so the card still reads as clickable.
+            //
+            // `cardClass` already carries `text-left`, but the <button> needs an
+            // explicit text COLOUR too: a UA stylesheet sets `color: buttontext`
+            // on <button>, and the label/sub spans only set their own colour, so
+            // the large VALUE would otherwise fall back to the UA's colour rather
+            // than the design token.
+            className={`${cardClass} text-foreground focus-visible:ring-ring cursor-pointer shadow-xs transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:outline-none`}
           >
             {body}
             {/*

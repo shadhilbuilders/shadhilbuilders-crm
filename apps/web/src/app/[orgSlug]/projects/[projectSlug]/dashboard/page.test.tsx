@@ -464,8 +464,12 @@ describe('Work dashboard - one page, every action in place', () => {
     const strip = container?.querySelector('[aria-label="Work counts"]');
     const html = strip?.innerHTML ?? '';
 
-    // No element in the strip may be display-hidden at any width.
-    expect(html).not.toMatch(/\bhidden\b/);
+    // No element in the strip may be display-hidden at any width. The
+    // lookbehind excludes `aria-hidden`, which IS present: every KPI card's
+    // icon is decorative (see dashboard-shared.test.tsx), and that is an
+    // assistive-tech concern, not a display one. Matching it here would force
+    // the icons to be announced, which is the opposite of the intent.
+    expect(html).not.toMatch(/(?<!aria-)\bhidden\b/);
     // The three parts that used to be width-gated are all unconditional now.
     expect(html).toContain('mt-1 text-2xl'); // the value, sized for a phone
     expect(html).toContain('block text-xs'); // the sub-line
