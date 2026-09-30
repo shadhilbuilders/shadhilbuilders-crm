@@ -402,11 +402,21 @@ export class VisitsService {
         // VISIT_SCHEDULED - scheduling the visit is the action that
         // completes the request.
         if (lead.state === 'VISIT_REQUESTED') {
-          await this.leadsService.transition(actor, {
-            leadId: dto.leadId,
-            toState: 'VISIT_SCHEDULED',
-            notes: `Visit scheduled for ${created.scheduledFor.toISOString()}`,
-          });
+          // Runs on the OUTER transaction's client (transitionInTransaction),
+          // never the bare service call: `transition()` opens its own
+          // withRlsContext transaction on a second connection, and the visit
+          // transaction above has already locked this Lead row (the co-owner
+          // grant), so two connections on one row self-deadlock into a 30s
+          // "expired transaction". See transitionInTransaction's doc comment.
+          await this.leadsService.transitionInTransaction(
+            actor,
+            {
+              leadId: dto.leadId,
+              toState: 'VISIT_SCHEDULED',
+              notes: `Visit scheduled for ${created.scheduledFor.toISOString()}`,
+            },
+            tx as unknown as PrismaClient,
+          );
         }
 
         // Audit the visit creation.
@@ -733,13 +743,17 @@ export class VisitsService {
             role: actor.role,
           });
           if (verdict.ok) {
-            await this.leadsService.transition(actor, {
-              leadId: existing.leadId,
-              toState: leadTarget,
-              notes:
-                dto.notes ??
-                `Visit ${dto.outcome.toLowerCase()} by ${assigneeName(updated.userId, actor)}`,
-            });
+            await this.leadsService.transitionInTransaction(
+              actor,
+              {
+                leadId: existing.leadId,
+                toState: leadTarget,
+                notes:
+                  dto.notes ??
+                  `Visit ${dto.outcome.toLowerCase()} by ${assigneeName(updated.userId, actor)}`,
+              },
+              tx as unknown as PrismaClient,
+            );
           }
         }
 
@@ -960,11 +974,15 @@ export class VisitsService {
           rescheduleLeadState === 'NO_SHOW' ||
           rescheduleLeadState === 'VISIT_REQUESTED'
         ) {
-          await this.leadsService.transition(actor, {
-            leadId: existing.leadId,
-            toState: 'VISIT_SCHEDULED',
-            notes: `Visit rescheduled to ${created.scheduledFor.toISOString()}`,
-          });
+          await this.leadsService.transitionInTransaction(
+            actor,
+            {
+              leadId: existing.leadId,
+              toState: 'VISIT_SCHEDULED',
+              notes: `Visit rescheduled to ${created.scheduledFor.toISOString()}`,
+            },
+            tx as unknown as PrismaClient,
+          );
         }
 
         return {

@@ -1709,140 +1709,190 @@ export class LeadsService {
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await tx.lead.findUnique({
-          where: { id: dto.leadId },
-          select: {
-            id: true,
-            ownerId: true,
-            teamId: true,
-            state: true,
-            name: true,
-            phone: true,
-            source: true,
-            project: { select: { id: true, slug: true, name: true } },
-            createdAt: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-          },
-        });
-        if (!existing) {
-          throw new NotFoundException(`Lead ${dto.leadId} not found`);
-        }
-
-        const verdict = canTransition({
-          from: existing.state,
-          to: dto.toState,
-          role: actor.role as Role,
-        });
-        if (!verdict.ok) {
-          if (verdict.code === 'INVALID_TRANSITION') {
-            throw new BadRequestException(
-              `Cannot transition lead from ${verdict.from} to ${verdict.to} (no such edge in the state machine)`,
-            );
-          }
-          throw new ForbiddenException(
-            `Role ${verdict.role} cannot transition lead from ${verdict.from} to ${verdict.to}`,
-          );
-        }
-
-        // No-op transition: still record an audit row? No - same-state
-        // is genuinely a no-op; skip the write entirely.
-        if (verdict.reason === 'SAME_STATE') {
-          return {
-            id: existing.id,
-            name: existing.name,
-            phone: existing.phone,
-            status: existing.state,
-            source: existing.source,
-            ownerId: existing.ownerId,
-            ownerName: existing.owner?.name ?? null,
-            projectId: existing.project?.id ?? null,
-            projectName: existing.project?.name ?? null,
-            projectSlug: existing.project?.slug ?? null,
-            createdAt: existing.createdAt.toISOString(),
-            updatedAt: existing.updatedAt.toISOString(),
-          };
-        }
-
-        const updated = await tx.lead.update({
-          where: { id: existing.id },
-          data: { state: dto.toState },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            state: true,
-            source: true,
-            ownerId: true,
-            createdAt: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-            project: { select: { id: true, slug: true, name: true } },
-          },
-        });
-
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'lead.transition',
-            entityType: 'Lead',
-            entityId: updated.id,
-            before: { state: existing.state },
-            after: { state: updated.state },
-            reason: dto.reason ?? `state change by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        // T-VISIT-CLOSE (2026-09-28): a lead that can no longer be worked must
-        // not leave open visits behind. Nothing used to close them, so they piled
-        // up with a past `scheduledFor` and surfaced as phantom work (the admin
-        // "Visits at risk" card, the visit list and calendar, which apply no
-        // lead-state filter) - and completing one would have tried to advance a
-        // terminal LEAD, which the state machine forbids.
-        //
-        // Same transaction as the state write, so the two cannot come apart.
-        // `isDeadLeadState` (LOST/RNR), NOT `isTerminalLeadState`: a WON deal is
-        // finished but realised - its handover or site meeting may still be
-        // pending, and cancelling those silently would destroy real work.
-        if (isDeadLeadState(updated.state)) {
-          await closeOpenVisitsForLead(
-            tx as unknown as PrismaClient,
-            actor,
-            updated.id,
-            'lead-terminal',
-          );
-        }
-
-        // Notify the lead's owner that its state changed (e.g. a visit was
-        // booked, a deal moved to negotiation). Skip when the actor IS the
-        // owner (they already know - they made the change).
-        if (existing.ownerId !== actor.sub) {
-          this.emitBestEffort(existing.ownerId, {
-            type: 'lead.transition',
-            title: 'Lead status changed',
-            body: `${updated.name} moved to ${updated.state}.`,
-            leadId: updated.id,
-          });
-        }
-
-        return {
-          id: updated.id,
-          name: updated.name,
-          phone: updated.phone,
-          status: updated.state,
-          source: updated.source,
-          ownerId: updated.ownerId,
-          ownerName: updated.owner?.name ?? null,
-          projectId: updated.project?.id ?? null,
-          projectName: updated.project?.name ?? null,
-          projectSlug: updated.project?.slug ?? null,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
+      async (tx) =>
+        this.applyTransition(actor, dto, tx as unknown as PrismaClient),
     );
+  }
+
+  /**
+   * The same transition, run inside a CALLER'S existing transaction.
+   *
+   * WHY THIS EXISTS (2026-09-30 - a 30s `Transaction API error: query cannot be
+   * executed on expired transaction` on POST /api/visits). `transition()` opens
+   * its own `withRlsContext` transaction on a SEPARATE pooled connection. Calling
+   * it while the caller is already inside a transaction therefore puts two
+   * connections on the same row: the outer one holds the lead lock, the nested
+   * one waits for it, and the outer one is awaiting the nested one. That is a
+   * self-deadlock, and it resolves as a 30s timeout, not a lock error (the outer
+   * transaction is the one that expires, so the failure surfaces at whatever
+   * statement the outer transaction runs NEXT - which is why the reported
+   * stack pointed at an unrelated `tx.auditLog.create`).
+   *
+   * It only bit when the outer transaction had actually written the Lead row -
+   * i.e. a SALES_EXEC scheduling a visit on a lead they did not own, where
+   * `grantExecLeadVisibility` updates `coOwnerId` first. `findUnique` alone takes
+   * no row lock in READ COMMITTED, so the same call usually succeeded, which is
+   * what made this look like an intermittent hang.
+   *
+   * Passing the caller's client keeps everything on ONE connection: the nested
+   * writes see the outer transaction's uncommitted state, no second connection is
+   * checked out, and the visit + lead transition + audits commit atomically.
+   *
+   * Mirrors `createInTransaction` - the same pattern, for the same reason.
+   */
+  async transitionInTransaction(
+    actor: JwtPayload,
+    dto: LeadStateTransitionDto,
+    clientOverride: PrismaClient,
+  ): Promise<LeadRow> {
+    return this.applyTransition(actor, dto, clientOverride);
+  }
+
+  /**
+   * Internal helper. Pure async - does NOT open a transaction, so the caller must
+   * already have the RLS context set up (either the public `transition()` wrapper,
+   * or a parent `withRlsContext` via `transitionInTransaction`). Mirrors
+   * `_createWithClient`.
+   */
+  private async applyTransition(
+    actor: JwtPayload,
+    dto: LeadStateTransitionDto,
+    client: PrismaClient,
+  ): Promise<LeadRow> {
+    // All statements below run through this client. Naming it `tx` keeps the body
+    // identical to when it lived inside the withRlsContext callback.
+    const tx = client;
+    const existing = await tx.lead.findUnique({
+      where: { id: dto.leadId },
+      select: {
+        id: true,
+        ownerId: true,
+        teamId: true,
+        state: true,
+        name: true,
+        phone: true,
+        source: true,
+        project: { select: { id: true, slug: true, name: true } },
+        createdAt: true,
+        updatedAt: true,
+        owner: { select: { name: true } },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Lead ${dto.leadId} not found`);
+    }
+
+    const verdict = canTransition({
+      from: existing.state,
+      to: dto.toState,
+      role: actor.role as Role,
+    });
+    if (!verdict.ok) {
+      if (verdict.code === 'INVALID_TRANSITION') {
+        throw new BadRequestException(
+          `Cannot transition lead from ${verdict.from} to ${verdict.to} (no such edge in the state machine)`,
+        );
+      }
+      throw new ForbiddenException(
+        `Role ${verdict.role} cannot transition lead from ${verdict.from} to ${verdict.to}`,
+      );
+    }
+
+    // No-op transition: still record an audit row? No - same-state
+    // is genuinely a no-op; skip the write entirely.
+    if (verdict.reason === 'SAME_STATE') {
+      return {
+        id: existing.id,
+        name: existing.name,
+        phone: existing.phone,
+        status: existing.state,
+        source: existing.source,
+        ownerId: existing.ownerId,
+        ownerName: existing.owner?.name ?? null,
+        projectId: existing.project?.id ?? null,
+        projectName: existing.project?.name ?? null,
+        projectSlug: existing.project?.slug ?? null,
+        createdAt: existing.createdAt.toISOString(),
+        updatedAt: existing.updatedAt.toISOString(),
+      };
+    }
+
+    const updated = await tx.lead.update({
+      where: { id: existing.id },
+      data: { state: dto.toState },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        state: true,
+        source: true,
+        ownerId: true,
+        createdAt: true,
+        updatedAt: true,
+        owner: { select: { name: true } },
+        project: { select: { id: true, slug: true, name: true } },
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actor.sub,
+        organizationId: actor.organizationId,
+        action: 'lead.transition',
+        entityType: 'Lead',
+        entityId: updated.id,
+        before: { state: existing.state },
+        after: { state: updated.state },
+        reason: dto.reason ?? `state change by ${actor.email} (${actor.role})`,
+      },
+    });
+
+    // T-VISIT-CLOSE (2026-09-28): a lead that can no longer be worked must
+    // not leave open visits behind. Nothing used to close them, so they piled
+    // up with a past `scheduledFor` and surfaced as phantom work (the admin
+    // "Visits at risk" card, the visit list and calendar, which apply no
+    // lead-state filter) - and completing one would have tried to advance a
+    // terminal LEAD, which the state machine forbids.
+    //
+    // Same transaction as the state write, so the two cannot come apart.
+    // `isDeadLeadState` (LOST/RNR), NOT `isTerminalLeadState`: a WON deal is
+    // finished but realised - its handover or site meeting may still be
+    // pending, and cancelling those silently would destroy real work.
+    if (isDeadLeadState(updated.state)) {
+      await closeOpenVisitsForLead(
+        tx as unknown as PrismaClient,
+        actor,
+        updated.id,
+        'lead-terminal',
+      );
+    }
+
+    // Notify the lead's owner that its state changed (e.g. a visit was
+    // booked, a deal moved to negotiation). Skip when the actor IS the
+    // owner (they already know - they made the change).
+    if (existing.ownerId !== actor.sub) {
+      this.emitBestEffort(existing.ownerId, {
+        type: 'lead.transition',
+        title: 'Lead status changed',
+        body: `${updated.name} moved to ${updated.state}.`,
+        leadId: updated.id,
+      });
+    }
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      phone: updated.phone,
+      status: updated.state,
+      source: updated.source,
+      ownerId: updated.ownerId,
+      ownerName: updated.owner?.name ?? null,
+      projectId: updated.project?.id ?? null,
+      projectName: updated.project?.name ?? null,
+      projectSlug: updated.project?.slug ?? null,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    };
   }
 
   // -------------------------------------------------------------------------
