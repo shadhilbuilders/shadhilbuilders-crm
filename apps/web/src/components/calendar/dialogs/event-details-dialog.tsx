@@ -46,8 +46,9 @@ import {
 import { Button, Dialog, toast } from '@paalstack/react-ui';
 
 import { RescheduleVisitDialog } from '@/components/shared/RescheduleVisitDialog';
-import { useUpdateVisitOutcome } from '@/hooks/queries/crm';
+import { leadSyncNoteOf, useUpdateVisitOutcome } from '@/hooks/queries/crm';
 import { labelFor } from '@/lib/labels';
+import { leadStateTone } from '@/lib/lead-state-tone';
 import { projectHref } from '@/lib/nav';
 import { canLogVisitOutcome, useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
@@ -61,8 +62,19 @@ interface IProps {
 }
 
 /**
- * The status chip's surface, keyed by the same colour the calendar uses, so the
- * dialog and the card can never disagree about what green means.
+ * The status chip's surface, keyed by TONE - set by the LEAD STATE this chip
+ * labels, not by the visit's status.
+ *
+ * T-LEAD-STATE-CHIP-TONE (2026-09-30). The chip used to take its colour from
+ * `visitStatusColor(status, outcome)` while printing the LEAD's label, so it
+ * could read "Won 🎉" or "Didn't show up" over a colour that meant "the visit
+ * was COMPLETED". One line, two records, two claims. The tone now comes from
+ * `leadStateTone`, so the chip and the lead page's badge agree about what green
+ * means (which is what the comment at the chip always said it wanted).
+ *
+ * The CALENDAR CARD still colours by the visit's status - that is the
+ * at-a-glance "did it happen" the owner asked for, and it is a different
+ * question from "where does the deal stand".
  *
  * The chip ALWAYS carries the friendly status text as well as the colour - WCAG
  * 1.4.1, never colour alone. A red border with no words tells a colour-blind
@@ -83,7 +95,10 @@ const STATUS_CHIP: Record<string, string> = {
   orange: 'bg-muted text-foreground border-border',
 };
 
-/** The icon that matches the tone - a second, non-colour cue for the state. */
+/**
+ * The icon that matches the tone - a second, non-colour cue for the state
+ * (WCAG 1.4.1: the chip must not be colour-alone).
+ */
 function StatusIcon({ tone }: { tone: string }) {
   if (tone === 'green') return <LuCircleCheck className="size-3.5 shrink-0" aria-hidden="true" />;
   if (tone === 'red') return <LuCircleX className="size-3.5 shrink-0" aria-hidden="true" />;
@@ -108,10 +123,17 @@ export function EventDetailsDialog({ event, children }: IProps) {
   // this chip must show too - otherwise the same event reads "Done" here and
   // "Visited" there (owner requirement, 2026-09-29).
   const leadState = visit?.leadState ?? '';
-  const tone = visitStatusColor(status, outcome);
-
   const chipLabel = leadState.length > 0 ? labelFor('lead', leadState) : '';
-  const chipClass = STATUS_CHIP[tone] ?? STATUS_CHIP['gray'] ?? '';
+  // T-LEAD-STATE-CHIP-TONE (2026-09-30): the chip's colour follows the LEAD
+  // state whose label it prints. It used to take the VISIT's tone, which meant a
+  // green chip could read "Won 🎉" (the visit was COMPLETED - nothing to do with
+  // the deal) or "Didn't show up" (the visit completed, the lead later marked a
+  // no-show). See lib/lead-state-tone.ts.
+  const chipTone = leadStateTone(leadState);
+  // The visit's own tone is still needed - it colours the "what happened on
+  // site" line below, which IS the visit's story.
+  const visitTone = visitStatusColor(status, outcome);
+  const chipClass = STATUS_CHIP[chipTone] ?? STATUS_CHIP['gray'] ?? '';
 
   const updateOutcome = useUpdateVisitOutcome(visit !== undefined ? event.id : null);
   const isPending = updateOutcome.isPending;
@@ -135,7 +157,15 @@ export function EventDetailsDialog({ event, children }: IProps) {
     updateOutcome.mutate(
       { visitId: event.id, outcome: next, notes: '' },
       {
-        onSuccess: () => toast.success(`Visit marked ${labelFor('visit', next).toLowerCase()}`),
+        onSuccess: (data) => {
+          toast.success(`Visit marked ${labelFor('visit', next).toLowerCase()}`);
+          // T-LEAD-SYNC-COVERAGE (2026-09-30): the visit can be recorded without
+          // the lead following (the lead machine keeps authority, and a role that
+          // may not drive the edge gets no lead write). Say so rather than leaving
+          // the operator to spot a red visit beside an unmoved lead.
+          const note = leadSyncNoteOf(data);
+          if (note !== null) toast.info(note);
+        },
         onError: (e) => {
           // No offline queue here, unlike LeadVisitPanel: this dialog is opened
           // from a calendar the user had to load online, and silently queueing a
@@ -154,18 +184,31 @@ export function EventDetailsDialog({ event, children }: IProps) {
         header={{
           title: event.title,
           description: (
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${chipClass}`}
-              data-qa="visit-status-chip"
-            >
-              <StatusIcon tone={tone} />
-              {/* The words carry the state; the colour only reinforces it. Shows
-                  the LEAD's pipeline state, matching the lead page's badge. */}
-              {visit === undefined
-                ? 'No visit details'
-                : chipLabel.length > 0
-                  ? chipLabel
-                  : labelFor('visit', status)}
+            // TWO axes meet in this dialog and they used to be conflated: the
+            // chip is the LEAD's pipeline state (coloured by `leadStateTone`,
+            // matching the lead page's badge), while the "What happened on site"
+            // line below is the VISIT's own record (coloured by
+            // `visitStatusColor`). Labelling the chip "Deal status" is what stops
+            // a green chip reading "Didn't show up" from looking like a
+            // contradiction - the green belongs to the deal, not to the visit.
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {leadState.length > 0 && visit !== undefined ? (
+                <span className="text-muted-foreground text-xs">Deal status</span>
+              ) : null}
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${chipClass}`}
+                data-qa="visit-status-chip"
+                data-tone={chipTone}
+              >
+                <StatusIcon tone={chipTone} />
+                {/* The words carry the state; the colour only reinforces it.
+                    Shows the LEAD's pipeline state, matching the lead page. */}
+                {visit === undefined
+                  ? 'No visit details'
+                  : chipLabel.length > 0
+                    ? chipLabel
+                    : labelFor('visit', status)}
+              </span>
             </span>
           ),
         }}
@@ -209,8 +252,15 @@ export function EventDetailsDialog({ event, children }: IProps) {
                 <p className="text-sm font-medium">What happened on site</p>
                 {/* The visit's own OUTCOME - deliberately distinct from the
                     lead's pipeline state shown in the chip above. The chip says
-                    where the deal stands; this says what was recorded. */}
-                <p className="text-muted-foreground text-sm">
+                    where the deal stands; this says what was recorded.
+
+                    T-LEAD-STATE-CHIP-TONE (2026-09-30): this line carries the
+                    VISIT's tone as a dot, so the two axes are visually distinct
+                    rather than both being a coloured pill that reads as one
+                    thing. Before this, the chip was the visit's colour while
+                    printing the lead's words - the conflation being fixed. */}
+                <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
+                  <StatusIcon tone={visitTone} />
                   {labelFor('visit', outcome)}
                 </p>
               </div>

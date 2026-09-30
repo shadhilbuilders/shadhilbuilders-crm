@@ -3,7 +3,11 @@
 // LeadVisitPanel - visit scheduling + outcome buttons on the lead
 // detail page. Shows different UI based on the lead's current state:
 //
-//   - VISIT_REQUESTED: "Schedule visit" button (opens dialog)
+//   - VISIT_REQUESTED / RESCHEDULED / NO_SHOW: "Schedule visit" button (opens
+//     dialog). The three are one group because they mean the same thing to the
+//     operator - a visit is due and the next one is booked from here. The group
+//     is `LEAD_STATES_AWAITING_A_VISIT` in @shadhil/api-types, the same constant
+//     the dashboard queue reads, so the two surfaces cannot disagree.
 //   - VISIT_SCHEDULED: "Mark visit completed" + "No-show" buttons
 //     (records outcome, drives lead state on COMPLETED)
 //   - Other states: hidden
@@ -16,9 +20,11 @@
 import { useState } from 'react';
 
 import { Button, Card, CardContent, CardHeader, CardTitle, toast } from '@paalstack/react-ui';
+import { LEAD_STATES_AWAITING_A_VISIT } from '@shadhil/api-types';
 
 import { ScheduleVisitDialog } from '@/components/shared/ScheduleVisitDialog';
 import {
+  leadSyncNoteOf,
   useUpdateVisitOutcome,
   useVisits,
 } from '@/hooks/queries/crm';
@@ -70,7 +76,17 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
     : undefined;
   const updateOutcome = useUpdateVisitOutcome(openVisit?.id ?? null);
 
-  const showSchedule = status === 'VISIT_REQUESTED' || status === 'RESCHEDULED';
+  // Scheduling is offered on every state AWAITING a visit
+  // (LEAD_STATES_AWAITING_A_VISIT, shared with the dashboard queue so the two
+  // surfaces cannot offer different buttons). NO_SHOW (2026-09-30) is the
+  // lead-side state a no-show leaves behind; re-booking from it is the
+  // re-engagement edge NO_SHOW -> VISIT_SCHEDULED in the lead state machine.
+  //
+  // VISIT_SCHEDULED is excluded here because this state's controls on THIS panel
+  // are the outcome buttons - see the constant's note. Without the exclusion this
+  // change would have put "Schedule visit" next to "Mark completed" on a lead
+  // that already has its visit booked.
+  const showSchedule = (LEAD_STATES_AWAITING_A_VISIT as readonly string[]).includes(status);
   const showOutcome =
     status === 'VISIT_SCHEDULED' && openVisit !== undefined && canScheduleVisits(user?.role);
 
@@ -85,7 +101,13 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
       // to satisfy the DTO type.
       body,
       {
-        onSuccess: () => toast.success(`Visit ${outcome.toLowerCase()}`),
+        onSuccess: (data) => {
+          toast.success(`Visit ${outcome.toLowerCase()}`);
+          // T-LEAD-SYNC-COVERAGE (2026-09-30): the visit recorded but the lead may
+          // not have followed (role lane). Say so - this path has no other signal.
+          const note = leadSyncNoteOf(data);
+          if (note !== null) toast.info(note);
+        },
         onError: (e) => {
           // T-D4: transport failure (offline / 5xx) → save locally and
           // let the offline queue replay it on reconnect. The backend's

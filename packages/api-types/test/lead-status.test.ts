@@ -30,6 +30,11 @@ import {
   startOfToday,
   TERMINAL_LEAD_STATES,
 } from '../src/lead-status';
+import {
+  LEAD_STATES_AWAITING_A_VISIT,
+  SCHEDULABLE_LEAD_STATES,
+  VISIT_SCHEDULING_ADVANCES_FROM,
+} from '../src/visits';
 
 const MIN = 60_000;
 
@@ -217,5 +222,93 @@ describe('dead states vs terminal states (T-VISIT-CLOSE)', () => {
     expect(isDeadLeadState(undefined)).toBe(false);
     expect(isDeadLeadState('')).toBe(false);
     expect(isDeadLeadState('WON')).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Scheduling contract (T-VISIT-NO-SHOW-SCHEDULING, 2026-09-30)
+//
+// These two lists are the reason the queue button and the API disagreed. They
+// now live here so a change to "who can be scheduled" is one edit, and the
+// backend guard, the lead picker and the queue matrix all follow it.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('SCHEDULABLE_LEAD_STATES', () => {
+  it('includes NO_SHOW - the state a no-show actually leaves the lead in', () => {
+    // THE bug. `updateOutcome` drives `VISIT_SCHEDULED -> NO_SHOW` on the lead
+    // when a visit is recorded as a no-show, so a lead waiting to be re-booked
+    // is in NO_SHOW. Omitting it meant the dashboard queue offered a "Schedule
+    // visit" button that the API answered with 400.
+    expect(SCHEDULABLE_LEAD_STATES).toContain('NO_SHOW');
+  });
+
+  it('is exactly the four states a visit can be booked from', () => {
+    expect([...SCHEDULABLE_LEAD_STATES]).toEqual([
+      'VISIT_REQUESTED',
+      'VISIT_SCHEDULED',
+      'RESCHEDULED',
+      'NO_SHOW',
+    ]);
+  });
+
+  it('is a subset of the ACTIVE states - a settled deal can never be scheduled', () => {
+    for (const state of SCHEDULABLE_LEAD_STATES) {
+      expect(isTerminalLeadState(state)).toBe(false);
+      expect(isDeadLeadState(state)).toBe(false);
+    }
+  });
+
+  it('excludes every state with no live visit edge to VISIT_SCHEDULED', () => {
+    // NEW/CONTACTED have to ask for a visit first, and VISITED onward has
+    // already left the visit loop. Pinned so widening the list is deliberate.
+    for (const state of ['NEW', 'CONTACTED', 'VISITED', 'NEGOTIATION', 'BOOKING_INITIATED']) {
+      expect(SCHEDULABLE_LEAD_STATES).not.toContain(state as never);
+    }
+  });
+});
+
+describe('VISIT_SCHEDULING_ADVANCES_FROM', () => {
+  it('is the schedulable states MINUS VISIT_SCHEDULED', () => {
+    // Scheduling a visit from one of these moves the lead onto VISIT_SCHEDULED.
+    // From VISIT_SCHEDULED it is a no-op (already there), so it is excluded.
+    expect([...VISIT_SCHEDULING_ADVANCES_FROM]).toEqual(
+      SCHEDULABLE_LEAD_STATES.filter((s) => s !== 'VISIT_SCHEDULED'),
+    );
+  });
+
+  it('targets VISIT_SCHEDULED, never RESCHEDULED', () => {
+    // RESCHEDULED has no edge to VISITED in the lead machine, so parking a lead
+    // there would break the visit handoff permanently. The target is asserted in
+    // the backend suite; this documents the contract at the shared layer.
+    expect(VISIT_SCHEDULING_ADVANCES_FROM).not.toContain('VISIT_SCHEDULED' as never);
+  });
+
+  it('is the SAME list as LEAD_STATES_AWAITING_A_VISIT', () => {
+    // "The states a visit advances FROM" and "the states the UI invites booking
+    // from" are one group: each means a visit is due and booking one resolves it.
+    // They are two names for one set only because the server and the UI read
+    // them for different reasons; if they ever diverge, one of the two has
+    // stopped describing "awaiting a visit" and the names should merge or change.
+    expect([...VISIT_SCHEDULING_ADVANCES_FROM]).toEqual([...LEAD_STATES_AWAITING_A_VISIT]);
+  });
+});
+
+describe('LEAD_STATES_AWAITING_A_VISIT', () => {
+  it('is the server list MINUS VISIT_SCHEDULED, and nothing else differs', () => {
+    // The single carve-out in the whole scheduling contract, stated once so the
+    // dashboard queue and the lead page cannot each invent their own rule (they
+    // did: the queue hid the button on NO_SHOW while the lead page hid it on
+    // NO_SHOW AND RESCHEDULED).
+    expect([...LEAD_STATES_AWAITING_A_VISIT]).toEqual(
+      SCHEDULABLE_LEAD_STATES.filter((s) => s !== 'VISIT_SCHEDULED'),
+    );
+  });
+
+  it('excludes VISIT_SCHEDULED because that lead has a live appointment', () => {
+    expect(LEAD_STATES_AWAITING_A_VISIT).not.toContain('VISIT_SCHEDULED' as never);
+    // ... while the server still accepts a create from it (the calendar books a
+    // second, parallel visit that way). This asymmetry is the reason the two
+    // lists exist instead of one.
+    expect(SCHEDULABLE_LEAD_STATES).toContain('VISIT_SCHEDULED');
   });
 });

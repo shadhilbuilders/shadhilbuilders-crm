@@ -39,11 +39,15 @@ import { useProjectId } from '@/lib/tenant-context';
 import { useProjectSalesExecs, useTeamMembers } from '@/hooks/queries/users';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
+import { SCHEDULABLE_LEAD_STATES } from '@shadhil/api-types';
 
-// A lead must be in one of these states to accept a site visit (the server
-// enforces this in CreateSiteVisitDto). Only list these so the user can't
-// pick a lead that will 400.
-const SCHEDULABLE_LEAD_STATES = ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RESCHEDULED'] as const;
+// The lead states that can accept a site visit come from
+// `@shadhil/api-types` (SCHEDULABLE_LEAD_STATES), NOT a local copy: the server
+// guard, this picker and the queue's row-action matrix all read the same list.
+// They were three copies until 2026-09-30, and they disagreed - this picker and
+// the queue offered a NO_SHOW lead while the server answered 400.
+// Listing the states is still the point: the picker must never offer a lead the
+// create would reject.
 
 // Client-side validation mirroring CreateSiteVisitDtoSchema in
 // packages/api-types/src/visits.ts. The date/time are separate HTML inputs
@@ -116,8 +120,8 @@ export function ScheduleVisitDialog({
   const projectIdFromContext = useProjectId();
   const projectId = projectIdFromContext ?? undefined;
 
-  // Only fetch leads that can actually accept a visit (VISIT_REQUESTED,
-  // VISIT_SCHEDULED, RESCHEDULED) so the picker never offers a lead that
+  // Only fetch leads that can actually accept a visit (see
+  // SCHEDULABLE_LEAD_STATES) so the picker never offers a lead that
   // the server will reject.
   const leadsQuery = useLeads({ limit: 100, state: [...SCHEDULABLE_LEAD_STATES] });
 

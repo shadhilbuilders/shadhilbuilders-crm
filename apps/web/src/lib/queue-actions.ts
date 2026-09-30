@@ -20,7 +20,35 @@
 // population is using a CRM for the first time; "CONTACTED" is not a thing a
 // telecaller says out loud.
 
+import { LEAD_STATES_AWAITING_A_VISIT } from '@shadhil/api-types';
+
 export type QueueRole = 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' | 'ADMIN' | 'OWNER';
+
+/**
+ * The states where a queue ROW offers "Schedule visit".
+ *
+ * IMPORTED, not restated. This matrix decides which button the operator is
+ * OFFERED; the server guard (`VisitsService.create`) decides which call it
+ * ACCEPTS. They were two copies until 2026-09-30 and they disagreed - the queue
+ * offered "Schedule visit" on a NO_SHOW lead while the API answered
+ * `400 Lead state NO_SHOW cannot accept a visit`. A refusal the user reads as a
+ * broken tool is the failure this module exists to prevent (see the header
+ * note), so both sides read one list now.
+ *
+ * NO_SHOW belongs in it: the lead machine's re-engagement edge is
+ * `NO_SHOW -> VISIT_SCHEDULED`, and booking the next visit is how it is taken.
+ * `docs/designs/2026-09-16-work-dashboard-telecaller-queue.md` has specified
+ * "Schedule visit" on NO_SHOW rows since the queue was designed.
+ *
+ * It is the server's `SCHEDULABLE_LEAD_STATES` MINUS `VISIT_SCHEDULED`, and that
+ * one exclusion is the UI's business, not the server's: a lead with a live
+ * appointment gets the OUTCOME button ("No show"), and a second, parallel
+ * booking is the calendar's path. The server still accepts a create from
+ * `VISIT_SCHEDULED`, so this list must never be used as a server guard. The
+ * lead page (`LeadVisitPanel`) reads the same constant, so the two surfaces
+ * cannot offer different buttons.
+ */
+const QUEUE_SCHEDULE_STATES: readonly string[] = LEAD_STATES_AWAITING_A_VISIT;
 
 /** One action the row may offer, described declaratively. */
 export type QueueActionSpec =
@@ -92,7 +120,10 @@ export function queueActionsFor({
   // A lead waiting on a visit is the telecaller's to book. MANAGER/ADMIN can
   // book on their behalf; a SALES_EXEC cannot (they conduct visits, they do not
   // schedule them).
-  if (status === 'VISIT_REQUESTED' || status === 'RESCHEDULED' || status === 'NO_SHOW') {
+  //
+  // QUEUE_SCHEDULE_STATES is the server's list minus VISIT_SCHEDULED - see its
+  // comment for why that one state is handled by the branch below instead.
+  if (QUEUE_SCHEDULE_STATES.includes(status)) {
     if (!canScheduleVisit(role)) return [];
     return [{ kind: 'scheduleVisit', label: 'Schedule visit', dataQa: 'queue-schedule-visit' }];
   }

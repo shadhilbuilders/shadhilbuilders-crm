@@ -6,6 +6,8 @@ import { endOfDay, format, isSameDay, parseISO, startOfDay } from 'date-fns';
 
 import { cn } from '@paalstack/react-ui/lib';
 
+import { pastEventClass } from '@/lib/past-event-style';
+
 import { useCalendar } from '../calendar-context';
 import { DraggableEvent } from '../dnd/draggable-event';
 import { EventDetailsDialog } from '../dialogs/event-details-dialog';
@@ -65,7 +67,7 @@ export function MonthEventBadge({
   className,
   position: propPosition,
 }: IProps) {
-  const { badgeVariant } = useCalendar();
+  const { badgeVariant, isPastView } = useCalendar();
 
   const itemStart = startOfDay(parseISO(event.startDate));
   const itemEnd = endOfDay(parseISO(event.endDate));
@@ -94,7 +96,13 @@ export function MonthEventBadge({
     typeof eventBadgeVariants
   >['color'];
 
-  const eventBadgeClasses = cn(eventBadgeVariants({ color, multiDayPosition: position, className }));
+  const eventBadgeClasses = cn(
+    eventBadgeVariants({ color, multiDayPosition: position, className }),
+    // T-PAST-VISIT-SURFACE (2026-09-30): a history row is neutral with the
+    // outcome as a left border, instead of a solid outcome-tinted pill. Merged
+    // last so it wins over the variant.
+    isPastView && pastEventClass(event.color),
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {

@@ -18,6 +18,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { LEAD_STATES } from '../leads/leads.state-machine';
 import { LeadsService } from '../leads/leads.service';
 
 import { VisitsService } from './visits.service';
@@ -133,6 +134,18 @@ async function cleanupAll(): Promise<void> {
       await db.$executeRawUnsafe(
         `DELETE FROM "SiteVisit" WHERE id = ANY($1::text[])`,
         ids,
+      );
+    }
+    // Any visit still hanging off a test lead. The create-eligibility suite
+    // (T-VISIT-NO-SHOW-SCHEDULING) creates visits through the SERVICE, so their
+    // ids are not in TEST_VISIT_IDS - and `SiteVisit.leadId` is a required FK,
+    // so deleting the lead first would fail on the constraint rather than
+    // silently leave rows behind. Scoped by the lead ids this suite owns, so it
+    // can never reach into another suite's fixtures.
+    if (TEST_LEAD_IDS.length > 0) {
+      await db.$executeRawUnsafe(
+        `DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`,
+        [...TEST_LEAD_IDS],
       );
     }
     const leadIds = [...TEST_LEAD_IDS];
@@ -844,5 +857,317 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     );
     expect(lead?.state).toBe('VISITED');
     expect(lead?.ownerId).toBe(TC_ID);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-VISIT-NO-SHOW-SCHEDULING (2026-09-30) - create() eligibility.
+//
+// THERE WAS NO TEST FOR THIS AT ALL, which is why the defect survived: the
+// dashboard queue offered "Schedule visit" on a NO_SHOW lead (pinned as correct
+// by apps/web/src/lib/queue-actions.test.ts) while `create()` refused it with
+// "Lead state NO_SHOW cannot accept a visit". Each side was covered against its
+// own assumption and nothing compared them.
+//
+// This suite drives the REAL create() over a real database for every lead state,
+// so the guard, the supersede step and the auto-advance are exercised together -
+// a mocked client cannot show that the transaction commits or that the lead
+// actually moves.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', () => {
+  let service: VisitsService;
+  let prismaService: PrismaService;
+
+  beforeAll(async () => {
+    if (prisma === null) return;
+    prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
+    const leadsService = new LeadsService(prismaService);
+    service = new VisitsService(prismaService, leadsService);
+
+    await adminSeed(async (db) => {
+      await db.project.upsert({
+        where: { id: TEST_PROJECT_ID },
+        update: {},
+        create: {
+          id: TEST_PROJECT_ID,
+          name: `Test Project ${TEST_PROJECT_ID}`,
+          slug: TEST_PROJECT_ID,
+          address: 'test',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      });
+      await db.team.upsert({
+        where: { id: TEAM_ID },
+        update: {},
+        create: { id: TEAM_ID, name: `VOC Test Team ${RUN}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      });
+      for (const [id, role, name] of [
+        [ADMIN_ID, 'ADMIN', 'VOC Test Admin'],
+        [SE_ID, 'SALES_EXEC', 'VOC Test SE'],
+        [TC_ID, 'TELECALLER', 'VOC Test Telecaller'],
+      ] as const) {
+        await db.user.upsert({
+          where: { id },
+          update: { role },
+          create: {
+            id,
+            email: `${id}@example.com`,
+            name,
+            role,
+            mustChangePassword: false,
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          },
+        });
+      }
+    });
+  }, 30_000);
+
+  afterAll(async () => {
+    await cleanupAll();
+  }, 30_000);
+
+  let eligibilitySeq = 0;
+
+  /**
+   * A bare lead in `state`, owned by the telecaller, with NO visit rows - so
+   * each state is measured on its own terms and a previous test's visit cannot
+   * flatter the result.
+   */
+  async function seedLeadInState(state: string): Promise<string> {
+    if (prisma === null) throw new Error('prisma missing');
+    eligibilitySeq += 1;
+    const leadId = `test-cve-lead-${RUN}-${eligibilitySeq}`;
+    TEST_LEAD_IDS.push(leadId);
+    await adminSeed((db) =>
+      db.lead.create({
+        data: {
+          id: leadId,
+          name: `CVE Lead ${eligibilitySeq} (${state})`,
+          phone: `92${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`,
+          phoneE164: `9192${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`,
+          source: 'WHATSAPP',
+          state: state as never,
+          ownerId: TC_ID,
+          ownerType: 'TELECALLER',
+          teamId: TEAM_ID,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          projectId: TEST_PROJECT_ID,
+        },
+      }),
+    );
+    return leadId;
+  }
+
+  const ACCEPTED = ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RESCHEDULED', 'NO_SHOW'];
+  const REFUSED = [
+    'NEW',
+    'CONTACTED',
+    'VISITED',
+    'NEGOTIATION',
+    'BOOKING_INITIATED',
+    'WON',
+    'LOST',
+    'RNR',
+  ];
+
+  it('the two lists are exhaustive over every LeadState', () => {
+    // Drift tripwire: a state added to the enum must be classified here (and
+    // therefore against SCHEDULABLE_LEAD_STATES) rather than silently untested.
+    expect([...ACCEPTED, ...REFUSED].sort()).toEqual([...LEAD_STATES].sort());
+  });
+
+  for (const state of REFUSED) {
+    it(`refuses a lead in ${state}`, async () => {
+      const leadId = await seedLeadInState(state);
+      await expect(
+        service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+          leadId,
+          scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+          salesExecId: SE_ID,
+        } as never),
+      ).rejects.toMatchObject({ name: 'BadRequestException' });
+    });
+  }
+
+  it('ACCEPTS a NO_SHOW lead - the reported defect', async () => {
+    // The exact user report: scheduling from the dashboard queue on a NO_SHOW
+    // lead returned 400. The queue was right; the guard was wrong.
+    const leadId = await seedLeadInState('NO_SHOW');
+    const row = await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+
+    expect(row.status).toBe('SCHEDULED');
+
+    // The lead is normalised onto the live-visit state (the re-engagement edge
+    // NO_SHOW -> VISIT_SCHEDULED), so the two surfaces tell one story again.
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  it('ACCEPTS a RESCHEDULED lead and normalises it to VISIT_SCHEDULED', async () => {
+    const leadId = await seedLeadInState('RESCHEDULED');
+    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  it('ACCEPTS a VISIT_REQUESTED lead and advances it (the pre-existing behaviour)', async () => {
+    const leadId = await seedLeadInState('VISIT_REQUESTED');
+    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  it('leaves a VISIT_SCHEDULED lead on VISIT_SCHEDULED (no-op, not a bounce)', async () => {
+    // The second-visit path (the calendar can schedule a parallel visit). The
+    // lead is already where it needs to be, so the transition must not fire.
+    const leadId = await seedLeadInState('VISIT_SCHEDULED');
+    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  // ── Supersede: never two open visits on one lead ──────────────────────────
+
+  it('supersedes the no-show visit when re-booking a NO_SHOW lead', async () => {
+    const leadId = await seedLeadInState('NO_SHOW');
+    // The real shape of a no-show: a visit recorded as NO_SHOW (status AND
+    // outcome), which drove the lead to NO_SHOW and left that row in place.
+    const firstVisitId = `test-cve-noshow-visit-${RUN}`;
+    await adminSeed((db) =>
+      db.siteVisit.create({
+        data: {
+          id: firstVisitId,
+          leadId,
+          userId: SE_ID,
+          scheduledFor: new Date(),
+          status: 'NO_SHOW',
+          outcome: 'NO_SHOW',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      }),
+    );
+
+    const row = await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    expect(row.status).toBe('SCHEDULED');
+
+    // Exactly ONE row the lead panel can pick as the visit to record against:
+    // the new SCHEDULED one. The old row is closed, so the operator's next
+    // outcome cannot land on a visit that is already history.
+    const pickable = await adminSeed((db) =>
+      db.siteVisit.findMany({
+        where: { leadId, status: { in: ['SCHEDULED', 'NO_SHOW'] } },
+        select: { id: true },
+      }),
+    );
+    expect(pickable.map((v) => v.id)).toEqual([row.id]);
+
+    const closed = await adminSeed((db) =>
+      db.siteVisit.findUnique({
+        where: { id: firstVisitId },
+        select: { status: true, outcome: true },
+      }),
+    );
+    expect(closed?.status).toBe('RESCHEDULED');
+    // The OUTCOME is preserved: the row must keep saying the customer did not
+    // turn up, or the history it carries is destroyed.
+    expect(closed?.outcome).toBe('NO_SHOW');
+  });
+
+  it('leaves a live SCHEDULED visit alone when a VISIT_SCHEDULED lead books a second one', async () => {
+    // THE CARVE-OUT, and the reason it exists: in this codebase SCHEDULED is
+    // OPEN work (`isUpcomingVisit`, `OPEN_VISIT_STATUSES`), so closing it here
+    // would silently cancel an appointment the customer is expecting. Before
+    // this change a second visit could be booked from the calendar leaving two
+    // open rows; that ambiguity is unchanged and belongs to the reschedule
+    // endpoint. Pinned so a future "cleanup" cannot start cancelling live
+    // appointments - a first attempt at this change did exactly that and this
+    // test is what caught it.
+    const leadId = await seedLeadInState('VISIT_SCHEDULED');
+    const liveVisitId = `test-cve-live-visit-${RUN}`;
+    await adminSeed((db) =>
+      db.siteVisit.create({
+        data: {
+          id: liveVisitId,
+          leadId,
+          userId: SE_ID,
+          scheduledFor: new Date(Date.now() + 3_600_000),
+          status: 'SCHEDULED',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      }),
+    );
+
+    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+
+    const live = await adminSeed((db) =>
+      db.siteVisit.findUnique({ where: { id: liveVisitId }, select: { status: true } }),
+    );
+    expect(live?.status).toBe('SCHEDULED');
+  });
+
+  it('audits the supersede with the reason a reader needs', async () => {
+    const leadId = await seedLeadInState('NO_SHOW');
+    const staleVisitId = `test-cve-audit-visit-${RUN}`;
+    await adminSeed((db) =>
+      db.siteVisit.create({
+        data: {
+          id: staleVisitId,
+          leadId,
+          userId: SE_ID,
+          scheduledFor: new Date(),
+          status: 'NO_SHOW',
+          outcome: 'NO_SHOW',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      }),
+    );
+
+    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+
+    const audits = await adminSeed((db) =>
+      db.auditLog.findMany({
+        where: { entityId: staleVisitId, action: 'visit.reschedule' },
+      }),
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.reason).toContain('Superseded');
+    expect(audits[0]?.reason).toContain(leadId);
   });
 });

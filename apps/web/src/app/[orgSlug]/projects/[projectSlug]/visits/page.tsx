@@ -18,6 +18,7 @@ import { useProjectId } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { SiteVisitCalendar } from '@/components/calendar/site-visit-calendar';
+import { VisitColourLegend } from '@/components/calendar/VisitColourLegend';
 
 function startOfWeek(date: Date): Date {
   const copy = new Date(date);
@@ -192,22 +193,31 @@ export default function VisitsPage() {
             visible <Label> already names the control - setting both would make a
             screen reader announce the name twice.
           */}
-          <div className="flex items-center gap-2">
-            <Switch
-              id="visits-show-past"
-              checked={showPast}
-              onCheckedChange={setShowPast}
-              data-qa="visits-show-past"
-            />
-            <Label
-              htmlFor="visits-show-past"
-              className="text-muted-foreground inline-flex cursor-pointer items-center gap-2 text-sm font-normal"
-            >
-              Show past visits
-              <span className="text-xs">
-                {showPast ? '(including completed, no-show and cancelled)' : '(upcoming only)'}
-              </span>
-            </Label>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="visits-show-past"
+                checked={showPast}
+                onCheckedChange={setShowPast}
+                data-qa="visits-show-past"
+              />
+              <Label
+                htmlFor="visits-show-past"
+                className="text-muted-foreground inline-flex cursor-pointer items-center gap-2 text-sm font-normal"
+              >
+                Show past visits
+                <span className="text-xs">
+                  {showPast ? '(including completed, no-show and cancelled)' : '(upcoming only)'}
+                </span>
+              </Label>
+            </div>
+            {/*
+              The calendar's colours were unexplained (owner: "I don't understand
+              what each colors means in visits page card"). Sits with the filter
+              both belong to, and toggles independently: the key is about colour,
+              the switch is about which visits.
+            */}
+            <VisitColourLegend />
           </div>
           <SiteVisitCalendar
             projectId={projectId ?? undefined}

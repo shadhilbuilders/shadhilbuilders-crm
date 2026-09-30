@@ -29,6 +29,16 @@ interface ICalendarContext {
   setVisibleHours: Dispatch<SetStateAction<TVisibleHours>>;
   events: IEvent[];
   setLocalEvents: Dispatch<SetStateAction<IEvent[]>>;
+  /**
+   * True when this calendar is showing HISTORY (the "Show past visits" mode).
+   *
+   * The cards render a closed visit's outcome as a solid coloured surface, which
+   * is the right signal on a live calendar and noise on a wall of history. The
+   * cards themselves are vendored and know nothing about past/upcoming, so the
+   * mode is carried here and each card asks for it. See
+   * `lib/past-event-style.ts`.
+   */
+  isPastView: boolean;
   /** Optional persistence hook for drag-and-drop reschedules. */
   onUpdateEvent?: (event: IEvent) => void;
   /** Optional handler for clicking an empty time slot (opens the schedule dialog). */
@@ -53,6 +63,7 @@ export function CalendarProvider({
   children,
   users,
   events,
+  isPastView = false,
   onUpdateEvent,
   onSlotClick,
   selectedDate: controlledSelectedDate,
@@ -61,6 +72,12 @@ export function CalendarProvider({
   children: React.ReactNode;
   users: IUser[];
   events: IEvent[];
+  /**
+   * The calendar is in "Show past visits" mode. Defaults to false so the
+   * vendored calendar's other consumers (and its own tests) keep the live
+   * presentation without having to pass anything.
+   */
+  isPastView?: boolean;
   onUpdateEvent?: (event: IEvent) => void;
   onSlotClick?: (date: Date) => void;
   /** Controlled selected date (e.g. driven by the page's Prev/Next). */
@@ -109,6 +126,7 @@ export function CalendarProvider({
         setWorkingHours,
         events: localEvents,
         setLocalEvents,
+        isPastView,
         onUpdateEvent,
         onSlotClick,
       }}

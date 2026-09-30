@@ -29,7 +29,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import z from 'zod';
 
-import { useRescheduleVisit } from '@/hooks/queries/crm';
+import { leadSyncNoteOf, useRescheduleVisit } from '@/hooks/queries/crm';
 import { useProjectSalesExecs, useTeamMembers } from '@/hooks/queries/users';
 import { useProjectId } from '@/lib/tenant-context';
 import { isAdminLike, useSessionUser } from '@/lib/session';
@@ -166,11 +166,17 @@ export function RescheduleVisitDialog({
     }
 
     reschedule.mutate(payload, {
-      onSuccess: () => {
+      onSuccess: (data) => {
         // The server notifies the project's managers and the org's admins from
         // here, so the confirmation is deliberately about the VISIT, not about
         // who was told - the sender cannot see the recipient list.
         toast.success('Visit rescheduled');
+        // T-LEAD-SYNC-COVERAGE (2026-09-30): when the move could not be mirrored
+        // onto the lead, say so. Previously the visit moved, the lead did not, and
+        // nothing on screen connected the two - the operator only found out by
+        // comparing the visits page with the lead page.
+        const note = leadSyncNoteOf(data);
+        if (note !== null) toast.info(note);
         form.reset();
         onOpenChange(false);
         if (onRescheduled !== undefined) onRescheduled();

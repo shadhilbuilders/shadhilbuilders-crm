@@ -6,7 +6,10 @@
 import { format, parseISO } from 'date-fns';
 import { cva } from 'class-variance-authority';
 
+import { cn } from '@paalstack/react-ui/lib';
 import { LuClock, LuText, LuUser } from '@paalstack/react-icons/lu';
+
+import { pastEventClass } from '@/lib/past-event-style';
 
 import { useCalendar } from '../calendar-context';
 import { EventDetailsDialog } from '../dialogs/event-details-dialog';
@@ -49,7 +52,7 @@ interface IProps {
 }
 
 export function AgendaEventCard({ event, eventCurrentDay, eventTotalDays }: IProps) {
-  const { badgeVariant } = useCalendar();
+  const { badgeVariant, isPastView } = useCalendar();
 
   const startDate = parseISO(event.startDate);
   const endDate = parseISO(event.endDate);
@@ -58,7 +61,14 @@ export function AgendaEventCard({ event, eventCurrentDay, eventTotalDays }: IPro
     typeof agendaEventCardVariants
   >['color'];
 
-  const agendaEventCardClasses = agendaEventCardVariants({ color });
+  // T-PAST-VISIT-SURFACE (2026-09-30): in the history view the card drops its
+  // solid outcome surface for a neutral row with the outcome kept as a left
+  // border. `pastEventClass` is merged LAST through the library's `cn`
+  // (twMerge), so its `bg-*`/`text-*` genuinely replace the variant's.
+  const agendaEventCardClasses = cn(
+    agendaEventCardVariants({ color }),
+    isPastView && pastEventClass(event.color),
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {

@@ -466,6 +466,17 @@ export function useUpdateVisitOutcome(visitId: string | null) {
 }
 
 /**
+ * The wire fields the visit mutations return that this module needs.
+ * `useCreateVisit`/`useRescheduleVisit`/`useUpdateVisitOutcome` are typed
+ * `unknown` (they serve several endpoints), so the note is read defensively.
+ */
+export function leadSyncNoteOf(data: unknown): string | null {
+  if (data === null || typeof data !== 'object') return null;
+  const note = (data as { leadSyncNote?: unknown }).leadSyncNote;
+  return typeof note === 'string' && note.length > 0 ? note : null;
+}
+
+/**
  * Reschedule a site visit (drag-and-drop on the calendar). PATCH
  * /api/visits/:id/reschedule - the old visit is marked RESCHEDULED and a
  * new row carries `rescheduledFromId`. The server enforces `scheduledFor`

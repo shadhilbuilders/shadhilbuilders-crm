@@ -89,6 +89,10 @@ vi.mock('@/hooks/queries/crm', () => ({
     mutate: mocks.mutate,
     isPending: false,
   })),
+  // T-LEAD-SYNC-COVERAGE (2026-09-30): LeadVisitPanel now imports this alongside
+  // the hook. A partial mock must list EVERY export the component touches, or the
+  // import throws at render ("No 'leadSyncNoteOf' export is defined on the mock").
+  leadSyncNoteOf: () => null,
 }));
 
 vi.mock('@/lib/session', () => ({
@@ -127,11 +131,15 @@ let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
 async function mount(): Promise<void> {
+  await mountLead({ id: 'lead-1', status: 'VISIT_SCHEDULED' });
+}
+
+async function mountLead(lead: { id: string; status: string }): Promise<void> {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<LeadVisitPanel lead={{ id: 'lead-1', status: 'VISIT_SCHEDULED' }} />);
+    root?.render(<LeadVisitPanel lead={lead} />);
   });
 }
 
@@ -263,5 +271,41 @@ describe('LeadVisitPanel - visit outcome role gate (T-VISIT-OUTCOME-GATE)', () =
     await mount();
     const html = container?.innerHTML ?? '';
     expect(html).toContain('Mark completed');
+  });
+});
+
+/**
+ * T-VISIT-NO-SHOW-SCHEDULING (2026-09-30): the LEAD page must offer the same
+ * re-engagement the queue does.
+ *
+ * The reported bug had two halves. The API refused a NO_SHOW lead
+ * (`VisitsService.create`), AND this panel hid the Schedule button on exactly
+ * that state (`status === 'VISIT_REQUESTED' || status === 'RESCHEDULED'`), so the
+ * lead page offered nothing while the dashboard queue offered a button that
+ * 400'd. Both now read `SCHEDULABLE_LEAD_STATES`.
+ */
+describe('LeadVisitPanel - Schedule visit is offered on every schedulable state', () => {
+  it('offers Schedule visit on a NO_SHOW lead (the re-engagement)', async () => {
+    // `useVisits` is mocked to return a SCHEDULED visit for 'lead-1', so this
+    // also proves the schedule button is offered even when the mocked list has no
+    // open visit for THIS lead id - the state is what decides.
+    await mountLead({ id: 'lead-2', status: 'NO_SHOW' });
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Schedule visit');
+  });
+
+  it('offers Schedule visit on VISIT_REQUESTED and RESCHEDULED too', async () => {
+    await mountLead({ id: 'lead-2', status: 'VISIT_REQUESTED' });
+    expect(container?.innerHTML ?? '').toContain('Schedule visit');
+    await unmount();
+    await mountLead({ id: 'lead-2', status: 'RESCHEDULED' });
+    expect(container?.innerHTML ?? '').toContain('Schedule visit');
+  });
+
+  it('still offers NOTHING to schedule on a state that cannot accept a visit', async () => {
+    // The other direction: widening the gate must not put a Schedule button on
+    // a terminal or pre-visit lead.
+    await mountLead({ id: 'lead-2', status: 'NEW' });
+    expect(container?.innerHTML ?? '').not.toContain('Schedule visit');
   });
 });

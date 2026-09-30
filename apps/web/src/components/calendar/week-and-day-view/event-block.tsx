@@ -6,6 +6,8 @@ import { format, differenceInMinutes, parseISO } from 'date-fns';
 
 import { cn } from '@paalstack/react-ui/lib';
 
+import { pastEventClass } from '@/lib/past-event-style';
+
 import { useCalendar } from '../calendar-context';
 import { DraggableEvent } from '../dnd/draggable-event';
 import { EventDetailsDialog } from '../dialogs/event-details-dialog';
@@ -49,7 +51,7 @@ interface IProps
 }
 
 export function EventBlock({ event, className }: IProps) {
-  const { badgeVariant } = useCalendar();
+  const { badgeVariant, isPastView } = useCalendar();
 
   const start = parseISO(event.startDate);
   const end = parseISO(event.endDate);
@@ -62,6 +64,10 @@ export function EventBlock({ event, className }: IProps) {
 
   const calendarWeekEventCardClasses = cn(
     calendarWeekEventCardVariants({ color, className }),
+    // T-PAST-VISIT-SURFACE (2026-09-30): history reads as a neutral row with the
+    // outcome as a left border, not a solid outcome-tinted block. Merged last
+    // through `cn` (twMerge) so it beats the variant's own bg/text.
+    isPastView && pastEventClass(event.color),
     durationInMinutes < 35 && 'py-0 justify-center',
   );
 

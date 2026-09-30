@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { canScheduleVisits } from '@/lib/session';
+import { LEAD_STATES_AWAITING_A_VISIT, SCHEDULABLE_LEAD_STATES } from '@shadhil/api-types';
 import {
   queueActionsFor,
   QUEUE_STATES_BY_ROLE,
@@ -66,6 +67,75 @@ describe('queueActionsFor - the telecaller lane', () => {
         expect(action.label).not.toMatch(/^[A-Z_]+$/);
       }
     }
+  });
+});
+
+/**
+ * T-VISIT-NO-SHOW-SCHEDULING (2026-09-30) - the drift tripwire.
+ *
+ * The bug this pins: the queue offered "Schedule visit" on a NO_SHOW lead while
+ * `VisitsService.create` answered `400 Lead state NO_SHOW cannot accept a visit`.
+ * The two lists were written separately and nothing compared them, so the only
+ * place the disagreement could surface was the operator's screen.
+ *
+ * The test reads the SERVER's constant (not a copied literal) and asserts that
+ * every state it permits is offered a schedule action, and that no state it
+ * forbids is. Widen the server list without the matrix (or the reverse) and this
+ * goes red before a user ever sees the button.
+ */
+describe('queueActionsFor - agrees with the server on which leads accept a visit', () => {
+  const ALL_STATUSES = [
+    'NEW',
+    'CONTACTED',
+    'VISIT_REQUESTED',
+    'VISIT_SCHEDULED',
+    'VISITED',
+    'NEGOTIATION',
+    'BOOKING_INITIATED',
+    'WON',
+    'LOST',
+    'RNR',
+    'RESCHEDULED',
+    'NO_SHOW',
+  ];
+
+  it('offers Schedule visit for exactly LEAD_STATES_AWAITING_A_VISIT', () => {
+    // The queue and the endpoint are deliberately NOT identical, and the one
+    // difference is named here so it cannot widen by accident:
+    //
+    //   VISIT_SCHEDULED - the server accepts a create from it (the calendar
+    //   books a second, parallel visit that way), but the queue row offers its
+    //   ONE action instead: "No show". A lead with a live appointment is not
+    //   waiting to be booked.
+    //
+    // Everything else must match, in BOTH directions: a state the server accepts
+    // must be offered (that is the original bug - NO_SHOW was not), and a state
+    // it refuses must never be offered (a button the API 400s).
+    const queueExpected = LEAD_STATES_AWAITING_A_VISIT;
+    for (const status of ALL_STATUSES) {
+      const offered = queueActionsFor({ role: 'TELECALLER', status }).some(
+        (a) => a.kind === 'scheduleVisit',
+      );
+      expect(
+        offered,
+        `TELECALLER on ${status}: queue offers=${offered}, queue should offer=${queueExpected.includes(status as never)}`,
+      ).toBe(queueExpected.includes(status as never));
+    }
+    // The exception itself, asserted so it reads as intentional, and the
+    // relationship between the two lists pinned: awaiting-a-visit IS the server
+    // list minus VISIT_SCHEDULED, nothing else.
+    expect(SCHEDULABLE_LEAD_STATES).toContain('VISIT_SCHEDULED');
+    expect(queueExpected).not.toContain('VISIT_SCHEDULED');
+    expect([...LEAD_STATES_AWAITING_A_VISIT]).toEqual(
+      SCHEDULABLE_LEAD_STATES.filter((s) => s !== 'VISIT_SCHEDULED'),
+    );
+  });
+
+  it('does not offer Schedule visit on VISIT_SCHEDULED (the lead already has a live visit)', () => {
+    // The lead-side No-show button is this state's only queue action; booking a
+    // second, parallel visit is the reschedule/calendar flow, not a queue button.
+    const actions = queueActionsFor({ role: 'TELECALLER', status: 'VISIT_SCHEDULED' });
+    expect(actions.every((a) => a.kind !== 'scheduleVisit')).toBe(true);
   });
 });
 

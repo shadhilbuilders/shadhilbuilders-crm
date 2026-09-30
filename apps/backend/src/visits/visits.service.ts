@@ -40,6 +40,14 @@ import type {
 // Same source as the cascade that cancels open visits, so the guard here and the
 // cascade in leads/bookings cannot disagree about what "settled" means.
 import { isTerminalLeadState } from '@shadhil/api-types';
+// T-VISIT-NO-SHOW-SCHEDULING (2026-09-30): the ONE list of lead states that may
+// accept a visit, plus the states a new visit advances the lead out of. Both are
+// imported rather than restated here so the guard, the lead picker and the
+// queue's action matrix cannot drift apart (they had).
+import {
+  SCHEDULABLE_LEAD_STATES,
+  VISIT_SCHEDULING_ADVANCES_FROM,
+} from '@shadhil/api-types';
 
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.module';
@@ -52,6 +60,11 @@ import { canTransition } from './visits.state-machine';
 // different role lanes and both are needed here: the visit guard decides whether
 // the outcome itself is allowed, this one decides whether the LEAD may follow.
 import { canTransition as canLeadTransition } from '../leads/leads.state-machine';
+// T-LEAD-SYNC-COVERAGE (2026-09-30): the reschedule path asks the lead machine
+// which states may advance to VISIT_SCHEDULED for this actor, instead of matching
+// a hardcoded list of three states. One source of truth for the edge AND its role
+// gate, so a new lead state or a changed lane cannot leave the sync behind.
+import { allowedNextStates } from '../leads/leads.state-machine';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -80,6 +93,20 @@ export interface VisitRow {
   outcome: string | null;
   notes: string | null;
   updatedAt: string;
+  /**
+   * T-LEAD-SYNC-COVERAGE (2026-09-30): set when this write did NOT move the parent
+   * lead, with the reason, so the caller can say so instead of leaving the operator
+   * to notice two screens disagreeing.
+   *
+   * The divergence is intentional - the lead machine keeps authority over lead
+   * transitions and a role that may not drive an edge simply gets no lead write
+   * (see `updateOutcome` / `reschedule`). What was missing was the TELLING: the
+   * visit recorded, the lead did not move, and nothing anywhere said so.
+   *
+   * Absent (not `null`) when the lead was synced, or when no sync was due - e.g. a
+   * CANCELLED outcome, which by owner ruling never moves the lead.
+   */
+  leadSyncNote?: string;
 }
 
 export interface VisitListResult {
@@ -310,9 +337,19 @@ export class VisitsService {
    * POST /api/visits - schedule a new visit. The lead must exist;
    * RLS policies on SiteVisit gate the write by parent Lead team.
    *
+   * The lead must be in one of `SCHEDULABLE_LEAD_STATES`, and the transition it
+   * then takes is the one `VISIT_SCHEDULING_ADVANCES_FROM` describes (both from
+   * `@shadhil/api-types`, so the web side's picker and action matrix cannot
+   * disagree with this guard).
+   *
    * The DTO's `scheduledFor` is in the future (CreateSiteVisitDtoSchema
    * enforces this). `salesExecId` is optional - if omitted, the actor
    * is the assigned exec (typical telecaller-schedules flow).
+   *
+   * Scheduling a RE-ENGAGEMENT (NO_SHOW) supersedes the lead's outstanding
+   * no-show visit in the same transaction, so the create leaves ONE visit for
+   * the lead page to record an outcome against. A live SCHEDULED/RESCHEDULED
+   * visit is never touched - that is a real appointment.
    */
   async create(actor: JwtPayload, dto: CreateSiteVisitDto): Promise<VisitRow> {
     return withRlsContext(
@@ -330,17 +367,22 @@ export class VisitsService {
         if (lead === null) {
           throw new NotFoundException(`Lead ${dto.leadId} not found`);
         }
-        // Per Plan §3: visit scheduling requires the lead to be in
-        // VISIT_REQUESTED or VISIT_SCHEDULED. RESCHEDULED is allowed
-        // too - a manager re-opening a no-show can re-schedule.
-        const eligibleStates: ReadonlyArray<string> = [
-          'VISIT_REQUESTED',
-          'VISIT_SCHEDULED',
-          'RESCHEDULED',
-        ];
-        if (!eligibleStates.includes(lead.state)) {
+        // Which lead states may accept a new visit. The list is IMPORTED, not
+        // restated: the same constant feeds the lead picker and the queue's
+        // row-action matrix, so the button the operator is offered and the
+        // guard that answers it cannot disagree again.
+        //
+        // T-VISIT-NO-SHOW-SCHEDULING (2026-09-30): NO_SHOW is in the list. A
+        // no-show is a side state with a live re-engagement edge back to
+        // VISIT_SCHEDULED, and booking the next visit is exactly how that edge
+        // is taken - the dashboard queue has always offered "Schedule visit" on
+        // those rows and the API used to answer 400. RESCHEDULED was already
+        // allowed for the same reason; NO_SHOW is the state a no-show actually
+        // LANDS the lead in (`updateOutcome`, NO_SHOW -> lead NO_SHOW), so the
+        // guard's old comment described a case its own list could not serve.
+        if (!(SCHEDULABLE_LEAD_STATES as readonly string[]).includes(lead.state)) {
           throw new BadRequestException(
-            `Lead state ${lead.state} cannot accept a visit (must be VISIT_REQUESTED, VISIT_SCHEDULED, or RESCHEDULED)`,
+            `Lead state ${lead.state} cannot accept a visit (must be ${SCHEDULABLE_LEAD_STATES.join(', ')})`,
           );
         }
 
@@ -375,6 +417,73 @@ export class VisitsService {
           lead,
         );
 
+        // ── Supersede the lead's outstanding no-show visit ────────────────────
+        //
+        // T-VISIT-NO-SHOW-SCHEDULING (2026-09-30). Before this, create() only
+        // guarded the LEAD state and never looked at the lead's VISITS. The
+        // states that reach it without an outstanding visit (VISIT_REQUESTED,
+        // RESCHEDULED) arrived clean; NO_SHOW arrives with one, because a lead is
+        // put in NO_SHOW by recording that outcome on its visit
+        // (`updateOutcome`: visit NO_SHOW -> lead NO_SHOW) and the row that
+        // recorded it is still there.
+        //
+        // WHY THAT ROW MUST BE CLOSED, not left alone. `LeadVisitPanel` resolves
+        // a lead's visit with
+        // `.find(v => v.status === 'SCHEDULED' || v.status === 'NO_SHOW')` and
+        // aims the next outcome at whatever it finds. Leave the no-show row open
+        // and the panel can pick the OLD visit, so recording the new visit's
+        // outcome hits `updateOutcome`'s "already NO_SHOW -> 409" conflict rule -
+        // the operator's next action fails against a visit that is already
+        // history. Closing it keeps ONE record per lead for the panel to find.
+        //
+        // Closing as RESCHEDULED is what `reschedule()` does to the visit it
+        // moves, and it is legal in the visit state machine
+        // (`NO_SHOW: ['RESCHEDULED', 'CANCELLED']` for a TELECALLER). The
+        // `outcome` column is deliberately NOT rewritten: `outcome: 'NO_SHOW'` is
+        // the record that the customer did not turn up, and overwriting it to
+        // "rescheduled" would destroy the fact the row exists to carry. Status
+        // moves to RESCHEDULED, outcome keeps saying what happened - the same
+        // split `reschedule()` leaves behind.
+        //
+        // WHAT IS DELIBERATELY NOT CLOSED: a live SCHEDULED or RESCHEDULED row
+        // (the rule is "supersede a NO_SHOW row", nothing wider). In this
+        // codebase both are OPEN work - `isUpcomingVisit`
+        // (apps/web/src/lib/visit-status.ts) and `OPEN_VISIT_STATUSES`
+        // (close-visits-for-lead.ts) both mean SCHEDULED | RESCHEDULED - so a
+        // live visit is a real appointment a customer is expecting, and closing
+        // it here would silently cancel it. A `VISIT_SCHEDULED` lead booking a
+        // SECOND visit therefore still leaves two open rows, exactly as before
+        // this change: that ambiguity is the reschedule endpoint's to resolve
+        // (`docs/designs/2026-09-16-work-dashboard-telecaller-queue.md` says so),
+        // and is pinned by a test below so it cannot drift silently.
+        if (lead.state === 'NO_SHOW') {
+          const stale = await tx.siteVisit.findMany({
+            where: { leadId: dto.leadId, status: 'NO_SHOW' },
+            select: { id: true, status: true, scheduledFor: true, userId: true },
+          });
+          for (const visit of stale) {
+            await tx.siteVisit.update({
+              where: { id: visit.id },
+              // `outcome` untouched on purpose - see the note above.
+              data: { status: 'RESCHEDULED' },
+            });
+            // Audited per closed row, in the same transaction as the create, so
+            // the log answers "why is this visit RESCHEDULED" without a join.
+            await tx.auditLog.create({
+              data: {
+                userId: actor.sub,
+                organizationId: actor.organizationId,
+                action: 'visit.reschedule',
+                entityType: 'SiteVisit',
+                entityId: visit.id,
+                before: { status: visit.status, scheduledFor: visit.scheduledFor.toISOString() },
+                after: { status: 'RESCHEDULED', supersededBy: 'visit.create' },
+                reason: `Superseded by a new visit scheduled for lead ${dto.leadId} by ${actor.email} (${actor.role})`,
+              },
+            });
+          }
+        }
+
         const created = await tx.siteVisit.create({
           data: {
             leadId: dto.leadId,
@@ -398,16 +507,25 @@ export class VisitsService {
           },
         });
 
-        // If the lead is in VISIT_REQUESTED, auto-advance to
-        // VISIT_SCHEDULED - scheduling the visit is the action that
-        // completes the request.
-        if (lead.state === 'VISIT_REQUESTED') {
-          // Runs on the OUTER transaction's client (transitionInTransaction),
-          // never the bare service call: `transition()` opens its own
-          // withRlsContext transaction on a second connection, and the visit
-          // transaction above has already locked this Lead row (the co-owner
-          // grant), so two connections on one row self-deadlock into a 30s
-          // "expired transaction". See transitionInTransaction's doc comment.
+        // Advance the lead onto the state that matches the visit that now
+        // exists. The old rule was `lead.state === 'VISIT_REQUESTED'` only, so a
+        // NO_SHOW or RESCHEDULED lead kept reading "didn't turn up" / "was moved"
+        // while a brand-new visit sat on the calendar under it.
+        //
+        // `VISIT_SCHEDULING_ADVANCES_FROM` is the shared list, and it is the same
+        // normalisation `reschedule()` performs for a moved visit - one rule, so
+        // booking a first visit and moving one cannot land the lead in two
+        // different places.
+        //
+        // Runs on the OUTER transaction's client (transitionInTransaction),
+        // never the bare service call: `transition()` opens its own
+        // withRlsContext transaction on a second connection, and the visit
+        // transaction above has already locked this Lead row (the co-owner
+        // grant), so two connections on one row self-deadlock into a 30s
+        // "expired transaction". See transitionInTransaction's doc comment.
+        if (
+          (VISIT_SCHEDULING_ADVANCES_FROM as readonly string[]).includes(lead.state)
+        ) {
           await this.leadsService.transitionInTransaction(
             actor,
             {
@@ -519,6 +637,24 @@ export class VisitsService {
         });
         if (existing === null) {
           throw new NotFoundException(`Visit ${visitId} not found`);
+        }
+
+        // T-LEAD-SYNC-COVERAGE (2026-09-30): the parent lead can resolve to NULL.
+        // `site_visit_select_team` shows the exec a visit they are assigned, while
+        // `lead_select_telecaller` shows the same exec the LEAD only when they are
+        // its owner or co-owner - so an exec recording an outcome on a visit whose
+        // lead was never shared to them reads the visit and NOT its lead. That is
+        // the documented RLS shape (T-VISIT-EXEC-LEAD-VISIBILITY, #79), and it used
+        // to crash here with `Cannot read properties of null (reading 'state')` -
+        // a 500 for a legitimate request.
+        //
+        // Refused with a message, not swallowed: the lead sync below genuinely
+        // cannot run without the lead's state, and a silent success would record the
+        // visit while leaving the two records to disagree with no explanation.
+        if (existing.lead === null) {
+          throw new ConflictException(
+            `Visit ${visitId} could not be updated: its lead is not visible to you, so the lead's state cannot be checked or synced. Ask a manager to record this outcome, or to share the lead with you first.`,
+          );
         }
 
         // T-VISIT-CLOSE (2026-09-28) defence in depth: never advance the parent
@@ -701,6 +837,10 @@ export class VisitsService {
         //    outcome onto it would be a transition the machine forbids.
         //  - COMPLETED only fires from VISIT_SCHEDULED (the one handoff edge).
         const leadState = existing.lead.state;
+        // T-LEAD-SYNC-COVERAGE (2026-09-30): why the lead did or did not move,
+        // carried out to the caller. See the return value's `leadSyncNote`.
+        let leadSynced = false;
+        let leadSyncNote: string | undefined;
         const leadTarget: 'VISITED' | 'NO_SHOW' | 'VISIT_SCHEDULED' | null =
           dto.outcome === 'COMPLETED'
             ? leadState === 'VISIT_SCHEDULED'
@@ -754,6 +894,27 @@ export class VisitsService {
               },
               tx as unknown as PrismaClient,
             );
+            leadSynced = true;
+          } else {
+            // T-LEAD-SYNC-COVERAGE (2026-09-30): the deferral stays - the lead
+            // machine is the authority on lead transitions and this module will not
+            // override it. What changes is that it is now REPORTED, because a
+            // silent deferral is how an operator ends up staring at a red visit
+            // beside a "Visit booked" lead with no explanation. The message names
+            // the two states and who can fix it.
+            leadSyncNote =
+              verdict.code === 'ROLE_FORBIDDEN'
+                ? `Visit recorded. The lead stayed at ${leadState}: the ${actor.role} role cannot move it, so a manager or admin needs to update the lead.`
+                : `Visit recorded. The lead stayed at ${leadState}: there is no ${leadState} -> ${leadTarget} step in the lead flow for this role.`;
+          }
+        } else if (leadTarget === null) {
+          // No lead sync is DUE - either the outcome never moves a lead (CANCELLED,
+          // by owner ruling) or the lead had already moved on by hand. Only the
+          // second is worth telling the user about, because only then do the two
+          // records genuinely disagree.
+          const outcomeMovesLead = dto.outcome !== 'CANCELLED';
+          if (outcomeMovesLead && leadState !== 'VISITED' && leadState !== 'NO_SHOW') {
+            leadSyncNote = `Visit recorded. The lead stayed at ${leadState} - it had already moved on, so the visit outcome did not change it.`;
           }
         }
 
@@ -797,6 +958,8 @@ export class VisitsService {
           outcome: updated.outcome,
           notes: updated.notes,
           updatedAt: updated.updatedAt.toISOString(),
+          // Only present when the lead did NOT follow - see VisitRow.leadSyncNote.
+          ...(leadSyncNote !== undefined ? { leadSyncNote } : {}),
         };
       },
     );
@@ -968,12 +1131,36 @@ export class VisitsService {
         // Terminal and advanced states (WON/LOST/RNR/VISITED/NEGOTIATION/…) are
         // left alone: those edges do not exist, and forcing one would throw and
         // fail the reschedule itself.
+        //
+        // ── T-LEAD-SYNC-COVERAGE (2026-09-30) ────────────────────────────────
+        //
+        // The target is now COMPUTED from `allowedNextStates` instead of matched
+        // against the hardcoded trio above. That list silently did nothing for
+        // every other state, so a visit moved on a lead sitting in CONTACTED left
+        // the lead reading "Talked" with a booked visit on the calendar - and a
+        // lead in CONTACTED is a real case (a visit can be booked from it).
+        //
+        // Asking the state machine is strictly better than the list on all counts:
+        //   - covers every state whose machine allows `-> VISIT_SCHEDULED`,
+        //     including CONTACTED, without a second list to maintain;
+        //   - VISIT_SCHEDULED itself is a same-state no-op (`canTransition`
+        //     short-circuits SAME_STATE), so it needs no special case;
+        //   - terminal/advanced states have no such edge, so they are excluded by
+        //     the machine rather than by being omitted from a literal;
+        //   - it folds the role gate in for free, which the old code lacked
+        //     entirely: a telecaller's reschedule used to reach for a lead edge its
+        //     role may not drive and threw Forbidden, failing the whole move. Now
+        //     the role simply gets no lead write - the same deferral semantic
+        //     `updateOutcome` uses, reported to the caller instead of hidden.
         const rescheduleLeadState = existing.lead.state;
-        if (
-          rescheduleLeadState === 'RESCHEDULED' ||
-          rescheduleLeadState === 'NO_SHOW' ||
-          rescheduleLeadState === 'VISIT_REQUESTED'
-        ) {
+        // T-LEAD-SYNC-COVERAGE (2026-09-30): why the lead did or did not follow the
+        // move, carried out to the caller (see `VisitRow.leadSyncNote`).
+        let leadSynced = false;
+        let leadSyncSkippedFrom: string | undefined;
+        const mayRestampLead = allowedNextStates(rescheduleLeadState, actor.role).includes(
+          'VISIT_SCHEDULED',
+        );
+        if (mayRestampLead && rescheduleLeadState !== 'VISIT_SCHEDULED') {
           await this.leadsService.transitionInTransaction(
             actor,
             {
@@ -983,6 +1170,10 @@ export class VisitsService {
             },
             tx as unknown as PrismaClient,
           );
+          leadSynced = true;
+        } else {
+          // Kept for the response's `leadSyncNote` - see the return value.
+          leadSyncSkippedFrom = rescheduleLeadState;
         }
 
         return {
@@ -997,6 +1188,13 @@ export class VisitsService {
           outcome: created.outcome,
           notes: created.notes,
           updatedAt: created.updatedAt.toISOString(),
+          // Only present when the lead did NOT follow the move. See
+          // `VisitRow.leadSyncNote`.
+          ...(!leadSynced && leadSyncSkippedFrom !== undefined
+            ? {
+                leadSyncNote: `Visit moved. The lead stayed at ${leadSyncSkippedFrom}: the ${actor.role} role cannot advance it, so a manager or admin needs to update the lead.`,
+              }
+            : {}),
         };
       },
     );

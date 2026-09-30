@@ -45,7 +45,7 @@ import type { TEventColor } from '@/components/calendar/types';
  * an unknown value (a newer backend enum the web app has not shipped for yet) -
  * an unknown status should look neutral, never like a confident colour claim.
  */
-const VISIT_STATUS_COLOR: Readonly<Record<string, TEventColor>> = {
+export const VISIT_STATUS_COLOR: Readonly<Record<string, TEventColor>> = {
   COMPLETED: 'green',
   NO_SHOW: 'red',
   CANCELLED: 'red',

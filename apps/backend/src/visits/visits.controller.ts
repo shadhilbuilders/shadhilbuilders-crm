@@ -81,7 +81,7 @@ export class VisitsController {
   @Post()
   @ApiOperation({
     summary:
-      'Schedule a new site visit. Lead must be in VISIT_REQUESTED, VISIT_SCHEDULED, or RESCHEDULED state.',
+      'Schedule a new site visit. Lead must be in SCHEDULABLE_LEAD_STATES (VISIT_REQUESTED, VISIT_SCHEDULED, RESCHEDULED, NO_SHOW).',
   })
   async create(
     @Req() req: AuthedRequest,

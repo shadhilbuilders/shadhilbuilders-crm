@@ -23,6 +23,10 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/hooks/queries/crm', () => ({
   useVisits: vi.fn(() => ({ data: [], isLoading: false, error: null })),
   useRescheduleVisit: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  // T-LEAD-SYNC-COVERAGE (2026-09-30): the calendar reports a skipped lead sync
+  // after a drag-reschedule, so it imports this too. A partial mock must expose
+  // every export the component reads.
+  leadSyncNoteOf: () => null,
 }));
 
 vi.mock('@paalstack/react-ui', async (importOriginal) => {

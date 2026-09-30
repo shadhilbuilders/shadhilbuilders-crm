@@ -15,7 +15,7 @@ import { toast } from '@paalstack/react-ui';
 
 import { CalendarProvider } from './calendar-context';
 import { ClientContainer } from './client-container';
-import { useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
+import { leadSyncNoteOf, useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
 import { isUpcomingVisitForLead, toVisitEventMeta, visitStatusColor } from '@/lib/visit-status';
 
 import type { IEvent, IUser } from './interfaces';
@@ -157,6 +157,13 @@ export function SiteVisitCalendar({
         scheduledFor: event.startDate,
       },
       {
+        onSuccess: (data) => {
+          // T-LEAD-SYNC-COVERAGE (2026-09-30): the move can land on the visit
+          // without the lead following. The drag itself gives no other feedback, so
+          // say it here rather than leaving the two screens to disagree silently.
+          const note = leadSyncNoteOf(data);
+          if (note !== null) toast.info(note);
+        },
         onError: (e) => {
           toast.error(e instanceof Error ? e.message : 'Reschedule failed');
         },
@@ -168,6 +175,11 @@ export function SiteVisitCalendar({
     <CalendarProvider
       users={users}
       events={events}
+      // T-PAST-VISIT-SURFACE (2026-09-30): the cards render a closed visit's
+      // outcome as a solid coloured surface, which is the right signal on a live
+      // calendar and noise across a wall of history. The mode is passed down so
+      // each card can drop that surface and keep the outcome as a left border.
+      isPastView={showPast === true}
       onUpdateEvent={handleUpdateEvent}
       onSlotClick={onSlotClick}
       selectedDate={weekStart}
