@@ -78,6 +78,23 @@ type ScheduleVisitDialogProps = {
   hideLeadPicker?: boolean;
   /** Called after a successful create with the new visit row. */
   onCreated?: () => void;
+  /**
+   * Called with the visit's scheduled time, so a DATE-SCOPED view (the calendar)
+   * can centre itself on the date the user just booked.
+   *
+   * WHY THIS EXISTS: the calendar renders only the period it is showing, so a
+   * visit dated outside it is invisible right after creation - the user schedules,
+   * sees nothing change, and reasonably concludes the create failed.
+   *
+   * Gives the DATE, not a week-start: rounding to a week here (in the dialog) would
+   * be wrong for the agenda view, which is scoped to a MONTH. A week containing the
+   * 1st belongs to the previous month, so a week-rounded view would show the wrong
+   * month - the `onScheduledDate` receiver decides how to represent the date.
+   *
+   * Optional: callers with no date-scoped view (the lead panel, the dashboard's
+   * today card) omit it and nothing changes for them.
+   */
+  onScheduledDate?: (scheduledFor: Date) => void;
 };
 
 export function ScheduleVisitDialog({
@@ -87,6 +104,7 @@ export function ScheduleVisitDialog({
   initialDate,
   hideLeadPicker = false,
   onCreated,
+  onScheduledDate,
 }: ScheduleVisitDialogProps) {
   const createVisit = useCreateVisit();
   const { user } = useSessionUser();
@@ -263,6 +281,11 @@ export function ScheduleVisitDialog({
         toast.success('Visit scheduled');
         form.reset();
         onOpenChange(false);
+        // Hand the view the booked date BEFORE it refetches, so a date-scoped
+        // view (the calendar) can move to it. Without this the calendar stays on
+        // its current month and the new visit renders off-screen, which reads as
+        // a failed create.
+        if (onScheduledDate !== undefined) onScheduledDate(localDateTime);
         if (onCreated !== undefined) onCreated();
       },
       onError: (e) => {

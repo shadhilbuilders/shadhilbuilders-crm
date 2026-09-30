@@ -53,9 +53,23 @@ export default function VisitsPage() {
     setMounted(true);
   }, []);
 
-  const from = useMemo(() => weekStart.toISOString(), [weekStart]);
+  /**
+   * The query window is the week CONTAINING the view date - derived, never stored.
+   *
+   * The calendar's selected date and the fetch window are two different things and
+   * conflating them was the bug. `weekStart` is the date the calendar is CENTRED
+   * on, and the agenda view keys its month off it, so `startOfWeek()` must NOT be
+   * applied to it: the week containing the 1st of a month starts in the PREVIOUS
+   * month, so a week-rounded selected date renders the wrong month and a visit
+   * booked on the 1st lands off-view (measured: booking 2026-11-15 put the header
+   * on "October 2026").
+   *
+   * So the view date stays exact and only the FETCH window is rounded - the window
+   * has to contain the booked date, and the Monday of its week always does.
+   */
+  const from = useMemo(() => startOfWeek(weekStart).toISOString(), [weekStart]);
   const to = useMemo(() => {
-    const end = new Date(weekStart);
+    const end = startOfWeek(weekStart);
     end.setDate(end.getDate() + 7);
     return end.toISOString();
   }, [weekStart]);
@@ -127,6 +141,27 @@ export default function VisitsPage() {
                     // mutation also invalidates ['visits'] globally, but
                     // this guarantees the page's exact query refetches.)
                     void visitsQuery.refetch();
+                  }}
+                  onScheduledDate={(scheduledFor) => {
+                    // MOVE THE VIEW TO THE BOOKED DATE.
+                    //
+                    // The report: "If we create new visits it should reflect in
+                    // site calendar immediately without refreshing." The invalidate
+                    // and refetch were already correct - the visit DID reach the
+                    // calendar - but the calendar renders only the period it is
+                    // showing, so a visit dated outside it landed off-view and the
+                    // user read that as a failed create.
+                    //
+                    // The BOOKED DATE EXACTLY, not its week-start: the calendar's
+                    // selected date decides which month renders, and the week
+                    // containing the 1st begins in the previous month, so a
+                    // week-rounded value shows the wrong month (measured - it
+                    // landed on October for a 15 Nov booking). The fetch window is
+                    // rounded separately, in the derived `from`/`to` above.
+                    //
+                    // A booking in the displayed month leaves the view where it
+                    // was, since the date is already inside that month.
+                    setWeekStart(scheduledFor);
                   }}
                 />
               </>
