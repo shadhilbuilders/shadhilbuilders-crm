@@ -58,12 +58,36 @@ overrides:
   # Re-check if the parent's range ever regresses.
 
   # ── Dependabot 2026-09-29 - three open advisories. ─────────────────────
-  # fast-uri GHSA-58mr-gqgx-xq4g (HIGH, CVE-2026-84394): pinned exactly at
-  # 3.1.6 through ajv@8.20.0, which declares `fast-uri: ^3.0.1` - so the
-  # patched 3.1.7 fits the parent's own range and this override only forces
-  # the lockfile to re-resolve inside a legal bound. ajv is a DEV toolchain
-  # dep here (via @nestjs/cli), not in the runtime graph.
-  'fast-uri': '3.1.7'
+  # fast-uri: SUPERSEDED 2026-09-30 by GHSA-hrr3-gc8f-f4qj (moderate,
+  # inconsistent host case normalization via percent-encoded octets), which
+  # affects >= 3.0.0 < 3.1.8 - so the previous 3.1.7 pin is no longer the
+  # patched line. Moved to 3.1.8. Declared range is `^3.0.1` by ajv@8.20.0, so
+  # this only forces a re-resolve inside a legal bound.
+  #
+  # CORRECTION to the note this replaces: fast-uri IS reachable from the runtime
+  # graph, not dev-only. `pnpm why fast-uri` shows 7 paths through
+  # `dependencies`, via better-auth -> @better-auth/prisma-adapter -> prisma ->
+  # @prisma/dev -> @prisma/streams-local -> ajv. It is also a dev-toolchain dep
+  # (via @nestjs/cli). The earlier "DEV toolchain dep here, not in the runtime
+  # graph" comment was wrong; treat findings here as runtime-reachable.
+  'fast-uri': '3.1.8'
+
+  # brace-expansion GHSA-6j4f-fj2g-mc7p (high, stack exhaustion in
+  # parseCommaParts), GHSA-qhr7-859c-m2p7 (high, recursion on nested brace
+  # groups) and GHSA-q2hr-2g5m-vwhr (moderate, quadratic `{a},b}` rewrite) -
+  # three advisories against TWO installed majors, so each key is scoped to its
+  # own line rather than dragging either across a major boundary:
+  #
+  #   1.1.18  <- minimatch@3.1.5  (declares ^1.1.7)   dev: eslint plugins,
+  #                                                   @nestjs/cli
+  #   5.0.9   <- minimatch@10.2.6 (declares ^5.0.8)   dev: eslint@10
+  #
+  # 1.1.21 and 5.0.12 are the first versions clearing all three on their line,
+  # and both fit their parent's declared range - safe by construction, no major
+  # jump. Both copies are DEV-only (lint tooling), so the practical exposure was
+  # a slow/hung lint run, not a served request; fixed anyway.
+  'brace-expansion@>=1 <2': '1.1.21'
+  'brace-expansion@>=5 <6': '5.0.12'
 
   # undici GHSA-3wwx-pv8p-q78v (MEDIUM, CVE-2026-85024): WebSocket
   # permessage-deflate decompression DoS. Its affected range is
