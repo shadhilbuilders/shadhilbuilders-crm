@@ -50,7 +50,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function actorFor(userId: string, role: 'ADMIN' | 'SALES_EXEC'): JwtPayload {
+function actorFor(userId: string, role: 'ADMIN' | 'SALES_EXEC' | 'TELECALLER'): JwtPayload {
   return {
     sub: userId,
     email: `${userId}@example.com`,
@@ -395,7 +395,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
-    expect(lead?.state).toBe('VISIT_SCHEDULED');
+    expect(lead?.state).toBe('NO_SHOW');
   });
 
   /**
@@ -438,8 +438,8 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       }),
     ).resolves.toBeTruthy(); // exec: allowed (sanity - same call, exec lane)
 
-    // Reset, then attempt the telecaller's NO_SHOW (the only outcome the ruling
-    // grants them) and assert the lead does NOT advance to VISITED.
+    // Reset, then attempt the exec's NO_SHOW and assert the lead does NOT advance
+    // to VISITED. (The visit IS recorded - see the role-deferral note below.)
     const { leadId, visitId: visit2 } = await seedLeadWithVisit();
     const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visit2, {
       visitId: visit2,
@@ -450,6 +450,144 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
     expect(lead?.state).toBe('VISIT_SCHEDULED'); // not VISITED
+  });
+
+  /**
+   * T-VISIT-LEAD-SYNC (2026-09-29): the visit outcome and the lead state are
+   * allowed to DISAGREE when the two state machines' role lanes differ.
+   *
+   * `visits.state-machine` lets a SALES_EXEC record NO_SHOW on a visit.
+   * `leads.state-machine` reserves VISIT_SCHEDULED -> NO_SHOW for the telecaller
+   * or a manager - the exec's one out-of-lane edge is VISITED, the handoff, and
+   * the file is explicit that this is "deliberately ONE edge, not 'add
+   * VISIT_SCHEDULED to the exec lane'".
+   *
+   * So an exec has a legitimate visit outcome their role may not mirror onto the
+   * lead. The lead sync therefore DEFERS to the lead machine: the outcome is
+   * recorded, the lead stays put, and nothing throws. Before the pre-check the
+   * valid NO_SHOW threw ForbiddenException and the whole outcome write was LOST -
+   * a regression this test now prevents.
+   */
+  it('records an exec NO_SHOW without moving the lead (role deferral, not failure)', async () => {
+    const { leadId, visitId } = await seedLeadWithVisit();
+
+    const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visitId, {
+      visitId,
+      outcome: 'NO_SHOW',
+    });
+
+    // The visit write lands - the exec is allowed this outcome.
+    expect(row.status).toBe('NO_SHOW');
+    expect(row.outcome).toBe('NO_SHOW');
+
+    // The lead does NOT follow, because the exec may not drive that edge. It is
+    // not an error, just an authority boundary.
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  it('DOES move the lead to NO_SHOW when a MANAGER records it', async () => {
+    // The counterpart: where the role IS allowed the lead edge, the sync must
+    // actually fire - otherwise the deferral above could be hiding a sync that
+    // never works for anyone.
+    const { leadId, visitId } = await seedLeadWithVisit();
+    const row = await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'NO_SHOW',
+    });
+    expect(row.status).toBe('NO_SHOW');
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('NO_SHOW');
+  });
+
+  it('RESCHEDULED moves the lead to VISIT_SCHEDULED, never to RESCHEDULED', async () => {
+    // `RESCHEDULED` on a visit must NOT put the LEAD into RESCHEDULED: that state
+    // has no edge to VISITED, so the exec's handoff would be permanently broken.
+    // The lead is normalised to VISIT_SCHEDULED - the state that matches the live
+    // visit - exactly as `reschedule()` does.
+    //
+    // NOTE this goes through `updateOutcome` on a SCHEDULED visit deliberately:
+    // the service hard-refuses an outcome write on any visit that is not
+    // SCHEDULED (the stale-write 409), so RESCHEDULED-after-NO_SHOW is not
+    // reachable here at all. The NO_SHOW -> VISIT_SCHEDULED heal lives in
+    // `reschedule()` (see the reschedule suite).
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+
+    const row = await service.updateOutcome(actorFor(TC_ID, 'TELECALLER'), visitId, {
+      visitId,
+      outcome: 'RESCHEDULED',
+    });
+    expect(row.status).toBe('RESCHEDULED');
+
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    // Stays VISIT_SCHEDULED. NOT RESCHEDULED - that would strand the handoff.
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
+  });
+
+  it('a rescheduled visit does not strand the lead: COMPLETED can still fire afterwards', async () => {
+    // The point of targeting VISIT_SCHEDULED rather than RESCHEDULED: the handoff
+    // must survive a reschedule. Had the lead been parked in RESCHEDULED this
+    // COMPLETED would throw (no RESCHEDULED -> VISITED edge) and the deal could
+    // never be settled.
+    const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+
+    await service.updateOutcome(actorFor(TC_ID, 'TELECALLER'), visitId, {
+      visitId,
+      outcome: 'RESCHEDULED',
+    });
+
+    // A real reschedule creates a NEW visit; model that so the COMPLETED below
+    // has an open visit to act on (updateOutcome only accepts SCHEDULED).
+    const newVisitId = `${visitId}-next`;
+    await adminSeed((db) =>
+      db.siteVisit.create({
+        data: {
+          id: newVisitId,
+          leadId,
+          userId: SE_ID,
+          scheduledFor: new Date(Date.now() + 86_400_000),
+          status: 'SCHEDULED',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
+      }),
+    );
+    TEST_VISIT_IDS.push(newVisitId);
+
+    const row = await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), newVisitId, {
+      visitId: newVisitId,
+      outcome: 'COMPLETED',
+    });
+    expect(row.status).toBe('COMPLETED');
+
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    // The handoff still works after a reschedule - the whole reason for the
+    // VISIT_SCHEDULED target.
+    expect(lead?.state).toBe('VISITED');
+  });
+
+  it('CANCELLED never moves the lead, even for an ADMIN (owner ruling)', async () => {
+    // Owner ruling, 2026-09-29: "cancelling one visit isn't cancelling the deal".
+    // A cancelled visit is a cancelled MEETING; the telecaller still owns the
+    // lead and will arrange another. Asserted over the WIDEST role so a future
+    // ADMIN-override cannot quietly start corrupting the pipeline here.
+    const { leadId, visitId } = await seedLeadWithVisit();
+    const row = await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'CANCELLED',
+    });
+    expect(row.status).toBe('CANCELLED');
+    const lead = await adminSeed((db) =>
+      db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
+    );
+    expect(lead?.state).toBe('VISIT_SCHEDULED');
   });
 
 });

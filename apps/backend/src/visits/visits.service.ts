@@ -47,6 +47,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
+// The LEAD state machine, aliased because this module already imports a
+// `canTransition` of its own (the visit one). The two are different graphs with
+// different role lanes and both are needed here: the visit guard decides whether
+// the outcome itself is allowed, this one decides whether the LEAD may follow.
+import { canTransition as canLeadTransition } from '../leads/leads.state-machine';
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -196,7 +201,18 @@ export class VisitsService {
               outcome: true,
               notes: true,
               updatedAt: true,
-              lead: { select: { name: true, owner: { select: { name: true } } } },
+              lead: {
+                select: {
+                  name: true,
+                  // 2026-09-29: the lead's pipeline state travels with the visit
+                  // so the visits page can show the SAME status word as the lead
+                  // page. Without it the two surfaces each had to infer a status
+                  // and disagreed (the visit said "Cancelled"/"Done" while the
+                  // lead said "Won"/"Visited").
+                  state: true,
+                  owner: { select: { name: true } },
+                },
+              },
               user: { select: { name: true } },
             },
           }),
@@ -209,6 +225,9 @@ export class VisitsService {
             id: r.id,
             leadId: r.leadId,
             leadName: r.lead.name,
+            // The lead's own pipeline state, so the visits page shows the same
+            // word as the lead page instead of inventing a visit-only status.
+            leadState: r.lead.state,
             leadOwnerName: r.lead.owner.name,
             scheduledFor: r.scheduledFor.toISOString(),
             userId: r.userId,
@@ -471,7 +490,20 @@ export class VisitsService {
             leadId: true,
             status: true,
             outcome: true,
-            lead: { select: { name: true, state: true, owner: { select: { name: true } } } },
+            // 2026-09-29: `organizationId` and the lead's `projectId` are read so
+            // the outcome notification can resolve the project's managers and the
+            // org's admins. SiteVisit has NO projectId column (project is reached
+            // through the lead), so it comes from the nested select rather than a
+            // second read.
+            organizationId: true,
+            lead: {
+              select: {
+                name: true,
+                state: true,
+                projectId: true,
+                owner: { select: { id: true, name: true } },
+              },
+            },
             user: { select: { name: true } },
           },
         });
@@ -613,13 +645,102 @@ export class VisitsService {
           },
         });
 
-        // Drive the parent lead state on COMPLETED.
-        if (dto.outcome === 'COMPLETED' && existing.lead.state === 'VISIT_SCHEDULED') {
-          await this.leadsService.transition(actor, {
-            leadId: existing.leadId,
-            toState: 'VISITED',
-            notes: dto.notes ?? `Visit completed by ${assigneeName(updated.userId, actor)}`,
+        // ── Drive the parent lead from the visit outcome (2026-09-29) ──────────
+        //
+        // OWNER REQUIREMENT: "if i change anything in visits page for specific lead
+        // then that changes should reflect in leads and if i change anything in
+        // lead that should reflected in visits page".
+        //
+        // Before this, ONLY `COMPLETED` moved the lead. A no-show or a reschedule
+        // recorded on the visits page changed the VISIT and left the lead sitting
+        // at VISIT_SCHEDULED, so the two surfaces told different stories about the
+        // same event - the lead page said "Visit booked" while the visit said
+        // "Didn't show up". The lead state machine already HAS both target states
+        // (`VISIT_SCHEDULED: ['VISITED','NO_SHOW','RESCHEDULED',...]`); nothing
+        // was driving them.
+        //
+        // The mapping, and why each is what it is:
+        //
+        //   COMPLETED   -> VISITED           the handoff edge; exec becomes owner
+        //   NO_SHOW     -> NO_SHOW           the customer did not turn up
+        //   RESCHEDULED -> VISIT_SCHEDULED   NOT `RESCHEDULED` - see below
+        //   CANCELLED   -> (no change)       owner ruling, 2026-09-29: "cancelling
+        //                                    one visit isn't cancelling the deal".
+        //                                    A cancelled visit is a cancelled
+        //                                    MEETING, not a dead lead - the
+        //                                    telecaller still owns it and will
+        //                                    arrange another. Driving the lead
+        //                                    anywhere here would corrupt the
+        //                                    pipeline on a routine action.
+        //
+        // WHY RESCHEDULED TARGETS `VISIT_SCHEDULED`, NOT `RESCHEDULED`.
+        // In the LEAD machine, RESCHEDULED's only outgoing edges are
+        // ['VISIT_SCHEDULED','RNR','LOST'] - there is NO RESCHEDULED -> VISITED.
+        // Setting the lead to RESCHEDULED would therefore permanently break the
+        // handoff: the next COMPLETED needs VISIT_SCHEDULED -> VISITED and could
+        // never fire, so the exec could no longer settle the deal. A rescheduled
+        // visit means "another one will be scheduled", which IS VISIT_SCHEDULED -
+        // and this matches `reschedule()`, which normalises the lead the same way
+        // for exactly this reason. In the common case the lead is already
+        // VISIT_SCHEDULED, so this is a same-state no-op.
+        //
+        // Guards, each earned:
+        //  - the lead must be VISIT_SCHEDULED before NO_SHOW: that edge only
+        //    exists FROM VISIT_SCHEDULED. If the lead has already moved on (e.g. a
+        //    manager advanced it to NEGOTIATION by hand), forcing the visit's
+        //    outcome onto it would be a transition the machine forbids.
+        //  - COMPLETED only fires from VISIT_SCHEDULED (the one handoff edge).
+        const leadState = existing.lead.state;
+        const leadTarget: 'VISITED' | 'NO_SHOW' | 'VISIT_SCHEDULED' | null =
+          dto.outcome === 'COMPLETED'
+            ? leadState === 'VISIT_SCHEDULED'
+              ? 'VISITED'
+              : null
+            : dto.outcome === 'NO_SHOW'
+              ? leadState === 'VISIT_SCHEDULED'
+                ? 'NO_SHOW'
+                : null
+              : dto.outcome === 'RESCHEDULED'
+                ? // Heal a lead left sitting in NO_SHOW/RESCHEDULED by an earlier
+                  // outcome, and keep a fresh one on the live-visit state.
+                  leadState === 'NO_SHOW' || leadState === 'RESCHEDULED'
+                  ? 'VISIT_SCHEDULED'
+                  : null
+                : null;
+
+        if (leadTarget !== null) {
+          // ── The lead machine stays the AUTHORITY on lead transitions ─────────
+          //
+          // The two state machines genuinely disagree about who may record a
+          // no-show: `visits.state-machine` lets a SALES_EXEC put NO_SHOW on a
+          // VISIT, while `leads.state-machine` reserves VISIT_SCHEDULED -> NO_SHOW
+          // for the TELECALLER/manager (the exec's one out-of-lane edge is
+          // VISITED, the handoff - "Deliberately ONE edge, not 'add
+          // VISIT_SCHEDULED to the exec lane'"). So an exec CAN have a legitimate
+          // visit outcome that their role may not mirror onto the lead.
+          //
+          // Pre-checking with `canTransition` is what keeps that from becoming a
+          // broken write: without it, the exec's perfectly valid NO_SHOW threw a
+          // ForbiddenException and the whole outcome was lost (found by running
+          // the existing suite - two tests failed exactly this way). The visit
+          // outcome is the visit module's business; the lead state is the lead
+          // module's, and this sync DEFERS rather than overrides. When the role
+          // may not move the lead, the visit is still recorded and the lead simply
+          // stays where it was.
+          const verdict = canLeadTransition({
+            from: leadState,
+            to: leadTarget,
+            role: actor.role,
           });
+          if (verdict.ok) {
+            await this.leadsService.transition(actor, {
+              leadId: existing.leadId,
+              toState: leadTarget,
+              notes:
+                dto.notes ??
+                `Visit ${dto.outcome.toLowerCase()} by ${assigneeName(updated.userId, actor)}`,
+            });
+          }
         }
 
         await tx.auditLog.create({
@@ -633,6 +754,21 @@ export class VisitsService {
             after: { status: updated.status, outcome: updated.outcome },
             reason: `Visit outcome set to ${updated.status} by ${actor.email} (${actor.role})`,
           },
+        });
+
+        // 2026-09-29 (owner request): the SENDER of an outcome is not the only
+        // person who needs it. A site visit is the handoff point of the whole
+        // pipeline - when it happens the lead moves to VISITED and becomes the
+        // exec's to negotiate, so the manager and admins should hear about it
+        // without opening the calendar. Before this, updateOutcome emitted
+        // NOTHING, so a telecaller who booked the visit never learned its result.
+        this.outcomeNotifications(actor, {
+          status: updated.status,
+          leadId: updated.leadId,
+          leadName: updated.lead.name,
+          organizationId: existing.organizationId,
+          projectId: existing.lead.projectId,
+          ownerId: existing.lead.owner.id,
         });
 
         return {
@@ -670,7 +806,18 @@ export class VisitsService {
           where: { id: visitId },
           // `userId` is the outgoing exec, needed to decide whether the lead's
           // co-owner slot should transfer to the new assignee.
-          select: { id: true, leadId: true, status: true, userId: true },
+          // 2026-09-29: the lead's `projectId` is read here as well, to resolve
+          // the reschedule notification's recipients (managers+admins). It is the
+          // only place in this method that already loads the lead, so the project
+          // comes for free rather than via a second query.
+          // `state` is read too, to keep the parent lead in step with the move.
+          select: {
+            id: true,
+            leadId: true,
+            status: true,
+            userId: true,
+            lead: { select: { projectId: true, state: true } },
+          },
         });
         if (existing === null) {
           throw new NotFoundException(`Visit ${visitId} not found`);
@@ -760,6 +907,66 @@ export class VisitsService {
           },
         });
 
+        // 2026-09-29 (owner request: "if visit reschedule is reschedule team
+        // manager and admin/owner should know do push notification and inapp
+        // notification"). Before this, reschedule emitted NOTHING - a visit could
+        // slide repeatedly and no one accountable ever saw it. Recipients are the
+        // project's managers and the org's admins/owner, minus the actor.
+        //
+        // Fire-and-forget on purpose (the helper swallows): the recipient lookup
+        // is async and must not be awaited inside the write transaction, or a slow
+        // lookup would hold the visit row lock open.
+        void this.rescheduleNotifications(actor, {
+          leadId: created.leadId,
+          leadName: created.lead.name,
+          organizationId: actor.organizationId,
+          projectId: existing.lead.projectId,
+          newScheduledFor: created.scheduledFor,
+        });
+
+        // ── Keep the parent lead in step with the move (2026-09-29) ────────────
+        //
+        // `reschedule()` used to change ONLY the visit rows: the old one became
+        // RESCHEDULED and a new SCHEDULED row appeared, while the lead kept
+        // whatever state it had. A lead whose visit had been moved twice still read
+        // "Visit booked" with nothing indicating a move had happened.
+        //
+        // WHY THE TARGET IS `VISIT_SCHEDULED`, NOT `RESCHEDULED`.
+        // The obvious move is to drive the lead to RESCHEDULED and mirror the
+        // visit. That is a DEAD END, and this is the trap that decides the design:
+        // in the lead state machine RESCHEDULED's only outgoing edges are
+        // ['VISIT_SCHEDULED','RNR','LOST'] - there is NO RESCHEDULED -> VISITED.
+        // So the moment a reschedule drove the lead to RESCHEDULED, the eventual
+        // COMPLETED outcome (which needs VISIT_SCHEDULED -> VISITED) could never
+        // advance the lead again: the handoff would be permanently broken and the
+        // exec could no longer settle the deal.
+        //
+        // There IS a new visit row and it is SCHEDULED, so VISIT_SCHEDULED is the
+        // state that matches the LIVE visit and keeps the VISITED handoff
+        // reachable. Nothing is lost by not using the RESCHEDULED lead state: the
+        // move is already recorded twice on the visit side (the closed row's
+        // RESCHEDULED status + the audit trail), and the new row is the operative
+        // fact.
+        //
+        // From RESCHEDULED/NO_SHOW the edge back to VISIT_SCHEDULED exists, so a
+        // lead left there by an earlier outcome is normalised here too.
+        // VISIT_REQUESTED -> VISIT_SCHEDULED is legal and is what scheduling does.
+        // Terminal and advanced states (WON/LOST/RNR/VISITED/NEGOTIATION/…) are
+        // left alone: those edges do not exist, and forcing one would throw and
+        // fail the reschedule itself.
+        const rescheduleLeadState = existing.lead.state;
+        if (
+          rescheduleLeadState === 'RESCHEDULED' ||
+          rescheduleLeadState === 'NO_SHOW' ||
+          rescheduleLeadState === 'VISIT_REQUESTED'
+        ) {
+          await this.leadsService.transition(actor, {
+            leadId: existing.leadId,
+            toState: 'VISIT_SCHEDULED',
+            notes: `Visit rescheduled to ${created.scheduledFor.toISOString()}`,
+          });
+        }
+
         return {
           id: created.id,
           leadId: created.leadId,
@@ -792,6 +999,184 @@ export class VisitsService {
     } catch {
       // swallow - best-effort
     }
+  }
+
+  /**
+   * PROJECT MANAGERS + ORG ADMINS/OWNER for a visit's project, minus the actor.
+   *
+   * WHY THIS IS NOT JUST `visit.userId`. The owner's requirement (2026-09-29) is
+   * that a RESCHEDULE is known to the people accountable for it: "if visit
+   * reschedule is reschedule team manager and admin/owner should know". The exec
+   * whose slot moved is one of the affected parties, but the manager of the team
+   * running the project and the org's admins are the ones who can act on a visit
+   * that keeps sliding.
+   *
+   * The actor is EXCLUDED because they performed the write and already saw the
+   * confirmation - notifying someone about their own action is the noise this
+   * deliberately avoids (the same reasoning as the lead-create creator/owner
+   * split, which notifies the creator only when they are not already the owner).
+   *
+   * Managers are resolved from ProjectTeam -> Team.managerId, which is the
+   * authoritative reporting line (a manager is NOT a TeamMember row - see
+   * users.service, "Team.managerId, not a TeamMember row").
+   *
+   * Reads run inside `withRlsContext` as CRON_SERVICE, the org-scoped
+   * service-account bypass, so the recipient set does not depend on the actor's
+   * own role visibility. Reading as the actor would make a MANAGER's reschedule
+   * notify fewer people than an ADMIN's - the recipient list must be a property
+   * of the visit, not of who moved it.
+   */
+  private async resolveVisitRecipients(
+    organizationId: string,
+    projectId: string,
+    actorSub: string,
+  ): Promise<string[]> {
+    const orgId = organizationId.length > 0 ? organizationId : (process.env['PUBLIC_ORG_ID'] ?? '');
+    try {
+      const found = await withRlsContext(
+        this.client,
+        { userId: 'cron-service', role: 'CRON_SERVICE', organizationId: orgId },
+        async (tx) => {
+          const p = tx as unknown as PrismaClient;
+          // 1. Managers of every team assigned to this project.
+          const projectTeams = await p.projectTeam.findMany({
+            where: { projectId },
+            select: { teamId: true },
+          });
+          const teamIds = projectTeams.map((pt: { teamId: string }) => pt.teamId);
+          const teams =
+            teamIds.length > 0
+              ? await p.team.findMany({
+                  where: { id: { in: teamIds }, organizationId: orgId, deletedAt: null },
+                  select: { managerId: true },
+                })
+              : [];
+          // 2. Org admins + owners.
+          const admins = await p.user.findMany({
+            where: {
+              organizationId: orgId,
+              deletedAt: null,
+              role: { in: ['ADMIN', 'OWNER'] },
+            },
+            select: { id: true },
+          });
+          return {
+            managerIds: teams
+              .map((t: { managerId: string | null }) => t.managerId)
+              .filter((id: string | null): id is string => id !== null),
+            adminIds: admins.map((u: { id: string }) => u.id),
+          };
+        },
+      );
+
+      // Dedupe (a manager may lead two teams on the same project, and an admin
+      // may also be a manager) and drop the actor.
+      const unique = new Set<string>([...found.managerIds, ...found.adminIds]);
+      unique.delete(actorSub);
+      return [...unique];
+    } catch {
+      // Best-effort: a failed recipient lookup must not break the write, and
+      // must not silently notify nobody-with-an-error either.
+      return [];
+    }
+  }
+
+  /** Emit the same payload to every recipient, best-effort, one by one. */
+  private emitToMany(
+    recipients: readonly string[],
+    payload: { type: string; title: string; body: string; leadId?: string },
+  ): void {
+    for (const sub of recipients) this.emitBestEffort(sub, payload);
+  }
+
+  /**
+   * Tell the accountable people a visit MOVED (2026-09-29, owner request).
+   * Type `visit.rescheduled` keeps the inbox's existing `visit` tab working -
+   * the notifications page filters on the `visit` prefix.
+   *
+   * Async and voided at the call site: the recipient lookup cannot run inside the
+   * write transaction without holding the visit row lock for the duration of an
+   * unrelated query.
+   */
+  private async rescheduleNotifications(
+    actor: JwtPayload,
+    ctx: {
+      leadId: string;
+      leadName: string;
+      organizationId: string;
+      projectId: string;
+      newScheduledFor: Date;
+    },
+  ): Promise<void> {
+    const recipients = await this.resolveVisitRecipients(
+      ctx.organizationId,
+      ctx.projectId,
+      actor.sub,
+    );
+    this.emitToMany(recipients, {
+      type: 'visit.rescheduled',
+      title: `Visit rescheduled: ${ctx.leadName}`,
+      body: `Moved to ${ctx.newScheduledFor.toISOString()} by ${actor.email}.`,
+      leadId: ctx.leadId,
+    });
+  }
+
+  /**
+   * Tell the accountable people what HAPPENED on site (2026-09-29). One type per
+   * outcome rather than a single `visit.outcome` with the state buried in the
+   * body: the inbox can then distinguish "the visit happened" from "the customer
+   * did not turn up" without parsing prose, and the push title can say it too.
+   *
+   * The lead owner is included. They booked the visit and may not be the exec who
+   * conducted it, so without them the person who arranged it never learns it
+   * happened - the exact "I scheduled a visit and heard nothing" gap.
+   */
+  private outcomeNotifications(
+    actor: JwtPayload,
+    ctx: {
+      status: string;
+      leadId: string;
+      leadName: string;
+      organizationId: string;
+      projectId: string;
+      ownerId?: string;
+    },
+  ): void {
+    const { status } = ctx;
+    if (status !== 'COMPLETED' && status !== 'NO_SHOW' && status !== 'CANCELLED') return;
+
+    const VERB: Record<string, string> = {
+      COMPLETED: 'completed',
+      NO_SHOW: 'no-show',
+      CANCELLED: 'cancelled',
+    };
+    const verb = VERB[status] ?? status.toLowerCase();
+    const payload = {
+      type: `visit.${status.toLowerCase()}`,
+      title: `Visit ${verb}: ${ctx.leadName}`,
+      body: `Recorded by ${actor.email}.`,
+      leadId: ctx.leadId,
+    };
+
+    // The owner is emitted to directly and separately from the manager/admin set,
+    // so an owner who is ALSO a manager does not miss out if the org lookup
+    // happens to be slow or returns nobody.
+    if (ctx.ownerId !== undefined && ctx.ownerId.length > 0 && ctx.ownerId !== actor.sub) {
+      this.emitBestEffort(ctx.ownerId, payload);
+    }
+
+    void (async () => {
+      const recipients = await this.resolveVisitRecipients(
+        ctx.organizationId,
+        ctx.projectId,
+        actor.sub,
+      );
+      // Skip the owner here - already emitted above.
+      this.emitToMany(
+        recipients.filter((r) => r !== ctx.ownerId),
+        payload,
+      );
+    })().catch(() => undefined);
   }
 }
 
