@@ -581,7 +581,7 @@ function NavMenuSubLink({
   return (
     <SidebarMenuSubButton asChild isActive={active}>
       <Link href={href} aria-current={active ? 'page' : undefined}>
-        <Icon className="size-3.5 shrink-0" />
+        <Icon className="size-3.5 shrink-0 text-current!" />
         <span className="min-w-0 truncate">{child.label}</span>
       </Link>
     </SidebarMenuSubButton>
