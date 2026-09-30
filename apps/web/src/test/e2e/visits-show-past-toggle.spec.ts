@@ -40,23 +40,53 @@ async function login(page: Page): Promise<void> {
 }
 
 /**
- * The calendar's own visible event tally ("2 events" / "1 event" / "0 events"),
- * read from rendered text. Deliberately NOT a CSS-selector node count: the earlier
- * selector-based version matched no node at all and made this spec vacuous.
+ * Wait until the page has settled, WITHOUT `waitForLoadState('networkidle')`.
+ *
+ * That call is a trap on this page: the notifications surface holds an open SSE
+ * stream (`/api/sse/notifications`), so the network never goes idle and the
+ * helper times out after 30s - looking exactly like a broken feature when the
+ * page is in fact fully rendered. Waiting on the toggle itself is both faster and
+ * a stronger precondition, since every test here needs that control anyway.
+ */
+async function settled(page: Page): Promise<void> {
+  await page.locator('[data-qa="visits-show-past"]').first().waitFor({
+    state: 'visible',
+    timeout: 30_000,
+  });
+}
+
+/**
+ * The calendar's own visible event tally, POLLED until it stabilises.
+ *
+ * A plain read races the visits query: the toggle renders before the data lands,
+ * so an immediate read returns 0 and the comparison becomes meaningless (that
+ * flake is exactly how this helper earned its poll). Waiting for the same value
+ * twice in a row means the fetch has settled without assuming a fixed delay.
  */
 async function eventCount(page: Page): Promise<number> {
-  const text = await page.evaluate(
-    () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
-  );
-  const m = /(\d+)\s+events?\b/i.exec(text);
-  return m?.[1] !== undefined ? Number(m[1]) : 0;
+  const read = () =>
+    page.evaluate(() => {
+      const t = ((document.querySelector('main') ?? document.body) as HTMLElement).innerText;
+      const m = /(\d+)\s+events?\b/i.exec(t);
+      return m?.[1] !== undefined ? Number(m[1]) : 0;
+    });
+
+  let last = await read();
+  for (let i = 0; i < 40; i += 1) {
+    await page.waitForTimeout(150);
+    const next = await read();
+    if (next === last && next > 0) return next; // settled on a real number
+    if (next === last && last === 0 && i > 6) return next; // genuinely empty
+    last = next;
+  }
+  return last;
 }
 
 test.describe('visits - Show past visits uses the Switch component', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     await page.goto(VISITS);
-    await page.waitForLoadState('networkidle');
+    await settled(page);
   });
 
   test('renders a real role=switch control (not a checkbox)', async ({ page }) => {
@@ -120,5 +150,78 @@ test.describe('visits - Show past visits uses the Switch component', () => {
     await expect(toggle).toBeFocused();
     await page.keyboard.press('Space');
     await expect(toggle).toHaveAttribute('data-checked', '');
+  });
+});
+
+/**
+ * OWNER DIRECTION (2026-09-30): "Exclude terminal-lead visits from the default
+ * view (revealed by Show past visits)".
+ *
+ * The production bug this pins: a WON lead kept an OPEN visit (nothing closes a
+ * win's visit - the handover may still be owed), and the calendar only ever asked
+ * the VISIT's status, so that row rendered as live work forever.
+ *
+ * Asserted on NAMES, not counts. A count-only assertion cannot tell "the won
+ * deal's visit was excluded" from "some other row went missing"; naming the
+ * expected lead is what makes this a test of the actual rule.
+ *
+ * REQUIRES the seeded demo data: `demo-visit-upcoming-1` on a live lead, and
+ * `demo-visit-past-1` re-pointed at a WON lead. If the fixture is missing, this
+ * fails loudly rather than passing on an empty calendar.
+ */
+test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    await page.goto(VISITS);
+    await settled(page);
+  });
+
+  /**
+   * The calendar's rendered text, WAITED ON rather than read immediately.
+   *
+   * `settled()` only waits for the toggle to mount, which happens before the
+   * visits query resolves - so a direct read can catch the agenda mid-fetch and
+   * see "0 events". That race is what made this test pass in isolation and fail
+   * when run after a sibling spec (the extra load widens the window); the page
+   * snapshot from a failing run showed "5 events" with the expected lead present,
+   * i.e. the data was always fine and the read was early.
+   *
+   * Waits for a non-empty agenda instead of a fixed sleep: the day-group headings
+   * only render once events exist.
+   */
+  async function calendarText(page: Page): Promise<string> {
+    await page
+      .locator('main p')
+      .filter({ hasText: /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),/ })
+      .first()
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .catch(() => undefined);
+    return page.evaluate(
+      () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
+    );
+  }
+
+  test('hides a WON lead\'s open visit by default, and reveals it under Show past', async ({
+    page,
+  }) => {
+    const toggle = page.locator('[data-qa="visits-show-past"]').first();
+    await expect(toggle).toHaveAttribute('data-unchecked', '');
+
+    const off = await calendarText(page);
+    // The live deal's visit IS upcoming work - it must be there, or the assertion
+    // below would pass simply because nothing rendered.
+    expect(off, 'live lead\'s visit should be in the default view').toContain('Demo Meera');
+    // The settled deal's open visit is NOT. This is the fix.
+    expect(off, 'a WON lead\'s open visit must not read as upcoming').not.toContain(
+      'Demo Kavya',
+    );
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('data-checked', '');
+    await page.waitForTimeout(700);
+
+    const on = await calendarText(page);
+    // Reachable, not deleted: history still holds it.
+    expect(on, 'Show past must reveal the settled deal\'s visit').toContain('Demo Kavya');
   });
 });

@@ -16,7 +16,7 @@ import { toast } from '@paalstack/react-ui';
 import { CalendarProvider } from './calendar-context';
 import { ClientContainer } from './client-container';
 import { useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
-import { isUpcomingVisit, toVisitEventMeta, visitStatusColor } from '@/lib/visit-status';
+import { isUpcomingVisitForLead, toVisitEventMeta, visitStatusColor } from '@/lib/visit-status';
 
 import type { IEvent, IUser } from './interfaces';
 import type { TCalendarView } from './types';
@@ -77,20 +77,28 @@ export function SiteVisitCalendar({
 
   /**
    * OWNER DIRECTION (2026-09-29): "In visits page only show scheduled visit and
-   * rescheduled visit and upcoming visit data". The calendar therefore defaults to
-   * OPEN visits only; closed ones (COMPLETED / NO_SHOW / CANCELLED) are history
-   * and appear when the page's "Show past" toggle is on.
+   * rescheduled visit and upcoming visit data".
    *
-   * Filtered HERE rather than by the API's `status` filter so the same rows can
-   * feed both modes from one fetch - toggling must not trigger a refetch (and the
-   * user's own exec picker is derived from these rows, so narrowing the fetch
-   * would also silently shrink that list).
+   * The default view is therefore OPEN visits on NON-TERMINAL leads. The second
+   * half of that is 2026-09-30: a settled deal (WON/LOST/RNR) keeps its visit OPEN
+   * by design - the handover may still be owed - so `isUpcomingVisit` alone still
+   * answered "yes" and a won deal's long-past visit rendered as live work
+   * indefinitely. `isUpcomingVisitForLead` adds the lead's state; the row stays
+   * reachable behind the Show-past toggle.
+   *
+   * Filtered HERE rather than by the API's `status` filter (or any new lead-state
+   * filter) for two reasons:
+   *   1. One fetch feeds both modes, so toggling must not refetch.
+   *   2. `GET /api/visits` is SHARED with LeadVisitPanel, which needs a won deal's
+   *      handover visit to stay visible on the lead page. Excluding it at the
+   *      endpoint would break that page; this exclusion is a property of THIS
+   *      view, not of the data.
    */
   const rows = useMemo<VisitRow[]>(() => {
     const data = visitsQuery.data;
     if (!Array.isArray(data)) return [];
     const all = data as VisitRow[];
-    return showPast === true ? all : all.filter((v) => isUpcomingVisit(v.status));
+    return showPast === true ? all : all.filter((v) => isUpcomingVisitForLead(v));
   }, [visitsQuery.data, showPast]);
 
   // Project-scoped users: derive from the project's visits (each visit

@@ -22,6 +22,8 @@
 //      behaviour and they ARE testable.
 //   2. The mapping is a contract with the backend enum (`VisitStatus` in
 //      packages/api-types/src/enums.ts). One place to change, one place to pin.
+import { isTerminalLeadState } from '@shadhil/api-types';
+
 import type { TEventColor } from '@/components/calendar/types';
 
 /**
@@ -139,5 +141,44 @@ export function toVisitEventMeta(visit: VisitApiRow): VisitEventMeta {
  */
 export function isUpcomingVisit(status: string | null | undefined): boolean {
   return status === 'SCHEDULED' || status === 'RESCHEDULED';
+}
+
+/**
+ * True when a visit belongs in the DEFAULT (upcoming) view, considering the LEAD
+ * it belongs to as well as the visit's own status.
+ *
+ * OWNER DIRECTION (2026-09-30): "Exclude terminal-lead visits from the default
+ * view (revealed by Show past visits)". This is the third and last layer of the
+ * same problem, and the reason the earlier two fixes were not enough:
+ *
+ * `isUpcomingVisit` asks only "is this visit still open?", which is the right
+ * question for the visit and the WRONG one for the page. Nothing closes a visit
+ * when a lead reaches a terminal state - deliberately, because a WON deal may
+ * still owe a handover or site meeting, and silently cancelling that would
+ * destroy real work. So a settled deal's visit stays OPEN, answers `true` above,
+ * and renders on the visits page as live work for the rest of time. Found in
+ * production data: a WON lead (Arjun Reddy) whose slot had passed 11 days
+ * earlier was still listed as upcoming.
+ *
+ * WHY THE FILTER LIVES HERE AND NOT IN THE QUERY. `GET /api/visits` is shared:
+ * LeadVisitPanel fetches it to find the OPEN visit it records outcomes against,
+ * and a lead page must keep showing its own won deal's handover visit. An
+ * endpoint-level exclusion would hide that row from the lead page too, which is
+ * a worse bug than the one being fixed. The exclusion is a property of THIS
+ * VIEW (a page answering "what is coming up?"), not of the data.
+ *
+ * Terminal is WON | LOST | RNR (`isTerminalLeadState`), not the narrower
+ * `isDeadLeadState`: the whole point is that a WON deal's visit is not dead work,
+ * it is simply not UPCOMING work. It stays reachable behind the Show-past toggle.
+ *
+ * Fails OPEN: an unknown or missing lead state keeps the visit visible. A row
+ * wrongly hidden is invisible and unreportable, whereas a row wrongly shown is
+ * one the operator can cancel - so the conservative direction is to show it.
+ */
+export function isUpcomingVisitForLead(
+  visit: Pick<VisitApiRow, 'status' | 'leadState'>,
+): boolean {
+  if (!isUpcomingVisit(visit.status)) return false;
+  return !isTerminalLeadState(visit.leadState);
 }
 

@@ -13,7 +13,7 @@
 // a new enum member cannot quietly render as the neutral fallback.
 import { describe, expect, it } from 'vitest';
 
-import { isUpcomingVisit, isVisitClosed, toVisitEventMeta, visitStatusColor } from './visit-status';
+import { isUpcomingVisit, isUpcomingVisitForLead, isVisitClosed, toVisitEventMeta, visitStatusColor } from './visit-status';
 import type { VisitApiRow } from './visit-status';
 
 // The five values of VisitStatus (packages/api-types/src/enums.ts). Duplicated
@@ -141,5 +141,52 @@ describe('isUpcomingVisit', () => {
     // (The signature is the assertion: one argument, a status.)
     expect(isUpcomingVisit.length).toBe(1);
     expect(isUpcomingVisit('SCHEDULED')).toBe(true);
+  });
+});
+
+describe('isUpcomingVisitForLead', () => {
+  // OWNER DIRECTION (2026-09-30): a terminal-lead visit leaves the default view.
+  // The production case: lead cmu55o070000wyju83nmyivva is WON with an open visit
+  // whose slot had passed 11 days earlier, and it still listed as upcoming
+  // because nothing closes a visit on a terminal lead (deliberately - a won deal
+  // may still owe a handover) and the page only ever asked the VISIT's status.
+  const at = (status: string, leadState: string) => ({ status, leadState });
+
+  it('keeps live work on a live deal', () => {
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'VISIT_SCHEDULED'))).toBe(true);
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'CONTACTED'))).toBe(true);
+    expect(isUpcomingVisitForLead(at('RESCHEDULED', 'NEGOTIATION'))).toBe(true);
+  });
+
+  it('hides an open visit whose lead has settled', () => {
+    // The bug. Each of these is an OPEN visit that is not upcoming work.
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'WON'))).toBe(false);
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'LOST'))).toBe(false);
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'RNR'))).toBe(false);
+    expect(isUpcomingVisitForLead(at('RESCHEDULED', 'WON'))).toBe(false);
+  });
+
+  it('still hides closed visits, whatever the lead is doing', () => {
+    // The lead-state check is an ADDITION, not a replacement: a closed visit was
+    // already history and must stay that way.
+    expect(isUpcomingVisitForLead(at('COMPLETED', 'NEGOTIATION'))).toBe(false);
+    expect(isUpcomingVisitForLead(at('NO_SHOW', 'VISIT_SCHEDULED'))).toBe(false);
+    expect(isUpcomingVisitForLead(at('CANCELLED', 'VISIT_SCHEDULED'))).toBe(false);
+  });
+
+  it('fails OPEN when the lead state is missing or unknown', () => {
+    // A row wrongly hidden is invisible and unreportable; a row wrongly shown is
+    // one the operator can see and cancel. So an unknown state keeps it visible,
+    // rather than silently swallowing work if the backend adds a state.
+    expect(isUpcomingVisitForLead(at('SCHEDULED', ''))).toBe(true);
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'SOME_FUTURE_STATE'))).toBe(true);
+  });
+
+  it('uses TERMINAL states, not just dead ones', () => {
+    // The distinction that makes this predicate the right one: WON is terminal
+    // but NOT dead (isDeadLeadState is LOST/RNR only). A won deal's visit is not
+    // dead work - it is simply not UPCOMING work, so it leaves this view while
+    // staying valid everywhere else (e.g. the lead page's own visit panel).
+    expect(isUpcomingVisitForLead(at('SCHEDULED', 'WON'))).toBe(false);
   });
 });
