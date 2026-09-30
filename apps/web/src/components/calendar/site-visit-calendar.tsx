@@ -16,30 +16,23 @@ import { toast } from '@paalstack/react-ui';
 import { CalendarProvider } from './calendar-context';
 import { ClientContainer } from './client-container';
 import { useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
+import { isUpcomingVisit, toVisitEventMeta, visitStatusColor } from '@/lib/visit-status';
 
 import type { IEvent, IUser } from './interfaces';
 import type { TCalendarView } from './types';
 
-// Stable color per exec so the calendar color-codes by the visit's exec
-// (matches the original wireframe's "color-coded by exec"). Note this is
-// `SiteVisit.userId`, NOT the lead's owner - the two differ on a scheduled
-// visit, where the telecaller still owns the lead (plan §3). T-VISIT-OWNER-LABEL
-// (2026-09-28) renamed the surrounding wording after the dashboard printed the
-// exec under an unlabelled column that read as "owner".
-const EXEC_COLORS = [
-  'blue',
-  'green',
-  'red',
-  'yellow',
-  'purple',
-  'orange',
-  'gray',
-] as const;
+// Exec colours used to live here and tint each visit by WHICH exec owned it.
+// Removed 2026-09-29: the exec's name is already printed on every card, so the
+// colour was spent on the one property that was readable anyway, while the visit
+// OUTCOME (the thing operators actually cannot see) had no visual at all. Colour
+// now encodes status - see lib/visit-status.ts.
 
 type VisitRow = {
   id: string;
   leadId: string;
   leadName: string;
+  /** The lead's pipeline state, from the API - shown as the visit's status. */
+  leadState: string;
   scheduledFor: string;
   userId: string;
   userName: string;
@@ -56,12 +49,15 @@ export function SiteVisitCalendar({
   weekStart,
   onWeekStartChange,
   onSlotClick,
+  showPast,
 }: {
   projectId: string | undefined;
   /** The active week (Monday-start). Drives the fetch range + calendar view. */
   weekStart: Date;
   onWeekStartChange: (date: Date) => void;
   onSlotClick: (date: Date) => void;
+  /** Include closed visits (history). Default false - upcoming work only. */
+  showPast?: boolean;
 }) {
   // T-VISITS-AGENDA-DEFAULT (2026-09-16, owner request): agenda is the default
   // view, not the week grid.
@@ -79,14 +75,30 @@ export function SiteVisitCalendar({
   const visitsQuery = useVisits({ projectId, limit: 200 });
   const reschedule = useRescheduleVisit();
 
+  /**
+   * OWNER DIRECTION (2026-09-29): "In visits page only show scheduled visit and
+   * rescheduled visit and upcoming visit data". The calendar therefore defaults to
+   * OPEN visits only; closed ones (COMPLETED / NO_SHOW / CANCELLED) are history
+   * and appear when the page's "Show past" toggle is on.
+   *
+   * Filtered HERE rather than by the API's `status` filter so the same rows can
+   * feed both modes from one fetch - toggling must not trigger a refetch (and the
+   * user's own exec picker is derived from these rows, so narrowing the fetch
+   * would also silently shrink that list).
+   */
+  const rows = useMemo<VisitRow[]>(() => {
+    const data = visitsQuery.data;
+    if (!Array.isArray(data)) return [];
+    const all = data as VisitRow[];
+    return showPast === true ? all : all.filter((v) => isUpcomingVisit(v.status));
+  }, [visitsQuery.data, showPast]);
+
   // Project-scoped users: derive from the project's visits (each visit
   // carries userId/userName). This shows only execs actually linked to this
   // project, not every user in the org.
   const users = useMemo<IUser[]>(() => {
-    const rows = visitsQuery.data;
-    if (!Array.isArray(rows)) return [];
     const seen = new Map<string, IUser>();
-    for (const visit of rows as VisitRow[]) {
+    for (const visit of rows) {
       if (visit.userId.length === 0 || seen.has(visit.userId)) continue;
       seen.set(visit.userId, {
         id: visit.userId,
@@ -97,19 +109,8 @@ export function SiteVisitCalendar({
     return [...seen.values()];
   }, [visitsQuery.data]);
 
-  const colorByUserId = useMemo(() => {
-    const map = new Map<string, (typeof EXEC_COLORS)[number]>();
-    users.forEach((u, i) => {
-      const color = EXEC_COLORS[i % EXEC_COLORS.length];
-      if (color) map.set(u.id, color);
-    });
-    return map;
-  }, [users]);
-
   const events = useMemo<IEvent[]>(() => {
-    const rows = visitsQuery.data;
-    if (!Array.isArray(rows)) return [];
-    return (rows as VisitRow[]).map((visit) => {
+    return rows.map((visit) => {
       const start = new Date(visit.scheduledFor);
       const end = new Date(start.getTime() + VISIT_DURATION_MS);
       return {
@@ -117,16 +118,27 @@ export function SiteVisitCalendar({
         startDate: start.toISOString(),
         endDate: end.toISOString(),
         title: visit.leadName || visit.leadId,
-        color: colorByUserId.get(visit.userId) ?? 'gray',
+        // COLOUR = OUTCOME, not exec (2026-09-29 owner request). The exec's name
+        // is printed on the card, so colour spent on identity was spent twice;
+        // status was the genuinely invisible property. See lib/visit-status.ts
+        // for the full rationale and the mapping.
+        color: visitStatusColor(visit.status, visit.outcome),
         description: visit.notes ?? '',
         user: {
           id: visit.userId,
           name: visit.userName || 'Unassigned',
           picturePath: null,
         },
+        visit: toVisitEventMeta(visit),
       };
     });
-  }, [visitsQuery.data, colorByUserId]);
+    // Depends on `rows`, NOT `visitsQuery.data`. `rows` is the filtered view and
+    // the whole point of the Show-past toggle: keying this memo on the raw query
+    // data meant toggling the switch recomputed `rows` but NOT `events`, so the
+    // calendar rendered events from whichever filter was active on first render
+    // and the toggle appeared to do nothing (caught by the e2e probe: the API
+    // returned all 3 visits while the grid showed "0 events" in both modes).
+  }, [rows]);
 
   const handleUpdateEvent = (event: IEvent) => {
     // Drag-and-drop reschedule. The server requires scheduledFor in the

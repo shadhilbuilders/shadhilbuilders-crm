@@ -4,7 +4,7 @@
 // 7 days × hourly rows, color-coded by exec per wireframe; "+ Schedule
 // visit" opens a Dialog (leads + date/time + exec). Backend visits module
 // is pending; data arrives via the locked api-types VisitFilterDto contract.
-import { Button } from '@paalstack/react-ui';
+import { Button, Label, Switch } from '@paalstack/react-ui';
 import { LuChevronLeft, LuChevronRight, LuPlus } from '@paalstack/react-icons/lu';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -32,6 +32,13 @@ export default function VisitsPage() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [slotDate, setSlotDate] = useState<Date | null>(null);
+  /**
+   * Upcoming vs history (owner direction, 2026-09-29). The page defaults to
+   * UPCOMING work; closed visits are one toggle away. Local state, not a URL
+   * param: the page has one canonical URL and the toggle is a view preference,
+   * not a shareable filter.
+   */
+  const [showPast, setShowPast] = useState(false);
   const { user } = useSessionUser();
   const [mounted, setMounted] = useState(false);
 
@@ -131,12 +138,50 @@ export default function VisitsPage() {
       {visitsQuery.isLoading ? (
         <Skeleton variant="card" />
       ) : (
-        <SiteVisitCalendar
-          projectId={projectId ?? undefined}
-          weekStart={weekStart}
-          onWeekStartChange={setWeekStart}
-          onSlotClick={openSchedule}
-        />
+        <>
+          {/*
+            Upcoming / history toggle (owner direction, 2026-09-29: "In visits
+            page only show scheduled visit and rescheduled visit and upcoming
+            visit data" + "keep toggle"). The calendar defaults to OPEN visits;
+            this reveals the closed ones (completed / no-show / cancelled).
+
+            A Switch rather than two tabs because there are only two states and
+            neither is a URL-worthy route - keeping it out of searchParams means
+            the page has one canonical URL and no back-button surprises.
+
+            Uses the design-system Switch (owner direction: "for Show past visits
+            use Switch Component"), not a raw <input type="checkbox">. The label
+            pair matches the established pattern in settings/page.tsx and
+            teams/team-form-bodies.tsx: <Switch id> + <Label htmlFor>, wired to
+            the same state. `aria-label` is deliberately omitted because the
+            visible <Label> already names the control - setting both would make a
+            screen reader announce the name twice.
+          */}
+          <div className="flex items-center gap-2">
+            <Switch
+              id="visits-show-past"
+              checked={showPast}
+              onCheckedChange={setShowPast}
+              data-qa="visits-show-past"
+            />
+            <Label
+              htmlFor="visits-show-past"
+              className="text-muted-foreground inline-flex cursor-pointer items-center gap-2 text-sm font-normal"
+            >
+              Show past visits
+              <span className="text-xs">
+                {showPast ? '(including completed, no-show and cancelled)' : '(upcoming only)'}
+              </span>
+            </Label>
+          </div>
+          <SiteVisitCalendar
+            projectId={projectId ?? undefined}
+            weekStart={weekStart}
+            onWeekStartChange={setWeekStart}
+            onSlotClick={openSchedule}
+            showPast={showPast}
+          />
+        </>
       )}
     </div>
   );

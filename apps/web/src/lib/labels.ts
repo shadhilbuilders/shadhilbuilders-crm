@@ -67,7 +67,19 @@ export const LEAD_STATUSES = [
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
-/** Visit-outcome values per the Prisma `Visit.outcome` enum. */
+/**
+ * Visit-outcome values per the Prisma `Visit.outcome` enum.
+ *
+ * NOTE (2026-09-29): `SiteVisit.STATUS` is a DIFFERENT enum from `outcome` and
+ * has five values - it adds `SCHEDULED`, which has no outcome equivalent. Both
+ * were previously routed through `labelFor('visit', …)`, whose map covers only
+ * these four, so a SCHEDULED visit fell through to `humanize()` and rendered
+ * "Scheduled" by accident rather than by contract.
+ *
+ * The visits page now shows the LEAD's pipeline state (via `labelFor('lead', …)`)
+ * as its status word, so both pages use one vocabulary, and the visit's own
+ * status is only ever displayed through `VISIT_STATUS_LABELS` below.
+ */
 export const VISIT_OUTCOMES = [
   'COMPLETED',
   'NO_SHOW',
@@ -75,6 +87,31 @@ export const VISIT_OUTCOMES = [
   'RESCHEDULED',
 ] as const;
 export type VisitOutcome = (typeof VISIT_OUTCOMES)[number];
+
+/**
+ * The five `SiteVisit.status` values (packages/api-types/src/enums.ts
+ * `VisitStatusSchema`). Kept as its own list because `VISIT_OUTCOMES` above is
+ * NOT the same set - it is missing SCHEDULED, which is why every status check
+ * written against `VISIT_OUTCOMES` was silently unable to name an upcoming visit.
+ */
+export const VISIT_STATUSES = [
+  'SCHEDULED',
+  'RESCHEDULED',
+  'COMPLETED',
+  'NO_SHOW',
+  'CANCELLED',
+] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+
+/**
+ * A visit whose work is still ahead of it: the statuses the visits page shows by
+ * default. COMPLETED/NO_SHOW/CANCELLED are history - they are reachable through
+ * the page's "Show past" toggle, not the default view (owner direction,
+ * 2026-09-29: "In visits page only show scheduled visit and rescheduled visit
+ * and upcoming visit data").
+ */
+export const UPCOMING_VISIT_STATUSES = ['SCHEDULED', 'RESCHEDULED'] as const;
+
 
 /** Inventory-unit values per the Prisma `InventoryUnit.status` enum. */
 export const INVENTORY_STATUSES = [
@@ -190,6 +227,23 @@ const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
   RESCHEDULED: 'Postponed',
 };
 
+/**
+ * The five `SiteVisit.status` values. `labelFor('visit', …)` resolves through
+ * here first, falling back to the outcome map (they overlap on four values and
+ * the outcomes' friendlier wording is the established one).
+ *
+ * SCHEDULED is the entry that did not exist anywhere before 2026-09-29: the
+ * visits page's most common state had no label, so it silently rendered through
+ * `humanize()`. Pinned by labels.test.ts.
+ */
+const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
+  SCHEDULED: 'Visit booked',
+  RESCHEDULED: 'Postponed',
+  COMPLETED: 'Done',
+  NO_SHOW: "Didn't show up",
+  CANCELLED: 'Cancelled',
+};
+
 const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
   AVAILABLE: 'Available',
   HOLD: 'On hold',
@@ -284,6 +338,11 @@ export function labelFor(
     const mapped = (LEAD_STATUS_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else if (kind === 'visit') {
+    // Status first (it is the superset), then the outcome map. Both are needed:
+    // the UI passes a visit STATUS when showing where a visit stands, and an
+    // OUTCOME when showing what was recorded on site.
+    const asStatus = (VISIT_STATUS_LABELS as Record<string, string>)[value];
+    if (asStatus !== undefined) return asStatus;
     const mapped = (VISIT_OUTCOME_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else if (kind === 'inventory') {

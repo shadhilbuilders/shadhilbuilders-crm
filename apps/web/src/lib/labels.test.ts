@@ -14,6 +14,7 @@ import {
   LEAD_STATUSES,
   INVENTORY_STATUSES,
   VISIT_OUTCOMES,
+  VISIT_STATUSES,
   BOOKING_STATUSES,
   LEAD_SOURCES,
   ACTIVITY_TYPES,
@@ -21,6 +22,7 @@ import {
   FEEDBACK_STATUSES,
   type LeadStatus,
   type VisitOutcome,
+  type VisitStatus,
   type InventoryStatus,
   type BookingStatus,
   type LeadSource,
@@ -81,6 +83,59 @@ describe('lib/labels', () => {
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('visit', enumValue)).toBe(expected);
       }
+    });
+
+    // THE GAP THIS CLOSES (2026-09-29). The two tests above iterate
+    // VISIT_OUTCOMES, which holds FOUR values. `SiteVisit.status` has FIVE - it
+    // also has SCHEDULED. Because the status enum was never iterated, SCHEDULED
+    // had no entry in any label map and fell through to `humanize()`, rendering
+    // "Scheduled" (non-empty, non-raw, not SCREAMING) and passing every assertion
+    // above. The visits page's most common state was therefore labelled by
+    // accident. These assertions make the status enum the tested set.
+    it.each(VISIT_STATUSES)('status %s renders a non-empty, non-raw label', (value) => {
+      const label = labelFor('visit', value);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(value);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it('is EXPLICIT about the status values, so none can regress', () => {
+      // The real guarantee is this table: every status has a CURATED word, and
+      // the words match what the UI shows. (Asserting `!== humanize(value)`
+      // instead would be wrong - humanize('CANCELLED') is legitimately
+      // "Cancelled", so a curated label may coincide with the fallback.)
+      const expectations: Record<VisitStatus, string> = {
+        SCHEDULED: 'Visit booked',
+        RESCHEDULED: 'Postponed',
+        COMPLETED: 'Done',
+        NO_SHOW: "Didn't show up",
+        CANCELLED: 'Cancelled',
+      };
+      for (const [enumValue, expected] of Object.entries(expectations)) {
+        expect(labelFor('visit', enumValue)).toBe(expected);
+      }
+    });
+
+    it('names SCHEDULED deliberately, not via the humanize() fallback', () => {
+      // SCHEDULED is the value that was missing. It must be the curated wording,
+      // and specifically NOT the title-cased enum ("Scheduled") that the fallback
+      // produced - that is the exact regression this pins.
+      expect(labelFor('visit', 'SCHEDULED')).toBe('Visit booked');
+      expect(labelFor('visit', 'SCHEDULED')).not.toBe(humanize('SCHEDULED'));
+    });
+
+    it('names a visit status and its outcome the same way where they overlap', () => {
+      // One vocabulary across surfaces: the visits dialog reads a visit STATUS,
+      // the lead page reads the LEAD state, and for the states they share the
+      // words must match so the same event reads the same on both pages.
+      // NO_SHOW / RESCHEDULED appear in BOTH enums.
+      expect(labelFor('visit', 'NO_SHOW')).toBe(labelFor('lead', 'NO_SHOW'));
+      expect(labelFor('visit', 'RESCHEDULED')).toBe(labelFor('lead', 'RESCHEDULED'));
+      // COMPLETED maps to the lead's VISITED - the handoff. The two use different
+      // enum names for one business event, so they are asserted as a pair rather
+      // than for equality.
+      expect(labelFor('visit', 'COMPLETED')).toBe('Done');
+      expect(labelFor('lead', 'VISITED')).toBe('Visited');
     });
   });
 
