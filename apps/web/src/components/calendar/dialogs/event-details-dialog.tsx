@@ -181,6 +181,7 @@ export function EventDetailsDialog({ event, children }: IProps) {
                   href={leadHref}
                   className="text-link focus-visible:ring-ring inline-flex items-center gap-1 rounded-sm text-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
                   data-qa="visit-lead-link"
+                  target="_blank"
                 >
                   {event.title}
                   <LuExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
