@@ -6,16 +6,54 @@
 // RLS_MATRIX_REQUIRED=true (see .github/workflows/ci.yml rls-matrix job), a
 // missing database is a HARD FAILURE instead of a skip.
 
-import 'dotenv/config';
+// T-TEST-ENV-LOAD (2026-09-30): load the repo-root `.env` by ABSOLUTE PATH.
+//
+// This used to be `import 'dotenv/config'`, which reads `.env` from
+// `process.cwd()`. Vitest runs with CWD = `packages/database`, and there is no
+// `.env` in this package - so the root `.env` was never opened, DATABASE_URL
+// stayed undefined, and the whole suite silently degraded: 157 of 169 tests
+// took their `describe.skipIf(!HAS_DB)` path and the security RLS matrix
+// enforced nothing while the run looked green.
+//
+// It also crashed the two files that build a Prisma client at MODULE scope
+// (`const OWNER = createDirectPrismaClient()`) - with no URL the adapter
+// connected as the postgres default user with an empty password, failing at
+// import with `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a
+// string`. A module-scope throw happens before any `beforeAll`/guard can skip,
+// which is why the failure was a hard FAIL rather than a skip.
+//
+// Same class of bug as the documented Prisma-7 env pitfall (`dotenv/config`
+// reads CWD; pnpm --filter sets CWD to packages/database). `prisma.config.ts`
+// already solves it with `resolve(__dirname, ...)`; this mirrors that exactly.
+//
+// `process.loadEnvFile` (Node >= 20.6) is used rather than adding `dotenv`: it
+// does NOT overwrite variables that are already set, so CI's injected
+// DATABASE_URL / DIRECT_DATABASE_URL stay authoritative. The package declares
+// `dotenv` as a devDep too, so either would work - matching the sibling
+// `prisma.config.ts` is the lower-surprise choice.
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { beforeAll, afterAll } from 'vitest';
 
 import { isolateTestDatabase } from '../src/test-db-isolation';
 
-// T-TEST-DB-ISOLATION (2026-09-16): `dotenv/config` above loads the repo-root
-// `.env`, whose URLs point at the DEVELOPMENT database. Redirect the matrix at
-// `shadhil_crm_test` before anything connects - its INSERT probes write real rows
-// and are how 140 `matrix-test` leads ended up in dev.
+const rootEnv = resolve(__dirname, '..', '..', '..', '.env');
+
+if (existsSync(rootEnv)) {
+  try {
+    process.loadEnvFile(rootEnv);
+  } catch {
+    // Non-fatal: a malformed or unreadable `.env` must not break the suites
+    // that do not need the database. DB-backed suites skip themselves when the
+    // vars are missing, and RLS_MATRIX_REQUIRED still hard-fails in CI.
+  }
+}
+
+// T-TEST-DB-ISOLATION (2026-09-16): the `.env` loaded above points at the
+// DEVELOPMENT database. Redirect the matrix at `shadhil_crm_test` before
+// anything connects - its INSERT probes write real rows and are how 140
+// `matrix-test` leads ended up in dev.
 //
 // Throws rather than warns: if the redirect does not take effect, the suite must
 // not run at all, because the whole point is that dev is unreachable from tests.

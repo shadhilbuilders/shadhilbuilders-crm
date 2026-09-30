@@ -26,7 +26,7 @@
 //      org cannot see or reschedule the visit at all - so the reschedule actor
 //      here leads the lead's team, and a SECOND team on the same project supplies
 //      a different manager as a recipient.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
@@ -106,17 +106,52 @@ async function notificationsFor(
   ) as Promise<{ type: string; title: string }[]>;
 }
 
-/** Poll until `predicate` holds, so a slow emit cannot make the suite flaky. */
+/**
+ * Poll until `predicate` holds, so a slow emit cannot make the suite flaky.
+ *
+ * T-NOTIF-WAIT-BUDGET (2026-09-30): the budget is 8s, not 2.5s.
+ *
+ * It was `for (i < 25) { …; await sleep(100) }` - a hard 2.5s ceiling assuming
+ * the notification is committed almost immediately. That holds when the file runs
+ * alone (4/4 green, ~1s of polling). It does NOT hold inside the full parallel
+ * `pnpm test` run: turbo starts one worker per core, the backend's test phase
+ * measured 176s vs ~130s in isolation, and the emit is FIRE-AND-FORGET - see
+ * `emitToMany`, which does `void this.notifications.emit(...)` so the write lands
+ * strictly after `reschedule()` returns and after the row lock is released. Under
+ * contention that easily exceeds 2.5s.
+ *
+ * THE BUDGET IS DELIBERATELY NOT LARGER. The first test makes TWO sequential
+ * waits (manager, then admin), so the real ceiling is twice this value; a 15s
+ * budget could run 30s and hit the file's own `testTimeout` instead, converting a
+ * slow-poll failure into a timeout failure. 8s x 2 fits inside a 60s per-test
+ * limit with room for the queries themselves.
+ *
+ * The failure signature was the documented one - green in isolation, red only
+ * under full load - the same trap `vitest.config.ts` widened `testTimeout` for
+ * (5s -> 30s). The POLLING budget was missed there, so the test failed on its own
+ * assertion, which reads like a product bug ("the manager was never notified")
+ * rather than a slow test.
+ *
+ * Deadline-based rather than an iteration count, so the budget is stated in
+ * seconds and stays honest if the query gets slower.
+ */
+const NOTIFICATION_WAIT_MS = 8_000;
+const NOTIFICATION_POLL_MS = 100;
+
 async function waitForNotifications(
   userId: string,
   role: JwtPayload['role'],
   predicate: (rows: { type: string }[]) => boolean,
 ): Promise<{ type: string; title: string }[]> {
-  let rows: { type: string; title: string }[] = [];
-  for (let i = 0; i < 25; i += 1) {
+  const deadline = Date.now() + NOTIFICATION_WAIT_MS;
+  // Read once up front so the first value is genuinely used by the loop
+  // condition (a `do { … } while (true)` shape trips no-constant-condition and
+  // leaves an unused assignment). Always reads at least once.
+  let rows = await notificationsFor(userId, role);
+  while (!predicate(rows)) {
+    if (Date.now() >= deadline) break;
+    await new Promise((r) => setTimeout(r, NOTIFICATION_POLL_MS));
     rows = await notificationsFor(userId, role);
-    if (predicate(rows)) return rows;
-    await new Promise((r) => setTimeout(r, 100));
   }
   return rows;
 }
@@ -209,6 +244,14 @@ async function cleanup(): Promise<void> {
 }
 
 describe.skipIf(!HAS_DB)('visits notifications - reschedule + outcome', () => {
+  // T-NOTIF-WAIT-BUDGET (2026-09-30): the first test below makes TWO sequential
+  // `waitForNotifications` calls (manager, then admin), so its worst case is
+  // 2 x 8s of polling plus the queries themselves - past the package's 30s
+  // `testTimeout` under full load, which is how a slow poll became a timeout
+  // failure. Raised for this file only: waiting on a fire-and-forget emit is
+  // inherently slower than the rest of the suite, and a file-scoped limit keeps
+  // that honesty local instead of loosening the whole package.
+  vi.setConfig({ testTimeout: 60_000 });
   let service: VisitsService;
   let prismaService: PrismaService;
 
