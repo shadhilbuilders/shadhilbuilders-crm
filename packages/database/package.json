@@ -34,7 +34,8 @@
     "setup-demo-user": "tsx --env-file-if-exists=../../.env scripts/setup-demo-user.ts",
     "test:db:reset": "bash scripts/reset-test-db.sh",
     "format": "echo '(prisma format)' && prisma format",
-    "docker:up": "cd ../../docker && docker compose --env-file ../.env up -d postgres pgbouncer redis"
+    "docker:up": "cd ../../docker && docker compose --env-file ../.env up -d postgres pgbouncer redis",
+    "seed:owner": "tsx --env-file-if-exists=../../.env src/seed-owner.ts"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^3.3.0",

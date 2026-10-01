@@ -16,7 +16,8 @@ cp .env.example .env          # edit secrets (BETTER_AUTH_SECRET, JWT_SECRET)
 pnpm docker:stack             # postgres + pgbouncer (session pool) + redis + api container
 pnpm --filter @shadhil/database generate  # prisma client (gitignored)
 pnpm --filter @shadhil/database migrate   # schema + RLS policies + grants
-pnpm --filter @shadhil/database seed      # owner + admin + manager + 2 staff
+SEED_OWNER_PASSWORD='<real password>' \
+  pnpm --filter @shadhil/database seed:owner   # ONE user: the OWNER (org 'Shadhil Builders')
 ```
 
 The api is now live on http://localhost:8080/api (Swagger at `/api/docs`).
@@ -29,16 +30,29 @@ pnpm docker:down              # free port 8080
 pnpm dev                      # web on :3000, api on :8080 (turbo dev)
 ```
 
-Then open http://localhost:3000/login and sign in with a seeded placeholder
-account (rotate these before any real use):
+Then open http://localhost:3000/login and sign in as the owner with the
+`SEED_OWNER_PASSWORD` you chose above. The owner is gated to rotate their
+password on first login (`mustChangePassword`), then creates every other
+user (ADMIN/MANAGER/staff) through the admin UI/API - the seed only ever
+creates the ONE owner and the boot organization. It adds no leads,
+projects, teams or inventory.
 
-| Email | Role | Password |
+If the owner already exists and `SEED_OWNER_PASSWORD` is unset, the script
+keeps the current password (safe re-run).
+
+Override identity/org via env (defaults shown):
+
+| Env | Default | What |
 |---|---|---|
-| owner@shadhilbuilders.in | OWNER (exactly one, ever) | `owner_placeholder_pw` |
-| admin@shadhilbuilders.in | ADMIN | `admin_placeholder_pw` |
-| manager@shadhilbuilders.in | MANAGER | `manager_placeholder_pw` |
-| telecaller@shadhilbuilders.in | TELECALLER | `telecaller_placeholder_pw` |
-| sales_exec@shadhilbuilders.in | SALES_EXEC | `sales_exec_placeholder_pw` |
+| `SEED_OWNER_EMAIL` | `owner@shadhilbuilders.in` | owner sign-in email |
+| `SEED_OWNER_NAME` | `Owner` | display name |
+| `SEED_OWNER_PASSWORD` | (required on first run) | rotate-on-first-login |
+| `SEED_ORG_NAME` | `Shadhil Builders` | organization name |
+| `SEED_ORG_SLUG` | `shadhil-builders` | organization slug (unique) |
+
+The five-account placeholder table above is retired: the full demo seed
+(`pnpm --filter @shadhil/database seed`) still exists for DEV demo data,
+but production bootstraps ONLY via `seed:owner`.
 
 Role model: OWNER ⊃ ADMIN ⊃ MANAGER ⊃ TELECALLER / SALES_EXEC. The
 owner creates admins; admins create managers + staff; managers create
@@ -75,7 +89,8 @@ PLANNING-MASTER.md  Index to every planning document
 | `pnpm dev` | `turbo run dev` - fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first |
 | `pnpm --filter @shadhil/database generate` | Generate the Prisma client (gitignored - required after install) |
 | `pnpm --filter @shadhil/database migrate` | Apply schema + RLS (prisma migrate) |
-| `pnpm --filter @shadhil/database seed` | Owner + admin + manager + team + staff (placeholders unless SEED_* set) |
+| `pnpm --filter @shadhil/database seed:owner` | PROD bootstrap: one OWNER user + org, nothing else (password required on first run) |
+| `pnpm --filter @shadhil/database seed` | DEV demo data: 5 placeholder users + teams + projects + leads + inventory (never in prod) |
 | `pnpm db:policies` | Re-apply policies.sql directly (idempotent) |
 | `pnpm test` | All package tests (unit runs anywhere; DB suite needs live Postgres) |
 | `pnpm type-check` / `pnpm lint` | Gates that must stay green |
