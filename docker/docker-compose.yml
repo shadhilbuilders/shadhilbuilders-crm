@@ -5,11 +5,39 @@
 # via Coolify auto-deploy from GitHub.
 #
 # Services:
-#   postgres    Postgres 16 with max_connections=300 (eng review P1, 150-user cap)
-#   pgbouncer   PgBouncer in session pooling mode (eng review A5 - REQUIRED for RLS)
-#   redis       Redis 7 (SSE pub/sub + cron locks + rate limiting)
-#   api         NestJS 12 backend (port 8080)
-#   web         Next.js 16 frontend (port 3000) - placeholder, not built in Phase 1
+#   postgres      Postgres 16 with max_connections=300 (eng review P1, 150-user cap)
+#   pgbouncer     PgBouncer in session pooling mode (eng review A5 - REQUIRED for RLS)
+#   redis         Redis 7 (SSE pub/sub + cron locks + rate limiting)
+#   api           NestJS 12 backend (port 8080)
+#   web           Next.js 16 frontend (port 3000)
+#   realtime-sse  standalone SSE service (port 8090)
+#
+# 2026-10-01 (eng review F3/F5/F8): `web` and `realtime-sse` were stubs/comments
+# here while their Dockerfiles were missing, so the stack could not come up
+# whole. Both Dockerfiles now exist and are built in CI. The three app services
+# carry the Traefik label sets from
+# skills/devops/shadhil-crm-dev/references/prod-deployment.md; when Coolify
+# manages the proxy it sets those labels itself, so they are inert-but-harmless
+# here (they only take effect if a `traefik` service is on the same network).
+#
+# Reverse proxy is TRAEFIK (Coolify's default) - Decision Audit #36. Do not
+# introduce Caddy or nginx.
+#
+# Hostnames are `${...:-default}` so this ONE file serves both purposes: Coolify's
+# production deploy (defaults) and a local Traefik run (override in .env, e.g.
+# CRM_HOST=crm.local). The labels are inert when no Traefik container shares the
+# network, which is why `docker compose up postgres pgbouncer api` still works
+# standalone. Coolify sets its own labels when it manages the proxy.
+#
+# RELIABILITY: every service uses `restart: unless-stopped`, so a crashed
+# container comes back on its own. Two things this file CANNOT do and Coolify /
+# the VPS daemon must:
+#   1. health checks for api / web / realtime-sse (only postgres + redis declare
+#      one here) - Docker cannot restart what it cannot detect as unhealthy.
+#   2. container log rotation. Without it a crash-looping container fills the
+#      disk and takes the whole stack down with it. Set it daemon-wide:
+#        /etc/docker/daemon.json
+#        {"log-driver":"json-file","log-opts":{"max-size":"50m","max-file":"5"}}
 #
 # Usage:
 #   docker compose -f docker/docker-compose.yml config   # validate
@@ -134,17 +162,33 @@ services:
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL required in .env}
       # eng review A5: MUST be 'session' - NestJS boot-time check fails otherwise.
       POOL_MODE: session
+      # 24/7: Prisma defaults to a pool of 10 shared by every request, which
+      # exhausts long before Postgres does (max_connections=300). Override by
+      # appending ?connection_limit=20 to DATABASE_URL (plan T-PERF-2). Left
+      # unset here because it should be tuned against real load, not guessed.
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: https://crm.shadhilbuilders.in,http://localhost:3000,http://localhost:8081
+      # eng review AR-8: allowlist only. The browser origin is the web app; the
+      # api host is listed because the Swagger UI is served from it.
+      CORS_ORIGINS: https://${CRM_HOST:-crm.shadhilbuilders.in},http://localhost:3000,http://localhost:8081
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required (min 32 chars)}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm-api.shadhilbuilders.in}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://api.crm.shadhilbuilders.in}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (min 32 chars)}
       JWT_ISSUER: shadhil-crm
+      # boot-env.ts REQUIRES these two (assertBootEnv fails the container
+      # without them). PUBLIC_API_KEY guards the anonymous landing endpoints
+      # (POST /api/public/feedback, /api/public/leads); PUBLIC_ORG_ID is the
+      # tenant those synthetic-context writes land in.
+      PUBLIC_API_KEY: ${PUBLIC_API_KEY:?PUBLIC_API_KEY required (min 16 chars)}
+      PUBLIC_ORG_ID: ${PUBLIC_ORG_ID:?PUBLIC_ORG_ID required (ULID or UUID)}
       # 6 inputs from §17 - placeholders work; real values via Coolify env.
+      # Names mirror apps/backend/src (the WA_* convention, c7f8 commit
+      # "align WhatsApp env names to committed WA_* convention"): there is no
+      # WA_BUSINESS_ACCOUNT_ID -- the WABA id is not read by the backend.
       WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-placeholder}
-      WA_BUSINESS_ACCOUNT_ID: ${WA_BUSINESS_ACCOUNT_ID:-placeholder}
       WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-placeholder}
       WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-placeholder}
+      # Signature verification on inbound webhooks (Meta app secret).
+      WA_APP_SECRET: ${WA_APP_SECRET:-placeholder}
       FREJUN_API_KEY: ${FREJUN_API_KEY:-placeholder}
       FREJUN_WEBHOOK_SECRET: ${FREJUN_WEBHOOK_SECRET:-placeholder}
     # Rewrite the localhost in DATABASE_URL/DIRECT_DATABASE_URL to the
@@ -160,6 +204,13 @@ services:
       - "export DATABASE_URL=$$(echo \"$$DATABASE_URL\" | sed 's|@localhost:|@pgbouncer:|') && export DIRECT_DATABASE_URL=$$(echo \"$$DIRECT_DATABASE_URL\" | sed 's|@localhost:|@postgres:|') && echo \"[entrypoint] DATABASE_URL host rewritten to $$(echo $$DATABASE_URL | sed 's|.*@|@|')\" && exec node apps/backend/dist/main.js"
     ports:
       - "8080:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${API_HOST:-api.crm.shadhilbuilders.in}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,13 +224,105 @@ services:
       redis:
         condition: service_healthy
 
-  # Web app is NOT built in Phase 1. This stub stays here so Coolify can
-  # wire the routing when the Dockerfile lands in Phase 2.
-  # web:
-  #   build:
-  #     context: ..
-  #     dockerfile: apps/web/Dockerfile
-  #   ...
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined into the client bundle at BUILD time, so
+        # they must be passed here - a runtime env var is too late.
+        NEXT_PUBLIC_APP_URL: https://${CRM_HOST:-crm.shadhilbuilders.in}
+        NEXT_PUBLIC_API_BASE_URL: https://${API_HOST:-api.crm.shadhilbuilders.in}
+        # BACKEND_API_URL is server-side but ALSO read at build time: it is
+        # interpolated into next.config.ts's rewrite table. Omit it and the
+        # image bakes the localhost:8080 fallback (eng review F8).
+        BACKEND_API_URL: http://shadhil-api:8080
+    container_name: shadhil-web
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      # Runtime, NOT build-time: the BFF route reads process.env.SSE_BACKEND_URL
+      # per request (verified in the built bundle, 2026-10-01). Same container
+      # network, so the SSE service's compose name is the target.
+      SSE_BACKEND_URL: http://realtime-sse:8090
+      # Server-side web env (better-auth + the [orgSlug] tenant lookups).
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL required in .env}
+      BACKEND_API_URL: http://shadhil-api:8080
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required (min 32 chars)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${CRM_HOST:-crm.shadhilbuilders.in}}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (min 32 chars)}
+      JWT_ISSUER: shadhil-crm
+      NEXT_PUBLIC_API_BASE_URL: https://${API_HOST:-api.crm.shadhilbuilders.in}
+      NEXT_PUBLIC_APP_URL: https://${CRM_HOST:-crm.shadhilbuilders.in}
+      NEXT_PUBLIC_APP_NAME: Shadhil Builders
+    ports:
+      - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crm.rule=Host(`${CRM_HOST:-crm.shadhilbuilders.in}`)"
+      - "traefik.http.routers.crm.entrypoints=websecure"
+      - "traefik.http.routers.crm.tls=true"
+      - "traefik.http.routers.crm.tls.certresolver=letsencrypt"
+      - "traefik.http.services.crm.loadbalancer.server.port=3000"
+    depends_on:
+      api:
+        condition: service_started
+      realtime-sse:
+        condition: service_started
+
+  realtime-sse:
+    build:
+      context: ..
+      dockerfile: apps/realtime-sse/Dockerfile
+    container_name: shadhil-realtime-sse
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      REALTIME_SSE_PORT: "8090"
+      # Browser origin only - the SSE service is reached through the web BFF,
+      # and the ticket in the URL is the auth credential (no cookies by
+      # design; Decisions #33/#37).
+      CORS_ORIGINS: https://${CRM_HOST:-crm.shadhilbuilders.in},http://localhost:3000
+      # Same DB path as the api: pooled non-owner URL + session pooling.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required in .env}
+      POOL_MODE: session
+    # Plan §10: "Set ulimit -n 65536 on the SSE service container (the Docker
+    # default 1024 will EMFILE at ~500 connections)."
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "8090:8090"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sse.rule=Host(`${SSE_HOST:-sse.crm.shadhilbuilders.in}`)"
+      - "traefik.http.routers.sse.entrypoints=websecure"
+      - "traefik.http.routers.sse.tls=true"
+      - "traefik.http.routers.sse.tls.certresolver=letsencrypt"
+      # CRITICAL: opt the SSE routes out of compression. Traefik's default
+      # compress middleware buffers text/event-stream and breaks streaming
+      # (Traefik issue #8623). No flushInterval is needed - Traefik
+      # auto-detects streaming responses and flushes per frame.
+      - "traefik.http.routers.sse.middlewares=no-sse-compress"
+      - "traefik.http.middlewares.no-sse-compress.compress=true"
+      - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
+      - "traefik.http.services.sse.loadbalancer.server.port=8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    command:
+      - "sh"
+      - "-c"
+      - "export DATABASE_URL=$$(echo \"$$DATABASE_URL\" | sed 's|@localhost:|@pgbouncer:|') && exec /app/apps/realtime-sse/node_modules/.bin/tsx --env-file-if-exists=/dev/null src/server.ts"
 
 volumes:
   postgres_data:
