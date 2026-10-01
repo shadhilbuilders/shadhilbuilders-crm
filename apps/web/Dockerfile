@@ -37,6 +37,10 @@ WORKDIR /app
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ARG NEXT_PUBLIC_APP_NAME=Shadhil Builders
 ARG NEXT_PUBLIC_API_BASE_URL
+# Browser better-auth client base (packages/auth-client/src/auth-client.ts
+# reads this first, then BETTER_AUTH_URL, then falls back to localhost:3000
+# - unset it and prod browsers fetch localhost and CORS-die).
+ARG NEXT_PUBLIC_BETTER_AUTH_URL
 # Server-side, but read at BUILD time: next.config.ts rewrites interpolate
 # process.env.BACKEND_API_URL into the route table, so an absent value bakes the
 # `http://localhost:8080` fallback into the image and every BFF call then targets
@@ -65,6 +69,7 @@ ARG NEXT_PUBLIC_POSTHOG_HOST
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \
     NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL \
     BACKEND_API_URL=$BACKEND_API_URL \
     NEXT_PUBLIC_DEBUG_MODE=$NEXT_PUBLIC_DEBUG_MODE \
     NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \

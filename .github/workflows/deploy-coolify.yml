@@ -76,6 +76,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in
             NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
+            NEXT_PUBLIC_BETTER_AUTH_URL=https://crm.shadhilbuilders.in
             BACKEND_API_URL=http://shadhil-api:8080
           tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:${{ steps.tag.outputs.tag }}
 

@@ -111,6 +111,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ISSUER: shadhil-crm
       NEXT_PUBLIC_API_BASE_URL: https://api.crm.shadhilbuilders.in
+      NEXT_PUBLIC_BETTER_AUTH_URL: https://crm.shadhilbuilders.in
       NEXT_PUBLIC_APP_URL: https://crm.shadhilbuilders.in
       NEXT_PUBLIC_APP_NAME: Shadhil Builders
     labels:
