@@ -54,6 +54,29 @@ export const auth: any = betterAuth({
     autoSignIn: true,
   },
 
+  // E2E (2026-10-01): the e2e suite must not be able to rate-limit ITSELF.
+  //
+  // better-auth applies a production-default rate limit (measured: 429 with
+  // `x-retry-after: 10`). The suite has ~28 specs and most call `login()`, so a
+  // full run exhausts the window - and the symptom is not a clean failure: specs
+  // time out in `waitForURL` after sign-in, several pass on retry once the window
+  // rolls over, and `dashboard-audit` fails outright because it asserts
+  // `expect(pageErrors).toEqual([])` and catches the 429 as a console error.
+  //
+  // Gated on `E2E_DISABLE_RATE_LIMIT` and NOT on NODE_ENV, deliberately: the CI
+  // e2e job runs `next start` with NODE_ENV=production, because a production
+  // build is the only way this app behaves like deployment (it is also the only
+  // way several prod-only bugs surface - see the push-prompt and post-login
+  // redirect fixes). So NODE_ENV cannot distinguish "staging the e2e harness"
+  // from "a real deployment". A dedicated flag is explicit and fail-safe: unless
+  // someone sets it, production behaviour is unchanged.
+  //
+  // The CI e2e job sets it (see .github/workflows/ci.yml). Nothing else does, so
+  // a real deployment keeps the limiter even if it somehow shares an env with CI.
+  ...(process.env['E2E_DISABLE_RATE_LIMIT'] === 'true'
+    ? { rateLimit: { enabled: false } }
+    : {}),
+
   // SECOND-ROUND AUDIT B4a (2026-08-31): the Prisma `User.role` column is a
   // NOT NULL Role enum with no default - better-auth's signUpEmail inserts a
   // bare user and Prisma rejects it ("Invalid value for argument `role`").

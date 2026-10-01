@@ -360,6 +360,13 @@ jobs:
       WA_ACCESS_TOKEN: ci-e2e-wa-access-token-placeholder
       WA_PHONE_NUMBER_ID: ci-e2e-wa-phone-number-id-placeholder
       WA_WEBHOOK_VERIFY_TOKEN: ci-e2e-wa-webhook-verify-token-placeholder
+      # Staging-only switch: better-auth's production rate limiter must not
+      # throttle the suite against itself (~28 specs, most calling login(), so a
+      # full run exhausts the window - logins then 429, specs time out in
+      # waitForURL and some "pass on retry"). Read by packages/auth-client so the
+      # Next server's better-auth instance disables the limiter. Gated on this
+      # flag rather than NODE_ENV, which the harness must keep at production.
+      E2E_DISABLE_RATE_LIMIT: 'true'
       # Frontend. The web app proxies to the backend through /api/bff.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
       NEXT_PUBLIC_APP_NAME: Shadhil
@@ -435,7 +442,14 @@ jobs:
       # Build the workspace so the backend can run, then start both servers in
       # the background and wait for real readiness instead of sleeping.
       - run: pnpm --filter @shadhil/database build
-      - run: pnpm exec turbo run build --filter=@shadhil/backend --filter=@shadhil/web --concurrency=1
+      # @shadhil/realtime-sse is IN the filter on purpose. The web app's SSE proxy
+      # (`apps/web/src/app/api/sse/[...path]/route.ts`) forwards to
+      # SSE_BACKEND_URL, default :8090 - this workspace. It was never built or
+      # started here, so every /api/sse/notifications request 500'd, and
+      # dashboard-audit fails on `expect(pageErrors).toEqual([])` because it
+      # catches those as console errors. Omitting it also meant the realtime
+      # service had NO e2e coverage at all.
+      - run: pnpm exec turbo run build --filter=@shadhil/backend --filter=@shadhil/web --filter=@shadhil/realtime-sse --concurrency=1
       - name: Start backend
         run: |
           pnpm --filter @shadhil/backend start > /tmp/backend.log 2>&1 &
@@ -446,6 +460,20 @@ jobs:
             sleep 2
           done
           echo "backend failed to become ready"; tail -60 /tmp/backend.log; exit 1
+      # The SSE service the web BFF proxies to. Started before `web` so no page
+      # can open an SSE connection against a dead upstream. Readiness is its own
+      # /api/sse/healthz (200), not a sleep - same discipline as the two servers
+      # above. Its port comes from REALTIME_SSE_PORT (default 8090).
+      - name: Start realtime-sse
+        run: |
+          pnpm --filter @shadhil/realtime-sse start > /tmp/sse.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:8090/api/sse/healthz; then
+              echo "realtime-sse ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "realtime-sse failed to become ready"; tail -60 /tmp/sse.log; exit 1
       - name: Start web
         run: |
           pnpm --filter @shadhil/web start > /tmp/web.log 2>&1 &

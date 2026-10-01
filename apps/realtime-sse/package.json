@@ -4,8 +4,8 @@
   "private": true,
   "description": "Shadhil CRM - standalone fastify SSE service. T-E2 fix (Week 6, 2026-09-04): bypasses @nestjs/core 12.0.1's broken async-@Sse() response lifecycle (see ~/.hermes/skills/devops/shadhil-crm-dev/references/ci-workflow-pitfalls.md Pitfall 9).",
   "scripts": {
-    "dev": "tsx watch --env-file=../../.env src/server.ts",
-    "start": "tsx --env-file=../../.env src/server.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/server.ts",
     "type-check": "tsc --noEmit",
     "lint": "echo 'lint pending - apps/realtime-sse/ has no eslint config yet' && exit 0",
     "test": "echo 'tests pending - apps/realtime-sse/ has no vitest config yet' && exit 0"
