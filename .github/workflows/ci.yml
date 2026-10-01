@@ -172,6 +172,16 @@ jobs:
       #       (`--concurrency=1`) so the dep chain is always honored.
       - run: pnpm --filter @shadhil/database build
       - run: pnpm exec turbo run build --concurrency=1
+      # `--concurrency=1` for the same reason as the build above. `test` declares
+      # `dependsOn: ["^build"]`, so `pnpm test` runs each package's build first -
+      # and at the default concurrency=10 turbo schedules a dependent build as
+      # soon as its dependency is SCHEDULED, not finished. Observed in CI
+      # 2026-10-01: @shadhil/auth's tsc started while @shadhil/database was still
+      # emitting (both log `clean` at 01:37:03), and died with
+      # "src/auth.ts(30,24): error TS2307: Cannot find module '@shadhil/database'"
+      # - which turbo reported as the `pnpm test` step failing. It passes locally
+      # with a warm dist, which is exactly why the ordering has to be forced.
+      - run: pnpm test --concurrency=1
       # Backend has ZERO tests until T-RLSREAL lands - keep passWithNoTests
       # true for now so bundle-1 fixes can ship; the plan flips it to false
       # in the same PR as the first real backend test (AR-5).
@@ -325,6 +335,16 @@ jobs:
       # RLS context match no rows.
       PUBLIC_ORG_ID: ceid01lpfe1esm8jwsxid41k28
       CORS_ORIGINS: http://localhost:3000
+      # WhatsApp Cloud API. `WhatsAppClient.fromEnv()` THROWS at module init when
+      # WA_ACCESS_TOKEN / WA_PHONE_NUMBER_ID are absent ("we want the failure to
+      # be loud at module init, not on first send"), and it is constructed in
+      # WebhooksModule's factory - so the whole API refuses to boot without them.
+      # Throwaway CI placeholders, same convention as the rest of this block: CI
+      # never talks to Meta. Telegram and VAPID are deliberately left out - those
+      # services degrade to a logged warning instead of throwing.
+      WA_ACCESS_TOKEN: ci-e2e-wa-access-token-placeholder
+      WA_PHONE_NUMBER_ID: ci-e2e-wa-phone-number-id-placeholder
+      WA_WEBHOOK_VERIFY_TOKEN: ci-e2e-wa-webhook-verify-token-placeholder
       # Frontend. The web app proxies to the backend through /api/bff.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
       NEXT_PUBLIC_APP_NAME: Shadhil

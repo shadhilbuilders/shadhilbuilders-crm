@@ -32,8 +32,13 @@ import { STORAGE_PROVIDER } from './storage.tokens';
           ? new ImageKitStorage()
           : new LocalDiskStorage(process.env.MEDIA_DIR ?? 'media'),
     },
-    LocalDiskStorage,
+    // LocalDiskStorage is deliberately NOT registered as a class provider.
+    // Nest cannot resolve its `mediaDir: string` constructor parameter (a TS
+    // default is not a DI token), so listing it here makes every boot fail with
+    // "Nest can't resolve dependencies of the LocalDiskStorage (?)" - which took
+    // the whole API down, e2e included. The factory above is the only consumer
+    // and constructs it explicitly, so nothing needs the class as a token.
   ],
-  exports: [STORAGE_PROVIDER, LocalDiskStorage],
+  exports: [STORAGE_PROVIDER],
 })
 export class StorageModule {}
