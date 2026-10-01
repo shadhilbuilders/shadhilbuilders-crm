@@ -200,10 +200,21 @@ jobs:
       # "Authentication failed ... for `ci_build` is not valid".
       # RLS_MATRIX_REQUIRED makes a future env regression fail loudly instead of
       # degrading back to a green no-op (same guard the rls-matrix job uses).
+      # PUBLIC_ORG_ID is required too, and is the subtle one: NotificationsService
+      # and the inbound-WhatsApp handler write `organizationId:
+      # process.env.PUBLIC_ORG_ID`, and the insert policy compares it to the RLS
+      # context's org - so a missing or different org makes the write land nowhere
+      # and the suites fail on "expected +0 to be 1" / "expected [] to include
+      # 'visit.rescheduled'" with no error at all. Locally the repo-root `.env`
+      # supplies it, so this only shows up on a runner. Verified by repro: setting
+      # it to a different org reproduces exactly the 7 failures CI reported, and
+      # `ceid01lpfe1esm8jwsxid41k28` (the org the seed creates - see the same
+      # value in the e2e job) makes them pass.
       - run: pnpm test --concurrency=1
         env:
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
           DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+          PUBLIC_ORG_ID: ceid01lpfe1esm8jwsxid41k28
           RLS_MATRIX_REQUIRED: 'true'
 
   rls-matrix:
