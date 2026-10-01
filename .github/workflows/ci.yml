@@ -30,6 +30,27 @@ env:
   NEXT_PUBLIC_APP_NAME: Shadhil
   NEXT_PUBLIC_APP_URL: http://localhost:3000
   NEXT_PUBLIC_DEBUG_MODE: false
+  # Build-time env for `next build` (the type-check/lint/test/build jobs all run
+  # the web build, and NONE of them has a repo-root `.env` - it is gitignored and
+  # absent on a fresh runner). Both env validators fail the build without these:
+  # `@t3-oss/env-nextjs` in `apps/web/src/lib/env/env.ts` (surfacing as
+  # "Failed to collect page data for /api/docs") and `assertAuthEnv()` at module
+  # scope in `packages/auth-client/src/env.ts` (surfacing for whatever page first
+  # imports the auth client, e.g. "/[orgSlug]/my-teams").
+  #
+  # Values must be REAL-shaped, not absent: SKIP_ENV_VALIDATION does not help
+  # here. Turborepo's env mode does not forward a shell var unless it is in
+  # `globalEnv`, and even adding it there only uncovers assertAuthEnv, which has
+  # no skip switch at all. Every var below is already in turbo.json globalEnv, so
+  # turbo passes it through to the task.
+  #
+  # DIRECT_DATABASE_URL is validated only - `next build` never connects (verified
+  # with an unreachable placeholder), so the build job needs no postgres service.
+  BETTER_AUTH_SECRET: ci-build-better-auth-secret-not-a-real-secret
+  BETTER_AUTH_URL: http://localhost:8080
+  JWT_SECRET: ci-build-jwt-secret-not-a-real-secret-000000
+  JWT_ISSUER: shadhil-ci
+  DIRECT_DATABASE_URL: postgresql://ci_build:ci_build@localhost:5432/ci_build?schema=public
 
 jobs:
   type-check:
@@ -288,9 +309,21 @@ jobs:
       BETTER_AUTH_URL: http://localhost:8080
       POOL_MODE: session
       PUBLIC_API_KEY: ci-e2e-public-api-key-placeholder
-      # PUBLIC_ORG_ID must be a 26-char ULID or 36-char UUID and must match the
-      # org the demo seed creates (DEMO_ORG_ID in scripts/setup-demo-user.ts).
-      PUBLIC_ORG_ID: j6lic67mwuop8ur7epjylexz
+      # PUBLIC_ORG_ID must be a 26-char ULID or 36-char UUID (boot-env rejects
+      # anything else) and must be the org the seeded demo rows belong to.
+      # It is NOT DEMO_ORG_ID: that cuid2 (`j6lic67mwuop8ur7epjylexz`) is 24
+      # chars, because cuid2 - the repo's id standard - always is. The demo
+      # tenant cannot satisfy a 26/36 check at all.
+      #
+      # The seeded bootstrap org (`SEED_ORG_ID` in packages/database/src/seed.ts,
+      # a deliberately curated 26-char cuid2 that passes both z.cuid2 and this
+      # rule) is the org `seed` creates, so it is the only value here that is
+      # both valid and real. Correct because PUBLIC_ORG_ID's consumers are the
+      # public/unauthenticated write paths only (public leads intake, webhooks,
+      # overdue-alert scans) - the e2e specs are all authenticated and never touch
+      # them. It must stay a real org id: an invalid one would make the synthetic
+      # RLS context match no rows.
+      PUBLIC_ORG_ID: ceid01lpfe1esm8jwsxid41k28
       CORS_ORIGINS: http://localhost:3000
       # Frontend. The web app proxies to the backend through /api/bff.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
