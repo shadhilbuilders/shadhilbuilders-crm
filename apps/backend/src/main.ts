@@ -45,6 +45,15 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     rawBody: true,
   });
+  // 24/7 hardening (2026-10-01): without this, SIGTERM/SIGINT kill the process
+  // outright and NONE of the registered lifecycle hooks run. Several services
+  // depend on them - PrismaService.onModuleDestroy (pool teardown),
+  // RemindersService and OverdueAlertsService (releasing their in-flight cron
+  // claim), and the WhatsApp outbound cron. A redeploy or crash-loop that
+  // skipped them could leave a reminder claimed as PROCESSING and never
+  // released, or fire a job twice after restart. NestJS does not enable
+  // shutdown hooks by default; this is the documented opt-in.
+  app.enableShutdownHooks();
   // Raise the JSON body cap for chat media uploads. The browser sends the file
   // as base64 (~4/3 inflation), so a 10MB file is ~13.4MB on the wire.
   // useBodyParser (not app.use(express.json())) because it RESPECTS the
