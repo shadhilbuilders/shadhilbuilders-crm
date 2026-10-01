@@ -30,6 +30,16 @@ COPY apps/backend/ apps/backend/
 # --ignore-scripts skips app postinstall hooks (bash dependency etc.)
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
+# Prisma client is gitignored (.gitignore: packages/database/src/generated/), so
+# it does NOT exist in a fresh clone or in this Docker build context. Generate it
+# BEFORE anything compiles @shadhil/database: the package's own `build` script
+# runs `tsc` first and dies with TS2307 on './generated/prisma/client' otherwise.
+# Verified 2026-10-01 (eng review F1): without this line the build fails with
+# exit 2 and five TS2307 errors; with it, tsc exits 0.
+# `prisma generate` needs no DATABASE_URL (only migrate does) - confirmed by
+# running it under an empty env.
+RUN pnpm --filter @shadhil/database generate
+
 # Build workspace deps in dependency order, then the backend.
 # Each emits dist/ (CommonJS); their package.json exports point at dist/.
 RUN pnpm --filter @shadhil/database build

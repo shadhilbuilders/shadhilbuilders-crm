@@ -43,7 +43,12 @@ function mediaCdnPattern(): NonNullable<NonNullable<NextConfig['images']>['remot
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // output: 'standalone',
+  // REQUIRED by apps/web/Dockerfile: the runner stage copies
+  // .next/standalone (self-contained server.js + traced node_modules) and
+  // runs `node server.js`. With this commented out the image build dies at
+  // the COPY step - .next/standalone is simply never produced. Verified
+  // 2026-10-01 (eng review F2). Keep this in lockstep with the Dockerfile.
+  output: 'standalone',
   // Pages opt into dynamic rendering per-route (see src/app/page.tsx and
   // src/app/not-found.tsx) because the wrapped ThemeProvider from
   // @paalstack/react-ui reads localStorage on mount (theme persistence) and

@@ -1,0 +1,53 @@
+# Root .dockerignore - applies to every image whose build CONTEXT is the repo
+# root (apps/web, apps/backend, apps/realtime-sse per their Coolify config and
+# the compose `context: ..` entries).
+#
+# Added 2026-10-01 (eng review F9). Before this file, a root-context build sent
+# node_modules/, every .next/, and the real .env into the builder - slow, and one
+# stray COPY of . would have baked secrets into an image. apps/web/.dockerignore
+# exists but does NOT apply: Docker only reads a .dockerignore at the CONTEXT
+# root, and the context here is the repo root, not apps/web/.
+#
+# Keep the "!keep" exceptions narrow - they must list anything a Dockerfile COPYs
+# on purpose.
+
+# Dependencies (pnpm install runs inside the image)
+**/node_modules
+.pnpm-store
+
+# Build outputs
+**/.next
+**/dist
+**/out
+**/.turbo
+**/*.tsbuildinfo
+
+# Environment files - never bake secrets into an image
+.env
+.env.*
+!.env.example
+
+# Version control + editor + CI
+.git
+.gitignore
+.github
+.vscode
+.cursor
+.husky
+
+# Test + coverage artifacts
+**/coverage
+**/playwright-report
+**/test-results
+**/.pytest_cache
+
+# Docs + license (not needed to build; keeps the context small)
+*.md
+LICENSE
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Windows/WSL mounts, if the repo is ever built from one
+/mnt
