@@ -158,7 +158,7 @@ shadhil-crm/
    `useGetLeadsQuery()` hook.
 2. The hook is backed by Apollo Client pointed at
    `NEXT_PUBLIC_NESTJS_URL/graphql` (e.g.,
-   `https://crm-api.shadhilbuilders.in/graphql`).
+   `https://api.crm.shadhilbuilders.in/graphql`).
 3. Apollo's auth link adds `Authorization: Bearer ***` header.
 4. The JWT was obtained from better-auth via the
    `auth.api.getJWT()` call earlier. The token is cached in
@@ -211,7 +211,7 @@ shadhil-crm/
 
 - Next.js BFF: `https://crm.shadhilbuilders.in` (or
   `https://bff.shadhilbuilders.in` if you split subdomains)
-- NestJS backend: `https://crm-api.shadhilbuilders.in`
+- NestJS backend: `https://api.crm.shadhilbuilders.in`
 - Mobile: `exp://192.168.x.x:8081` in dev, no domain in prod
   (native app, no CORS)
 - Expo in dev: needs CORS allowlist on BOTH Next.js AND NestJS
@@ -629,7 +629,7 @@ structure do you want for the BFF vs backend?**
 
 Option 1 (split subdomains - clean, my recommendation):
 - BFF (Next.js): `crm.shadhilbuilders.in`
-- Backend (NestJS): `crm-api.shadhilbuilders.in`
+- Backend (NestJS): `api.crm.shadhilbuilders.in`
 - Mobile: native, no domain
 - Pro: clean separation, easy to scale independently
 - Con: 2 DNS records, 2 SSL certs (Coolify handles both

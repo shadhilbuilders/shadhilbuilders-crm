@@ -28,7 +28,7 @@ export const env = createEnv({
 
   client: {
     NEXT_PUBLIC_API_BASE_URL: z.url().default('http://localhost:8080'),
-    NEXT_PUBLIC_APP_NAME: z.string().min(1).default('Shadhil Builders CRM'),
+    NEXT_PUBLIC_APP_NAME: z.string().min(1).default('Shadhil Builders'),
     NEXT_PUBLIC_APP_URL: z.url().default('http://localhost:3000'),
     NEXT_PUBLIC_DEBUG_MODE: z
       .string()

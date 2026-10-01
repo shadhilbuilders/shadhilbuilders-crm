@@ -26,7 +26,7 @@ const VALID_ENV: Record<string, string> = {
   JWT_SECRET: 'a'.repeat(32),
   JWT_ISSUER: 'shadhil-crm',
   BETTER_AUTH_SECRET: 'b'.repeat(32),
-  BETTER_AUTH_URL: 'https://crm-api.shadhilbuilders.in',
+  BETTER_AUTH_URL: 'https://api.crm.shadhilbuilders.in',
   POOL_MODE: 'session',
   CORS_ORIGINS: 'https://crm.shadhilbuilders.in,http://localhost:3000',
   API_PORT: '8080',

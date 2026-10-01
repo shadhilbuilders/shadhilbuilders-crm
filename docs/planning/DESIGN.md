@@ -416,7 +416,7 @@ action, not a rebuild.
 - Numbers: TBD (provision fresh India DID, e.g., +91 90250 12344).
 - **Send:** Templated messages via existing Meta setup. Both
   sides of the conversation go through the CRM number.
-- **Receive:** Webhook to `https://crm-api.shadhilbuilders.in/webhooks/whatsapp`.
+- **Receive:** Webhook to `https://api.crm.shadhilbuilders.in/webhooks/whatsapp`.
   Inbound message → log as `Message` row → push via SSE + push notification + inbox.
 - **Templates needed:**
   - `customer_enquiry_confirmation` (existing)
@@ -441,7 +441,7 @@ action, not a rebuild.
   real but not needed at Shadhil's current scale.
 - **Features:** virtual India number, click-to-call, auto-
   recording, AI call transcription, real-time webhooks.
-- **Webhook URL:** `https://crm-api.shadhilbuilders.in/webhooks/frejun`
+- **Webhook URL:** `https://api.crm.shadhilbuilders.in/webhooks/frejun`
 - **Events:** `call.initiated`, `call.answered`, `call.ended`,
   `recording.ready`, `transcription.ready`
 
@@ -571,7 +571,7 @@ shadhil-crm/
 ### Subdomain structure (Option 1, split subdomains)
 
 - BFF: `https://crm.shadhilbuilders.in` (Next.js)
-- Backend: `https://crm-api.shadhilbuilders.in` (NestJS)
+- Backend: `https://api.crm.shadhilbuilders.in` (NestJS)
 - Mobile: native, no domain
 - Coolify handles both SSL certs (Let's Encrypt) automatically.
 
@@ -1058,7 +1058,7 @@ estimate was for the "fast" path; the "reusable infra + reliable
 | 13 | Push: Expo Push as universal service, 12 triggers | v10 |
 | 14 | Notification Center: in-app inbox, 90-day visibility, 7-year retention | v11 |
 | 15 | RBAC + ABAC: both from day 1, RLS-enforced | v2 |
-| 16 | Subdomain: split (crm + crm-api) | v4 |
+| 16 | Subdomain: split (crm + api.crm) | v4 |
 | 17 | WhatsApp: NEW separate number for CRM (not landing site) | Q0 |
 | 18 | Audit retention: 7 years (RERA upper bound) | Q12 |
 | 19 | Manager scope: per-team ONLY; admin is global | Q13 |

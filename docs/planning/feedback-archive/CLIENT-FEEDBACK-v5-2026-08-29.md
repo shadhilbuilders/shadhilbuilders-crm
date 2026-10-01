@@ -97,7 +97,7 @@ Works, but it's an extra dependency and a non-obvious setup.
 
 ### 5. Command-line debugging is straightforward
 
-REST: `curl https://crm-api.shadhilbuilders.in/leads/abc -H "Authorization: Bearer ***`. See JSON. Done.
+REST: `curl https://api.crm.shadhilbuilders.in/leads/abc -H "Authorization: Bearer ***`. See JSON. Done.
 
 GraphQL: write a query, POST it, parse the response. More steps.
 `curl` works but it's awkward.
@@ -317,7 +317,7 @@ Everything else from v4 carries over:
 - Prisma schema (12 models)
 - Monorepo structure (simplified)
 - VPS sizing (8GB Hostinger)
-- Subdomain structure (crm + crm-api, or pick option B/C)
+- Subdomain structure (crm + api.crm, or pick option B/C)
 - 10-week timeline to v1 (now slightly faster - REST saves
   1-2 weeks of GraphQL setup, SSE saves another 1-2 weeks
   of subscription server work)
