@@ -176,6 +176,35 @@ State these to the client rather than discovering them during an incident:
 
 ## Incident response
 
+### Who is on call (decided 2026-10-01)
+
+**Primary: the owner (PaalStack).** There is no rotation - one person, and the
+plan's own risk table flagged this (P-3, plan §10) as "4-8 h/month on-call is
+enough for a self-hosted stack", challenged as High.
+**Secondary / escalation: Shadhil (the client),** for anything the owner cannot
+resolve within the notify target (SEV-1 > 30 min).
+
+Paging channel: **Telegram**, using the same bot the API already has
+(`AlertsService` sends via `api.telegram.org/bot<token>/sendMessage` with
+`chat_id` = `TELEGRAM_CHANNEL_ID`). Because `sendMessage` posts to a `chat_id`,
+that value is a **group or channel id, not a personal chat** - create an ops
+group, add the bot, put the owner in it now and the client in it once they are
+onboarded. Telegram must have notifications enabled for that group, or 3am
+pages arrive silently.
+
+**Not yet provisioned.** No monitoring tool exists on the VPS, so nothing pages
+anyone today. Set up in this order:
+
+1. Create the ops Telegram group; add the alert bot; confirm a test message
+   arrives on a phone.
+2. Install Better Stack, pointing at `crm.<domain>/api/health`,
+   `api.crm.<domain>/api/health` and `sse.crm.<domain>/api/sse/healthz`, every
+   30s from at least two regions.
+3. Wire Better Stack's alert to that same group, and **send a test alert**. An
+   alert path nobody has seen fire is not a paging path.
+4. Record in this doc which phone(s) carry the Telegram group. If the owner is
+   travelling or asleep with notifications off, that is an unowned SEV-1.
+
 ### Severity
 
 | Level | Definition | Response target | Notify |
@@ -227,3 +256,4 @@ lost in a commit message.
 | Date | Change |
 |---|---|
 | 2026-10-01 | Created. Targets set at 99.9% app / 99.5% SSE / 99.9% data / 99.0% jobs. Current state recorded as UNMEASURED; Phase A not yet done. |
+| 2026-10-01 | On-call named: owner primary, client escalation. Paging channel fixed to the existing Telegram bot (group chat_id, not a DM). Still not provisioned - no monitor on the VPS. |
