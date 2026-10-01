@@ -27,7 +27,7 @@ env:
   SKIP_ENV_VALIDATION: 'true'
   NODE_ENV: test
   NEXT_PUBLIC_API_BASE_URL: https://api.example.com/v1
-  NEXT_PUBLIC_APP_NAME: Shadhil
+  NEXT_PUBLIC_APP_NAME: Shadhil Builders
   NEXT_PUBLIC_APP_URL: http://localhost:3000
   NEXT_PUBLIC_DEBUG_MODE: false
   # Build-time env for `next build` (the type-check/lint/test/build jobs all run
@@ -385,7 +385,7 @@ jobs:
       BACKEND_API_URL: http://localhost:8080
       # Frontend. The web app proxies to the backend through /api/bff.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
-      NEXT_PUBLIC_APP_NAME: Shadhil
+      NEXT_PUBLIC_APP_NAME: Shadhil Builders
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       NEXT_PUBLIC_DEBUG_MODE: 'false'
     services:
@@ -543,3 +543,68 @@ jobs:
       # Cost: ~2m on a fresh runner vs ~15s with concurrency=10 on local
       # dev. CI accepts that cost; the bug it avoids is a hard failure.
       - run: pnpm exec turbo run build --concurrency=1
+
+  # Added 2026-10-01 (eng review F13/T6). Until this job existed, NOTHING in CI
+  # built a Docker image, so two production-image breaks shipped unnoticed:
+  #   1. the API image ran `tsc` before `prisma generate` (TS2307 x5, exit 2)
+  #   2. the web image copied `.next/standalone` while `output: 'standalone'`
+  #      was commented out in next.config.ts
+  # Both were invisible to `pnpm build` locally (the generated client happens to
+  # sit in a dev working tree) and to every other CI job. Building the three
+  # images from a clean checkout is the only check that catches this class.
+  #
+  # Build context is `.` for all three, matching the Coolify config and the
+  # compose `context: ..` entries - so a root-.dockerignore regression (F9) is
+  # covered here too.
+  docker-images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    needs: [type-check, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # No registry push and no cache export - this job answers exactly one
+      # question: "do the production images build from a fresh clone?"
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          build-args: |
+            NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in
+            NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
+            BACKEND_API_URL=http://shadhil-api:8080
+            NEXT_PUBLIC_DEBUG_MODE=false
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/backend/Dockerfile
+          push: false
+
+      - name: Build realtime-sse image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/realtime-sse/Dockerfile
+          push: false
+
+      # The web image's runner stage fails at COPY if output:'standalone' is ever
+      # removed again. Assert the build actually produced the file it copies, so
+      # the failure names the cause instead of dying inside BuildKit.
+      # NOTE the doubled path: in a pnpm monorepo the standalone tree is rooted at
+      # the repo root, so the server lands at apps/web/server.js *inside* it.
+      - name: Assert the web build emits what the Dockerfile copies
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in \
+            --target builder \
+            -f apps/web/Dockerfile -t web-builder-check .
+          docker run --rm --entrypoint sh web-builder-check -c \
+            'test -f /app/apps/web/.next/standalone/apps/web/server.js' \
+            || { echo "apps/web/next.config.ts is missing output:'standalone' - the runner stage COPY would fail"; exit 1; }
