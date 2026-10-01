@@ -13,7 +13,6 @@
 // store, etc.) without re-touching every consumer.
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
 
 import { authClient } from '@/lib/auth-client';
@@ -24,12 +23,22 @@ import { authClient } from '@/lib/auth-client';
  * Returns a stable callback (useCallback) so consumers can safely list
  * it in dependency arrays or hand it to a memoized component without
  * re-rendering on every render.
+ *
+ * HARD NAVIGATION, not router.replace (2026-10-01). Same reasoning as the
+ * post-login redirect in (guest)/login/LoginForm.tsx, in reverse: the app
+ * shell prefetches routes and the client router keeps rendered trees for
+ * them. `router.replace('/login')` after signOut re-enters that cached
+ * tree, so the shell could stay mounted - showing the signed-out user's
+ * name, role and cached queries - instead of the sign-in form. A document
+ * navigation re-requests /login from the server with the (now cleared)
+ * cookie, so the proxy decides: no session -> render the form.
+ *
+ * `assign` over `replace` so the back button does not resurrect the
+ * authenticated shell from history.
  */
 export function useSignOut(): () => Promise<void> {
-  const router = useRouter();
   return useCallback(async () => {
     await authClient.signOut();
-    router.replace('/login');
-    router.refresh();
-  }, [router]);
+    window.location.assign('/login');
+  }, []);
 }

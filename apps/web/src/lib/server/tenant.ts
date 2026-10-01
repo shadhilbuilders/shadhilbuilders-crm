@@ -20,8 +20,7 @@ import { issueJwt } from '@shadhil/auth';
 import { prisma } from '@shadhil/database';
 
 import { env } from '@/lib/env';
-
-const SESSION_COOKIE = 'better-auth.session_token';
+import { readSessionCookie } from '@/lib/session-cookie';
 
 /** Shape of GET /organizations/by-slug/:slug. */
 export type OrgLookup = { id: string; name: string; slug: string };
@@ -42,15 +41,7 @@ class NotAuthenticatedError extends Error {
  */
 async function backendJwt(): Promise<string> {
   const cookieStore = await cookies();
-  const cookieValue =
-    cookieStore.get(SESSION_COOKIE)?.value ??
-    // HTTPS deploys: better-auth prefixes the cookie with `__Secure-`
-    // (RFC6265bis). Accept both names - plain first, then secure-prefixed.
-    cookieStore
-      .getAll()
-      .find((c) => c.name === `__Secure-${SESSION_COOKIE}` || c.name.startsWith(SESSION_COOKIE))
-      ?.value ??
-    null;
+  const cookieValue = readSessionCookie(cookieStore)?.value ?? null;
   if (cookieValue === null) throw new NotAuthenticatedError();
 
   let sessionToken: string | null;

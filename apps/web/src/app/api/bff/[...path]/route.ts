@@ -17,10 +17,9 @@ import { issueJwt } from '@shadhil/auth';
 import { prisma } from '@shadhil/database';
 
 import { buildBackendPath } from '@/lib/bff-path';
+import { readSessionCookie } from '@/lib/session-cookie';
 
 export const dynamic = 'force-dynamic';
-
-const SESSION_COOKIE = 'better-auth.session_token';
 
 export async function GET(
   request: NextRequest,
@@ -68,16 +67,7 @@ async function forward(
   // column stores the bare token part only. Strip the signature before the
   // lookup, then URL-decode (the cookie value arrives percent-encoded).
   const cookieStore = await cookies();
-  const cookieValue =
-    cookieStore.get(SESSION_COOKIE)?.value ??
-    // HTTPS deploys: better-auth prefixes the cookie with `__Secure-`
-    // (RFC6265bis), so the plain-name lookup misses on production. Accept
-    // BOTH: exact plain name first, then the secure-prefixed sibling.
-    cookieStore
-      .getAll()
-      .find((c) => c.name === `__Secure-${SESSION_COOKIE}` || c.name.startsWith(SESSION_COOKIE))
-      ?.value ??
-    null;
+  const cookieValue = readSessionCookie(cookieStore)?.value ?? null;
   if (cookieValue === null) {
     return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
   }

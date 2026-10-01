@@ -10,9 +10,22 @@
 // this layer exists purely for UX: bounce anonymous users to /login before
 // they render a page full of failed fetches. Protected pages may still do
 // their own server-side session check when they land (Phase 2).
+//
+// COOKIE NAME (2026-10-01): this gate must test BOTH better-auth cookie
+// names - `__Secure-better-auth.session_token` (HTTPS, i.e. production) and
+// the bare `better-auth.session_token` (HTTP, dev/e2e). See
+// lib/session-cookie.ts for the full derivation and the incident history.
+//
+// This file was the LAST of four hand-written lookups to carry the bug:
+// ab020cd fixed the BFF route, the SSE route and tenant.ts but missed the
+// gate that actually decides the post-login redirect. Tested as a plain
+// `cookieStore.has('better-auth.session_token')`, an authenticated
+// production request to `/login` looked anonymous and was passed through,
+// so the post-sign-in `window.location.assign('/')` replayed the anonymous
+// `307 -> /login?next=%2F` instead of entering the app.
 import { type NextRequest, NextResponse } from 'next/server';
 
-const SESSION_COOKIE = 'better-auth.session_token';
+import { hasSessionCookie } from '@/lib/session-cookie';
 
 // Prefixes that never require a session. PWA files (manifest, sw.js, the
 // /icons/* brand assets, and the offline page) must be public so
@@ -35,13 +48,13 @@ export default function proxy(request: NextRequest): NextResponse {
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     // Signed-in user hitting /login → send them to the app.
-    if (pathname === '/login' && request.cookies.has(SESSION_COOKIE)) {
+    if (pathname === '/login' && hasSessionCookie(request.cookies)) {
       return NextResponse.redirect(new URL('/', request.url));
     }
     return NextResponse.next();
   }
 
-  if (!request.cookies.has(SESSION_COOKIE)) {
+  if (!hasSessionCookie(request.cookies)) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);

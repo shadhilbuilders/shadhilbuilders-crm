@@ -18,9 +18,10 @@
 import { cookies } from 'next/headers';
 import { type NextRequest } from 'next/server';
 
+import { readSessionCookie } from '@/lib/session-cookie';
+
 export const dynamic = 'force-dynamic';
 
-const SESSION_COOKIE = 'better-auth.session_token';
 const SSE_BACKEND_URL = process.env.SSE_BACKEND_URL ?? 'http://localhost:8090';
 
 // T-PERF-2 #2: Origin allowlist. Defends against a foreign origin driving
@@ -77,15 +78,7 @@ export async function GET(
   // ticket mint endpoint is JWT-gated on the backend, and we don't
   // want a path that lets unauthenticated browsers open SSE streams).
   const cookieStore = await cookies();
-  const cookieValue =
-    cookieStore.get(SESSION_COOKIE)?.value ??
-    // HTTPS deploys: better-auth prefixes the cookie with `__Secure-`
-    // (RFC6265bis). Accept both names - plain first, then secure-prefixed.
-    cookieStore
-      .getAll()
-      .find((c) => c.name === `__Secure-${SESSION_COOKIE}` || c.name.startsWith(SESSION_COOKIE))
-      ?.value ??
-    null;
+  const cookieValue = readSessionCookie(cookieStore)?.value ?? null;
   if (cookieValue === null) {
     return new Response(JSON.stringify({ message: 'Not authenticated' }), {
       status: 401,
