@@ -41,6 +41,16 @@ services:
     volumes:
       - /data/coolify/shadhil/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - /data/coolify/shadhil/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    # pg_isready ships with the edoburu image and is protocol-level (it
+    # completes the Postgres handshake), so exit 0 means the pooler is really
+    # ACCEPTING connections. Measured: 6432 -> exit 0, a non-pg port -> exit 2.
+    # -U is required; pgbouncer rejects a userless probe.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U shadhil"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
       shadhil-postgres:
         condition: service_healthy
@@ -89,8 +99,22 @@ services:
       - "traefik.http.middlewares.hsts-label.headers.referrerpolicy=strict-origin-when-cross-origin"
       - "traefik.http.routers.api.middlewares=hsts-label"
       - "traefik.http.services.api.loadbalancer.server.port=8080"
+    # /api/health is @Public() and returns {status:'ok'} - verified live at
+    # https://api.crm.shadhilbuilders.in/api/health (200, uptimeSec present).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       shadhil-postgres:
+        condition: service_healthy
+      shadhil-pgbouncer:
+        # Was absent, and in the dev file it was service_started - which only
+        # means "container created", so the api could hit pgbouncer before it
+        # finished SCRAM negotiation. A healthcheck on the pooler makes this a
+        # real gate.
         condition: service_healthy
       shadhil-redis:
         condition: service_healthy
@@ -123,9 +147,19 @@ services:
       - "traefik.http.routers.crm.tls.certresolver=letsencrypt"
       - "traefik.http.routers.crm.middlewares=hsts-label"
       - "traefik.http.services.crm.loadbalancer.server.port=3000"
+    # /api/health route handler, no session needed - verified live at
+    # https://crm.shadhilbuilders.in/api/health (200, environment=production).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       shadhil-api:
-        condition: service_started
+        condition: service_healthy
+      shadhil-realtime-sse:
+        condition: service_healthy
 
   shadhil-realtime-sse:
     image: ghcr.io/shadhilbuilders/shadhil-crm-sse:${IMAGE_TAG:-prod-5f02691}
@@ -152,11 +186,20 @@ services:
       - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
       - "traefik.http.routers.sse.middlewares=no-sse-compress,hsts-label"
       - "traefik.http.services.sse.loadbalancer.server.port=8090"
+    # Dedicated liveness route (server.ts) -> {"ok":true,...}. Verified live at
+    # https://sse.crm.shadhilbuilders.in/api/sse/healthz (200). Note /api/sse/
+    # metrics is deliberately NOT proxied, so probes must be in-container.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8090/api/sse/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       shadhil-postgres:
         condition: service_healthy
       shadhil-pgbouncer:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres_data:

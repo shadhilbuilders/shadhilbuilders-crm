@@ -30,14 +30,30 @@
 # standalone. Coolify sets its own labels when it manages the proxy.
 #
 # RELIABILITY: every service uses `restart: unless-stopped`, so a crashed
-# container comes back on its own. Two things this file CANNOT do and Coolify /
-# the VPS daemon must:
-#   1. health checks for api / web / realtime-sse (only postgres + redis declare
-#      one here) - Docker cannot restart what it cannot detect as unhealthy.
-#   2. container log rotation. Without it a crash-looping container fills the
-#      disk and takes the whole stack down with it. Set it daemon-wide:
-#        /etc/docker/daemon.json
-#        {"log-driver":"json-file","log-opts":{"max-size":"50m","max-file":"5"}}
+# container comes back on its own.
+#
+# HEALTHCHECKS (added 2026-10-01): every service now declares one. Note what a
+# healthcheck does and does NOT do here - `unless-stopped` only reacts to a
+# container whose PROCESS EXITS. Docker does not restart an UNHEALTHY container
+# (that is a Swarm/compose `--wait` behaviour, not a restart policy). So a probe
+# buys two things:
+#   1. visibility - `docker ps` shows the real state instead of a hardcoded
+#      "no healthcheck" pass.
+#   2. a startup GATE - depends_on can wait for `service_healthy` instead of
+#      `service_started`. That is what closes the api/pgbouncer race below.
+# It does NOT recycle a wedged-but-running app; that still needs a supervisor.
+#
+# Log rotation is still the VPS daemon's job: without it a crash-looping
+# container fills the disk and takes the whole stack down with it. Set it
+# daemon-wide:
+#   /etc/docker/daemon.json
+#   {"log-driver":"json-file","log-opts":{"max-size":"50m","max-file":"5"}}
+#
+# Probe style: the three app images are node:22-alpine, which ships busybox
+# wget and NO curl. busybox wget has no --fail flag, but it exits non-zero on
+# any HTTP error - verified against the live endpoints: 200 -> exit 0,
+# 404 -> exit 1, connection refused -> exit 1. All probes target 127.0.0.1;
+# every service binds 0.0.0.0 in-container.
 #
 # Usage:
 #   docker compose -f docker/docker-compose.yml config   # validate
@@ -111,6 +127,19 @@ services:
     volumes:
       - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    # pg_isready ships with the image and is protocol-level: it completes the
+    # Postgres handshake, so exit 0 means the pooler is really ACCEPTING
+    # connections rather than merely listening. Measured discrimination:
+    # against 6432 -> exit 0, against redis's 6379 -> exit 2.
+    # -U is required: pgbouncer refuses a userless probe
+    # ("no such user: <empty>"). No -d - that would need a [databases] entry
+    # for it, and pg_isready already proves the pool is up.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U shadhil"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,16 +240,26 @@ services:
       - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
       - "traefik.http.services.api.loadbalancer.server.port=8080"
+    # /api/health is @Public() (see apps/backend/src/health/health.module.ts)
+    # and returns {status:'ok'}, so no auth is needed to probe it. Verified
+    # live: 200 {"status":"ok","uptimeSec":...,"timestamp":...}.
+    # start_period is generous because the process runs the entrypoint's sed
+    # host-rewrite and then connects to pgbouncer/redis before serving.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       postgres:
         condition: service_healthy
       pgbouncer:
-        # Was 'service_started' - but pgbouncer can boot before authenticating
-        # with postgres, and the api was racing into "no auth_user" errors.
-        # Wait for the entrypoint to finish SCRAM negotiation (pgbouncer's
-        # own /readyz equivalent). Falls back to 'service_started' silently
-        # if no healthcheck is declared on pgbouncer.
-        condition: service_started
+        # Now a REAL gate: 'service_started' only meant the container was
+        # created, so the api could race into "no auth_user" errors before
+        # pgbouncer finished SCRAM negotiation. With a healthcheck on
+        # pgbouncer this waits for it to actually accept connections.
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -268,11 +307,20 @@ services:
       - "traefik.http.routers.crm.tls=true"
       - "traefik.http.routers.crm.tls.certresolver=letsencrypt"
       - "traefik.http.services.crm.loadbalancer.server.port=3000"
+    # /api/health is a plain route handler (apps/web/src/app/api/health/
+    # route.ts) returning {status:'ok'} - no session required. Verified live:
+    # 200 {"status":"ok","timestamp":...,"version":...,"environment":...}.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       realtime-sse:
-        condition: service_started
+        condition: service_healthy
 
   realtime-sse:
     build:
@@ -314,11 +362,23 @@ services:
       - "traefik.http.middlewares.no-sse-compress.compress=true"
       - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
       - "traefik.http.services.sse.loadbalancer.server.port=8090"
+    # Dedicated liveness route in the service itself (server.ts): GET
+    # /api/sse/healthz -> {"ok":true,"service":"realtime-sse"}. Unlike
+    # /api/sse/metrics it is NOT proxied by Traefik, so the probe has to run
+    # in-container. Verified live at the public host too: 200 with that body.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8090/api/sse/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
       pgbouncer:
-        condition: service_started
+        # Same upgrade as the api: the SSE service opens a Pool at boot, so a
+        # half-ready pooler should hold it back rather than let it crash-loop.
+        condition: service_healthy
     command:
       - "sh"
       - "-c"
