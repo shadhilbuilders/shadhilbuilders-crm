@@ -69,7 +69,7 @@ JWT bridge to NestJS. Monorepo with 3 apps (web, mobile, backend)
 + 3 shared packages (api-types, auth-client, ui-tokens). Full
 Prisma schema with 12 models included in this delta.
 
-Subdomain structure: Option 1 (split - crm + crm-api) chosen.
+Subdomain structure: Option 1 (split - crm + api.crm) chosen.
 
 ## Round 5 - 2026-08-29, ~21:30 UTC - REST over GraphQL
 
@@ -1283,3 +1283,104 @@ change.
   a Query. If the default is identical to TanStack's built-in
   (it usually is for `retryDelay`), drop the override.
 
+
+## Round 27 - 2026-10-01 - Production images were unbuildable; deployment doc rewritten
+
+An eng review of `docs/deployment/hostinger-coolify.md` turned into a
+repair job: the guide described a stack that no longer existed, and
+when the described artifacts were actually built, **two of the three
+production images failed to build at all**. Nothing in CI built an
+image, so none of it was visible.
+
+**Why the doc had drifted.** It was written 2026-09-02 and edited
+only mechanically since (a `yourdomain` → real-domain substitution on
+2026-09-30). The plan of record moved underneath it: Decision Audit
+#33-37, plan §5.0/§10, and `references/prod-deployment.md` all lock
+**three** subdomains and **Traefik**, while the doc still described two
+services on Supabase behind "Caddy"/"Nginx". The doc is a translation
+of a locked plan, so it is only as current as its last re-read of that
+plan.
+
+**Decisions taken:**
+
+- **Three services, not two.** `apps/realtime-sse` gets its own
+  Coolify app, subdomain (`sse.crm.shadhilbuilders.in`) and Dockerfile
+  - which did not exist, so the SSE service could never be deployed.
+  Matches Decision #33 and the web BFF's existing `SSE_BACKEND_URL`
+  contract; no application code changed.
+- **Self-hosted Postgres 16 + PgBouncer, not Supabase.** The repo
+  already runs this in `docker/docker-compose.yml` with
+  `POOL_MODE=session` boot-enforced for RLS. Supabase was removed from
+  the web Dockerfile, the CI job and `.env.example` (the web env schema
+  never had Supabase vars and there is no `supabase` dependency).
+- **Traefik, never Caddy/Nginx** (restates Decision #36 - the doc was
+  the one place still contradicting it).
+- **Traefik labels stay in `docker/docker-compose.yml`, but with
+  `${VAR:-default}` hostnames** (`CRM_HOST`/`API_HOST`/`SSE_HOST`).
+  Keeps one file serving both the Coolify production topology and a
+  local Traefik run, instead of hardcoding production domains into a
+  file that also does dev duty. Labels are inert without a Traefik
+  container on the network, so `docker compose up api` still works
+  standalone. Verified: defaults render the production hostnames, and
+  `CRM_HOST=crm.local` renders `crm.local`.
+- **`.github/workflows/vercel.yml` and `.vercel-deploy-test.md` deleted.**
+  They contradicted the Coolify stack; nothing referenced them except
+  one design doc (now stale on that point).
+
+**Build defects fixed (all reproduced with a real `docker build`):**
+
+1. `apps/backend/Dockerfile` ran `tsc` before `prisma generate`. The
+   generated Prisma client is **gitignored**, so a clean build context
+   lacks it and `tsc` exits 2 with five `TS2307` errors. Invisible
+   locally because a dev working tree already has the generated files.
+   Fix: run `prisma generate` before the database build. `prisma
+   generate` needs no `DATABASE_URL` (only `migrate` does).
+2. `apps/web/next.config.ts` had `output: 'standalone'` commented out
+   while the Dockerfile copied `.next/standalone`. Fix: enabled it. CI
+   now asserts the file exists so the failure names its cause.
+3. Web install copied `package.json` + `pnpm-lock.yaml` but not
+   `pnpm-workspace.yaml`, where the lockfile's `overrides` live →
+   `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, which blocked **all three**
+   images. The old `COPY . .` had masked it.
+4. The web runner ran `node server.js`, but a pnpm monorepo standalone
+   tree roots at the repo root, so the server is at
+   `apps/web/server.js`. Fix: corrected the copy paths and `CMD`.
+5. The web `postinstall` runs bash and `node:22-alpine` has no bash.
+   Fix: `pnpm install --ignore-scripts`.
+6. `BACKEND_API_URL` had no build arg, so the image baked the
+   `http://localhost:8080` fallback → healthy container, every BFF call
+   502s. Fix: declared it as a build `ARG`.
+7. `next build` prerenders `/api/docs` and imports the auth chain, so
+   `@t3-oss/env-nextjs` and `assertAuthEnv()` both run at build time;
+   `assertAuthEnv()` has no skip switch. Fix: shape-valid placeholder
+   server env, INLINE on the build `RUN` (not `ENV`) so no scanner
+   mistakes them for baked secrets, and they stay out of the runner
+   stage. Never pass real secrets as build args.
+8. Nothing in CI built an image. Fix: added the `docker-images` job
+   (all three Dockerfiles, from a clean checkout).
+
+Also added a repo-root `.dockerignore` - root-context builds were
+shipping `node_modules`, every `.next`, and the real `.env` into the
+builder.
+
+**Verification (not assumptions):**
+
+- `docker build` exit 0 for `shadhil-web`, `shadhil-backend`,
+  `shadhil-realtime-sse` on Docker 29.8.0.
+- `shadhil-web` runner contains `/app/apps/web/server.js`, owned by
+  `nextjs`; `0` `SecretsUsedInArgOrEnv` warnings.
+- The SSE image **boots**: `[realtime-sse] listening on
+  http://localhost:8090`.
+- `docker compose config` valid; all 6 services resolve.
+- `pnpm --filter @shadhil/web type-check` → 0; `lint` → 0;
+  `test` → 865 passing across 89 files.
+
+**Lesson for the next agent:** a Dockerfile that nothing builds is not
+"probably fine" - it is unverified. Two of these had been broken since
+they were written, and every one of them was invisible to `pnpm build`
+because the local tree holds state (the generated Prisma client) that a
+clean build context does not. When a deploy guide and the plan of
+record disagree, re-read the plan before touching the guide.
+
+**Still open:** the SSE service has no lint/test config (`test` is an
+`echo` stub), and there is no SSE load test. Both are Week 12+ work.
