@@ -77,9 +77,17 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.crm.shadhilbuilders.in`)"
-      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.priority=2000"
+      - "traefik.http.routers.api.entrypoints=https"
       - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.hsts-label.headers.stsseconds=63072000"
+      - "traefik.http.middlewares.hsts-label.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.hsts-label.headers.stspreload=true"
+      - "traefik.http.middlewares.hsts-label.headers.customframeoptionsvalue=DENY"
+      - "traefik.http.middlewares.hsts-label.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.hsts-label.headers.referrerpolicy=strict-origin-when-cross-origin"
+      - "traefik.http.routers.api.middlewares=hsts-label"
       - "traefik.http.services.api.loadbalancer.server.port=8080"
     depends_on:
       shadhil-postgres:
@@ -108,9 +116,11 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.crm.rule=Host(`crm.shadhilbuilders.in`)"
-      - "traefik.http.routers.crm.entrypoints=websecure"
+      - "traefik.http.routers.crm.priority=2000"
+      - "traefik.http.routers.crm.entrypoints=https"
       - "traefik.http.routers.crm.tls=true"
       - "traefik.http.routers.crm.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.crm.middlewares=hsts-label"
       - "traefik.http.services.crm.loadbalancer.server.port=3000"
     depends_on:
       shadhil-api:
@@ -132,12 +142,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sse.rule=Host(`sse.crm.shadhilbuilders.in`)"
-      - "traefik.http.routers.sse.entrypoints=websecure"
+      - "traefik.http.routers.sse.priority=2000"
+      - "traefik.http.routers.sse.entrypoints=https"
       - "traefik.http.routers.sse.tls=true"
       - "traefik.http.routers.sse.tls.certresolver=letsencrypt"
       - "traefik.http.routers.sse.middlewares=no-sse-compress"
       - "traefik.http.middlewares.no-sse-compress.compress=true"
       - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
+      - "traefik.http.routers.sse.middlewares=no-sse-compress,hsts-label"
       - "traefik.http.services.sse.loadbalancer.server.port=8090"
     depends_on:
       shadhil-postgres:
