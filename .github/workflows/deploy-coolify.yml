@@ -10,6 +10,16 @@ name: deploy-coolify
 # service's IMAGE_TAG env, restart, wait for health, then run migrations
 # inside the api container (compose resources don't run migrations on boot).
 #
+# COMPOSE SYNC (added 2026-10-01). This workflow used to only PATCH
+# IMAGE_TAG + restart - it never uploaded docker/coolify-compose.yml.
+# Coolify stores the stack as `docker_compose_raw` on the service, so prod
+# could drift arbitrarily from this file: editing the compose had NO effect,
+# yet a push touching `docker/**` still fired a GREEN deploy that changed
+# nothing. Commit fb0e73b (healthchecks) hit exactly that failure mode.
+# Now the compose is written before the restart and read back AFTER it, so a
+# green run means the definition actually landed. The verify runs last on
+# purpose: a compose-sync problem must never stop app code from shipping.
+#
 # Repo secrets (set once):
 #   COOLIFY_TOKEN - API token scoped write+deploy
 #   VPS_SSH_KEY   - private key of the non-root `deploy` VPS user
@@ -114,6 +124,42 @@ jobs:
           done
           $SSH 'docker images | grep shadhil-crm | head -8'
 
+      - name: Sync docker-compose definition to Coolify
+        id: compose
+        run: |
+          set -euo pipefail
+          SVC="0bjahklz8gtdtr4do4r7ae6m"
+          BASE="https://coolify.shadhilbuilders.in/api/v1"
+          AUTH="Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+
+          # Local parse check BEFORE uploading. If this fails we must NOT push
+          # a broken compose to prod. `config -q` needs no env values because
+          # it skips interpolation; a genuinely malformed file still errors.
+          docker compose -f docker/coolify-compose.yml config -q
+          echo "compose parses locally"
+
+          # Coolify takes the compose base64-encoded in `docker_compose_raw`.
+          # Use `base64 -w0` for ONE line: the wrapped form would embed
+          # newlines in the JSON string and Coolify would store a corrupt
+          # document.
+          B64=$(base64 -w0 docker/coolify-compose.yml)
+          printf '{"docker_compose_raw":"%s"}' "$B64" > /tmp/compose-body.json
+          echo "payload bytes: $(wc -c < /tmp/compose-body.json)"
+
+          HTTP=$(curl -sS -o /tmp/compose-resp.json -w "%{http_code}" -X PATCH \
+            -H "$AUTH" -H "Content-Type: application/json" -H "Accept: application/json" \
+            --data-binary @/tmp/compose-body.json \
+            "$BASE/services/$SVC") || true
+          echo "PATCH /services/$SVC -> HTTP $HTTP"
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            echo "--- response body ---"
+            head -c 2000 /tmp/compose-resp.json || true
+            echo
+            echo "::error::compose sync FAILED (HTTP $HTTP) - prod still holds the previous definition"
+            exit 1
+          fi
+          echo "compose definition pushed"
+
       - name: Update IMAGE_TAG + restart the Coolify service
         run: |
           set -euo pipefail
@@ -152,3 +198,56 @@ jobs:
           done
           $SSH 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
           echo "api container did not come up in 300s"; exit 1
+
+      # Runs LAST, and only warns: app code must ship even when Coolify's
+      # compose round-trip misbehaves. This closes the hole that made fb0e73b
+      # look deployed when nothing had changed.
+      #
+      # Compare NORMALIZED, not raw. Coolify stores `docker_compose_raw` as
+      # re-serialized YAML: it strips every comment (0 vs 19 in the repo file)
+      # and re-quotes scalars (`image: 'postgres:16-alpine'`), so a byte or even
+      # a plain-YAML comparison ALWAYS reports a mismatch - verified against the
+      # live service on 2026-10-01. `docker compose config` resolves both sides
+      # into the same canonical form; pinning -p keeps the project name out of
+      # the diff (compose derives it from the directory, which differs between
+      # the checkout and /tmp). python3 is already used in this workflow, so no
+      # pyyaml dependency is needed. Keep the python one-liners SINGLE-LINE: a
+      # multi-line heredoc inside a `run: |` block scalar must be indented, and
+      # Python rejects a uniformly-indented script ("unexpected indent").
+      - name: Verify the compose actually landed
+        if: always()
+        run: |
+          set -uo pipefail
+          SVC="0bjahklz8gtdtr4do4r7ae6m"
+          BASE="https://coolify.shadhilbuilders.in/api/v1"
+          AUTH="Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          rm -f /tmp/stored-raw.yml
+
+          if ! curl -sS -H "$AUTH" -H "Accept: application/json" \
+                 "$BASE/services/$SVC" -o /tmp/svc.json; then
+            echo "::warning::could not read the service back - compose sync UNVERIFIED"
+            exit 0
+          fi
+
+          python3 -c "import base64,json;d=json.load(open('/tmp/svc.json'));open('/tmp/stored-raw.yml','w').write(base64.b64decode(d.get('docker_compose_raw') or '').decode('utf-8','replace'))" 2>/dev/null || true
+          if [ ! -s /tmp/stored-raw.yml ]; then
+            echo "::warning::Coolify returned no readable docker_compose_raw - compose sync UNVERIFIED"
+            exit 0
+          fi
+
+          # Canonicalize both sides. -p pins the project name (compose otherwise
+          # derives it from the directory name). `tail -n +2` drops the line-1
+          # `name:` field, the only other environment-dependent part.
+          if ! docker compose -p coolify-shadhil -f /tmp/stored-raw.yml config > /tmp/stored.norm 2>/dev/null; then
+            echo "::warning::the compose Coolify is storing does not parse - inspect the service"
+            exit 0
+          fi
+          docker compose -p coolify-shadhil -f docker/coolify-compose.yml config > /tmp/repo.norm 2>/dev/null
+
+          if diff -q <(tail -n +2 /tmp/stored.norm) <(tail -n +2 /tmp/repo.norm) >/dev/null; then
+            echo "compose VERIFIED: Coolify's stored definition matches docker/coolify-compose.yml"
+          else
+            echo "::warning::compose MISMATCH - the running stack does NOT match docker/coolify-compose.yml"
+            echo '("<" = what Coolify has, ">" = what this commit expects)'
+            diff <(tail -n +2 /tmp/stored.norm) <(tail -n +2 /tmp/repo.norm) | head -60 || true
+          fi
