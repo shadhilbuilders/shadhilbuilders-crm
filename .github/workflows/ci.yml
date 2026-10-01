@@ -154,7 +154,22 @@ jobs:
       # Backend has ZERO tests until T-RLSREAL lands - keep passWithNoTests
       # true for now so bundle-1 fixes can ship; the plan flips it to false
       # in the same PR as the first real backend test (AR-5).
+      #
+      # The DB env is repeated here on purpose. The migrated database above is
+      # useless without it: this runner has no repo-root `.env` (gitignored), and
+      # with DATABASE_URL unset every DB-backed suite takes its
+      # `describe.skipIf(!HAS_DB)` path - the exact silent skip this job exists to
+      # prevent. Measured on a CI-faithful tree (2026-09-30): 139 of 171 tests in
+      # `@shadhil/database` FAIL, because the two files that build a Prisma client
+      # at module scope throw at import ("SASL: SCRAM-SERVER-FIRST-MESSAGE: client
+      # password must be a string") before any skip guard can run.
+      # RLS_MATRIX_REQUIRED makes a future env regression fail loudly instead of
+      # degrading back to a green no-op (same guard the rls-matrix job uses).
       - run: pnpm test
+        env:
+          DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+          DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
+          RLS_MATRIX_REQUIRED: 'true'
 
   rls-matrix:
     name: RLS Isolation Matrix
