@@ -1,14 +1,18 @@
 name: deploy-coolify
 
 # Builds the three production images and redeploys the Coolify service.
-# Runs on push to main when app/docker-relevant files change.
 #
-# Requires repo secrets (set once):
-#   COOLIFY_TOKEN   - Coolify API token scoped write+deploy (CI token)
-# After the first run, also verify: package visibility (GHCR org), and
-# that the Coolify service pulls the pushed :<sha> tag (compose default
-# is prod-<shortsha>; the workflow PATCHes the service env IMAGE_TAG
-# before restarting so no manual compose edit is needed).
+# Design (locked 2026-10-01): the VPS does NOT hold GHCR credentials.
+# The workflow pushes images to ghcr.io/<owner>/* (for portability) and
+# ALSO transfers the freshly-built images straight to the VPS over SSH
+# (docker save | docker load) BEFORE touching Coolify - so the restart
+# finds the exact local tags and never needs to pull. Deploy = PATCH the
+# service's IMAGE_TAG env, restart, wait for health, then run migrations
+# inside the api container (compose resources don't run migrations on boot).
+#
+# Repo secrets (set once):
+#   COOLIFY_TOKEN - API token scoped write+deploy
+#   VPS_SSH_KEY   - private key of the non-root `deploy` VPS user
 
 on:
   push:
@@ -47,39 +51,67 @@ jobs:
         id: tag
         run: echo "tag=prod-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build + push api image
+      - name: Build api image (load, no push yet)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/backend/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-api:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-api:prod
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-api:${{ steps.tag.outputs.tag }}
 
-      - name: Build + push sse image
+      - name: Build sse image (load)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/realtime-sse/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-sse:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-sse:prod
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-sse:${{ steps.tag.outputs.tag }}
 
-      - name: Build + push web image (prod build args)
+      - name: Build web image (load, prod build args)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/web/Dockerfile
-          push: true
+          load: true
           build-args: |
             NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in
             NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
             BACKEND_API_URL=http://shadhil-api:8080
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:prod
+          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:${{ steps.tag.outputs.tag }}
+
+      - name: Push the three images to GHCR
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          OWNER="${{ github.repository_owner }}"
+          docker push "ghcr.io/$OWNER/shadhil-crm-api:$TAG"
+          docker push "ghcr.io/$OWNER/shadhil-crm-sse:$TAG"
+          docker push "ghcr.io/$OWNER/shadhil-crm-web:$TAG"
+          # also refresh the moving 'prod' tag
+          for s in api sse web; do
+            docker tag "ghcr.io/$OWNER/shadhil-crm-$s:$TAG" "ghcr.io/$OWNER/shadhil-crm-$s:prod"
+            docker push "ghcr.io/$OWNER/shadhil-crm-$s:prod"
+          done
+
+      - name: Prepare SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+
+      - name: Transfer images to the VPS (docker save | docker load)
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          OWNER="${{ github.repository_owner }}"
+          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
+          for s in api sse web; do
+            IMG="ghcr.io/$OWNER/shadhil-crm-$s:$TAG"
+            echo "transferring $IMG"
+            docker save "$IMG" | gzip | $SSH 'gunzip | docker load'
+          done
+          $SSH 'docker images | grep shadhil-crm | head -8'
 
       - name: Update IMAGE_TAG + restart the Coolify service
         run: |
@@ -87,30 +119,35 @@ jobs:
           SVC="0bjahklz8gtdtr4do4r7ae6m"
           BASE="https://coolify.shadhilbuilders.in/api/v1"
           TAG="${{ steps.tag.outputs.tag }}"
+          AUTH="Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
 
-          # Upsert IMAGE_TAG env on the service (compose interpolates it)
+          # upsert IMAGE_TAG: POST creates (200), any other status falls
+          # through to PATCH (the env may already exist)
           HTTP=$(curl -s -o /tmp/env-resp.json -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            -H "Content-Type: application/json" -H "Accept: application/json" \
-            -d "{\"key\":\"IMAGE_TAG\",\"value\":\"$TAG\"}" "$BASE/services/$SVC/envs") || true
+            -H "$AUTH" -H "Content-Type: application/json" -H "Accept: application/json" \
+            -d "{\"key\":\"IMAGE_TAG\",\"value\":\"$TAG\"}" \
+            "$BASE/services/$SVC/envs") || true
           if [ "$HTTP" != "200" ]; then
             curl -sf -X PATCH \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-              -H "Content-Type: application/json" -H "Accept: application/json" \
-              -d "{\"key\":\"IMAGE_TAG\",\"value\":\"$TAG\"}" "$BASE/services/$SVC/envs" > /dev/null
+              -H "$AUTH" -H "Content-Type: application/json" -H "Accept: application/json" \
+              -d "{\"key\":\"IMAGE_TAG\",\"value\":\"$TAG\"}" \
+              "$BASE/services/$SVC/envs" > /dev/null
           fi
-
-          curl -sf -X POST \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            -H "Accept: application/json" \
+          curl -sf -X POST -H "$AUTH" -H "Accept: application/json" \
             "$BASE/services/$SVC/restart"
           echo "deploy queued with IMAGE_TAG=$TAG"
 
-      - name: Run migrations (owner URL inside the api container)
+      - name: Wait for the stack + run migrations
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_key
-          chmod 600 ~/.ssh/vps_key
-          ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174 \
-            'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
+          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
+          for i in $(seq 1 30); do
+            sleep 10
+            if $SSH 'docker ps --format "{{.Names}} {{.Status}}" | grep -q "shadhil-api.* Up "' 2>/dev/null; then
+              echo "api container up after ~$((i*10))s"
+              $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
+              exit 0
+            fi
+          done
+          $SSH 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
+          echo "api container did not come up in 300s"; exit 1
