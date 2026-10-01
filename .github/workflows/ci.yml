@@ -367,6 +367,22 @@ jobs:
       # Next server's better-auth instance disables the limiter. Gated on this
       # flag rather than NODE_ENV, which the harness must keep at production.
       E2E_DISABLE_RATE_LIMIT: 'true'
+      # BACKEND_API_URL is REQUIRED for the server-side BFF even though the schema
+      # declares `z.url().default('http://localhost:8080')`. That default never
+      # applies here: the workflow sets SKIP_ENV_VALIDATION=true, and t3-env's
+      # skipValidation bypasses parsing entirely - so a declared default is NOT
+      # supplied. The route then does `new URL('/api/organizations/by-slug/x',
+      # env.BACKEND_API_URL)` (lib/server/tenant.ts) with a relative path and an
+      # undefined base, which throws `TypeError: Invalid URL` and turns every
+      # [orgSlug]/[projectSlug] page into Next's "This page couldn't load" error
+      # page - with no heading and no data, which is exactly why the suite saw
+      # getByRole('heading', {name:/Lead Inbox/i}) resolve to nothing and
+      # `ROWS: 0` on the dashboard. Server-side only, so it never showed up
+      # locally: the repo-root `.env` is symlinked to apps/web/.env.local here,
+      # and next start reads .env.local at runtime. CI has neither.
+      # Note the value is the backend's own origin, not /api - backendGet()
+      # prefixes the path with /api itself.
+      BACKEND_API_URL: http://localhost:8080
       # Frontend. The web app proxies to the backend through /api/bff.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
       NEXT_PUBLIC_APP_NAME: Shadhil
