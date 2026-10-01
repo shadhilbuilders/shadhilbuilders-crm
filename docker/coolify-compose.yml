@@ -1,0 +1,150 @@
+# Shadhil Builders CRM - production stack for Coolify.
+# Shipped as ONE Docker-Compose application (project "My first project", env
+# production, server localhost). Images are prebuilt on GHCR; Coolify pulls.
+# Infra mounts live under /data/coolify/shadhil/ (staged separately).
+
+services:
+  shadhil-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shadhil
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: shadhil_crm
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /data/coolify/shadhil/postgres-init:/docker-entrypoint-initdb.d:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=4MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shadhil -d shadhil_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  shadhil-pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    environment:
+      AUTH_TYPE: scram-sha-256
+      DB_USER: shadhil
+      DB_PASSWORD: ${PG_PASSWORD}
+      DB_HOST: shadhil-postgres
+      DB_PORT: "5432"
+      DB_NAME: shadhil_crm
+    volumes:
+      - /data/coolify/shadhil/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - /data/coolify/shadhil/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      shadhil-postgres:
+        condition: service_healthy
+
+  shadhil-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  shadhil-api:
+    image: ghcr.io/shadhilbuilders/shadhil-crm-api:${IMAGE_TAG:-prod-5f02691}
+    restart: unless-stopped
+    environment: &api_env
+      NODE_ENV: production
+      API_PORT: "8080"
+      POOL_MODE: session
+      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
+      REDIS_URL: redis://shadhil-redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: shadhil-crm
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: https://api.crm.shadhilbuilders.in
+      CORS_ORIGINS: https://crm.shadhilbuilders.in
+      PUBLIC_API_KEY: ${PUBLIC_API_KEY}
+      PUBLIC_ORG_ID: ceid01lpfe1esm8jwsxid41k28
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.crm.shadhilbuilders.in`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+    depends_on:
+      shadhil-postgres:
+        condition: service_healthy
+      shadhil-redis:
+        condition: service_healthy
+
+  shadhil-web:
+    image: ghcr.io/shadhilbuilders/shadhil-crm-web:${IMAGE_TAG:-prod-5f02691}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      SSE_BACKEND_URL: http://shadhil-realtime-sse:8090
+      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      DIRECT_DATABASE_URL: postgresql://shadhil:${PG_PASSWORD}@shadhil-postgres:5432/shadhil_crm?schema=public
+      BACKEND_API_URL: http://shadhil-api:8080
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: https://crm.shadhilbuilders.in
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: shadhil-crm
+      NEXT_PUBLIC_API_BASE_URL: https://api.crm.shadhilbuilders.in
+      NEXT_PUBLIC_APP_URL: https://crm.shadhilbuilders.in
+      NEXT_PUBLIC_APP_NAME: Shadhil Builders
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crm.rule=Host(`crm.shadhilbuilders.in`)"
+      - "traefik.http.routers.crm.entrypoints=websecure"
+      - "traefik.http.routers.crm.tls=true"
+      - "traefik.http.routers.crm.tls.certresolver=letsencrypt"
+      - "traefik.http.services.crm.loadbalancer.server.port=3000"
+    depends_on:
+      shadhil-api:
+        condition: service_started
+
+  shadhil-realtime-sse:
+    image: ghcr.io/shadhilbuilders/shadhil-crm-sse:${IMAGE_TAG:-prod-5f02691}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REALTIME_SSE_PORT: "8090"
+      CORS_ORIGINS: https://crm.shadhilbuilders.in
+      DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
+      POOL_MODE: session
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sse.rule=Host(`sse.crm.shadhilbuilders.in`)"
+      - "traefik.http.routers.sse.entrypoints=websecure"
+      - "traefik.http.routers.sse.tls=true"
+      - "traefik.http.routers.sse.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.sse.middlewares=no-sse-compress"
+      - "traefik.http.middlewares.no-sse-compress.compress=true"
+      - "traefik.http.middlewares.no-sse-compress.compress.excludedcontenttypes=text/event-stream"
+      - "traefik.http.services.sse.loadbalancer.server.port=8090"
+    depends_on:
+      shadhil-postgres:
+        condition: service_healthy
+      shadhil-pgbouncer:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
