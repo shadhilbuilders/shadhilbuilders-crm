@@ -889,9 +889,59 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     // And the projects fetch was scoped to the owner's ORG, not a team.
     expect(mocks.projectFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        where: { organizationId: 'ceid01lpfe1esm8jwsxid41k28', deletedAt: null },
       }),
     );
+  });
+
+  it('OWNER row EXCLUDES soft-deleted projects from the org project set (T-SOFT-DELETE 2026-10-01)', async () => {
+    // The reported bug: the owner created a project, soft-deleted it, and the
+    // admin Users table still showed "1 project" on their row. The column is
+    // backed by the org-wide project query, so that query must carry the same
+    // `deletedAt: null` filter the project registry uses.
+    //
+    // The DB is what actually filters (the mock returns rows regardless), so
+    // this asserts the CONTRACT: the filter is passed. That is the precise
+    // regression - the filter was simply absent from this call.
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([
+      { id: 'owner-1', email: 'o@x', name: 'Owner', role: 'OWNER', teamMemberships: [] },
+    ]);
+    mocks.userCount.mockResolvedValue(1);
+    mocks.projectFindMany.mockResolvedValue([{ name: 'Metro Heights' }]);
+
+    await service.list(ownerActor, { limit: 50, offset: 0 });
+
+    const arg = mocks.projectFindMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(arg.where['deletedAt']).toBeNull();
+  });
+
+  it("staff row's projects come from ProjectTeam links to LIVE projects only (T-SOFT-DELETE 2026-10-01)", async () => {
+    // The staff branch derives "their projects" from the team's ProjectTeam
+    // rows, so the project filter has to sit on the LINK query - filtering the
+    // Project table alone would not help here.
+    const { service, mocks } = makeListService();
+    mocks.userFindMany.mockResolvedValue([
+      {
+        id: 'u1',
+        email: 'a@x',
+        name: 'A',
+        role: 'TELECALLER',
+        teamMemberships: [{ teamId: 'team-x' }],
+      },
+    ]);
+    mocks.userCount.mockResolvedValue(1);
+    mocks.projectTeamFindMany.mockResolvedValue([]);
+
+    await service.list(adminActor, { limit: 50, offset: 0 });
+
+    const arg = mocks.projectTeamFindMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(arg.where['project']).toEqual({ deletedAt: null });
+    expect(arg.where['team']).toEqual({ deletedAt: null });
   });
 });
 

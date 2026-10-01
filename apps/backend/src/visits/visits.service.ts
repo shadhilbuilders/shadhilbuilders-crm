@@ -1255,8 +1255,10 @@ export class VisitsService {
         async (tx) => {
           const p = tx as unknown as PrismaClient;
           // 1. Managers of every team assigned to this project.
+          // T-SOFT-DELETE (2026-10-01): skip a soft-deleted project entirely -
+          // its visit notifications must not page anyone.
           const projectTeams = await p.projectTeam.findMany({
-            where: { projectId },
+            where: { projectId, project: { deletedAt: null } },
             select: { teamId: true },
           });
           const teamIds = projectTeams.map((pt: { teamId: string }) => pt.teamId);

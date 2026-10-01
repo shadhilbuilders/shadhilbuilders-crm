@@ -155,7 +155,11 @@ describe('list - role-scoped grid with filters', () => {
     });
     expect(client.unit.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ phase: { projectId: 'proj-1' } }),
+        where: expect.objectContaining({
+          // T-SOFT-DELETE (2026-10-01): the grid also drops units whose
+          // project is soft-deleted, so the phase filter carries both.
+          phase: { projectId: 'proj-1', project: { deletedAt: null } },
+        }),
       }),
     );
   });
@@ -451,7 +455,9 @@ describe('phases - list phases with unit counts', () => {
 describe('createPhase - new phase (MANAGER/ADMIN/OWNER only)', () => {
   it('creates the phase and writes an audit row', async () => {
     const { service, client } = makeService();
-    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    // T-SOFT-DELETE (2026-10-01): the service now loads deletedAt and rejects
+    // a soft-deleted project, so the mock models the live row.
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1', deletedAt: null });
     client.phase.create.mockResolvedValue({
       id: 'phase-9',
       projectId: 'proj-1',
@@ -486,7 +492,9 @@ describe('createPhase - new phase (MANAGER/ADMIN/OWNER only)', () => {
 
   it('allows MANAGER (not just ADMIN/OWNER)', async () => {
     const { service, client } = makeService();
-    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    // T-SOFT-DELETE (2026-10-01): the service now loads deletedAt and rejects
+    // a soft-deleted project, so the mock models the live row.
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1', deletedAt: null });
     client.phase.create.mockResolvedValue({
       id: 'phase-9',
       projectId: 'proj-1',
@@ -1011,7 +1019,9 @@ describe('options - list a project option set', () => {
 describe('createOption - add a project option (MANAGER/ADMIN/OWNER only)', () => {
   it('creates the option and writes an audit row', async () => {
     const { service, client } = makeService();
-    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    // T-SOFT-DELETE (2026-10-01): the service now loads deletedAt and rejects
+    // a soft-deleted project, so the mock models the live row.
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1', deletedAt: null });
     client.projectOption.create.mockResolvedValue({
       id: 'opt-9',
       projectId: 'proj-1',
@@ -1039,7 +1049,9 @@ describe('createOption - add a project option (MANAGER/ADMIN/OWNER only)', () =>
 
   it('allows MANAGER (not just ADMIN/OWNER)', async () => {
     const { service, client } = makeService();
-    client.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+    // T-SOFT-DELETE (2026-10-01): the service now loads deletedAt and rejects
+    // a soft-deleted project, so the mock models the live row.
+    client.project.findUnique.mockResolvedValue({ id: 'proj-1', deletedAt: null });
     client.projectOption.create.mockResolvedValue({
       id: 'opt-9',
       projectId: 'proj-1',

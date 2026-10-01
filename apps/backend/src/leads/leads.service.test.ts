@@ -101,7 +101,14 @@ describe('listWhere - TELECALLER/SALES_EXEC scoped to own leads', () => {
         ) => Promise<Record<string, unknown>>;
       }
     ).listWhere(tx, telecaller, { limit: 50, offset: 0 });
-    expect(where).toEqual({ ownerId: telecaller.sub, limit: undefined, offset: undefined });
+    expect(where).toEqual({
+      ownerId: telecaller.sub,
+      // T-SOFT-DELETE (2026-10-01): every list read also drops leads whose
+      // project is soft-deleted, so the base `where` carries this too.
+      project: { deletedAt: null },
+      limit: undefined,
+      offset: undefined,
+    });
     expect(tx.team.findFirst).not.toHaveBeenCalled();
   });
 
@@ -468,5 +475,61 @@ describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
 
   it('explicit sort does NOT carry the bucket CASE', () => {
     expect(orderSql({ sortBy: 'name', sortDir: 'asc' })).not.toContain('CASE');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// T-SOFT-DELETE (2026-10-01): a lead on a soft-deleted project is not work.
+// Product decision: those leads leave lists, counts and KPIs together with the
+// project. Both list builders must carry the filter - `list()` runs off the raw
+// SQL `listConditions`, while the object builder feeds the counts - so each is
+// asserted separately. Without this the leads page still listed (and counted)
+// work on a project the org had deleted.
+// ---------------------------------------------------------------------------
+describe("listWhere - excludes leads on soft-deleted projects (T-SOFT-DELETE)", () => {
+  type ListWhere = (
+    tx: unknown,
+    actor: typeof admin,
+    dto: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+
+  async function callListWhere(dto: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { service, tx } = makeService();
+    return (service as unknown as { listWhere: ListWhere }).listWhere(tx, admin, dto);
+  }
+
+  it('the object builder filters on project.deletedAt === null', async () => {
+    const where = await callListWhere({ limit: 50, offset: 0 });
+    expect(where['project']).toEqual({ deletedAt: null });
+  });
+
+  it('the filter composes with a search OR rather than clobbering it', async () => {
+    // `search` and `linkedUserId` both own the top-level `OR` key. A relation
+    // filter must not collide with it (the trap users.service.ts warns about).
+    const where = await callListWhere({ search: 'priya', limit: 50, offset: 0 });
+    expect(where['project']).toEqual({ deletedAt: null });
+    expect(where['OR']).toHaveLength(2);
+  });
+
+  it('the raw SQL builder emits an EXISTS on a live Project', async () => {
+    // list() reads through THIS builder, so the object-builder assertion above
+    // would pass while the page still showed deleted-project leads.
+    const { service, tx } = makeService();
+    const conditions = await (
+      service as unknown as {
+        listConditions: (
+          tx: unknown,
+          actor: typeof admin,
+          dto: Record<string, unknown>,
+        ) => Promise<Array<{ sql: string; values: unknown[] }>>;
+      }
+    ).listConditions(tx, admin, { limit: 50, offset: 0 });
+
+    const joined = conditions.map((c) => c.sql).join(' AND ');
+    expect(joined).toContain('"Project"');
+    expect(joined).toContain('"deletedAt" IS NULL');
+    // Correlated to the row's own project, not an unrelated project.
+    expect(joined).toContain('"Lead"."projectId"');
   });
 });

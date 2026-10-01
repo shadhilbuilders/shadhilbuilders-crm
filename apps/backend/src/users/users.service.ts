@@ -28,6 +28,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
+
+import {
+  LEAD_IN_ACTIVE_PROJECT,
+  PROJECT_ACTIVE,
+  PROJECT_TEAM_LIVE,
+} from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
@@ -605,7 +611,10 @@ export class UsersService {
                 // linked to" (ProjectTeam) - ProjectMember (per-user
                 // linking) was retired. Read-only here (linking happens on
                 // the project's Staff page, at the team level).
+                // T-SOFT-DELETE: a link to a soft-deleted project must not
+                // surface as one of this user's projects.
                 projectTeams: {
+                  where: { project: { deletedAt: null } },
                   select: { project: { select: { id: true, name: true } } },
                   orderBy: { project: { name: 'asc' } },
                 },
@@ -656,7 +665,12 @@ export class UsersService {
           target.role === 'OWNER' || target.role === 'ADMIN'
             ? (
                 await client.project.findMany({
-                  where: { organizationId: actor.organizationId },
+                  where: {
+                    organizationId: actor.organizationId,
+                    // T-SOFT-DELETE: same registry filter as the admin list
+                    // branch - a deleted project is not one of "their" projects.
+                    ...PROJECT_ACTIVE,
+                  },
                   select: { id: true, name: true },
                   orderBy: { name: 'asc' },
                 })
@@ -1044,7 +1058,11 @@ export class UsersService {
         // no staff" and therefore reports a cross-org probe as an empty picker.
         // An explicit 403 makes the boundary observable.
         const project = await client.project.findFirst({
-          where: { id: filter.projectId, organizationId: actor.organizationId },
+          where: {
+            id: filter.projectId,
+            organizationId: actor.organizationId,
+            ...PROJECT_ACTIVE,
+          },
           select: { id: true },
         });
         if (project === null) {
@@ -1175,7 +1193,7 @@ export class UsersService {
       const projectTeams =
         uniqueTeamIds.length > 0
           ? await client.projectTeam.findMany({
-              where: { teamId: { in: uniqueTeamIds } },
+              where: { teamId: { in: uniqueTeamIds }, ...PROJECT_TEAM_LIVE },
               select: { teamId: true, project: { select: { name: true } } },
               orderBy: { project: { name: 'asc' } },
             })
@@ -1201,7 +1219,14 @@ export class UsersService {
       let orgProjectNames: string[] = [];
       if (adminRowIndexes.length > 0) {
         const orgRows = await client.project.findMany({
-          where: { organizationId: actor.organizationId },
+          where: {
+            organizationId: actor.organizationId,
+            // T-SOFT-DELETE: the admin/owner Projects column is the org
+            // registry, so it must match the registry's own filter. Without
+            // this a soft-deleted project stayed visible as "1 project"
+            // (reported 2026-10-01).
+            ...PROJECT_ACTIVE,
+          },
           select: { name: true },
           orderBy: { name: 'asc' },
         });
@@ -1275,7 +1300,11 @@ export class UsersService {
       // cross-org reads only by returning zero rows - which is indistinguishable
       // from "no execs on this project". Fail loudly instead.
       const project = await client.project.findFirst({
-        where: { id: projectId, organizationId: actor.organizationId },
+        where: {
+          id: projectId,
+          organizationId: actor.organizationId,
+          ...PROJECT_ACTIVE,
+        },
         select: { id: true },
       });
       if (project === null) {
@@ -1330,6 +1359,7 @@ export class UsersService {
       const owners = await client.lead.findMany({
         where: {
           projectId,
+          ...LEAD_IN_ACTIVE_PROJECT,
           ...(managerTeamIds !== null ? { teamId: { in: managerTeamIds } } : {}),
         },
         select: { ownerId: true },
@@ -1427,7 +1457,11 @@ export class UsersService {
           // T-ORG-EXPLICIT: same cross-org guard as `list` - reject another
           // org's project instead of returning a misleadingly empty roster.
           const project = await client.project.findFirst({
-            where: { id: projectId, organizationId: actor.organizationId },
+            where: {
+              id: projectId,
+              organizationId: actor.organizationId,
+              ...PROJECT_ACTIVE,
+            },
             select: { id: true },
           });
           if (project === null) {

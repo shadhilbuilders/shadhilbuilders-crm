@@ -25,6 +25,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+
+import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
   CreateProjectDto,
   ProjectDetail,
@@ -340,8 +342,10 @@ export class ProjectsService {
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
+        // T-SOFT-DELETE (2026-10-01): a soft-deleted project is gone as far as
+        // every read surface is concerned, so it must not be editable either.
         const existing = await tx.project.findUnique({ where: { id } });
-        if (existing === null) {
+        if (existing === null || isSoftDeleted(existing)) {
           throw new NotFoundException(`Project ${id} not found.`);
         }
         const updated = await tx.project.update({
@@ -403,7 +407,10 @@ export class ProjectsService {
           where: { id },
           include: { _count: { select: { leads: true } } },
         });
-        if (existing === null) {
+        // T-SOFT-DELETE (2026-10-01): re-deleting an already-deleted project
+        // would restamp deletedAt (moving it later) and write a second
+        // project.delete audit row. Reads already 404 it; the write must too.
+        if (existing === null || isSoftDeleted(existing)) {
           throw new NotFoundException(`Project ${id} not found.`);
         }
         // Booking count via the project → phases → units → bookings path.

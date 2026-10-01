@@ -24,6 +24,8 @@ import {
   type Role,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+
+import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import type {
   ReassignAndRemoveDto,
   ReassignAndRemoveResponse,
@@ -103,7 +105,13 @@ export class TeamMembersService {
       await this.assertOrdinaryMember(t, teamId, userId);
 
       const leads = await t.lead.findMany({
-        where: { teamId, OR: [{ ownerId: userId }, { coOwnerId: userId }] },
+        where: {
+          teamId,
+          OR: [{ ownerId: userId }, { coOwnerId: userId }],
+          // T-SOFT-DELETE (2026-10-01): a lead on a soft-deleted project is
+          // not work, so it must not appear in - or block - a removal preview.
+          ...LEAD_IN_ACTIVE_PROJECT,
+        },
         select: {
           id: true,
           updatedAt: true,

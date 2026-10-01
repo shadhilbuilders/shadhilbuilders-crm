@@ -37,6 +37,8 @@ import {
   type Role,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+
+import { PROJECT_ACTIVE, LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import type {
   CreateLeadDto,
   LeadActivity,
@@ -224,6 +226,13 @@ export class LeadsService {
     // T-ProjectSwitch: filter by the active project (sidebar switcher
     // navigates via /[projectId]/... and every list page passes the id).
     if (dto.projectId !== undefined) where['projectId'] = dto.projectId;
+
+    // T-SOFT-DELETE (2026-10-01): a lead sitting on a soft-deleted project is
+    // work on a project the org has removed, so it leaves the list too (product
+    // decision: excluded from lists, counts and KPIs). To-one relation filter,
+    // so it composes with the `OR` below without clobbering it.
+    Object.assign(where, LEAD_IN_ACTIVE_PROJECT);
+
     if (dto.search !== undefined && dto.search.length > 0) {
       where['OR'] = [
         { name: { contains: dto.search, mode: 'insensitive' } },
@@ -286,6 +295,16 @@ export class LeadsService {
     if (dto.projectId !== undefined) {
       conditions.push(Prisma.sql`"projectId" = ${dto.projectId}`);
     }
+
+    // T-SOFT-DELETE (2026-10-01): exclude leads on a soft-deleted project.
+    // This is the raw-SQL sibling of listWhere's LEAD_IN_ACTIVE_PROJECT - it
+    // feeds the list rows AND every count below (total / overdue / newToday),
+    // so the numbers and the rows agree. `list()` runs off THIS builder, not
+    // listWhere, so the two must be changed together.
+    conditions.push(
+      Prisma.sql`EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Lead"."projectId" AND p."deletedAt" IS NULL)`,
+    );
+
     if (dto.search !== undefined && dto.search.length > 0) {
       conditions.push(
         Prisma.sql`("name" ILIKE ${`%${dto.search}%`} OR "phone" ILIKE ${`%${dto.search}%`})`,
@@ -965,7 +984,7 @@ export class LeadsService {
     // pattern as the org checks elsewhere: the constraint is the backstop, the
     // 400 is the contract.
     const project = await client.project.findFirst({
-      where: { id: dto.projectId, organizationId: actor.organizationId },
+      where: { id: dto.projectId, organizationId: actor.organizationId, ...PROJECT_ACTIVE },
       select: { id: true },
     });
     if (project === null) {

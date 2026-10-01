@@ -21,6 +21,7 @@
 // The notification emit (creating a new Notification row) happens
 // elsewhere - this module only READS + MARKS. The AuditLog row is
 // written on every markRead mutation for the demo trail.
+import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import {
   BadRequestException,
   Inject,
@@ -106,7 +107,10 @@ export class NotificationsService {
         rlsContextFrom(actor),
         (tx) =>
           (tx as unknown as PrismaClient).lead.findMany({
-            where: { projectId: dto.projectId },
+            // T-SOFT-DELETE (2026-10-01): the project filter is expressed as
+            // "notifications for this project's leads", so a lead on a
+            // soft-deleted project must not pull its notifications back in.
+            where: { projectId: dto.projectId, ...LEAD_IN_ACTIVE_PROJECT },
             select: { id: true },
           }),
       );

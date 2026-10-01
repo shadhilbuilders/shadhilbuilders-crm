@@ -27,6 +27,8 @@ import {
 } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+
+import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
   CreatePhaseDto,
   CreateProjectOptionDto,
@@ -79,8 +81,13 @@ export class InventoryService {
       rlsContextFrom(actor),
       async (tx) => {
         const where: Record<string, unknown> = {};
+        // T-SOFT-DELETE (2026-10-01): a unit in a soft-deleted project is not
+        // sellable inventory. The filter nests under `phase` alongside the
+        // projectId filter below, so it cannot clobber the top-level `OR`
+        // the search clause owns.
+        where['phase'] = { project: { deletedAt: null } };
         if (dto.projectId !== undefined) {
-          where['phase'] = { projectId: dto.projectId };
+          where['phase'] = { projectId: dto.projectId, project: { deletedAt: null } };
         }
         if (dto.phaseId !== undefined) where['phaseId'] = dto.phaseId;
         if (dto.bhk !== undefined) where['bhk'] = dto.bhk;
@@ -290,11 +297,15 @@ export class InventoryService {
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
+        // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
+        // its where, so load the flag and reject a soft-deleted project -
+        // otherwise a held tab could keep adding phases/options to a project
+        // the org has deleted.
         const project = await (tx as unknown as PrismaClient).project.findUnique({
           where: { id: dto.projectId },
-          select: { id: true },
+          select: { id: true, deletedAt: true },
         });
-        if (project === null) {
+        if (project === null || isSoftDeleted(project)) {
           throw new NotFoundException(`Project ${dto.projectId} not found`);
         }
         const created = await (tx as unknown as PrismaClient).phase.create({
@@ -490,11 +501,15 @@ export class InventoryService {
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
+        // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
+        // its where, so load the flag and reject a soft-deleted project -
+        // otherwise a held tab could keep adding phases/options to a project
+        // the org has deleted.
         const project = await (tx as unknown as PrismaClient).project.findUnique({
           where: { id: dto.projectId },
-          select: { id: true },
+          select: { id: true, deletedAt: true },
         });
-        if (project === null) {
+        if (project === null || isSoftDeleted(project)) {
           throw new NotFoundException(`Project ${dto.projectId} not found`);
         }
         let created;

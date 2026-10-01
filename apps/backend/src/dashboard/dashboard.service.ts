@@ -26,6 +26,8 @@ import type { JwtPayload } from '@shadhil/auth';
 // than restating midnight or a 24h window here) is what keeps the two screens
 // from disagreeing.
 import { NEW_TODAY_STATE, OVERDUE_AFTER_MIN, startOfToday, TERMINAL_LEAD_STATES } from '@shadhil/api-types';
+
+import { LEAD_IN_ACTIVE_PROJECT, PROJECT_ACTIVE } from '../common/soft-delete-filters';
 import type {
   BookingMoneyException,
   DashboardExceptions,
@@ -108,6 +110,10 @@ export class DashboardService {
   ): Promise<Record<string, unknown>> {
     const where: Record<string, unknown> = {};
     if (projectId !== undefined) where['projectId'] = projectId;
+    // T-SOFT-DELETE (2026-10-01): leads on a soft-deleted project are excluded
+    // from every KPI / chart this builder feeds (product decision: lists,
+    // counts and KPIs all drop them together).
+    Object.assign(where, LEAD_IN_ACTIVE_PROJECT);
     if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
       where['ownerId'] = actor.sub;
     } else if (actor.role === 'MANAGER') {
@@ -429,9 +435,14 @@ export class DashboardService {
         twentyFourHoursAgo.setHours(now.getHours() - 24);
 
         // Cross-project: no projectId filter. Admin/owner see all (RLS).
+        //
+        // T-SOFT-DELETE (2026-10-01): every lead aggregate here must exclude
+        // leads on a soft-deleted project, or the org-wide KPIs keep counting
+        // work the org has removed. (The per-project `getStats` path spreads
+        // `leadWhere`, which now carries the same filter.)
         const [totalLeads, reassignments7d, auditEvents24h, pipeline, usersByRole, visitsThisWeekBuckets, auditTimeline] =
           await Promise.all([
-            txClient.lead.count(),
+            txClient.lead.count({ where: { ...LEAD_IN_ACTIVE_PROJECT } }),
             txClient.auditLog.count({
               where: {
                 action: 'lead.reassign',
@@ -443,6 +454,7 @@ export class DashboardService {
             }),
             txClient.lead.groupBy({
               by: ['state'],
+              where: { ...LEAD_IN_ACTIVE_PROJECT },
               _count: { _all: true },
             }),
             txClient.user.groupBy({

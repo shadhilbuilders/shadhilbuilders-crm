@@ -45,6 +45,7 @@ import {
   type PrismaClient,
 } from '@shadhil/database';
 
+import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
@@ -182,6 +183,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
         withRlsContext(this.client, cronCtx, (tx) =>
           (tx as unknown as PrismaClient).lead.findMany({
             where: {
+              ...LEAD_IN_ACTIVE_PROJECT,
               state: 'NEW',
               createdAt: { lte: overdueCutoff },
               lastOverduePushedAt: { lte: cutoff },
@@ -199,6 +201,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
         withRlsContext(this.client, cronCtx, (tx) =>
           (tx as unknown as PrismaClient).lead.findMany({
             where: {
+              ...LEAD_IN_ACTIVE_PROJECT,
               state: 'NEW',
               createdAt: { lte: overdueCutoff },
               lastOverduePushedAt: null,
