@@ -70,9 +70,13 @@ async function forward(
   const cookieStore = await cookies();
   const cookieValue =
     cookieStore.get(SESSION_COOKIE)?.value ??
+    // HTTPS deploys: better-auth prefixes the cookie with `__Secure-`
+    // (RFC6265bis), so the plain-name lookup misses on production. Accept
+    // BOTH: exact plain name first, then the secure-prefixed sibling.
     cookieStore
       .getAll()
-      .find((c) => c.name.startsWith(SESSION_COOKIE))?.value ??
+      .find((c) => c.name === `__Secure-${SESSION_COOKIE}` || c.name.startsWith(SESSION_COOKIE))
+      ?.value ??
     null;
   if (cookieValue === null) {
     return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });

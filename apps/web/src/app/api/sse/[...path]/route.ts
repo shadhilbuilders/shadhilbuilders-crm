@@ -79,7 +79,12 @@ export async function GET(
   const cookieStore = await cookies();
   const cookieValue =
     cookieStore.get(SESSION_COOKIE)?.value ??
-    cookieStore.getAll().find((c) => c.name.startsWith(SESSION_COOKIE))?.value ??
+    // HTTPS deploys: better-auth prefixes the cookie with `__Secure-`
+    // (RFC6265bis). Accept both names - plain first, then secure-prefixed.
+    cookieStore
+      .getAll()
+      .find((c) => c.name === `__Secure-${SESSION_COOKIE}` || c.name.startsWith(SESSION_COOKIE))
+      ?.value ??
     null;
   if (cookieValue === null) {
     return new Response(JSON.stringify({ message: 'Not authenticated' }), {
