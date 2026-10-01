@@ -21,10 +21,9 @@
 // must not be mistaken for validation feedback pinned under a field.
 // Account-enumeration defense preserved: zod judges shape only; the
 // generic message fires only on real credential rejection.
-import { useQueryClient } from '@tanstack/react-query';
 import { Card, Form, Heading, toast, TypographyP } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -65,9 +64,7 @@ function isSafeNextPath(raw: string | null): string {
 }
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
 
   const [pending, setPending] = useState(false);
 
@@ -96,12 +93,33 @@ export function LoginForm() {
       return;
     }
 
-    // Session cookie is set; invalidate auth-dependent queries and go.
-    await queryClient.invalidateQueries();
-    router.replace(nextPath);
-    // nextPath may be client-side; force a refresh so the server components
-    // re-run with the new session cookie rather than a cached shell.
-    router.refresh();
+    // Hard navigation, not router.replace(nextPath).
+    //
+    // The session cookie IS set by the call above, but a client-side navigation
+    // here resolved to the WRONG destination in a production build: the login
+    // page prefetches the app shell, so `/` was already cached as the
+    // `proxy.ts` redirect for an anonymous visitor (302 -> /login?next=/).
+    // router.replace(nextPath) replayed that cached redirect instead of
+    // re-requesting `/` with the new cookie, so the user landed straight back on
+    // /login and the form stayed disabled mid-submit - `signIn` had resolved, so
+    // nothing ever cleared `pending` or showed an error. Reproduced on a
+    // production build 2026-10-01: form submit -> /login?next=%2F, while a full
+    // page load of the SAME session -> /demo/admin/overview.
+    //
+    // A document navigation re-requests the target with the cookie attached, so
+    // the server decides - which is what the session actually requires. It also
+    // replaces the old router.refresh(), whose only job was to make the server
+    // components re-run with the new cookie.
+    //
+    // Cost: one full page load after sign-in instead of a client transition.
+    // Accepted deliberately - correctness of the post-login destination beats
+    // the transition, and a wrong destination is unreadable to the user (they
+    // just see the login form again).
+    //
+    // `assign` over `replace` so /login stays in history: the back button then
+    // returns to the sign-in form rather than closing the tab or bouncing off a
+    // stale entry.
+    window.location.assign(nextPath);
   }
 
   return (

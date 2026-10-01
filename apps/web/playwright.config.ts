@@ -24,6 +24,42 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+
+    // Pre-dismiss the web-push prompt, so it never covers the page under test.
+    //
+    // PushEnablePrompt (`components/push-enable-prompt.tsx`) opens an
+    // AlertDialog as soon as push capability resolves - and capability requires a
+    // SERVICE WORKER, which Serwist only registers in a production build. So on
+    // CI (a production `next start`) every authenticated page is covered by a
+    // `fixed inset-0 z-50` overlay that also marks the rest of the page
+    // (`data-base-ui-inert`). Nothing underneath is clickable: Playwright reports
+    // "element is visible, enabled and stable" and then aborts with
+    // "<div ... data-qa=\"alert-dialog-overlay\" ...> subtree intercepts pointer
+    // events" - which reads like a flaky/never-stable button and is not. It cost
+    // the whole bookings-approval-audit suite (3 tests) on 2026-10-01. `next dev`
+    // has no service worker, so the same specs passed locally - the trap behind
+    // "works on my machine".
+    //
+    // Seeding the dismissal is what a returning user has already done, and it is
+    // the component's own documented latch (localStorage, not session): the gate
+    // is `safeGetItem('shadhil:push-prompt-dismissed') !== PROMPT_VERSION`, so the
+    // value must be the PROMPT_VERSION the component ships ('v1'), not a bare
+    // '1' - a mismatched value re-opens the dialog and looks like the fix failed.
+    // Bump both together if that constant is ever bumped.
+    //
+    // Emulating the state beats clicking "Not now" in a helper: it applies to
+    // every page of every spec, including the ones that never reach a settled
+    // DOM. No spec covers the prompt itself, so no coverage is lost - if one ever
+    // does, it must opt out with its own context.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://localhost:3000',
+          localStorage: [{ name: 'shadhil:push-prompt-dismissed', value: 'v1' }],
+        },
+      ],
+    },
   },
 
   projects: [
