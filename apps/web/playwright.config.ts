@@ -41,11 +41,21 @@ export default defineConfig({
     },
   ],
 
-  // Spin up the Next.js dev server before running E2E tests
+  // The server under test is NOT started here on CI - the workflow starts it
+  // (a production `next start`) and polls /login until it is ready before
+  // invoking Playwright. Playwright must therefore REUSE it: with the previous
+  // `reuseExistingServer: !process.env.CI`, CI insisted on launching its own
+  // `pnpm dev` on a port the workflow already owned and aborted immediately with
+  // "http://localhost:3000 is already used, make sure that nothing is running on
+  // the port/url or set reuseExistingServer:true in config.webServer" - so the
+  // e2e job never ran a single spec. Reusing is also the right local behaviour:
+  // attach to a dev server you already have, and start one only when the port is
+  // free. Safe on CI even if the server were missing, because the workflow's
+  // start step fails hard on its own readiness probe.
   webServer: {
     command: 'pnpm dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120_000,
   },
 });

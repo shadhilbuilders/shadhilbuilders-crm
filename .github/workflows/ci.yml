@@ -172,31 +172,35 @@ jobs:
       #       (`--concurrency=1`) so the dep chain is always honored.
       - run: pnpm --filter @shadhil/database build
       - run: pnpm exec turbo run build --concurrency=1
-      # `--concurrency=1` for the same reason as the build above. `test` declares
-      # `dependsOn: ["^build"]`, so `pnpm test` runs each package's build first -
-      # and at the default concurrency=10 turbo schedules a dependent build as
-      # soon as its dependency is SCHEDULED, not finished. Observed in CI
-      # 2026-10-01: @shadhil/auth's tsc started while @shadhil/database was still
-      # emitting (both log `clean` at 01:37:03), and died with
-      # "src/auth.ts(30,24): error TS2307: Cannot find module '@shadhil/database'"
-      # - which turbo reported as the `pnpm test` step failing. It passes locally
-      # with a warm dist, which is exactly why the ordering has to be forced.
-      - run: pnpm test --concurrency=1
-      # Backend has ZERO tests until T-RLSREAL lands - keep passWithNoTests
-      # true for now so bundle-1 fixes can ship; the plan flips it to false
-      # in the same PR as the first real backend test (AR-5).
+      # `--concurrency=1` for the same reason as the build above, plus the test
+      # database env. Both belong on this one step.
       #
-      # The DB env is repeated here on purpose. The migrated database above is
-      # useless without it: this runner has no repo-root `.env` (gitignored), and
-      # with DATABASE_URL unset every DB-backed suite takes its
-      # `describe.skipIf(!HAS_DB)` path - the exact silent skip this job exists to
-      # prevent. Measured on a CI-faithful tree (2026-09-30): 139 of 171 tests in
-      # `@shadhil/database` FAIL, because the two files that build a Prisma client
-      # at module scope throw at import ("SASL: SCRAM-SERVER-FIRST-MESSAGE: client
-      # password must be a string") before any skip guard can run.
+      # ORDERING: `test` declares `dependsOn: ["^build"]`, so `pnpm test` builds
+      # each package first - and at turbo's default concurrency=10 a dependent
+      # build is scheduled as soon as its dependency is SCHEDULED, not finished.
+      # Observed in CI 2026-10-01: @shadhil/auth's tsc started while
+      # @shadhil/database was still emitting (both logged `clean` in the same
+      # second) and died with "src/auth.ts(30,24): error TS2307: Cannot find
+      # module '@shadhil/database'", reported as this step failing. It passes
+      # locally against a warm dist, which is why the ordering must be forced.
+      #
+      # ENV: the migrated database above is useless without it. This runner has no
+      # repo-root `.env` (gitignored), and with DATABASE_URL unset every DB-backed
+      # suite takes its `describe.skipIf(!HAS_DB)` path - the silent skip this job
+      # exists to prevent. Measured on a CI-faithful tree (2026-09-30): 139 of 171
+      # tests in `@shadhil/database` FAIL, because the two files that build a
+      # Prisma client at module scope throw at import ("SASL:
+      # SCRAM-SERVER-FIRST-MESSAGE: client password must be a string") before any
+      # skip guard can run.
+      #
+      # These MUST be set on the step, not only at workflow level: a step-level
+      # `env:` replaces the workflow-level value for that variable, so the
+      # `ci_build` placeholder up there (valid for `next build`, which never
+      # connects) would otherwise be what the suites authenticate with -
+      # "Authentication failed ... for `ci_build` is not valid".
       # RLS_MATRIX_REQUIRED makes a future env regression fail loudly instead of
       # degrading back to a green no-op (same guard the rls-matrix job uses).
-      - run: pnpm test
+      - run: pnpm test --concurrency=1
         env:
           DIRECT_DATABASE_URL: postgresql://shadhil:${{ env.SHADHIL_OWNER_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
           DATABASE_URL: postgresql://shadhil_app:${{ env.SHADHIL_APP_PASSWORD }}@localhost:5432/shadhil_crm_test?schema=public
