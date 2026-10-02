@@ -79,7 +79,7 @@ export function AppHeader() {
   const showDebugPill = searchParams.get('debug') === '1';
 
   return (
-    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))] backdrop-blur">
+    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))] backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
             shadcn sidebar-07 position) - beside the welcome message, visible
