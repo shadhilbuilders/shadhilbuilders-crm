@@ -397,6 +397,75 @@ async function main() {
     console.warn('[demo-user] skipped demo bookings: D-101/D-102 not found in the demo org');
   }
 
+  // ── Demo visits ─────────────────────────────────────────────────────────────
+  // Fixed cuid ids so re-runs are idempotent and the e2e specs can target them
+  // by stable id (visits-show-past-toggle.spec.ts expects these exact ids).
+  const DEMO_VISIT_UPCOMING_1 = 'demo-visit-upcoming-1';
+  const DEMO_VISIT_PAST_1 = 'demo-visit-past-1';
+
+  // Make sure the exec user exists (demo user who attends visits).
+  const demoExec = await prisma.user.upsert({
+    where: { email: 'demo@shadhilbuilders.in' },
+    update: {},
+    create: {
+      email: 'demo@shadhilbuilders.in',
+      name: 'Demo Owner',
+      role: 'OWNER',
+      organizationId: demoOrg.id,
+      emailVerified: true,
+      mustChangePassword: false,
+    },
+  });
+
+  const visitDefs = [
+    // Upcoming visit on a live lead (Meera, BOOKING_INITIATED) — should render
+    // in the default (upcoming-only) view. Must be in the CURRENT month of
+    // selectedDate (which is the week's Monday, Sep 28 → September) so the
+    // agenda view's month filter includes it.
+    // FIXED: use explicit September 2026 dates (the "current" month in the demo
+    // fixture) instead of Date.now() which uses the real current date.
+    {
+      id: DEMO_VISIT_UPCOMING_1,
+      leadId: DEMO_LEAD_5, // Demo Meera
+      organizationId: demoOrg.id,
+      userId: demoExec.id,
+      // Thursday of the demo week (Sep 30, 2026) at 11:00 — inside September
+      scheduledFor: new Date('2026-09-30T11:00:00.000Z'),
+      status: 'SCHEDULED' as const,
+      outcome: null,
+      notes: 'Seeded upcoming visit for e2e',
+    },
+    // Past visit on a WON lead (Vikram, WON) — should NOT render in the default
+    // view, but SHOULD render when "Show past visits" is toggled on.
+    // Must be within the current month (September) so the agenda view includes it.
+    {
+      id: DEMO_VISIT_PAST_1,
+      leadId: DEMO_LEAD_WON, // Demo Vikram (WON)
+      organizationId: demoOrg.id,
+      userId: demoExec.id,
+      // Wednesday of the demo week (Sep 28, 2026) at 10:00 — inside September
+      scheduledFor: new Date('2026-09-28T10:00:00.000Z'),
+      status: 'SCHEDULED' as const,
+      outcome: null,
+      notes: 'Seeded past visit on WON lead for e2e',
+    },
+  ];
+  for (const v of visitDefs) {
+    await prisma.siteVisit.upsert({
+      where: { id: v.id },
+      update: {
+        leadId: v.leadId,
+        organizationId: v.organizationId,
+        userId: v.userId,
+        scheduledFor: v.scheduledFor,
+        status: v.status,
+        outcome: v.outcome,
+        notes: v.notes,
+      },
+      create: v,
+    });
+  }
+
   // eslint-disable-next-line no-console
   console.log(
     `[demo-user] org "${demoOrg.name}" (${demoOrg.slug}, ${demoOrg.id}) ready`,

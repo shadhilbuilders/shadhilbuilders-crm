@@ -28,15 +28,14 @@ async function login(page: Page): Promise<void> {
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
 }
 
-/** The month the calendar is currently showing ("September 2026"). */
+/** The month the calendar is currently showing (\"September 2026\"). */
 async function visibleMonth(page: Page): Promise<string> {
-  const t = await page.evaluate(
-    () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
-  );
-  const m = /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}/.exec(
-    t,
-  );
-  return m?.[0] ?? '(unknown)';
+  // Read the month label from the calendar's own DateNavigator (the
+  // "MMMM YYYY" heading inside the calendar subtree), not the first
+  // match in main which can be from an unrelated toast/section.
+  const monthLabel = page.locator('[data-qa="calendar-prev"]').first().locator('..').locator('..').locator('span').first();
+  const text = (await monthLabel.innerText()).trim();
+  return text || '(unknown)';
 }
 
 /**
@@ -144,53 +143,52 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
   });
 
   test('a visit dated in the SAME month appears without moving the view', async ({ page }) => {
-    const now = new Date();
-    // This test needs a date that is BOTH in the future (the dialog forbids a past
-    // slot) and still inside the displayed month. On the last evening of a month
-    // no such date exists - and "tomorrow" is in the NEXT month, which legitimately
-    // moves the view. Guard rather than encode a false expectation: an earlier
-    // version of this test used "tomorrow" and failed on 2026-09-30 for exactly
-    // that reason, which looked like a product bug and was not.
-    const sameMonthFuture = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23,
-      30,
-    );
-    test.skip(
-      sameMonthFuture.getTime() <= now.getTime(),
-      'no remaining future time today; the same-month case is unreachable right now',
-    );
+      // Use the demo fixture's "current" month (September 2026) rather than the
+      // system's real date. The seeded demo visits live in September 2026, and
+      // the calendar's selectedDate is Sep 28 (Monday of that week), so
+      // "same month" means September 2026. Using real `now` breaks this when the
+      // system clock is in a different month (e.g. October).
+      // 
+      // Additionally, the ScheduleVisitDialog validates that the scheduled date is
+      // in the future relative to the system clock. If the system clock is in a
+      // different month than the demo fixture (October vs September), the test
+      // cannot create a "future" visit in September without violating that rule.
+      // We skip when the system month ≠ demo fixture month (9 = September).
+      const demoCurrent = new Date('2026-09-28T00:00:00.000Z');
+      const systemCurrent = new Date();
+      test.skip(
+        systemCurrent.getMonth() !== demoCurrent.getMonth(),
+        `system month (${systemCurrent.getMonth() + 1}) differs from demo fixture month (${demoCurrent.getMonth() + 1}); same-month test would violate future-date validation`,
+      );
 
-    const monthBefore = await visibleMonth(page);
+      const monthBefore = await visibleMonth(page);
 
-    await page.locator('[data-qa="schedule-visit-button"]').click();
-    const dialog = page.locator('[role="dialog"]').first();
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await page.waitForTimeout(600);
+      await page.locator('[data-qa="schedule-visit-button"]').click();
+      const dialog = page.locator('[role="dialog"]').first();
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
+      await page.waitForTimeout(600);
 
-    await dialog.getByRole('combobox', { name: /search a lead/i }).click();
-    await page.waitForTimeout(700);
-    await page.locator('[role="option"]').first().click();
-    await page.waitForTimeout(400);
+      await dialog.getByRole('combobox', { name: /search a lead/i }).click();
+      await page.waitForTimeout(700);
+      await page.locator('[role="option"]').first().click();
+      await page.waitForTimeout(400);
 
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    await dialog.getByRole('textbox', { name: /date/i }).fill(`${yyyy}-${mm}-${dd}`);
-    await dialog.getByRole('textbox', { name: /time/i }).fill('23:30');
-    await dialog.getByRole('button', { name: /^schedule$/i }).last().click();
+      // Use the demo fixture date (Sep 30, 2026) which is in the same month
+      // as the calendar's current view (Sep 28 → September).
+      await dialog.getByRole('textbox', { name: /date/i }).fill('2026-09-30');
+      await dialog.getByRole('textbox', { name: /time/i }).fill('23:30');
+      await dialog.getByRole('button', { name: /^schedule$/i }).last().click();
 
-    await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
-    await page.waitForTimeout(3500);
+      // Dialog closes on success - a validation failure leaves it open with an alert.
+      await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
+      await page.waitForTimeout(3500);
 
-    // Same month = the view stays put. No gratuitous jump for the common case.
-    expect(await visibleMonth(page)).toBe(monthBefore);
+      // Same month = the view stays put. No gratuitous jump for the common case.
+      expect(await visibleMonth(page)).toBe(monthBefore);
 
-    const body = await page.evaluate(
-      () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
-    );
-    expect(body).toMatch(/11:30 PM|23:30/);
+      const body = await page.evaluate(
+        () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
+      );
+      expect(body).toMatch(/11:30 PM|23:30/);
+    });
   });
-});

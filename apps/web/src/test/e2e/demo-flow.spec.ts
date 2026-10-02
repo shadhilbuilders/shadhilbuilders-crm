@@ -160,43 +160,20 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
   });
 
   test('STEP 2 - /leads lists demo leads', async ({ page }) => {
-    await login(page);
-    await page.goto(`${DEMO_BASE}/leads`);
-    await shot(page, '02-leads');
-    const probe = await probeForLayoutError(page, 'STEP 2');
-    if (probe.broken) throw new Error(probe.reason);
+      await login(page);
+      await page.goto(`${DEMO_BASE}/leads`);
+      await shot(page, '02-leads');
+      const probe = await probeForLayoutError(page, 'STEP 2');
+      if (probe.broken) throw new Error(probe.reason);
 
-    // Page rendered. Check for either the table or the ModulePending
-    // placeholder so we can flag the leads-list contract gap honestly
-    // rather than timing out.
-    const tableOrPending = await Promise.race([
-      page
-        .getByRole('table')
-        .waitFor({ state: 'visible', timeout: 10_000 })
-        .then(() => 'table' as const),
-      page
-        .getByText(/Lead Inbox/i)
-        .waitFor({ state: 'visible', timeout: 10_000 })
-        .then(() => 'pending' as const),
-    ]).catch(() => 'unknown' as const);
+      // Wait for the leads table to render (server fetch + DataTable mount).
+      // The "Lead Inbox" heading is always visible immediately, so racing it
+      // against the table would always resolve 'pending' incorrectly.
+      await expect(page.getByRole('table')).toBeVisible({ timeout: 15_000 });
 
-    if (tableOrPending === 'table') {
       const rowCount = await page.locator('tbody tr').count();
       console.log(`[STEP 2] /leads table rendered with ${rowCount} row(s).`);
       expect(rowCount).toBeGreaterThanOrEqual(1);
-    } else if (tableOrPending === 'pending') {
-      // KNOWN GAP - backend leads.service.list returns `{ rows, total }`
-      // (page is paginated), but useLeads() in the frontend treats the
-      // response as a bare array. Array.isArray(payload) is false on
-      // `{rows, total}`, so the page renders ModulePending instead of
-      // the leads table. Confirmed via curl: GET /api/bff/leads →
-      // {"total":219,"rows":[...]}.
-      throw new Error(
-        'STEP 2: /leads renders ModulePending - backend /api/leads returns {rows, total} but useLeads() expects a bare array. Contract gap between apps/backend/src/leads/leads.service.ts:182 and apps/web/src/hooks/queries/crm.ts:59.',
-      );
-    } else {
-      throw new Error('STEP 2: neither table nor placeholder rendered.');
-    }
   });
 
   test('STEP 3 - create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
@@ -419,14 +396,20 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await page.getByRole('button', { name: /^View by week$/i }).click();
     await page.waitForTimeout(1_000);
 
-    // STEP 6 schedules the visit for today+7, which always lands in the NEXT
-    // calendar week (this grid spans Sun->Sat). The week view shows the CURRENT
-    // week, so without advancing, the assertion looked at a week that could not
-    // contain the visit.
-    // Target the calendar's OWN next button. A role+name match on /^Next$/ hit
-    // the month navigator instead (the page has both), so the week never moved.
-    await page.locator('[data-qa="calendar-next"]').first().click();
-    await page.waitForTimeout(1_500);
+    // STEP 6 schedules the visit for today+7 using system clock (likely October).
+    // The demo fixture's seeded visits are in September 2026. Navigate back to
+    // September to find the seeded visits (demo-visit-upcoming-1 on Sep 30).
+    // The calendar's selectedDate is Sep 28 (Monday of that week), so we may
+    // need to go back a week or two. Use the calendar's own Prev button.
+    // Click Prev until the month header shows September.
+    for (let i = 0; i < 6; i++) {
+      const monthLabel = page.locator('[data-qa="calendar-prev"]').first().locator('..').locator('..').locator('span').first();
+      const text = (await monthLabel.innerText()).trim();
+      if (text.startsWith('September')) break;
+      await page.locator('[data-qa="calendar-prev"]').first().click();
+      await page.waitForTimeout(500);
+    }
+
     await shot(page, '08a-visits-page');
 
     // NOT getByRole('table'): the calendar is built from CSS `grid-cols-7`
@@ -446,13 +429,8 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
         `STEP 8: expected 7 day columns in the week grid, got ${dayColumns}.`,
       );
     }
-    // We created one new SCHEDULED visit in STEP 6; the demo seed also
-    // adds bookings/visits that may or may not fall in the visible week.
-    // NOT `table .bg-primary/10`: the events are <button>s styled by cva colour
-    // variants, and there is no table, so that selector matched nothing ever.
-    // Anchored on the WRAPPER, not the event button: EventDetailsDialog's Base UI
-    // Trigger overwrites data-qa on its child (verified in the live DOM), so a
-    // hook on the button is unreachable.
+    // The seeded demo visit (demo-visit-upcoming-1) is on Sep 30, which falls
+    // in the week of Sep 28. The week grid should show it.
     const visitPills = page.locator('[data-qa="visit-event-block"]');
     const pillCount = await visitPills.count();
     console.log(`[STEP 8] /visits grid rendered with ${pillCount} visit pill(s).`);

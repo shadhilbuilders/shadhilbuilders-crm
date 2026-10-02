@@ -212,8 +212,9 @@ test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
     // below would pass simply because nothing rendered.
     expect(off, 'live lead\'s visit should be in the default view').toContain('Demo Meera');
     // The settled deal's open visit is NOT. This is the fix.
+    // The seeded WON lead is Demo Vikram (see setup-demo-user.ts DEMO_LEAD_WON).
     expect(off, 'a WON lead\'s open visit must not read as upcoming').not.toContain(
-      'Demo Kavya',
+      'Demo Vikram',
     );
 
     await toggle.click();
@@ -222,6 +223,6 @@ test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
 
     const on = await calendarText(page);
     // Reachable, not deleted: history still holds it.
-    expect(on, 'Show past must reveal the settled deal\'s visit').toContain('Demo Kavya');
+    expect(on, 'Show past must reveal the settled deal\'s visit').toContain('Demo Vikram');
   });
 });
