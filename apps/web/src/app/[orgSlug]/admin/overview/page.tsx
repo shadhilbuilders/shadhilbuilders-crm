@@ -141,7 +141,7 @@ function ProblemInbox() {
     projectsById.get(projectId)?.name ?? 'Unknown project';
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 space-y-8 sm:px-6 lg:px-8">
       <ProblemHeader />
 
       {/* Card 1 - the flagship: leads nobody has touched in a day.
@@ -165,7 +165,7 @@ function ProblemInbox() {
             return (
               <li
                 key={lead.id}
-                className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+                className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
               >
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{lead.name}</span>
@@ -174,8 +174,8 @@ function ProblemInbox() {
                     {lead.ownerName ? ` · ${lead.ownerName}` : ''}
                   </span>
                 </span>
-                <span className="flex items-center justify-between gap-3 sm:justify-start">
-                  <span className="text-muted-foreground text-sm tabular-nums">
+                <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
+                  <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
                   {lead.idleDays}d since last write
                 </span>
                   {href !== null ? (
@@ -184,7 +184,7 @@ function ProblemInbox() {
                       variant="link"
                       size="sm"
                       href={href}
-                      className="text-link p-2.5 sm:p-0"
+                      className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
                     >
                       Open
                     </Button>
@@ -215,7 +215,7 @@ function ProblemInbox() {
             return (
               <li
                 key={visit.id}
-                className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+                className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
               >
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{visit.leadName}</span>
@@ -224,8 +224,8 @@ function ProblemInbox() {
                     {visit.userName ? ` · ${visit.userName}` : ' · no exec assigned'}
                   </span>
                 </span>
-                <span className="flex items-center justify-between gap-3 sm:justify-start">
-                  <span className="text-muted-foreground text-sm tabular-nums">
+                <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
+                  <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
                     {visit.reason === 'overdue-past-due'
                       ? `overdue · was due ${dateIntl.formatDate(visit.scheduledFor)}`
                       : 'due today'}
@@ -236,7 +236,7 @@ function ProblemInbox() {
                       variant="link"
                       size="sm"
                       href={href}
-                      className="text-link p-2.5 sm:p-0"
+                      className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
                     >
                       Open
                     </Button>
@@ -264,7 +264,7 @@ function ProblemInbox() {
             return (
             <li
               key={booking.id}
-              className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
             >
               <span className="min-w-0 flex-1">
                 <span className="font-medium">{booking.leadName}</span>
@@ -273,7 +273,7 @@ function ProblemInbox() {
                   {projectLabel(booking.projectId)}
                 </span>
               </span>
-              <span className="flex items-center justify-between gap-3 sm:justify-start">
+              <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
                 {booking.reason === 'token-paid-awaiting-approval' ? (
                   <span className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="success" data-qa={`booking-token-paid-${booking.id}`}>
@@ -284,29 +284,21 @@ function ProblemInbox() {
                     </Badge>
                   </span>
                 ) : booking.reason === 'token-recorded-missing-amount' ? (
-                  // T-TOKEN-GATE (2026-09-28): a DATA DEFECT, not a queue item.
-                  // The booking is marked token-received with no amount recorded,
-                  // so it cannot be verified and used to read as "no token" (money
-                  // still with the customer) for a booking marked as paid. It is
-                  // named distinctly so it can be found and FIXED - the operator
-                  // enters the amount actually received (from the bank entry or
-                  // receipt), which is the one thing a human can supply and the
-                  // schema cannot derive, since no payment table exists.
                   <span className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="destructive" data-qa={`booking-token-missing-amount-${booking.id}`}>
                       Amount missing
                     </Badge>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground text-xs whitespace-nowrap">
                       marked received · {booking.stuckDays}d
                     </span>
                   </span>
                 ) : (
-                  <span className="text-muted-foreground text-sm">
+                  <span className="text-muted-foreground text-sm whitespace-nowrap">
                     {booking.stuckDays}d no token
                   </span>
                 )}
                 {href !== null ? (
-                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2.5 sm:p-0">
+                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center">
                     {booking.reason === 'token-recorded-missing-amount'
                       ? 'Fix amount'
                       : 'Approve'}
@@ -334,7 +326,7 @@ function ProblemInbox() {
             return (
             <li
               key={member.userId}
-              className="flex flex-col gap-y-1 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
             >
               <span className="min-w-0 flex-1">
                 <span className="font-medium">{member.userName}</span>
@@ -342,14 +334,14 @@ function ProblemInbox() {
                   {member.role.toLowerCase().replace('_', ' ')}
                 </span>
               </span>
-              <span className="flex items-center justify-between gap-3 sm:justify-start">
-                <span className="text-muted-foreground text-sm">
+              <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
+                <span className="text-muted-foreground text-sm whitespace-nowrap">
                   {member.kind === 'quiet'
                     ? `quiet ${member.quietDays}d · ${member.activeLeadCount} leads`
                     : `overloaded · ${member.activeLeadCount} active leads`}
                 </span>
                 {href !== null ? (
-                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2.5 sm:p-0">
+                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center">
                     Review
                   </Button>
                 ) : null}
@@ -402,9 +394,9 @@ function ProblemCard({
 }) {
   return (
     <section className="min-w-0">
-      <div className="mb-2 flex items-center justify-between sm:mb-3">
+      <div className="flex flex-col gap-y-1.5 mb-2 sm:flex-row sm:items-center sm:justify-between sm:mb-3">
         <h2 className="text-sm font-semibold tracking-wide uppercase">{title}</h2>
-        <span className="text-muted-foreground text-sm tabular-nums">
+        <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
           {count} {count === 1 ? 'problem' : 'problems'} · {sub}
         </span>
       </div>
