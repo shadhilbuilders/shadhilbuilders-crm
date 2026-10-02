@@ -147,8 +147,8 @@ test('leads inbox: status filter narrows to a single state', async ({ page }) =>
 
   // Open the status filter (Combobox multiple). The app passes data-qa to
   // <Combobox> but @paalstack/react-ui 1.7.0 does not forward it to a rendered
-  // element. The stable hook is the chip input inside the combobox container.
-  await page.locator('[data-qa=combobox-chip-input]').click();
+  // element. The stable hook is the combobox with accessible name "Filter by status".
+  await page.getByRole('combobox', { name: 'Filter by status' }).click();
   await page.getByRole('option', { name: 'New' }).click();
 
   // All visible rows should be NEW (the status badge in each row).
