@@ -196,6 +196,8 @@ jobs:
             if $SSH 'docker ps --format "{{.Names}} {{.Status}}" | grep -q "shadhil-api.* Up "' 2>/dev/null; then
               echo "api container up after ~$((i*10))s"
               $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
+              # Seed test user (test@shadhilbuilders.in) for production testing
+              $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/.bin/tsx --env-file-if-exists=/dev/null scripts/seed-test-user.ts"'
               exit 0
             fi
           done
