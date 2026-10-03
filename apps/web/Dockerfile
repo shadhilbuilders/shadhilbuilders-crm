@@ -89,6 +89,8 @@ COPY tsconfig.base.json ./
 # next.config.ts) plus the app itself. apps/backend is deliberately excluded.
 COPY packages/ packages/
 COPY apps/web/ apps/web/
+# realtime-sse is needed for frozen-lockfile - lockfile records it as importer
+COPY apps/realtime-sse/ apps/realtime-sse/
 
 # --ignore-scripts: the web postinstall needs bash, which alpine lacks. Nothing
 # it does (symlinking apps/web/.env.local → root .env) is wanted in an image -
