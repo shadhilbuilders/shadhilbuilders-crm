@@ -25,10 +25,12 @@ RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY tsconfig.base.json ./
 
-# Packages + this app only. apps/web and apps/backend are deliberately excluded
-# so their postinstall hooks (bash) and build cost stay out of this image.
+# Packages + this app only. apps/web and apps/backend are also needed for
+# frozen-lockfile - lockfile records them as importers.
 COPY packages/ packages/
 COPY apps/realtime-sse/ apps/realtime-sse/
+COPY apps/web/ apps/web/
+COPY apps/backend/ apps/backend/
 
 # --ignore-scripts skips app postinstall hooks (bash dependency etc.)
 RUN pnpm install --frozen-lockfile --ignore-scripts
