@@ -18,6 +18,13 @@ minimumReleaseAgeExclude:
   - '@paalstack/react-hooks@1.1.2'
   - '@paalstack/react-icons@1.1.1'
   - '@nestjs/platform-express@12.1.1'
+  - '@turbo/darwin-64@2.11.7'
+  - '@turbo/darwin-arm64@2.11.7'
+  - '@turbo/linux-64@2.11.7'
+  - '@turbo/linux-arm64@2.11.7'
+  - '@turbo/windows-64@2.11.7'
+  - '@turbo/windows-arm64@2.11.7'
+  - turbo@2.11.7
 
 overrides:
   # eslint-config-next (transitively) pins eslint-plugin-react@7.37.5,
