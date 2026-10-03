@@ -26,7 +26,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
 
 import { UsersService } from './users.service';
-import { hashPassword } from './credentials';
+// Mock credentials to avoid real scrypt in unit tests - faster and deterministic
+vi.mock('./credentials', () => ({
+  hashPassword: vi.fn((pw: string) => `mock-salt:mock-hash-${pw}`),
+  verifyPassword: vi.fn((plain: string, stored: string | null | undefined) => {
+    if (!stored) return false;
+    const expected = `mock-salt:mock-hash-${plain}`;
+    return stored === expected;
+  }),
+}));
 
 type Actor = JwtPayload;
 
@@ -148,17 +156,8 @@ beforeEach(() => {
 
 describe('changePassword - happy path (self)', () => {
   it('returns { ok: true, mustChangePassword: false } and flips the flag', async () => {
-    // Pre-hash the same password our verify expects (we don't go
-    // through real scrypt here - we just feed the stub the
-    // plaintext-equals-stored check by giving it a "verified" value).
-    // We stub the verify function via the account row returning
-    // null → verifyPassword returns false; for a positive case we
-    // need the stored hash to round-trip with verifyPassword.
-    //
-    // The cleanest approach: stub verifyPassword via vi.mock OR
-    // call hashPassword() once to produce a real stored value.
-    // We pick the latter so the test exercises the real crypto path.
-    const storedHash = hashPassword('OldPass123!');
+    // Use mock hash that round-trips with the mocked verifyPassword
+    const storedHash = 'mock-salt:mock-hash-OldPass123!';
     const { service, mocks } = makeService({
       user: { id: telecallerActor.sub, email: telecallerActor.email, mustChangePassword: true },
       accountPassword: storedHash,
@@ -206,7 +205,7 @@ describe('changePassword - happy path (self)', () => {
 
 describe('changePassword - wrong old password', () => {
   it('throws BadRequestException, no writes happen', async () => {
-    const storedHash = hashPassword('OldPass123!');
+    const storedHash = 'mock-salt:mock-hash-OldPass123!';
     const { service, mocks } = makeService({
       user: { id: telecallerActor.sub, email: telecallerActor.email, mustChangePassword: true },
       accountPassword: storedHash,
@@ -263,7 +262,7 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   });
 
   it('ADMIN resetting a different user → ALLOWED (privileged)', async () => {
-    const storedHash = hashPassword('TargetOld123!');
+    const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
       user: { id: managerActor.sub, email: managerActor.email, mustChangePassword: true },
       accountPassword: storedHash,
@@ -279,7 +278,7 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   });
 
   it('OWNER resetting a different user → ALLOWED (privileged)', async () => {
-    const storedHash = hashPassword('TargetOld123!');
+    const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
       user: { id: managerActor.sub, email: managerActor.email, mustChangePassword: true },
       accountPassword: storedHash,

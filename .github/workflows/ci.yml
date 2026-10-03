@@ -388,6 +388,10 @@ jobs:
       NEXT_PUBLIC_APP_NAME: Shadhil Builders
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       NEXT_PUBLIC_DEBUG_MODE: 'false'
+      # Required: the web build runs inside this job (turbo builds @shadhil/web).
+      # Without this, @t3-oss/env-nextjs and assertAuthEnv() fail on the
+      # CI placeholder values (they only check shape, not real connectivity).
+      SKIP_ENV_VALIDATION: 'true'
     services:
       postgres:
         image: postgres:16-alpine
