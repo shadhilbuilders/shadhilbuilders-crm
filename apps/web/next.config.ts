@@ -169,6 +169,19 @@ export default withSerwistInit({
   disable: process.env.NODE_ENV === 'development',
   // Cap precache at 5MB; a single analytics chunk can blow this otherwise.
   maximumFileSizeToCacheInBytes: 5_000_000,
+  // Inject a build ID into the precache manifest so the SW knows its version.
+  // This changes the SW file content on every build, ensuring browsers
+  // and CDNs never serve a stale SW. The build ID comes from GITHUB_SHA
+  // (CI) or git commit hash (local).
+  manifestTransforms: [
+    (entries) => ({
+      manifest: entries.map((e) => ({
+        ...e,
+        // Add build ID as revision for the SW entry itself
+        revision: e.url === '/sw.js' ? process.env.BUILD_ID ?? 'local' : e.revision,
+      })),
+    }),
+  ],
 })(nextConfig);
 
 

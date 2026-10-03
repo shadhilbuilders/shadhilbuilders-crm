@@ -516,6 +516,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [type-check, lint, test]
+    env:
+      BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -560,6 +562,8 @@ jobs:
     name: Docker images
     runs-on: ubuntu-latest
     needs: [type-check, lint, test]
+    env:
+      BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -578,6 +582,7 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
             BACKEND_API_URL=http://shadhil-api:8080
             NEXT_PUBLIC_DEBUG_MODE=false
+            BUILD_ID=${{ github.sha }}
 
       - name: Build backend image
         uses: docker/build-push-action@v6
@@ -603,6 +608,7 @@ jobs:
           docker build \
             --build-arg NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in \
             --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in \
+            --build-arg BUILD_ID=${{ github.sha }} \
             --target builder \
             -f apps/web/Dockerfile -t web-builder-check .
           docker run --rm --entrypoint sh web-builder-check -c \

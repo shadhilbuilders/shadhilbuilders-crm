@@ -51,6 +51,8 @@ ARG NEXT_PUBLIC_DEBUG_MODE=false
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_HOST
+# Build ID for cache-busting the service worker. Set at build time via --build-arg.
+ARG BUILD_ID=local
 
 # ── Build-time SERVER env (placeholders, NOT secrets) ────────────────────────
 # `next build` prerenders routes and imports the auth chain, so two validators run
@@ -75,6 +77,7 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
     NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
     NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST \
+    BUILD_ID=$BUILD_ID \
     NEXT_TELEMETRY_DISABLED=1
 
 # Workspace manifests first (better layer caching). pnpm-workspace.yaml is NOT

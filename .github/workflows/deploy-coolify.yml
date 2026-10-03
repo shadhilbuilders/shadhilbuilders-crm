@@ -44,6 +44,8 @@ jobs:
       contents: read
       packages: write
     timeout-minutes: 45
+    env:
+      BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,6 +90,7 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
             NEXT_PUBLIC_BETTER_AUTH_URL=https://crm.shadhilbuilders.in
             BACKEND_API_URL=http://shadhil-api:8080
+            BUILD_ID=${{ github.sha }}
           tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:${{ steps.tag.outputs.tag }}
 
       - name: Push the three images to GHCR
