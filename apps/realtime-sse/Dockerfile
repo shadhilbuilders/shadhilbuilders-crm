@@ -19,7 +19,8 @@
 FROM node:26-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
+# node:26-alpine doesn't include corepack - install pnpm directly
+RUN npm install -g pnpm@12.8.1
 
 # Workspace files first (better layer caching)
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -50,7 +51,8 @@ RUN pnpm --filter @shadhil/api-types build
 FROM node:26-alpine AS production
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
+# node:26-alpine doesn't include corepack - install pnpm directly
+RUN npm install -g pnpm@12.8.1
 
 # Runtime deps: root node_modules (hoisted) + per-workspace node_modules with the
 # real symlinks (pnpm's isolated linker keeps tsx under the app's node_modules).

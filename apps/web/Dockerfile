@@ -26,7 +26,8 @@
 FROM node:26-alpine AS base
 # Pinned to the repo's packageManager field so the image resolves the same
 # lockfile semantics as CI and local dev.
-RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
+# node:26-alpine doesn't include corepack - install pnpm directly
+RUN npm install -g pnpm@12.8.1
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 FROM base AS builder
