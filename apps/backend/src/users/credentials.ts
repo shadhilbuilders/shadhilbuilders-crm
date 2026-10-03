@@ -58,7 +58,7 @@ export function verifyPassword(
   const normalized = plaintext.normalize('NFKC');
   const expected = Buffer.from(key, 'hex');
   if (expected.length === 0) return false;
-  const candidate = scryptSync(normalized, salt, expected.length, SCRYPT_PARAMS);
+  const candidate = scryptSync(normalized, Buffer.from(salt, 'hex'), expected.length, SCRYPT_PARAMS);
   if (candidate.length !== expected.length) return false;
   return timingSafeEqual(candidate, expected);
 }
