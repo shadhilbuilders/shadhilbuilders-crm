@@ -147,12 +147,13 @@ export function AppShell() {
              />
             ) : (
               <Image
-              src="/brand/logo.png"
+              src="/brand/logo-bg.png"
               alt="Shadhil Builders"
               width={130}
               height={34}
               className="w-38 h-auto object-contain"
               data-qa="sidebar-brand-logo-expanded"
+              loading="eager"
               />
             )}
           </Link>

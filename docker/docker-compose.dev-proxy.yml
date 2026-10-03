@@ -63,7 +63,7 @@ services:
   # the host (not in Docker), the Traefik container can still reach
   # them via host.docker.internal. See "External services" below.
   apps-web:
-    image: node:22-alpine
+    image: node:26-alpine
     working_dir: /app
     command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/web dev"
     volumes:
@@ -83,7 +83,7 @@ services:
       - "traefik.http.services.crm-local.loadbalancer.server.port=3000"
 
   apps-backend:
-    image: node:22-alpine
+    image: node:26-alpine
     working_dir: /app
     command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/backend start:dev"
     volumes:
@@ -101,7 +101,7 @@ services:
       - "traefik.http.services.api-local.loadbalancer.server.port=8080"
 
   apps-realtime-sse:
-    image: node:22-alpine
+    image: node:26-alpine
     working_dir: /app
     command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @shadhil/realtime-sse start"
     volumes:

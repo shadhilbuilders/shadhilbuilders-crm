@@ -17,16 +17,16 @@
 #   2. the runner copied /app/.next/standalone and ran `node server.js`, but in a
 #      monorepo the standalone tree is rooted at the repo root, so the server is
 #      at apps/web/server.js.
-#   3. postinstall runs bash (scripts/setup-env-local.sh) and node:22-alpine has
+#   3. postinstall runs bash (scripts/setup-env-local.sh) and node:26-alpine has
 #      no bash - the install MUST pass --ignore-scripts.
 #
 # Mirrors apps/backend/Dockerfile's proven workspace layout deliberately.
 
 # ── Base ──────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS base
+FROM node:26-alpine AS base
 # Pinned to the repo's packageManager field so the image resolves the same
 # lockfile semantics as CI and local dev.
-RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 FROM base AS builder

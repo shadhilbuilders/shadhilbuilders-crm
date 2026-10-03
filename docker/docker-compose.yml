@@ -49,7 +49,7 @@
 #   /etc/docker/daemon.json
 #   {"log-driver":"json-file","log-opts":{"max-size":"50m","max-file":"5"}}
 #
-# Probe style: the three app images are node:22-alpine, which ships busybox
+# Probe style: the three app images are node:26-alpine, which ships busybox
 # wget and NO curl. busybox wget has no --fail flag, but it exits non-zero on
 # any HTTP error - verified against the live endpoints: 200 -> exit 0,
 # 404 -> exit 1, connection refused -> exit 1. All probes target 127.0.0.1;

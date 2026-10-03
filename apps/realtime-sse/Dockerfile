@@ -16,10 +16,10 @@
 # packages must be built from source here.
 
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
 
 # Workspace files first (better layer caching)
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -47,10 +47,10 @@ RUN pnpm --filter @shadhil/database build
 RUN pnpm --filter @shadhil/api-types build
 
 # ── Production stage ─────────────────────────────────────────────────────────
-FROM node:22-alpine AS production
+FROM node:26-alpine AS production
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
 
 # Runtime deps: root node_modules (hoisted) + per-workspace node_modules with the
 # real symlinks (pnpm's isolated linker keeps tsx under the app's node_modules).

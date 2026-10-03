@@ -4,7 +4,7 @@ CRM for Shadhil Builders (Indian real-estate, Chennai). Monorepo: Next.js 16 web
 (BFF + UI), NestJS 12 REST API, Expo mobile (Week 10+), Prisma 7 + Postgres 16
 with row-level security, deployed via Coolify on Hostinger.
 
-Current stack pins: pnpm 11 · Node 26 runtime (CI on 22) · Next 16.3 · Nest 12 ·
+Current stack pins: pnpm 11 · Node 26 runtime (CI on 26) · Next 16.3 · Nest 12 ·
 Prisma 7.10 (+ `@prisma/adapter-pg`) · better-auth 1.7 · Tailwind 4 ·
 edoburu/pgbouncer 1.25 · Postgres 16 · Redis 7.
 

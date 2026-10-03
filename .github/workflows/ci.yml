@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate
@@ -86,7 +86,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate
@@ -136,7 +136,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Same role bootstrap as rls-matrix: migration 1 GRANTs to shadhil_app.
@@ -248,7 +248,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # 00-init.sql equivalent: CI's bare postgres container has no
@@ -424,7 +424,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The browser download is the slow part; cache it across runs.
@@ -529,7 +529,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shadhil/database generate

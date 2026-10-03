@@ -1345,7 +1345,7 @@ plan.
 4. The web runner ran `node server.js`, but a pnpm monorepo standalone
    tree roots at the repo root, so the server is at
    `apps/web/server.js`. Fix: corrected the copy paths and `CMD`.
-5. The web `postinstall` runs bash and `node:22-alpine` has no bash.
+5. The web `postinstall` runs bash and `node:26-alpine` has no bash.
    Fix: `pnpm install --ignore-scripts`.
 6. `BACKEND_API_URL` had no build arg, so the image baked the
    `http://localhost:8080` fallback → healthy container, every BFF call

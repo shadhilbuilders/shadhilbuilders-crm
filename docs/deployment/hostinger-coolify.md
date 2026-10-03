@@ -659,7 +659,7 @@ CI did before:
 | 2 | `apps/web/next.config.ts` had `output: 'standalone'` commented out while the Dockerfile copied `.next/standalone`. | Enabled it. CI now asserts the file exists so the failure names the cause. |
 | 3 | Web install copied `package.json` + `pnpm-lock.yaml` but not `pnpm-workspace.yaml`, where the `overrides` block the lockfile records lives -> `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, blocking all three images. | Copy the workspace manifest too. |
 | 4 | The web runner ran `node server.js`, but in a pnpm monorepo the standalone tree roots at the repo root, so the server is at `apps/web/server.js`. | Corrected the copy paths and `CMD`. |
-| 5 | The web postinstall runs bash; `node:22-alpine` has no bash. | `pnpm install --ignore-scripts`. |
+| 5 | The web postinstall runs bash; `node:26-alpine` has no bash. | `pnpm install --ignore-scripts`. |
 | 6 | `BACKEND_API_URL` had no build arg, so the image baked the localhost fallback. | Declared it as a build `ARG`. |
 | 7 | Nothing in CI built any image, so every defect above was invisible. | Added the `docker-images` CI job. |
 | 8 | `next build` prerenders `/api/docs` and imports the auth chain, so `@t3-oss/env-nextjs` and `assertAuthEnv()` both run at build time and killed the build with `Failed to collect page data for /api/docs` (`Invalid environment variables`). `assertAuthEnv()` has no skip switch. | The builder stage sets shape-valid placeholder server env (`BETTER_AUTH_URL`, `DIRECT_DATABASE_URL`, and 44-char placeholder secrets). They live in the builder `FROM` only, so they never reach the shipped image; real values come from Coolify at runtime. Never pass real secrets as build args. |
