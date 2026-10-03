@@ -86,10 +86,11 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY tsconfig.base.json ./
 
 # Every workspace package the web app consumes (transpilePackages in
-# next.config.ts) plus the app itself. apps/backend is deliberately excluded.
+# next.config.ts) plus the app itself.
 COPY packages/ packages/
 COPY apps/web/ apps/web/
-# realtime-sse is needed for frozen-lockfile - lockfile records it as importer
+# backend + realtime-sse needed for frozen-lockfile - lockfile records them as importers
+COPY apps/backend/ apps/backend/
 COPY apps/realtime-sse/ apps/realtime-sse/
 
 # --ignore-scripts: the web postinstall needs bash, which alpine lacks. Nothing
