@@ -443,8 +443,8 @@ jobs:
       - name: Export e2e database env
         run: |
           {
-            echo "DATABASE_URL=postgresql://shadhil_app:${SHADHIL_APP_PASSWORD}@localhost:5432/shadhil_crm?schema=public&pgbouncer=true"
-            echo "DIRECT_DATABASE_URL=postgresql://shadhil:${SHADHIL_OWNER_PASSWORD}@localhost:5432/shadhil_crm?schema=public"
+            echo "DATABASE_URL=postgresql://shadhil_app:shadhil@localhost:5432/shadhil_crm?schema=public&pgbouncer=true"
+                        echo "DIRECT_DATABASE_URL=postgresql://shadhil:shadhil@localhost:5432/shadhil_crm?schema=public"
             echo "REDIS_URL=redis://localhost:6379"
             echo "API_PORT=8080"
           } >> "$GITHUB_ENV"
