@@ -1,6 +1,6 @@
 'use client';
 
-// Work -> Projects -> [projectSlug] -> Teams - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
+// Work -> Projects -> [projectSlug] -> My Team - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
 // MANAGER-only route. Lists every team the manager MANAGES and every team they're
 // an ordinary MEMBER of. Backed by the SAME GET /api/teams endpoint Admin -> Teams uses.
 import { useEffect, useState } from 'react';
@@ -16,7 +16,7 @@ import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
 
-export default function TeamsPage() {
+export default function MyTeamPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
   const projectSlug = useProjectSlug();
@@ -35,7 +35,7 @@ export default function TeamsPage() {
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          Only managers have a Teams view - admins use Admin → Teams.
+          Only managers have a My Team view - admins use Admin → Teams.
         </TypographyP>
       </div>
     );
@@ -50,10 +50,10 @@ export default function TeamsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Teams"
+        title="My Team"
         breadcrumb={[
           { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
-          { label: 'Teams' },
+          { label: 'My Team' },
         ]}
         subtitle="Teams you manage, and teams you're a member of."
       />
@@ -108,7 +108,7 @@ function TeamSection({
       ) : (
         <ItemGroup className="gap-2">
           {teams.map((team) => (
-            <Link key={team.id} href={`${baseHref}/teams/${team.id}`} data-qa={`team-row-${team.id}`}>
+            <Link key={team.id} href={`${baseHref}/my-team/${team.id}`} data-qa={`my-team-row-${team.id}`}>
               <Item
                 variant="outline"
                 size="sm"

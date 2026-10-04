@@ -1,7 +1,7 @@
 // TeamRosterMemberRow - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
 //
 // Locks in the two rules that must never drift between Admin -> Teams and
-// Work -> My Teams (see team-roster.tsx's file header):
+// Work -> My Team (see team-roster.tsx's file header):
 //   1. The manager row is pinned with a Manager badge and never offers
 //      "Remove from this team", regardless of `canRemove`.
 //   2. Every other row's "Remove from this team" is gated purely on the
@@ -120,7 +120,7 @@ describe('TeamRosterMemberRow', () => {
     expect(container?.querySelector('[data-qa="team-member-remove-tc-1"]')).toBeNull();
   });
 
-  it('honours a custom dataQaPrefix (My Teams uses "my-team-member")', async () => {
+  it('honours a custom dataQaPrefix (My Team uses "my-team-member")', async () => {
     await mount({
       member: ordinaryMember,
       managerId: 'mgr-a',

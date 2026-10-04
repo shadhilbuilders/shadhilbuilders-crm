@@ -49,8 +49,11 @@ async function main() {
 
   // Password: REQUIRED on first run; optional on re-runs (keeps existing).
   let password = process.env.SEED_OWNER_PASSWORD;
+  // T-EMAIL-PER-ORG: `email` alone is no longer a unique key - the lookup
+  // must go through the (email, organizationId) compound unique. This
+  // bootstrap seed only ever targets the ONE fixed SEED_ORG_ID org anyway.
   const existing = await prisma.user.findUnique({
-    where: { email },
+    where: { email_organizationId: { email, organizationId: SEED_ORG_ID } },
     select: { id: true },
   });
   if (!password) {

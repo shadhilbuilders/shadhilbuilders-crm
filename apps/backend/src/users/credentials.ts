@@ -58,7 +58,15 @@ export function verifyPassword(
   const normalized = plaintext.normalize('NFKC');
   const expected = Buffer.from(key, 'hex');
   if (expected.length === 0) return false;
-  const candidate = scryptSync(normalized, Buffer.from(salt, 'hex'), expected.length, SCRYPT_PARAMS);
+  // Salt is passed as the raw hex STRING, not hex-decoded to bytes - this
+  // must match hashPassword() above (which does the same) and better-auth's
+  // own @better-auth/utils password.node.ts (`scrypt(password, salt, ...)`
+  // where `salt` is the hex string from `randomBytes(16).toString('hex')`,
+  // used verbatim as UTF-8 bytes, never Buffer.from(salt, 'hex')). Decoding
+  // it here silently derived a different key for every password, so the
+  // "current password" check always failed even when the password was
+  // correct.
+  const candidate = scryptSync(normalized, salt, expected.length, SCRYPT_PARAMS);
   if (candidate.length !== expected.length) return false;
   return timingSafeEqual(candidate, expected);
 }

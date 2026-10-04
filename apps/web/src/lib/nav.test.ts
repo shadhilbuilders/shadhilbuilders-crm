@@ -81,17 +81,17 @@ describe('lib/nav', () => {
       '/notifications',
     ];
     // T-TEAM-AUTHORITATIVE (2026-09-13): MANAGER additionally sees
-    // Teams (design doc UI1) - every other staff role does not.
+    // My Team (design doc UI1) - every other staff role does not.
     // T-WA-INBOX (2026-09-25): the WhatsApp Chats inbox is
     // MANAGER/ADMIN/OWNER only, so it is NOT in workHrefs (which every staff
     // role sees) - it joins the manager set instead.
     // Received order is the NAV_ITEMS declaration order: /whatsapp-chat sits
-    // in the work group before /notifications, and /teams comes after /visits.
+    // in the work group before /notifications, and /my-team comes after /visits.
     const managerHrefs = [
       '/dashboard',
       '/leads',
       '/visits',
-      '/teams',
+      '/my-team',
       '/staff',
       '/inventory',
       '/bookings',
@@ -110,7 +110,7 @@ describe('lib/nav', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
     });
 
-    it('MANAGER sees only the work group + My Teams (Users / Projects / WA Unknown are admin-only)', () => {
+    it('MANAGER sees only the work group + My Team (Users / Projects / WA Unknown are admin-only)', () => {
       const hrefs = flattenNavHrefs(getVisibleNav('MANAGER'));
       expect(hrefs).toEqual(managerHrefs);
       expect(hrefs).not.toContain('/admin');

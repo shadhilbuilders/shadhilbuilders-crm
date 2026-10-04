@@ -1,12 +1,12 @@
 'use client';
 
 // Shared team-roster member row - T-TEAM-AUTHORITATIVE (2026-09-13, design
-// doc UI1): "Managers receive a Work -> My Teams route outside the Admin
+// doc UI1): "Managers receive a Work -> My Team route outside the Admin
 // navigation... Both routes render the same shared roster component so
 // role-specific surfaces cannot drift."
 //
 // Used by both Admin -> Teams -> [teamId] (ADMIN/OWNER, full actions) and
-// Work -> My Teams -> [teamId] (MANAGER, remove-only on teams they manage).
+// Work -> My Team -> [teamId] (MANAGER, remove-only on teams they manage).
 // This component owns the two rules that must never drift between those
 // two surfaces:
 //   1. The team's manager row is pinned with a Manager badge and NEVER
@@ -53,7 +53,7 @@ export function TeamRosterMemberRow({
    * team") rendered above "Remove from this team" in the actions column. */
   extraActions?: ReactNode;
   /** Existing tests pin distinct qa ids per surface (`team-member-*` on
-   * Admin -> Teams, `my-team-member-*` on My Teams) - kept caller-side so
+   * Admin -> Teams, `my-team-member-*` on My Team) - kept caller-side so
    * consolidating the component doesn't silently change either surface's
    * data-qa contract. */
   dataQaPrefix?: string;

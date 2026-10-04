@@ -68,6 +68,37 @@ const safeSet = (storage: 'session' | 'local', key: string, value: string): void
 };
 
 /**
+ * Samsung Internet calls `prompt()` successfully - the native install sheet
+ * does appear - but its `userChoice` promise can hang forever instead of
+ * resolving with the user's choice. This is a long-standing, still-present
+ * bug (reported since 2020:
+ * https://stackoverflow.com/questions/59878575), not something we can fix
+ * from the page. Without this timeout, `await evt.userChoice` below never
+ * returns on Samsung Internet, so the toast never dismisses and the button
+ * reads as completely dead even though the native dialog worked fine.
+ *
+ * `appinstalled` (listened to separately in this component) is the durable
+ * signal for "installed" - this timeout only exists so we stop waiting on
+ * a promise that may never settle and don't leave stale UI on screen.
+ */
+const USER_CHOICE_TIMEOUT_MS = 8000;
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | null> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
+
+/**
  * Bottom-attached install-prompt toast (D4).
  *
  * Listens for `beforeinstallprompt` (Chromium only - iOS Safari does NOT fire
@@ -140,12 +171,20 @@ export const InstallPrompt = () => {
               consumed = true;
               try {
                 await evt.prompt();
-                const { outcome } = await evt.userChoice;
-                if (outcome === 'accepted') {
+                // The native install UI is now showing (or has already been
+                // handled) regardless of which browser this is - our toast's
+                // job is done, so dismiss it unconditionally here instead of
+                // after `userChoice`. See `USER_CHOICE_TIMEOUT_MS` above:
+                // Samsung Internet never resolves `userChoice`, and waiting
+                // on it to decide whether to dismiss left the toast - and
+                // the button - looking permanently stuck for those users.
+                toast.dismiss(toastId);
+
+                const choice = await withTimeout(evt.userChoice, USER_CHOICE_TIMEOUT_MS);
+                if (choice?.outcome === 'accepted') {
                   // Durable: the app is (being) installed, so never offer again
                   // - even if `appinstalled` never fires.
                   safeSet('local', INSTALLED_KEY, '1');
-                  toast.dismiss(toastId);
                 }
               } catch (err) {
                 // Surface the failure so it shows up in console when the user

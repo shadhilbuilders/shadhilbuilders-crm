@@ -63,24 +63,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/backend apps/backend
 COPY --from=builder /app/packages/ packages/
 
-# Fix better-auth hex.decode bug: it returns UTF-8 string instead of Uint8Array
-# This breaks password verification for non-UTF8 salts (all random salts)
-RUN sed -i 's/return new TextDecoder().decode(result);/return result;/' /app/node_modules/.pnpm/@better-auth+utils@0.4.2/node_modules/@better-auth/utils/dist/hex.mjs
-
-# Fix better-auth password.generateKey bug: it passes salt hex string directly to scryptAsync
-# instead of decoding it with hex.decode() first
-RUN sed -i 's/scryptAsync(password.normalize("NFKC"), salt, {/scryptAsync(password.normalize("NFKC"), hex.decode(salt), {/' /app/node_modules/.pnpm/@better-auth+utils@0.4.2/node_modules/@better-auth/utils/dist/password.mjs
-
-# Fix better-auth password.node.mjs bug: it passes salt hex string directly to scrypt
-# instead of decoding it first
-RUN sed -i 's/scrypt(\n      password.normalize("NFKC"),\n      salt,/scrypt(\n      password.normalize("NFKC"),\n      Buffer.from(salt, "hex"),/' /app/node_modules/.pnpm/@better-auth+utils@0.4.2/node_modules/@better-auth/utils/dist/password.node.mjs
-RUN sed -i 's/scrypt(\n      password.normalize("NFKC"),\n      salt,/scrypt(\n      password.normalize("NFKC"),\n      Buffer.from(salt, "hex"),/' /app/node_modules/.pnpm/better-auth@1.7.2_@cloudflare+workers-types@5.20260830.1_@prisma+client@7.10.0_prisma@7_92c1e9dc7399a590c431256dd8d09f56/node_modules/@better-auth/utils/dist/password.node.mjs
-
-# Fix better-auth create-context.mjs: it imports verifyPassword from crypto/password.mjs
-# which is a wrapper expecting { hash, password } object, but the code calls it with (hash, password) as two args
-# Need to import the raw verifyPassword from @better-auth/utils/password instead
-RUN sed -i 's/import { hashPassword, verifyPassword } from "..\/crypto\/password.mjs";/import { hashPassword, verifyPassword } from "@better-auth\/utils\/password";/' /app/node_modules/.pnpm/better-auth@1.7.2_@cloudflare+workers-types@5.20260830.1_@prisma+client@7.10.0_prisma@7_92c1e9dc7399a590c431256dd8d09f56/node_modules/better-auth/dist/context/create-context.mjs
-
 # eng review A5: NestJS boot-time check reads this. If not 'session',
 # bootstrap throws PoolModeError.
 ENV POOL_MODE=session

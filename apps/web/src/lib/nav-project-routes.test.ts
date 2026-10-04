@@ -27,6 +27,7 @@ describe('isProjectScopedNavPath', () => {
       '/inventory',
       '/bookings',
       '/notifications',
+      '/my-team',
     ]) {
       expect(isProjectScopedNavPath(href)).toBe(true);
     }

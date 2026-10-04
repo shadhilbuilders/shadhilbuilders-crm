@@ -95,7 +95,8 @@ async function main() {
   // gate's purpose (protect a privileged account with an unknown password)
   // does not apply. The real org's OWNER stays gated.
   const demoUser = await prisma.user.upsert({
-    where: { email: DEMO_EMAIL },
+    // T-EMAIL-PER-ORG: `email` alone is no longer a unique key.
+    where: { email_organizationId: { email: DEMO_EMAIL, organizationId: demoOrg.id } },
     update: {
       name: DEMO_NAME,
       role: 'OWNER',
@@ -413,7 +414,10 @@ async function main() {
 
   // Make sure the exec user exists (demo user who attends visits).
   const demoExec = await prisma.user.upsert({
-    where: { email: 'demo@shadhilbuilders.in' },
+    // T-EMAIL-PER-ORG: `email` alone is no longer a unique key.
+    where: {
+      email_organizationId: { email: 'demo@shadhilbuilders.in', organizationId: demoOrg.id },
+    },
     update: {},
     create: {
       email: 'demo@shadhilbuilders.in',

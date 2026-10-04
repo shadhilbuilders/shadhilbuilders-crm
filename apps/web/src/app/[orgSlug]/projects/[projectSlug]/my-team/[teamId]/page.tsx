@@ -1,6 +1,6 @@
 'use client';
 
-// Work -> Projects -> [projectSlug] -> Teams -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
+// Work -> Projects -> [projectSlug] -> My Team -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
 // MANAGER-only. Read-only member list; "Remove from this team" is offered ONLY when the viewer manages THIS specific team.
 import { useEffect, useState } from 'react';
 import { Button, Heading, Loading, TypographyP } from '@paalstack/react-ui';
@@ -42,7 +42,7 @@ export default function TeamRosterPage() {
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          Only managers have a Teams view.
+          Only managers have a My Team view.
         </TypographyP>
       </div>
     );
@@ -59,7 +59,7 @@ export default function TeamRosterPage() {
         title={team?.name ?? 'Team'}
         breadcrumb={[
           { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
-          { label: 'Teams', href: `${baseHref}/teams` },
+          { label: 'My Team', href: `${baseHref}/my-team` },
           { label: team?.name ?? 'Team' },
         ]}
         subtitle={
@@ -99,7 +99,7 @@ export default function TeamRosterPage() {
               member={member}
               managerId={team.manager?.id ?? null}
               canRemove={isManagerOfThisTeam}
-              dataQaPrefix="team-member"
+              dataQaPrefix="my-team-member"
             />
           ))}
         </div>
@@ -111,10 +111,10 @@ export default function TeamRosterPage() {
           variant="outline"
           size="sm"
           as={Link}
-          href={`${baseHref}/teams`}
+          href={`${baseHref}/my-team`}
           leftIcon={<LuArrowLeft className="size-4" />}
         >
-          Back to Teams
+          Back to My Team
         </Button>
       </div>
     </div>

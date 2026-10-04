@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-import { Button, Card, Dialog, Heading, TypographyP } from '@paalstack/react-ui';
+import { Button, Card, Dialog, Heading, Pagination, ScrollArea, TypographyP } from '@paalstack/react-ui';
 import {
   LuAlarmClockOff,
   LuArrowLeft,
@@ -47,7 +47,7 @@ import {
 import { useProjectDetail } from '@/hooks/queries';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
 import { useInventoryPhases, useInventoryUnits, useProjectOptions } from '@/hooks/queries/inventory';
-import { useLeads } from '@/hooks/queries/crm';
+import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 import { orgHref } from '@/lib/nav';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
@@ -118,12 +118,23 @@ export default function AdminProjectDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  // Leads section - server-side pagination (T-SRVPG pattern, mirrors
+  // audit/users). Page is 1-indexed; offset = (page - 1) * pageSize.
+  // Scoped to leads only - the other embedded sections (units, teams)
+  // keep their existing fixed-limit lists.
+  const [leadsPage, setLeadsPage] = useState(1);
+  const LEADS_PAGE_SIZE = 10;
 
   useEffect(() => setMounted(true), []);
 
   const detailQuery = useProjectDetail(projectId ?? undefined);
   const statsQuery = useDashboardStats(projectId ?? undefined);
-  const leadsQuery = useLeads({ projectId: projectId ?? undefined, limit: 10 });
+  const leadsQuery = useLeads({
+    projectId: projectId ?? undefined,
+    limit: LEADS_PAGE_SIZE,
+    offset: (leadsPage - 1) * LEADS_PAGE_SIZE,
+  });
+  const leadsEnvelope = useLeadsEnvelope({ projectId: projectId ?? undefined });
   const unitsQuery = useInventoryUnits({ projectId: projectId ?? undefined, limit: 10 });
   const phasesQuery = useInventoryPhases(projectId ?? undefined);
   const optionsQuery = useProjectOptions(projectId ?? undefined);
@@ -305,17 +316,31 @@ export default function AdminProjectDetailPage() {
         ) : leads.length === 0 ? (
           <p className="text-muted-foreground text-sm">No leads in this project yet.</p>
         ) : (
-          <ul className="border-border divide-border divide-y rounded-lg border">
-            {leads.map((lead) => {
-              const row = lead as { id?: string; name?: string; ownerName?: string };
-              return (
-                <li key={row.id ?? ''} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm sm:gap-4 sm:px-4">
-                  <span className="truncate">{row.name ?? '(no name)'}</span>
-                  <span className="shrink-0 text-muted-foreground text-xs">{row.ownerName ?? 'unassigned'}</span>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <ScrollArea className="border-border max-h-80 rounded-lg border">
+              <ul className="divide-border divide-y">
+                {leads.map((lead) => {
+                  const row = lead as { id?: string; name?: string; ownerName?: string };
+                  return (
+                    <li key={row.id ?? ''} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm sm:gap-4 sm:px-4">
+                      <span className="truncate">{row.name ?? '(no name)'}</span>
+                      <span className="shrink-0 text-muted-foreground text-xs">{row.ownerName ?? 'unassigned'}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </ScrollArea>
+            <Pagination
+              className="mt-3"
+              total={leadsEnvelope?.total ?? detail.counts.leads}
+              currentPage={leadsPage}
+              pageSize={LEADS_PAGE_SIZE}
+              onPageChange={setLeadsPage}
+              showTotalResults
+              showOnlyIfTotalGreaterThanPageSize
+              data-qa="admin-project-leads-pagination"
+            />
+          </>
         )}
       </section>
 

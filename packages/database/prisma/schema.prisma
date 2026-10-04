@@ -240,7 +240,24 @@ model Organization {
 
 model User {
   id                 String    @id @default(cuid())
-  email              String    @unique
+  // T-EMAIL-PER-ORG (2026-10-04): email uniqueness is scoped to the
+  // organization, not global - two different orgs may each have their own
+  // "owner@gmail.com". This used to be a bare `@unique`, which meant an
+  // ADMIN creating a user in Org A got a raw Prisma P2002/500 if that email
+  // already existed in a COMPLETELY UNRELATED Org B. See the `@@unique`
+  // below for the real constraint and users.service.ts's create()/update()
+  // for the friendly-message catch.
+  //
+  // CAVEAT (accepted, flagged per AGENTS.md "flag then follow"): better-auth
+  // email/password sign-in (packages/auth-client/src/auth.ts) looks a user
+  // up by email ALONE (findUserByEmail → adapter findFirst, no org/tenant
+  // filter) because /login is a single global route with no org context.
+  // If the SAME email is ever created in two different orgs, sign-in
+  // resolves to whichever row Postgres returns first - there is no login-
+  // flow change in this cut to disambiguate by org. Accepted tradeoff per
+  // explicit product decision; revisit if cross-org duplicate emails
+  // actually occur (e.g. org-aware login or an email-verification gate).
+  email              String
   emailVerified      Boolean   @default(false)
   name               String
   image              String?
@@ -309,7 +326,13 @@ model User {
 
   @@index([organizationId])
   @@index([role])
-  @@index([email])
+  // T-EMAIL-PER-ORG (2026-10-04): replaces the old bare `@@index([email])` +
+  // column-level `@unique` - uniqueness is now scoped to the org (see the
+  // comment on `email` above). Still serves as the lookup index for the
+  // global-by-email reads (better-auth's findUserByEmail, @@index([email])
+  // callers), since a composite index's leading column (`email`) is usable
+  // on its own.
+  @@unique([email, organizationId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

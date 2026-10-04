@@ -57,6 +57,7 @@ import { LuArrowRight, LuExternalLink, LuInfo, LuMoon, LuSun } from '@paalstack/
 import { ChangePasswordFormSchema, type ChangePasswordFormValues } from '@shadhil/api-types';
 
 import { api } from '@/apis/client';
+import { authClient } from '@/lib/auth-client';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useUpdateProfile } from '@/hooks/queries/users';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
@@ -322,10 +323,20 @@ function PasswordSection({
       method: 'POST',
       json: { oldPassword: values.oldPassword, newPassword: values.newPassword },
     }).then(
-      () => {
-        setPending(false);
+      async () => {
         form.reset();
-        toast.success('Password changed');
+        toast.success('Password changed. Please sign in again with your new password.');
+        // The new password is only valid on a FRESH session: the old
+        // better-auth session cookie on this device still works (changing
+        // the credential Account row doesn't revoke it), so a user who
+        // stayed "signed in" here would never notice a typo'd new password
+        // until they signed out some other way. Force it now instead -
+        // sign out, then hard-navigate to /login (not router.replace/push:
+        // same reasoning as useSignOut in lib/auth-actions.ts - a client
+        // transition can resurrect the cached, still-authenticated app
+        // shell instead of re-requesting with the now-cleared cookie).
+        await authClient.signOut();
+        window.location.assign('/login');
       },
       (err: unknown) => {
         setPending(false);
@@ -339,8 +350,8 @@ function PasswordSection({
       <CardHeader>
         <CardTitle>Password</CardTitle>
         <CardDescription>
-          Change the password you sign in with. You will stay signed in on this
-          device.
+          Change the password you sign in with. You will be signed out and
+          need to log in again with your new password.
         </CardDescription>
       </CardHeader>
       <CardContent className="mt-4">

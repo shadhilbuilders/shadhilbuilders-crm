@@ -36,6 +36,7 @@ import {
   type PrismaClient,
   withRlsContext,
 } from '@shadhil/database';
+import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { UsersService } from './users.service';
@@ -70,7 +71,10 @@ function actorFor(
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
     role: overrides.role,
-    organizationId: ORG,
+    // T-EMAIL-PER-ORG: overridable (defaults to the suite's main ORG) - the
+    // cross-org test below needs an actor who genuinely belongs to a
+    // DIFFERENT org, which this helper never had to produce before.
+    organizationId: overrides.organizationId ?? ORG,
     iat: 0,
     exp: 0,
     iss: 'shadhil-crm',
@@ -374,6 +378,140 @@ describe.skipIf(!HAS_DB)('UsersService.create - real DB / RLS', () => {
       db.user.findFirst({ where: { email } }),
     );
     expect(orphan).toBeNull();
+  }, 30_000);
+
+  // T-EMAIL-PER-ORG (2026-10-04) - the reported bug: a duplicate email
+  // within the SAME org used to bubble up as a raw
+  // PrismaClientKnownRequestError (P2002 on the old global `@unique`),
+  // which the (un-filtered) controller surfaced as a bare "Internal server
+  // error" with no actionable message.
+  it('a duplicate email WITHIN the same org is a 409 with a friendly message, not a 500', async () => {
+    const users = makeService();
+    const email = `${createId()}@test.local`;
+
+    const first = await users.create(adminActor, {
+      email,
+      name: 'RLS Test Dup First',
+      role: 'TELECALLER',
+      password: 'Str0ng-Passw0rd!',
+      teamId: TEAM_A_ID,
+    } as never);
+
+    await expect(
+      users.create(adminActor, {
+        email,
+        name: 'RLS Test Dup Second',
+        role: 'TELECALLER',
+        password: 'Str0ng-Passw0rd!',
+        teamId: TEAM_A_ID,
+      } as never),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'EMAIL_ALREADY_EXISTS' }),
+    });
+
+    await adminSeed(async (db) => {
+      await db.auditLog.deleteMany({ where: { entityId: first.id } });
+      await db.teamMember.deleteMany({ where: { userId: first.id } });
+      await db.account.deleteMany({ where: { accountId: first.id } });
+      await db.user.deleteMany({ where: { id: first.id } });
+    });
+  }, 30_000);
+
+  // The flip side of the fix: uniqueness is scoped to the ORG now, so the
+  // SAME email in a DIFFERENT org must succeed (this is the whole point of
+  // T-EMAIL-PER-ORG - see schema.prisma's comment on User.email for the
+  // accepted login-ambiguity caveat).
+  it('the SAME email in a DIFFERENT org is allowed (uniqueness is per-org, not global)', async () => {
+    const users = makeService();
+    const email = `${createId()}@test.local`;
+    const otherOrgId = createId();
+    const otherOrgAdminId = createId();
+
+    // Organization's `org_select_own` policy only admits rows whose id
+    // already equals the ACTOR's own app.user_org_id - so no actor can ever
+    // see-back a BRAND NEW org they just inserted (Prisma's generated
+    // INSERT has a RETURNING clause, which re-checks the SELECT policy on
+    // the new row). Production self-signup hits the identical constraint
+    // and seeds via the owner role for the same reason - use the direct
+    // (BYPASSRLS) client here too, exactly like other RLS-SELECT-only
+    // fixtures in this suite.
+    const direct = createDirectPrismaClient();
+    await direct.organization.create({
+      data: {
+        id: otherOrgId,
+        name: `RLS Other Org ${otherOrgId.slice(0, 6)}`,
+        slug: `rls-other-org-${otherOrgId.slice(0, 8)}`,
+      },
+    });
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: otherOrgAdminId,
+          email: `${otherOrgAdminId}@test.local`,
+          name: 'RLS Other Org Admin',
+          role: 'ADMIN',
+          organizationId: otherOrgId,
+          mustChangePassword: false,
+        },
+      });
+    });
+    const otherOrgAdminActor = actorFor({
+      sub: otherOrgAdminId,
+      role: 'ADMIN',
+      organizationId: otherOrgId,
+    });
+
+    const inOrgA = await users.create(adminActor, {
+      email,
+      name: 'RLS Cross-Org A',
+      role: 'TELECALLER',
+      password: 'Str0ng-Passw0rd!',
+      teamId: TEAM_A_ID,
+    } as never);
+
+    // role: MANAGER, no teamId - an ADMIN creating a MANAGER auto-creates
+    // their team (create()'s step 2 branch), so this org needs no team
+    // fixture of its own. (ADMIN cannot create another ADMIN - OWNER-only
+    // per assertCanCreateRole - so MANAGER is the highest role this actor
+    // can use here.)
+    const inOrgB = await users.create(otherOrgAdminActor, {
+      email,
+      name: 'RLS Cross-Org B',
+      role: 'MANAGER',
+      password: 'Str0ng-Passw0rd!',
+    } as never);
+
+    expect(inOrgA.id).not.toBe(inOrgB.id);
+
+    await adminSeed(async (db) => {
+      await db.auditLog.deleteMany({ where: { entityId: inOrgA.id } });
+      await db.teamMember.deleteMany({ where: { userId: inOrgA.id } });
+      await db.account.deleteMany({ where: { accountId: inOrgA.id } });
+      await db.user.deleteMany({ where: { id: inOrgA.id } });
+    });
+    await withRlsContext(
+      prisma!,
+      { userId: otherOrgAdminId, role: 'ADMIN', organizationId: otherOrgId },
+      async (tx) => {
+        const db = tx as unknown as PrismaClient;
+        await db.auditLog.deleteMany({ where: { entityId: inOrgB.id } });
+        // create() auto-created a Team for this MANAGER (step 4's
+        // "auto-create the team for a new manager" branch).
+        await db.team.deleteMany({ where: { managerId: inOrgB.id } });
+        await db.account.deleteMany({ where: { accountId: inOrgB.id } });
+        await db.user.deleteMany({ where: { id: inOrgB.id } });
+      },
+    );
+    await adminSeed(async (db) => {
+      await db.user.deleteMany({ where: { id: otherOrgAdminId } });
+    });
+    // AuditLog rows written under otherOrgId's RLS context (user.create,
+    // user.assignManager/changeRole etc. all write one) FK-reference the
+    // org - clear them (bypass client; AuditLog is FORCE RLS) before the
+    // org row itself can be deleted.
+    await direct.auditLog.deleteMany({ where: { organizationId: otherOrgId } });
+    await direct.organization.deleteMany({ where: { id: otherOrgId } });
   }, 30_000);
 });
 

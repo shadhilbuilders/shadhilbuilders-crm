@@ -514,8 +514,11 @@ async function main() {
 
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i]!;
+    // T-EMAIL-PER-ORG: `email` alone is no longer a unique key - go through
+    // the (email, organizationId) compound unique (this seed only ever
+    // targets the fixed SEED_ORG_ID org).
     const target = await prisma.user.findUnique({
-      where: { email: r.targetEmail },
+      where: { email_organizationId: { email: r.targetEmail, organizationId: SEED_ORG_ID } },
       select: { id: true },
     });
     if (target === null) continue;

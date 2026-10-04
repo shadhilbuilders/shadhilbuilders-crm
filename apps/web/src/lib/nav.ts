@@ -136,8 +136,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
-    href: '/teams',
-    label: 'Teams',
+    href: '/my-team',
+    label: 'My Team',
     icon: LuUsersRound,
     group: 'work',
   },
@@ -311,14 +311,14 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
 }
 
 /** Per-item visibility. Admin namespace + Admin launcher: OWNER/ADMIN only.
- *  My Teams: MANAGER only (design doc UI1 - "Managers receive a Work ->
- *  My Teams route"; other staff don't manage/belong-to teams in a way
+ *  My Team: MANAGER only (design doc UI1 - "Managers receive a Work ->
+ *  My Team route"; other staff don't manage/belong-to teams in a way
  *  this surface is useful for, and Admin/Owner already use Admin -> Teams). */
 function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | undefined): boolean {
   if (item.href === '/admin' || item.href === '/work' || item.href.startsWith('/admin/')) {
     return isAdminLike(role);
   }
-  if (item.href === '/teams') {
+  if (item.href === '/my-team') {
     return role === 'MANAGER';
   }
   // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE
@@ -444,7 +444,7 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 export const PROJECT_SCOPED_PATHS = new Set([
   '/leads',
   '/visits',
-  '/teams',
+  '/my-team',
   '/inventory',
   '/bookings',
   '/notifications',

@@ -157,6 +157,56 @@ afterEach(async () => {
   window.localStorage.clear();
 });
 
+describe('InstallPrompt - Samsung Internet userChoice hang', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('dismisses the toast as soon as prompt() resolves, without waiting on userChoice', async () => {
+    await mount();
+
+    // Samsung Internet calls prompt() fine but never settles userChoice -
+    // https://stackoverflow.com/questions/59878575. Model that: prompt()
+    // resolves, userChoice hangs forever.
+    const evt = makePromptEvent();
+    evt.userChoice = new Promise(() => undefined);
+    await act(async () => {
+      window.dispatchEvent(evt);
+    });
+
+    const rendered = await renderLastToastContent();
+    const install = Array.from(rendered.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Install')
+    );
+
+    await act(async () => {
+      install?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // Let the microtask queue (prompt() resolution) flush without
+      // depending on the never-resolving userChoice promise.
+      await Promise.resolve();
+    });
+
+    expect(evt.prompt).toHaveBeenCalledTimes(1);
+    // Dismissed immediately after prompt() resolved - not stuck forever
+    // waiting on userChoice.
+    expect(mocks.toast.dismiss).toHaveBeenCalled();
+
+    // Fast-forward past the userChoice timeout; this must not throw or hang
+    // the test, and must not mark the app installed (we never learned the
+    // real outcome).
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+      await Promise.resolve();
+    });
+
+    expect(window.localStorage.getItem(INSTALLED_KEY)).toBeNull();
+  });
+});
+
 describe('InstallPrompt - dedupe', () => {
   it('shows at most one prompt when the browser re-emits the event', async () => {
     await mount();

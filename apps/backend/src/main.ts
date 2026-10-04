@@ -21,6 +21,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { verifyPoolMode } from '@shadhil/database';
 import { AppModule } from './app.module';
 import { assertBootEnv } from './boot-env';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap(): Promise<void> {
   // T-G8: fail fast on missing/invalid boot env BEFORE any other init.
@@ -96,6 +97,14 @@ async function bootstrap(): Promise<void> {
       transform: true,
     }),
   );
+
+  // 2026-10-04: catch-all safety net so an untranslated Prisma error or any
+  // other uncaught throw never reaches the browser as a bare
+  // "Internal server error" with no actionable message (reported against
+  // POST /api/users - UsersService.create()'s P2002 on a duplicate email).
+  // Existing HttpException/CodedException bodies pass through unchanged;
+  // see GlobalExceptionFilter's header comment for the full contract.
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
   const swaggerConfig = new DocumentBuilder()

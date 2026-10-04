@@ -1,4 +1,4 @@
-// Work -> My Teams -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13).
+// Work -> My Team -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13).
 // Mount pattern mirrors admin/teams/[teamId]/page.test.tsx: createRoot +
 // act + a real QueryClientProvider (TeamMemberRemovalDialog's inner hooks
 // call useQuery/useMutation unconditionally).
@@ -44,6 +44,7 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/lib/tenant-context', () => ({
   useOrgSlug: () => 'shadhil-builders',
+  useProjectSlug: () => 'metro-heights',
 }));
 
 vi.mock('next/navigation', () => ({
@@ -122,6 +123,7 @@ describe('MyTeamRosterPage', () => {
     });
     await mount();
     expect(document.body.textContent).toContain('You manage this team.');
+    expect(document.body.textContent).toContain('Back to My Team');
     expect(container?.querySelector('[data-qa="my-team-member-remove-mgr-1"]')).toBeNull();
     expect(container?.querySelector('[data-qa="my-team-member-remove-tc-1"]')).not.toBeNull();
   });

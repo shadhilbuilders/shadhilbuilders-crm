@@ -346,7 +346,7 @@ function WorkNavGroup({
 // ---------------------------------------------------------------------------
 // Admin group - only rendered when at least one admin item is visible.
 // We compute visibility from `getVisibleNav` so a future addition like
-// `/teams` slots in without changing this file.
+// `/my-team` slots in without changing this file.
 // ---------------------------------------------------------------------------
 
 function AdminNavGroup({

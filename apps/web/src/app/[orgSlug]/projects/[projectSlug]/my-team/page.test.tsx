@@ -1,4 +1,4 @@
-// Work -> My Teams list page - T-TEAM-AUTHORITATIVE (2026-09-13, design
+// Work -> My Team list page - T-TEAM-AUTHORITATIVE (2026-09-13, design
 // doc UI1). Mount pattern mirrors admin/teams/page.test.tsx.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -22,9 +22,10 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/lib/tenant-context', () => ({
   useOrgSlug: () => 'shadhil-builders',
+  useProjectSlug: () => 'metro-heights',
 }));
 
-import MyTeamsPage from './page';
+import MyTeamPage from './page';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -34,7 +35,7 @@ async function mount(): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<MyTeamsPage />);
+    root?.render(<MyTeamPage />);
   });
 }
 
@@ -54,12 +55,12 @@ afterEach(async () => {
 
 const managerUser = { id: 'mgr-1', name: 'Meera', email: 'meera@x', role: 'MANAGER', teamId: 'team-a', organizationId: 'org-1' };
 
-describe('MyTeamsPage', () => {
+describe('MyTeamPage', () => {
   it('shows a skeleton while the session is pending', async () => {
     mocks.useSessionUser.mockReturnValue({ user: null, isPending: true, error: null });
     mocks.useTeams.mockReturnValue({ data: undefined, isLoading: false, error: null });
     await mount();
-    expect(document.body.textContent).not.toContain('My Teams');
+    expect(document.body.textContent).not.toContain('My Team');
   });
 
   it('non-MANAGER roles see "Not authorized"', async () => {
@@ -95,10 +96,14 @@ describe('MyTeamsPage', () => {
       ],
     });
     await mount();
+    expect(document.body.textContent).toContain('My Team');
     expect(document.body.textContent).toContain('You manage');
     expect(document.body.textContent).toContain('Metro Sales');
     expect(document.body.textContent).toContain("You're a member of");
     expect(document.body.textContent).toContain('Closing Desk');
+    expect(container?.querySelector('[data-qa="my-team-row-team-a"]')?.getAttribute('href')).toBe(
+      '/shadhil-builders/projects/metro-heights/my-team/team-a',
+    );
   });
 
   it('empty state when the manager leads and belongs to no team', async () => {

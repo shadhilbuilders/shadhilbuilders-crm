@@ -27,7 +27,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
+import { Prisma, withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
 
 import {
   LEAD_IN_ACTIVE_PROJECT,
@@ -37,8 +37,36 @@ import {
 import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
+import { CodedConflictException } from '../common/errors/coded-exception';
 import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
+
+/**
+ * T-EMAIL-PER-ORG (2026-10-04): `User.email` uniqueness is scoped to the
+ * organization (`@@unique([email, organizationId])` - see schema.prisma),
+ * so a P2002 here means "this email is already used by SOMEONE IN THIS
+ * ORG", not a cross-org collision. Thrown as a 409 with a stable code so
+ * the create/update forms can show a precise, actionable message instead
+ * of the bare "Internal server error" a raw PrismaClientKnownRequestError
+ * produced (reported 2026-10-04 - users.service.ts:192 POST /api/users).
+ *
+ * No `meta.target` sniffing: `(email, organizationId)` is the ONLY unique
+ * constraint left on `User` (the old global `@unique` on `email` alone is
+ * gone), so a P2002 from either call site below is unambiguously this
+ * conflict - and Prisma 7's driver-adapter error shape puts the violated
+ * constraint under `meta.driverAdapterError.cause.constraint`, not the
+ * classic `meta.target` array, so matching on the constraint NAME would be
+ * both unnecessary and version-fragile.
+ */
+function rethrowAsEmailConflict(err: unknown): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    throw new CodedConflictException(
+      'EMAIL_ALREADY_EXISTS',
+      'A user with this email already exists in your organization. Use a different email address.',
+    );
+  }
+  throw err;
+}
 
 export interface CreatedUser {
   id: string;
@@ -189,15 +217,19 @@ export class UsersService {
       // SALES_EXEC (or a MANAGER's own ordinary membership, if ever given
       // one through this path) gets a TeamMember row for `teamId` instead of
       // a scalar column write.
-      const created = await client.user.create({
-        data: {
-          email: dto.email,
-          name: dto.name,
-          role: dto.role,
-          emailVerified: false,
-          organizationId: actor.organizationId,
-        },
-      });
+      // T-EMAIL-PER-ORG: the unique constraint is (email, organizationId) -
+      // a P2002 here means this email is already taken within THIS org.
+      const created = await client.user
+        .create({
+          data: {
+            email: dto.email,
+            name: dto.name,
+            role: dto.role,
+            emailVerified: false,
+            organizationId: actor.organizationId,
+          },
+        })
+        .catch(rethrowAsEmailConflict);
 
       await upsertCredentialAccount(client, created.id, dto.password);
 
@@ -393,10 +425,14 @@ export class UsersService {
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.email !== undefined) data.email = dto.email;
 
-      const updated = await client.user.update({
-        where: { id: target.id },
-        data,
-      });
+      // T-EMAIL-PER-ORG: a P2002 here means the new email is already taken
+      // by someone else within THIS org (see rethrowAsEmailConflict).
+      const updated = await client.user
+        .update({
+          where: { id: target.id },
+          data,
+        })
+        .catch(rethrowAsEmailConflict);
 
       // 5. Audit row - same transaction.
       await client.auditLog.create({
