@@ -35,7 +35,15 @@ export function GuestTopBar() {
   return (
     <header
       data-qa="guest-topbar"
-      className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 border-b backdrop-blur"
+      // T-SafeArea: `sticky top-0` pins this to the viewport's physical top
+      // edge, which on iOS (notch / Dynamic Island / status bar - the
+      // `statusBarStyle: 'black-translucent'` config lets content draw
+      // under it) sits BEHIND the camera cutout unless the header itself
+      // reserves that space. pt-[max(...)] grows the header's own box
+      // (not a margin, so the sticky position math still anchors at the
+      // true viewport top) by env(safe-area-inset-top) - same fix already
+      // applied to AppHeader for the authenticated shell.
+      className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 border-b pt-[max(0px,env(safe-area-inset-top))] backdrop-blur"
     >
       <div className="container mx-auto flex h-19 w-full max-w-7xl items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 items-center gap-2 h-15" data-qa="guest-brand">

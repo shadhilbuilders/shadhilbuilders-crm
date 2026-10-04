@@ -137,7 +137,7 @@ export function AppShell() {
             data-qa="sidebar-brand"
           >
             {isCollapsed ? (
-               <Image
+              <Image
                src="/icons/brand-icon.png"
                alt="Shadhil Builders"
                width={28}
@@ -146,7 +146,7 @@ export function AppShell() {
                data-qa="sidebar-brand-icon-collapsed"
              />
             ) : (
-              <Image
+            <Image
               src="/brand/logo-bg.png"
               alt="Shadhil Builders"
               width={130}

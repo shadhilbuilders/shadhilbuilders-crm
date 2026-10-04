@@ -29,6 +29,7 @@ import {
   Separator,
 } from '@paalstack/react-ui';
 import { LuBell, LuCheckCheck, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -88,6 +89,25 @@ export function AppHeader() {
             app-shell. -ml-1 aligns the ghost button's hit area with the
             header's px-4 padding. */}
         <SidebarToggleButton className="-ml-1" />
+        {/* Company logo (brand-icon.png - same square mark the collapsed
+            sidebar uses) placed next to the toggle so the brand stays
+            visible in the topbar even when the sidebar is collapsed /
+            closed (mobile Sheet). */}
+        <Link
+          href={orgSlug !== null ? `/${orgSlug}` : '/'}
+          className="inline-flex shrink-0 items-center overflow-hidden"
+          aria-label="Shadhil Builders home"
+          data-qa="topbar-brand-logo"
+        >
+          <Image
+            src="/brand/logo-bg.png"
+            alt="Shadhil Builders"
+            width={120}
+            height={20}
+            className="w-30 h-auto object-contain"
+            loading="eager"
+          />
+        </Link>
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
