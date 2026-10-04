@@ -37,6 +37,10 @@ vi.mock('@/lib/tenant-context', () => ({
   useOrgId: () => 'org-ceid01',
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 import TeamsPage from './page';
 
 let container: HTMLDivElement | null = null;

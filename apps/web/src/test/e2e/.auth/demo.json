@@ -1,0 +1,25 @@
+{
+  "cookies": [
+    {
+      "name": "better-auth.session_token",
+      "value": "tYJWao7Qz3pSqP0FtwacMI6F15jFtUf2.SBhVm3cNU%2BfKEXD%2BThHTEVOuHPis8VeSWFRA4U0Xhrs%3D",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1791728681.767267,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "shadhil:push-prompt-dismissed",
+          "value": "v1"
+        }
+      ]
+    }
+  ]
+}

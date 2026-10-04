@@ -49,4 +49,5 @@ supabase/.temp/
 
 test-results/
 
+playwright-report/src/test/e2e/.auth/
 playwright-report/

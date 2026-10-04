@@ -49,8 +49,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
+import { gotoApp, login } from './helpers';
+
 const DASHBOARD = '/demo/projects/demo-villas/dashboard';
 
 /**
@@ -72,14 +72,6 @@ const VIEWPORTS: ReadonlyArray<{ w: number; h: number; label: string }> = [
   { w: 1440, h: 900, label: '1440x900 (desktop)' },
 ];
 
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('input#email, input[name="email"]').fill(DEMO_EMAIL);
-  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
-}
-
 /**
  * Wait for the queue to render, then report the layout facts.
  *
@@ -87,14 +79,19 @@ async function login(page: Page): Promise<void> {
  * `networkidle` and passed locally while failing under full-suite load, which is
  * the kind of flake that gets blamed on the feature.
  */
-async function audit(page: Page) {
-  await page.goto(DASHBOARD);
-  await page.waitForLoadState('networkidle');
+async function audit(page: Page, opts: { reload?: boolean } = {}) {
+  if (opts.reload !== false) {
+    await gotoApp(page, DASHBOARD);
+  }
   await page
     .locator('[data-qa="queue-row"]')
     .first()
     .waitFor({ state: 'visible', timeout: 20_000 })
     .catch(() => undefined);
+  await page
+    .locator('[data-qa^="kpi-filter-"]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForTimeout(400);
 
   return page.evaluate(() => {
@@ -105,7 +102,10 @@ async function audit(page: Page) {
     for (const el of Array.from(document.querySelectorAll('body *'))) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      if (r.right > vw + 1 || r.left < -1) {
+      if (el.closest('[data-slot="sidebar"]') || el.getAttribute('data-qa') === 'skeleton') continue;
+      // Off-canvas sidebar sits left of 0 on a phone by design. Only a right
+      // overhang is a real sideways-scroll layout defect.
+      if (r.right > vw + 1) {
         overflowing.push(`${el.tagName}[${el.getAttribute('data-qa') ?? ''}]`);
       }
     }
@@ -192,9 +192,11 @@ test('dashboard fits every phone width, with no clipped counts', async ({ page }
   test.setTimeout(420_000);
   await login(page);
 
+  let first = true;
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.w, height: vp.h });
-    const r = await audit(page);
+    const r = await audit(page, { reload: first });
+    first = false;
 
     // The page must never scroll sideways. This held before the change too - it
     // is asserted so a future mobile tweak cannot silently introduce it.
@@ -245,9 +247,11 @@ test('the primary work is reachable on a small phone without a scroll hunt', asy
   // on a phone the counts form a COLUMN, each card shows ALL of its content, and
   // each is a full-width control. The queue's position is deliberately NOT
   // asserted at 320px any more - recorded here rather than silently dropped.
+  let first = true;
   for (const vp of VIEWPORTS.filter((v) => v.w < 640)) {
     await page.setViewportSize({ width: vp.w, height: vp.h });
-    const r = await audit(page);
+    const r = await audit(page, { reload: first });
+    first = false;
 
     // A single column: four cards, four rows.
     expect(r.kpiCount, `${vp.label}: expected four count cards`).toBe(4);

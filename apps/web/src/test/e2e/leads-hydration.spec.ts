@@ -9,25 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
  * client" error. This test logs in as the demo user (if needed), loads
  * the leads page, and asserts NO hydration error was logged.
  */
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
-
-async function ensureLoggedIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  // If already authenticated, /login redirects to the app shell - the
-  // Email field won't appear. Only fill the form when it's actually shown.
-  const email = page.getByLabel('Email');
-  if ((await email.count()) === 0) {
-    return; // already logged in
-  }
-  await email.fill(DEMO_EMAIL);
-  await page.getByLabel(/Password/).fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith('/login'),
-    { timeout: 30_000 },
-  );
-}
+import { gotoApp, login } from './helpers';
 
 test('leads inbox: no hydration mismatch on load', async ({ page }) => {
   const hydrationErrors: string[] = [];
@@ -49,9 +31,8 @@ test('leads inbox: no hydration mismatch on load', async ({ page }) => {
     }
   });
 
-  await ensureLoggedIn(page);
-  await page.goto('/demo/projects/demo-villas/leads');
-  await page.waitForLoadState('domcontentloaded');
+  await login(page);
+  await gotoApp(page, '/demo/projects/demo-villas/leads');
   // Give hydration + the client fetch time to settle.
   await page.waitForTimeout(2_500);
 

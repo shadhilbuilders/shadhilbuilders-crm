@@ -18,15 +18,9 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-const VISITS = '/demo/projects/demo-villas/visits';
+import { gotoApp, login } from './helpers';
 
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('input#email, input[name="email"]').fill('demo@shadhilbuilders.in');
-  await page.locator('[data-qa="login-password"]').fill('demo123');
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
-}
+const VISITS = '/demo/projects/demo-villas/visits';
 
 /** The month the calendar is currently showing (\"September 2026\"). */
 async function visibleMonth(page: Page): Promise<string> {
@@ -85,7 +79,7 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
   test.beforeEach(async ({ page }) => {
     test.setTimeout(180_000);
     await login(page);
-    await page.goto(VISITS);
+    await gotoApp(page, VISITS);
     // Wait on the control, never networkidle: an open SSE stream means the
     // network never goes idle on this page.
     await page

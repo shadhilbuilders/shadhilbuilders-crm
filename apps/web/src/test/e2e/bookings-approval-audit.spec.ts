@@ -57,8 +57,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
+import { gotoApp, login } from './helpers';
+
 const DASHBOARD = '/demo/projects/demo-villas/dashboard';
 
 /**
@@ -86,18 +86,9 @@ const NO_FIXTURE =
   'every unit AVAILABLE). Run `pnpm --filter @shadhil/database setup-demo-user` ' +
   'to give this assertion something to bite on.';
 
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('input#email, input[name="email"]').fill(DEMO_EMAIL);
-  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
-}
-
 test('approval dialog offers exactly ONE decision control', async ({ page }) => {
   await login(page);
-  await page.goto(DASHBOARD);
-  await page.waitForLoadState('networkidle');
+  await gotoApp(page, DASHBOARD);
 
   test.skip(!(await rowAppeared(page, 'booking-approve-open')), NO_FIXTURE);
 
@@ -140,8 +131,7 @@ test('approval dialog offers exactly ONE decision control', async ({ page }) => 
 
 test('awaiting-approval row names the UNIT, and the dialog repeats it', async ({ page }) => {
   await login(page);
-  await page.goto(DASHBOARD);
-  await page.waitForLoadState('networkidle');
+  await gotoApp(page, DASHBOARD);
 
   test.skip(!(await rowAppeared(page, 'booking-approve-open')), NO_FIXTURE);
 
@@ -187,8 +177,7 @@ test('approval row: hover-only underline, link colour token, formatted amount', 
   page,
 }) => {
   await login(page);
-  await page.goto(DASHBOARD);
-  await page.waitForLoadState('networkidle');
+  await gotoApp(page, DASHBOARD);
 
   test.skip(!(await rowAppeared(page, 'booking-approve-open')), NO_FIXTURE);
 
@@ -331,8 +320,7 @@ test('HOLD bookings get a token-payment card, with the action wired to its own r
   // Navigate FIRST, then probe. Probing between the login redirect and this
   // goto aborts the navigation in firefox (`NS_BINDING_ABORTED; maybe frame was
   // detached?`) because the login redirect is still settling.
-  await page.goto(DASHBOARD);
-  await page.waitForLoadState('networkidle');
+  await gotoApp(page, DASHBOARD);
 
   test.skip(
     !(await rowAppeared(page, 'booking-record-token')),

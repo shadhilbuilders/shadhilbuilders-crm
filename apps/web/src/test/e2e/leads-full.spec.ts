@@ -22,26 +22,13 @@ import { expect, test, type Page } from '@playwright/test';
  * the demo user now lives in a different tenant - RLS is org-scoped, so those
  * rows are correctly invisible to it.
  */
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
+import { gotoApp, login } from './helpers';
+
 const LEADS_URL = '/demo/projects/demo-villas/leads';
 
-async function ensureLoggedIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  const email = page.getByLabel('Email');
-  if ((await email.count()) === 0) return; // already logged in
-  await email.fill(DEMO_EMAIL);
-  await page.getByLabel(/Password/).fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'), {
-    timeout: 30_000,
-  });
-}
-
 async function gotoLeads(page: Page): Promise<void> {
-  await ensureLoggedIn(page);
-  await page.goto(LEADS_URL);
-  await page.waitForLoadState('domcontentloaded');
+  await login(page);
+  await gotoApp(page, LEADS_URL);
   await expect(page.getByRole('heading', { name: /Lead Inbox/i })).toBeVisible({
     timeout: 15_000,
   });
@@ -159,14 +146,22 @@ test('leads inbox: status filter supports multi-select', async ({ page }) => {
   await gotoLeads(page);
 
   // Open the status filter (Combobox multiple). Same hook as the single-select test.
-  await page.locator('[data-qa=combobox-chip-input]').click();
+  await page.getByRole('combobox', { name: 'Filter by status' }).click();
   await page.getByRole('option', { name: 'New' }).click();
   await page.getByRole('option', { name: 'Talked' }).click();
+  await page.keyboard.press('Escape');
 
-  // Both NEW and Talked leads appear. The demo roster's only NEW lead is
-  // Demo Priya and its only CONTACTED ('Talked') lead is Demo Arjun.
-  await expect(page.getByText('Demo Priya')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('Demo Arjun')).toBeVisible({ timeout: 10_000 });
+  // Both selected states must appear in the table. Demo-sprint e2e creates
+  // extra NEW leads that fill page 1 (overdue-first), so a CONTACTED row
+  // like Demo Arjun can sit on page 2 - pin the badges, not a single name.
+  const rows = page.locator('[data-qa=data-table-row]');
+  await expect(rows.filter({ hasText: 'New' }).first()).toBeVisible({ timeout: 10_000 });
+  const talked = rows.filter({ hasText: 'Talked' });
+  if ((await talked.count()) === 0) {
+    const next = page.locator('[data-qa=pagination-next]');
+    if (await next.isEnabled()) await next.click();
+  }
+  await expect(talked.first()).toBeVisible({ timeout: 10_000 });
 });
 
 test('leads inbox: sort by last activity asc/desc', async ({ page }) => {

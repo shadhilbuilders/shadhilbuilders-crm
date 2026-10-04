@@ -214,30 +214,28 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
 
 async function cleanup(): Promise<void> {
   if (prisma === null) return;
+  // Prefix-based, not CREATED_* arrays: beforeAll calls this before any seed,
+  // when those arrays are empty. A crashed prior run can leave leads owned by
+  // `test-vnotif-%` users; deleting users first then hits Lead_ownerId_fkey.
+  const prefix = 'test-vnotif-%';
   await adminSeed(async (db) => {
-    if (CREATED_VISIT_IDS.length > 0) {
-      await db.$executeRawUnsafe(
-        `DELETE FROM "SiteVisit" WHERE id = ANY($1::text[])`,
-        CREATED_VISIT_IDS,
-      );
-    }
-    if (CREATED_LEAD_IDS.length > 0) {
-      await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id = ANY($1::text[])`, CREATED_LEAD_IDS);
-    }
-    for (const id of SEEDED_USERS) {
-      await db.$executeRawUnsafe(`DELETE FROM "Notification" WHERE "userId" = $1`, id);
-      await db.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "userId" = $1`, id);
-    }
-    await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE $1`, `test-vnotif-%`);
-    await db.$executeRawUnsafe(`DELETE FROM "ProjectTeam" WHERE "teamId" = ANY($1::text[])`, [
-      LEAD_TEAM_ID,
-      OTHER_TEAM_ID,
-    ]);
-    await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id = ANY($1::text[])`, [
-      LEAD_TEAM_ID,
-      OTHER_TEAM_ID,
-    ]);
-    await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id = $1`, PROJECT_ID);
+    await db.$executeRawUnsafe(
+      `DELETE FROM "SiteVisit" WHERE id LIKE $1 OR "leadId" LIKE $1 OR "userId" LIKE $1`,
+      prefix,
+    );
+    await db.$executeRawUnsafe(
+      `DELETE FROM "Notification" WHERE "userId" LIKE $1 OR "leadId" LIKE $1`,
+      prefix,
+    );
+    await db.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "userId" LIKE $1`, prefix);
+    await db.$executeRawUnsafe(
+      `DELETE FROM "Lead" WHERE id LIKE $1 OR "ownerId" LIKE $1 OR "coOwnerId" LIKE $1`,
+      prefix,
+    );
+    await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE $1`, prefix);
+    await db.$executeRawUnsafe(`DELETE FROM "ProjectTeam" WHERE "teamId" LIKE $1`, prefix);
+    await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id LIKE $1`, prefix);
+    await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id LIKE $1`, prefix);
   });
   CREATED_LEAD_IDS.length = 0;
   CREATED_VISIT_IDS.length = 0;

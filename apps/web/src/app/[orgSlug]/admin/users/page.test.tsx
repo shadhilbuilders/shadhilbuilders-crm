@@ -78,6 +78,10 @@ vi.mock('@/lib/session', () => ({
   },
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 import UsersPage from './page';
 
 let container: HTMLDivElement | null = null;

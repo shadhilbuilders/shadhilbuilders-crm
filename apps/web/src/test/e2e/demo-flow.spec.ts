@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { NAV, gotoApp, login } from './helpers';
+
 /**
  * T-DEMOBOOK - End-to-end smoke of the Sunday client demo flow.
  *
@@ -53,24 +55,6 @@ const SCREENSHOT_DIR = resolve(HERE, '__screenshots__');
 
 function shot(page: Page, name: string) {
   return page.screenshot({ path: `${SCREENSHOT_DIR}/${name}.png`, fullPage: true });
-}
-
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await expect(page.getByRole('heading', { name: /Shadhil CRM/i })).toBeVisible();
-  await page.getByLabel('Email').fill(DEMO_EMAIL);
-  // NOT getByLabel('Password'): the shared PasswordInput's "Show password"
-  // toggle carries the same accessible label, so that locator resolves to two
-  // elements and strict mode rejects it. Target the input directly.
-  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  // The login form does a router.replace(nextPath) then router.refresh().
-  // The URL changes from /login → / (or /leads etc.) before the
-  // (app) layout mounts.
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith('/login'),
-    { timeout: 30_000 },
-  );
 }
 
 /**
@@ -150,8 +134,20 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
   // steps genuinely depend on the earlier ones.
   test.describe.configure({ mode: 'serial' });
 
+  test.describe('logged-out login', () => {
+    test.use({
+      storageState: {
+        cookies: [],
+        origins: [
+          {
+            origin: 'http://localhost:3000',
+            localStorage: [{ name: 'shadhil:push-prompt-dismissed', value: 'v1' }],
+          },
+        ],
+      },
+    });
   test('STEP 1 - login as demo user', async ({ page }) => {
-    await page.goto('/login');
+    await page.goto('/login', NAV);
     await shot(page, '01-login');
     await login(page);
     // URL has changed away from /login - login API succeeded.
@@ -159,9 +155,11 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await shot(page, '01b-after-login');
   });
 
+  });
+
   test('STEP 2 - /leads lists demo leads', async ({ page }) => {
       await login(page);
-      await page.goto(`${DEMO_BASE}/leads`);
+      await gotoApp(page, `${DEMO_BASE}/leads`);
       await shot(page, '02-leads');
       const probe = await probeForLayoutError(page, 'STEP 2');
       if (probe.broken) throw new Error(probe.reason);
@@ -178,7 +176,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
 
   test('STEP 3 - create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/new`);
+    await gotoApp(page, `${DEMO_BASE}/leads/new`);
     const probe = await probeForLayoutError(page, 'STEP 3');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -188,7 +186,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     //   `400 Lead with phone 919876543210 already exists`
     // which took down STEP 3 and every step that depends on its lead id.
     // 10 digits, Indian mobile prefix.
-    const uniquePhone = `9${Date.now().toString().slice(-9)}`;
+    const uniquePhone = `98${Date.now().toString().slice(-8)}`;
     await page.getByLabel(/Full name/i).fill(createdLeadName);
     // Target the data-qa hooks, not the accessible labels. `Phone` is a custom
     // `render` (PhoneNumberInput) so `getByLabel(/^Phone$/i)` no longer resolves,
@@ -209,7 +207,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     // this resolved instantly against the form and produced the id "new".
     await page.waitForURL(
       (u) => /\/leads\/[a-z0-9]+$/.test(u.pathname) && !u.pathname.endsWith('/leads/new'),
-      { timeout: 20_000 },
+      { ...NAV, timeout: 45_000 },
     );
     const url = new URL(page.url());
     const createdLeadId = url.pathname.split('/').pop() ?? '';
@@ -232,7 +230,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 4 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
+    await gotoApp(page, `${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 4');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -262,7 +260,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 5 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
+    await gotoApp(page, `${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 5');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -296,7 +294,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 6 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
+    await gotoApp(page, `${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 6');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -350,7 +348,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'STEP 7 depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
+    await gotoApp(page, `${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'STEP 7');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -382,7 +380,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     page,
   }) => {
     await login(page);
-    await page.goto(`${DEMO_BASE}/visits`);
+    await gotoApp(page, `${DEMO_BASE}/visits`);
     const probe = await probeForLayoutError(page, 'STEP 8');
     if (probe.broken) throw new Error(probe.reason);
 
@@ -441,7 +439,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const createdLeadId = await readCreatedLeadId();
     test.skip(createdLeadId === '', 'BONUS depends on a lead created in STEP 3');
     await login(page);
-    await page.goto(`${DEMO_BASE}/leads/${createdLeadId}`);
+    await gotoApp(page, `${DEMO_BASE}/leads/${createdLeadId}`);
     const probe = await probeForLayoutError(page, 'BONUS');
     if (probe.broken) throw new Error(probe.reason);
 

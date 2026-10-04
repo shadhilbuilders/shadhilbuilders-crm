@@ -56,6 +56,14 @@ export default defineConfig({
     // type-check + lint contention that produced the failure.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    pool: 'forks',
+    // Cap workers so each Prisma/pg Pool (default max 10 per fork) cannot
+    // exhaust Postgres `max_connections`. Uncapped (one worker per core)
+    // produced "Unable to start a transaction in the given time" on
+    // withRlsContext checkout under the full local suite. Same class of
+    // failure as packages/database (maxWorkers: 1); backend tests use unique
+    // fixture ids so a small amount of file parallelism is still safe.
+    maxWorkers: 4,
     passWithNoTests: true,
   },
 });

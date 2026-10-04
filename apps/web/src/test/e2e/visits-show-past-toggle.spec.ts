@@ -27,17 +27,9 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
-const VISITS = '/demo/projects/demo-villas/visits';
+import { gotoApp, login } from './helpers';
 
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('input#email, input[name="email"]').fill(DEMO_EMAIL);
-  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
-}
+const VISITS = '/demo/projects/demo-villas/visits';
 
 /**
  * Wait until the page has settled, WITHOUT `waitForLoadState('networkidle')`.
@@ -85,7 +77,7 @@ async function eventCount(page: Page): Promise<number> {
 test.describe('visits - Show past visits uses the Switch component', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await page.goto(VISITS);
+    await gotoApp(page, VISITS);
     await settled(page);
   });
 
@@ -172,7 +164,7 @@ test.describe('visits - Show past visits uses the Switch component', () => {
 test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await page.goto(VISITS);
+    await gotoApp(page, VISITS);
     await settled(page);
   });
 

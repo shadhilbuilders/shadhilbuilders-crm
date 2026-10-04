@@ -9,14 +9,22 @@ export default defineConfig({
 
   fullyParallel: true,
 
+  // Login + first paint of an authenticated page routinely exceeds Playwright's
+  // 30s default when Next is compiling a route. SSE-backed pages never reach
+  // `load`/`networkidle`; specs wait on DOM instead, but they still need this
+  // ceiling for the round-trip.
+  timeout: 60_000,
+
   // Fail the build on CI if you accidentally left test.only in the source
   forbidOnly: !!process.env.CI,
 
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
-  // Opt out of parallel tests on CI
-  workers: process.env.CI ? 1 : undefined,
+  // One worker always. Three parallel logins against `next dev` stampede
+  // compilation and race form hydration (native GET to /login?email=...).
+  // CI already used 1; local default (one worker per core) was the flake.
+  workers: 1,
 
   reporter: [['html', { open: 'never' }]],
 
@@ -24,6 +32,7 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    navigationTimeout: 45_000,
 
     // Pre-dismiss the web-push prompt, so it never covers the page under test.
     //
@@ -51,28 +60,41 @@ export default defineConfig({
     // every page of every spec, including the ones that never reach a settled
     // DOM. No spec covers the prompt itself, so no coverage is lost - if one ever
     // does, it must opt out with its own context.
-    storageState: {
-      cookies: [],
-      origins: [
-        {
-          origin: 'http://localhost:3000',
-          localStorage: [{ name: 'shadhil:push-prompt-dismissed', value: 'v1' }],
-        },
-      ],
-    },
+    storageState: 'src/test/e2e/.auth/demo.json',
   },
 
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+      use: {
+        storageState: {
+          cookies: [],
+          origins: [
+            {
+              origin: 'http://localhost:3000',
+              localStorage: [{ name: 'shadhil:push-prompt-dismissed', value: 'v1' }],
+            },
+          ],
+        },
+      },
+    },
+    {
       name: 'chromium',
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'firefox',
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
       use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'mobile-chrome',
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
       use: { ...devices['Pixel 5'] },
     },
   ],
@@ -89,7 +111,7 @@ export default defineConfig({
   // free. Safe on CI even if the server were missing, because the workflow's
   // start step fails hard on its own readiness probe.
   webServer: {
-    command: 'pnpm dev',
+    command: 'E2E_DISABLE_RATE_LIMIT=true pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: true,
     timeout: 120_000,

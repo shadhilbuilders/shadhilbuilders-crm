@@ -33,20 +33,12 @@ import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { gotoApp, login } from './helpers';
+
 const REQUIRE = createRequire(import.meta.url);
 const AXE_PATH = REQUIRE.resolve('axe-core/axe.min.js');
 
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
 const DASHBOARD = '/demo/projects/demo-villas/dashboard';
-
-async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('input#email, input[name="email"]').fill(DEMO_EMAIL);
-  await page.locator('[data-qa="login-password"]').fill(DEMO_PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
-}
 
 type CardReport = {
   label: string;
@@ -197,7 +189,7 @@ test('KPI cards are tinted, iconned, and clear AA on their own tint (light + dar
   test.setTimeout(240_000);
   await login(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(DASHBOARD);
+  await gotoApp(page, DASHBOARD);
   await page.waitForSelector('[data-qa^="kpi-"]');
 
   for (const mode of ['light', 'dark'] as const) {
@@ -240,7 +232,7 @@ test('KPI cards raise no axe violations (including the colour rule jsdom cannot 
 }) => {
   test.setTimeout(180_000);
   await login(page);
-  await page.goto(DASHBOARD);
+  await gotoApp(page, DASHBOARD);
   await page.waitForSelector('[data-qa^="kpi-"]');
   await page.addScriptTag({ path: AXE_PATH });
 
