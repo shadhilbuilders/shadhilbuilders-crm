@@ -42,8 +42,6 @@ import { NAV, gotoApp, login } from './helpers';
 // The demo org's slug-based root (see setup-demo-user.ts). Every demo
 // navigation is scoped under it.
 const DEMO_BASE = '/demo/projects/demo-villas';
-const DEMO_EMAIL = 'demo@shadhilbuilders.in';
-const DEMO_PASSWORD = 'demo123';
 
 // Resolve the screenshot directory absolutely so it lands inside
 // apps/web/src/test/e2e/__screenshots__/ regardless of the cwd Playwright

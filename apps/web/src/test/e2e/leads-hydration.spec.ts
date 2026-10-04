@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 /**
  * Hydration regression check for the rebuilt Lead Inbox (autoplan 2026-09-07).
