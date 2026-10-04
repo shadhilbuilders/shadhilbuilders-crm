@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-import { Button, Card, Dialog, Heading, Pagination, ScrollArea, TypographyP } from '@paalstack/react-ui';
+import { Button, Card, Dialog, Heading, Pagination, TypographyP } from '@paalstack/react-ui';
 import {
   LuAlarmClockOff,
   LuArrowLeft,
@@ -317,7 +317,7 @@ export default function AdminProjectDetailPage() {
           <p className="text-muted-foreground text-sm">No leads in this project yet.</p>
         ) : (
           <>
-            <ScrollArea className="border-border max-h-80 rounded-lg border">
+            <div className="border-border overflow-hidden rounded-lg border">
               <ul className="divide-border divide-y">
                 {leads.map((lead) => {
                   const row = lead as { id?: string; name?: string; ownerName?: string };
@@ -329,9 +329,9 @@ export default function AdminProjectDetailPage() {
                   );
                 })}
               </ul>
-            </ScrollArea>
+            </div>
             <Pagination
-              className="mt-3"
+              className="relative z-10 mt-1 bg-background px-1 md:px-1"
               total={leadsEnvelope?.total ?? detail.counts.leads}
               currentPage={leadsPage}
               pageSize={LEADS_PAGE_SIZE}

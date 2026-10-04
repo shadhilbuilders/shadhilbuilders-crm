@@ -15,14 +15,21 @@
 import { useState } from 'react';
 import {
   Badge,
+  Box,
   Dialog,
   Input,
   Item,
+  ItemGroup,
   Label,
   Loading,
   toast,
+  TooltipContent,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
   TypographyP,
 } from '@paalstack/react-ui';
+import { LuInfo } from '@paalstack/react-icons/lu';
 
 import { useTeam, useUpdateTeamMemberCap, useUpdateTeamMemberWeight, type TeamListItem } from '@/hooks/queries/teams';
 import { labelFor } from '@/lib/labels';
@@ -45,25 +52,74 @@ export function TeamWeightDialog({
       onOpenChange={onOpenChange}
       header={{
         title: `Manage weights - ${team.name}`,
-        description:
-          'Two separate controls. Weight is a SHARE of new leads (2 means roughly twice the share of 1) and never a limit. Max open is a HARD CEILING: once a telecaller holds that many open leads they stop receiving new ones, and if everyone is at their cap the lead goes to the team manager. Leave Max open blank for no limit. Managers and sales execs are never auto-assigned new leads.',
+        description: (
+          <Box className="flex items-center gap-1.5">
+            Two separate controls per telecaller.
+            <WeightHelpTooltip />
+          </Box>
+        ),
       }}
       contentClassName="sm:max-w-lg"
     >
-      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-        {isLoading ? (
-          <Loading content="Loading members..." />
-        ) : isError || data === undefined ? (
-          <TypographyP className="text-sm">Couldn&apos;t load this team and its members.</TypographyP>
-        ) : members.length === 0 ? (
-          <TypographyP className="text-muted-foreground text-sm">
-            No members in this team yet.
-          </TypographyP>
-        ) : (
-          members.map((member) => <WeightRow key={member.userId} teamId={team.id} member={member} managerId={data.manager?.id ?? null} />)
-        )}
-      </div>
+      <Box as="section">
+        <Box className="max-h-96 overflow-y-auto pr-1">
+          {isLoading ? (
+            <Loading content="Loading members..." />
+          ) : isError || data === undefined ? (
+            <TypographyP className="text-sm">Couldn&apos;t load this team and its members.</TypographyP>
+          ) : members.length === 0 ? (
+            <TypographyP className="text-muted-foreground text-sm">
+              No members in this team yet.
+            </TypographyP>
+          ) : (
+            <ItemGroup className="gap-2">
+              {members.map((member) => (
+                <WeightRow
+                  key={member.userId}
+                  teamId={team.id}
+                  member={member}
+                  managerId={data.manager?.id ?? null}
+                />
+              ))}
+            </ItemGroup>
+          )}
+        </Box>
+      </Box>
     </Dialog>
+  );
+}
+
+function WeightHelpTooltip() {
+  return (
+    <TooltipProvider>
+      <TooltipRoot>
+        <TooltipTrigger
+          className="text-muted-foreground/60 hover:text-muted-foreground inline-flex cursor-help items-center"
+          aria-label="How weight and max open work"
+          data-qa="team-weight-help-trigger"
+        >
+          <LuInfo className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start" className="z-60 max-w-72">
+          <Box
+            as="ul"
+            className="list-disc space-y-1.5 pl-4 text-xs"
+            data-qa="team-weight-help"
+          >
+            <Box as="li">
+              Weight is a share of new leads (2 means roughly twice the share of 1) and never a
+              limit.
+            </Box>
+            <Box as="li">
+              Max open is a hard ceiling: once a telecaller holds that many open leads they stop
+              receiving new ones. If everyone is at their cap, the lead goes to the team manager.
+              Leave Max open blank for no limit.
+            </Box>
+            <Box as="li">Managers and sales execs are never auto-assigned new leads.</Box>
+          </Box>
+        </TooltipContent>
+      </TooltipRoot>
+    </TooltipProvider>
   );
 }
 

@@ -90,3 +90,5 @@ docs/**/*.jsonl
 # Files are user uploads at runtime - never commit. Prod uses imagekit.io.
 apps/backend/media/
 **/media/
+
+apps/web/playwright-report/

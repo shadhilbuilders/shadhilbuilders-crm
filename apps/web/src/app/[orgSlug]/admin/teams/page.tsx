@@ -34,6 +34,7 @@ import {
   LuPencil,
   LuPlus,
   LuTrash2,
+  LuUserPlus,
   LuUsersRound,
   LuWeight,
 } from '@paalstack/react-icons/lu';
@@ -53,6 +54,7 @@ import {
   TeamReassignAllDialog,
 } from '@/components/teams/team-form-bodies';
 import { TeamWeightDialog } from '@/components/teams/TeamWeightDialog';
+import { AddTeamMembersDialog } from '@/components/teams/AddTeamMembersDialog';
 
 export default function TeamsPage() {
   // Hooks MUST all be called unconditionally, before any early return, to
@@ -67,6 +69,7 @@ export default function TeamsPage() {
   const [deleteTarget, setDeleteTarget] = useState<TeamListItem | null>(null);
   const [reassignTarget, setReassignTarget] = useState<TeamListItem | null>(null);
   const [weightTarget, setWeightTarget] = useState<TeamListItem | null>(null);
+  const [addMembersTarget, setAddMembersTarget] = useState<TeamListItem | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -139,6 +142,7 @@ export default function TeamsPage() {
           onDelete={setDeleteTarget}
           onReassign={setReassignTarget}
           onWeight={setWeightTarget}
+          onAddMembers={setAddMembersTarget}
         />
       )}
 
@@ -152,6 +156,15 @@ export default function TeamsPage() {
             if (!open) setReassignTarget(null);
           }}
           onDone={() => setReassignTarget(null)}
+        />
+      ) : null}
+      {addMembersTarget !== null ? (
+        <AddTeamMembersDialog
+          team={addMembersTarget}
+          open={addMembersTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setAddMembersTarget(null);
+          }}
         />
       ) : null}
       {weightTarget !== null ? (
@@ -178,12 +191,14 @@ function TeamRowActions({
   onDelete,
   onReassign,
   onWeight,
+  onAddMembers,
 }: {
   target: TeamListItem;
   onEdit: (team: TeamListItem) => void;
   onDelete: (team: TeamListItem) => void;
   onReassign: (team: TeamListItem) => void;
   onWeight: (team: TeamListItem) => void;
+  onAddMembers: (team: TeamListItem) => void;
 }) {
   return (
     <div className="text-right" data-qa="team-row-actions">
@@ -201,6 +216,13 @@ function TeamRowActions({
           }
         />
         <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem
+            onClick={() => onAddMembers(target)}
+            data-qa="data-table-row-action-item"
+          >
+            <LuUserPlus className="mr-2 size-4 text-muted-foreground" />
+            Add members
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onWeight(target)}
             data-qa="data-table-row-action-item"
@@ -242,6 +264,7 @@ function TeamsTable({
   onDelete,
   onReassign,
   onWeight,
+  onAddMembers,
 }: {
   teams: TeamListItem[];
   orgSlug: string | null;
@@ -249,6 +272,7 @@ function TeamsTable({
   onDelete: (team: TeamListItem) => void;
   onReassign: (team: TeamListItem) => void;
   onWeight: (team: TeamListItem) => void;
+  onAddMembers: (team: TeamListItem) => void;
 }) {
   const router = useRouter();
 
@@ -307,13 +331,14 @@ function TeamsTable({
             onDelete={onDelete}
             onReassign={onReassign}
             onWeight={onWeight}
+            onAddMembers={onAddMembers}
           />
         ),
         enableSorting: false,
         enableHiding: false,
       },
     ],
-    [orgSlug, onEdit, onDelete, onReassign, onWeight],
+    [orgSlug, onEdit, onDelete, onReassign, onWeight, onAddMembers],
   );
 
   return (

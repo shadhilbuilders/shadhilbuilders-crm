@@ -18,6 +18,8 @@ import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { PrismaClient } from '@shadhil/database';
 import type {
+  AddTeamMembersDto,
+  AddTeamMembersResult,
   CreateTeamDto,
   ReassignTeamMembersDto,
   TeamDetail,
@@ -447,6 +449,97 @@ export class TeamsService {
           },
         });
         return { count };
+      },
+    );
+  }
+
+  /**
+   * POST /api/teams/:id/members - ADD existing staff to a team. ADMIN/OWNER
+   * only. Additive (membership is many-to-many): it never touches the
+   * user's other teams. Only TELECALLER / SALES_EXEC can be added - a
+   * MANAGER leads a team via `managerId`, not a TeamMember row, and
+   * ADMIN/OWNER are not team staff. Users already on the team are skipped
+   * and counted in `alreadyMembers`. Membership + audit share one
+   * transaction.
+   */
+  async addMembers(
+    actor: JwtPayload,
+    id: string,
+    dto: AddTeamMembersDto,
+  ): Promise<AddTeamMembersResult> {
+    if (!isAdminClass(actor.role)) {
+      throw new ForbiddenException('Only ADMIN or OWNER can add team members.');
+    }
+    const userIds = [...new Set(dto.userIds)];
+    return withRlsContext(
+      this.client,
+      rlsContextFrom(actor),
+      async (tx) => {
+        const team = await tx.team.findUnique({ where: { id } });
+        // T-ORG-EXPLICIT: the org is checked here, not left to RLS. A team from
+        // another organization 404s exactly like a missing one (no probe leak).
+        if (
+          team === null ||
+          team.deletedAt !== null ||
+          team.organizationId !== actor.organizationId
+        ) {
+          throw new NotFoundException(`Team ${id} not found.`);
+        }
+        const users = await tx.user.findMany({
+          where: {
+            id: { in: userIds },
+            organizationId: actor.organizationId,
+            deletedAt: null,
+          },
+          select: { id: true, name: true, role: true },
+        });
+        const found = new Set(users.map((u) => u.id));
+        const missing = userIds.filter((u) => !found.has(u));
+        if (missing.length > 0) {
+          throw new NotFoundException(
+            `User(s) not found in this organization: ${missing.join(', ')}.`,
+          );
+        }
+        const ineligible = users.filter(
+          (u) => u.role !== 'TELECALLER' && u.role !== 'SALES_EXEC',
+        );
+        if (ineligible.length > 0) {
+          throw new BadRequestException(
+            `Only telecallers and sales execs can be added as team members; ` +
+              `not eligible: ${ineligible.map((u) => `${u.name} (${u.role})`).join(', ')}. ` +
+              'Managers lead a team via the team manager setting.',
+          );
+        }
+        const existing = await tx.teamMember.findMany({
+          where: { teamId: id, userId: { in: userIds } },
+          select: { userId: true },
+        });
+        const already = new Set(existing.map((m) => m.userId));
+        const toAdd = userIds.filter((u) => !already.has(u));
+        if (toAdd.length > 0) {
+          await tx.teamMember.createMany({
+            data: toAdd.map((userId) => ({
+              userId,
+              teamId: id,
+              organizationId: actor.organizationId,
+              assignedById: actor.sub,
+            })),
+            skipDuplicates: true,
+          });
+          await tx.auditLog.create({
+            data: {
+              userId: actor.sub,
+              action: 'team.add_members',
+              organizationId: actor.organizationId,
+              entityType: 'Team',
+              entityId: id,
+              before: { teamId: id },
+              after: { teamId: id, addedUserIds: toAdd },
+              reason: `team.add_members by ${actor.email} (${actor.role})`,
+            },
+          });
+        }
+        return { added: toAdd.length, alreadyMembers: already.size };
       },
     );
   }

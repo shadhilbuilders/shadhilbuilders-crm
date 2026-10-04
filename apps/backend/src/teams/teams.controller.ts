@@ -19,9 +19,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  AddTeamMembersDtoSchema,
   CreateTeamDtoSchema,
   ReassignTeamMembersDtoSchema,
   UpdateTeamDtoSchema,
+  type AddTeamMembersDto,
+  type AddTeamMembersResult,
   type CreateTeamDto,
   type ReassignTeamMembersDto,
   type UpdateTeamDto,
@@ -150,6 +153,29 @@ export class TeamsController {
       throw new BadRequestException(`Invalid team id: ${id}`);
     }
     return this.teams.remove(req.user!, id);
+  }
+
+  /**
+   * POST /api/teams/:id/members
+   *
+   * Add existing telecallers / sales execs to this team (additive).
+   * ADMIN/OWNER only.
+   */
+  @Post(':id/members')
+  @ApiOperation({
+    summary:
+      'Add telecallers / sales execs to a team (additive, skips existing members). ADMIN/OWNER only.',
+  })
+  async addMembers(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<AddTeamMembersResult> {
+    if (!ID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid team id: ${id}`);
+    }
+    const dto: AddTeamMembersDto = parseBody(AddTeamMembersDtoSchema, body);
+    return this.teams.addMembers(req.user!, id, dto);
   }
 
   /**

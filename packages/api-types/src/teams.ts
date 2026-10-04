@@ -153,3 +153,21 @@ export const ReassignTeamMembersDtoSchema = z.object({
   userIds: z.array(z.cuid2()).min(1).optional(),
 });
 export type ReassignTeamMembersDto = z.infer<typeof ReassignTeamMembersDtoSchema>;
+
+/**
+ * POST /api/teams/:id/members body - ADD existing staff (TELECALLER /
+ * SALES_EXEC) to the team. Additive: it never removes a user from another
+ * team (use reassign-members for a move). Users already on the team are
+ * skipped and reported, not an error.
+ */
+export const AddTeamMembersDtoSchema = z.object({
+  userIds: z.array(z.cuid2()).min(1).max(100),
+});
+export type AddTeamMembersDto = z.infer<typeof AddTeamMembersDtoSchema>;
+
+export interface AddTeamMembersResult {
+  /** Memberships actually created. */
+  added: number;
+  /** Requested users who were already on the team (skipped). */
+  alreadyMembers: number;
+}

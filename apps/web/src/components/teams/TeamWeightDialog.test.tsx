@@ -137,4 +137,25 @@ describe('TeamWeightDialog', () => {
     await mount();
     expect(document.body.innerHTML).toContain('No members in this team yet.');
   });
+
+  it('keeps the three routing rules behind an info tooltip', async () => {
+    mocks.useTeam.mockReturnValue({
+      data: { id: 'team-a', name: 'Construction Desk', manager: null, members: [] },
+      isLoading: false,
+      isError: false,
+    });
+    await mount();
+    expect(document.body.textContent).toContain('Two separate controls per telecaller.');
+    const trigger = document.body.querySelector('[data-qa="team-weight-help-trigger"]');
+    expect(trigger).not.toBeNull();
+    await act(async () => {
+      trigger?.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    });
+    const help = document.body.querySelector('[data-qa="team-weight-help"]');
+    expect(help?.tagName).toBe('UL');
+    expect(help?.querySelectorAll('li')).toHaveLength(3);
+    expect(help?.textContent).toContain('share of new leads');
+    expect(help?.textContent).toContain('hard ceiling');
+    expect(help?.textContent).toContain('never auto-assigned');
+  });
 });

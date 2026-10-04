@@ -37,6 +37,7 @@ import {
   TeamTargetPicker,
 } from '@/components/teams/team-form-bodies';
 import { TeamRosterMemberRow } from '@/components/teams/team-roster';
+import { AddTeamMembersDialog } from '@/components/teams/AddTeamMembersDialog';
 import { isAdminLike, useSessionUser } from '@/lib/session';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
@@ -48,6 +49,7 @@ import {
   LuEllipsis,
   LuPencil,
   LuTrash2,
+  LuUserPlus,
   LuUsersRound,
 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
@@ -69,6 +71,7 @@ export default function TeamRosterPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
 
   // Hydration guard: the server renders the Skeleton (session pending), but
   // the client resolves the session synchronously on first render. Without
@@ -140,6 +143,8 @@ export default function TeamRosterPage() {
               onReassignOpenChange={setReassignOpen}
               deleteOpen={deleteOpen}
               onDeleteOpenChange={setDeleteOpen}
+              addMembersOpen={addMembersOpen}
+              onAddMembersOpenChange={setAddMembersOpen}
               onDeleted={() => router.push(orgHref(orgSlug, '/admin/teams'))}
             />
           ) : null
@@ -172,8 +177,19 @@ export default function TeamRosterPage() {
         <div className="border-border rounded-lg border p-10 text-center text-sm">
           <TypographyP className="text-xl font-medium">No members in this team.</TypographyP>
           <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
-            Assign users to this team to see them here.
+            Add telecallers or sales execs to see them here.
           </TypographyP>
+          {team !== undefined ? (
+            <Button
+              type="button"
+              className="mt-3"
+              leftIcon={<LuUserPlus className="size-4" />}
+              onClick={() => setAddMembersOpen(true)}
+              data-qa="team-empty-add-members"
+            >
+              Add members
+            </Button>
+          ) : null}
         </div>
       ) : (
         <RosterTable
@@ -201,6 +217,8 @@ function TeamHeaderActions({
   onReassignOpenChange,
   deleteOpen,
   onDeleteOpenChange,
+  addMembersOpen,
+  onAddMembersOpenChange,
   onDeleted,
 }: {
   team: TeamListItem;
@@ -210,6 +228,8 @@ function TeamHeaderActions({
   onReassignOpenChange: (open: boolean) => void;
   deleteOpen: boolean;
   onDeleteOpenChange: (open: boolean) => void;
+  addMembersOpen: boolean;
+  onAddMembersOpenChange: (open: boolean) => void;
   onDeleted: () => void;
 }) {
   const reassignMembers = useReassignTeamMembers(team.id);
@@ -233,7 +253,15 @@ function TeamHeaderActions({
   }
 
   return (
-    <>
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        leftIcon={<LuUserPlus className="size-4" />}
+        onClick={() => onAddMembersOpenChange(true)}
+        data-qa="team-header-add-members"
+      >
+        Add members
+      </Button>
       <DropdownMenuRoot>
         <DropdownMenuTrigger
           render={
@@ -319,7 +347,15 @@ function TeamHeaderActions({
           onDeleted={onDeleted}
         />
       </Dialog>
-    </>
+
+      {addMembersOpen ? (
+        <AddTeamMembersDialog
+          team={team}
+          open={addMembersOpen}
+          onOpenChange={onAddMembersOpenChange}
+        />
+      ) : null}
+    </div>
   );
 }
 

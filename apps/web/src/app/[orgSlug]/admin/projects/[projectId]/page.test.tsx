@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   useProjectDetail: vi.fn(),
   useDashboardStats: vi.fn(),
   useLeads: vi.fn(),
+  useLeadsEnvelope: vi.fn(),
   useInventoryUnits: vi.fn(),
   useInventoryPhases: vi.fn(),
   useProjectOptions: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock('@/hooks/queries/dashboard', () => ({
 
 vi.mock('@/hooks/queries/crm', () => ({
   useLeads: mocks.useLeads,
+  useLeadsEnvelope: mocks.useLeadsEnvelope,
 }));
 
 vi.mock('@/hooks/queries/inventory', () => ({
@@ -123,6 +125,7 @@ function baseMocks(): void {
     data: { kpis: { newLeadsToday: 1, overdueLeads: 2, visitsToday: 3 } },
   });
   mocks.useLeads.mockReturnValue({ data: [], isLoading: false });
+  mocks.useLeadsEnvelope.mockReturnValue({ total: 0 });
   mocks.useInventoryUnits.mockReturnValue({ data: [], isLoading: false });
   mocks.useInventoryPhases.mockReturnValue({ data: [], isLoading: false });
   mocks.useProjectOptions.mockReturnValue({ data: [], isLoading: false });
@@ -174,5 +177,31 @@ describe('AdminProjectDetailPage', () => {
     });
     await mount();
     expect(container?.innerHTML ?? '').toContain('Project not found');
+  });
+
+  it('renders leads then pagination as siblings (no overlay)', async () => {
+    baseMocks();
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'a-1', role: 'ADMIN', name: 'Admin', email: 'a@x' },
+      isPending: false,
+      error: null,
+    });
+    mocks.useLeads.mockReturnValue({
+      data: Array.from({ length: 10 }, (_, i) => ({
+        id: `lead-${i}`,
+        name: `Lead ${i}`,
+        ownerName: 'Telecaller',
+      })),
+      isLoading: false,
+    });
+    mocks.useLeadsEnvelope.mockReturnValue({ total: 28 });
+    await mount();
+    const pager = container?.querySelector('[data-qa="admin-project-leads-pagination"]');
+    expect(pager).not.toBeNull();
+    const list = pager?.previousElementSibling;
+    expect(list?.tagName).toBe('DIV');
+    expect(list?.querySelectorAll('li').length).toBe(10);
+    expect(pager?.parentElement?.contains(list as Node)).toBe(true);
+    expect(list?.contains(pager as Node)).toBe(false);
   });
 });

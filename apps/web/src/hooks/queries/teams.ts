@@ -194,6 +194,25 @@ export function useUpdateTeamMemberCap() {
 }
 
 /**
+ * POST /api/teams/:id/members - add existing telecallers / sales execs to a
+ * team (additive; already-members are skipped). ADMIN/OWNER only.
+ */
+export function useAddTeamMembers(teamId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { userIds: string[] }) =>
+      api<{ added: number; alreadyMembers: number }>(`/teams/${teamId}/members`, {
+        method: 'POST',
+        json: input,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [...TEAMS_KEY, teamId] });
+    },
+  });
+}
+
+/**
  * POST /api/teams/:id/reassign-members - move members off a team. Omitting
  * `userIds` reassigns everyone (the one-click bulk action that unblocks
  * delete); passing ids reassigns only those members (the per-member "move
