@@ -167,20 +167,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // only - a WORK item (staff surface) rather than an Admin one, because a
   // manager works out of it day to day. Per-item visibility is enforced in
   // isNavItemVisible below; the badge counts the current user's unread chats.
+  // Project-scoped: the inbox shows conversations for the active project only.
   {
     href: '/whatsapp-chat',
     label: 'WhatsApp Chats',
     icon: LuMessagesSquare,
     group: 'work',
-    // Org-level, NOT project-scoped (the inbox lists every
-    // conversation in the org, so it must not be nested under a project).
-    // `scoped: false` is load-bearing, not cosmetic: `navItemHref` sends
-    // default-scoped items through `projectHref`, which returns the template
-    // href UNCHANGED when the path is absent from PROJECT_SCOPED_PATHS - so the
-    // sidebar linked to a bare `/whatsapp-chat`, which matches no route (all
-    // pages live under /[orgSlug]/...) and 404'd. With `scoped: false` the href
-    // resolves through `orgHref` to `/{orgSlug}/whatsapp-chat`.
-    scoped: false,
+    // Project-scoped (the inbox lists conversations in the active project).
+    // `scoped: true` is the default; the route resolves through `projectHref`
+    // to `/{orgSlug}/projects/{projectSlug}/whatsapp-chat`.
     badgeKey: 'unreadChats',
   },
   {
@@ -450,6 +445,7 @@ export const PROJECT_SCOPED_PATHS = new Set([
   '/notifications',
   '/dashboard',
   '/staff',
+  '/whatsapp-chat',
 ]);
 
 export function isProjectScopedNavPath(href: string): boolean {

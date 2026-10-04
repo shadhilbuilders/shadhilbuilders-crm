@@ -223,23 +223,20 @@ describe('lib/nav', () => {
     // The href attribute is what the sidebar actually navigates to, and it is
     // NOT the same as `item.href`: every page lives under /[orgSlug]/, so an
     // item that resolves to the bare template path matches no route and 404s.
-    // This is how the inbox shipped broken - the nav item lacked
-    // `scoped: false`, so navItemHref returned '/whatsapp-chat' unchanged.
-    it('resolves to an org-scoped href (a bare /whatsapp-chat 404s)', () => {
+    // The inbox is project-scoped and resolves through `projectHref` to
+    // `/{orgSlug}/projects/{projectSlug}/whatsapp-chat`.
+    it('resolves to a project-scoped href', () => {
       const item = getVisibleNav('OWNER').find((i) => i.href === href)!;
-      expect(navItemHref(item, 'shadhil-builders', 'any-project')).toBe(
-        '/shadhil-builders/whatsapp-chat',
+      expect(navItemHref(item, 'shadhil-builders', 'metro-heights')).toBe(
+        '/shadhil-builders/projects/metro-heights/whatsapp-chat',
       );
-      // ...and it must NOT be project-nested, which is what the default
-      // scoping would do if the path were ever added to PROJECT_SCOPED_PATHS.
-      expect(navItemHref(item, 'shadhil-builders', 'any-project')).not.toContain('/projects/');
+      // ...and it MUST be project-nested under /projects/
+      expect(navItemHref(item, 'shadhil-builders', 'metro-heights')).toContain('/projects/');
     });
 
-    it('stays org-level even with no active project (inbox is org-wide)', () => {
+    it('returns the template href when no project is active (disabled state)', () => {
       const item = getVisibleNav('MANAGER').find((i) => i.href === href)!;
-      expect(navItemHref(item, 'shadhil-builders', null)).toBe(
-        '/shadhil-builders/whatsapp-chat',
-      );
+      expect(navItemHref(item, 'shadhil-builders', null)).toBe('/whatsapp-chat');
     });
   });
 });
