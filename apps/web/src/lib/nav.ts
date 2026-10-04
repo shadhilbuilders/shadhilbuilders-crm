@@ -136,11 +136,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
-    href: '/my-teams',
-    label: 'My Teams',
+    href: '/teams',
+    label: 'Teams',
     icon: LuUsersRound,
     group: 'work',
-    scoped: false,
   },
   {
     href: '/staff',
