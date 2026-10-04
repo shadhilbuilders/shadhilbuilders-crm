@@ -68,7 +68,7 @@ import { LuArrowLeft, LuChevronRight, LuPanelLeft } from '@paalstack/react-icons
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
-import { pickDefaultProject, useProjects } from '@/hooks/queries';
+import { pickDefaultProject, useProjects, type ProjectListItem } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { workLandingHref } from '@/lib/dashboard-redirect';
@@ -177,6 +177,7 @@ export function AppShell() {
             activeProjectSlug={activeProjectSlug}
             activeOrgSlug={activeOrgSlug}
             workHref={workLandingHref(activeOrgSlug, projects ?? [])}
+            projects={projects ?? []}
           />
         ) : (
           <WorkNavGroup
@@ -353,11 +354,13 @@ function AdminNavGroup({
   activeProjectSlug,
   activeOrgSlug,
   workHref,
+  projects,
 }: {
   activeProjectId: string | null;
   activeProjectSlug: string | null;
   activeOrgSlug: string | null;
   workHref: string;
+  projects: ProjectListItem[];
 }) {
   const pathname = usePathname();
   const { user, isPending } = useSessionUser();
@@ -410,22 +413,27 @@ function AdminNavGroup({
   // has resolved and the user genuinely has no admin items.
   if (items.length === 0) return null;
 
+  // Only show "Go to Work" if there are projects to go back to
+  const hasProjects = projects.length > 0;
+
   return (
     <SidebarGroup>
       {/* Exit-admin affordance: a standalone link, NOT a NAV_ITEMS entry
           (it isn't a page inside /admin/*, so getVisibleNav shouldn't walk
           it). Sits above the "Admin" label so it reads as leaving the
           section, not as one more admin page. */}
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild tooltip="Go to Work">
-            <Link href={workHref} data-qa="sidebar-go-to-work">
-              <LuArrowLeft className="size-4 shrink-0" />
-              <span className="min-w-0 truncate">Go to Work</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      {hasProjects && (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Go to Work">
+              <Link href={workHref} data-qa="sidebar-go-to-work">
+                <LuArrowLeft className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">Go to Work</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      )}
       <SidebarGroupLabel>Admin</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
