@@ -93,9 +93,18 @@ export function AppHeader() {
             sidebar uses) placed next to the toggle so the brand stays
             visible in the topbar even when the sidebar is collapsed /
             closed (mobile Sheet). */}
+        {/* Mobile-only: the sidebar's own header already shows the brand
+            (expanded lockup / collapsed icon - see app-shell.tsx) on
+            desktop/tablet, so this topbar mark is redundant there. On
+            mobile the sidebar lives in a closed Sheet, so the topbar is
+            the only place the brand is visible - `sm:hidden` keeps it
+            just for that case. (It also sidesteps the overflow issue
+            from T-MobileOverflow: the mark no longer competes for width
+            at any breakpoint where the right-side icon cluster could be
+            tight.) */}
         <Link
           href={orgSlug !== null ? `/${orgSlug}` : '/'}
-          className="inline-flex shrink-0 items-center overflow-hidden"
+          className="inline-flex min-w-0 shrink items-center overflow-hidden sm:hidden"
           aria-label="Shadhil Builders home"
           data-qa="topbar-brand-logo"
         >
@@ -104,7 +113,7 @@ export function AppHeader() {
             alt="Shadhil Builders"
             width={120}
             height={20}
-            className="w-30 h-auto object-contain"
+            className="h-auto w-30 object-contain"
             loading="eager"
           />
         </Link>
@@ -140,8 +149,17 @@ export function AppHeader() {
             onSignOut={() => void signOut()}
           />
         ) : (
+          // T-MobileOverflow: the real UserMenu button hides the name
+          // below `sm` (icon-only, ~44px). The generic "user" skeleton
+          // (avatar + 2 text lines) is ~190px wide - a fixed `min-w-30`
+          // (120px) still let it render wider than the real button and
+          // overflow the header on narrow viewports during the loading
+          // flash. `overflow-hidden` clips it to the wrapper's own width
+          // (icon-sized on mobile, full-width from `sm` up, matching the
+          // real button's own breakpoint) instead of pushing content
+          // past the viewport edge.
           <div
-            className="min-w-30 px-2"
+            className="w-11 overflow-hidden px-2 sm:min-w-30 sm:w-auto"
             data-qa="user-skeleton-topbar"
           >
             <Skeleton variant="user" />
