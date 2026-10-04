@@ -136,6 +136,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: '/visits', label: 'Visits', icon: LuCalendarDays, group: 'work' },
   {
+    href: '/my-teams',
+    label: 'My Teams',
+    icon: LuUsersRound,
+    group: 'work',
+    scoped: false,
+  },
+  {
     href: '/staff',
     label: 'Staff',
     icon: LuUsersRound,
@@ -184,16 +191,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LuBell,
     group: 'work',
     badgeKey: 'unreadNotifications',
-  },
-  // T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1): MANAGER-only route,
-  // outside the Admin namespace. Org-level (not project-scoped) - a
-  // manager's teams aren't tied to the currently active project.
-  {
-    href: '/my-teams',
-    label: 'My Teams',
-    icon: LuUsersRound,
-    group: 'work',
-    scoped: false,
   },
   // OWNER/ADMIN launcher into /admin/* (hidden for every other role).
   {
