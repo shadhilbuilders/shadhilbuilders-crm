@@ -1,11 +1,8 @@
 'use client';
 
-// Work -> My Teams - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
-// MANAGER-only route outside the Admin namespace. Lists every team the
-// manager MANAGES and every team they're an ordinary MEMBER of (one
-// manager may lead multiple teams - Decision Audit Trail #39). Backed by
-// the SAME GET /api/teams endpoint Admin -> Teams uses (teams.service.ts's
-// list() is now role-scoped server-side to exactly this union for MANAGER).
+// Work -> Projects -> [projectSlug] -> Teams - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
+// MANAGER-only route. Lists every team the manager MANAGES and every team they're
+// an ordinary MEMBER of. Backed by the SAME GET /api/teams endpoint Admin -> Teams uses.
 import { useEffect, useState } from 'react';
 import { Badge, Heading, Item, ItemGroup, TypographyP } from '@paalstack/react-ui';
 import { LuArrowRight } from '@paalstack/react-icons/lu';
@@ -13,8 +10,8 @@ import Link from 'next/link';
 
 import { useTeams, type TeamListItem } from '@/hooks/queries/teams';
 import { useSessionUser } from '@/lib/session';
-import { orgHref } from '@/lib/nav';
-import { useOrgSlug } from '@/lib/tenant-context';
+import { projectHref } from '@/lib/nav';
+import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -22,6 +19,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 export default function TeamsPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const teams = useTeams();
   const [mounted, setMounted] = useState(false);
 
@@ -44,17 +42,19 @@ export default function TeamsPage() {
   }
 
   const rows = teams.data ?? [];
-  // "Managed" = this manager IS the team's manager. "Member" = they appear
-  // on the team but don't lead it (T-TEAM-AUTHORITATIVE: a manager can be
-  // an ordinary member of a DIFFERENT team they don't lead).
   const managed = rows.filter((t) => t.managerId === user.id);
   const member = rows.filter((t) => t.managerId !== user.id);
+
+  const baseHref = orgSlug && projectSlug ? `/${orgSlug}/projects/${projectSlug}` : '/';
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Teams"
-        breadcrumb={[{ label: 'Work' }, { label: 'Teams' }]}
+        breadcrumb={[
+          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          { label: 'Teams' },
+        ]}
         subtitle="Teams you manage, and teams you're a member of."
       />
 
@@ -76,11 +76,11 @@ export default function TeamsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <TeamSection title="You manage" teams={managed} orgSlug={orgSlug} emptyText="You don't manage any team yet." />
+          <TeamSection title="You manage" teams={managed} baseHref={baseHref} emptyText="You don't manage any team yet." />
           <TeamSection
             title="You're a member of"
             teams={member}
-            orgSlug={orgSlug}
+            baseHref={baseHref}
             emptyText="You aren't an ordinary member of any other team."
           />
         </div>
@@ -92,12 +92,12 @@ export default function TeamsPage() {
 function TeamSection({
   title,
   teams,
-  orgSlug,
+  baseHref,
   emptyText,
 }: {
   title: string;
   teams: TeamListItem[];
-  orgSlug: string | null;
+  baseHref: string;
   emptyText: string;
 }) {
   return (
@@ -108,7 +108,7 @@ function TeamSection({
       ) : (
         <ItemGroup className="gap-2">
           {teams.map((team) => (
-            <Link key={team.id} href={orgHref(orgSlug, `/teams/${team.id}`)} data-qa={`my-team-row-${team.id}`}>
+            <Link key={team.id} href={`${baseHref}/teams/${team.id}`} data-qa={`team-row-${team.id}`}>
               <Item
                 variant="outline"
                 size="sm"

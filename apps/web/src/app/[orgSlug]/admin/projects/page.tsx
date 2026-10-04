@@ -6,7 +6,7 @@
 // ADMIN/OWNER surface (mirrors users/page.tsx guard shape):
 //   - Create project      → POST /api/projects        (ADMIN/OWNER)
 //   - Edit / rename       → PATCH /api/projects/:id   (ADMIN/OWNER)
-//   - Manage staff        → ProjectTeamList (T-TEAM-AUTHORITATIVE, 2026-09-13:
+//   - Manage Teams        → ProjectTeamList (T-TEAM-AUTHORITATIVE, 2026-09-13:
 //                           replaces the retired per-user ProjectMember
 //                           link/unlink - project staffing is team-based only)
 //   - Delete              → DELETE /api/projects/:id  (ADMIN/OWNER, soft)
@@ -226,7 +226,7 @@ export default function ProjectsPage() {
 
       <Dialog
         trigger={<button hidden />}
-        header={{ title: 'Manage staff', description: membersTarget?.name }}
+        header={{ title: 'Manage Teams', description: membersTarget?.name }}
         open={membersTarget !== null}
         onOpenChange={(open) => {
           if (!open) setMembersTarget(null);
@@ -251,9 +251,9 @@ export default function ProjectsPage() {
 // ---------------------------------------------------------------------------
 
 /**
- * In-app row-actions menu for a project row (Edit / Manage staff / Delete),
- * gated by the actor's role. Edit is ADMIN/OWNER, Manage staff is
- * ADMIN/OWNER (MANAGER sees View staff read-only), Delete is ADMIN/OWNER (soft). Uses the published
+ * In-app row-actions menu for a project row (Edit / Manage Teams / Delete),
+ * gated by the actor's role. Edit is ADMIN/OWNER, Manage Teams is
+ * ADMIN/OWNER (MANAGER sees View Teams read-only), Delete is ADMIN/OWNER (soft). Uses the published
  * DropdownMenu primitives + Tooltip (the shipped DataTableActionItem has no
  * disabled/disabledReason field) - same approach as users/UserRowActions.
  */
@@ -291,7 +291,7 @@ function ProjectRowActions({
       onClick: () => onEdit(target),
     },
     {
-      label: canManageMembers ? 'Manage staff' : 'View staff',
+      label: canManageMembers ? 'Manage Teams' : 'View Teams',
       icon: LuUsersRound,
       onClick: () => onMembers(target),
     },
@@ -481,7 +481,7 @@ function ProjectTable({
         enableHiding: false,
       },
     ],
-    [canDelete, canManageMembers, onEdit, onMembers, onDelete, router, orgSlug],
+    [canDelete, canManageMembers, onEdit, onMembers, onDelete, orgSlug],
   );
 
   const isSearchActive = search.trim().length > 0;
@@ -501,6 +501,20 @@ function ProjectTable({
           searchValue: search,
           onSearchValueChange: onSearchChange,
           className: 'mr-2'
+        }}
+        // Whole-row click → admin project detail. Name cell keeps its Link
+        // (middle-click / cmd-click / keyboard). Skip interactive controls
+        // so the actions menu and the name link don't double-navigate.
+        tableRowProps={{
+          className: 'cursor-pointer',
+          onClick: (row, event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('a, button, [role="menuitem"]')) return;
+            router.push(
+              orgHref(orgSlug, `/admin/projects/${row.original.id}`),
+            );
+          },
         }}
         showPagination
         paginationProps={{

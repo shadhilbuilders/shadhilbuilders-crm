@@ -38,6 +38,7 @@ import {
   LuWeight,
 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { useTeams, type TeamListItem } from '@/hooks/queries/teams';
 import { isAdminLike, useSessionUser } from '@/lib/session';
@@ -249,6 +250,8 @@ function TeamsTable({
   onReassign: (team: TeamListItem) => void;
   onWeight: (team: TeamListItem) => void;
 }) {
+  const router = useRouter();
+
   const columns = useMemo<DataTableColumnDef<TeamListItem>[]>(
     () => [
       {
@@ -318,6 +321,18 @@ function TeamsTable({
       <DataTable
         columns={columns}
         rows={teams}
+        // Whole-row click → admin team detail. Name cell keeps its Link
+        // (middle-click / cmd-click / keyboard). Skip interactive controls
+        // so the actions menu and the name link don't double-navigate.
+        tableRowProps={{
+          className: 'cursor-pointer',
+          onClick: (row, event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('a, button, [role="menuitem"]')) return;
+            router.push(orgHref(orgSlug, `/admin/teams/${row.original.id}`));
+          },
+        }}
         showPagination
         paginationProps={{
           pageSize: 10,

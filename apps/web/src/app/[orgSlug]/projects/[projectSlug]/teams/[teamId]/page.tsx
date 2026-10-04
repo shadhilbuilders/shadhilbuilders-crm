@@ -1,12 +1,7 @@
 'use client';
 
-// Work -> My Teams -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13,
-// design doc UI1). MANAGER-only. Read-only member list; "Remove from this
-// team" is offered ONLY when the viewer manages THIS specific team (not
-// merely an ordinary member of it) - manager succession is a separate,
-// admin-only flow, and an ordinary member has no removal authority over
-// their own teammates. The manager's own row is never removable (pinned
-// with a Manager badge), mirroring the Admin -> Teams roster.
+// Work -> Projects -> [projectSlug] -> Teams -> [teamId] roster - T-TEAM-AUTHORITATIVE (2026-09-13, design doc UI1).
+// MANAGER-only. Read-only member list; "Remove from this team" is offered ONLY when the viewer manages THIS specific team.
 import { useEffect, useState } from 'react';
 import { Button, Heading, Loading, TypographyP } from '@paalstack/react-ui';
 import { LuArrowLeft } from '@paalstack/react-icons/lu';
@@ -16,8 +11,8 @@ import { useParams } from 'next/navigation';
 import { useTeam } from '@/hooks/queries/teams';
 import { TeamRosterMemberRow } from '@/components/teams/team-roster';
 import { isAdminLike, useSessionUser } from '@/lib/session';
-import { orgHref } from '@/lib/nav';
-import { useOrgSlug } from '@/lib/tenant-context';
+import { projectHref } from '@/lib/nav';
+import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -25,6 +20,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 export default function TeamRosterPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const params = useParams<{ teamId: string }>();
   const teamId = typeof params?.teamId === 'string' ? params.teamId : null;
   const teamQuery = useTeam(teamId ?? undefined);
@@ -55,13 +51,15 @@ export default function TeamRosterPage() {
   const team = teamQuery.data;
   const isManagerOfThisTeam = team?.manager?.id === user.id;
 
+  const baseHref = orgSlug && projectSlug ? `/${orgSlug}/projects/${projectSlug}` : '/';
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={team?.name ?? 'Team'}
         breadcrumb={[
-          { label: 'Work' },
-          { label: 'Teams', href: orgHref(orgSlug, '/teams') },
+          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          { label: 'Teams', href: `${baseHref}/teams` },
           { label: team?.name ?? 'Team' },
         ]}
         subtitle={
@@ -100,10 +98,8 @@ export default function TeamRosterPage() {
               teamName={team.name}
               member={member}
               managerId={team.manager?.id ?? null}
-              // Design doc: "member-removal actions appear only on teams
-              // they manage" - per-team, not per-role (see team-roster.tsx).
               canRemove={isManagerOfThisTeam}
-              dataQaPrefix="my-team-member"
+              dataQaPrefix="team-member"
             />
           ))}
         </div>
@@ -115,7 +111,7 @@ export default function TeamRosterPage() {
           variant="outline"
           size="sm"
           as={Link}
-          href={orgHref(orgSlug, '/teams')}
+          href={`${baseHref}/teams`}
           leftIcon={<LuArrowLeft className="size-4" />}
         >
           Back to Teams

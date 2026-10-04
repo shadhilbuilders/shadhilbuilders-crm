@@ -61,7 +61,7 @@ export function ProjectTeamList({
 }) {
   const query = useProjectTeams(projectId);
   const [linkOpen, setLinkOpen] = useState(false);
-  // "one-at-a-time" expansion: a single teamId, not a Set.
+  // One open team at a time. Base UI still reports the value as an array.
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
   const teams = query.data?.teams ?? [];
@@ -131,10 +131,9 @@ export function ProjectTeamList({
         </div>
       ) : (
         <AccordionRoot<string>
-          multiple
           value={expandedTeamId === null ? [] : [expandedTeamId]}
           onValueChange={(next) => {
-            setExpandedTeamId(next.length > 0 ? next[0]! : null);
+            setExpandedTeamId(next[0] ?? null);
           }}
           className="space-y-4"
         >
@@ -144,7 +143,7 @@ export function ProjectTeamList({
               value={row.teamId}
               className="rounded-lg border"
             >
-              <div className="flex items-center justify-between gap-2 pl-3 pr-2 [&>h3]:flex-1 hover:bg-muted">
+              <div className="flex items-center justify-between gap-2 pl-3 pr-2 [&>h3]:flex-1 hover:bg-muted rounded-lg">
                 <AccordionTrigger
                   className="min-w-0 flex-1 px-3 py-2.5 **:data-[slot=accordion-trigger-icon]:hidden **:data-[slot=accordion-trigger-icon-up]:hidden"
                   data-qa={`project-team-toggle-${row.teamId}`}

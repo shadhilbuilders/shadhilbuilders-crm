@@ -48,6 +48,7 @@ import {
   LuUserCog,
 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
@@ -460,6 +461,8 @@ function UserTable({
   onRoleChange: (row: UserRow) => void;
   createTrigger: React.ReactNode;
 }) {
+  const router = useRouter();
+
   // Server-driven role filter (autoplan 2026-09-09): a MultiSelect in the
   // toolbar feeds the `role` query param directly (mirrors the leads page
   // status filter). The backend applies WHERE role IN (...) and returns the
@@ -585,6 +588,18 @@ function UserTable({
           searchValue: search,
           onSearchValueChange: onSearchChange,
           className: 'mr-2'
+        }}
+        // Whole-row click → admin user detail. Name cell keeps its Link
+        // (middle-click / cmd-click / keyboard). Skip interactive controls
+        // so the actions menu and the name link don't double-navigate.
+        tableRowProps={{
+          className: 'cursor-pointer',
+          onClick: (row, event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('a, button, [role="menuitem"]')) return;
+            router.push(orgHref(orgSlug, `/admin/users/${row.original.id}`));
+          },
         }}
         showPagination
         paginationProps={{

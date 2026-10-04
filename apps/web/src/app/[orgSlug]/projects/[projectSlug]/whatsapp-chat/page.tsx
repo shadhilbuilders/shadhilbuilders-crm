@@ -1,6 +1,6 @@
 'use client';
 
-// /whatsapp-chat - the WhatsApp chat system (T-WA-INBOX, 2026-09-25).
+// /projects/[projectSlug]/whatsapp-chat - the WhatsApp chat system (T-WA-INBOX, 2026-09-25).
 //
 // A WhatsApp-Web-style two-pane inbox:
 //
@@ -38,11 +38,13 @@ import {
 } from '@/hooks/queries/whatsapp-unknown-contacts';
 import { useSessionUser } from '@/lib/session';
 import { canUseWhatsappInbox } from '@/lib/session';
-import { useOrgSlug } from '@/lib/tenant-context';
+import { projectHref } from '@/lib/nav';
+import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 export default function WhatsappChatPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<ChatThreadSelection | null>(null);
   // The convert modal takes the full contact ROW (it renders the phone and
@@ -88,6 +90,10 @@ export default function WhatsappChatPage() {
     <>
       <PageHeader
         title="WhatsApp Chats"
+        breadcrumb={[
+          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          { label: 'WhatsApp Chats' },
+        ]}
         subtitle="Every WhatsApp conversation - known customers and numbers not yet linked to a lead"
       />
 

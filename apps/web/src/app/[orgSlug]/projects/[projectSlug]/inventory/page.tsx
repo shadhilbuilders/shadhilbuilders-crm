@@ -341,6 +341,18 @@ export default function InventoryPage() {
         <DataTable
           columns={columns}
           rows={rows}
+          // Whole-row click → unit detail sheet. Villa # cell keeps its
+          // button trigger. Skip interactive controls so the actions menu
+          // and villa button don't double-fire.
+          tableRowProps={{
+            className: 'cursor-pointer',
+            onClick: (row, event) => {
+              const target = event.target;
+              if (!(target instanceof Element)) return;
+              if (target.closest('a, button, [role="menuitem"]')) return;
+              setDetailTarget(row.original);
+            },
+          }}
           // Search is SERVER-side (onSearchValueChange -> API). The DataTable's
           // built-in client-side global filter is redundant here AND would hide
           // matches over the already-filtered page - make it a no-op so it

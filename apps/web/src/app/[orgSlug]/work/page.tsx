@@ -34,7 +34,7 @@ export default function WorkLandingPage() {
   }
 
   return (
-    <div className="py-24 text-center text-sm">
+    <div className="py-4 text-center text-sm">
       <Heading className="mb-2">No projects yet</Heading>
       <TypographyP className="text-muted-foreground">
         There is no project to open in Work. Create one from Admin when you

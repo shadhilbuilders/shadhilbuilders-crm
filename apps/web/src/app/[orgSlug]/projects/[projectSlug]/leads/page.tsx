@@ -607,6 +607,18 @@ function LeadTable({
       // Age-based row tint (10/20/30-min tiers for NEW leads). The props-API
       // DataTable merges this AFTER its base classes, so the tint wins.
       getRowClassName={getRowClassName}
+      // Whole-row click → lead detail. Name cell keeps its Link
+      // (middle-click / cmd-click / keyboard). Skip interactive controls
+      // so the actions menu, sort header, and name link don't double-fire.
+      tableRowProps={{
+        className: 'cursor-pointer',
+        onClick: (row, event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          if (target.closest('a, button, [role="menuitem"]')) return;
+          onView(row.original);
+        },
+      }}
       // Search is server-side (onSearchValueChange → API). The DataTable's
       // built-in client-side global filter is redundant here AND throws
       // "Column with id 'phone' does not exist" because there is no standalone

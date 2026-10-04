@@ -208,7 +208,7 @@ export default function AdminProjectDetailPage() {
               Edit
             </Button>
             <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff" className="px-2.5">
-              Manage staff
+              Manage Teams
             </Button>
             <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="px-2.5 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
               Delete
@@ -376,7 +376,7 @@ export default function AdminProjectDetailPage() {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen} header={{ title: 'Delete project' }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
         <ProjectDeleteBody project={asListItem} onDone={() => setDeleteOpen(false)} />
       </Dialog>
-      <Dialog open={membersOpen} onOpenChange={setMembersOpen} header={{ title: 'Manage staff', description: detail.name }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
+      <Dialog open={membersOpen} onOpenChange={setMembersOpen} header={{ title: 'Manage Teams', description: detail.name }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
         <ProjectTeamList projectId={detail.id} projectName={detail.name} projectSlug={detail.slug} canManage />
       </Dialog>
     </div>

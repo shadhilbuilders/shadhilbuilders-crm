@@ -426,6 +426,23 @@ export default function BookingsPage() {
         <DataTable
           columns={columns}
           rows={rows}
+          // Whole-row click → booking detail. Unit cell keeps its Link
+          // (middle-click / cmd-click / keyboard). Skip interactive controls
+          // so the actions menu and the unit link don't double-navigate.
+          tableRowProps={{
+            className: 'cursor-pointer',
+            onClick: (row, event) => {
+              const target = event.target;
+              if (!(target instanceof Element)) return;
+              if (target.closest('a, button, [role="menuitem"]')) return;
+              const bookingId =
+                typeof row.original.id === 'string' ? row.original.id : '';
+              if (bookingId.length === 0) return;
+              void router.push(
+                projectHref(orgSlug, projectSlug, `/bookings/${bookingId}`),
+              );
+            },
+          }}
           // Search is server-side (onSearchValueChange → API). The DataTable's
           // built-in client-side global filter is redundant here - make it a
           // no-op so it never hides rows over the already-filtered page.
