@@ -36,7 +36,7 @@ env:
   # `@t3-oss/env-nextjs` in `apps/web/src/lib/env/env.ts` (surfacing as
   # "Failed to collect page data for /api/docs") and `assertAuthEnv()` at module
   # scope in `packages/auth-client/src/env.ts` (surfacing for whatever page first
-  # imports the auth client, e.g. "/[orgSlug]/my-teams").
+  # imports the auth client, e.g. "/[orgSlug]/teams").
   #
   # Values must be REAL-shaped, not absent: SKIP_ENV_VALIDATION does not help
   # here. Turborepo's env mode does not forward a shell var unless it is in

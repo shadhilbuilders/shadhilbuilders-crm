@@ -172,7 +172,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'WhatsApp Chats',
     icon: LuMessagesSquare,
     group: 'work',
-    // Org-level, NOT project-scoped (same as /my-teams): the inbox lists every
+    // Org-level, NOT project-scoped (same as /teams): the inbox lists every
     // conversation in the org, so it must not be nested under a project.
     //
     // `scoped: false` is load-bearing, not cosmetic: `navItemHref` sends
@@ -319,7 +319,7 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
   if (item.href === '/admin' || item.href === '/work' || item.href.startsWith('/admin/')) {
     return isAdminLike(role);
   }
-  if (item.href === '/my-teams') {
+  if (item.href === '/teams') {
     return role === 'MANAGER';
   }
   // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE

@@ -19,7 +19,7 @@ import { useOrgSlug } from '@/lib/tenant-context';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
 
-export default function MyTeamsPage() {
+export default function TeamsPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
   const teams = useTeams();
@@ -37,7 +37,7 @@ export default function MyTeamsPage() {
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          Only managers have a My Teams view - admins use Admin → Teams.
+          Only managers have a Teams view - admins use Admin → Teams.
         </TypographyP>
       </div>
     );
@@ -53,8 +53,8 @@ export default function MyTeamsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Teams"
-        breadcrumb={[{ label: 'Work' }, { label: 'My Teams' }]}
+        title="Teams"
+        breadcrumb={[{ label: 'Work' }, { label: 'Teams' }]}
         subtitle="Teams you manage, and teams you're a member of."
       />
 
@@ -108,7 +108,7 @@ function TeamSection({
       ) : (
         <ItemGroup className="gap-2">
           {teams.map((team) => (
-            <Link key={team.id} href={orgHref(orgSlug, `/my-teams/${team.id}`)} data-qa={`my-team-row-${team.id}`}>
+            <Link key={team.id} href={orgHref(orgSlug, `/teams/${team.id}`)} data-qa={`my-team-row-${team.id}`}>
               <Item
                 variant="outline"
                 size="sm"

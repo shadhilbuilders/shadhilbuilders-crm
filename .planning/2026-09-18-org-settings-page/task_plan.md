@@ -60,7 +60,7 @@ Phase 1 complete - implementation starting.
 - Verified: both FULL suites now green — backend 1074/1074 (50 files), web 699/699 (79 files),
   both exit 0.
 - Files modified:
-  - `apps/web/src/app/[orgSlug]/my-teams/[teamId]/page.test.tsx`
+  - `apps/web/src/app/[orgSlug]/teams/[teamId]/page.test.tsx`
   - `apps/backend/src/overdue-alerts/overdue-alerts.processor.test.ts`
 
 ## ⚠ OPEN — commit/push anomaly (owner decision required)

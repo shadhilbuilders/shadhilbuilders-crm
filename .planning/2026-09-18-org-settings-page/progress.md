@@ -132,7 +132,7 @@ test fixes below it in the working tree. So upstream `main` is still RED on thos
 someone commits them. Outstanding:
 
     apps/backend/src/overdue-alerts/overdue-alerts.processor.test.ts   (uncommitted)
-    apps/web/src/app/[orgSlug]/my-teams/[teamId]/page.test.tsx         (uncommitted)
+    apps/web/src/app/[orgSlug]/teams/[teamId]/page.test.tsx         (uncommitted)
     .planning/2026-09-18-org-settings-page/{progress,task_plan}.md     (uncommitted)
 
 Questions for the owner: (a) did you commit/push this, or is a hook/tool doing it? (b) should the two

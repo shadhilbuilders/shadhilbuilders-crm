@@ -22,7 +22,7 @@ import { useOrgSlug } from '@/lib/tenant-context';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
 
-export default function MyTeamRosterPage() {
+export default function TeamRosterPage() {
   const { user, isPending: sessionPending } = useSessionUser();
   const orgSlug = useOrgSlug();
   const params = useParams<{ teamId: string }>();
@@ -46,7 +46,7 @@ export default function MyTeamRosterPage() {
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          Only managers have a My Teams view.
+          Only managers have a Teams view.
         </TypographyP>
       </div>
     );
@@ -61,7 +61,7 @@ export default function MyTeamRosterPage() {
         title={team?.name ?? 'Team'}
         breadcrumb={[
           { label: 'Work' },
-          { label: 'My Teams', href: orgHref(orgSlug, '/my-teams') },
+          { label: 'Teams', href: orgHref(orgSlug, '/teams') },
           { label: team?.name ?? 'Team' },
         ]}
         subtitle={
@@ -115,10 +115,10 @@ export default function MyTeamRosterPage() {
           variant="outline"
           size="sm"
           as={Link}
-          href={orgHref(orgSlug, '/my-teams')}
+          href={orgHref(orgSlug, '/teams')}
           leftIcon={<LuArrowLeft className="size-4" />}
         >
-          Back to My Teams
+          Back to Teams
         </Button>
       </div>
     </div>
