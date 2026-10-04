@@ -172,9 +172,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'WhatsApp Chats',
     icon: LuMessagesSquare,
     group: 'work',
-    // Org-level, NOT project-scoped (same as /teams): the inbox lists every
-    // conversation in the org, so it must not be nested under a project.
-    //
+    // Org-level, NOT project-scoped (the inbox lists every
+    // conversation in the org, so it must not be nested under a project).
     // `scoped: false` is load-bearing, not cosmetic: `navItemHref` sends
     // default-scoped items through `projectHref`, which returns the template
     // href UNCHANGED when the path is absent from PROJECT_SCOPED_PATHS - so the
@@ -445,6 +444,7 @@ export function isNavItemActive(href: string, pathname: string): boolean {
 export const PROJECT_SCOPED_PATHS = new Set([
   '/leads',
   '/visits',
+  '/teams',
   '/inventory',
   '/bookings',
   '/notifications',
