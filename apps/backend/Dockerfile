@@ -11,6 +11,20 @@
 #
 # tsx is a runtime dependency of @shadhil/backend for local seed/dev scripts;
 # it is NOT used to run the production server.
+#
+# SLIM PROD TREE (2026-10-05). The old runner copied the WHOLE hoisted
+# node_modules (1.5 GB) - every workspace's deps and dev tooling included
+# (`next` ~200 MB, `@next/swc` ~92 MB, `@turbo` binaries, two TypeScripts).
+# That is ~0.7 GB of dead weight in a service that only runs NestJS, and it
+# is why a deploy's image transfer took ~20 min/image and blew the 45-min CI
+# job cap. The runner now installs a PRODUCTION-ONLY tree scoped to
+# @shadhil/backend's dependency closure. `prisma` and `tsx` are declared as
+# real dependencies of @shadhil/database (not devDependencies) precisely
+# because this image runs them: the deploy workflow executes
+# `prisma migrate deploy` and seeds via `tsx` inside the container.
+#
+# The /app/apps/backend and /app/packages/... layout is preserved so the
+# deploy workflow's in-container paths keep working unchanged.
 
 # ── Build stage ───────────────────────────────────────────────────────────────
 FROM node:26-alpine AS builder
@@ -56,12 +70,22 @@ WORKDIR /app
 # node:26-alpine doesn't include corepack - install pnpm directly
 RUN npm install -g pnpm@12.8.1
 
-# Runtime deps: root node_modules (hoisted devtool bins are harmless) +
-# per-workspace node_modules with the real dependency symlinks (pnpm
-# isolated linker keeps @nestjs/* etc. under apps/backend/node_modules).
-COPY --from=builder /app/node_modules ./node_modules
+# Workspace manifests, needed for the scoped prod install below.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY tsconfig.base.json ./
+
+# App + package MANIFESTS + built output from the builder. Copying the whole
+# apps/packages trees also brings each package's own node_modules where the
+# builder already linked its workspace deps.
 COPY --from=builder /app/apps/backend apps/backend
 COPY --from=builder /app/packages/ packages/
+
+# Replace the builder's full (dev-inclusive) tree with a prod-only install
+# scoped to the backend closure. This drops web-only and dev-only packages
+# (~0.7 GB). --ignore-scripts because app postinstalls need bash (alpine has
+# none) and nothing they do is wanted in an image.
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
+      --filter "@shadhil/backend..."
 
 # eng review A5: NestJS boot-time check reads this. If not 'session',
 # bootstrap throws PoolModeError.

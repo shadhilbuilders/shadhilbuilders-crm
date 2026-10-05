@@ -302,13 +302,13 @@ importers:
       '@shadhil/database':
         specifier: workspace:*
         version: link:../../packages/database
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
     devDependencies:
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -543,6 +543,12 @@ importers:
       '@prisma/client-runtime-utils':
         specifier: 7.10.0
         version: 7.10.0
+      prisma:
+        specifier: 7.10.0
+        version: 7.10.0(@types/node@26.4.0)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
     devDependencies:
       '@types/node':
         specifier: ^26.4.0
@@ -550,12 +556,6 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
-      prisma:
-        specifier: 7.10.0
-        version: 7.10.0(@types/node@26.4.0)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

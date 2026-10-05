@@ -9,11 +9,18 @@
 # Runtime shape: the package has no build step (tsconfig sets noEmit) - it runs
 # TypeScript directly through tsx. So the production stage keeps the tsx binary
 # instead of compiling to dist/. If a `build` script is ever added, switch the
-# runner to `node dist/server.js` and drop devDependencies.
+# runner to `node dist/server.js` and drop devDependencies. tsx is therefore a
+# REAL dependency of this package (not a devDependency).
 #
 # Build context is the REPO ROOT (not apps/realtime-sse/): the service imports
 # @shadhil/database and @shadhil/api-types through workspace symlinks, and those
 # packages must be built from source here.
+#
+# SLIM PROD TREE (2026-10-05): the old runner copied the whole hoisted
+# node_modules (~1.5 GB, dev tooling + web-only deps included). The runner now
+# installs a PRODUCTION-ONLY tree scoped to the SSE closure. The layout
+# (/app/packages/... + /app/apps/realtime-sse) is preserved - the run command
+# and workspace symlinks depend on it.
 
 # ── Build stage ───────────────────────────────────────────────────────────────
 FROM node:26-alpine AS builder
@@ -54,11 +61,18 @@ WORKDIR /app
 # node:26-alpine doesn't include corepack - install pnpm directly
 RUN npm install -g pnpm@12.8.1
 
-# Runtime deps: root node_modules (hoisted) + per-workspace node_modules with the
-# real symlinks (pnpm's isolated linker keeps tsx under the app's node_modules).
-COPY --from=builder /app/node_modules ./node_modules
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY tsconfig.base.json ./
+
+# Built workspace packages + the SSE app (its node_modules already link the
+# workspace deps the builder resolved).
 COPY --from=builder /app/packages/ packages/
 COPY --from=builder /app/apps/realtime-sse apps/realtime-sse
+
+# Prod-only, closure-scoped install replaces the builder's full tree
+# (~1.5 GB -> slim). Includes @shadhil/database and tsx, both runtime needs.
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
+      --filter "@shadhil/realtime-sse..."
 
 ENV NODE_ENV=production
 ENV REALTIME_SSE_PORT=8090
