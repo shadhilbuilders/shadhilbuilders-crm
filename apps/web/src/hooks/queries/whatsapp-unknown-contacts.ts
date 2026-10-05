@@ -31,6 +31,7 @@ import {
 } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
+import { invalidateLeadCaches } from '@/hooks/queries/crm';
 
 import type {
   ConvertUnknownContactDto,
@@ -90,11 +91,11 @@ export function useConvertWaUnknownContact() {
       ),
     onSuccess: () => {
       // The list must refetch - convert flips the contact to CONVERTED
-      // and adds a row to the Leads inbox.
+      // and adds a row to the Leads inbox. KPI strip counts bump too.
       void queryClient.invalidateQueries({
         queryKey: ['whatsapp-unknown-contacts'],
       });
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient);
     },
   });
 }

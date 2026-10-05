@@ -60,7 +60,7 @@ export default function LeadDetailPage() {
       />
 
       {leadQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,440px)]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <div className="space-y-4">
             <Skeleton variant="card" />
             <Skeleton variant="list" count={4} />
@@ -68,7 +68,7 @@ export default function LeadDetailPage() {
           <Skeleton variant="card" />
         </div>
       ) : lead !== undefined && lead !== null ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,440px)]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           {/* Left - lead info + actions + timeline */}
           <div className="space-y-4">
             <LeadInfoCard lead={lead} />

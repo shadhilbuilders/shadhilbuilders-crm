@@ -40,14 +40,23 @@ describe('booking writes invalidate the lead caches (T-BOOK-LEADSYNC)', () => {
       ['inventory', 'units'],
       ['leads'],
       ['lead', 'ld1'],
+      ['dashboard-stats'],
+      ['dashboard-exceptions'],
     ]) {
       client.setQueryData(key, []);
     }
   });
 
-  it('refreshes bookings, inventory AND leads - including the single lead', () => {
+  it('refreshes bookings, inventory, leads AND KPI surfaces - including the single lead', () => {
     invalidateBookingSideEffects(client, 'bk1', 'ld1');
-    expect(invalidatedRoots(client)).toEqual(['bookings', 'inventory', 'lead', 'leads']);
+    expect(invalidatedRoots(client)).toEqual([
+      'bookings',
+      'dashboard-exceptions',
+      'dashboard-stats',
+      'inventory',
+      'lead',
+      'leads',
+    ]);
   });
 
   it('refreshes the leads LIST even when the lead id is unknown', () => {
@@ -58,11 +67,13 @@ describe('booking writes invalidate the lead caches (T-BOOK-LEADSYNC)', () => {
     const roots = invalidatedRoots(client);
     expect(roots).toContain('leads');
     expect(roots).toContain('inventory');
+    expect(roots).toContain('dashboard-stats');
   });
 
   it('the create path (no booking id yet) still refreshes leads', () => {
     invalidateBookingSideEffects(client, undefined, 'ld1');
     expect(invalidatedRoots(client)).toContain('leads');
+    expect(invalidatedRoots(client)).toContain('dashboard-stats');
   });
 
   it('ignores an empty lead id rather than invalidating the ["lead"] root', () => {

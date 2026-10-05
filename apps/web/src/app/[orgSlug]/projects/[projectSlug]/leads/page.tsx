@@ -32,7 +32,7 @@ import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
@@ -160,6 +160,20 @@ function LeadInboxPageInner() {
   const total = envelope?.total ?? 0;
   const overdueCount = envelope?.overdueCount ?? 0;
   const newTodayCount = envelope?.newTodayCount ?? 0;
+
+  // Row tints and the Overdue badge age client-side, but the summary KPI
+  // line (`overdueCount` / `newTodayCount`) is server-computed. Without a
+  // refetch when a NEW lead crosses the 30-min SLA while the page is open,
+  // the table can show Overdue while the summary still says "0 overdue".
+  // Same 30s heartbeat as the row tint - one timer, two consumers.
+  const hasNewLead = rows.some((r) => r.status === 'NEW');
+  const agingTick = useAgingTick(hasNewLead);
+  const refetchLeads = leadsQuery.refetch;
+  useEffect(() => {
+    // tick starts at 0; skip the mount render so we don't double-fetch.
+    if (agingTick === 0) return;
+    void refetchLeads();
+  }, [agingTick, refetchLeads]);
 
   const canDelete = user !== null && canDeleteLeads(user.role);
   const canAssign = user !== null && canReassign(user.role);
@@ -297,6 +311,7 @@ function LeadInboxPageInner() {
           isFiltered={isFiltered}
           search={search}
           onSearchChange={applySearch}
+          agingTick={agingTick}
           onEdit={(row) => {
             setEditTarget(row);
           }}
@@ -424,6 +439,7 @@ function LeadTable({
   isFiltered,
   search,
   onSearchChange,
+  agingTick,
   onEdit,
   onDelete,
   onReassign,
@@ -447,36 +463,31 @@ function LeadTable({
   isFiltered: boolean;
   search: string;
   onSearchChange: (next: string) => void;
+  /** Shared aging heartbeat from the page - also drives the summary KPI refetch. */
+  agingTick: number;
   onEdit: (row: LeadRow) => void;
   onDelete: (row: LeadRow) => void;
   onReassign: (row: LeadRow) => void;
   onView: (row: LeadRow) => void;
 }) {
-  // Row tints age in real time (10/20/30-min tiers), so the table needs a
-  // coarse heartbeat - otherwise a lead that crosses a boundary while the
-  // operator is reading the page stays white until the next refetch.
-  // Only tick when there is something that can age: a page with no NEW lead
-  // has no tint to update, so we avoid the timer entirely.
-  const hasNewLead = rows.some((r) => r.status === 'NEW');
-  const tick = useAgingTick(hasNewLead);
-
   /**
    * Row tint by lead age (user request 2026-09-15). Tiers live in
    * `@/lib/leads` so they are unit-tested + reusable; this only maps a row to
-   * its class. `tick` is in the deps on purpose: it is what makes the table
-   * re-evaluate the tiers as time passes.
+   * its class. `agingTick` is in the deps on purpose: it is what makes the
+   * table re-evaluate the tiers as time passes (timer lives on the page so
+   * the summary KPI line can refetch on the same beat).
    *
    * Returns undefined (no class) for everything else, so a non-NEW row keeps
    * the table's default background.
    */
   const getRowClassName = useMemo(() => {
-    void tick;
+    void agingTick;
     const now = Date.now();
     return (row: { original: LeadRow }): string | undefined => {
       const tier = leadAgeTier(row.original, now);
       return tier === null ? undefined : LEAD_AGE_TIER_CLASS[tier];
     };
-  }, [tick]);
+  }, [agingTick]);
 
   const columns = useMemo<DataTableColumnDef<LeadRow>[]>(
     () => [

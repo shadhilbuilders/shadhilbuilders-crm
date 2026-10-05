@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/apis/client';
+import { invalidateLeadCaches } from '@/hooks/queries/crm';
 
 export type ReplacementCandidate = {
   userId: string;
@@ -91,12 +92,14 @@ export function useReassignAndRemove(teamId: string | undefined, userId: string 
         { method: 'POST', json: input },
       ),
     onSuccess: async () => {
+      // Ownership moves → inbox + KPI strip must both refresh. The old
+      // `['dashboard']` key never matched `['dashboard-stats', …]`, so
+      // KPIs stayed stale after a team removal for up to their staleTime.
+      invalidateLeadCaches(queryClient);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['teams'] }),
         queryClient.invalidateQueries({ queryKey: ['projects', 'teams'] }),
         queryClient.invalidateQueries({ queryKey: ['users'] }),
-        queryClient.invalidateQueries({ queryKey: ['leads'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
       ]);
     },
   });

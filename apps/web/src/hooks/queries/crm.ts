@@ -229,7 +229,7 @@ export function useCreateLead() {
     mutationFn: (body: CreateLeadDto) =>
       api<unknown>('/leads', { method: 'POST', json: body }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient);
     },
   });
 }
@@ -251,10 +251,7 @@ export function useUpdateLead(leadId: string | null) {
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
-      if (leadId !== null) {
-        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      }
+      invalidateLeadCaches(queryClient, leadId ?? undefined);
     },
   });
 }
@@ -277,9 +274,8 @@ export function useTransitionLead(leadId: string | null) {
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient, leadId ?? undefined);
       if (leadId !== null) {
-        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
         void queryClient.invalidateQueries({
           queryKey: ['lead', leadId, 'activities'],
         });
@@ -308,8 +304,10 @@ export function useDeleteLead(leadId: string | null) {
       return api<{ id: string }>(`/leads/${leadId}`, { method: 'DELETE' });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient, leadId ?? undefined);
       if (leadId !== null) {
+        // Detail cache is REMOVED (not invalidated) so a stale link cannot
+        // refetch a deleted row into ['lead', id] and render a 404 page.
         void queryClient.removeQueries({ queryKey: ['lead', leadId] });
       }
     },
@@ -336,9 +334,8 @@ export function useReassignLead() {
         { method: 'POST', json: body },
       ),
     onSuccess: (row) => {
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient, row?.id);
       if (row?.id) {
-        void queryClient.invalidateQueries({ queryKey: ['lead', row.id] });
         void queryClient.invalidateQueries({
           queryKey: ['lead', row.id, 'activities'],
         });
@@ -367,8 +364,9 @@ export function useSetLeadCoOwner() {
       // useLead/useLeadActivities read keys as `['leads', id]` (plural).
       // Invalidate the broad `['leads']` prefix (matches the detail +
       // inbox list) and the specific detail/activities keys so the new
-      // co-owner appears immediately without a refresh.
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      // co-owner appears immediately without a refresh. Also bust the
+      // dashboard KPIs - ownership changes reshuffle overdue lanes.
+      invalidateLeadCaches(queryClient, row?.id);
       if (row?.id) {
         void queryClient.invalidateQueries({ queryKey: ['leads', row.id] });
         void queryClient.invalidateQueries({
@@ -464,10 +462,10 @@ export function useCreateVisit() {
         typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
           ? (data as { leadId: string }).leadId
           : variables.leadId;
-      if (typeof leadId === 'string') {
-        void queryClient.invalidateQueries({ queryKey: ['leads'] });
-        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      }
+      invalidateLeadCaches(
+        queryClient,
+        typeof leadId === 'string' ? leadId : undefined,
+      );
     },
   });
 }
@@ -494,11 +492,8 @@ export function useUpdateVisitOutcome(visitId: string | null) {
       const leadId =
         typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
           ? (data as { leadId: string }).leadId
-          : null;
-      if (leadId !== null) {
-        void queryClient.invalidateQueries({ queryKey: ['leads'] });
-        void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      }
+          : undefined;
+      invalidateLeadCaches(queryClient, leadId);
     },
   });
 }
@@ -530,7 +525,7 @@ export function useRescheduleVisit() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['visits'] });
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      invalidateLeadCaches(queryClient);
     },
   });
 }
@@ -862,22 +857,31 @@ function invalidateBookingAndInventory(queryClient: QueryClient, bookingId?: str
 }
 
 /**
+ * Drop every surface that reads lead state or the derived KPI numbers.
+ *
+ * The work-dashboard KPI strip (`dashboard-stats`) and the admin problem
+ * inbox (`dashboard-exceptions`) are NOT the same cache as `['leads']`.
+ * Without busting them here, a queue mutation (create / transition /
+ * reassign / delete / visit outcome / booking) refreshes the table while
+ * "N overdue" / "new today" lag for up to their staleTime - the exact
+ * mismatch operators notice when they clear a lead and the count stays.
+ *
+ * Exported so visit-replay / team-member / WhatsApp convert paths can
+ * call the same helper instead of inventing a partial invalidation.
+ *
  * T-BOOK-LEADSYNC: a booking write also moves `Lead.state` server-side
  * (HOLD → NEGOTIATION, TOKEN → BOOKING_INITIATED, APPROVED → WON, and a
- * cancel/reject or delete releases it back to NEGOTIATION). Without refreshing
- * the lead caches the leads page/board keeps showing the pre-booking state for
- * up to the 5-minute staleTime - the exact "lead and booking status is not in
- * sync" symptom, this time in the client rather than the database.
- *
- * `leadId` is optional because the transition/edit/delete callers only know the
- * booking id; the `['leads']` list is invalidated regardless, which is what the
- * pipeline board and the leads grid actually read.
+ * cancel/reject or delete releases it back to NEGOTIATION). `leadId` is
+ * optional because some callers only know the booking id; the `['leads']`
+ * list is invalidated regardless.
  */
-function invalidateLeadCaches(queryClient: QueryClient, leadId?: string) {
+export function invalidateLeadCaches(queryClient: QueryClient, leadId?: string) {
   void queryClient.invalidateQueries({ queryKey: ['leads'] });
   if (typeof leadId === 'string' && leadId.length > 0) {
     void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
   }
+  void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+  void queryClient.invalidateQueries({ queryKey: ['dashboard-exceptions'] });
 }
 
 /** Every booking write: bookings + inventory + the parent lead's caches.

@@ -5,6 +5,7 @@ import { LuCloudOff, LuClock, LuCircleAlert, LuSettings } from '@paalstack/react
 import { Badge, Button, PopoverContent, PopoverRoot, PopoverTrigger } from '@paalstack/react-ui';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { invalidateLeadCaches } from '@/hooks/queries/crm';
 import { useQueueStore } from '@/lib/offline-store/queue-store';
 import { subscribeQueueToStore } from '@/lib/offline-store/queue-store';
 
@@ -81,7 +82,9 @@ export const OfflineQueueBadge = () => {
       // full reload.
       if (result.succeeded > 0) {
         void queryClient.invalidateQueries({ queryKey: ['visits'] });
-        void queryClient.invalidateQueries({ queryKey: ['leads'] });
+        // Queue + KPI strip share this helper - an offline visit outcome can
+        // clear an overdue lead and must refresh both numbers together.
+        invalidateLeadCaches(queryClient);
       }
     } catch {
       // Replay is best-effort; the SW will retry on the next Background
