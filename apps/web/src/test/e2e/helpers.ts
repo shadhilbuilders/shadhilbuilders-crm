@@ -20,6 +20,9 @@ function stillOnLogin(url: URL): boolean {
 }
 
 export async function login(page: Page): Promise<void> {
+  // Always navigate: specs rely on login() leaving the page on the app origin
+  // (relative fetch() in page.evaluate fails on about:blank). With a session
+  // from auth.setup the proxy redirects off /login below, so no sign-in call.
   await page.goto('/login', NAV);
   // Session cookie from auth.setup already signed us in: proxy redirects
   // off /login and we are done. Avoid another sign-in hit (better-auth

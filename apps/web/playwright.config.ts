@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './src/test/e2e',
 
-  fullyParallel: true,
+  fullyParallel: false,
 
   // Login + first paint of an authenticated page routinely exceeds Playwright's
   // 30s default when Next is compiling a route. SSE-backed pages never reach

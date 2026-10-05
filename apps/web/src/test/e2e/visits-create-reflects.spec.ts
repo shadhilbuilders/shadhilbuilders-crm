@@ -86,6 +86,13 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
       .locator('[data-qa="visits-show-past"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
+    // The toggle is server-rendered (visible pre-hydration); the calendar header
+    // mounts only after hydration + the visits query, so wait for it before
+    // interacting.
+    await page
+      .locator('[data-qa="calendar-prev"]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 });
   });
 
   // Undo the booking each test makes. The spec must be re-runnable and must not
@@ -137,22 +144,24 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
   });
 
   test('a visit dated in the SAME month appears without moving the view', async ({ page }) => {
-      // Use the demo fixture's "current" month (September 2026) rather than the
-      // system's real date. The seeded demo visits live in September 2026, and
-      // the calendar's selectedDate is Sep 28 (Monday of that week), so
-      // "same month" means September 2026. Using real `now` breaks this when the
-      // system clock is in a different month (e.g. October).
-      // 
-      // Additionally, the ScheduleVisitDialog validates that the scheduled date is
-      // in the future relative to the system clock. If the system clock is in a
-      // different month than the demo fixture (October vs September), the test
-      // cannot create a "future" visit in September without violating that rule.
-      // We skip when the system month ≠ demo fixture month (9 = September).
-      const demoCurrent = new Date('2026-09-28T00:00:00.000Z');
-      const systemCurrent = new Date();
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      // Dialog rejects past slots. Stay in the visible month so the agenda
+      // does not jump. Tomorrow works except on the last day of the month;
+      // then book later today if there is still evening left.
+      const slot =
+        tomorrow.getMonth() === now.getMonth()
+          ? { date: ymd(tomorrow), time: '23:30' }
+          : now.getHours() < 22
+            ? { date: ymd(now), time: '23:30' }
+            : null;
       test.skip(
-        systemCurrent.getMonth() !== demoCurrent.getMonth(),
-        `system month (${systemCurrent.getMonth() + 1}) differs from demo fixture month (${demoCurrent.getMonth() + 1}); same-month test would violate future-date validation`,
+        slot === null,
+        'no future slot remains in the current month',
       );
 
       const monthBefore = await visibleMonth(page);
@@ -167,10 +176,8 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
       await page.locator('[role="option"]').first().click();
       await page.waitForTimeout(400);
 
-      // Use the demo fixture date (Sep 30, 2026) which is in the same month
-      // as the calendar's current view (Sep 28 → September).
-      await dialog.getByRole('textbox', { name: /date/i }).fill('2026-09-30');
-      await dialog.getByRole('textbox', { name: /time/i }).fill('23:30');
+      await dialog.getByRole('textbox', { name: /date/i }).fill(slot!.date);
+      await dialog.getByRole('textbox', { name: /time/i }).fill(slot!.time);
       await dialog.getByRole('button', { name: /^schedule$/i }).last().click();
 
       // Dialog closes on success - a validation failure leaves it open with an alert.

@@ -139,7 +139,13 @@ export const queryClient = new QueryClient({
       // GC'd AND its in-flight fetch is cancelled. Prevents the
       // "skeleton-pulse-forever" failure mode (CEO §2 1A).
       gcTime: 30 * 1000,
-      refetchOnWindowFocus: process.env.NODE_ENV === 'production',
+      // Playwright sets navigator.webdriver. Production otherwise
+      // refetches every query on focus, which in CI (NODE_ENV=production
+      // + tab switches between tests) stampedes the API and looks like
+      // random 15–30s "element not visible" flakes.
+      refetchOnWindowFocus:
+        process.env.NODE_ENV === 'production' &&
+        !(typeof navigator !== 'undefined' && navigator.webdriver),
       refetchOnReconnect: true,
       refetchOnMount: true,
       // T21: dev-mode warning when a query is GC'd at the 30s

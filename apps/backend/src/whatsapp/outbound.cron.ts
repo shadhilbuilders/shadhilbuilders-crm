@@ -111,8 +111,18 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
   /** @Cron wrapper. Bypasses the lock + runOnce path that tests use. */
   @Cron('*/5 * * * * *')
   async tick(): Promise<void> {
-    await this.runOnce();
+    // In-process overlap guard: with a 5s interval, a stalled tick would
+    // otherwise stack up and hold the lock against itself.
+    if (this.cronRunning) return;
+    this.cronRunning = true;
+    try {
+      await this.runOnce();
+    } finally {
+      this.cronRunning = false;
+    }
   }
+
+  private cronRunning = false;
 
   /** Test-friendly public entry. Acquires the lease, claims a batch,
    *  sends each row, releases the lease. */

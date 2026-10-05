@@ -45,6 +45,13 @@ async function settled(page: Page): Promise<void> {
     state: 'visible',
     timeout: 30_000,
   });
+  // The switch is in the server HTML, so it is visible BEFORE React hydrates;
+  // a click/keypress then is silently dropped. The calendar header only mounts
+  // client-side once the visits query resolves, so it is a hydration signal.
+  await page.locator('[data-qa="calendar-prev"]').first().waitFor({
+    state: 'visible',
+    timeout: 30_000,
+  });
 }
 
 /**

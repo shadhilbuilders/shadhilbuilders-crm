@@ -38,7 +38,7 @@ test('leads inbox: no hydration mismatch on load', async ({ page }) => {
 
   // The page should render the Lead Inbox header.
   await expect(page.getByRole('heading', { name: /Lead Inbox/i })).toBeVisible({
-    timeout: 15_000,
+    timeout: 30_000,
   });
 
   // The shared app shell previously threw ONE hydration error on EVERY

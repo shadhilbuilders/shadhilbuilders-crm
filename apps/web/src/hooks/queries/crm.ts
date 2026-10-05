@@ -409,6 +409,44 @@ export function useVisits(
   });
 }
 
+const VISIT_PAGE_SIZE = 200; // VisitFilterDtoSchema max
+
+/**
+ * Every visit inside [from, to], paged to completion.
+ *
+ * The API caps one page at 200 rows, so a single call silently truncates a busy
+ * range. This follows `total` until all rows are loaded. Same ['visits'] key
+ * prefix as useVisits, so create/reschedule invalidations refetch it.
+ */
+export function useVisitsInRange(params: { from: string; to: string; projectId?: string }) {
+  return useQuery({
+    queryKey: ['visits', 'range', params] as const,
+    queryFn: async ({ signal }) => {
+      const all: unknown[] = [];
+      for (let offset = 0; ; offset += VISIT_PAGE_SIZE) {
+        const payload = await api<unknown>(
+          `/visits${qs({
+            from: params.from,
+            to: params.to,
+            projectId: params.projectId,
+            limit: VISIT_PAGE_SIZE,
+            offset,
+          })}`,
+          { signal },
+        );
+        const rows = unwrapRows<unknown>(payload);
+        all.push(...rows);
+        const total = (payload as { total?: number } | null)?.total;
+        if (rows.length < VISIT_PAGE_SIZE || (typeof total === 'number' && all.length >= total)) {
+          return all;
+        }
+      }
+    },
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /**
  * Schedule a new site visit. Invalidates ['visits'] + the parent
  * lead's caches on success - the parent lead auto-advances from

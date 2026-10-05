@@ -21,7 +21,7 @@ import { describe, expect, it, vi } from 'vitest';
 // default view is observable without a network layer; the suite is about which
 // VIEW mounts, not about data.
 vi.mock('@/hooks/queries/crm', () => ({
-  useVisits: vi.fn(() => ({ data: [], isLoading: false, error: null })),
+  useVisitsInRange: vi.fn(() => ({ data: [], isLoading: false, error: null })),
   useRescheduleVisit: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   // T-LEAD-SYNC-COVERAGE (2026-09-30): the calendar reports a skipped lead sync
   // after a drag-reschedule, so it imports this too. A partial mock must expose
@@ -34,6 +34,7 @@ vi.mock('@paalstack/react-ui', async (importOriginal) => {
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
+import { useVisitsInRange } from '@/hooks/queries/crm';
 import { SiteVisitCalendar } from './site-visit-calendar';
 
 function render(): string {
@@ -84,5 +85,15 @@ describe('SiteVisitCalendar default view', () => {
     // And the inactive ones must not be filled - otherwise "active" means nothing.
     const weekIdx = html.indexOf('aria-label="View by week"');
     expect(html.slice(weekIdx, weekIdx + 900)).not.toContain('bg-primary');
+  });
+
+  it('shows a skeleton while visits load, not the empty agenda', () => {
+    vi.mocked(useVisitsInRange).mockReturnValueOnce({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    } as ReturnType<typeof useVisitsInRange>);
+    const html = render();
+    expect(html).not.toContain('No events scheduled for the selected month');
   });
 });

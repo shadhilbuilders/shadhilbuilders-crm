@@ -50,7 +50,15 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'test') {
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    // Explicit pool cap: pg's default is 10 per process, and every process
+    // (backend, realtime-sse) multiplies against pgbouncer's
+    // default_pool_size=25 in session mode. Keep the sum well under it so
+    // cron bursts queue in-process instead of exhausting the server pool
+    // (P2028). Override with DB_POOL_MAX.
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.DB_POOL_MAX ?? 8) || 8,
+    }),
     log:
       process.env.PRISMA_LOG_QUERIES === '1'
         ? ['query', 'error', 'warn']

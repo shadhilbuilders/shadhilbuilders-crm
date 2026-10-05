@@ -9,13 +9,15 @@
 // passed in here as the calendar's controlled `selectedDate`, so the page's
 // Prev/Next drive BOTH the fetch range (from/to) AND the calendar view -
 // otherwise the buttons would refetch data but the view wouldn't move.
+import { addWeeks, endOfMonth, endOfYear, startOfMonth, startOfYear, subWeeks } from 'date-fns';
 import { useMemo, useState } from 'react';
 
 import { toast } from '@paalstack/react-ui';
 
+import { Skeleton } from '@/components/shared/Skeleton';
 import { CalendarProvider } from './calendar-context';
 import { ClientContainer } from './client-container';
-import { leadSyncNoteOf, useRescheduleVisit, useVisits } from '@/hooks/queries/crm';
+import { leadSyncNoteOf, useRescheduleVisit, useVisitsInRange } from '@/hooks/queries/crm';
 import { isUpcomingVisitForLead, toVisitEventMeta, visitStatusColor } from '@/lib/visit-status';
 
 import type { IEvent, IUser } from './interfaces';
@@ -72,7 +74,20 @@ export function SiteVisitCalendar({
   // so nothing is lost, and `view` remains local state, so a user's choice is not
   // persisted and each visit to the page starts on the agenda.
   const [view, setView] = useState<TCalendarView>('agenda');
-  const visitsQuery = useVisits({ projectId, limit: 200 });
+  // Fetch exactly what the view can show, paged to completion (no row cap).
+  // Year view needs the year; every other view fits in the selected month plus
+  // a week either side (month-grid leading/trailing cells, weeks that straddle
+  // a month boundary).
+  // Anchor = start of the visible month/year, as a number: stable across days
+  // within the period (no refetch per day) and not a fresh Date each render.
+  const anchorTime = (view === 'year' ? startOfYear(weekStart) : startOfMonth(weekStart)).getTime();
+  const range = useMemo(() => {
+    const anchor = new Date(anchorTime);
+    const start = view === 'year' ? anchor : subWeeks(anchor, 1);
+    const end = view === 'year' ? endOfYear(anchor) : addWeeks(endOfMonth(anchor), 1);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }, [view, anchorTime]);
+  const visitsQuery = useVisitsInRange({ ...range, projectId });
   const reschedule = useRescheduleVisit();
 
   /**
@@ -170,6 +185,10 @@ export function SiteVisitCalendar({
       },
     );
   };
+
+  if (visitsQuery.isLoading) {
+    return <Skeleton variant="card" />;
+  }
 
   return (
     <CalendarProvider

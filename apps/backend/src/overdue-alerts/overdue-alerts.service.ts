@@ -118,8 +118,21 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
 
   @Cron('* * * * *')
   async processOverdue(): Promise<void> {
-    await this.tick();
+    // In-process overlap guard: a stalled tick must not pile up behind
+    // itself and drain the connection pool.
+    if (this.cronRunning) {
+      this.logger.warn('Previous overdue tick still running - skipping');
+      return;
+    }
+    this.cronRunning = true;
+    try {
+      await this.tick();
+    } finally {
+      this.cronRunning = false;
+    }
   }
+
+  private cronRunning = false;
 
   /** Public wrapper around the cron body. Tests drive this directly. */
   async tick(): Promise<void> {

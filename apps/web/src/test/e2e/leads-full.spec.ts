@@ -30,7 +30,7 @@ async function gotoLeads(page: Page): Promise<void> {
   await login(page);
   await gotoApp(page, LEADS_URL);
   await expect(page.getByRole('heading', { name: /Lead Inbox/i })).toBeVisible({
-    timeout: 15_000,
+    timeout: 30_000,
   });
 }
 

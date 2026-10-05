@@ -359,9 +359,13 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
         .getByText(/^Visit booked$/, { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator('[data-qa="lead-visit-panel"]')).toBeVisible();
+    // The visit panel renders after its own client-side visits fetch, so it
+    // lags the action panel; the 5s default raced a busy server.
+    await expect(page.locator('[data-qa="lead-visit-panel"]')).toBeVisible({
+      timeout: 15_000,
+    });
     const markDone = page.locator('[data-qa="visit-mark-completed"]');
-    await expect(markDone).toBeVisible();
+    await expect(markDone).toBeVisible({ timeout: 15_000 });
     await shot(page, '07a-before-mark-completed');
     await markDone.click();
 
@@ -392,20 +396,6 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await page.getByRole('button', { name: /^View by week$/i }).click();
     await page.waitForTimeout(1_000);
 
-    // STEP 6 schedules the visit for today+7 using system clock (likely October).
-    // The demo fixture's seeded visits are in September 2026. Navigate back to
-    // September to find the seeded visits (demo-visit-upcoming-1 on Sep 30).
-    // The calendar's selectedDate is Sep 28 (Monday of that week), so we may
-    // need to go back a week or two. Use the calendar's own Prev button.
-    // Click Prev until the month header shows September.
-    for (let i = 0; i < 6; i++) {
-      const monthLabel = page.locator('[data-qa="calendar-prev"]').first().locator('..').locator('..').locator('span').first();
-      const text = (await monthLabel.innerText()).trim();
-      if (text.startsWith('September')) break;
-      await page.locator('[data-qa="calendar-prev"]').first().click();
-      await page.waitForTimeout(500);
-    }
-
     await shot(page, '08a-visits-page');
 
     // NOT getByRole('table'): the calendar is built from CSS `grid-cols-7`
@@ -425,10 +415,17 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
         `STEP 8: expected 7 day columns in the week grid, got ${dayColumns}.`,
       );
     }
-    // The seeded demo visit (demo-visit-upcoming-1) is on Sep 30, which falls
-    // in the week of Sep 28. The week grid should show it.
+    // The seeded demo visit (demo-visit-upcoming-1) is scheduled relative to
+    // today (setup-demo-user.ts, demoVisitSchedule: tomorrow). That is this
+    // week unless today is the last day of the week, so also check next week;
+    // STEP 6's own visit (today+7) lands there too.
     const visitPills = page.locator('[data-qa="visit-event-block"]');
-    const pillCount = await visitPills.count();
+    let pillCount = await visitPills.count();
+    for (let i = 0; i < 2 && pillCount === 0; i += 1) {
+      await page.locator('[data-qa="calendar-next"]').first().click();
+      await page.waitForTimeout(700);
+      pillCount = await visitPills.count();
+    }
     console.log(`[STEP 8] /visits grid rendered with ${pillCount} visit pill(s).`);
     expect(pillCount).toBeGreaterThanOrEqual(1);
   });

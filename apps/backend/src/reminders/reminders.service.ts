@@ -39,6 +39,14 @@ const LOCK_TTL_SEC = 50; // cron fires every 60s - keep < 60
 const LOCK_RENEWAL_SEC = 25; // renew at half-life
 const BATCH_SIZE = 100;
 
+function isPrismaCode(err: unknown, code: string): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === code
+  );
+}
+
 export interface ReminderListResult {
   total: number;
   rows: Array<{
@@ -206,8 +214,20 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
    */
   @Cron('* * * * *')
   async processDueReminders(): Promise<void> {
-    await this.tick();
+    // In-process overlap guard (see OverdueAlertsService).
+    if (this.cronRunning) {
+      this.logger.warn('Previous reminder tick still running - skipping');
+      return;
+    }
+    this.cronRunning = true;
+    try {
+      await this.tick();
+    } finally {
+      this.cronRunning = false;
+    }
   }
+
+  private cronRunning = false;
 
   /**
    * Public wrapper around the cron body. Tests call this directly
@@ -386,12 +406,35 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       } finally {
         clearInterval(renewTimer);
       }
+    } catch (err) {
+      // Never let a tick failure escape the @Cron handler. A P2028
+      // means the DB pool/connection was unavailable (DB or pgbouncer
+      // down, pool saturated, WSL/network blip). Rows already claimed
+      // stay PROCESSING and are picked up by stuck-row recovery; the
+      // next minute's tick retries automatically.
+      if (isPrismaCode(err, 'P2028') || isPrismaCode(err, 'P1001')) {
+        this.logger.warn(
+          `Reminder tick skipped: database unavailable or busy (${(err as { code: string }).code}). ` +
+            `Check Postgres/pgbouncer are up and the connection pool isn't exhausted. Will retry next minute.`,
+        );
+      } else {
+        this.logger.error(
+          `Reminder tick failed: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      }
     } finally {
       // Layer 1 cleanup: releaseLock is a Lua compare-and-delete on
       // our token. If a different replica owns the lock by now (e.g.
       // our lease expired and someone else acquired it), the script
       // returns 0 and we don't delete - correct behavior.
-      await this.redis.releaseLock(REMINDER_LOCK_KEY, this.replicaId);
+      try {
+        await this.redis.releaseLock(REMINDER_LOCK_KEY, this.replicaId);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to release ${REMINDER_LOCK_KEY} (TTL will expire it): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       tick.finishedAt = new Date();
     }
   }

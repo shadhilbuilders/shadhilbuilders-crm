@@ -38,6 +38,7 @@ import { randomBytes, scryptSync } from 'node:crypto';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
+import { demoVisitSchedule } from '../src/demo-visit-schedule';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 
 const prisma: PrismaClient = new PrismaClient({
@@ -429,34 +430,29 @@ async function main() {
     },
   });
 
+  // Agenda filters to `isSameMonth(event, selectedDate)`. selectedDate is
+  // this week, so fixtures must live in the CURRENT month, not a frozen
+  // September 2026 week (that disappeared from the calendar on 1 Oct).
+  const visitTimes = demoVisitSchedule();
   const visitDefs = [
-    // Upcoming visit on a live lead (Meera, BOOKING_INITIATED) — should render
-    // in the default (upcoming-only) view. Must be in the CURRENT month of
-    // selectedDate (which is the week's Monday, Sep 28 → September) so the
-    // agenda view's month filter includes it.
-    // FIXED: use explicit September 2026 dates (the "current" month in the demo
-    // fixture) instead of Date.now() which uses the real current date.
+    // Upcoming visit on a live lead (Meera, BOOKING_INITIATED) — default view.
     {
       id: DEMO_VISIT_UPCOMING_1,
       leadId: DEMO_LEAD_5, // Demo Meera
       organizationId: demoOrg.id,
       userId: demoExec.id,
-      // Thursday of the demo week (Sep 30, 2026) at 11:00 — inside September
-      scheduledFor: new Date('2026-09-30T11:00:00.000Z'),
+      scheduledFor: visitTimes.upcoming,
       status: 'SCHEDULED' as const,
       outcome: null,
       notes: 'Seeded upcoming visit for e2e',
     },
-    // Past visit on a WON lead (Vikram, WON) — should NOT render in the default
-    // view, but SHOULD render when "Show past visits" is toggled on.
-    // Must be within the current month (September) so the agenda view includes it.
+    // Open visit on a WON lead (Vikram) — hidden until "Show past visits".
     {
       id: DEMO_VISIT_PAST_1,
       leadId: DEMO_LEAD_WON, // Demo Vikram (WON)
       organizationId: demoOrg.id,
       userId: demoExec.id,
-      // Wednesday of the demo week (Sep 28, 2026) at 10:00 — inside September
-      scheduledFor: new Date('2026-09-28T10:00:00.000Z'),
+      scheduledFor: visitTimes.past,
       status: 'SCHEDULED' as const,
       outcome: null,
       notes: 'Seeded past visit on WON lead for e2e',

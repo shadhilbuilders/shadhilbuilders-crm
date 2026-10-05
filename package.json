@@ -16,6 +16,7 @@
     "lint:fix": "turbo run lint -- --fix",
     "type-check": "turbo run type-check",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @shadhil/web test:e2e --project=chromium",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "db:generate": "pnpm --filter @shadhil/database generate",
     "db:migrate": "pnpm --filter @shadhil/database migrate",
