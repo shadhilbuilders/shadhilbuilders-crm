@@ -382,7 +382,13 @@ export function useSetLeadCoOwner() {
 // ---------------------------------------------------------------------------
 
 export function useVisits(
-  params: { from?: string; to?: string; projectId?: string; limit?: number } = {},
+  params: {
+    from?: string;
+    to?: string;
+    projectId?: string;
+    leadId?: string;
+    limit?: number;
+  } = {},
 ) {
   return useQuery({
     queryKey: ['visits', params] as const,
@@ -392,6 +398,7 @@ export function useVisits(
           from: params.from,
           to: params.to,
           projectId: params.projectId,
+          leadId: params.leadId,
           limit: params.limit,
         })}`,
         { signal },

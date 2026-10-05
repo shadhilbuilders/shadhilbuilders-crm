@@ -66,9 +66,10 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
   // For VISIT_SCHEDULED, we need the open visit row to record an
-  // outcome. Fetch with a wide time window - there should be at most
-  // one open visit per lead (RLS + service rules).
-  const visitsQuery = useVisits({});
+  // outcome. Filter server-side by leadId: an unfiltered fetch returns only the
+  // first page (default 50) of ALL visits, so on a busy org this lead's visit
+  // fell off the page and the outcome buttons vanished.
+  const visitsQuery = useVisits({ leadId: lead.id });
   const openVisit = Array.isArray(visitsQuery.data)
     ? (visitsQuery.data as { id: string; leadId: string; status: string }[]).find(
         (v) => v.leadId === lead.id && (v.status === 'SCHEDULED' || v.status === 'NO_SHOW'),
