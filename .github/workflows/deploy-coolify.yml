@@ -204,6 +204,28 @@ jobs:
           $SSH 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
           echo "api container did not come up in 300s"; exit 1
 
+      # Keep the disk from refilling. The side-load transfer above adds a
+      # fresh api/sse/web image TRIPLET on every deploy (docker save | load)
+      # and nothing else ever removes the old ones, so the root disk fills:
+      # it hit 100% / 0 bytes free on 2026-10-05 (38GB of stale prod-<sha>
+      # triplets) and load-averaged 40+. Runs only after a SUCCESSFUL deploy,
+      # so the previous triplet is gone once the new one is serving - to roll
+      # back, re-push/rebuild from GHCR (no local rollback image is retained
+      # by design: "keep only what the running app needs"). `docker image
+      # prune -a` protects every image backing a RUNNING container, so the
+      # just-deployed tags and the coolify/traefik/postgres infra stay put.
+      - name: Prune stale images on the VPS
+        run: |
+          set -uo pipefail
+          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
+          TAG="${{ steps.tag.outputs.tag }}"
+          # Explicit rmi of every shadhil-crm tag except the one just deployed.
+          $SSH "docker images --format '{{.Repository}}:{{.Tag}}' | grep 'shadhil-crm-' | grep -v ':$TAG\$' | xargs -r docker rmi -f" || true
+          # Then sweep any layers/orphans those deletions freed, plus build cache.
+          $SSH 'docker image prune -a -f' || true
+          $SSH 'docker builder prune -a -f' || true
+          $SSH 'df -h / | tail -1'
+
       # Runs LAST, and only warns: app code must ship even when Coolify's
       # compose round-trip misbehaves. This closes the hole that made fb0e73b
       # look deployed when nothing had changed.
