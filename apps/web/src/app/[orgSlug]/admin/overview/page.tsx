@@ -141,7 +141,7 @@ function ProblemInbox() {
     projectsById.get(projectId)?.name ?? 'Unknown project';
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 space-y-8 sm:px-6 lg:px-8">
+    <div className="px-4 py-6 space-y-8 sm:px-6 lg:px-8">
       <ProblemHeader />
 
       {/* Card 1 - the flagship: leads nobody has touched in a day.
