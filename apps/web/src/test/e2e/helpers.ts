@@ -29,8 +29,14 @@ export async function login(page: Page): Promise<void> {
   // rate-limits a full suite that logs in per spec).
   if (!stillOnLogin(new URL(page.url()))) return;
   const email = page.locator('input#email, input[name="email"]');
-  if ((await email.count()) === 0) return;
-  await email.waitFor({ state: 'visible', timeout: 15_000 });
+  // WAIT for the form; never `count()` it. `domcontentloaded` can fire before the
+  // login form is in the DOM on a production build, and `count() === 0` used to
+  // be read as "already signed in" - login() returned WITHOUT signing in. In CI
+  // that made auth.setup save an empty storageState (and pass), so every spec
+  // then started anonymous and failed its first attempt on the /login page. If
+  // the session cookie really was valid the proxy redirected off /login above,
+  // so reaching here means the form must appear: fail loudly if it does not.
+  await email.waitFor({ state: 'visible', timeout: 30_000 });
   const password = page.locator('[data-qa="login-password"]');
   const submit = page.getByRole('button', { name: /sign in/i });
 
