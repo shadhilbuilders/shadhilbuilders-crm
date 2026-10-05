@@ -27,6 +27,11 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts'],
     setupFiles: [],
+    // build-emits-all-files.test.ts runs `clean` + rebuild on the dists that
+    // auth.test.ts imports (@shadhil/database/dist). Parallel files made
+    // auth.test.ts fail with 'Failed to resolve entry for package
+    // "@shadhil/database"' whenever the clean landed mid-import. Serialize.
+    fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

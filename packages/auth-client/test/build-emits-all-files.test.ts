@@ -42,9 +42,9 @@
 // Reference: discovered while integrating landing-page brand assets
 // into the CRM web app (commit 2026-09-03 in conversation log).
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const REPO_ROOT = join(new URL('..', import.meta.url).pathname, '..', '..');
@@ -134,27 +134,17 @@ function classifyWatchProcesses(): {
 describe('@shadhil/auth - prebuild chain emits all source files', () => {
   let leaked: string[];
   let devOwned: string[];
-  // Only true once the destructive body (clean + rebuild) has actually run.
-  // afterAll must NOT delete dist/ on a skipped run: dist/ is what a running
-  // dev server serves, and wiping it there is the very outage this test is
-  // supposed to prevent.
-  let ranBuildChain = false;
 
   beforeAll(() => {
     ({ leaked, devOwned } = classifyWatchProcesses());
   });
 
-  afterAll(() => {
-    // Nothing to undo when the destructive body never ran.
-    if (!ranBuildChain) return;
-    // Leave the package in the same state we found it. The prebuild
-    // chain leaves dist/ populated (database/auth/api-types all have
-    // fresh dists); we just need to not leak stale tsbuildinfo or
-    // dist into the next test.
-    if (existsSync(DIST_DIR)) rmSync(DIST_DIR, { recursive: true });
-    const buildinfo = join(PKG_DIR, 'tsconfig.build.tsbuildinfo');
-    if (existsSync(buildinfo)) rmSync(buildinfo);
-  });
+  // No afterAll cleanup on purpose: the chain above leaves FRESH dists for
+  // database/auth/api-types, and downstream suites (auth.test.ts imports
+  // @shadhil/database, backend/web tests import @shadhil/auth) need them.
+  // Deleting auth-client/dist here broke those suites in CI. Mutual
+  // exclusion with auth.test.ts is enforced by `fileParallelism: false` in
+  // this package's vitest.config.ts.
 
   it('emits all 6 source .js files to dist/ after the prebuild chain', (ctx) => {
     if (leaked.length > 0) {
@@ -186,8 +176,6 @@ describe('@shadhil/auth - prebuild chain emits all source files', () => {
       );
       return;
     }
-
-    ranBuildChain = true;
 
     // Step 1: clean all 3 packages (the exact prebuild invocation).
     run(
