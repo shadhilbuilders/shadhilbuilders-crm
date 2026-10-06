@@ -22,6 +22,9 @@ export type TeamListItem = {
   managerName: string | null;
   // T-AUTOASSIGN (2026-09-17): admin toggle for the auto-assign lead routing.
   autoAssignLeads?: boolean;
+  // T-REPORTS-TO-OWNER (2026-10-06): the org OWNER's display name - this
+  // team's manager reports to the OWNER (fixed, never assignable).
+  ownerName?: string | null;
 };
 
 // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMemberProject/
@@ -50,6 +53,9 @@ export type TeamDetail = {
   // T-AUTOASSIGN (2026-09-17): routing flag carried through so the edit-team
   // switch reflects reality.
   autoAssignLeads?: boolean;
+  // T-REPORTS-TO-OWNER (2026-10-06): the org OWNER identity - this team's
+  // manager reports to the OWNER (fixed, never assignable).
+  owner: { id: string; name: string; email: string } | null;
 };
 
 const TEAMS_KEY = ['teams'] as const;

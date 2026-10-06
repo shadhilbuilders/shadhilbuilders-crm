@@ -38,7 +38,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
-import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
+import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 /**
@@ -599,9 +599,12 @@ export class UsersService {
    * GET /api/users/:id - the user detail page (users/[userId], autoplan
    * 2026-09-13). Scope mirrors `list()`: OWNER/ADMIN see anyone; MANAGER
    * sees their own team's members (+ themselves); staff see only
-   * themselves. `manager` is populated only for TELECALLER/SALES_EXEC
-   * whose team has an assigned manager - MANAGER/ADMIN/OWNER report to
-   * nobody on this surface.
+   * themselves. `manager` ("Reports to") is populated per role:
+   *   - TELECALLER/SALES_EXEC: their resolved team's manager (assignable,
+   *     see `assignManager` below).
+   *   - MANAGER/ADMIN: the org OWNER (T-REPORTS-TO-OWNER - fixed, never
+   *     assignable; see `findOrgOwner`).
+   *   - OWNER: null (reports to nobody).
    */
   async getUser(actor: JwtPayload, targetUserId: string): Promise<UserDetail> {
     // The Team/TeamMember reads below are FORCE ROW LEVEL SECURITY, so the
@@ -676,9 +679,13 @@ export class UsersService {
         throw new ForbiddenException('You can only view your own user');
       }
 
-      // Manager is a reporting-line concept: only staff (TELECALLER/
-      // SALES_EXEC) report to a manager on this surface.
+      // T-REPORTS-TO-OWNER: "manager" is this user's reporting-line
+      // superior, and WHO that is depends on the target's own role, not a
+      // single rule. TELECALLER/SALES_EXEC report to their team's manager
+      // (assignable); MANAGER/ADMIN report to the org OWNER (fixed); OWNER
+      // reports to nobody.
       const reportsToManager = target.role === 'TELECALLER' || target.role === 'SALES_EXEC';
+      const reportsToOwner = target.role === 'MANAGER' || target.role === 'ADMIN';
 
       return {
         id: target.id,
@@ -694,7 +701,9 @@ export class UsersService {
                 name: team.manager.name,
                 email: team.manager.email,
               }
-            : null,
+            : reportsToOwner
+              ? await findOrgOwner(client, actor.organizationId)
+              : null,
         // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN see every project in
         // the org; staff see the projects linked to their resolved team.
         projects:

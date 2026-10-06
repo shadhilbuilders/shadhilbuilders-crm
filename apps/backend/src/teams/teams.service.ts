@@ -28,7 +28,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
-import { isAdminClass } from '../users/roles';
+import { findOrgOwner, isAdminClass } from '../users/roles';
 
 import { TeamAccessService } from './team-access.service';
 
@@ -77,6 +77,13 @@ export class TeamsService {
           );
           where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
         }
+        // T-REPORTS-TO-OWNER: every team's manager reports to the SAME org
+        // OWNER (fixed, never assignable), so one lookup covers the whole
+        // list rather than a per-row query.
+        const owner = await findOrgOwner(
+          tx as unknown as PrismaClient,
+          actor.organizationId,
+        );
         const rows = await tx.team.findMany({
           where,
           select: {
@@ -99,6 +106,7 @@ export class TeamsService {
             managerId: r.managerId,
             managerName: r.manager?.name ?? null,
             autoAssignLeads: r.autoAssignLeads,
+            ownerName: owner?.name ?? null,
           }),
         );
       },
@@ -178,6 +186,13 @@ export class TeamsService {
           .map((tm) => ({ ...tm.user, weight: tm.weight, maxOpenLeads: tm.maxOpenLeads }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
+        // T-REPORTS-TO-OWNER: this team's manager reports to the org OWNER
+        // (fixed, never assignable) - same helper used by getUser().
+        const owner = await findOrgOwner(
+          tx as unknown as PrismaClient,
+          actor.organizationId,
+        );
+
         return {
           id: team.id,
           name: team.name,
@@ -192,6 +207,7 @@ export class TeamsService {
                 email: team.manager.email,
               }
             : null,
+          owner,
           members: members.map((m) => ({
             userId: m.id,
             name: m.name,

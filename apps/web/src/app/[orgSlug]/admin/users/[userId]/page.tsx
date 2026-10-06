@@ -5,11 +5,13 @@
 // user's identity, team, the projects their team is linked to (via
 // ProjectTeam - read-only here, T-TEAM-AUTHORITATIVE 2026-09-13 clean
 // cutover: the per-user ProjectMember link was retired, so project
-// staffing is only editable from the project's Staff page now), and -
-// only when the role is TELECALLER or SALES_EXEC, since those are the
-// only roles that report to a manager on this surface - who manages them.
-// ADMIN/OWNER/MANAGER rows omit the manager section entirely (they don't
-// report to anyone here).
+// staffing is only editable from the project's Staff page now), and a
+// "Reports to" row for every role except OWNER (T-REPORTS-TO-OWNER,
+// 2026-10-06):
+//   - TELECALLER/SALES_EXEC: their team's manager (assignable - see Write
+//     actions below).
+//   - MANAGER/ADMIN: the org OWNER (fixed, read-only - never assignable).
+//   - OWNER: the row is omitted (reports to nobody).
 //
 // T-USER-LEADS (2026-09-24): below the Projects card, a Leads table lists
 // every lead linked to this user (owner OR co-owner - the same definition
@@ -22,11 +24,12 @@
 // page would also work for a manager if that gate is ever relaxed.
 //
 // Write actions (autoplan 2026-09-13):
-//   - "Assign manager" / "Reassign manager" (Manager row, TELECALLER/
+//   - "Assign manager" / "Reassign manager" (Reports-to row, TELECALLER/
 //     SALES_EXEC only) - PATCH /api/users/:id/manager, which moves the
 //     user into the chosen manager's team. Gated by `canManageUsers`
 //     (ADMIN/OWNER/MANAGER); the backend further restricts a MANAGER to
-//     their own team.
+//     their own team. MANAGER/ADMIN rows report to the OWNER and never
+//     get this button (T-REPORTS-TO-OWNER - fixed, nothing to assign).
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -70,7 +73,10 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { UserLeadsCard } from '@/components/users/UserLeadsCard';
 
-/** Roles that report to a manager on this surface (see file header). */
+/** Roles whose "Reports to" person is an ASSIGNABLE team manager (see file
+ *  header) - these roles get the Assign/Reassign manager button. MANAGER/
+ *  ADMIN also show a "Reports to" row (the org OWNER), but it's fixed and
+ *  gets no button; OWNER rows omit the row entirely. */
 const REPORTS_TO_MANAGER = new Set(['TELECALLER', 'SALES_EXEC']);
 
 export default function UserDetailPage() {
@@ -181,7 +187,12 @@ function UserDetailContent({
    *  succeeds (both mutations live outside `useUser`'s own cache key). */
   onChanged: () => void;
 }) {
-  const showManager = REPORTS_TO_MANAGER.has(detail.role);
+  // T-REPORTS-TO-OWNER: every role except OWNER reports to someone on this
+  // surface - TELECALLER/SALES_EXEC to their team's manager (assignable),
+  // MANAGER/ADMIN to the org OWNER (fixed). OWNER reports to nobody, so the
+  // row is omitted for them.
+  const showReportsTo = detail.role !== 'OWNER';
+  const canAssignManager = REPORTS_TO_MANAGER.has(detail.role);
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,7 +214,7 @@ function UserDetailContent({
             </div>
           </dl>
 
-          {showManager ? (
+          {showReportsTo ? (
             <div
               className="border-border flex items-center justify-between gap-3 rounded-lg border p-3"
               data-qa="user-manager-row"
@@ -212,7 +223,7 @@ function UserDetailContent({
                 <LuUserCog className="text-muted-foreground size-5 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Manager
+                    Reports to
                   </p>
                   {detail.manager ? (
                     <>
@@ -224,7 +235,10 @@ function UserDetailContent({
                   )}
                 </div>
               </div>
-              {canManageUsers(actorRole) ? (
+              {/* T-REPORTS-TO-OWNER: a MANAGER/ADMIN's "Reports to" is the
+                  org OWNER - fixed, never assignable, so no button renders
+                  for them even for an actor who canManageUsers. */}
+              {canAssignManager && canManageUsers(actorRole) ? (
                 <AssignManagerButton detail={detail} onAssigned={onChanged} />
               ) : null}
             </div>

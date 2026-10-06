@@ -2,6 +2,7 @@
   "name": "@shadhil/backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Shadhil Builders CRM - NestJS 12 REST API",
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/main.ts",

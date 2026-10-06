@@ -120,11 +120,13 @@ export type UserListResult = z.infer<typeof UserListResultSchema>;
 
 /**
  * GET /api/users/:id - the user detail page (users/[userId], autoplan
- * 2026-09-13). `manager` is the team's manager identity, populated only
- * when the target reports to one (TELECALLER/SALES_EXEC with an assigned
- * team that has a manager) - null for MANAGER/ADMIN/OWNER or an
- * unassigned/unmanaged team. `projects` are the projects linked to the
- * target's team via ProjectTeam.
+ * 2026-09-13). `manager` ("Reports to") depends on the target's role
+ * (T-REPORTS-TO-OWNER):
+ *   - TELECALLER/SALES_EXEC: their resolved team's manager - assignable,
+ *     null when unassigned/unmanaged.
+ *   - MANAGER/ADMIN: the org OWNER - fixed, never assignable.
+ *   - OWNER: null (reports to nobody).
+ * `projects` are the projects linked to the target's team via ProjectTeam.
  */
 export const UserDetailSchema = z.object({
   id: z.string(),

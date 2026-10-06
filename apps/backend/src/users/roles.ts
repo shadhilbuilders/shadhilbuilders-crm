@@ -7,7 +7,7 @@
 // MANAGER creates/changes TELECALLER/SALES_EXEC within their own team.
 // Staff roles change nobody (their own account included).
 import { ForbiddenException } from '@nestjs/common';
-import type { Role } from '@shadhil/database';
+import type { PrismaClient, Role } from '@shadhil/database';
 
 // Lower number = more authority. Total order over the create/change-user
 // capability. Model C responsibility boundaries are NOT part of this
@@ -21,6 +21,25 @@ const RANK: Record<Role, number> = {
 };
 
 export const OWNER: Role = 'OWNER';
+
+/**
+ * T-REPORTS-TO-OWNER: MANAGER and ADMIN report to the org OWNER on the
+ * Users detail + Teams surfaces (fixed - exactly one OWNER per org, never
+ * assignable via the API, see the file header). Returns null for an org
+ * with no OWNER row yet (should not happen post-seed, but this must never
+ * throw - it backs a read-only display field). Caller is responsible for
+ * running this inside an RLS transaction (User has no RLS, but this keeps
+ * the lookup consistent with every other query in the same request).
+ */
+export async function findOrgOwner(
+  client: PrismaClient,
+  organizationId: string,
+): Promise<{ id: string; name: string; email: string } | null> {
+  return client.user.findFirst({
+    where: { role: OWNER, organizationId, deletedAt: null },
+    select: { id: true, name: true, email: true },
+  });
+}
 
 /** ADMIN or OWNER (the "admin class"). Soft-deletes + project deletes use this. */
 export function isAdminClass(role: Role): boolean {

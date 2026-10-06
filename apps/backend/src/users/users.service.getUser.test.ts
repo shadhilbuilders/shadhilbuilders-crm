@@ -8,8 +8,10 @@
 //   5. MANAGER can view themselves
 //   6. staff (TELECALLER/SALES_EXEC) viewing another user → 403
 //   7. staff viewing themselves → allowed
-//   8. `manager` is populated ONLY for TELECALLER/SALES_EXEC (MANAGER/ADMIN
-//      rows never report to a manager on this surface, even with a team)
+//   8. `manager` ("Reports to", T-REPORTS-TO-OWNER 2026-10-06): a
+//      TELECALLER/SALES_EXEC's is their team's manager; a MANAGER/ADMIN's
+//      is the org OWNER (fixed, resolved via `findOrgOwner`, not their
+//      resolvable team's manager even when one exists); an OWNER's is null.
 //   9. projects come from the target's TEAM's ProjectTeam rows
 //      (T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover: ProjectMember, the
 //      per-user link this used to read, was retired)
@@ -43,6 +45,10 @@ const adminActor = actor({ sub: 'admin-1', role: 'ADMIN' });
 const managerActor = actor({ sub: 'mgr-1', role: 'MANAGER' });
 const otherManagerActor = actor({ sub: 'mgr-2', role: 'MANAGER' });
 const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER'});
+
+/** T-REPORTS-TO-OWNER: the org's single OWNER row - findOrgOwner()'s
+ * fixture (a MANAGER/ADMIN's fixed "Reports to" target). */
+const orgOwner = { id: 'owner-1', name: 'Deepak Owner', email: 'owner@x' };
 
 type FakeUserRow = {
   id: string;
@@ -79,14 +85,33 @@ const managerRow: FakeUserRow = {
   role: 'MANAGER',
   teamId: null,
   // A manager can still have a `team` relation resolved (e.g. via a
-  // different link) - the point of the test is that `manager` stays null
-  // regardless, because MANAGER doesn't report to anyone on this surface.
+  // different link) - the point of the test is that `manager` ("Reports
+  // to") is the org OWNER regardless, NOT this resolvable team's manager
+  // (T-REPORTS-TO-OWNER - fixed, not derived from Team.managerId).
   team: {
     id: 'team-1',
     name: "Ravi's Team",
     manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
     projectTeams: [],
   },
+};
+
+const adminRow: FakeUserRow = {
+  id: 'admin-2',
+  email: 'second-admin@x',
+  name: 'Second Admin',
+  role: 'ADMIN',
+  teamId: null,
+  team: null,
+};
+
+const ownerRow: FakeUserRow = {
+  id: 'owner-1',
+  email: 'owner@x',
+  name: 'Deepak Owner',
+  role: 'OWNER',
+  teamId: null,
+  team: null,
 };
 
 function makeService(opts: {
@@ -136,26 +161,44 @@ function makeService(opts: {
   // The resolved team's full detail (manager + linked projects) - only one
   // team fixture is ever in play per test, so this ignores the id filter.
   const teamFindUnique = vi.fn().mockResolvedValue(opts.user?.team ?? null);
+  // T-REPORTS-TO-OWNER: findOrgOwner() resolves the org's OWNER via
+  // `user.findFirst({ where: { role: 'OWNER', ... } })` - every test gets
+  // the same fixture org owner (overridable via a direct mock override
+  // when a test needs a different/absent owner).
+  const userFindFirst = vi.fn().mockResolvedValue(orgOwner);
+  // ADMIN/OWNER targets take the "sees every org project" branch - needed
+  // now that adminRow/ownerRow fixtures reach getUser() too.
+  const projectFindMany = vi.fn().mockResolvedValue([]);
   // getUser() now runs entirely inside ONE withRlsContext transaction, so
   // the tx handed to the callback must expose every accessor the method
   // touches (the outer client's shape alone is not enough). The mocks are
   // shared between both so assertions still see the calls.
   const txMock = {
-    user: { findUnique: userFindUnique },
+    user: { findUnique: userFindUnique, findFirst: userFindFirst },
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
     teamMember: { findFirst: teamMemberFindFirst },
+    project: { findMany: projectFindMany },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
-    user: { findUnique: userFindUnique },
+    user: { findUnique: userFindUnique, findFirst: userFindFirst },
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
     teamMember: { findFirst: teamMemberFindFirst },
+    project: { findMany: projectFindMany },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
     service: new UsersService(prismaService),
-    mocks: { userFindUnique, teamFindFirst, teamFindMany, teamMemberFindFirst, teamFindUnique },
+    mocks: {
+      userFindUnique,
+      userFindFirst,
+      teamFindFirst,
+      teamFindMany,
+      teamMemberFindFirst,
+      teamFindUnique,
+      projectFindMany,
+    },
   };
 }
 
@@ -232,12 +275,36 @@ describe('getUser - staff scope', () => {
   });
 });
 
-describe('getUser - manager field only applies to TELECALLER/SALES_EXEC', () => {
-  it('a MANAGER row never reports a manager, even with a resolvable team', async () => {
-    const { service } = makeService({ user: managerRow });
+describe('getUser - "Reports to" depends on the TARGET role (T-REPORTS-TO-OWNER)', () => {
+  it('a MANAGER row reports to the org OWNER, NOT its resolvable team\'s manager', async () => {
+    const { service, mocks } = makeService({ user: managerRow });
+    const result = await service.getUser(adminActor, managerRow.id);
+    expect(result.manager).toEqual(orgOwner);
+    expect(result.teamName).toBe("Ravi's Team");
+    expect(mocks.userFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ role: 'OWNER' }) }),
+    );
+  });
+
+  it('an ADMIN row reports to the org OWNER', async () => {
+    const { service } = makeService({ user: adminRow });
+    const result = await service.getUser(ownerActor, adminRow.id);
+    expect(result.manager).toEqual(orgOwner);
+  });
+
+  it('the OWNER row reports to nobody', async () => {
+    const { service, mocks } = makeService({ user: ownerRow });
+    const result = await service.getUser(adminActor, ownerRow.id);
+    expect(result.manager).toBeNull();
+    // Not even looked up - OWNER never reports to itself.
+    expect(mocks.userFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('MANAGER/ADMIN still resolve to null when the org has no OWNER row', async () => {
+    const { service, mocks } = makeService({ user: managerRow });
+    mocks.userFindFirst.mockResolvedValueOnce(null);
     const result = await service.getUser(adminActor, managerRow.id);
     expect(result.manager).toBeNull();
-    expect(result.teamName).toBe("Ravi's Team");
   });
 
   it('SALES_EXEC on a team with no manager assigned → manager is null', async () => {
