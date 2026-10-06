@@ -87,6 +87,19 @@ COPY --from=builder /app/packages/ packages/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
       --filter "@shadhil/backend..."
 
+# ...but @prisma/engines' postinstall IS wanted. The deploy workflow runs
+# `prisma migrate deploy` INSIDE this container as the non-root `node` user,
+# and the CLI needs the schema-engine binary that postinstall downloads. With
+# --ignore-scripts it was never fetched, so the CLI tried to download it at
+# RUNTIME into the root-owned .pnpm dir and died with
+#   Can't write to /app/node_modules/.pnpm/@prisma+engines@*/.../@prisma/engines
+#   please make sure you install "prisma" with the right permissions
+# (EACCES - the 2026-10-06 deploy failure; the old pre-slim image carried the
+# binary because it copied the builder's full tree, whose install had already
+# run the postinstall). Re-run just that package's postinstall here, at build
+# time, as root: the binary lands 0755, so the runtime `node` user can exec it.
+RUN pnpm rebuild @prisma/engines
+
 # eng review A5: NestJS boot-time check reads this. If not 'session',
 # bootstrap throws PoolModeError.
 ENV POOL_MODE=session
