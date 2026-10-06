@@ -621,15 +621,15 @@ jobs:
             NEXT_PUBLIC_DEBUG_MODE=false
             BUILD_ID=${{ github.sha }}
 
-      # The runner stage COPYs .next/standalone; if output:'standalone' is ever
-      # removed the copy fails OPAQUELY inside BuildKit. Assert the file the
-      # image ships actually exists, so the failure names the cause. Runs against
-      # the image just built - no second, redundant build.
-      # NOTE the doubled path: in a pnpm monorepo the standalone tree is rooted
-      # at the repo root, so the server lands at apps/web/server.js *inside* it.
+      # The runner stage does `COPY --from=builder /app/apps/web/.next/standalone ./`
+      # (the standalone tree is rooted at the repo root in a pnpm monorepo), so the
+      # server lands at /app/apps/web/server.js IN THE RUNNER IMAGE. Assert THAT file,
+      # against the image that actually ships - not the builder path
+      # (/app/apps/web/.next/standalone/apps/web/server.js), which only exists in the
+      # builder stage and would pass here while the runner image is broken.
       - name: Assert the web image ships the standalone server
         run: |
           set -euo pipefail
           docker run --rm --entrypoint sh web-prod-check -c \
-            'test -f /app/apps/web/.next/standalone/apps/web/server.js' \
-            || { echo "apps/web/next.config.ts is missing output:'standalone' - the runner stage COPY is empty and the app cannot start"; exit 1; }
+            'test -f /app/apps/web/server.js && test -d /app/apps/web/.next/static' \
+            || { echo "web runner image is missing the standalone server or its static assets - next.config.ts output:'standalone' (or the runner-stage COPY) is broken"; exit 1; }

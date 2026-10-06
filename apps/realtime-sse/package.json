@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@shadhil/api-types": "workspace:*",
-    "@shadhil/database": "workspace:*"
+    "@shadhil/database": "workspace:*",
+    "tsx": "^4.23.13"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
-    "tsx": "^4.23.13",
     "typescript": "^5.9.3"
   }
 }
