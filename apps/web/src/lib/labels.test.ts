@@ -6,6 +6,7 @@
 // `BOOKING_STATUSES` MUST have a matching entry in the corresponding
 // labels table. This test fails the build the moment a new enum
 // value lands in the Prisma schema but the UI table is forgotten.
+import { LEAD_STATE_LABELS } from '@shadhil/api-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -225,6 +226,7 @@ describe('lib/labels', () => {
         STATUS_CHANGE: 'Status change',
         VISIT: 'Visit',
         EMAIL: 'Email',
+        ASSIGNMENT: 'Assignment',
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('activity', enumValue)).toBe(expected);
@@ -290,6 +292,12 @@ describe('lib/labels', () => {
       expect(humanize('NEW')).toBe('New');
       expect(humanize('no_show')).toBe('No show');
       expect(humanize('a')).toBe('A');
+    });
+  });
+
+  describe('lead labels come from the shared api-types map', () => {
+    it.each(Object.entries(LEAD_STATE_LABELS))('%s matches the shared label', (state, label) => {
+      expect(labelFor('lead', state)).toBe(label);
     });
   });
 });

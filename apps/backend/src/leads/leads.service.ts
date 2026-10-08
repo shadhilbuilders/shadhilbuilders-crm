@@ -41,7 +41,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import { PROJECT_ACTIVE, LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import type {
   CreateLeadDto,
-  LeadActivity,
+  LeadActivitiesResponse,
   LeadDetail,
   LeadFilterDto,
   LeadStateTransitionDto,
@@ -53,7 +53,7 @@ import type {
 // the cascade that closes its open visits. Importing the predicate (rather than
 // re-listing WON/LOST/RNR here) keeps this in step with the exceptions inbox,
 // which already excludes the same trio.
-import { isDeadLeadState } from '@shadhil/api-types';
+import { LEAD_ACTIVITIES_PAGE_SIZE, isDeadLeadState, leadStateLabel } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -68,6 +68,12 @@ import { closeOpenVisitsForLead } from '../visits/close-visits-for-lead';
 // post-convert inbound never matched → the lead's chat stayed empty.
 import { toE164 } from '../whatsapp/whatsapp.client';
 
+import {
+  decodeActivityCursor,
+  encodeActivityCursor,
+  recordLeadActivity,
+  withDetail,
+} from './lead-activity';
 import {
   canRoleOwnState,
   canTransition,
@@ -591,7 +597,13 @@ export class LeadsService {
    * the UI can render "First call (Asha)" per Wireframe #5. Same RLS
    * scoping as findOne.
    */
-  async activities(actor: JwtPayload, leadId: string): Promise<LeadActivity[]> {
+  async activities(
+    actor: JwtPayload,
+    leadId: string,
+    opts: { cursor?: string; limit?: number } = {},
+  ): Promise<LeadActivitiesResponse> {
+    const limit = opts.limit ?? LEAD_ACTIVITIES_PAGE_SIZE;
+    const before = opts.cursor === undefined ? null : decodeActivityCursor(opts.cursor);
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
@@ -604,8 +616,20 @@ export class LeadsService {
           throw new NotFoundException(`Lead ${leadId} not found`);
         }
         const rows = await tx.activity.findMany({
-          where: { leadId },
-          orderBy: { createdAt: 'asc' },
+          where:
+            before === null
+              ? { leadId }
+              : {
+                  leadId,
+                  OR: [
+                    { createdAt: { lt: before.createdAt } },
+                    { createdAt: before.createdAt, id: { lt: before.id } },
+                  ],
+                },
+          // Newest first so `take` keeps the newest page; one extra row detects
+          // whether anything older exists. Flipped to oldest-first below.
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
           select: {
             id: true,
             type: true,
@@ -614,13 +638,20 @@ export class LeadsService {
             user: { select: { name: true } },
           },
         });
-        return rows.map((a) => ({
+        const page = rows.slice(0, limit);
+        const oldest = page[page.length - 1];
+        const nextCursor =
+          rows.length > limit && oldest !== undefined
+            ? encodeActivityCursor(oldest.createdAt, oldest.id)
+            : null;
+        const items = page.reverse().map((a) => ({
           id: a.id,
           type: a.type,
           body: a.body,
           createdAt: a.createdAt.toISOString(),
           userName: a.user?.name ?? null,
         }));
+        return { items, nextCursor };
       },
     );
   }
@@ -1164,6 +1195,12 @@ export class LeadsService {
       },
     });
 
+    await recordLeadActivity(client, actor, {
+      leadId: created.id,
+      type: 'STATUS_CHANGE',
+      body: `Lead created (${created.source}), assigned to ${created.owner?.name ?? 'nobody'}`,
+    });
+
     return {
       id: created.id,
       name: created.name,
@@ -1497,6 +1534,15 @@ export class LeadsService {
           },
         });
 
+        await recordLeadActivity(tx, actor, {
+          leadId: updated.id,
+          type: 'ASSIGNMENT',
+          body: withDetail(
+            `Reassigned from ${existing.owner?.name ?? 'nobody'} to ${target.name}`,
+            dto.reason,
+          ),
+        });
+
         // Notify the new owner that the lead was handed to them.
         this.emitBestEffort(target.id, {
           type: 'lead.reassigned',
@@ -1557,6 +1603,7 @@ export class LeadsService {
             project: { select: { id: true, slug: true, name: true } },
             createdAt: true,
             owner: { select: { name: true } },
+            coOwner: { select: { name: true } },
           },
         });
         if (existing === null) {
@@ -1585,11 +1632,12 @@ export class LeadsService {
 
         // 3. Resolve + validate the target (or clear).
         let newCoOwnerId: string | null = null;
+        let newCoOwnerName: string | null = null;
         if (dto.coOwnerId !== null) {
           // T-ORG-EXPLICIT: scope the co-owner lookup to the actor's org.
           const target = await tx.user.findFirst({
             where: { id: dto.coOwnerId, organizationId: actor.organizationId },
-            select: { id: true, role: true },
+            select: { id: true, role: true, name: true },
           });
           if (target === null) {
             throw new NotFoundException(
@@ -1629,6 +1677,7 @@ export class LeadsService {
             );
           }
           newCoOwnerId = target.id;
+          newCoOwnerName = target.name;
         }
 
         // 4. Update + audit in one transaction. A no-op (unchanged
@@ -1664,6 +1713,21 @@ export class LeadsService {
             reason: dto.reason,
           },
         });
+
+        // An unchanged co-owner leaves an audit row but nothing worth showing
+        // on the timeline.
+        if (!isNoOp) {
+          await recordLeadActivity(tx, actor, {
+            leadId: updated.id,
+            type: 'ASSIGNMENT',
+            body: withDetail(
+              newCoOwnerName !== null
+                ? `Co-owner set: ${newCoOwnerName}`
+                : `Co-owner cleared: ${existing.coOwner?.name ?? 'none'}`,
+              dto.reason,
+            ),
+          });
+        }
 
         return {
           id: updated.id,
@@ -1796,7 +1860,7 @@ export class LeadsService {
       this.client,
       rlsContextFrom(actor),
       async (tx) =>
-        this.applyTransition(actor, dto, tx as unknown as PrismaClient),
+        this.applyTransition(actor, dto, tx as unknown as PrismaClient, 'auto'),
     );
   }
 
@@ -1830,8 +1894,11 @@ export class LeadsService {
     actor: JwtPayload,
     dto: LeadStateTransitionDto,
     clientOverride: PrismaClient,
+    // 'skip' lets the caller (visits) write its own richer timeline row instead
+    // of the automatic STATUS_CHANGE one, so one action leaves ONE row.
+    activity: 'auto' | 'skip' = 'auto',
   ): Promise<LeadRow> {
-    return this.applyTransition(actor, dto, clientOverride);
+    return this.applyTransition(actor, dto, clientOverride, activity);
   }
 
   /**
@@ -1844,6 +1911,7 @@ export class LeadsService {
     actor: JwtPayload,
     dto: LeadStateTransitionDto,
     client: PrismaClient,
+    activity: 'auto' | 'skip',
   ): Promise<LeadRow> {
     // All statements below run through this client. Naming it `tx` keeps the body
     // identical to when it lived inside the withRlsContext callback.
@@ -1882,6 +1950,33 @@ export class LeadsService {
       throw new ForbiddenException(
         `Role ${verdict.role} cannot transition lead from ${verdict.from} to ${verdict.to}`,
       );
+    }
+
+    // Backing out of BOOKING_INITIATED while a token is held would leave the
+    // lead saying "Negotiation" over a live TOKEN booking (lead-state-sync only
+    // re-derives on booking changes). Refuse, and say how to fix it.
+    if (existing.state === 'BOOKING_INITIATED' && dto.toState === 'NEGOTIATION') {
+      const activeToken = await tx.booking.count({
+        where: { leadId: existing.id, status: 'TOKEN' },
+      });
+      if (activeToken > 0) {
+        throw new ConflictException(
+          'Cannot move back to Negotiation while a token booking is active. Cancel or reject the booking first.',
+        );
+      }
+    }
+
+    // Reopening a WON lead over an APPROVED booking would leave the lead open
+    // while its unit stays booked. The booking must be cancelled first.
+    if (existing.state === 'WON' && dto.toState !== 'WON') {
+      const approved = await tx.booking.count({
+        where: { leadId: existing.id, status: 'APPROVED' },
+      });
+      if (approved > 0) {
+        throw new ConflictException(
+          'Cannot reopen a won lead while an approved booking exists. Cancel the booking first.',
+        );
+      }
     }
 
     // No-op transition: still record an audit row? No - same-state
@@ -1933,6 +2028,18 @@ export class LeadsService {
       },
     });
 
+    if (activity === 'auto') {
+      await recordLeadActivity(tx, actor, {
+        leadId: updated.id,
+        type: 'STATUS_CHANGE',
+        body: withDetail(
+          `${leadStateLabel(existing.state)} -> ${leadStateLabel(updated.state)}`,
+          dto.reason,
+          dto.notes,
+        ),
+      });
+    }
+
     // T-VISIT-CLOSE (2026-09-28): a lead that can no longer be worked must
     // not leave open visits behind. Nothing used to close them, so they piled
     // up with a past `scheduledFor` and surfaced as phantom work (the admin
@@ -1950,6 +2057,18 @@ export class LeadsService {
         actor,
         updated.id,
         'lead-terminal',
+      );
+    }
+
+    // Backing out of "Visit booked" (2026-10-09): the booked visit no longer
+    // matches the lead, so withdraw it in the same transaction. Otherwise the
+    // calendar keeps an appointment for a lead that is asking for a new one.
+    if (existing.state === 'VISIT_SCHEDULED' && updated.state === 'VISIT_REQUESTED') {
+      await closeOpenVisitsForLead(
+        tx as unknown as PrismaClient,
+        actor,
+        updated.id,
+        'visit-reverted',
       );
     }
 

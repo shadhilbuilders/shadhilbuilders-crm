@@ -288,6 +288,89 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
     expect(await leadState(leadId)).toBe('VISIT_SCHEDULED');
     expect(row.leadSyncNote).toBeUndefined();
   });
+
+  // ── Timeline rows: one action, ONE Activity row ───────────────────────────
+
+  async function timeline(leadId: string) {
+    return adminSeed((db) =>
+      db.activity.findMany({ where: { leadId }, orderBy: { createdAt: 'asc' } }),
+    );
+  }
+
+  it('create books a visit and leaves ONE VISIT row (no duplicate STATUS_CHANGE)', async () => {
+    const { leadId } = await seed('VISIT_REQUESTED');
+    await service.create(actorFor(ADMIN_ID, 'ADMIN'), {
+      leadId,
+      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      salesExecId: SE_ID,
+    } as never);
+    expect(await leadState(leadId)).toBe('VISIT_SCHEDULED');
+    const rows = await timeline(leadId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('VISIT');
+    expect(rows[0].body).toMatch(/^Visit booked for .+ with .+; lead moved to Visit booked/);
+  });
+
+  it('reschedule from CONTACTED leaves ONE VISIT row', async () => {
+    const { leadId, visitId } = await seed('CONTACTED');
+    await service.reschedule(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      scheduledFor: new Date(Date.now() + 172_800_000).toISOString(),
+    } as never);
+    const rows = await timeline(leadId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('VISIT');
+    expect(rows[0].body).toContain('Visit rescheduled to');
+    expect(rows[0].body).toContain('lead moved to Visit booked');
+  });
+
+  it('COMPLETED outcome leaves ONE VISIT row that mentions the lead move', async () => {
+    const { leadId, visitId } = await seed('VISIT_SCHEDULED');
+    await service.updateOutcome(actorFor(SE_ID, 'SALES_EXEC'), visitId, {
+      visitId,
+      outcome: 'COMPLETED',
+      notes: 'conducted',
+    } as never);
+    const rows = await timeline(leadId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('VISIT');
+    expect(rows[0].body).toContain('Visit completed');
+    expect(rows[0].body).toContain('lead moved to Visited');
+  });
+
+  it('CANCELLED outcome leaves one VISIT row and no lead move', async () => {
+    const { leadId, visitId } = await seed('VISIT_SCHEDULED');
+    await service.updateOutcome(actorFor(ADMIN_ID, 'ADMIN'), visitId, {
+      visitId,
+      outcome: 'CANCELLED',
+    } as never);
+    const rows = await timeline(leadId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toContain('Visit cancelled');
+    expect(rows[0].body).not.toContain('lead moved');
+  });
+
+  // ── Back-step: Visit booked -> Visit requested (2026-10-09) ───────────────
+
+  it('VISIT_SCHEDULED -> VISIT_REQUESTED cancels the open visit in the same move', async () => {
+    const { leadId, visitId } = await seed('VISIT_SCHEDULED');
+    const leads = new LeadsService({ $client: prisma as unknown as PrismaClient } as PrismaService);
+    await leads.transition(actorFor(TC_ID, 'TELECALLER'), {
+      leadId,
+      toState: 'VISIT_REQUESTED',
+    } as never);
+
+    expect(await leadState(leadId)).toBe('VISIT_REQUESTED');
+    const visit = await adminSeed((db) =>
+      db.siteVisit.findUnique({ where: { id: visitId }, select: { status: true } }),
+    );
+    expect(visit?.status).toBe('CANCELLED');
+    // The back step keeps the normal STATUS_CHANGE row; the cancelled visit gets none.
+    const rows = await timeline(leadId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('STATUS_CHANGE');
+    expect(rows[0].body).toBe('Visit booked -> Visit requested');
+  });
 });
 
 describe('the reschedule target is computed, not listed', () => {

@@ -15,6 +15,10 @@ export type BackendCreatedUser = {
   teamId: string | null;
   /** Project names the user is a member of (via ProjectMember). */
   projects: string[];
+  /** "Reports to" - present on GET /users rows only (staff -> team manager,
+   *  MANAGER/ADMIN -> org OWNER, OWNER -> null). Absent on create/update
+   *  responses, hence optional. */
+  reportsTo?: { id: string; name: string; email: string } | null;
 };
 
 export type CreateUserInput = {
@@ -238,6 +242,21 @@ export function useAssignManager() {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });
       void queryClient.invalidateQueries({ queryKey: [...USERS_KEY, id] });
     },
+  });
+}
+
+/**
+ * POST /api/users/:id/change-password as an ADMIN/OWNER reset of ANOTHER
+ * user (no current password sent; the backend enforces rank hierarchy).
+ * Audited server-side.
+ */
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      api<{ ok: true; mustChangePassword: false }>(
+        `/users/${id}/change-password`,
+        { method: 'POST', json: { newPassword } },
+      ),
   });
 }
 

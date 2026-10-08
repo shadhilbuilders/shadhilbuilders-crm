@@ -33,7 +33,8 @@ import {
   SetLeadCoOwnerDtoSchema,
   UpdateLeadDtoSchema,
   type CreateLeadDto,
-  type LeadActivity,
+  LeadActivitiesQuerySchema,
+  type LeadActivitiesResponse,
   type LeadDetail,
   type LeadFilterDto,
   type LeadStateTransitionDto,
@@ -173,12 +174,19 @@ export class LeadsController {
   async getActivities(
     @Req() req: AuthedRequest,
     @Param('id') id: string,
-  ): Promise<LeadActivity[]> {
+    @Query() query: Record<string, unknown>,
+  ): Promise<LeadActivitiesResponse> {
     const idSchema = z.string().cuid2();
     if (!idSchema.safeParse(id).success) {
       throw new BadRequestException(`Lead id "${id}" is not a valid id`);
     }
-    return this.leads.activities(req.user!, id);
+    const parsed = LeadActivitiesQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      throw new BadRequestException(
+        `Invalid timeline query: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+      );
+    }
+    return this.leads.activities(req.user!, id, parsed.data);
   }
 
   @Post()

@@ -321,7 +321,10 @@ function ProblemInbox() {
         <ul role="list" className="divide-border divide-y">
           {teamHealth.slice(0, 10).map((member) => {
             const href = member.userId
-              ? orgHref(orgSlug, `/admin/users/${member.userId}`)
+              ? orgHref(
+                  orgSlug,
+                  `/admin/staff-permission?userId=${encodeURIComponent(member.userId)}`,
+                )
               : null;
             return (
             <li

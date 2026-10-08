@@ -49,7 +49,7 @@ export async function closeOpenVisitsForLead(
   tx: PrismaClient,
   actor: JwtPayload,
   leadId: string,
-  reason: 'lead-terminal' | 'booking-settled',
+  reason: 'lead-terminal' | 'booking-settled' | 'visit-reverted',
 ): Promise<string[]> {
   const open = await tx.siteVisit.findMany({
     where: { leadId, status: { in: [...OPEN_VISIT_STATUSES] } },
@@ -83,7 +83,9 @@ export async function closeOpenVisitsForLead(
         reason:
           reason === 'lead-terminal'
             ? 'Lead reached a terminal state; the visit can no longer be conducted'
-            : 'Booking settled (approved or cancelled); the visit is no longer pending',
+            : reason === 'visit-reverted'
+              ? 'Lead moved back from Visit booked to Visit requested; the booked visit is withdrawn'
+              : 'Booking settled (approved or cancelled); the visit is no longer pending',
       },
     });
     ids.push(visit.id);

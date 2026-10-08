@@ -39,7 +39,8 @@ import type {
 // T-VISIT-CLOSE (2026-09-28): the shared "is this lead finished?" predicate.
 // Same source as the cascade that cancels open visits, so the guard here and the
 // cascade in leads/bookings cannot disagree about what "settled" means.
-import { isTerminalLeadState } from '@shadhil/api-types';
+import { isTerminalLeadState, leadStateLabel } from '@shadhil/api-types';
+import { formatVisitWhen, recordLeadActivity, withDetail } from '../leads/lead-activity';
 // T-VISIT-NO-SHOW-SCHEDULING (2026-09-30): the ONE list of lead states that may
 // accept a visit, plus the states a new visit advances the lead out of. Both are
 // imported rather than restated here so the guard, the lead picker and the
@@ -55,6 +56,15 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
+
+/** Timeline wording per recorded visit outcome. */
+const VISIT_OUTCOME_SENTENCE: Readonly<Record<string, string>> = {
+  COMPLETED: 'Visit completed',
+  NO_SHOW: 'Visit marked no-show',
+  CANCELLED: 'Visit cancelled',
+  RESCHEDULED: 'Visit marked rescheduled',
+  SCHEDULED: 'Visit scheduled',
+};
 // The LEAD state machine, aliased because this module already imports a
 // `canTransition` of its own (the visit one). The two are different graphs with
 // different role lanes and both are needed here: the visit guard decides whether
@@ -523,9 +533,10 @@ export class VisitsService {
         // transaction above has already locked this Lead row (the co-owner
         // grant), so two connections on one row self-deadlock into a 30s
         // "expired transaction". See transitionInTransaction's doc comment.
-        if (
-          (VISIT_SCHEDULING_ADVANCES_FROM as readonly string[]).includes(lead.state)
-        ) {
+        const advancesLead = (
+          VISIT_SCHEDULING_ADVANCES_FROM as readonly string[]
+        ).includes(lead.state);
+        if (advancesLead) {
           await this.leadsService.transitionInTransaction(
             actor,
             {
@@ -534,6 +545,8 @@ export class VisitsService {
               notes: `Visit scheduled for ${created.scheduledFor.toISOString()}`,
             },
             tx as unknown as PrismaClient,
+            // This visit writes its own richer VISIT row below: one action, one row.
+            'skip',
           );
         }
 
@@ -562,6 +575,17 @@ export class VisitsService {
             },
             reason: `Visit created by ${actor.email} (${actor.role})`,
           },
+        });
+
+        await recordLeadActivity(tx, actor, {
+          leadId: created.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `Visit booked for ${formatVisitWhen(created.scheduledFor)} with ${created.user.name}${
+              advancesLead ? `; lead moved to ${leadStateLabel('VISIT_SCHEDULED')}` : ''
+            }`,
+            created.notes,
+          ),
         });
 
         // Notify the assigned exec that a site visit was scheduled for them.
@@ -893,6 +917,7 @@ export class VisitsService {
                   `Visit ${dto.outcome.toLowerCase()} by ${assigneeName(updated.userId, actor)}`,
               },
               tx as unknown as PrismaClient,
+              'skip',
             );
             leadSynced = true;
           } else {
@@ -929,6 +954,19 @@ export class VisitsService {
             after: { status: updated.status, outcome: updated.outcome },
             reason: `Visit outcome set to ${updated.status} by ${actor.email} (${actor.role})`,
           },
+        });
+
+        await recordLeadActivity(tx, actor, {
+          leadId: updated.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `${VISIT_OUTCOME_SENTENCE[dto.outcome] ?? `Visit ${dto.outcome.toLowerCase()}`} (visit on ${formatVisitWhen(updated.scheduledFor)}, ${updated.user.name})${
+              leadSynced && leadTarget !== null
+                ? `; lead moved to ${leadStateLabel(leadTarget)}`
+                : ''
+            }`,
+            dto.notes,
+          ),
         });
 
         // 2026-09-29 (owner request): the SENDER of an outcome is not the only
@@ -1169,12 +1207,24 @@ export class VisitsService {
               notes: `Visit rescheduled to ${created.scheduledFor.toISOString()}`,
             },
             tx as unknown as PrismaClient,
+            'skip',
           );
           leadSynced = true;
         } else {
           // Kept for the response's `leadSyncNote` - see the return value.
           leadSyncSkippedFrom = rescheduleLeadState;
         }
+
+        await recordLeadActivity(tx, actor, {
+          leadId: created.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `Visit rescheduled to ${formatVisitWhen(created.scheduledFor)} with ${created.user.name}${
+              leadSynced ? `; lead moved to ${leadStateLabel('VISIT_SCHEDULED')}` : ''
+            }`,
+            dto.notes,
+          ),
+        });
 
         return {
           id: created.id,

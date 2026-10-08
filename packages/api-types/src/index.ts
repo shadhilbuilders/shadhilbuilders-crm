@@ -13,6 +13,7 @@ export * from './enums';
 // "overdue" / "new today" / terminal states - imported by BOTH the NestJS
 // services and the Next views so the numbers cannot drift apart).
 export * from './lead-status';
+export * from './lead-state-labels';
 
 // Per-module DTOs
 export * from './auth';

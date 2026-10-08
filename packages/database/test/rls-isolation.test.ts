@@ -1894,3 +1894,75 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
     },
   );
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Activity INSERT - lead-timeline writes (every lead action writes a row inside
+// its own transaction, so a role the policy rejects would fail that action).
+// Covers owner / co-owner / team manager / other-team manager / unrelated user,
+// plus OWNER (downcast to ADMIN). Never skipped silently: DATABASE_AVAILABLE is
+// hard-failed by the suite preamble when RLS_MATRIX_REQUIRED=true.
+// ────────────────────────────────────────────────────────────────────────────
+describe('Activity INSERT - timeline writers per role x relation to the lead', () => {
+  const ORG = 'ceid01lpfe1esm8jwsxid41k28';
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+    // execA becomes co-owner of lead A (leadA owner = teleA).
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: fixture.execAId },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    await adminPrisma.activity.deleteMany({
+      where: { leadId: fixture.leadAId, body: 'timeline-probe' },
+    });
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: null },
+    });
+  }, 30_000);
+
+  const cases: ReadonlyArray<{
+    name: string;
+    ctx: (f: Fixture) => RlsContext;
+    allowed: boolean;
+  }> = [
+    { name: 'owner (TELECALLER)', allowed: true, ctx: (f) => ({ userId: f.teleAId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'co-owner (SALES_EXEC)', allowed: true, ctx: (f) => ({ userId: f.execAId, role: 'SALES_EXEC', organizationId: ORG }) },
+    { name: 'team manager (MANAGER)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'ADMIN', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'ADMIN', organizationId: ORG }) },
+    { name: 'OWNER (downcast to ADMIN)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'OWNER', organizationId: ORG }) },
+    { name: 'other-team MANAGER', allowed: false, ctx: (f) => ({ userId: f.managerBId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'unrelated TELECALLER', allowed: false, ctx: (f) => ({ userId: f.teleBId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'unrelated SALES_EXEC', allowed: false, ctx: (f) => ({ userId: f.execBId, role: 'SALES_EXEC', organizationId: ORG }) },
+  ];
+
+  it.skipIf(!DATABASE_AVAILABLE).each(cases)(
+    '$name -> allowed=$allowed',
+    { timeout: 30_000 },
+    async ({ ctx, allowed }) => {
+      const context = ctx(fixture);
+      const attempt = withRlsContext(prisma, context, async (tx) =>
+        tx.activity.create({
+          data: {
+            leadId: fixture.leadAId,
+            userId: context.userId,
+            type: 'ASSIGNMENT',
+            body: 'timeline-probe',
+            organizationId: ORG,
+          },
+        }),
+      );
+      if (allowed) {
+        await expect(attempt).resolves.toBeDefined();
+      } else {
+        await expect(attempt).rejects.toBeDefined();
+      }
+    },
+  );
+});

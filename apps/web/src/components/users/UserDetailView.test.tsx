@@ -1,4 +1,4 @@
-// User detail page (/admin/users/[userId], autoplan 2026-09-13).
+// UserDetailView (rendered on /admin/staff-permission; autoplan 2026-09-13).
 //
 // Pins the render branches:
 //   1. session pending             → <Skeleton variant="users" />
@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/hooks/queries/users', () => ({
   useUser: mocks.useUser,
   useAssignManager: mocks.useAssignManager,
+  useResetUserPassword: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -44,18 +45,12 @@ vi.mock('@/hooks/queries/teams', () => ({
 vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
+  outranks: (actor: string, target: string) => {
+    const rank: Record<string, number> = { OWNER: 4, ADMIN: 3, MANAGER: 2, TELECALLER: 1, SALES_EXEC: 1 };
+    return (rank[actor] ?? 0) > (rank[target] ?? 0);
+  },
   canManageUsers: (role: string) =>
     role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
-}));
-
-vi.mock('@/lib/tenant-context', () => ({
-  useOrg: () => ({ id: 'org-ceid01', slug: 'shadhil-builders', name: 'Shadhil' }),
-  useOrgSlug: () => 'shadhil-builders',
-  useOrgId: () => 'org-ceid01',
-}));
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ userId: 'user-1' }),
 }));
 
 // T-USER-LEADS (2026-09-24): the page now mounts UserLeadsCard, which reads
@@ -69,7 +64,7 @@ vi.mock('@/components/users/UserLeadsCard', () => ({
   ),
 }));
 
-import UserDetailPage from './page';
+import { UserDetailView } from './UserDetailView';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -79,7 +74,7 @@ async function mount(): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<UserDetailPage />);
+    root?.render(<UserDetailView userId="user-1" />);
   });
 }
 
@@ -100,7 +95,7 @@ afterEach(async () => {
   mocks.useTeams.mockClear();
 });
 
-describe('UserDetailPage - state matrix', () => {
+describe('UserDetailView - state matrix', () => {
   it('session pending renders <Skeleton>', async () => {
     mocks.useSessionUser.mockReturnValue({ user: null, isPending: true });
     mocks.useUser.mockReturnValue({ data: undefined, isLoading: false, error: null });

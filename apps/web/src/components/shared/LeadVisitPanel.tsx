@@ -10,7 +10,15 @@
 //     the dashboard queue reads, so the two surfaces cannot disagree.
 //   - VISIT_SCHEDULED: "Mark visit completed" + "No-show" buttons
 //     (records outcome, drives lead state on COMPLETED)
+//     plus "Back to Visit requested" (withdraws the booked visit)
+//   - VISITED / NEGOTIATION: "Request visit again" (customer returns with
+//     family) -> Visit requested, after which Schedule visit appears and
+//     scheduling flips the lead to Visit booked automatically
 //   - Other states: hidden
+//
+// Schedule visit and the outcome/back controls are mutually exclusive: the
+// former renders only in awaiting-a-visit states, the latter only in
+// VISIT_SCHEDULED, so "Visit requested" and "Visit booked" never co-exist.
 //
 // The dialog and outcome mutations use the same `useCreateVisit` /
 // `useUpdateVisitOutcome` hooks as the visits page. Server-side, the
@@ -23,12 +31,18 @@ import { Button, Card, CardContent, CardHeader, CardTitle, toast } from '@paalst
 import { LEAD_STATES_AWAITING_A_VISIT } from '@shadhil/api-types';
 
 import { ScheduleVisitDialog } from '@/components/shared/ScheduleVisitDialog';
+import { allowedTransitionsFor } from '@/lib/lead-transitions';
 import {
   leadSyncNoteOf,
+  useTransitionLead,
   useUpdateVisitOutcome,
   useVisits,
 } from '@/hooks/queries/crm';
-import { canLogVisitOutcome, canScheduleVisits, useSessionUser } from '@/lib/session';
+import {
+  canLogVisitOutcome,
+  canScheduleLeadVisit,
+  useSessionUser,
+} from '@/lib/session';
 import { queue } from '@/lib/offline-store/queue-store';
 
 type LeadData = {
@@ -76,6 +90,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
       )
     : undefined;
   const updateOutcome = useUpdateVisitOutcome(openVisit?.id ?? null);
+  const transitionLead = useTransitionLead(lead.id);
 
   // Scheduling is offered on every state AWAITING a visit
   // (LEAD_STATES_AWAITING_A_VISIT, shared with the dashboard queue so the two
@@ -89,9 +104,27 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   // that already has its visit booked.
   const showSchedule = (LEAD_STATES_AWAITING_A_VISIT as readonly string[]).includes(status);
   const showOutcome =
-    status === 'VISIT_SCHEDULED' && openVisit !== undefined && canScheduleVisits(user?.role);
+    status === 'VISIT_SCHEDULED' && openVisit !== undefined && canScheduleLeadVisit(user?.role);
 
-  if (!showSchedule && !showOutcome) return null;
+  // Role-aware: only offered when the server would accept VISIT_REQUESTED here.
+  const mayMoveToRequested =
+    user?.role !== undefined &&
+    allowedTransitionsFor(status, user.role).includes('VISIT_REQUESTED');
+  const showRequestAgain =
+    (status === 'VISITED' || status === 'NEGOTIATION') && mayMoveToRequested;
+  const showBackToRequested = status === 'VISIT_SCHEDULED' && mayMoveToRequested;
+
+  if (!showSchedule && !showOutcome && !showRequestAgain && !showBackToRequested) return null;
+
+  function moveToRequested(notes: string, successMessage: string) {
+    transitionLead.mutate(
+      { leadId: lead.id, toState: 'VISIT_REQUESTED', notes },
+      {
+        onSuccess: () => toast.success(successMessage),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Transition failed'),
+      },
+    );
+  }
 
   function recordOutcome(outcome: 'COMPLETED' | 'NO_SHOW' | 'CANCELLED') {
     if (openVisit === undefined) return;
@@ -140,7 +173,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
         <CardTitle className="text-base">Visit</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {showSchedule && canScheduleVisits(user?.role) ? (
+        {showSchedule && canScheduleLeadVisit(user?.role) ? (
           <>
             <p className="text-muted-foreground text-sm">
               The lead is ready for a site visit - pick a date/time and
@@ -216,6 +249,45 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
                 </Button>
               ) : null}
             </div>
+          </>
+        ) : null}
+
+        {showBackToRequested ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              moveToRequested(
+                'Moved back to Visit requested; booked visit withdrawn',
+                'Back to Visit requested',
+              )
+            }
+            disabled={transitionLead.isPending}
+            data-qa="lead-back-to-visit-requested"
+          >
+            Back to Visit requested
+          </Button>
+        ) : null}
+
+        {showRequestAgain ? (
+          <>
+            <p className="text-muted-foreground text-sm">
+              Customer wants to visit again (for example with family)? Request another
+              visit, then schedule it.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              onClick={() =>
+                moveToRequested('Customer asked for another visit', 'Visit requested again')
+              }
+              disabled={transitionLead.isPending}
+              data-qa="lead-request-visit-again"
+            >
+              Request visit again
+            </Button>
           </>
         ) : null}
       </CardContent>

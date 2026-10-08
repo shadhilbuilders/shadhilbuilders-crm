@@ -949,7 +949,7 @@ export class UsersService {
     // 1. Target must exist.
     const target = await this.client.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, email: true, mustChangePassword: true },
+      select: { id: true, email: true, role: true, mustChangePassword: true },
     });
     if (target === null) {
       throw new NotFoundException(`User ${targetUserId} not found`);
@@ -962,6 +962,19 @@ export class UsersService {
       throw new ForbiddenException(
         'You can only change your own password (admin/owner can reset others)',
       );
+    }
+    // Admin reset: the actor must strictly outrank the target (an ADMIN
+    // can't reset the OWNER or another ADMIN), mirroring the role-change
+    // hierarchy guard.
+    if (!isSelf && !outranks(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `You can't reset the password of a ${target.role} user`,
+      );
+    }
+    // Self-service rotation must prove knowledge of the current password.
+    // An admin reset of ANOTHER user does not (the admin doesn't know it).
+    if (isSelf && (dto.oldPassword === undefined || dto.oldPassword === '')) {
+      throw new BadRequestException('Current password is required');
     }
 
     // 3. Verify the old password against the credential Account row.
@@ -976,10 +989,10 @@ export class UsersService {
       },
       select: { password: true },
     });
-    if (
-      account === null ||
-      !verifyPassword(dto.oldPassword, account.password)
-    ) {
+    if (account === null) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (isSelf && !verifyPassword(dto.oldPassword as string, account.password)) {
       // 400 (not 401) - this is a request-body validation error from
       // the client's perspective. Same shape better-auth's sign-in uses
       // for wrong-password so a probe can't tell the difference between
@@ -1250,6 +1263,29 @@ export class UsersService {
         projectNamesByTeamId.set(pt.teamId, list);
       }
 
+      // "Reports to" column (2026-10-08) - same rule as getUser():
+      // TELECALLER/SALES_EXEC -> their resolved team's manager (one batched
+      // team lookup); MANAGER/ADMIN -> the org OWNER (one lookup for the whole
+      // page, only when such a row is present); OWNER -> nobody.
+      type ReportsTo = { id: string; name: string; email: string };
+      const staffTeamIds = Array.from(
+        new Set(
+          rows
+            .map((r, i) => (r.role === 'TELECALLER' || r.role === 'SALES_EXEC' ? resolvedTeamIds[i] : null))
+            .filter((id): id is string => id !== null && id !== undefined),
+        ),
+      );
+      const managerByTeamId = new Map<string, ReportsTo | null>();
+      if (staffTeamIds.length > 0) {
+        const managedTeams = await client.team.findMany({
+          where: { id: { in: staffTeamIds }, deletedAt: null },
+          select: { id: true, manager: { select: { id: true, name: true, email: true } } },
+        });
+        for (const t of managedTeams) managerByTeamId.set(t.id, t.manager ?? null);
+      }
+      const needsOwner = rows.some((r) => r.role === 'MANAGER' || r.role === 'ADMIN');
+      const orgOwner = needsOwner ? await findOrgOwner(client, actor.organizationId) : null;
+
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
       // the org, not just the (empty) set linked to their team. OWNER/ADMIN
       // carry no team (teamId null -> the team-linked map yields an empty
@@ -1285,6 +1321,12 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
+          reportsTo:
+            r.role === 'MANAGER' || r.role === 'ADMIN'
+              ? orgOwner
+              : r.role === 'OWNER'
+                ? null
+                : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
           // Admin-class rows expose the full org project set; everyone else
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)

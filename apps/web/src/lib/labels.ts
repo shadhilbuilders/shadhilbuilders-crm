@@ -45,6 +45,8 @@
 // celebration signal for the WON transition; everything else is plain
 // text so the UI reads as a work tool, not a chat app.
 
+import { LEAD_STATE_LABELS } from '@shadhil/api-types';
+
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
 // for every x in these lists - see `labels.test.ts`).
@@ -195,6 +197,7 @@ export const ACTIVITY_TYPES = [
   'STATUS_CHANGE',
   'VISIT',
   'EMAIL',
+  'ASSIGNMENT',
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
@@ -202,23 +205,9 @@ export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 // Lookup tables
 // ---------------------------------------------------------------------------
 
-const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
-  NEW: 'New',
-  CONTACTED: 'Talked',
-  VISIT_REQUESTED: 'Visit requested',
-  VISIT_SCHEDULED: 'Visit booked',
-  VISITED: 'Visited',
-  NEGOTIATION: 'Negotiating',
-  BOOKING_INITIATED: 'Booking in progress',
-  WON: 'Won 🎉',
-  LOST: 'Lost',
-  RNR: 'Unresponsive',
-  // autoplan 2026-09-07: full 12-state coverage (the inbox facets now
-  // render every LeadState; these two were reachable via visit outcomes
-  // but had no lead-state label, so the facet fell back to humanize()).
-  RESCHEDULED: 'Postponed',
-  NO_SHOW: "Didn't show up",
-};
+// Lead-state labels live in @shadhil/api-types (shared with the backend
+// Activity timeline writer).
+const LEAD_STATUS_LABELS: Record<LeadStatus, string> = LEAD_STATE_LABELS;
 
 const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
   COMPLETED: 'Done',
@@ -277,6 +266,7 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   STATUS_CHANGE: 'Status change',
   VISIT: 'Visit',
   EMAIL: 'Email',
+  ASSIGNMENT: 'Assignment',
 };
 
 /**

@@ -40,6 +40,7 @@
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
 //   │   │       ├── Users          [canManageUsers]
+//   │   │       ├── Staff Permission [admin-like]
 //   │   │       └── Audit          [canViewAudit]
 //   │   └── Footer: UserMenu + Sign out
 //   └── SidebarInset
@@ -58,6 +59,7 @@ import {
   LuBell,
   LuShieldCheck,
   LuUserCog,
+  LuKeyRound,
   LuUsersRound,
   LuHandshake,
   LuMessageCircleQuestion,
@@ -209,6 +211,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/admin/users',
     label: 'Users',
     icon: LuUserCog,
+    group: 'admin',
+    scoped: false,
+  },
+  {
+    href: '/admin/staff-permission',
+    label: 'Staff Permission',
+    icon: LuKeyRound,
     group: 'admin',
     scoped: false,
   },

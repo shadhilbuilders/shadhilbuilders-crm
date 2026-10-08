@@ -65,6 +65,7 @@ const mocks = vi.hoisted(() => {
   const mutate = vi.fn();
   return {
     mutate,
+    transitionMutate: vi.fn(),
     enqueueUnique: vi.fn(async () => ({ id: 'q-1', createdAt: 1 })),
   };
 });
@@ -93,11 +94,16 @@ vi.mock('@/hooks/queries/crm', () => ({
   // the hook. A partial mock must list EVERY export the component touches, or the
   // import throws at render ("No 'leadSyncNoteOf' export is defined on the mock").
   leadSyncNoteOf: () => null,
+  useTransitionLead: vi.fn(() => ({
+    mutate: mocks.transitionMutate,
+    isPending: false,
+  })),
 }));
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: sessionMock.useSessionUser,
   canScheduleVisits: () => true,
+  canScheduleLeadVisit: () => true,
   // T-VISIT-OUTCOME-GATE (2026-09-16): the panel now gates each outcome button
   // on canLogVisitOutcome(role, outcome) instead of the panel-level
   // canScheduleVisits. This mock must provide it, or every outcome button
@@ -307,5 +313,67 @@ describe('LeadVisitPanel - Schedule visit is offered on every schedulable state'
     // a terminal or pre-visit lead.
     await mountLead({ id: 'lead-2', status: 'NEW' });
     expect(container?.innerHTML ?? '').not.toContain('Schedule visit');
+  });
+});
+
+describe('LeadVisitPanel - repeat visit + back step (2026-10-09)', () => {
+  function qa(name: string): Element | null {
+    return container?.querySelector(`[data-qa="${name}"]`) ?? null;
+  }
+
+  async function click(name: string): Promise<void> {
+    const el = qa(name);
+    if (el === null) throw new Error(`${name} not found`);
+    await act(async () => {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  }
+
+  it('offers "Request visit again" on a VISITED lead and moves it to VISIT_REQUESTED', async () => {
+    await mountLead({ id: 'lead-2', status: 'VISITED' });
+    expect(qa('lead-request-visit-again')).not.toBeNull();
+    expect(qa('lead-schedule-visit')).toBeNull();
+    await click('lead-request-visit-again');
+    expect(mocks.transitionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ leadId: 'lead-2', toState: 'VISIT_REQUESTED' }),
+      expect.anything(),
+    );
+  });
+
+  it('a SALES_EXEC can request the visit again', async () => {
+    sessionMock.useSessionUser.mockReturnValue({
+      user: { id: 'u-2', name: 'E', email: 'e@x', role: 'SALES_EXEC', teamId: null },
+      isPending: false,
+    });
+    await mountLead({ id: 'lead-2', status: 'VISITED' });
+    expect(qa('lead-request-visit-again')).not.toBeNull();
+  });
+
+  it('a TELECALLER is not offered "Request visit again" (VISITED is the exec lane)', async () => {
+    sessionMock.useSessionUser.mockReturnValue({
+      user: { id: 'u-3', name: 'T', email: 't@x', role: 'TELECALLER', teamId: null },
+      isPending: false,
+    });
+    await mountLead({ id: 'lead-2', status: 'VISITED' });
+    expect(qa('lead-request-visit-again')).toBeNull();
+  });
+
+  it('VISIT_REQUESTED shows Schedule visit and never the outcome/back controls', async () => {
+    await mountLead({ id: 'lead-1', status: 'VISIT_REQUESTED' });
+    expect(qa('lead-schedule-visit')).not.toBeNull();
+    expect(qa('visit-mark-completed')).toBeNull();
+    expect(qa('lead-back-to-visit-requested')).toBeNull();
+    expect(qa('lead-request-visit-again')).toBeNull();
+  });
+
+  it('VISIT_SCHEDULED shows outcome + Back to Visit requested, never Schedule visit', async () => {
+    await mountLead({ id: 'lead-1', status: 'VISIT_SCHEDULED' });
+    expect(qa('lead-schedule-visit')).toBeNull();
+    expect(qa('visit-mark-completed')).not.toBeNull();
+    await click('lead-back-to-visit-requested');
+    expect(mocks.transitionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ leadId: 'lead-1', toState: 'VISIT_REQUESTED' }),
+      expect.anything(),
+    );
   });
 });

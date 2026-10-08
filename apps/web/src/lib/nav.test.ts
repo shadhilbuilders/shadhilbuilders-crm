@@ -115,6 +115,7 @@ describe('lib/nav', () => {
       expect(hrefs).toEqual(managerHrefs);
       expect(hrefs).not.toContain('/admin');
       expect(hrefs).not.toContain('/admin/users');
+      expect(hrefs).not.toContain('/admin/staff-permission');
       expect(hrefs).not.toContain('/admin/projects');
       expect(hrefs).not.toContain('/admin/whatsapp-unknown-contacts');
       expect(hrefs).not.toContain('/admin/teams');
@@ -127,6 +128,7 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/admin');
       expect(hrefs).toContain('/admin/overview');
       expect(hrefs).toContain('/admin/users');
+      expect(hrefs).toContain('/admin/staff-permission');
       expect(hrefs).toContain('/admin/projects');
       expect(hrefs).toContain('/admin/teams');
       expect(hrefs).toContain('/admin/audit');
@@ -143,7 +145,17 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/admin');
       expect(hrefs).toContain('/admin/overview');
       expect(hrefs).toContain('/admin/users');
+      expect(hrefs).toContain('/admin/staff-permission');
       expect(hrefs).toContain('/admin/audit');
+    });
+
+    it('Staff Permission sits directly after Users in the admin nav', () => {
+      const adminHrefs = getVisibleNav('ADMIN')
+        .filter((i) => i.group === 'admin')
+        .map((i) => i.href);
+      expect(adminHrefs.indexOf('/admin/staff-permission')).toBe(
+        adminHrefs.indexOf('/admin/users') + 1,
+      );
     });
 
     it('TELECALLER does NOT see the Overview command center', () => {
@@ -177,6 +189,11 @@ describe('lib/nav', () => {
       expect(isNavItemActive('/visits', '/visits')).toBe(true);
       expect(isNavItemActive('/visits', '/visits/2024-01-15')).toBe(true);
       expect(isNavItemActive('/visits', '/visit')).toBe(false);
+    });
+
+    it('Staff Permission is active on its own path and not on /admin/users', () => {
+      expect(isNavItemActive('/admin/staff-permission', '/admin/staff-permission')).toBe(true);
+      expect(isNavItemActive('/admin/users', '/admin/staff-permission')).toBe(false);
     });
 
     it('Users (`/admin/users`) is active on `/admin/users` and nested paths', () => {

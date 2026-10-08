@@ -43,12 +43,11 @@ import { useDebouncedValue } from '@paalstack/react-hooks';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   LuEllipsis,
+  LuKeyRound,
   LuPencil,
   LuTrash2,
   LuUserCog,
 } from '@paalstack/react-icons/lu';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
@@ -74,9 +73,8 @@ import {
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { labelFor } from '@/lib/labels';
-import { orgHref } from '@/lib/nav';
-import { useOrgSlug } from '@/lib/tenant-context';
 import { CreateUserDialog } from './components/CreateUserDialog';
+import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 
 const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
@@ -89,11 +87,11 @@ type UserRow = {
   role: Role;
   teamId: string | null;
   projects: string[];
+  reportsTo?: { id: string; name: string; email: string } | null;
 };
 
 export default function UsersPage() {
   const { user, isPending: sessionPending } = useSessionUser();
-  const orgSlug = useOrgSlug();
   const [roleFilter, setRoleFilter] = useState<Role[]>([]);
   // Server-side search (autoplan 2026-09-09): the toolbar search input feeds
   // the `search` query param (≥2 chars hits the API, mirrors leads D9).
@@ -131,6 +129,7 @@ export default function UsersPage() {
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [roleTarget, setRoleTarget] = useState<UserRow | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<UserRow | null>(null);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
   // client but reports isPending=true during SSR. Without this gate the
@@ -171,7 +170,7 @@ export default function UsersPage() {
         : CREATABLE_FOR_MANAGER;
 
   const users = Array.isArray(usersQuery.data?.rows)
-    ? usersQuery.data.rows
+    ? usersQuery.data?.rows ?? []
     : [];
   const total = usersQuery.data?.total ?? 0;
 
@@ -222,7 +221,6 @@ export default function UsersPage() {
         </div>
       ) : (
         <UserTable
-          orgSlug={orgSlug}
           users={users}
           total={total}
           page={page}
@@ -248,6 +246,7 @@ export default function UsersPage() {
           onEdit={(row) => setEditTarget(row)}
           onDelete={(row) => setDeleteTarget(row)}
           onRoleChange={(row) => setRoleTarget(row)}
+          onChangePassword={(row) => setPasswordTarget(row)}
           createTrigger={
             <CreateUserDialog
               open={createOpen}
@@ -280,6 +279,11 @@ export default function UsersPage() {
         changeRole={changeRole}
         onClose={() => setRoleTarget(null)}
       />
+
+      <ResetPasswordDialog
+        target={passwordTarget}
+        onClose={() => setPasswordTarget(null)}
+      />
     </div>
   );
 }
@@ -305,6 +309,7 @@ function UserRowActions({
   onEdit,
   onDelete,
   onRoleChange,
+  onChangePassword,
 }: {
   target: UserRow;
   selfId: string;
@@ -312,6 +317,7 @@ function UserRowActions({
   onEdit: (row: UserRow) => void;
   onDelete: (row: UserRow) => void;
   onRoleChange: (row: UserRow) => void;
+  onChangePassword: (row: UserRow) => void;
 }) {
   const isSelf = target.id === selfId;
   const outranksTarget = outranks(actorRole, target.role);
@@ -357,6 +363,16 @@ function UserRowActions({
       onClick: () => onRoleChange(target),
     },
     {
+      label: 'Change password',
+      icon: LuKeyRound,
+      disabledReason: !canDelete
+        ? 'Only ADMIN or OWNER can change passwords'
+        : isSelf
+          ? 'Use Settings to change your own password'
+          : reason('change the password of'),
+      onClick: () => onChangePassword(target),
+    },
+    {
       label: 'Delete',
       icon: LuTrash2,
       disabledReason: deleteReason,
@@ -379,7 +395,7 @@ function UserRowActions({
             </Button>
           }
         />
-        <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuContent align="end" className="w-48">
           {items.map((item) => {
             if (item.disabledReason) {
               return (
@@ -423,7 +439,6 @@ function UserRowActions({
 }
 
 function UserTable({
-  orgSlug,
   users,
   total,
   page,
@@ -440,9 +455,9 @@ function UserTable({
   onEdit,
   onDelete,
   onRoleChange,
+  onChangePassword,
   createTrigger,
 }: {
-  orgSlug: string | null;
   users: BackendCreatedUser[];
   total: number;
   page: number;
@@ -459,10 +474,9 @@ function UserTable({
   onEdit: (row: UserRow) => void;
   onDelete: (row: UserRow) => void;
   onRoleChange: (row: UserRow) => void;
+  onChangePassword: (row: UserRow) => void;
   createTrigger: React.ReactNode;
 }) {
-  const router = useRouter();
-
   // Server-driven role filter (autoplan 2026-09-09): a MultiSelect in the
   // toolbar feeds the `role` query param directly (mirrors the leads page
   // status filter). The backend applies WHERE role IN (...) and returns the
@@ -483,13 +497,12 @@ function UserTable({
         header: 'Name',
         cell: ({ row }) => (
           <div className="min-w-45">
-            <Link
-              href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
-              className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
-              data-qa={`user-row-link-${row.original.id}`}
+            <span
+              className="text-sm font-medium"
+              data-qa={`user-row-name-${row.original.id}`}
             >
               {row.original.name}
-            </Link>
+            </span>
             {row.original.id === selfId ? (
               <span className="text-muted-foreground block text-xs">(you)</span>
             ) : null}
@@ -519,6 +532,37 @@ function UserTable({
             {labelFor('role', row.original.role)}
           </span>
         ),
+        enableSorting: false,
+      },
+      {
+        id: 'reportsTo',
+        header: 'Reports to',
+        // Staff -> their team manager; MANAGER/ADMIN -> the org OWNER; the
+        // OWNER (and unled staff) show a dash.
+        cell: ({ row }) => {
+          const reportsTo = row.original.reportsTo;
+          return reportsTo ? (
+            <Tooltip
+              content={reportsTo.email}
+              side="top"
+              trigger={
+                <span
+                  className="text-sm"
+                  data-qa={`user-reports-to-${row.original.id}`}
+                >
+                  {reportsTo.name}
+                </span>
+              }
+            />
+          ) : (
+            <span
+              className="text-muted-foreground text-sm"
+              data-qa={`user-reports-to-${row.original.id}`}
+            >
+              -
+            </span>
+          );
+        },
         enableSorting: false,
       },
       {
@@ -561,13 +605,14 @@ function UserTable({
             onEdit={onEdit}
             onDelete={onDelete}
             onRoleChange={onRoleChange}
+            onChangePassword={onChangePassword}
           />
         ),
         enableSorting: false,
         enableHiding: false,
       },
     ],
-    [orgSlug, selfId, actorRole, onEdit, onDelete, onRoleChange],
+    [selfId, actorRole, onEdit, onDelete, onRoleChange, onChangePassword],
   );
 
   const isSearchActive = search.trim().length > 0;
@@ -588,18 +633,6 @@ function UserTable({
           searchValue: search,
           onSearchValueChange: onSearchChange,
           className: 'mr-2'
-        }}
-        // Whole-row click → admin user detail. Name cell keeps its Link
-        // (middle-click / cmd-click / keyboard). Skip interactive controls
-        // so the actions menu and the name link don't double-navigate.
-        tableRowProps={{
-          className: 'cursor-pointer',
-          onClick: (row, event) => {
-            const target = event.target;
-            if (!(target instanceof Element)) return;
-            if (target.closest('a, button, [role="menuitem"]')) return;
-            router.push(orgHref(orgSlug, `/admin/users/${row.original.id}`));
-          },
         }}
         showPagination
         paginationProps={{

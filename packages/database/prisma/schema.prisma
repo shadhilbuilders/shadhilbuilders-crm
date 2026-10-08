@@ -76,6 +76,7 @@ enum ActivityType {
   STATUS_CHANGE
   VISIT
   EMAIL
+  ASSIGNMENT
 }
 
 enum VisitStatus {

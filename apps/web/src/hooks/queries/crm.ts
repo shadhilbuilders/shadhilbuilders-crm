@@ -9,7 +9,13 @@
 // T24 (PR3): every list-shape query has `placeholderData: keepPreviousData`
 // so the skeleton only renders on first load, not on refetch (avoids the
 // "stale data → skeleton → fresh data" flicker on navigation).
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
@@ -24,7 +30,7 @@ import type {
   CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
-  LeadActivity,
+  LeadActivitiesResponse,
   LeadDetail,
   LeadStateTransitionDto,
   RescheduleVisitDto,
@@ -205,11 +211,22 @@ export function useLead(id: string | null) {
   });
 }
 
+/**
+ * Lead timeline, cursor-paged BACKWARDS in time: page 0 is the newest slice and
+ * `fetchNextPage` loads the next-older one. Still under the `['leads']` prefix,
+ * so every lead mutation's invalidation refreshes it.
+ */
 export function useLeadActivities(id: string | null) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['leads', id, 'activities'] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: ({ signal }) => api<LeadActivity[]>(`/leads/${id as string}/activities`, { signal }),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ signal, pageParam }) =>
+      api<LeadActivitiesResponse>(
+        `/leads/${id as string}/activities${qs({ cursor: pageParam })}`,
+        { signal },
+      ),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
 

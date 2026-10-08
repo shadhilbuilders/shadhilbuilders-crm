@@ -112,6 +112,12 @@ export const UserListResultSchema = z.object({
       // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
+      // "Reports to" for the Users table (2026-10-08), same rule as
+      // UserDetail.manager: staff -> their team's manager (null when
+      // unled), MANAGER/ADMIN -> the org OWNER, OWNER -> null.
+      reportsTo: z
+        .object({ id: z.string(), name: z.string(), email: z.string() })
+        .nullable(),
     }),
   ),
   total: z.number().int().nonnegative(),
@@ -263,10 +269,13 @@ export type RefreshTokenDto = z.infer<typeof RefreshTokenDtoSchema>;
  * chars (matches the seed's CreateUserDto shape).
  */
 export const ChangePasswordDtoSchema = z.object({
+  // Required for self-service rotation (enforced in UsersService); omitted
+  // when an ADMIN/OWNER resets ANOTHER user's password.
   oldPassword: z
     .string()
     .min(1, 'Current password is required')
-    .max(200, 'Password is too long'),
+    .max(200, 'Password is too long')
+    .optional(),
   newPassword: z
     .string()
     .min(8, 'New password must be at least 8 characters')
@@ -287,9 +296,29 @@ export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;
  * server validation can't drift: both fail on the same rules.
  */
 export const ChangePasswordFormSchema = ChangePasswordDtoSchema.extend({
+  oldPassword: z
+    .string()
+    .min(1, 'Current password is required')
+    .max(200, 'Password is too long'),
   confirmPassword: z.string().min(1, 'Please confirm the new password'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'New password and confirmation do not match',
   path: ['confirmPassword'],
 });
 export type ChangePasswordFormValues = z.infer<typeof ChangePasswordFormSchema>;
+/**
+ * Admin/owner password-reset form (users + staff-permission pages). No
+ * current password - the actor is resetting someone else's.
+ */
+export const AdminResetPasswordFormSchema = z
+  .object({
+    newPassword: ChangePasswordDtoSchema.shape.newPassword,
+    confirmPassword: z.string().min(1, 'Please confirm the new password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'New password and confirmation do not match',
+    path: ['confirmPassword'],
+  });
+export type AdminResetPasswordFormValues = z.infer<
+  typeof AdminResetPasswordFormSchema
+>;
