@@ -92,3 +92,5 @@ apps/backend/media/
 **/media/
 
 apps/web/playwright-report/
+
+.cursor/

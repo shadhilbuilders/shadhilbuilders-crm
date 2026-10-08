@@ -1530,6 +1530,12 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-TEAM-ROUND-ROBIN (2026-10-08): ProjectTeam."lastAssignedAt" is the
+-- auto-assign rotation cursor. It is NOT application-writable under the policy
+-- above (ADMIN only); it advances through advance_project_team_cursor(), a
+-- SECURITY DEFINER function created by migration
+-- 20261008150000_project_team_round_robin, scoped to app.user_org_id.
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- T-INV-SYNC (2026-09-15): Unit.status is DERIVED from the booking lifecycle.
 -- ────────────────────────────────────────────────────────────────────────────

@@ -70,6 +70,42 @@
 // SERVICE in the same query that fetches the pool - the engine receives the
 // number, not the rows.
 
+// ## Team rotation (T-TEAM-ROUND-ROBIN, 2026-10-08)
+//
+// Equal sharing BETWEEN teams is a strict round-robin over the project's linked
+// teams, one lead per team in turn, regardless of headcount or load. This
+// module only owns the ORDER ("whose turn is it"); the service decides whether
+// a team in that order can actually take the lead (telecaller pool / manager),
+// skips the ones that cannot, and advances the cursor of the one it uses.
+//
+//   ON team  -> least-loaded telecaller in THAT team (pickAutoAssignCandidate)
+//   OFF team -> that team's manager, as a pending handoff
+//   a team with no telecallers is skipped (its manager never gets a lead just
+//   because the team is empty)
+
+/** A project-linked team and where it sits in the rotation. */
+export interface RotationTeam {
+  teamId: string;
+  /** When this team last received a routed lead; null = never. */
+  lastAssignedAt: Date | null;
+}
+
+/**
+ * Order teams for rotation: never-routed (null) first, then oldest
+ * `lastAssignedAt` first; ties break by teamId so the same input always yields
+ * the same order. Returns a NEW array - the input is never mutated.
+ */
+export function orderTeamsForRotation<T extends RotationTeam>(
+  teams: readonly T[],
+): T[] {
+  return [...teams].sort((a, b) => {
+    const at = a.lastAssignedAt === null ? Number.NEGATIVE_INFINITY : a.lastAssignedAt.getTime();
+    const bt = b.lastAssignedAt === null ? Number.NEGATIVE_INFINITY : b.lastAssignedAt.getTime();
+    if (at !== bt) return at < bt ? -1 : 1;
+    return a.teamId < b.teamId ? -1 : a.teamId > b.teamId ? 1 : 0;
+  });
+}
+
 /** A candidate telecaller with their current open-lead load. */
 export interface AutoAssignCandidate {
   /** TeamMember.userId (the assignable user). */

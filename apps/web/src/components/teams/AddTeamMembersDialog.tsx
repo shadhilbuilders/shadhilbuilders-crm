@@ -161,6 +161,7 @@ export function AddTeamMembersDialog({
                   data-qa={`team-add-member-row-${u.id}`}
                 >
                   <Checkbox
+                    id={`team-add-member-${u.id}`}
                     checked={isMember || selected.has(u.id)}
                     disabled={isMember}
                     onCheckedChange={(checked) => toggle(u.id, checked)}

@@ -102,7 +102,7 @@ export default function NewLeadPage() {
       name: '',
       phone: '',
       email: '',
-      source: 'LANDING',
+      source: 'WALK_IN',
       notes: '',
       teamId: NO_TEAM_OVERRIDE,
       assignedOwnerId: NO_OWNER_OVERRIDE,

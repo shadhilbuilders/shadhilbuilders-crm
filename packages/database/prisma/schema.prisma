@@ -445,6 +445,11 @@ model ProjectTeam {
   organizationId String
   assignedAt     DateTime @default(now())
   assignedById   String?
+  // T-TEAM-ROUND-ROBIN (2026-10-08): rotation cursor for auto-assign. The team
+  // that was routed to longest ago (NULL = never) goes next. Advanced only via
+  // advance_project_team_cursor() (SECURITY DEFINER) - ProjectTeam writes are
+  // ADMIN-only under RLS, and the creating user is usually not an admin.
+  lastAssignedAt DateTime?
 
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)

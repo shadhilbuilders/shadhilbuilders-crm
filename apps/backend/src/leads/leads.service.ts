@@ -82,9 +82,44 @@ import {
   type Team,
 } from './manager-assignment.engine';
 import {
+  orderTeamsForRotation,
   pickAutoAssignCandidate,
   type AutoAssignCandidate,
 } from './auto-assign.engine';
+
+/**
+ * T-TEAM-ROUND-ROBIN (2026-10-08): how auto-assign reached its decision, for the
+ * audit log. `skipped` makes every bypassed team visible (never silent).
+ */
+// `type` (not `interface`) on purpose: it is written into AuditLog.after (JSON),
+// and only type aliases get the implicit index signature Prisma's InputJsonValue needs.
+export type AutoAssignRouting = {
+  branch:
+    | 'creating-team-off' // creating team has autoAssignLeads=false -> its manager
+    | 'team-telecaller' // rotation picked an ON team -> its least-loaded telecaller
+    | 'team-manager' // rotation picked an OFF team -> its manager
+    | 'creating-team-fallback'; // no team could take it -> creating team's manager / rule chain
+  chosenTeamId: string | null;
+  previousLastAssignedAt: string | null;
+  skipped: Array<{ teamId: string; reason: 'no-telecallers' | 'at-capacity' | 'no-manager' | 'invalid-manager' }>;
+};
+
+type AutoAssignOutcome =
+  | {
+      kind: 'telecaller';
+      userId: string;
+      resolution: ResolverResult;
+      ownerType: 'TELECALLER';
+      routing: AutoAssignRouting;
+    }
+  | {
+      kind: 'manager';
+      userId: string;
+      resolution: ResolverResult;
+      ownerType: 'MANAGER';
+      routing: AutoAssignRouting;
+    }
+  | { kind: 'fallback-to-engine'; routing: AutoAssignRouting };
 
 export interface LeadRow {
   id: string;
@@ -787,6 +822,25 @@ export class LeadsService {
         teamId = team?.id ?? managedTeamIds[0]!;
       }
     }
+    // T-TEAM-ROUND-ROBIN follow-up (2026-10-08): an ADMIN/OWNER carries no team,
+    // and the create form has no team picker for them, so they used to ALWAYS
+    // fall through to the oldest team below - every lead they created landed on
+    // that one team's manager. Rotate instead: take the next team in the
+    // project's round-robin. Skipped when the admin names a team or an owner
+    // (explicit choices must not burn a turn).
+    let teamPickedByRotation = false;
+    if (
+      teamId === null &&
+      dto.teamId === undefined &&
+      dto.assignedOwnerId === undefined &&
+      (actor.role === 'ADMIN' || actor.role === 'OWNER')
+    ) {
+      const rotated = await this.pickRotationTeamId(client, actor, dto.projectId);
+      if (rotated !== null) {
+        teamId = rotated;
+        teamPickedByRotation = true;
+      }
+    }
     if (teamId === null && dto.teamId !== undefined) {
       // ADMIN/OWNER explicit team pick (DESIGN.md §3: "admin-created leads
       // can be assigned to any team").
@@ -874,12 +928,21 @@ export class LeadsService {
     // When auto-assign can't route (no eligible pool, or managerless team),
     // fall back to the existing ManagerAssignmentRule chain + team default +
     // actor fallback exactly as before.
-    const autoAssign = teamRow ? await this.resolveAutoAssign(
-      client,
-      actor,
-      teamRow,
-      dto,
-    ) : null;
+    //
+    // T-TEAM-ROUND-ROBIN (2026-10-08): resolveAutoAssign now has SIDE EFFECTS
+    // (advisory lock + round-robin cursor advance), so it must only run when its
+    // result will actually be used. Staff self-assign and an explicit
+    // `assignedOwnerId` pick both bypass auto-assign below; running it for them
+    // would burn a team's turn for a lead it never receives.
+    const autoAssignWillApply =
+      actor.role !== 'TELECALLER' &&
+      actor.role !== 'SALES_EXEC' &&
+      dto.assignedOwnerId === undefined;
+    const autoAssign =
+      teamRow && autoAssignWillApply
+        ? await this.resolveAutoAssign(client, actor, teamRow, dto)
+        : null;
+    const autoRouting: AutoAssignRouting | null = autoAssign?.routing ?? null;
     const autoOwner =
       autoAssign !== null && autoAssign.kind !== 'fallback-to-engine'
         ? autoAssign
@@ -1073,6 +1136,10 @@ export class LeadsService {
           teamId,
           createdBy: actor.sub,
           ...assignmentMetadata,
+          // T-TEAM-ROUND-ROBIN: which team the rotation chose and which were
+          // skipped (and why). Present only when auto-assign actually ran.
+          ...(autoRouting !== null ? { routing: autoRouting } : {}),
+          ...(teamPickedByRotation ? { teamPickedByRotation: true } : {}),
         },
         reason: `lead.create by ${actor.email} (${actor.role})`,
       },
@@ -2078,77 +2145,121 @@ export class LeadsService {
   }
 
   /**
-   * T-AUTOASSIGN (2026-09-17): decide who owns a NEW lead based on the
-   * creating team's `autoAssignLeads` flag.
-   *
-   *   autoAssignLeads = true
-   *     Pool the TELECALLERs across EVERY team linked to the lead's project
-   *     (ProjectTeam), dedupe, score openLeads/weight, pick the least-loaded.
-   *     TELECALLERS ONLY (fixed 2026-09-28): a NEW lead is telecaller work per
-   *     plan §3, so a sales exec is never a candidate here. When no telecaller
-   *     is eligible the lead goes to THIS team's MANAGER as a pending handoff
-   *     (never to a sales exec); the rule chain is only reached when the team
-   *     has no manager either.
+   * T-AUTOASSIGN (2026-09-17) + T-TEAM-ROUND-ROBIN (2026-10-08): decide who owns
+   * a NEW lead based on the creating team's `autoAssignLeads` flag.
    *
    *   autoAssignLeads = false (team has a manager)
-   *     The lead is owned by this team's manager (pending; manager reassigns
-   *     to a telecaller later). ownerType = MANAGER.
+   *     The lead is owned by the creating team's manager (pending; the manager
+   *     reassigns to a telecaller later). ownerType = MANAGER.
    *
-   * Returns null only when neither path can resolve - the caller falls back to
-   * the existing rule chain. Returns a discriminated { userId, resolution,
-   * ownerType } for the audit log.
+   *   autoAssignLeads = true
+   *     Strict ROUND-ROBIN between the teams linked to the lead's project
+   *     (ProjectTeam), one lead per team in turn, regardless of headcount or
+   *     load. The team routed to longest ago goes next (`lastAssignedAt`, null
+   *     first). For the team whose turn it is:
+   *       - ON team  -> its least-loaded TELECALLER (openLeads / weight, honoring
+   *                     maxOpenLeads). TELECALLERS ONLY: a NEW lead is telecaller
+   *                     work (plan §3), never a sales exec.
+   *       - OFF team -> its MANAGER directly, as a pending handoff.
+   *     A team with NO telecallers is skipped - its manager never receives a
+   *     lead just because the team is empty. An ON team whose telecallers are
+   *     all at their ceiling, and an OFF team with no manager, are skipped too.
+   *     When no team can take the lead it goes to the CREATING team's manager
+   *     (last resort); only a managerless creating team falls to the rule chain.
+   *
+   * The whole pick runs under a per-project advisory lock so two concurrent
+   * creates cannot read the same cursor / load and choose the same team. The
+   * cursor advances in the SAME transaction as the lead insert, so a failed
+   * create (duplicate phone, bad project) rolls the rotation back with it.
+   *
+   * Every outcome carries `routing` (chosen team, skipped teams + reasons) for
+   * the audit log - skipped teams are never silent.
+   *
+   * Returns `fallback-to-engine` only when neither path can resolve; the caller
+   * then runs the existing rule chain.
    */
   private async resolveAutoAssign(
     client: PrismaClient,
     actor: JwtPayload,
     teamRow: { id: string; managerId: string | null; autoAssignLeads: boolean; defaultAssigneeId: string | null },
     dto: CreateLeadDto,
-  ): Promise<
-    | { kind: 'telecaller'; userId: string; resolution: ResolverResult; ownerType: 'TELECALLER' }
-    | { kind: 'manager'; userId: string; resolution: ResolverResult; ownerType: 'MANAGER' }
-    | { kind: 'fallback-to-engine' }
-    | null
-  > {
-    // Manager-owned pending handoff. Used by BOTH flag values: a
-    // false-flag team routes everything to its manager, and a true-flag team
-    // with no eligible telecaller routes there too. A managerless team has
-    // nobody to hand off to, so the caller falls back to the rule chain.
-    // NB: the false path uses `!== true` (not `=== false`) so an
-    // undefined/missing flag (pre-migration rows, test mocks) keeps the legacy
-    // false-default behavior.
-    const managerOwned = ():
-      | { kind: 'manager'; userId: string; resolution: ResolverResult; ownerType: 'MANAGER' }
-      | { kind: 'fallback-to-engine' } => {
-      if (teamRow.managerId === null) return { kind: 'fallback-to-engine' };
+  ): Promise<AutoAssignOutcome> {
+    const skipped: AutoAssignRouting['skipped'] = [];
+
+    // Manager-owned pending handoff of the CREATING team. A managerless team has
+    // nobody to hand off to, so the caller falls back to the rule chain (with
+    // `routing` still recorded so the fall-through is auditable).
+    //
+    // The manager must actually hold the MANAGER role. `Team.managerId` is a bare
+    // FK, so seed/demo data (or a role changed after assignment) can leave an
+    // OWNER/ADMIN there - and a lead handed to them would show up under the
+    // owner instead of a manager. Such a team is treated as managerless and the
+    // skip is audited (the setter, assertManagerAssignable, rejects it going forward).
+    const creatingManagerOk = await this.isActiveManager(
+      client,
+      actor.organizationId,
+      teamRow.managerId,
+    );
+    if (teamRow.managerId !== null && !creatingManagerOk) {
+      skipped.push({ teamId: teamRow.id, reason: 'invalid-manager' });
+    }
+    const creatingTeamManager = (
+      branch: AutoAssignRouting['branch'],
+    ): AutoAssignOutcome => {
+      const routing: AutoAssignRouting = {
+        branch,
+        chosenTeamId: creatingManagerOk ? teamRow.id : null,
+        previousLastAssignedAt: null,
+        skipped,
+      };
+      if (teamRow.managerId === null || !creatingManagerOk) {
+        return { kind: 'fallback-to-engine', routing };
+      }
       return {
         kind: 'manager',
         userId: teamRow.managerId,
         resolution: { kind: 'manager-owner', userId: teamRow.managerId },
         ownerType: 'MANAGER',
+        routing,
       };
     };
 
+    // The false path uses `!== true` (not `=== false`) so an undefined/missing
+    // flag (pre-migration rows, test mocks) keeps the legacy false-default.
     if (teamRow.autoAssignLeads !== true) {
-      return managerOwned();
+      return creatingTeamManager('creating-team-off');
     }
 
-    // True path: pool the project's telecallers, least-loaded wins.
+    // Serialize routing per project. Held until the surrounding transaction
+    // commits/rolls back, so the cursor and load reads below cannot go stale.
+    await client.$executeRaw(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${dto.projectId}))`,
+    );
+
     const projectTeams = await client.projectTeam.findMany({
       where: { projectId: dto.projectId, organizationId: actor.organizationId },
-      select: { teamId: true },
+      select: {
+        teamId: true,
+        lastAssignedAt: true,
+        team: { select: { autoAssignLeads: true, managerId: true } },
+      },
     });
-    if (projectTeams.length === 0) return managerOwned();
-    const teamIds = projectTeams.map((t) => t.teamId);
+    if (projectTeams.length === 0) return creatingTeamManager('creating-team-fallback');
 
-    // Members across those teams, with weight + cap. The role filter is applied
-    // below against User.role - TeamMember itself carries no role.
+    const validManagerIds = await this.activeManagerIds(
+      client,
+      actor.organizationId,
+      projectTeams.map((t) => t.team.managerId),
+    );
+
     const members = await client.teamMember.findMany({
-      where: { teamId: { in: teamIds }, organizationId: actor.organizationId },
+      where: {
+        teamId: { in: projectTeams.map((t) => t.teamId) },
+        organizationId: actor.organizationId,
+      },
       select: { userId: true, teamId: true, weight: true, maxOpenLeads: true },
     });
-    if (members.length === 0) return managerOwned();
 
-    const memberUserIds = members.map((m) => m.userId);
     // TELECALLERs ONLY. Sales execs are deliberately NOT candidates: a NEW lead
     // is telecaller work (plan §3), and pooling both roles let an idle exec's
     // 0.0 score beat every working telecaller. Sending a NEW lead to a sales
@@ -2157,7 +2268,7 @@ export class LeadsService {
     // admin/manager `assignedOwnerId` pick) - never this automatic path.
     const memberUsers = await client.user.findMany({
       where: {
-        id: { in: memberUserIds },
+        id: { in: [...new Set(members.map((m) => m.userId))] },
         organizationId: actor.organizationId,
         role: 'TELECALLER',
       },
@@ -2165,9 +2276,8 @@ export class LeadsService {
     });
     const telecallerIds = new Set(memberUsers.map((u) => u.id));
     const telecallerMembers = members.filter((m) => telecallerIds.has(m.userId));
-    if (telecallerMembers.length === 0) return managerOwned();
 
-    const memberCounts = await client.lead.groupBy({
+    const openCounts = await client.lead.groupBy({
       by: ['ownerId'],
       where: {
         ownerId: { in: [...telecallerIds] },
@@ -2175,55 +2285,160 @@ export class LeadsService {
       },
       _count: { _all: true },
     });
-    const openByOwner = new Map(memberCounts.map((g) => [g.ownerId, g._count._all]));
+    const openByOwner = new Map(openCounts.map((g) => [g.ownerId, g._count._all]));
 
-    // Dedupe by user; prefer the highest weight among their memberships so a
-    // member in two teams isn't double-counted and their effective weight is
-    // the best fit.
-    // T-MAXOPENLEADS (2026-09-28): the ceiling resolves to the MOST PERMISSIVE
-    // value across memberships - `null` (uncapped) on either row wins, otherwise
-    // the larger cap. Rationale: the cap protects a person's workload, so if any
-    // team they belong to has cleared them for more, they are available for
-    // more; taking the strictest would let an unrelated team's stale low cap
-    // silently remove someone from a project's routing entirely.
-    //
-    // NB: merging must NOT happen against an absent entry - `null` means
-    // "uncapped", so folding a first row into `undefined` would read as
-    // "uncapped wins" and silently discard the cap on every single-membership
-    // member. Absence is handled by the `existing === undefined` branch below.
-    const mergeCap = (
-      a: number | null,
-      b: number | null,
-    ): number | null => (a === null || b === null ? null : Math.max(a, b));
-    const best: Map<string, AutoAssignCandidate> = new Map();
-    for (const m of telecallerMembers) {
-      const cap = m.maxOpenLeads ?? null;
-      const existing = best.get(m.userId);
-      if (existing === undefined) {
-        best.set(m.userId, {
+    for (const pt of orderTeamsForRotation(projectTeams)) {
+      const teamTelecallers = telecallerMembers.filter((m) => m.teamId === pt.teamId);
+      // An empty team never hands its manager a lead.
+      if (teamTelecallers.length === 0) {
+        skipped.push({ teamId: pt.teamId, reason: 'no-telecallers' });
+        continue;
+      }
+
+      const previous = pt.lastAssignedAt === null ? null : pt.lastAssignedAt.toISOString();
+
+      if (pt.team.autoAssignLeads === true) {
+        // `maxOpenLeads` is read from THIS team's membership row: a person's
+        // ceiling is per team, and the pick is per team.
+        const candidates: AutoAssignCandidate[] = teamTelecallers.map((m) => ({
           userId: m.userId,
           openLeads: openByOwner.get(m.userId) ?? 0,
           weight: m.weight,
-          maxOpenLeads: cap,
-        });
+          maxOpenLeads: m.maxOpenLeads ?? null,
+        }));
+        const pick = pickAutoAssignCandidate(candidates);
+        if (pick.kind === 'no-eligible') {
+          skipped.push({ teamId: pt.teamId, reason: 'at-capacity' });
+          continue;
+        }
+        await this.advanceTeamCursor(client, dto.projectId, pt.teamId);
+        return {
+          kind: 'telecaller',
+          userId: pick.userId,
+          resolution: { kind: 'auto-assign', userId: pick.userId },
+          ownerType: 'TELECALLER',
+          routing: {
+            branch: 'team-telecaller',
+            chosenTeamId: pt.teamId,
+            previousLastAssignedAt: previous,
+            skipped,
+          },
+        };
+      }
+
+      // OFF team: its turn goes straight to its manager.
+      const managerId = pt.team.managerId;
+      if (managerId === null) {
+        skipped.push({ teamId: pt.teamId, reason: 'no-manager' });
         continue;
       }
-      // Same user on another team: keep the higher weight, widen the cap.
-      if (m.weight > existing.weight) existing.weight = m.weight;
-      existing.maxOpenLeads = mergeCap(existing.maxOpenLeads ?? null, cap);
+      if (!validManagerIds.has(managerId)) {
+        skipped.push({ teamId: pt.teamId, reason: 'invalid-manager' });
+        continue;
+      }
+      await this.advanceTeamCursor(client, dto.projectId, pt.teamId);
+      return {
+        kind: 'manager',
+        userId: managerId,
+        resolution: { kind: 'manager-owner', userId: managerId },
+        ownerType: 'MANAGER',
+        routing: {
+          branch: 'team-manager',
+          chosenTeamId: pt.teamId,
+          previousLastAssignedAt: previous,
+          skipped,
+        },
+      };
     }
-    const candidates = [...best.values()];
-    const pick = pickAutoAssignCandidate(candidates);
-    // No eligible pick: every telecaller is at/over their cap (or weight 0) -
-    // the same manager handoff as an empty pool. Never a sales exec, and never
-    // silently over a configured ceiling.
-    if (pick.kind === 'no-eligible') return managerOwned();
-    return {
-      kind: 'telecaller',
-      userId: pick.userId,
-      resolution: { kind: 'auto-assign', userId: pick.userId },
-      ownerType: 'TELECALLER',
-    };
+
+    // No team can take the lead (no telecallers anywhere, every ON team at its
+    // ceiling, or OFF teams without managers). Never silent: `skipped` lands in
+    // the audit log with the branch.
+    return creatingTeamManager('creating-team-fallback');
+  }
+
+  /**
+   * Pick the creating team for a teamless ADMIN/OWNER by the project's
+   * round-robin, so their leads do not all pile onto the oldest team's manager.
+   *
+   * Eligible: a team whose flag is ON (auto-assign then rotates itself), or an
+   * OFF team whose manager really is a MANAGER. The first eligible team in
+   * rotation order wins. For an OFF team the turn is consumed HERE (the
+   * creating-team-off path does not advance the cursor); an ON team's turn is
+   * consumed by resolveAutoAssign when it routes. Returns null when the project
+   * has no usable linked team, and the caller keeps its oldest-team default.
+   */
+  private async pickRotationTeamId(
+    client: PrismaClient,
+    actor: JwtPayload,
+    projectId: string,
+  ): Promise<string | null> {
+    await client.$executeRaw(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`,
+    );
+    const projectTeams = await client.projectTeam.findMany({
+      where: { projectId, organizationId: actor.organizationId },
+      select: {
+        teamId: true,
+        lastAssignedAt: true,
+        team: { select: { autoAssignLeads: true, managerId: true } },
+      },
+    });
+    if (projectTeams.length === 0) return null;
+    const validManagers = await this.activeManagerIds(
+      client,
+      actor.organizationId,
+      projectTeams.map((t) => t.team.managerId),
+    );
+    for (const pt of orderTeamsForRotation(projectTeams)) {
+      if (pt.team.autoAssignLeads === true) return pt.teamId;
+      if (pt.team.managerId !== null && validManagers.has(pt.team.managerId)) {
+        await this.advanceTeamCursor(client, projectId, pt.teamId);
+        return pt.teamId;
+      }
+    }
+    return null;
+  }
+
+  /** Is `userId` an existing MANAGER in this org? null -> false. */
+  private async isActiveManager(
+    client: PrismaClient,
+    organizationId: string,
+    userId: string | null,
+  ): Promise<boolean> {
+    if (userId === null) return false;
+    return (await this.activeManagerIds(client, organizationId, [userId])).has(userId);
+  }
+
+  /** The subset of `ids` that are MANAGER users in this org. */
+  private async activeManagerIds(
+    client: PrismaClient,
+    organizationId: string,
+    ids: ReadonlyArray<string | null>,
+  ): Promise<Set<string>> {
+    const wanted = [...new Set(ids.filter((id): id is string => id !== null))];
+    if (wanted.length === 0) return new Set();
+    const rows = await client.user.findMany({
+      where: { id: { in: wanted }, organizationId, role: 'MANAGER' },
+      select: { id: true },
+    });
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /**
+   * Advance the round-robin cursor for (project, team). ProjectTeam writes are
+   * ADMIN-only under RLS, so this goes through the SECURITY DEFINER function
+   * from migration 20261008150000_project_team_round_robin (org-scoped via the
+   * app.user_org_id GUC) rather than a plain UPDATE that would match zero rows.
+   */
+  private async advanceTeamCursor(
+    client: PrismaClient,
+    projectId: string,
+    teamId: string,
+  ): Promise<void> {
+    await client.$executeRaw(
+      Prisma.sql`SELECT advance_project_team_cursor(${projectId}, ${teamId})`,
+    );
   }
 
   private async assertCanEditLead(
