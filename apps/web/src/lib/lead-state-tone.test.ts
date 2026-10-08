@@ -53,7 +53,7 @@ describe('leadStateTone', () => {
     // "the value is not gray" would be the wrong assertion. What matters is that
     // every state is an EXPLICIT KEY, so a state added to the enum is visibly
     // missing from this map rather than silently inheriting the unknown-input
-    // fallback. (The Record<LeadState, …> type on the map is the first line of
+    // fallback. (The Record<LeadState, ...> type on the map is the first line of
     // defence; this is the second, because a cast or a widened type could slip
     // past tsc.)
     for (const state of LEAD_STATES) {

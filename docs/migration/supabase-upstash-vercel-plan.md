@@ -12,8 +12,8 @@ silently. Everything else is config + comments.
   locks and Lua EVAL (release/renew lease). Both work on Upstash. (SSE does NOT
   use Redis pub/sub; it polls Postgres every 1.5s — verified in
   `apps/realtime-sse/src/config.ts` + `realtime.service.ts`.)
-- ✅ Web on Vercel — app already has a Vercel project (`prj_xZlhyl…`, team
-  `OiXy2PhG…`) and 4 Vercel envs. `output: 'standalone'` + Serwist work there.
+- ✅ Web on Vercel — app already has a Vercel project (`prj_xZlhyl...`, team
+  `OiXy2PhG...`) and 4 Vercel envs. `output: 'standalone'` + Serwist work there.
 - ⚠️ Supabase for Postgres — **the RLS model is the risk** (see Gate 1).
 
 ## Gates (must solve before cutover)
@@ -140,7 +140,7 @@ Coolify (VPS), via API PATCH:
   Keep `POOL_MODE=session`, keep all else.
 - Restart service; api+sse come back pointed at Supabase/Upstash.
 
-Vercel (web project `prj_xZlhyl…`):
+Vercel (web project `prj_xZlhyl...`):
 - Root Directory = `apps/web` (it's currently at repo root — this is the main
   build change). Install: `pnpm install` (root); Build: `pnpm --filter @shadhil/web build`.
 - Env: `DATABASE_URL` (transaction pooler :6543, `DB_POOL_MAX=1`),

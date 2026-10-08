@@ -33,7 +33,7 @@ import {
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { TransitionReasonRequired, isTokenWithinTotal, isDeadLeadState, TOKEN_EXCEEDS_TOTAL_MESSAGE, computeNegotiatedTotal, MAX_BOOKING_TOTAL } from '@shadhil/api-types';
+import { TransitionReasonRequired, isTokenWithinTotal, TOKEN_EXCEEDS_TOTAL_MESSAGE, computeNegotiatedTotal, MAX_BOOKING_TOTAL } from '@shadhil/api-types';
 import type {
   BookingFilterDto,
   BookingTransitionDto,
@@ -47,7 +47,7 @@ import { TeamAccessService } from '../teams/team-access.service';
 import { isAdminClass } from '../users/roles';
 // T-VISIT-CLOSE (2026-09-28): a settled booking leaves no open visits behind.
 // One shared helper with the lead-terminal path, so both agree on the meaning.
-import { closeOpenVisitsForLead } from '../visits/close-visits-for-lead';
+import { syncVisitsToLeadState } from '../visits/sync-visits-to-lead-state';
 import {
   BOOKABLE_LEAD_STATES,
   isBookableLeadState,
@@ -804,62 +804,12 @@ export class BookingsService {
             notes: true,
             createdAt: true,
             updatedAt: true,
-            // `state` is read so the visit-closure below can honour the same
-            // "a WON deal is not a dead deal" rule the lead-transition path uses.
             lead: { select: { name: true, state: true } },
             unit: { select: { unitNumber: true } },
             user: { select: { name: true } },
             approvedBy: { select: { name: true } },
           },
         });
-
-        // T-VISIT-CLOSE (2026-09-28): once the booking is settled - approved
-        // (the unit is sold) or cancelled/rejected (the deal is dead) - any open
-        // visit on its lead is no longer pending work. Nothing used to close
-        // them, so they lingered with a past `scheduledFor` and showed up in the
-        // "Visits at risk" card, the visit list and the calendar.
-        //
-        // TOKEN is deliberately EXCLUDED: the token is paid but approval is
-        // still pending, so the deal is live and a scheduled visit may be
-        // exactly what closes it.
-        //
-        // ── A WON DEAL IS NOT A DEAD DEAL (2026-09-29 fix) ─────────────────────
-        //
-        // This branch used to close the lead's open visits on ANY settled
-        // booking, with no look at the LEAD. That contradicted the rule the
-        // sibling caller already encodes: `leads.service.transition` guards with
-        // `isDeadLeadState` and deliberately does NOT close visits for WON,
-        // because "a won deal is finished but realised - its handover or site
-        // meeting may still be pending, and cancelling those silently would
-        // destroy real work."
-        //
-        // The live consequence, found in production data (lead
-        // cmu55o070000wyju83nmyivva): a lead had TWO bookings - one APPROVED
-        // (so the lead is WON) and a later one CANCELLED. Cancelling the second
-        // fired this branch and silently CANCELLED the won deal's scheduled
-        // visit. The lead page correctly said WON; the visits page correctly
-        // showed the visit as CANCELLED; and the visit row was the thing that
-        // was wrong.
-        //
-        // So the same rule now holds on this path: only close the visits when the
-        // lead has actually DIED. `isDeadLeadState` (LOST/RNR) - never WON.
-        // A lead with no bookings left in play and a state that is not dead keeps
-        // its visit, which is the conservative direction: a surviving visit is
-        // visible work someone can cancel, whereas a wrongly-cancelled one is
-        // silent and unrecoverable.
-        if (
-          (dto.toStatus === 'APPROVED' ||
-            dto.toStatus === 'REJECTED' ||
-            dto.toStatus === 'CANCELLED') &&
-          isDeadLeadState(updated.lead.state)
-        ) {
-          await closeOpenVisitsForLead(
-            tx as unknown as PrismaClient,
-            actor,
-            updated.leadId,
-            'booking-settled',
-          );
-        }
 
         // T-INV-SYNC: the Unit.status follow-through (APPROVED → SOLD,
         // CANCELLED/REJECTED → back to AVAILABLE/HOLD/TOKEN depending on the
@@ -1276,6 +1226,11 @@ export class BookingsService {
           'APPROVED→WON, TOKEN→BOOKING_INITIATED, HOLD→NEGOTIATION, none→NEGOTIATION',
       },
     });
+
+    // T-VISIT-LEAD-SYNC (2026-10-09): the booking moved the lead on its own, so
+    // its open visits must follow (a WON deal's SCHEDULED visit used to stay in
+    // Today's visits). Same transaction as the lead write.
+    await syncVisitsToLeadState(client, options.actor, leadId, target);
   }
 
   /**

@@ -74,11 +74,11 @@ export type LeadStatus = (typeof LEAD_STATUSES)[number];
  *
  * NOTE (2026-09-29): `SiteVisit.STATUS` is a DIFFERENT enum from `outcome` and
  * has five values - it adds `SCHEDULED`, which has no outcome equivalent. Both
- * were previously routed through `labelFor('visit', …)`, whose map covers only
+ * were previously routed through `labelFor('visit', ...)`, whose map covers only
  * these four, so a SCHEDULED visit fell through to `humanize()` and rendered
  * "Scheduled" by accident rather than by contract.
  *
- * The visits page now shows the LEAD's pipeline state (via `labelFor('lead', …)`)
+ * The visits page now shows the LEAD's pipeline state (via `labelFor('lead', ...)`)
  * as its status word, so both pages use one vocabulary, and the visit's own
  * status is only ever displayed through `VISIT_STATUS_LABELS` below.
  */
@@ -112,7 +112,7 @@ export type VisitStatus = (typeof VISIT_STATUSES)[number];
  * 2026-09-29: "In visits page only show scheduled visit and rescheduled visit
  * and upcoming visit data").
  */
-export const UPCOMING_VISIT_STATUSES = ['SCHEDULED', 'RESCHEDULED'] as const;
+export const UPCOMING_VISIT_STATUSES = ['SCHEDULED'] as const;
 
 
 /** Inventory-unit values per the Prisma `InventoryUnit.status` enum. */
@@ -217,7 +217,7 @@ const VISIT_OUTCOME_LABELS: Record<VisitOutcome, string> = {
 };
 
 /**
- * The five `SiteVisit.status` values. `labelFor('visit', …)` resolves through
+ * The five `SiteVisit.status` values. `labelFor('visit', ...)` resolves through
  * here first, falling back to the outcome map (they overlap on four values and
  * the outcomes' friendlier wording is the established one).
  *

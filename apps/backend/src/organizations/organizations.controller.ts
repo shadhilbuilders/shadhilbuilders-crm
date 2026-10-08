@@ -9,11 +9,18 @@
 import {
   Controller,
   Get,
+  BadRequestException,
+  Body,
   Inject,
   NotFoundException,
   Param,
+  Patch,
   Req,
 } from '@nestjs/common';
+import {
+  UpdateOrganizationSettingsSchema,
+  type OrganizationSettings,
+} from '@shadhil/api-types';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
@@ -56,5 +63,25 @@ export class OrganizationsController {
     @Req() req: AuthedRequest,
   ): Promise<Array<{ id: string; name: string; slug: string }>> {
     return this.organizations.list(req.user!);
+  }
+
+  // Declared before nothing dynamic can shadow it: 'settings' is a literal segment.
+  @Get('settings')
+  @ApiOperation({ summary: 'Tenant settings (e.g. visit reminder lead time).' })
+  async getSettings(@Req() req: AuthedRequest): Promise<OrganizationSettings> {
+    return this.organizations.getSettings(req.user!);
+  }
+
+  @Patch('settings')
+  @ApiOperation({ summary: 'Update tenant settings. ADMIN/OWNER only.' })
+  async updateSettings(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<OrganizationSettings> {
+    const parsed = UpdateOrganizationSettingsSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.issues.map((i) => i.message).join('; '));
+    }
+    return this.organizations.updateSettings(req.user!, parsed.data);
   }
 }

@@ -530,6 +530,8 @@ describe('Work dashboard - one page, every action in place', () => {
         leadName: 'Ravi',
         scheduledFor: '2026-09-16T10:30:00.000Z',
         userName: 'Priya',
+        status: 'SCHEDULED',
+        leadState: 'VISIT_SCHEDULED',
       },
     ];
     await mount();

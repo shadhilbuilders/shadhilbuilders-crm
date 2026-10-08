@@ -266,6 +266,13 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
           select: { leadId: true, userId: true },
         });
         if (visit === null) continue;
+        // One open visit per lead (partial unique index): a visit a previous
+        // test created through create() must be closed before the canonical
+        // fixture visit is re-opened.
+        await db.siteVisit.updateMany({
+          where: { leadId: visit.leadId, status: 'SCHEDULED', id: { not: visitId } },
+          data: { status: 'CANCELLED' },
+        });
         await db.siteVisit.update({
           where: { id: visitId },
           data: { status: 'SCHEDULED', outcome: null, notes: null },
@@ -708,6 +715,11 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
   it('create() grants the conducting exec access to a lead they do not own', async () => {
     // TC_ID owns the lead; SE_ID conducts. Start with NO co-owner.
     const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    // One open visit per lead: close the fixture's visit so create() books a
+    // genuinely new one (the 409 rule has its own test).
+    await adminSeed((db) =>
+      db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
+    );
     await adminSeed((db) =>
       db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
     );
@@ -750,6 +762,11 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     // A manager/admin can already read the lead through their own policy, so
     // writing coOwnerId for them would be an unnecessary, wider grant.
     const { leadId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    // One open visit per lead: close the fixture's visit so create() books a
+    // genuinely new one (the 409 rule has its own test).
+    await adminSeed((db) =>
+      db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
+    );
     await adminSeed((db) =>
       db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
     );
@@ -788,6 +805,11 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
 
   it('is idempotent - re-scheduling for the SAME exec needs no new grant', async () => {
     const { leadId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
+    // One open visit per lead: close the fixture's visit so create() books a
+    // genuinely new one (the 409 rule has its own test).
+    await adminSeed((db) =>
+      db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
+    );
     await adminSeed((db) =>
       db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }),
     );
@@ -1102,15 +1124,10 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     expect(closed?.outcome).toBe('NO_SHOW');
   });
 
-  it('leaves a live SCHEDULED visit alone when a VISIT_SCHEDULED lead books a second one', async () => {
-    // THE CARVE-OUT, and the reason it exists: in this codebase SCHEDULED is
-    // OPEN work (`isUpcomingVisit`, `OPEN_VISIT_STATUSES`), so closing it here
-    // would silently cancel an appointment the customer is expecting. Before
-    // this change a second visit could be booked from the calendar leaving two
-    // open rows; that ambiguity is unchanged and belongs to the reschedule
-    // endpoint. Pinned so a future "cleanup" cannot start cancelling live
-    // appointments - a first attempt at this change did exactly that and this
-    // test is what caught it.
+  it('refuses (409) a second visit while the lead already has a live SCHEDULED one', async () => {
+    // T-VISIT-LEAD-SYNC (2026-10-09) replaces the old carve-out that allowed two
+    // open rows - the source of duplicate rows in Today's visits. The live visit
+    // must also be left untouched.
     const leadId = await seedLeadInState('VISIT_SCHEDULED');
     const liveVisitId = `test-cve-live-visit-${RUN}`;
     await adminSeed((db) =>
@@ -1126,16 +1143,20 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
       }),
     );
 
-    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await expect(
+      service.create(actorFor(TC_ID, 'TELECALLER') as never, {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
 
     const live = await adminSeed((db) =>
       db.siteVisit.findUnique({ where: { id: liveVisitId }, select: { status: true } }),
     );
     expect(live?.status).toBe('SCHEDULED');
+    const count = await adminSeed((db) => db.siteVisit.count({ where: { leadId } }));
+    expect(count).toBe(1);
   });
 
   it('audits the supersede with the reason a reader needs', async () => {

@@ -33,6 +33,7 @@ function makeService(): {
       create: ReturnType<typeof vi.fn>;
     };
     auditLog: { create: ReturnType<typeof vi.fn> };
+    user: { findUnique: ReturnType<typeof vi.fn> };
   };
 } {
   const client = {
@@ -47,6 +48,9 @@ function makeService(): {
       create: vi.fn(),
     },
     auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-of-recipient' }),
+    },
   };
   const prismaService = { $client: client } as never;
   const service = new NotificationsService(prismaService);
@@ -247,6 +251,7 @@ describe('emit - service hook for notification creation', () => {
         }),
       },
       auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
       lead: {
         findUnique: vi.fn().mockResolvedValue({
           organizationId: 'org-1',
@@ -272,6 +277,7 @@ describe('emit - service hook for notification creation', () => {
       expect.objectContaining({
         url: '/shadhil-builders/projects/metro-heights/leads/l-1',
       }),
+      'org-1',
     );
   });
 
@@ -296,6 +302,7 @@ describe('emit - service hook for notification creation', () => {
         }),
       },
       auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
       lead: {
         findUnique: vi.fn().mockResolvedValue({
           project: { slug: 'metro-heights' },
@@ -320,6 +327,55 @@ describe('emit - service hook for notification creation', () => {
       expect.objectContaining({
         url: '/shadhil-builders/projects/metro-heights/bookings/b-42',
       }),
+      'org-1',
     );
+  });
+
+  it('stamps the recipient\'s own organization, never PUBLIC_ORG_ID', async () => {
+    const { service, client } = makeService();
+    client.notification.create.mockResolvedValue({
+      id: 'n-org', type: 't', title: 't', body: 'b', leadId: null, read: false,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    await service.emit('recipient-1', { type: 't', title: 't', body: 'b' });
+    expect(client.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'recipient-1' } }),
+    );
+    expect(client.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationId: 'org-of-recipient' }),
+      }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationId: 'org-of-recipient' }),
+      }),
+    );
+  });
+
+  it('uses an explicit organizationId without looking the user up', async () => {
+    const { service, client } = makeService();
+    client.notification.create.mockResolvedValue({
+      id: 'n-org2', type: 't', title: 't', body: 'b', leadId: null, read: false,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    await service.emit('recipient-1', {
+      type: 't', title: 't', body: 'b', organizationId: 'org-explicit',
+    });
+    expect(client.user.findUnique).not.toHaveBeenCalled();
+    expect(client.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationId: 'org-explicit' }),
+      }),
+    );
+  });
+
+  it('fails loudly when the recipient or their organization cannot be resolved', async () => {
+    const { service, client } = makeService();
+    client.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.emit('ghost', { type: 't', title: 't', body: 'b' }),
+    ).rejects.toThrow(/Cannot resolve the organization/);
+    expect(client.notification.create).not.toHaveBeenCalled();
   });
 });

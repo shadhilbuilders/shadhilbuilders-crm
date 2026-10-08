@@ -13,7 +13,7 @@
 // a new enum member cannot quietly render as the neutral fallback.
 import { describe, expect, it } from 'vitest';
 
-import { isUpcomingVisit, isUpcomingVisitForLead, isVisitClosed, toVisitEventMeta, visitStatusColor } from './visit-status';
+import { isUpcomingVisit, isUpcomingVisitForLead, isVisitClosed, todaysOpenVisits, toVisitEventMeta, visitStatusColor } from './visit-status';
 import type { VisitApiRow } from './visit-status';
 
 // The five values of VisitStatus (packages/api-types/src/enums.ts). Duplicated
@@ -122,7 +122,10 @@ describe('toVisitEventMeta', () => {
 describe('isUpcomingVisit', () => {
   it('keeps open visits in the default (upcoming) view', () => {
     expect(isUpcomingVisit('SCHEDULED')).toBe(true);
-    expect(isUpcomingVisit('RESCHEDULED')).toBe(true);
+  });
+
+  it('does not treat a RESCHEDULED row (a replaced appointment) as upcoming', () => {
+    expect(isUpcomingVisit('RESCHEDULED')).toBe(false);
   });
 
   it('treats every closed status as history', () => {
@@ -155,7 +158,7 @@ describe('isUpcomingVisitForLead', () => {
   it('keeps live work on a live deal', () => {
     expect(isUpcomingVisitForLead(at('SCHEDULED', 'VISIT_SCHEDULED'))).toBe(true);
     expect(isUpcomingVisitForLead(at('SCHEDULED', 'CONTACTED'))).toBe(true);
-    expect(isUpcomingVisitForLead(at('RESCHEDULED', 'NEGOTIATION'))).toBe(true);
+    expect(isUpcomingVisitForLead(at('RESCHEDULED', 'NEGOTIATION'))).toBe(false);
   });
 
   it('hides an open visit whose lead has settled', () => {
@@ -188,5 +191,37 @@ describe('isUpcomingVisitForLead', () => {
     // dead work - it is simply not UPCOMING work, so it leaves this view while
     // staying valid everywhere else (e.g. the lead page's own visit panel).
     expect(isUpcomingVisitForLead(at('SCHEDULED', 'WON'))).toBe(false);
+  });
+});
+
+describe('todaysOpenVisits', () => {
+  const v = (id: string, leadId: string, status: string, leadState: string, scheduledFor: string) => ({
+    id,
+    leadId,
+    status,
+    leadState,
+    scheduledFor,
+  });
+
+  it('drops a WON lead (the cmuzrrv5m000v41u8740254ur regression)', () => {
+    const rows = [v('a', 'L1', 'SCHEDULED', 'WON', '2026-10-09T10:00:00Z')];
+    expect(todaysOpenVisits(rows)).toEqual([]);
+  });
+
+  it('shows one row per lead, keeping the earliest slot', () => {
+    const rows = [
+      v('late', 'L1', 'SCHEDULED', 'VISIT_SCHEDULED', '2026-10-09T15:00:00Z'),
+      v('early', 'L1', 'SCHEDULED', 'VISIT_SCHEDULED', '2026-10-09T09:00:00Z'),
+      v('other', 'L2', 'SCHEDULED', 'VISIT_SCHEDULED', '2026-10-09T11:00:00Z'),
+    ];
+    expect(todaysOpenVisits(rows).map((r) => r.id)).toEqual(['early', 'other']);
+  });
+
+  it('drops closed and replaced visits', () => {
+    const rows = [
+      v('c', 'L1', 'COMPLETED', 'VISITED', '2026-10-09T09:00:00Z'),
+      v('r', 'L2', 'RESCHEDULED', 'RESCHEDULED', '2026-10-09T09:00:00Z'),
+    ];
+    expect(todaysOpenVisits(rows)).toEqual([]);
   });
 });

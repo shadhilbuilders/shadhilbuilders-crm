@@ -48,8 +48,8 @@ UPDATE "Lead" l
           WHERE a."organizationId" = l."organizationId"
             AND a.role = 'ADMIN'
             AND a."deletedAt" IS NULL
-            -- Seeded, human-owned accounts only: skip the `…@test.local` /
-            -- `…@x` fixtures so a transient test user never becomes the owner
+            -- Seeded, human-owned accounts only: skip the `...@test.local` /
+            -- `...@x` fixtures so a transient test user never becomes the owner
             -- of real leads.
             AND a.email NOT LIKE '%@test.local'
             AND a.email NOT LIKE '%@x'

@@ -93,7 +93,7 @@ export function useReassignAndRemove(teamId: string | undefined, userId: string 
       ),
     onSuccess: async () => {
       // Ownership moves → inbox + KPI strip must both refresh. The old
-      // `['dashboard']` key never matched `['dashboard-stats', …]`, so
+      // `['dashboard']` key never matched `['dashboard-stats', ...]`, so
       // KPIs stayed stale after a team removal for up to their staleTime.
       invalidateLeadCaches(queryClient);
       await Promise.all([

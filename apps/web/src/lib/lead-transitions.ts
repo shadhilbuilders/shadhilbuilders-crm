@@ -137,6 +137,20 @@ const TELECALLER_LANE: readonly string[] = [
 const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
 
 
+/**
+ * Mirror of `canRoleOwnState` (leads.state-machine.ts): may a user with `role`
+ * own a lead currently in `state`? The reassign endpoint rejects a target whose
+ * role fails this, so the assignee picker uses it to hide them. An unknown
+ * state (undefined) is not filtered - the server remains the authority.
+ */
+export function canRoleOwnState(state: string | undefined, role: string): boolean {
+  if (role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER') return true;
+  if (state === undefined) return true;
+  if (role === 'TELECALLER') return TELECALLER_LANE.includes(state);
+  if (role === 'SALES_EXEC') return EXEC_LANE.includes(state);
+  return false;
+}
+
 /** Terminal states: no outgoing edges; only an admin can reopen them. */
 export const TERMINAL_STATES: readonly string[] = ['WON', 'LOST', 'RNR'];
 

@@ -53,14 +53,14 @@ import type {
 // the cascade that closes its open visits. Importing the predicate (rather than
 // re-listing WON/LOST/RNR here) keeps this in step with the exceptions inbox,
 // which already excludes the same trio.
-import { LEAD_ACTIVITIES_PAGE_SIZE, isDeadLeadState, leadStateLabel } from '@shadhil/api-types';
+import { LEAD_ACTIVITIES_PAGE_SIZE, leadStateLabel } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 // T-VISIT-CLOSE: closing visits is the visits module's concern, exposed as one
 // shared helper so every "the deal settled" path agrees on what that means.
-import { closeOpenVisitsForLead } from '../visits/close-visits-for-lead';
+import { syncVisitsToLeadState } from '../visits/sync-visits-to-lead-state';
 // T-E2b follow-up fix (2026-09-17): lead creation must persist phoneE164 so
 // the WhatsApp inbound webhook's findUnique({ where: { phoneE164 } }) match can
 // route a converted number's new messages into its lead chat panel / Message
@@ -2040,35 +2040,18 @@ export class LeadsService {
       });
     }
 
-    // T-VISIT-CLOSE (2026-09-28): a lead that can no longer be worked must
-    // not leave open visits behind. Nothing used to close them, so they piled
-    // up with a past `scheduledFor` and surfaced as phantom work (the admin
-    // "Visits at risk" card, the visit list and calendar, which apply no
-    // lead-state filter) - and completing one would have tried to advance a
-    // terminal LEAD, which the state machine forbids.
-    //
-    // Same transaction as the state write, so the two cannot come apart.
-    // `isDeadLeadState` (LOST/RNR), NOT `isTerminalLeadState`: a WON deal is
-    // finished but realised - its handover or site meeting may still be
-    // pending, and cancelling those silently would destroy real work.
-    if (isDeadLeadState(updated.state)) {
-      await closeOpenVisitsForLead(
+    // T-VISIT-LEAD-SYNC (2026-10-09): keep the lead's open visits in step with
+    // its new state (visited/advanced -> completed, dead/backed-out -> cancelled,
+    // rescheduled/no-show mirrored). Same transaction as the state write, so the
+    // two cannot come apart. The rule is `visitFateForLeadState` in
+    // @shadhil/api-types; this REPLACES the old dead-lead-only close, which let a
+    // lead walk to WON while its visit stayed SCHEDULED in "Today's visits".
+    if (existing.state !== updated.state) {
+      await syncVisitsToLeadState(
         tx as unknown as PrismaClient,
         actor,
         updated.id,
-        'lead-terminal',
-      );
-    }
-
-    // Backing out of "Visit booked" (2026-10-09): the booked visit no longer
-    // matches the lead, so withdraw it in the same transaction. Otherwise the
-    // calendar keeps an appointment for a lead that is asking for a new one.
-    if (existing.state === 'VISIT_SCHEDULED' && updated.state === 'VISIT_REQUESTED') {
-      await closeOpenVisitsForLead(
-        tx as unknown as PrismaClient,
-        actor,
-        updated.id,
-        'visit-reverted',
+        updated.state,
       );
     }
 

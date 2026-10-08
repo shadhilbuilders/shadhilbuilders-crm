@@ -25,7 +25,7 @@ import type { JwtPayload } from '@shadhil/auth';
 // definitions the leads page and the KPI strip both use. Importing them (rather
 // than restating midnight or a 24h window here) is what keeps the two screens
 // from disagreeing.
-import { NEW_TODAY_STATE, OVERDUE_AFTER_MIN, startOfToday, TERMINAL_LEAD_STATES } from '@shadhil/api-types';
+import { NEW_TODAY_STATE, OPEN_VISIT_STATUSES, OVERDUE_AFTER_MIN, startOfToday, TERMINAL_LEAD_STATES } from '@shadhil/api-types';
 
 import { LEAD_IN_ACTIVE_PROJECT, PROJECT_ACTIVE } from '../common/soft-delete-filters';
 import type {
@@ -72,6 +72,9 @@ function zeroFillDateRange(
     return { date: key, count: counts[key] ?? 0 };
   });
 }
+
+/** CANCELLED = withdrawn, RESCHEDULED = replaced by a new row; neither is a visit that happens. */
+const NON_ATTENDABLE_VISIT_STATUSES = ['CANCELLED', 'RESCHEDULED'] as const;
 
 @Injectable()
 export class DashboardService {
@@ -249,6 +252,8 @@ export class DashboardService {
           txClient.siteVisit.count({
             where: {
               ...visitWhere,
+              // Withdrawn / replaced rows are not visits that happen today.
+              status: { notIn: [...NON_ATTENDABLE_VISIT_STATUSES] },
               scheduledFor: { gte: todayStart, lt: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000) },
             },
           }),
@@ -390,7 +395,11 @@ export class DashboardService {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     const rows = await tx.siteVisit.findMany({
-      where: { ...visitWhere, scheduledFor: { gte: weekStart, lt: weekEnd } },
+      where: {
+        ...visitWhere,
+        status: { notIn: [...NON_ATTENDABLE_VISIT_STATUSES] },
+        scheduledFor: { gte: weekStart, lt: weekEnd },
+      },
       select: { scheduledFor: true },
     });
     const counts: Record<string, number> = {};
@@ -619,7 +628,8 @@ export class DashboardService {
         // the whole report is "why is this here?".
         const visitRows = await txClient.siteVisit.findMany({
           where: {
-            status: { in: ['SCHEDULED', 'RESCHEDULED'] },
+            // OPEN = SCHEDULED only (@shadhil/api-types OPEN_VISIT_STATUSES).
+            status: { in: [...OPEN_VISIT_STATUSES] },
             scheduledFor: { lte: now },
             lead: { state: { notIn: [...TERMINAL_LEAD_STATES] } },
           },

@@ -1165,6 +1165,12 @@ export class UsersService {
         andClauses.push({ OR: projectScope });
       }
 
+      // Assignee pickers: only users who can take work (not banned).
+      // `banned` is nullable, so match false OR null.
+      if (filter.availableOnly === true) {
+        andClauses.push({ OR: [{ banned: false }, { banned: null }] });
+      }
+
       // Server-driven role filter (autoplan 2026-09-09): the UI's MultiSelect
       // sends ?role=SALES_EXEC,TELECALLER; apply it as a WHERE role IN (...)
       // so filtering works across the whole list, not just the loaded page.

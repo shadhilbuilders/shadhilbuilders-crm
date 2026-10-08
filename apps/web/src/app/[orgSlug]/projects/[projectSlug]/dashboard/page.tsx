@@ -58,6 +58,7 @@ import {
   type RecordTokenTarget,
 } from '@/components/bookings/RecordTokenDialog';
 import { KpiStrip, SectionCard } from '@/components/dashboard/dashboard-shared';
+import { todaysOpenVisits } from '@/lib/visit-status';
 import { TodayVisitsCard } from '@/components/dashboard/TodayVisitsCard';
 import { LeadQueueRow, type QueueAction } from '@/components/dashboard/LeadQueueRow';
 import { PendingApprovalsCard } from '@/components/dashboard/PendingApprovalsCard';
@@ -202,6 +203,8 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
     from: today.from,
     to: today.to,
     projectId: projectId ?? undefined,
+    // Open work only: a closed/replaced visit is not "to conduct today".
+    status: ['SCHEDULED'],
   });
 
   // Approvals are a manager/admin job - canApproveBookings mirrors the server.
@@ -259,7 +262,8 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   // plausible. Declared here, AFTER `ordered`, so the fallback can't trip a
   // temporal-dead-zone error.
   const queueTotal = leadsEnvelope?.total ?? ordered.length;
-  const visits = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
+  // One row per lead, open visits on live deals only (T-VISIT-LEAD-SYNC).
+  const visits = todaysOpenVisits(Array.isArray(visitsQuery.data) ? visitsQuery.data : []);
 
   // T-STATUS-ONE-TRUTH (2026-09-28): the KPI strip's overdue count. Both
   // numbers come from the SERVER, but from two different endpoints - and they

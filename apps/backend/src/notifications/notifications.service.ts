@@ -22,20 +22,12 @@
 // elsewhere - this module only READS + MARKS. The AuditLog row is
 // written on every markRead mutation for the demo trail.
 import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Optional,
-} from '@nestjs/common';
-import {
-  rlsContextFrom,
-  withRlsContext,
-  type PrismaClient,
-} from '@shadhil/database';
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import { rlsContextFrom, withRlsContext, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { MarkReadDto, NotificationFilterDto } from '@shadhil/api-types';
 
+import { cronContextFor } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { PushService } from '../push/push.service';
 
@@ -83,10 +75,7 @@ export class NotificationsService {
    * policy limits visibility to the actor's own rows; no extra
    * role-scoping needed.
    */
-  async list(
-    actor: JwtPayload,
-    dto: NotificationFilterDto,
-  ): Promise<NotificationListResult> {
+  async list(actor: JwtPayload, dto: NotificationFilterDto): Promise<NotificationListResult> {
     const baseWhere: Record<string, unknown> = {};
     if (dto.unreadOnly) baseWhere['read'] = false;
     if (dto.type !== undefined) baseWhere['type'] = dto.type;
@@ -102,17 +91,14 @@ export class NotificationsService {
     // leadId IN. Notifications without a lead (system events) are hidden under
     // a project filter - not project work.
     if (dto.projectId !== undefined) {
-      const projectLeads = await withRlsContext(
-        this.client,
-        rlsContextFrom(actor),
-        (tx) =>
-          (tx as unknown as PrismaClient).lead.findMany({
-            // T-SOFT-DELETE (2026-10-01): the project filter is expressed as
-            // "notifications for this project's leads", so a lead on a
-            // soft-deleted project must not pull its notifications back in.
-            where: { projectId: dto.projectId, ...LEAD_IN_ACTIVE_PROJECT },
-            select: { id: true },
-          }),
+      const projectLeads = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+        (tx as unknown as PrismaClient).lead.findMany({
+          // T-SOFT-DELETE (2026-10-01): the project filter is expressed as
+          // "notifications for this project's leads", so a lead on a
+          // soft-deleted project must not pull its notifications back in.
+          where: { projectId: dto.projectId, ...LEAD_IN_ACTIVE_PROJECT },
+          select: { id: true },
+        }),
       );
       baseWhere['leadId'] = {
         in: projectLeads.map((l: { id: string }) => l.id),
@@ -176,49 +162,40 @@ export class NotificationsService {
    * the IDs array is empty) of the actor's notifications as read.
    * Returns the number of rows updated.
    */
-  async markRead(
-    actor: JwtPayload,
-    dto: MarkReadDto,
-  ): Promise<{ updated: number }> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {
+  async markRead(actor: JwtPayload, dto: MarkReadDto): Promise<{ updated: number }> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {
+        userId: actor.sub,
+        read: false,
+      };
+      // Empty array = "mark all". Otherwise narrow to the listed
+      // ids (the IN clause also serves as the audit boundary).
+      if (dto.notificationIds.length > 0) {
+        where['id'] = { in: dto.notificationIds };
+      }
+
+      const result = await (tx as unknown as PrismaClient).notification.updateMany({
+        where,
+        data: { read: true },
+      });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
           userId: actor.sub,
-          read: false,
-        };
-        // Empty array = "mark all". Otherwise narrow to the listed
-        // ids (the IN clause also serves as the audit boundary).
-        if (dto.notificationIds.length > 0) {
-          where['id'] = { in: dto.notificationIds };
-        }
-
-        const result = await (tx as unknown as PrismaClient).notification.updateMany(
-          {
-            where,
-            data: { read: true },
+          organizationId: actor.organizationId,
+          action: 'notification.markRead',
+          entityType: 'Notification',
+          entityId: 'batch',
+          after: {
+            updated: result.count,
+            scope: dto.notificationIds.length === 0 ? 'all-unread' : 'specified',
           },
-        );
+          reason: `Marked ${result.count} notifications as read by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'notification.markRead',
-            entityType: 'Notification',
-            entityId: 'batch',
-            after: {
-              updated: result.count,
-              scope: dto.notificationIds.length === 0 ? 'all-unread' : 'specified',
-            },
-            reason: `Marked ${result.count} notifications as read by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        return { updated: result.count };
-      },
-    );
+      return { updated: result.count };
+    });
   }
 
   /**
@@ -248,19 +225,23 @@ export class NotificationsService {
       /** Present for booking notifications so the push deep-links to the
        *  booking page (`/bookings/{bookingId}`) rather than the lead's. */
       bookingId?: string;
+      /** Tenant of the recipient. Optional: when omitted it is read from the
+       *  recipient's own User row, never from PUBLIC_ORG_ID (T-CRON-MULTITENANT). */
+      organizationId?: string;
     },
   ): Promise<NotificationRow> {
     if (recipientSub.trim().length === 0) {
       throw new BadRequestException('recipientSub is required');
     }
+    const organizationId = payload.organizationId ?? (await this.resolveRecipientOrg(recipientSub));
     return withRlsContext(
       this.client,
-      { userId: recipientSub, role: 'TELECALLER', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      { userId: recipientSub, role: 'TELECALLER', organizationId },
       async (tx) => {
         const created = await (tx as unknown as PrismaClient).notification.create({
           data: {
             userId: recipientSub,
-            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+            organizationId,
             type: payload.type,
             title: payload.title,
             body: payload.body,
@@ -281,7 +262,7 @@ export class NotificationsService {
         await (tx as unknown as PrismaClient).auditLog.create({
           data: {
             userId: recipientSub,
-            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+            organizationId,
             action: 'notification.emit',
             entityType: 'Notification',
             entityId: created.id,
@@ -299,6 +280,7 @@ export class NotificationsService {
           body: created.body,
           leadId: created.leadId ?? undefined,
           bookingId: payload.bookingId,
+          organizationId,
         });
 
         return {
@@ -315,6 +297,24 @@ export class NotificationsService {
   }
 
   /**
+   * The recipient's organization, read from their own User row. User has no
+   * RLS, so the bare client is correct here. A missing user or one without an
+   * org is a caller bug and fails loudly rather than guessing a tenant.
+   */
+  private async resolveRecipientOrg(recipientSub: string): Promise<string> {
+    const user = await this.client.user.findUnique({
+      where: { id: recipientSub },
+      select: { organizationId: true },
+    });
+    if (user === null || user.organizationId.length === 0) {
+      throw new BadRequestException(
+        `Cannot resolve the organization for notification recipient ${recipientSub}`,
+      );
+    }
+    return user.organizationId;
+  }
+
+  /**
    * Best-effort web push alongside an in-app notification (rule 7j). Never
    * throws to the caller. No-ops when the push dep is absent (test harness)
    * or push is disabled (no VAPID keys).
@@ -327,19 +327,33 @@ export class NotificationsService {
    */
   private pushBestEffort(
     recipientSub: string,
-    payload: { title: string; body: string; leadId?: string; bookingId?: string },
+    payload: {
+      title: string;
+      body: string;
+      leadId?: string;
+      bookingId?: string;
+      organizationId: string;
+    },
   ): void {
     if (this.push === undefined) return;
     try {
       void (async () => {
         const url =
           payload.bookingId !== undefined
-            ? await this.resolveBookingDeepLink(payload.leadId, payload.bookingId)
+            ? await this.resolveBookingDeepLink(
+                payload.organizationId,
+                payload.leadId,
+                payload.bookingId,
+              )
             : payload.leadId !== undefined
-              ? await this.resolveLeadDeepLink(payload.leadId)
+              ? await this.resolveLeadDeepLink(payload.organizationId, payload.leadId)
               : undefined;
         await this.push
-          ?.sendToUser(recipientSub, { title: payload.title, body: payload.body, url })
+          ?.sendToUser(
+            recipientSub,
+            { title: payload.title, body: payload.body, url },
+            payload.organizationId,
+          )
           .catch(() => undefined);
       })().catch(() => undefined);
     } catch {
@@ -348,7 +362,7 @@ export class NotificationsService {
   }
 
   /** Resolve the app-route deep-link for a lead, or '/' if unresolvable. */
-  private async resolveLeadDeepLink(leadId: string): Promise<string> {
+  private async resolveLeadDeepLink(organizationId: string, leadId: string): Promise<string> {
     try {
       // RLS: the lead read MUST run inside withRlsContext, or the bare client's
       // session GUCs (app.user_* ) are all NULL and no SELECT policy matches -
@@ -358,18 +372,14 @@ export class NotificationsService {
       // the deep-link resolves identically no matter who the recipient is -
       // a TELECALLER/MANAGER/OWNER context would only see leads their own role
       // policy admits, which is the wrong gate for building a push link.
-      const orgId = process.env['PUBLIC_ORG_ID'] ?? '';
-      const lead = await withRlsContext(
-        this.client,
-        { userId: 'cron-service', role: 'CRON_SERVICE', organizationId: orgId },
-        (tx) =>
-          (tx as unknown as PrismaClient).lead.findUnique({
-            where: { id: leadId },
-            select: {
-              project: { select: { slug: true } },
-              organization: { select: { slug: true } },
-            },
-          }),
+      const lead = await withRlsContext(this.client, cronContextFor(organizationId), (tx) =>
+        (tx as unknown as PrismaClient).lead.findUnique({
+          where: { id: leadId },
+          select: {
+            project: { select: { slug: true } },
+            organization: { select: { slug: true } },
+          },
+        }),
       );
       const orgSlug = lead?.organization?.slug;
       const projectSlug = lead?.project?.slug;
@@ -386,17 +396,17 @@ export class NotificationsService {
    *  RLS policy needed. Falls back to the lead page if the booking's lead is
    *  missing but the booking id is still present. */
   private async resolveBookingDeepLink(
+    organizationId: string,
     leadId: string | undefined,
     bookingId: string,
   ): Promise<string> {
-    const orgSlug = leadId !== undefined
-      ? await this.resolveLeadOrgProjectSlugs(leadId)
-      : null;
+    const orgSlug =
+      leadId !== undefined ? await this.resolveLeadOrgProjectSlugs(organizationId, leadId) : null;
     if (orgSlug !== null && orgSlug.orgSlug !== undefined && orgSlug.projectSlug !== undefined) {
       return `/${orgSlug.orgSlug}/projects/${orgSlug.projectSlug}/bookings/${bookingId}`;
     }
     if (leadId !== undefined) {
-      const fallback = await this.resolveLeadDeepLink(leadId);
+      const fallback = await this.resolveLeadDeepLink(organizationId, leadId);
       if (fallback !== '/') return fallback;
     }
     return '/';
@@ -404,21 +414,18 @@ export class NotificationsService {
 
   /** Resolve a lead's org + project slugs via CRON_SERVICE context (or null). */
   private async resolveLeadOrgProjectSlugs(
+    organizationId: string,
     leadId: string,
   ): Promise<{ orgSlug?: string; projectSlug?: string } | null> {
     try {
-      const orgId = process.env['PUBLIC_ORG_ID'] ?? '';
-      const lead = await withRlsContext(
-        this.client,
-        { userId: 'cron-service', role: 'CRON_SERVICE', organizationId: orgId },
-        (tx) =>
-          (tx as unknown as PrismaClient).lead.findUnique({
-            where: { id: leadId },
-            select: {
-              project: { select: { slug: true } },
-              organization: { select: { slug: true } },
-            },
-          }),
+      const lead = await withRlsContext(this.client, cronContextFor(organizationId), (tx) =>
+        (tx as unknown as PrismaClient).lead.findUnique({
+          where: { id: leadId },
+          select: {
+            project: { select: { slug: true } },
+            organization: { select: { slug: true } },
+          },
+        }),
       );
       return {
         orgSlug: lead?.organization?.slug,

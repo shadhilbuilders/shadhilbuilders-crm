@@ -7,7 +7,7 @@
 //
 //   the visit   what happened on site   COMPLETED / NO_SHOW / CANCELLED /
 //                                       RESCHEDULED / SCHEDULED
-//   the lead    where the deal stands   NEW … WON / LOST / RNR / NO_SHOW
+//   the lead    where the deal stands   NEW ... WON / LOST / RNR / NO_SHOW
 //
 // So the chip's colour answered a question nobody had asked. A green chip
 // reading "Won 🎉" meant "the visit was COMPLETED" - not that the deal was won.

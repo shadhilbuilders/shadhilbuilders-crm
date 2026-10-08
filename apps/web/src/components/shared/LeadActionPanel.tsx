@@ -22,17 +22,19 @@
 // helpers that don't belong in the page file itself (Next.js 16's page
 // module allow-list is strict).
 
-import { useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import {
+  Box,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  ErrorMessage,
   Form,
   Label,
   Textarea,
@@ -154,7 +156,12 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
         </CardContent>
       </Card>
       <LeadReassignDialog
-        lead={{ id: lead.id, name: lead.name ?? 'lead', projectId: lead.projectId ?? null }}
+        lead={{
+          id: lead.id,
+          name: lead.name ?? 'lead',
+          projectId: lead.projectId ?? null,
+          status,
+        }}
         currentOwnerId={lead.ownerId ?? ''}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
@@ -289,6 +296,14 @@ function TransitionLeadForm({
   const transitionLead = useTransitionLead(leadId);
   const [toState, setToState] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+
+  // Move focus to the Reason field when validation fails so the user can type
+  // straight away (and screen readers announce the invalid field).
+  useEffect(() => {
+    if (reasonError !== null) reasonRef.current?.focus();
+  }, [reasonError]);
   const [notes, setNotes] = useState('');
 
   if (outgoing.length === 0) {
@@ -311,13 +326,14 @@ function TransitionLeadForm({
     if (reopen || STATES_REQUIRING_REASON.has(target)) {
       const r = reason.trim();
       if (r.length === 0) {
-        toast.error(
+        setReasonError(
           reopen
             ? 'Reason is required to reopen a closed lead'
             : `Reason is required when transitioning to ${labelFor('lead', target)}`,
         );
         return;
       }
+      setReasonError(null);
       body.reason = r;
     }
     if (notes.trim().length > 0) body.notes = notes.trim();
@@ -326,6 +342,7 @@ function TransitionLeadForm({
         toast.success(`Lead moved to ${labelFor('lead', target)}`);
         setToState(null);
         setReason('');
+        setReasonError(null);
         setNotes('');
       },
       onError: (e) => {
@@ -348,7 +365,10 @@ function TransitionLeadForm({
         type="button"
         size="sm"
         variant="outline"
-        onClick={() => setToState(target)}
+        onClick={() => {
+          setReasonError(null);
+          setToState(target);
+        }}
         data-qa={`transition-to-${target}`}
         className="gap-1.5"
       >
@@ -389,18 +409,35 @@ function TransitionLeadForm({
 
           {requiresReason ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor={`reason-${leadId}-${toState}`}>
-                Reason <span className="text-destructive">*</span>
+              <Label htmlFor={`reason-${leadId}-${toState}`} required>
+                Reason
               </Label>
               <Textarea
+                ref={reasonRef}
                 id={`reason-${leadId}-${toState}`}
                 value={reason}
-                onChange={(e) => setReason(e.currentTarget.value)}
+                onChange={(e) => {
+                  setReason(e.currentTarget.value);
+                  if (reasonError !== null) setReasonError(null);
+                }}
+                aria-invalid={reasonError !== null}
+                aria-describedby={
+                  reasonError !== null ? `reason-error-${leadId}-${toState}` : undefined
+                }
                 maxLength={500}
                 rows={2}
                 placeholder="e.g. price too high, competitor chosen, unresponsive after 3 follow-ups"
                 data-qa="transition-reason"
               />
+              {reasonError !== null ? (
+                <Box id={`reason-error-${leadId}-${toState}`}>
+                  <ErrorMessage
+                    data-qa="transition-reason-error"
+                    message={reasonError}
+                    className="mt-0"
+                  />
+                </Box>
+              ) : null}
             </div>
           ) : null}
 
@@ -425,6 +462,7 @@ function TransitionLeadForm({
               onClick={() => {
                 setToState(null);
                 setReason('');
+                setReasonError(null);
                 setNotes('');
               }}
             >

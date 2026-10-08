@@ -95,6 +95,12 @@ export const UserFilterDtoSchema = z.object({
    * admin/owner, other ORGANISATIONS).
    */
   projectId: z.string().min(1).optional(),
+  /**
+   * When true, exclude banned (deactivated) users so assignee pickers only
+   * offer people who can actually take work. Off by default: the admin Users
+   * table must still list banned users.
+   */
+  availableOnly: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });

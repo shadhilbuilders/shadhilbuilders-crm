@@ -67,6 +67,7 @@ import {
   LuMessageSquareText,
   LuSatellite,
   LuSend,
+  LuSettings,
   LuMessagesSquare,
 } from '@paalstack/react-icons/lu';
 
@@ -271,6 +272,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
         scoped: false,
       },
     ],
+  },
+  {
+    href: '/admin/settings',
+    label: 'Settings',
+    icon: LuSettings,
+    group: 'admin',
+    scoped: false,
   },
   {
     href: '/admin/feedback',

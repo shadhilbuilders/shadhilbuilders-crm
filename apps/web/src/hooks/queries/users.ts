@@ -36,6 +36,8 @@ export type UsersFilter = {
   search?: string;
   /** Narrow to staff of ONE project (T-USER-PROJECT-SCOPE). */
   projectId?: string;
+  /** Exclude banned users (assignee pickers). */
+  availableOnly?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -54,6 +56,7 @@ export function useUsers(filter: UsersFilter = {}) {
       // T-USER-PROJECT-SCOPE: part of the KEY, not just the request. Without it
       // the picker would serve the previous project's list from cache.
       filter.projectId ?? '',
+      filter.availableOnly ?? false,
       filter.limit,
       filter.offset,
     ],
@@ -63,6 +66,7 @@ export function useUsers(filter: UsersFilter = {}) {
           role: filter.role?.join(','),
           search: filter.search,
           projectId: filter.projectId,
+          availableOnly: filter.availableOnly ? 'true' : undefined,
           limit: filter.limit,
           offset: filter.offset,
         })}`,

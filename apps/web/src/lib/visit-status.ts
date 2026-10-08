@@ -140,7 +140,10 @@ export function toVisitEventMeta(visit: VisitApiRow): VisitEventMeta {
  * gone.
  */
 export function isUpcomingVisit(status: string | null | undefined): boolean {
-  return status === 'SCHEDULED' || status === 'RESCHEDULED';
+  // T-VISIT-LEAD-SYNC (2026-10-09): SCHEDULED only. A RESCHEDULED row is a
+  // replaced appointment (reschedule() creates a new SCHEDULED row), so showing
+  // it as upcoming duplicated the lead. Same rule as OPEN_VISIT_STATUSES.
+  return status === 'SCHEDULED';
 }
 
 /**
@@ -182,3 +185,35 @@ export function isUpcomingVisitForLead(
   return !isTerminalLeadState(visit.leadState);
 }
 
+
+/**
+ * The dashboard's "Today's visits": open visits on live deals, ONE row per lead.
+ *
+ * T-VISIT-LEAD-SYNC (2026-10-09). The card listed a WON lead and showed the same
+ * lead twice. The backend now closes visits when the lead's state moves and
+ * refuses a second open visit, but this list is the last line of defence for
+ * legacy rows and races, so it states the rule itself: SCHEDULED only, lead not
+ * terminal (`isUpcomingVisitForLead`), earliest slot per lead wins.
+ */
+export function todaysOpenVisits<
+  T extends { leadId?: string; scheduledFor?: string; status?: string; leadState?: string },
+>(rows: readonly T[]): T[] {
+  const live = rows.filter((v) =>
+    isUpcomingVisitForLead({ status: v.status ?? '', leadState: v.leadState ?? '' }),
+  );
+  const earliest = new Map<string, T>();
+  const noLead: T[] = [];
+  for (const v of live) {
+    if (v.leadId === undefined) {
+      noLead.push(v);
+      continue;
+    }
+    const seen = earliest.get(v.leadId);
+    if (seen === undefined || (v.scheduledFor ?? '') < (seen.scheduledFor ?? '')) {
+      earliest.set(v.leadId, v);
+    }
+  }
+  return [...earliest.values(), ...noLead].sort((a, b) =>
+    (a.scheduledFor ?? '').localeCompare(b.scheduledFor ?? ''),
+  );
+}

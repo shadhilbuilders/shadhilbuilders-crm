@@ -29,6 +29,7 @@ import { useReassignLead } from '@/hooks/queries/crm';
 import { useUsers } from '@/hooks/queries/users';
 import { useProjectId } from '@/lib/tenant-context';
 import { isLinkableStaffRole } from '@/lib/session';
+import { canRoleOwnState } from '@/lib/lead-transitions';
 
 const FORM_ID = 'lead-reassign-form';
 
@@ -38,6 +39,8 @@ export type LeadReassignTarget = {
   name: string;
   /** The lead's project, so the picker can offer only THAT project's staff. */
   projectId?: string | null;
+  /** The lead's current state - only roles that can own it are offered. */
+  status?: string;
 };
 
 export type LeadReassignDialogProps = {
@@ -71,6 +74,7 @@ async function fetchAssignees(
   query: string,
   currentOwnerId: string,
   projectId: string | null,
+  status: string | undefined,
 ): Promise<Array<{ value: string; label: string }>> {
   const q = query.trim();
   const res = await api<{
@@ -82,11 +86,17 @@ async function fetchAssignees(
     `/users${qs({
       search: q.length > 0 ? q : undefined,
       projectId: projectId ?? undefined,
+      availableOnly: 'true',
       limit: 10,
     })}`,
   );
   return (res.rows ?? [])
-    .filter((u) => u.id !== currentOwnerId && isLinkableStaffRole(u.role))
+    .filter(
+      (u) =>
+        u.id !== currentOwnerId &&
+        isLinkableStaffRole(u.role) &&
+        canRoleOwnState(status, u.role),
+    )
     .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
 }
 
@@ -96,10 +106,12 @@ async function fetchAssignees(
 export function LeadReassignFormBody({
   currentOwnerId,
   projectId,
+  status,
   onSubmit,
 }: {
   currentOwnerId: string;
   projectId: string | null;
+  status?: string;
   onSubmit: (values: ReassignFormValues) => void;
 }) {
   const form = useForm<ReassignFormValues>({
@@ -109,7 +121,7 @@ export function LeadReassignFormBody({
   });
 
   const fetchAssigneesBound = (query: string) =>
-    fetchAssignees(query, currentOwnerId, projectId);
+    fetchAssignees(query, currentOwnerId, projectId, status);
 
   // Default list shown when the picker opens (no typing yet): the first 10
   // staff, filtered to assignable roles + not the current owner. Once the
@@ -119,12 +131,19 @@ export function LeadReassignFormBody({
   // T-USER-PROJECT-SCOPE: scoped to the lead's PROJECT. Previously unscoped, so
   // the picker offered staff from other projects - and, for an admin/owner, from
   // other organisations entirely.
-  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined });
+  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined,
+    availableOnly: true,
+  });
   const defaultOptions = useMemo(() => {
     return (defaultUsers?.rows ?? [])
-      .filter((u) => u.id !== currentOwnerId && isLinkableStaffRole(u.role))
+      .filter(
+        (u) =>
+          u.id !== currentOwnerId &&
+          isLinkableStaffRole(u.role) &&
+          canRoleOwnState(status, u.role),
+      )
       .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
-  }, [defaultUsers, currentOwnerId]);
+  }, [defaultUsers, currentOwnerId, status]);
 
   const fields: FormFieldItemType<ReassignFormValues>[] = [
     {
@@ -245,6 +264,7 @@ export function LeadReassignDialog({
       <LeadReassignFormBody
         currentOwnerId={currentOwnerId}
         projectId={leadProjectId}
+        status={target.status}
         onSubmit={handleSubmit}
       />
     </Dialog>

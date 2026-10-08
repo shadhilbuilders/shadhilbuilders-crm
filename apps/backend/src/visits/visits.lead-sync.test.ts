@@ -299,6 +299,9 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
 
   it('create books a visit and leaves ONE VISIT row (no duplicate STATUS_CHANGE)', async () => {
     const { leadId } = await seed('VISIT_REQUESTED');
+    // A VISIT_REQUESTED lead has no open visit; drop the fixture's so create()
+    // is the first booking (one-open-visit-per-lead rule).
+    await adminSeed((db) => db.siteVisit.deleteMany({ where: { leadId } }));
     await service.create(actorFor(ADMIN_ID, 'ADMIN'), {
       leadId,
       scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),

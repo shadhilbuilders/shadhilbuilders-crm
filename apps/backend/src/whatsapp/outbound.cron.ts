@@ -26,13 +26,7 @@
 // Redis lock with a known token via `withReplicaId` and drive
 // `runOnce()` directly.
 
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import type { OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
@@ -40,6 +34,7 @@ import { randomUUID } from 'node:crypto';
 import { type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { AlertsService } from '../alerts/alerts.module';
+import { cronContextFor } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 
@@ -88,20 +83,13 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
     replicaId: string,
     alerts?: AlertsService,
   ): OutboundCronService {
-    const svc = new OutboundCronService(
-      prismaService,
-      redis,
-      outbound,
-      alerts,
-    );
+    const svc = new OutboundCronService(prismaService, redis, outbound, alerts);
     (svc as unknown as { replicaId: string }).replicaId = replicaId;
     return svc;
   }
 
   onModuleInit(): void {
-    this.logger.log(
-      `OutboundCronService initialized, replicaId=${this.replicaId}, tick=5s`,
-    );
+    this.logger.log(`OutboundCronService initialized, replicaId=${this.replicaId}, tick=5s`);
   }
 
   onModuleDestroy(): void {
@@ -137,11 +125,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
       skippedBackoff: 0,
     };
 
-    const acquired = await this.redis.acquireLock(
-      OUTBOUND_LOCK_KEY,
-      LOCK_TTL_SEC,
-      this.replicaId,
-    );
+    const acquired = await this.redis.acquireLock(OUTBOUND_LOCK_KEY, LOCK_TTL_SEC, this.replicaId);
     if (!acquired) {
       tick.lockHeld = false;
       tick.finishedAt = new Date();
@@ -198,7 +182,7 @@ export class OutboundCronService implements OnModuleInit, OnModuleDestroy {
           // policy.
           const updated = await withRlsContext(
             this.prismaService.$client,
-            { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+            cronContextFor(row.organizationId),
             async (tx) =>
               (tx as unknown as PrismaClient).outboundMessage.findUnique({
                 where: { id: row.id },

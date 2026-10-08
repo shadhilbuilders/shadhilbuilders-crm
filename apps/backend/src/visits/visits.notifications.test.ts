@@ -111,7 +111,7 @@ async function notificationsFor(
  *
  * T-NOTIF-WAIT-BUDGET (2026-09-30): the budget is 8s, not 2.5s.
  *
- * It was `for (i < 25) { …; await sleep(100) }` - a hard 2.5s ceiling assuming
+ * It was `for (i < 25) { ...; await sleep(100) }` - a hard 2.5s ceiling assuming
  * the notification is committed almost immediately. That holds when the file runs
  * alone (4/4 green, ~1s of polling). It does NOT hold inside the full parallel
  * `pnpm test` run: turbo starts one worker per core, the backend's test phase
@@ -145,7 +145,7 @@ async function waitForNotifications(
 ): Promise<{ type: string; title: string }[]> {
   const deadline = Date.now() + NOTIFICATION_WAIT_MS;
   // Read once up front so the first value is genuinely used by the loop
-  // condition (a `do { … } while (true)` shape trips no-constant-condition and
+  // condition (a `do { ... } while (true)` shape trips no-constant-condition and
   // leaves an unused assignment). Always reads at least once.
   let rows = await notificationsFor(userId, role);
   while (!predicate(rows)) {

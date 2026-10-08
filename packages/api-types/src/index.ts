@@ -20,6 +20,7 @@ export * from './auth';
 export * from './leads';
 export * from './projects';
 export * from './visits';
+export * from './visit-lead-sync';
 export * from './chat';
 export * from './bookings';
 export * from './inventory';

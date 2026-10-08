@@ -1560,3 +1560,14 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --
 -- See also: "one_active_booking_per_unit" partial unique index (same
 -- migration) - at most one HOLD/TOKEN/APPROVED booking per unit.
+
+-- ── T-CRON-MULTITENANT (2026-10-09) ─────────────────────────────────────────
+-- cron_list_org_ids(): SECURITY DEFINER, ids only, callable solely by the cron
+-- service account (role=CRON_SERVICE AND user_id=cron-service). Lets system
+-- crons iterate organizations instead of trusting PUBLIC_ORG_ID. Canonical copy
+-- lives in migrations/20261009030000_cron_list_org_ids/migration.sql.
+
+-- T-VISIT-REMINDER (2026-10-09): see migration 20261009050000_visit_reminders.
+--   site_visit_select_cron_service / site_visit_update_cron_service:
+--     role=CRON_SERVICE AND user_id='cron-service' AND org match.
+--   org_update_admin: ADMIN/OWNER may update their own Organization row.

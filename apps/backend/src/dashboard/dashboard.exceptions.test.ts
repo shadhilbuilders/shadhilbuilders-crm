@@ -179,7 +179,7 @@ describe('DashboardService.getExceptions', () => {
 
     const findManyArgs = (tx.siteVisit.findMany as Mock).mock.calls[0]![0];
     expect(findManyArgs.where).toMatchObject({
-      status: { in: ['SCHEDULED', 'RESCHEDULED'] },
+      status: { in: ['SCHEDULED'] },
     });
     // The lead-relation filter is what makes the WON lead disappear. It must be
     // exactly the shared terminal trio - not an ad-hoc list.
