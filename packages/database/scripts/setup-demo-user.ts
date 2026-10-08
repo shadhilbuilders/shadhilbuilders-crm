@@ -224,6 +224,9 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
+        // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
+        buildupSqft: u.sqft.toFixed(2),
+        pricePerSqft: (u.price / u.sqft).toFixed(2),
         // status intentionally omitted - derived from bookings (T-INV-SYNC).
       },
       create: {
@@ -234,6 +237,9 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
+        // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
+        buildupSqft: u.sqft.toFixed(2),
+        pricePerSqft: (u.price / u.sqft).toFixed(2),
         status: 'AVAILABLE',
       },
     });

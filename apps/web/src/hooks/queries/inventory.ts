@@ -43,7 +43,11 @@ export type UnitRow = {
   unitNumber: string;
   bhk: number;
   facing: string | null;
+  /** Plot sq.ft. */
   sqft: number | null;
+  buildupSqft: string;
+  pricePerSqft: string;
+  /** Derived total = buildupSqft x pricePerSqft. */
   price: string;
   status: string;
   createdAt: string;

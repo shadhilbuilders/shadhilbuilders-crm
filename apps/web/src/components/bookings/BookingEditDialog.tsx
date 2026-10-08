@@ -2,7 +2,9 @@
 
 // BookingEditDialog - edit a booking from the bookings list row actions.
 //
-// Editable surface (UpdateBookingDto): amount / tokenAmount / notes.
+// Editable surface (UpdateBookingDto): amount / negotiatedRate / tokenAmount /
+// notes. A booking with a negotiated rate has a DERIVED amount (buildup sq.ft x
+// rate), so the amount is read-only there and the rate is edited instead.
 // leadId/unitId/status/userId/approvedById are NOT editable here:
 //   - status changes go through the transition flow (PATCH /bookings/:id)
 //   - unit/lead reassignment is out of scope for v1
@@ -40,6 +42,14 @@ const editBookingSchema = z.object({
     .refine((v) => Number(v) <= 1_000_000_000, {
       message: 'Amount too large (cap ₹100 Cr)',
     }),
+  // Negotiated per-sq.ft rate. Blank = no negotiation (clears an existing one).
+  negotiatedRate: z
+    .string()
+    .optional()
+    .refine(
+      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
+      { message: 'Negotiated rate must be a positive number' },
+    ),
   tokenAmount: z
     .string()
     .optional()
@@ -57,6 +67,10 @@ export type BookingEditTarget = {
   id: string;
   leadName?: string;
   amount?: string;
+  /** Unit total when booked; shown for reference next to the negotiated rate. */
+  listAmount?: string;
+  negotiatedRate?: string | null;
+  negotiatedAmount?: string | null;
   tokenAmount?: string | null;
   /** T-TOKEN-GATE: a TOKEN booking's amount cannot be cleared (server rule). */
   status?: string;
@@ -80,6 +94,7 @@ export function BookingEditFormBody({
   form,
   onSubmit,
   canClearTokenAmount,
+  amountDerived,
 }: {
   form: UseFormReturn<EditBookingSchema>;
   onSubmit: (values: EditBookingSchema) => void;
@@ -94,6 +109,12 @@ export function BookingEditFormBody({
    * following the form's own instructions.
    */
   canClearTokenAmount?: boolean;
+  /**
+   * True when the booking has a negotiated rate: the total is then derived
+   * server-side (buildup sq.ft x rate), so the amount field is read-only and the
+   * rate is the thing to edit.
+   */
+  amountDerived?: boolean;
 }) {
   return (
     <Form
@@ -112,12 +133,30 @@ export function BookingEditFormBody({
           label: 'Total amount (₹)',
           required: true,
           inputType: 'number',
-          description: 'Booking value in rupees (cap ₹100 Cr).',
+          description: amountDerived === true
+            ? 'Derived from the negotiated rate below - edit the rate to change it.'
+            : 'Booking value in rupees (cap ₹100 Cr). Enter a negotiated rate below to derive it instead.',
           placeholder: 'Enter amount here...',
+          ...(amountDerived === true ? { className: 'bg-muted/50 cursor-not-allowed' } : {}),
           inputProps: {
             min: 1,
-            step: 1,
+            step: 0.01,
+            ...(amountDerived === true ? { readOnly: true, 'aria-readonly': true } : {}),
             'data-qa': 'booking-edit-amount',
+          },
+        },
+        {
+          type: 'input',
+          name: 'negotiatedRate',
+          label: 'Negotiated price per sq.ft (₹)',
+          inputType: 'number',
+          description:
+            'Optional. Total = unit buildup sq.ft x this rate. Leave blank for no negotiation.',
+          placeholder: 'Enter negotiated rate here...',
+          inputProps: {
+            min: 0.01,
+            step: 0.01,
+            'data-qa': 'booking-edit-negotiated-rate',
           },
         },
         {
@@ -167,6 +206,7 @@ export function BookingEditDialog({
     resolver: zodResolver(editBookingSchema),
     defaultValues: {
       amount: booking?.amount ?? '',
+      negotiatedRate: booking?.negotiatedRate ?? '',
       tokenAmount: booking?.tokenAmount ?? '',
       notes: booking?.notes ?? '',
     },
@@ -179,6 +219,7 @@ export function BookingEditDialog({
     if (open && booking !== null) {
       form.reset({
         amount: booking.amount ?? '',
+        negotiatedRate: booking.negotiatedRate ?? '',
         tokenAmount: booking.tokenAmount ?? '',
         notes: booking.notes ?? '',
       });
@@ -190,7 +231,6 @@ export function BookingEditDialog({
 
   function handleSubmit(values: EditBookingSchema) {
     // zodResolver already validated amount/tokenAmount.
-    const amount = Number(values.amount);
     let tokenAmount: number | null | undefined;
     if (values.tokenAmount !== undefined && values.tokenAmount.trim().length > 0) {
       tokenAmount = Number(values.tokenAmount);
@@ -200,10 +240,22 @@ export function BookingEditDialog({
     }
 
     const payload: {
-      amount: number;
+      amount?: number;
+      negotiatedRate?: number | null;
       tokenAmount?: number | null;
       notes?: string | null;
-    } = { amount, tokenAmount };
+    } = { tokenAmount };
+    // Amount vs rate are mutually exclusive on the wire (the server derives the
+    // amount from a rate). Rate entered -> send the rate. Rate blanked on a
+    // negotiated booking -> clear it. Otherwise it is a plain amount correction.
+    const hadRate = target.negotiatedRate !== undefined && target.negotiatedRate !== null;
+    if (values.negotiatedRate !== undefined && values.negotiatedRate.trim().length > 0) {
+      payload.negotiatedRate = Number(values.negotiatedRate);
+    } else if (hadRate) {
+      payload.negotiatedRate = null;
+    } else {
+      payload.amount = Number(values.amount);
+    }
     if (values.notes !== undefined && values.notes.trim().length > 0) {
       payload.notes = values.notes.trim();
     } else {
@@ -264,6 +316,7 @@ export function BookingEditDialog({
         // T-TOKEN-GATE: the server refuses to clear the amount while the booking
         // is TOKEN, so the form must not invite it.
         canClearTokenAmount={target.status !== 'TOKEN'}
+        amountDerived={target.negotiatedRate !== undefined && target.negotiatedRate !== null}
       />
     </Dialog>
   );

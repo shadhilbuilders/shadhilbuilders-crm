@@ -609,7 +609,13 @@ model Unit {
   unitNumber     String
   bhk            Int
   facing         String?
+  // `sqft` is the PLOT area (UI label "Plot sq.ft"). The column/field name is
+  // kept to avoid churn across seeds and raw SQL.
   sqft           Int?
+  // Built-up area and its rate. `price` (the unit total) is DERIVED server-side
+  // as round(buildupSqft * pricePerSqft, 2) and never trusted from the client.
+  buildupSqft    Decimal    @db.Decimal(10, 2)
+  pricePerSqft   Decimal    @db.Decimal(12, 2)
   price          Decimal    @db.Decimal(12, 2)
   status         UnitStatus @default(AVAILABLE)
   createdAt      DateTime   @default(now())
@@ -913,7 +919,13 @@ model Booking {
   // T-ORG: denormalized from parent Lead.
   organizationId String
   userId         String // who created the booking
+  // Effective booking total: negotiatedAmount when set, else listAmount.
   amount         Decimal       @db.Decimal(12, 2)
+  // Unit total at booking time (audit baseline for the negotiation).
+  listAmount     Decimal       @db.Decimal(12, 2)
+  // Negotiated per-sq.ft rate and the derived total (buildupSqft * rate).
+  negotiatedRate   Decimal?    @db.Decimal(12, 2)
+  negotiatedAmount Decimal?    @db.Decimal(12, 2)
   status         BookingStatus @default(HOLD)
   tokenAmount    Decimal?      @db.Decimal(12, 2)
   approvedById   String?

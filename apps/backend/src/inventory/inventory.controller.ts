@@ -274,7 +274,7 @@ export class InventoryController {
   @Patch('units/:id')
   @ApiOperation({
     summary:
-      'Update an inventory unit (unitNumber/bhk/facing/sqft/price/status). ADMIN/OWNER only. Audit row with before/after.',
+      'Update an inventory unit (unitNumber/bhk/facing/sqft/buildupSqft/pricePerSqft/status). ADMIN/OWNER only. Audit row with before/after.',
   })
   async update(
     @Req() req: AuthedRequest,

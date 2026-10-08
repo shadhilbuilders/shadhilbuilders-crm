@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import { BookingStatusSchema, type BookingStatus } from './enums';
+import { MAX_RATE_PER_SQFT } from './pricing';
 
 /**
  * The booking statuses that may only be reached WITH an operator-supplied
@@ -76,24 +77,13 @@ export const CreateBookingDtoSchema = z
   .object({
     leadId: z.string().cuid2(),
     unitId: z.string().cuid2(),
-    amount: z
-      .number()
-      .positive()
-      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)'),
+    // The booking total is DERIVED server-side: the unit total, or - when a
+    // negotiated per-sq.ft rate is supplied - buildup sq.ft x that rate. The
+    // client never sends an amount, so it cannot be spoofed. The token-vs-total
+    // cap is therefore enforced in BookingsService (it knows the total).
+    negotiatedRate: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
     tokenAmount: TokenAmountSchema.optional(),
     notes: z.string().trim().max(2000).optional(),
-  })
-  .superRefine((values, ctx) => {
-    // The token is a part payment of THIS booking, so it cannot exceed the total.
-    // Both figures are present in the same payload, so this is the ideal place to
-    // catch it - the error lands on `tokenAmount`, where the form can show it.
-    if (!isTokenWithinTotal(values.tokenAmount, values.amount)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['tokenAmount'],
-        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
-      });
-    }
   });
 export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
 
@@ -111,6 +101,12 @@ export const UpdateBookingDtoSchema = z
       .positive()
       .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
       .optional(),
+    /**
+     * Set/replace the negotiated per-sq.ft rate (the server recomputes the
+     * negotiated total and `amount`), or `null` to clear the negotiation and fall
+     * back to the list amount. Mutually exclusive with `amount`.
+     */
+    negotiatedRate: z.number().positive().max(MAX_RATE_PER_SQFT).nullable().optional(),
     tokenAmount: z.number().positive().nullable().optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
     /**
@@ -127,6 +123,13 @@ export const UpdateBookingDtoSchema = z
     reason: z.string().trim().min(1).max(500).optional(),
   })
   .superRefine((values, ctx) => {
+    if (values.negotiatedRate !== undefined && values.amount !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['amount'],
+        message: 'Send either amount or negotiatedRate, not both: the amount is derived from the rate',
+      });
+    }
     // T-TOKEN-GATE cap: both fields can arrive together, and when they do the
     // token must fit inside the total. When only ONE arrives this cannot be
     // judged here - `BookingsService.update` compares against the STORED row.

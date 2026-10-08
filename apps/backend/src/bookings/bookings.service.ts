@@ -33,7 +33,7 @@ import {
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { TransitionReasonRequired, isTokenWithinTotal, isDeadLeadState, TOKEN_EXCEEDS_TOTAL_MESSAGE } from '@shadhil/api-types';
+import { TransitionReasonRequired, isTokenWithinTotal, isDeadLeadState, TOKEN_EXCEEDS_TOTAL_MESSAGE, computeNegotiatedTotal, MAX_BOOKING_TOTAL } from '@shadhil/api-types';
 import type {
   BookingFilterDto,
   BookingTransitionDto,
@@ -72,7 +72,12 @@ export interface BookingRow {
   unitNumber: string;
   userId: string;
   userName: string;
+  /** Effective total: negotiatedAmount when set, else listAmount. */
   amount: string;
+  /** Unit total when the booking was made. */
+  listAmount: string;
+  negotiatedRate: string | null;
+  negotiatedAmount: string | null;
   tokenAmount: string | null;
   status: BookingStatus;
   approvedById: string | null;
@@ -85,6 +90,46 @@ export interface BookingRow {
 export interface BookingListResult {
   total: number;
   rows: BookingRow[];
+}
+
+export interface BookingPricing {
+  /** Effective booking total. */
+  amount: number;
+  /** Echo of the negotiated rate, null when un-negotiated. */
+  negotiatedRate: number | null;
+}
+
+/**
+ * Effective booking total: buildup sq.ft x negotiated rate when a rate is given,
+ * else the unit's list amount. Pure so it is unit-testable without a DB.
+ *
+ * Fails loudly (400 what/why/fix) instead of producing 0/NaN or an over-cap
+ * figure: money must never be silently wrong.
+ */
+export function resolveBookingPricing(input: {
+  unitNumber: string;
+  listAmount: number;
+  buildupSqft: number;
+  negotiatedRate: number | null;
+}): BookingPricing {
+  if (input.negotiatedRate === null) {
+    return { amount: input.listAmount, negotiatedRate: null };
+  }
+  const total = computeNegotiatedTotal(input.buildupSqft, input.negotiatedRate);
+  if (total === null) {
+    throw new BadRequestException(
+      `Cannot compute the negotiated total for unit ${input.unitNumber}: ` +
+        'the rate and the unit buildup sq.ft must both be positive numbers. ' +
+        'Enter a positive rate, or fix the unit buildup sq.ft.',
+    );
+  }
+  if (total > MAX_BOOKING_TOTAL) {
+    throw new BadRequestException(
+      `Negotiated total ${total.toFixed(2)} exceeds the booking cap of ${MAX_BOOKING_TOTAL.toFixed(2)} (INR 100 Cr). ` +
+        'Check the negotiated rate.',
+    );
+  }
+  return { amount: total, negotiatedRate: input.negotiatedRate };
 }
 
 /**
@@ -220,6 +265,9 @@ export class BookingsService {
               unitId: true,
               userId: true,
               amount: true,
+              listAmount: true,
+              negotiatedRate: true,
+              negotiatedAmount: true,
               tokenAmount: true,
               status: true,
               approvedById: true,
@@ -246,6 +294,9 @@ export class BookingsService {
             userId: r.userId,
             userName: r.user.name,
             amount: r.amount.toString(),
+            listAmount: r.listAmount.toString(),
+            negotiatedRate: r.negotiatedRate?.toString() ?? null,
+            negotiatedAmount: r.negotiatedAmount?.toString() ?? null,
             tokenAmount: r.tokenAmount?.toString() ?? null,
             status: r.status,
             approvedById: r.approvedById,
@@ -277,6 +328,9 @@ export class BookingsService {
             unitId: true,
             userId: true,
             amount: true,
+            listAmount: true,
+            negotiatedRate: true,
+            negotiatedAmount: true,
             tokenAmount: true,
             status: true,
             approvedById: true,
@@ -301,6 +355,9 @@ export class BookingsService {
           userId: row.userId,
           userName: row.user.name,
           amount: row.amount.toString(),
+          listAmount: row.listAmount.toString(),
+          negotiatedRate: row.negotiatedRate?.toString() ?? null,
+          negotiatedAmount: row.negotiatedAmount?.toString() ?? null,
           tokenAmount: row.tokenAmount?.toString() ?? null,
           status: row.status,
           approvedById: row.approvedById,
@@ -365,7 +422,13 @@ export class BookingsService {
           // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): `price` is
           // selected so the server can DERIVE the amount rather than trust the
           // client. See the amount handling below.
-          select: { id: true, unitNumber: true, status: true, price: true },
+          select: {
+            id: true,
+            unitNumber: true,
+            status: true,
+            price: true,
+            buildupSqft: true,
+          },
         });
         if (unit === null) {
           throw new NotFoundException(`Unit ${dto.unitId} not found`);
@@ -382,28 +445,26 @@ export class BookingsService {
           );
         }
 
-        // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the unit's price is the booking
-        // amount. Prisma returns Decimal as an object with `toFixed`; guard the
-        // shape so a schema change fails here rather than writing a bogus amount.
-        const unitPrice = Number(unit.price);
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        // Pricing (owner ruling 2026-10-09, reverses the 2026-09-16 "amount ==
+        // unit price" rule): the unit total is the LIST amount; when the buyer
+        // negotiated, the sales exec supplies a per-sq.ft rate and the server
+        // derives negotiatedAmount = buildup sq.ft x rate. The effective booking
+        // `amount` is the negotiated total when present, else the list amount.
+        // The client never sends an amount, so it cannot disagree with the unit.
+        const listAmount = Number(unit.price);
+        if (!Number.isFinite(listAmount) || listAmount <= 0) {
           throw new ConflictException(
             `Unit ${unit.unitNumber} has no usable price (got ${String(unit.price)}), so a booking ` +
-              'amount cannot be derived. Set a price on the unit first.',
+              'amount cannot be derived. Set buildup sq.ft and price per sq.ft on the unit first.',
           );
         }
-
-        // Reject a client that sends a different figure instead of quietly
-        // overwriting it: silently correcting would hide a UI bug, and the whole
-        // point of this change is that the two can no longer disagree unnoticed.
-        // 1 rupee tolerance absorbs rounding on the wire, nothing more.
-        if (Math.abs(dto.amount - unitPrice) > 1) {
-          throw new BadRequestException(
-            `Booking amount must equal the unit price: unit ${unit.unitNumber} is ` +
-              `${unitPrice.toFixed(2)}, but ${dto.amount.toFixed(2)} was sent. ` +
-              'The total comes from the selected unit.',
-          );
-        }
+        const pricing = resolveBookingPricing({
+          unitNumber: unit.unitNumber,
+          listAmount,
+          buildupSqft: Number(unit.buildupSqft),
+          negotiatedRate: dto.negotiatedRate ?? null,
+        });
+        const unitPrice = pricing.amount;
 
         // T-TOKEN-GATE (2026-09-29): enforce the token cap HERE, not only in the
         // DTO. `create()` wrote `dto.tokenAmount` straight through, so the rule
@@ -427,18 +488,16 @@ export class BookingsService {
               organizationId: actor.organizationId,
               unitId: dto.unitId,
               userId: actor.sub,
-              // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): the
-              // booking total IS the unit's price - "the price is the price".
-              //
-              // This used to write `dto.amount` straight through, so the client
-              // decided the figure and nothing cross-checked it. In practice EVERY
-              // existing booking disagreed with its unit (₹1 and ₹1212 against a
-              // ₹43,50,000 unit), which corrupts booking value, approval totals and
-              // reports. The server is the authority now: the amount comes from the
-              // unit, and a client that sends a different figure is rejected
-              // loudly rather than silently ignored, so the UI bug cannot hide.
-              //
+              // Effective total (negotiated when set, else list). Derived
+              // server-side from the unit - see resolveBookingPricing.
               // Prisma Decimal - pass as a string to avoid float drift.
+              listAmount: listAmount.toFixed(2),
+              ...(pricing.negotiatedRate !== null
+                ? {
+                    negotiatedRate: pricing.negotiatedRate.toFixed(2),
+                    negotiatedAmount: pricing.amount.toFixed(2),
+                  }
+                : {}),
               amount: unitPrice.toFixed(2),
               ...(dto.tokenAmount !== undefined
                 ? { tokenAmount: dto.tokenAmount.toFixed(2) }
@@ -452,6 +511,9 @@ export class BookingsService {
               unitId: true,
               userId: true,
               amount: true,
+              listAmount: true,
+              negotiatedRate: true,
+              negotiatedAmount: true,
               tokenAmount: true,
               status: true,
               approvedById: true,
@@ -499,6 +561,9 @@ export class BookingsService {
               leadId: created.leadId,
               unitId: created.unitId,
               amount: created.amount.toString(),
+              listAmount: created.listAmount.toString(),
+              negotiatedRate: created.negotiatedRate?.toString() ?? null,
+              negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
               status: created.status,
             },
             reason: `Booking created by ${actor.email} (${actor.role})`,
@@ -524,6 +589,9 @@ export class BookingsService {
           userId: created.userId,
           userName: created.user.name,
           amount: created.amount.toString(),
+          listAmount: created.listAmount.toString(),
+          negotiatedRate: created.negotiatedRate?.toString() ?? null,
+          negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
           tokenAmount: created.tokenAmount?.toString() ?? null,
           status: created.status,
           approvedById: created.approvedById,
@@ -560,6 +628,9 @@ export class BookingsService {
               unitId: true,
               userId: true,
               amount: true,
+              listAmount: true,
+              negotiatedRate: true,
+              negotiatedAmount: true,
               tokenAmount: true,
               approvedById: true,
               notes: true,
@@ -724,6 +795,9 @@ export class BookingsService {
             unitId: true,
             userId: true,
             amount: true,
+            listAmount: true,
+            negotiatedRate: true,
+            negotiatedAmount: true,
             tokenAmount: true,
             status: true,
             approvedById: true,
@@ -844,6 +918,9 @@ export class BookingsService {
           userId: updated.userId,
           userName: updated.user.name,
           amount: updated.amount.toString(),
+          listAmount: updated.listAmount.toString(),
+          negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+          negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
           tokenAmount: updated.tokenAmount?.toString() ?? null,
           status: updated.status,
           approvedById: updated.approvedById,
@@ -882,6 +959,9 @@ export class BookingsService {
               unitId: true,
               userId: true,
               amount: true,
+              listAmount: true,
+              negotiatedRate: true,
+              negotiatedAmount: true,
               tokenAmount: true,
               approvedById: true,
               notes: true,
@@ -899,7 +979,37 @@ export class BookingsService {
         }
 
         const data: Record<string, unknown> = {};
+        // `newAmount` is the total this request would leave on the booking: a
+        // manual correction (legacy, only for un-negotiated bookings) or the
+        // server-derived figure from a negotiated rate.
+        let newAmount: number | undefined = dto.amount;
+        if (dto.amount !== undefined && existing.negotiatedRate) {
+          throw new BadRequestException(
+            'This booking has a negotiated rate, so its total is derived from it. ' +
+              'Edit the negotiated rate (or clear it) instead of the amount.',
+          );
+        }
         if (dto.amount !== undefined) data['amount'] = dto.amount.toFixed(2);
+        if (dto.negotiatedRate !== undefined) {
+          const unit = await (tx as unknown as PrismaClient).unit.findUnique({
+            where: { id: existing.unitId },
+            select: { unitNumber: true, buildupSqft: true },
+          });
+          if (unit === null) {
+            throw new NotFoundException(`Unit ${existing.unitId} not found`);
+          }
+          const pricing = resolveBookingPricing({
+            unitNumber: unit.unitNumber,
+            listAmount: Number(existing.listAmount),
+            buildupSqft: Number(unit.buildupSqft),
+            negotiatedRate: dto.negotiatedRate,
+          });
+          newAmount = pricing.amount;
+          data['amount'] = pricing.amount.toFixed(2);
+          data['negotiatedRate'] = pricing.negotiatedRate?.toFixed(2) ?? null;
+          data['negotiatedAmount'] =
+            pricing.negotiatedRate === null ? null : pricing.amount.toFixed(2);
+        }
         if (dto.tokenAmount !== undefined) {
           // T-TOKEN-GATE (2026-09-28): a booking that is already TOKEN was marked
           // token-received because money came in - its amount is therefore
@@ -919,20 +1029,20 @@ export class BookingsService {
           // when only ONE of the two figures is being edited - so compare against
           // whichever side this request is not supplying. The DTO can only check
           // the case where both arrive together.
-          const effectiveTotal = dto.amount ?? Number(existing.amount);
+          const effectiveTotal = newAmount ?? Number(existing.amount);
           const effectiveToken = dto.tokenAmount ?? (existing.tokenAmount === null ? null : Number(existing.tokenAmount));
           if (!isTokenWithinTotal(effectiveToken, effectiveTotal)) {
             throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
           }
           data['tokenAmount'] =
             dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
-        } else if (dto.amount !== undefined) {
+        } else if (newAmount !== undefined) {
           // Lowering the TOTAL can strand an existing token above it, so the cap
           // has to hold from this direction too - otherwise a booking could be
           // edited into "token 5L of a 4L unit" one field at a time.
           const existingToken =
             existing.tokenAmount === null ? null : Number(existing.tokenAmount);
-          if (!isTokenWithinTotal(existingToken, dto.amount)) {
+          if (!isTokenWithinTotal(existingToken, newAmount)) {
             throw new BadRequestException(
               `${TOKEN_EXCEEDS_TOTAL_MESSAGE}. Raise the booking total or lower the token first.`,
             );
@@ -949,6 +1059,9 @@ export class BookingsService {
             unitId: true,
             userId: true,
             amount: true,
+            listAmount: true,
+            negotiatedRate: true,
+            negotiatedAmount: true,
             tokenAmount: true,
             status: true,
             approvedById: true,
@@ -971,11 +1084,17 @@ export class BookingsService {
             entityId: updated.id,
             before: {
               amount: existing.amount.toString(),
+              listAmount: existing.listAmount.toString(),
+              negotiatedRate: existing.negotiatedRate?.toString() ?? null,
+              negotiatedAmount: existing.negotiatedAmount?.toString() ?? null,
               tokenAmount: existing.tokenAmount?.toString() ?? null,
               notes: existing.notes,
             },
             after: {
               amount: updated.amount.toString(),
+              listAmount: updated.listAmount.toString(),
+              negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+              negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
               tokenAmount: updated.tokenAmount?.toString() ?? null,
               notes: updated.notes,
             },
@@ -1001,6 +1120,9 @@ export class BookingsService {
           userId: updated.userId,
           userName: updated.user.name,
           amount: updated.amount.toString(),
+          listAmount: updated.listAmount.toString(),
+          negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+          negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
           tokenAmount: updated.tokenAmount?.toString() ?? null,
           status: updated.status,
           approvedById: updated.approvedById,
@@ -1038,6 +1160,9 @@ export class BookingsService {
               unitId: true,
               userId: true,
               amount: true,
+              listAmount: true,
+              negotiatedRate: true,
+              negotiatedAmount: true,
               tokenAmount: true,
               status: true,
               approvedById: true,

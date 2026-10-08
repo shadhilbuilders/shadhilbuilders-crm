@@ -212,7 +212,7 @@ describe('BookingsPage - wire-shape contract (T-BOOK)', () => {
     const html = renderToStaticMarkup(<BookingsPage />);
     // The Unit column is first and its cell is now a LINK to the booking.
     expect(html).toMatch(/data-qa="booking-unit-link"[^>]*>A-101</);
-    // Row actions menu is present (Edit / Delete / View details, + Approve for
+    // Row actions menu is present (View lead / Edit / Delete, + Approve for
     // a manager on a TOKEN row).
     expect(html).toMatch(/data-qa="data-table-row-actions-button"/);
   });

@@ -9,7 +9,7 @@
 //
 // Write paths (all inside `withRlsContext`):
 //   - create: new Unit in the given phase. Audit row.
-//   - update: partial edit (unitNumber/bhk/facing/sqft/price/status).
+//   - update: partial edit (unitNumber/bhk/facing/sqft/buildupSqft/pricePerSqft/status).
 //     Audit row with before/after.
 //
 // Reads:
@@ -27,6 +27,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+import { computeUnitTotal, MAX_UNIT_TOTAL } from '@shadhil/api-types';
 
 import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
@@ -49,6 +50,26 @@ import {
   canManageProjectMembers,
   isAdminClass,
 } from '../users/roles';
+
+/**
+ * Unit total = buildup sq.ft x price per sq.ft, as a 2-decimal string. Throws a
+ * 400 (what/why/fix) rather than ever persisting 0/NaN or an over-cap total.
+ */
+export function deriveUnitPrice(buildupSqft: number, pricePerSqft: number): string {
+  const total = computeUnitTotal(buildupSqft, pricePerSqft);
+  if (total === null) {
+    throw new BadRequestException(
+      'Cannot compute the unit total: buildup sq.ft and price per sq.ft must both be positive numbers.',
+    );
+  }
+  if (total > MAX_UNIT_TOTAL) {
+    throw new BadRequestException(
+      `Unit total ${total.toFixed(2)} exceeds the cap of ${MAX_UNIT_TOTAL.toFixed(2)} (INR 100 Cr). ` +
+        'Check the buildup sq.ft and the price per sq.ft.',
+    );
+  }
+  return total.toFixed(2);
+}
 
 /**
  * Wire shape returned by every endpoint. Matches the api-types
@@ -157,6 +178,8 @@ export class InventoryService {
                   bhk: true,
                   facing: true,
                   sqft: true,
+                  buildupSqft: true,
+                  pricePerSqft: true,
                   price: true,
                   status: true,
                   createdAt: true,
@@ -191,6 +214,8 @@ export class InventoryService {
             bhk: r.bhk,
             facing: r.facing,
             sqft: r.sqft,
+            buildupSqft: r.buildupSqft.toString(),
+            pricePerSqft: r.pricePerSqft.toString(),
             price: r.price.toString(),
             status: r.status,
             createdAt: r.createdAt.toISOString(),
@@ -218,6 +243,8 @@ export class InventoryService {
             bhk: true,
             facing: true,
             sqft: true,
+            buildupSqft: true,
+            pricePerSqft: true,
             price: true,
             status: true,
             createdAt: true,
@@ -239,6 +266,8 @@ export class InventoryService {
           bhk: unit.bhk,
           facing: unit.facing,
           sqft: unit.sqft,
+          buildupSqft: unit.buildupSqft.toString(),
+          pricePerSqft: unit.pricePerSqft.toString(),
           price: unit.price.toString(),
           status: unit.status,
           createdAt: unit.createdAt.toISOString(),
@@ -669,7 +698,10 @@ export class InventoryService {
               facing: dto.facing ?? null,
               sqft: dto.sqft ?? null,
               // Prisma Decimal - pass as a string to avoid float drift.
-              price: dto.price.toFixed(2),
+              // `price` is DERIVED (buildup x rate), never taken from the client.
+              buildupSqft: dto.buildupSqft.toFixed(2),
+              pricePerSqft: dto.pricePerSqft.toFixed(2),
+              price: deriveUnitPrice(dto.buildupSqft, dto.pricePerSqft),
               // T-INV-SYNC: the DTO already restricts this to AVAILABLE|SOLD,
               // but the service refuses a booking-owned status outright so a
               // direct service call (or an older client) cannot create a unit
@@ -684,6 +716,8 @@ export class InventoryService {
               bhk: true,
               facing: true,
               sqft: true,
+              buildupSqft: true,
+              pricePerSqft: true,
               price: true,
               status: true,
               createdAt: true,
@@ -726,6 +760,8 @@ export class InventoryService {
           bhk: created.bhk,
           facing: created.facing,
           sqft: created.sqft,
+          buildupSqft: created.buildupSqft.toString(),
+          pricePerSqft: created.pricePerSqft.toString(),
           price: created.price.toString(),
           status: created.status,
           createdAt: created.createdAt.toISOString(),
@@ -761,6 +797,8 @@ export class InventoryService {
             bhk: true,
             facing: true,
             sqft: true,
+            buildupSqft: true,
+            pricePerSqft: true,
             price: true,
             status: true,
             createdAt: true,
@@ -778,7 +816,15 @@ export class InventoryService {
         if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
         if (dto.facing !== undefined) data['facing'] = dto.facing;
         if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
-        if (dto.price !== undefined) data['price'] = dto.price.toFixed(2);
+        // The unit total is DERIVED: recompute from the effective buildup/rate
+        // whenever either changes. A client `price` is not part of the DTO.
+        if (dto.buildupSqft !== undefined || dto.pricePerSqft !== undefined) {
+          const buildup = dto.buildupSqft ?? Number(existing.buildupSqft);
+          const rate = dto.pricePerSqft ?? Number(existing.pricePerSqft);
+          if (dto.buildupSqft !== undefined) data['buildupSqft'] = buildup.toFixed(2);
+          if (dto.pricePerSqft !== undefined) data['pricePerSqft'] = rate.toFixed(2);
+          data['price'] = deriveUnitPrice(buildup, rate);
+        }
 
         // T-INV-SYNC: Unit.status is DERIVED from the booking lifecycle (a
         // trigger on "Booking" recomputes it; see migration
@@ -833,6 +879,8 @@ export class InventoryService {
               bhk: true,
               facing: true,
               sqft: true,
+              buildupSqft: true,
+              pricePerSqft: true,
               price: true,
               status: true,
               createdAt: true,
@@ -859,6 +907,8 @@ export class InventoryService {
               bhk: existing.bhk,
               facing: existing.facing,
               sqft: existing.sqft,
+              buildupSqft: existing.buildupSqft.toString(),
+              pricePerSqft: existing.pricePerSqft.toString(),
               price: existing.price.toString(),
               status: existing.status,
             },
@@ -867,6 +917,8 @@ export class InventoryService {
               bhk: updated.bhk,
               facing: updated.facing,
               sqft: updated.sqft,
+              buildupSqft: updated.buildupSqft.toString(),
+              pricePerSqft: updated.pricePerSqft.toString(),
               price: updated.price.toString(),
               status: updated.status,
             },
@@ -884,6 +936,8 @@ export class InventoryService {
           bhk: updated.bhk,
           facing: updated.facing,
           sqft: updated.sqft,
+          buildupSqft: updated.buildupSqft.toString(),
+          pricePerSqft: updated.pricePerSqft.toString(),
           price: updated.price.toString(),
           status: updated.status,
           createdAt: updated.createdAt.toISOString(),
@@ -918,6 +972,8 @@ export class InventoryService {
             bhk: true,
             facing: true,
             sqft: true,
+            buildupSqft: true,
+            pricePerSqft: true,
             price: true,
             status: true,
             createdAt: true,
@@ -956,6 +1012,8 @@ export class InventoryService {
               bhk: existing.bhk,
               facing: existing.facing,
               sqft: existing.sqft,
+              buildupSqft: existing.buildupSqft.toString(),
+              pricePerSqft: existing.pricePerSqft.toString(),
               price: existing.price.toString(),
               status: existing.status,
             },

@@ -11,7 +11,7 @@ import { UnitStatusSchema } from '@shadhil/api-types';
 
 import { UNIT_STATUS_RANK } from './unit-status-rank';
 
-import { InventoryService } from './inventory.service';
+import { deriveUnitPrice, InventoryService } from './inventory.service';
 
 function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
@@ -103,6 +103,8 @@ function unitRow(overrides: Record<string, unknown> = {}) {
     bhk: 3,
     facing: 'North',
     sqft: 1450,
+    buildupSqft: { toString: () => '1450.00' },
+    pricePerSqft: { toString: () => '4000.00' },
     price: { toString: () => '5800000.00' },
     status: 'AVAILABLE',
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -666,6 +668,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       bhk: 3,
       facing: 'North',
       sqft: 1450,
+      buildupSqft: { toString: () => '1450.00' },
+      pricePerSqft: { toString: () => '4000.00' },
       price: { toString: () => '5800000.00' },
       status: 'AVAILABLE',
       createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -677,7 +681,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       bhk: 3,
       facing: 'North',
       sqft: 1450,
-      price: 5_800_000,
+      buildupSqft: 1450,
+      pricePerSqft: 4000,
     });
 
     expect(result.status).toBe('AVAILABLE');
@@ -687,6 +692,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
         data: expect.objectContaining({
           status: 'AVAILABLE',
           price: '5800000.00',
+          buildupSqft: '1450.00',
+          pricePerSqft: '4000.00',
         }),
       }),
     );
@@ -707,7 +714,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
         phaseId: 'phase-1',
         unitNumber: 'A-101',
         bhk: 3,
-        price: 1,
+        buildupSqft: 1,
+        pricePerSqft: 1,
       }),
     ).rejects.toThrow(/Only ADMIN\/OWNER/);
     expect(client.unit.create).not.toHaveBeenCalled();
@@ -721,7 +729,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
         phaseId: 'missing',
         unitNumber: 'A-101',
         bhk: 3,
-        price: 1,
+        buildupSqft: 1,
+        pricePerSqft: 1,
       }),
     ).rejects.toThrow(/Phase missing not found/);
     expect(client.unit.create).not.toHaveBeenCalled();
@@ -747,7 +756,8 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
         phaseId: 'phase-1',
         unitNumber: 'A-101',
         bhk: 3,
-        price: 1,
+        buildupSqft: 1,
+        pricePerSqft: 1,
       }),
     ).rejects.toThrow(/already exists in this phase/);
     expect(client.auditLog.create).not.toHaveBeenCalled();
@@ -763,12 +773,15 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
     client.unit.update.mockResolvedValue({
       ...unitRow(),
       status: 'SOLD',
+      buildupSqft: { toString: () => '1500.00' },
+      pricePerSqft: { toString: () => '4000.00' },
       price: { toString: () => '6000000.00' },
     });
 
     const result = await service.update(makeActor(), 'unit-1', {
       status: 'SOLD',
-      price: 6_000_000,
+      buildupSqft: 1500,
+      pricePerSqft: 4000,
     });
 
     expect(result.status).toBe('SOLD');
@@ -868,10 +881,12 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
     client.unit.findUnique.mockResolvedValue(unitRow());
     client.unit.update.mockResolvedValue({
       ...unitRow(),
+      buildupSqft: { toString: () => '1500.00' },
+      pricePerSqft: { toString: () => '4000.00' },
       price: { toString: () => '6000000.00' },
     });
 
-    await service.update(makeActor(), 'unit-1', { price: 6_000_000 });
+    await service.update(makeActor(), 'unit-1', { pricePerSqft: 4000 });
 
     expect(client.booking.findMany).not.toHaveBeenCalled();
     const call = client.unit.update.mock.calls[0]?.[0] as {
@@ -918,6 +933,8 @@ describe('delete - remove a unit (ADMIN/OWNER only)', () => {
       bhk: 3,
       facing: 'North',
       sqft: 1450,
+      buildupSqft: { toString: () => '1450.00' },
+      pricePerSqft: { toString: () => '4000.00' },
       price: { toString: () => '5800000.00' },
       status: 'AVAILABLE',
       createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -969,6 +986,8 @@ describe('delete - remove a unit (ADMIN/OWNER only)', () => {
       bhk: 3,
       facing: 'North',
       sqft: 1450,
+      buildupSqft: { toString: () => '1450.00' },
+      pricePerSqft: { toString: () => '4000.00' },
       price: { toString: () => '5800000.00' },
       status: 'HOLD',
       createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -1159,3 +1178,60 @@ describe('deleteOption - remove a project option (MANAGER/ADMIN/OWNER only)', ()
   });
 });
 
+
+
+describe('unit total is always derived (buildup x per sq.ft price)', () => {
+  it('deriveUnitPrice multiplies exactly and formats 2 decimals', () => {
+    expect(deriveUnitPrice(1450, 4000)).toBe('5800000.00');
+    expect(deriveUnitPrice(1050.1, 3999.99)).toBe('4200389.50');
+  });
+
+  it('deriveUnitPrice refuses zero/NaN and over-cap totals (400, no silent 0)', () => {
+    expect(() => deriveUnitPrice(0, 4000)).toThrow(/must both be positive/);
+    expect(() => deriveUnitPrice(Number.NaN, 4000)).toThrow(/must both be positive/);
+    expect(() => deriveUnitPrice(100_000, 1_000_000)).toThrow(/exceeds the cap/);
+  });
+
+  it('update recomputes the total when only the rate changes (uses stored buildup)', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow()); // buildup 1450, rate 4000
+    client.unit.update.mockResolvedValue({ ...unitRow(), price: { toString: () => '6525000.00' } });
+    await service.update(makeActor(), 'unit-1', { pricePerSqft: 4500 });
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ pricePerSqft: '4500.00', price: '6525000.00' }),
+      }),
+    );
+  });
+
+  it('update does not touch price when neither buildup nor rate is sent', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.unit.update.mockResolvedValue(unitRow());
+    await service.update(makeActor(), 'unit-1', { bhk: 4 });
+    const call = client.unit.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(call.data).not.toHaveProperty('price');
+    expect(call.data).not.toHaveProperty('buildupSqft');
+  });
+
+  it('create ignores a client-sent price', async () => {
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({
+      id: 'phase-1',
+      name: 'Phase A',
+      projectId: 'proj-1',
+      project: { name: 'Metro Heights' },
+    });
+    client.unit.create.mockResolvedValue(unitRow());
+    await service.create(makeActor(), {
+      phaseId: 'phase-1',
+      unitNumber: 'A-101',
+      bhk: 3,
+      buildupSqft: 1000,
+      pricePerSqft: 5000,
+      price: 1,
+    } as never);
+    const call = client.unit.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(call.data['price']).toBe('5000000.00');
+  });
+});

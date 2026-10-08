@@ -44,7 +44,7 @@ describe('UpdateUnitDtoSchema - manual unit status override (T-INV-SYNC)', () =>
       bhk: 3,
       facing: null,
       sqft: null,
-      price: 6_000_000,
+      pricePerSqft: 4000,
     });
     expect(result.success).toBe(true);
   });
@@ -65,7 +65,8 @@ describe('CreateUnitDtoSchema - a new unit cannot be born booking-owned', () => 
     phaseId: 'clh3v8q2x0000qzrmn831i7rn',
     unitNumber: 'A-101',
     bhk: 2,
-    price: 5_000_000,
+    buildupSqft: 1000,
+    pricePerSqft: 5000,
   };
 
   it('accepts AVAILABLE (and the default, no status)', () => {
