@@ -398,25 +398,30 @@ export function useSetLeadCoOwner() {
 // Visits (contract: packages/api-types/src/visits.ts)
 // ---------------------------------------------------------------------------
 
-export function useVisits(
+export function useVisits<T extends unknown>(
   params: {
     from?: string;
     to?: string;
     projectId?: string;
     leadId?: string;
     limit?: number;
+    // Open-work filters (e.g. ['SCHEDULED']) - mirrors VisitFilterDto's
+    // `status` union, which accepts a single value or an array. Joined into
+    // a comma-separated query param, same pattern as useBookings' `status`.
+    status?: string[];
   } = {},
 ) {
   return useQuery({
     queryKey: ['visits', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown>(
+      api<T>(
         `/visits${qs({
           from: params.from,
           to: params.to,
           projectId: params.projectId,
           leadId: params.leadId,
           limit: params.limit,
+          status: params.status?.join(','),
         })}`,
         { signal },
       ),
@@ -425,7 +430,7 @@ export function useVisits(
     // iterates `data` directly; the /visits page also expects an array.
     // Unwrap here so all consumers see the same shape - same pattern as
     // useLeads / useBookings / useNotifications.
-    select: unwrapRows<unknown>,
+    select: unwrapRows<T>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });

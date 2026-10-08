@@ -241,7 +241,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'missing',
         unitId: 'unit-1',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Lead missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -259,7 +258,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'lead-1',
         unitId: 'missing',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Unit missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -313,7 +311,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
         leadId: 'lead-1',
         unitId: 'unit-1',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/can create a booking/);
     expect(client.booking.create).not.toHaveBeenCalled();

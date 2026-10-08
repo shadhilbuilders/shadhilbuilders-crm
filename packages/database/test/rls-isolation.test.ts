@@ -107,6 +107,14 @@ type Fixture = {
 const PROBE_UNIT_A_ID = 'ydrwwx6zzyg7qnb7a9toe5bz';
 const PROBE_UNIT_B_ID = 'uwdjvvo0k5akc5hg5hm6pvci';
 
+// T-VISIT-LEAD-SYNC (2026-10-09): `SiteVisit_one_open_per_lead` is a DB-level
+// partial unique index (one SCHEDULED visit per lead). Fixture lead A already
+// carries one (visitA, below), so the SiteVisit INSERT probe needs its OWN
+// lead with no open visit - same reasoning as PROBE_UNIT_A/B_ID for Booking's
+// one_active_booking_per_unit. Without this every allowed role's INSERT probe
+// fails with a P2002 constraint error instead of the RLS outcome under test.
+const SITE_VISIT_PROBE_LEAD_ID = '1cee7968b0de17724d9fe528';
+
 /**
  * Build a fixture with two orgs, two leads, and one row of every business
  * table linked to each lead. Idempotent: re-running overwrites by cuid-
@@ -377,6 +385,25 @@ async function buildFixture(): Promise<Fixture> {
     },
   });
 
+  // Same RLS profile as leadA (team A, owned by teleA) so the SiteVisit INSERT
+  // probe sees identical permission outcomes - it just needs a lead with no
+  // open visit yet. See SITE_VISIT_PROBE_LEAD_ID above.
+  await adminPrisma.lead.upsert({
+    where: { id: SITE_VISIT_PROBE_LEAD_ID },
+    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER', projectId: projectAId },
+    create: {
+      id: SITE_VISIT_PROBE_LEAD_ID,
+      name: 'Fixture Lead A (SiteVisit INSERT probe)',
+      phone: '9900000003',
+      state: 'NEW',
+      teamId: teamAId,
+      ownerId: teleAId,
+      ownerType: 'TELECALLER',
+      projectId: projectAId,
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
+
   // Seed one row per table per org. We use deterministic IDs so the
   // fixture can be re-run cleanly.
   const activityAId = 'h0t7nq1djabtqjonklb1racn';
@@ -624,6 +651,9 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
   await adminPrisma.message.deleteMany({ where: { id: { in: all('Message') } } });
   await adminPrisma.booking.deleteMany({ where: { id: { in: all('Booking') } } });
   await adminPrisma.siteVisit.deleteMany({ where: { id: { in: all('SiteVisit') } } });
+  // The SiteVisit INSERT probe's own lead (not in rowIds, by id rather than
+  // name since unlike the Lead probe below it doesn't share a fixed name).
+  await adminPrisma.siteVisit.deleteMany({ where: { leadId: SITE_VISIT_PROBE_LEAD_ID } });
   await adminPrisma.activity.deleteMany({ where: { id: { in: all('Activity') } } });
   await adminPrisma.auditLog.deleteMany({ where: { id: { in: all('AuditLog') } } });
   // Rows the INSERT probes created during the run, which are NOT in rowIds.
@@ -1062,9 +1092,18 @@ async function runCase(
             },
           });
         } else if (table === 'SiteVisit') {
+          // T-VISIT-LEAD-SYNC: `SiteVisit_one_open_per_lead` forbids a second
+          // SCHEDULED visit per lead. leadA already carries the fixture's own
+          // visit, so this probe uses a dedicated lead with the SAME RLS
+          // profile (SITE_VISIT_PROBE_LEAD_ID) and clears any SCHEDULED row a
+          // PRIOR allowed role left there in this run - mirrors the Booking
+          // probe's `deleteMany` before `create`, for the same reason.
+          await tx.siteVisit.deleteMany({
+            where: { leadId: SITE_VISIT_PROBE_LEAD_ID, status: 'SCHEDULED' },
+          });
           await tx.siteVisit.create({
             data: {
-              leadId: fixture.leadAId,
+              leadId: SITE_VISIT_PROBE_LEAD_ID,
               userId: ctx.userId,
               scheduledFor: new Date(now.getTime() + 86400000),
               status: 'SCHEDULED',

@@ -1,8 +1,13 @@
 // T-CRON-MULTITENANT (2026-10-09): crons iterate organizations instead of
 // trusting PUBLIC_ORG_ID. Live-DB tests for the helper and its DB function.
 import { Logger } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
-import { prisma as runtimePrisma, withRlsContext, type PrismaClient } from '@shadhil/database';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  prisma as runtimePrisma,
+  withRlsContext,
+  type PrismaClient,
+} from '@shadhil/database';
+import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { cronContextFor, forEachOrganization, listOrganizationIds } from './cron-orgs';
 
@@ -24,10 +29,37 @@ describe('cronContextFor', () => {
 });
 
 describe.skipIf(!HAS_DB)('cron org enumeration (live DB)', () => {
+  // T-CRON-MULTITENANT fixture: a freshly-reset database seeds exactly ONE
+  // organization (`seed.ts` references the bootstrap org but never creates a
+  // second one). This suite asserts multi-tenant behaviour, so it needs its
+  // OWN second org rather than relying on whatever else happens to exist -
+  // the earlier version passed only because a long-lived dev database had
+  // accumulated extra orgs from manual testing, and failed the moment it ran
+  // against a clean seed (CI, or `pnpm test:db:reset`).
+  const ownerPrisma = createDirectPrismaClient();
+  const FIXTURE_ORG_ID = 'crnorgtstfixtureorg00001';
+
+  beforeAll(async () => {
+    await ownerPrisma.organization.upsert({
+      where: { id: FIXTURE_ORG_ID },
+      update: {},
+      create: {
+        id: FIXTURE_ORG_ID,
+        name: 'cron-orgs.test.ts fixture org',
+        slug: FIXTURE_ORG_ID,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await ownerPrisma.organization.deleteMany({ where: { id: FIXTURE_ORG_ID } });
+  });
+
   it('lists every organization, not just the PUBLIC_ORG_ID one', async () => {
     const ids = await listOrganizationIds(prisma);
     expect(ids.length).toBeGreaterThanOrEqual(2);
     expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain(FIXTURE_ORG_ID);
   });
 
   it('refuses callers that are not the cron service account', async () => {

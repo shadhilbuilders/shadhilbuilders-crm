@@ -101,6 +101,18 @@ type LeadListRow = {
   ownerName?: string;
 };
 
+/**
+ * The fields `todaysOpenVisits` reads off a visit list row. `useVisits`
+ * returns `unknown[]` (it serves several endpoints), so this narrows just
+ * enough for that one call - see the note there.
+ */
+type VisitQueueRow = {
+  leadId?: string;
+  scheduledFor?: string;
+  status?: string;
+  leadState?: string;
+};
+
 // The per-role lane lives in `@/lib/queue-actions` (QUEUE_STATES_BY_ROLE) so
 // the states shown and the actions offered cannot drift apart.
 
@@ -199,7 +211,7 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
     end.setDate(end.getDate() + 1);
     return { from: start.toISOString(), to: end.toISOString() };
   }, []);
-  const visitsQuery = useVisits({
+  const visitsQuery = useVisits<VisitQueueRow>({
     from: today.from,
     to: today.to,
     projectId: projectId ?? undefined,
@@ -263,7 +275,11 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   // temporal-dead-zone error.
   const queueTotal = leadsEnvelope?.total ?? ordered.length;
   // One row per lead, open visits on live deals only (T-VISIT-LEAD-SYNC).
-  const visits = todaysOpenVisits(Array.isArray(visitsQuery.data) ? visitsQuery.data : []);
+  // `useVisits` is typed `unknown[]` (it serves several endpoints' shapes);
+  // `todaysOpenVisits` only reads these four fields, so narrow to them here
+  // rather than widening the hook's return type for every caller.
+  const visitRows = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
+  const visits = todaysOpenVisits(visitRows);
 
   // T-STATUS-ONE-TRUTH (2026-09-28): the KPI strip's overdue count. Both
   // numbers come from the SERVER, but from two different endpoints - and they
