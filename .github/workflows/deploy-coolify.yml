@@ -25,6 +25,12 @@ name: deploy-coolify
 #   VPS_SSH_KEY   - private key of the non-root `deploy` VPS user
 
 on:
+  workflow_dispatch:
+    inputs:
+      disable_cache:
+        description: 'Disable the Docker build cache for this run'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -38,14 +44,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-push-deploy:
+  # 1. Cheap gate: fail fast on a malformed compose before spending 20+ min
+  #    building images. (The sync step re-checks right before uploading.)
+  validate-compose:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse docker/coolify-compose.yml
+        run: docker compose -f docker/coolify-compose.yml config -q
+
+  # 2. Build the three images in parallel and push the immutable
+  #    prod-<sha> tag to GHCR. The moving 'prod' tag is NOT refreshed here:
+  #    that happens in the deploy job only after ALL three builds succeeded,
+  #    so a partial failure never moves 'prod'.
+  build-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
-    timeout-minutes: 45
-    env:
-      BUILD_ID: ${{ github.sha }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - service: api
+            dockerfile: apps/backend/Dockerfile
+            build_args: ''
+          - service: sse
+            dockerfile: apps/realtime-sse/Dockerfile
+            build_args: ''
+          - service: web
+            dockerfile: apps/web/Dockerfile
+            build_args: |
+              NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in
+              NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
+              NEXT_PUBLIC_BETTER_AUTH_URL=https://crm.shadhilbuilders.in
+              BACKEND_API_URL=http://shadhil-api:8080
+              BUILD_ID=${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,46 +101,67 @@ jobs:
         id: tag
         run: echo "tag=prod-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build api image (load, no push yet)
+      # Build cache (GitHub Actions cache, one scope per service). Disable by
+      # EITHER: repo variable DISABLE_BUILD_CACHE=true (permanent), or the
+      # 'disable_cache' input on a manual run (one-off).
+      - name: Resolve build cache settings
+        id: cache
+        env:
+          DISABLE_VAR: ${{ vars.DISABLE_BUILD_CACHE }}
+          DISABLE_INPUT: ${{ inputs.disable_cache }}
+        run: |
+          set -euo pipefail
+          if [ "$DISABLE_VAR" = "true" ] || [ "$DISABLE_INPUT" = "true" ]; then
+            echo "build cache DISABLED"
+            echo "from=" >> "$GITHUB_OUTPUT"
+            echo "to=" >> "$GITHUB_OUTPUT"
+          else
+            echo "build cache enabled (scope=${{ matrix.service }})"
+            echo "from=type=gha,scope=${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+            echo "to=type=gha,scope=${{ matrix.service }},mode=max" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push ${{ matrix.service }} image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/backend/Dockerfile
-          load: true
-          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-api:${{ steps.tag.outputs.tag }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          cache-from: ${{ steps.cache.outputs.from }}
+          cache-to: ${{ steps.cache.outputs.to }}
+          build-args: ${{ matrix.build_args }}
+          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-${{ matrix.service }}:${{ steps.tag.outputs.tag }}
 
-      - name: Build sse image (load)
-        uses: docker/build-push-action@v6
+  # 3. Serialized deploy: pull the exact built images, side-load them to the
+  #    VPS (it holds no GHCR credentials), sync compose, restart, migrate, prune.
+  deploy:
+    needs: [validate-compose, build-images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: apps/realtime-sse/Dockerfile
-          load: true
-          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-sse:${{ steps.tag.outputs.tag }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build web image (load, prod build args)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          load: true
-          build-args: |
-            NEXT_PUBLIC_APP_URL=https://crm.shadhilbuilders.in
-            NEXT_PUBLIC_API_BASE_URL=https://api.crm.shadhilbuilders.in
-            NEXT_PUBLIC_BETTER_AUTH_URL=https://crm.shadhilbuilders.in
-            BACKEND_API_URL=http://shadhil-api:8080
-            BUILD_ID=${{ github.sha }}
-          tags: ghcr.io/${{ github.repository_owner }}/shadhil-crm-web:${{ steps.tag.outputs.tag }}
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=prod-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Push the three images to GHCR
+      - name: Pull built images and refresh the moving 'prod' tag
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.tag }}"
           OWNER="${{ github.repository_owner }}"
-          docker push "ghcr.io/$OWNER/shadhil-crm-api:$TAG"
-          docker push "ghcr.io/$OWNER/shadhil-crm-sse:$TAG"
-          docker push "ghcr.io/$OWNER/shadhil-crm-web:$TAG"
-          # also refresh the moving 'prod' tag
           for s in api sse web; do
+            docker pull "ghcr.io/$OWNER/shadhil-crm-$s:$TAG"
             docker tag "ghcr.io/$OWNER/shadhil-crm-$s:$TAG" "ghcr.io/$OWNER/shadhil-crm-$s:prod"
             docker push "ghcr.io/$OWNER/shadhil-crm-$s:prod"
           done
@@ -204,27 +263,16 @@ jobs:
           $SSH 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
           echo "api container did not come up in 300s"; exit 1
 
-      # Keep the disk from refilling. The side-load transfer above adds a
-      # fresh api/sse/web image TRIPLET on every deploy (docker save | load)
-      # and nothing else ever removes the old ones, so the root disk fills:
-      # it hit 100% / 0 bytes free on 2026-10-05 (38GB of stale prod-<sha>
-      # triplets) and load-averaged 40+. Runs only after a SUCCESSFUL deploy,
-      # so the previous triplet is gone once the new one is serving - to roll
-      # back, re-push/rebuild from GHCR (no local rollback image is retained
-      # by design: "keep only what the running app needs"). `docker image
-      # prune -a` protects every image backing a RUNNING container, so the
-      # just-deployed tags and the coolify/traefik/postgres infra stay put.
-      - name: Prune stale images on the VPS
-        run: |
-          set -uo pipefail
-          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
-          TAG="${{ steps.tag.outputs.tag }}"
-          # Explicit rmi of every shadhil-crm tag except the one just deployed.
-          $SSH "docker images --format '{{.Repository}}:{{.Tag}}' | grep 'shadhil-crm-' | grep -v ':$TAG\$' | xargs -r docker rmi -f" || true
-          # Then sweep any layers/orphans those deletions freed, plus build cache.
-          $SSH 'docker image prune -a -f' || true
-          $SSH 'docker builder prune -a -f' || true
-          $SSH 'df -h / | tail -1'
+  # 4. Runs LAST, even if deploy failed, and only warns.
+  verify-compose:
+    needs: [deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
 
       # Runs LAST, and only warns: app code must ship even when Coolify's
       # compose round-trip misbehaves. This closes the hole that made fb0e73b
@@ -242,7 +290,6 @@ jobs:
       # multi-line heredoc inside a `run: |` block scalar must be indented, and
       # Python rejects a uniformly-indented script ("unexpected indent").
       - name: Verify the compose actually landed
-        if: always()
         run: |
           set -uo pipefail
           SVC="0bjahklz8gtdtr4do4r7ae6m"
