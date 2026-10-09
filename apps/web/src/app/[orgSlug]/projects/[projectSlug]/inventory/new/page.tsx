@@ -14,15 +14,18 @@
 //
 // We use the props-API Form (data-driven, declarative `fields` array)
 // per the canonical pattern in apps/web/src/app/(app)/leads/new/page.tsx.
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { computeUnitTotal } from '@shadhil/api-types';
 
 import { Button, Form, toast } from '@paalstack/react-ui';
 import { LuArrowLeft } from '@paalstack/react-icons/lu';
 
 import { useCreateUnit, useInventoryPhases, useProjectOptions } from '@/hooks/queries/inventory';
+import { formatMoneyInput } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
@@ -34,7 +37,11 @@ const createUnitSchema = z.object({
   bhk: z.string().min(1, 'BHK is required'),
   facing: z.string().trim().max(40).optional(),
   sqft: z.string().optional(),
-  price: z.string().min(1, 'Price is required'),
+  buildupSqft: z.string().min(1, 'Buildup sq.ft is required'),
+  pricePerSqft: z.string().min(1, 'Price per sq.ft is required'),
+  // DERIVED display field (buildup x rate). Never submitted - the server
+  // recomputes the total itself.
+  totalPrice: z.string().optional(),
 });
 
 type CreateUnitSchema = z.infer<typeof createUnitSchema>;
@@ -74,10 +81,23 @@ export default function NewUnitPage() {
       bhk: '',
       facing: '',
       sqft: '',
-      price: '',
+      buildupSqft: '',
+      pricePerSqft: '',
+      totalPrice: '',
     },
     mode: 'onSubmit',
   });
+
+  // Total sq.ft price = buildup sq.ft x price per sq.ft, live as the user types.
+  // `watch` at the top level so the component re-renders on every change.
+  const buildupValue = form.watch('buildupSqft');
+  const rateValue = form.watch('pricePerSqft');
+  const derivedTotal = computeUnitTotal(buildupValue, rateValue);
+  useEffect(() => {
+    form.setValue('totalPrice', derivedTotal === null ? '' : derivedTotal.toFixed(2), {
+      shouldValidate: false,
+    });
+  }, [derivedTotal, form]);
 
   function onSubmit(values: CreateUnitSchema) {
     const bhk = Number(values.bhk);
@@ -85,16 +105,21 @@ export default function NewUnitPage() {
       toast.error('BHK must be a whole number between 1 and 10');
       return;
     }
-    const price = Number(values.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      toast.error('Price must be a positive number');
+    const buildupSqft = Number(values.buildupSqft);
+    if (!Number.isFinite(buildupSqft) || buildupSqft <= 0) {
+      toast.error('Buildup sq.ft must be a positive number');
+      return;
+    }
+    const pricePerSqft = Number(values.pricePerSqft);
+    if (!Number.isFinite(pricePerSqft) || pricePerSqft <= 0) {
+      toast.error('Price per sq.ft must be a positive number');
       return;
     }
     let sqft: number | undefined;
     if (values.sqft !== undefined && values.sqft.trim().length > 0) {
       const parsed = Number(values.sqft);
       if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast.error('Sqft must be a positive number');
+        toast.error('Plot sq.ft must be a positive number');
         return;
       }
       sqft = parsed;
@@ -104,7 +129,8 @@ export default function NewUnitPage() {
       phaseId: values.phaseId,
       unitNumber: values.unitNumber.trim(),
       bhk,
-      price,
+      buildupSqft,
+      pricePerSqft,
       ...(values.facing && values.facing.trim().length > 0
         ? { facing: values.facing.trim() }
         : {}),
@@ -201,10 +227,10 @@ export default function NewUnitPage() {
           {
             type: 'input',
             name: 'sqft',
-            label: 'Sqft',
+            label: 'Plot sq.ft',
             placeholder: '1450',
             inputType: 'number',
-            description: 'Optional. Built-up area in square feet.',
+            description: 'Optional. Plot area in square feet.',
             inputProps: {
               min: 1,
               step: 1,
@@ -213,16 +239,51 @@ export default function NewUnitPage() {
           },
           {
             type: 'input',
-            name: 'price',
-            label: 'Price (₹)',
-            placeholder: '5800000',
+            name: 'buildupSqft',
+            label: 'Buildup sq.ft',
+            placeholder: '1200',
             required: true,
             inputType: 'number',
-            description: 'Unit price in rupees (cap ₹100 Cr).',
+            description: 'Built-up area in square feet.',
             inputProps: {
-              min: 1,
-              step: 1,
-              'data-qa': 'unit-price',
+              min: 0.01,
+              step: 0.01,
+              'data-qa': 'unit-buildup-sqft',
+            },
+          },
+          {
+            type: 'input',
+            name: 'pricePerSqft',
+            label: 'Per sq.ft price (₹)',
+            placeholder: '4500',
+            required: true,
+            inputType: 'number',
+            description: 'Rate per built-up square foot in rupees.',
+            inputProps: {
+              min: 0.01,
+              step: 0.01,
+              'data-qa': 'unit-price-per-sqft',
+            },
+          },
+          {
+            // DERIVED: buildup sq.ft x per sq.ft price. `readOnly` (not
+            // `disabled`) so it stays announced and copyable; muted styling is
+            // the "cannot type here" signal. See the booking form for the same
+            // convention.
+            type: 'input',
+            name: 'totalPrice',
+            label: 'Total sq.ft price (₹)',
+            inputType: 'text',
+            description: 'Auto-calculated: buildup sq.ft x per sq.ft price.',
+            placeholder: 'Enter buildup sq.ft and rate...',
+            className: 'bg-muted/50 cursor-not-allowed',
+            inputProps: {
+              // Display-only: the raw number stays in form state.
+              value: formatMoneyInput(derivedTotal),
+              readOnly: true,
+              tabIndex: -1,
+              'aria-readonly': true,
+              'data-qa': 'unit-total-price',
             },
           },
         ]}

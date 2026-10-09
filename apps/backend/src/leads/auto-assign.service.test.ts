@@ -183,8 +183,14 @@ afterAll(async () => {
   });
 });
 
-describe('autoAssignLeads = true → project-wide least-loaded telecaller', () => {
-  it('routes to the telecaller with the lowest openLeads/weight across all project teams', async () => {
+// T-TEAM-ROUND-ROBIN (2026-10-08): with the flag on, the lead is routed by a
+// strict team rotation; WITHIN the chosen team the least-loaded telecaller wins.
+// TEAM_A and TEAM_B are both ON in this block, and the tests below are
+// deliberately ORDER-DEPENDENT on the rotation cursor (fresh project => both
+// teams never routed => 'auto-team-a' < 'auto-team-b' by id): the 1st create
+// lands on A, the 2nd on B, the 3rd on A again.
+describe('autoAssignLeads = true → team round-robin, least-loaded telecaller within the team', () => {
+  it('routes to the least-loaded telecaller of the team whose turn it is (A first)', async () => {
     if (prisma === null) return;
     // Seed an OPEN (non-terminal) lead on TC_A2 so TC_A1 (0 open) is the
     // least loaded of the pool.
@@ -203,11 +209,12 @@ describe('autoAssignLeads = true → project-wide least-loaded telecaller', () =
         },
       });
     });
-    // Team A is the team the (admin) actor creates the lead into, and it has
-    // autoAssignLeads = true → the pool is TC_A1 (0 open), TC_A2 (1 open), TC_B1 (0 open).
+    // Both teams ON. Turn 1 of the rotation is TEAM_A (never routed, lowest id),
+    // so the pick is the least-loaded telecaller OF TEAM_A: TC_A1 (0 open) beats
+    // TC_A2 (1 open). TC_B1 (0 open) is NOT in the pool - it is another team's.
     await seed(async (db) => {
-      await db.team.update({
-        where: { id: TEAM_A },
+      await db.team.updateMany({
+        where: { id: { in: [TEAM_A, TEAM_B] } },
         data: { autoAssignLeads: true },
       });
     });
@@ -221,17 +228,16 @@ describe('autoAssignLeads = true → project-wide least-loaded telecaller', () =
     } as unknown as Parameters<LeadsService['create']>[1]);
     LEAD_IDS.push(lead.id);
 
-    // TC_A1 and TC_B1 both have 0 open + weight 1 → tie, deterministically the
-    // lexicographically-smaller userId (TC_A1 vs TC_B1 → TC_A1 wins the userId tie).
     expect(lead.ownerId).toBe(TC_A1);
   });
 
-  it('a heavier-weight member wins when the ratio favors them', async () => {
+  it('the next lead goes to the OTHER team (rotation), and its weighted telecaller wins', async () => {
     if (prisma === null) return;
-    // TC_A1: 4 open / weight 1 = 4.0 ; TC_B1: 2 open / weight 4 = 0.5.
-    // The ratio unambiguously favors the heavier-weight TC_B1, and it beats
-    // every weight-1 member (who can't drop below 1.0 without negative load).
-    // The prior test left one open lead on TC_A2 (score 1.0), so TC_B1 wins.
+    // Turn 2 of the rotation is TEAM_B (TEAM_A was just used). TEAM_B's only
+    // telecaller is TC_B1 (the sales exec SE_B1 is never a candidate), weight 4
+    // with 2 open leads (0.5). TC_A1 is loaded to 4 so a pool that wrongly
+    // spanned teams would still not pick it - the assertion that matters is
+    // that the lead crossed to TEAM_B at all.
     await seed(async (db) => {
       await db.teamMember.updateMany({
         where: { userId: TC_A1 },
@@ -296,11 +302,11 @@ describe('autoAssignLeads = true → project-wide least-loaded telecaller', () =
     // is as favourable as an exec can ever look, must lose to a loaded
     // telecaller.
     //
-    // Weights are set explicitly so this test does not depend on the weight/load
-    // mutations the earlier tests leave behind: all telecallers weight 1, exec
-    // weight 10 at 0 open. Loads carried into this test: TC_A1 4 (seeded below
-    // + the heavier-weight test's burden), TC_A2 1 (this file's first seed),
-    // TC_B1 2 (the heavier-weight test) → TC_A2 has the lowest telecaller score.
+    // Turn 3 of the rotation is TEAM_A again. Weights are set explicitly so this
+    // test does not depend on the weight/load mutations the earlier tests leave
+    // behind: all telecallers weight 1, exec weight 10 at 0 open. Loads carried
+    // into this test: TC_A1 4 (the previous test's burden), TC_A2 1 (this file's
+    // first seed) → TC_A2 has the lowest score in TEAM_A's telecaller pool.
     await seed(async (db) => {
       await db.teamMember.updateMany({
         where: { userId: { in: [TC_A1, TC_A2, TC_B1] } },
@@ -935,5 +941,373 @@ describe('rule chain on create: a NEW lead never auto-routes to a sales exec', (
     // NOT take the lead.
     expect(lead.ownerId).not.toBe(SE_B1);
     expect(lead.ownerId).toBeTruthy();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-TEAM-ROUND-ROBIN (2026-10-08): strict team rotation
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Every team linked to the project takes turns, one lead each, regardless of
+// headcount or load. ON team -> its least-loaded telecaller; OFF team -> its
+// manager directly. A team with no telecallers is skipped (its manager never
+// gets a lead just because the team is empty).
+//
+// Each test builds its OWN project so rotation cursors start at NULL and the
+// order is fully determined by team id.
+
+interface TeamSpec {
+  key: string;
+  on: boolean;
+  hasManager: boolean;
+  telecallers: number;
+  maxOpenLeads?: number | null;
+  /** Role of the team's manager user; defaults to MANAGER. */
+  managerRole?: 'MANAGER' | 'ADMIN';
+}
+
+interface RrFixture {
+  projectId: string;
+  teams: Record<string, { id: string; managerId: string | null; telecallerIds: string[] }>;
+}
+
+let rrSeq = 0;
+function nextPhone(): string {
+  rrSeq += 1;
+  return `+9188${(Date.now() % 1000000).toString().padStart(6, '0')}${rrSeq.toString().padStart(2, '0')}`;
+}
+
+async function buildRrFixture(label: string, specs: readonly TeamSpec[]): Promise<RrFixture> {
+  const projectId = `rr-proj-${label}-${RUN_TAG}`;
+  const teams: RrFixture['teams'] = {};
+  await seed(async (db) => {
+    await db.project.upsert({
+      where: { id: projectId },
+      update: {},
+      create: {
+        id: projectId,
+        name: `RR ${label} ${RUN_TAG}`,
+        slug: `test-rr-${label}-${RUN_TAG}`,
+        address: 'test',
+        organizationId: ORG,
+      },
+    });
+    for (const spec of specs) {
+      // Ids sort by `key` ('a' < 'b' < 'c'), which fixes the first-turn order.
+      const id = `rr-team-${spec.key}-${label}-${RUN_TAG}`;
+      const managerId = spec.hasManager ? `rr-mgr-${spec.key}-${label}-${RUN_TAG}` : null;
+      if (managerId !== null) await seedUser(db, managerId, spec.managerRole ?? 'MANAGER', `RR Mgr ${spec.key}`);
+      await db.team.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          name: `RR ${spec.key} ${label} ${RUN_TAG}`,
+          managerId,
+          autoAssignLeads: spec.on,
+          organizationId: ORG,
+        },
+      });
+      const telecallerIds: string[] = [];
+      for (let i = 0; i < spec.telecallers; i++) {
+        const uid = `rr-tc-${spec.key}${i}-${label}-${RUN_TAG}`;
+        await seedUser(db, uid, 'TELECALLER', `RR TC ${spec.key}${i}`);
+        await db.teamMember.create({
+          data: {
+            userId: uid,
+            teamId: id,
+            organizationId: ORG,
+            assignedById: ADMIN_ACTOR_ID,
+            maxOpenLeads: spec.maxOpenLeads ?? null,
+          },
+        });
+        telecallerIds.push(uid);
+      }
+      await db.projectTeam.create({
+        data: { projectId, teamId: id, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+      });
+      teams[spec.key] = { id, managerId, telecallerIds };
+    }
+  });
+  return { projectId, teams };
+}
+
+async function createLeadIn(
+  fx: RrFixture,
+  teamKey: string,
+  extra: Record<string, unknown> = {},
+) {
+  const lead = await service.create(adminActor(), {
+    name: `RR lead ${rrSeq}`,
+    phone: nextPhone(),
+    source: 'TEST',
+    projectId: fx.projectId,
+    teamId: fx.teams[teamKey]!.id,
+    ...extra,
+  } as unknown as Parameters<LeadsService['create']>[1]);
+  LEAD_IDS.push(lead.id);
+  return lead;
+}
+
+describe('team round-robin: ON team -> telecaller, OFF team -> manager', () => {
+  it('alternates A telecaller, B manager, A telecaller, B manager... for an ON/OFF pair', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('alt', [
+      { key: 'a', on: true, hasManager: true, telecallers: 2 },
+      { key: 'b', on: false, hasManager: true, telecallers: 3 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 6; i++) owners.push((await createLeadIn(fx, 'a')).ownerId);
+
+    const a = fx.teams.a!;
+    const b = fx.teams.b!;
+    // Odd turns: team A -> one of A's telecallers. Even turns: team B -> B's
+    // manager, NOT one of B's three telecallers.
+    owners.forEach((owner, i) => {
+      if (i % 2 === 0) expect(a.telecallerIds).toContain(owner);
+      else expect(owner).toBe(b.managerId);
+    });
+    // Within team A the least-loaded rule spreads the 3 A-turns over 2 people.
+    const aPicks = owners.filter((_, i) => i % 2 === 0);
+    expect(new Set(aPicks).size).toBe(2);
+  });
+
+  it('a team with NO telecallers is skipped - its manager never receives a lead', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('empty', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: true, telecallers: 0 }, // empty OFF team
+      { key: 'c', on: true, hasManager: true, telecallers: 1 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 4; i++) owners.push((await createLeadIn(fx, 'a')).ownerId);
+
+    expect(owners).not.toContain(fx.teams.b!.managerId);
+    // Rotation continues A, C, A, C over the two teams that have telecallers.
+    expect(owners).toEqual([
+      fx.teams.a!.telecallerIds[0],
+      fx.teams.c!.telecallerIds[0],
+      fx.teams.a!.telecallerIds[0],
+      fx.teams.c!.telecallerIds[0],
+    ]);
+  });
+
+  it('an OFF team with telecallers but NO manager is skipped', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('nomgr', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: false, telecallers: 2 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 3; i++) owners.push((await createLeadIn(fx, 'a')).ownerId);
+
+    // B can never take a turn (nobody to hand off to), so every lead stays in A.
+    expect(owners).toEqual(Array(3).fill(fx.teams.a!.telecallerIds[0]));
+    // ...and no B telecaller silently picked it up instead.
+    for (const id of fx.teams.b!.telecallerIds) expect(owners).not.toContain(id);
+  });
+
+  it('an ON team whose telecallers are all at their ceiling is skipped', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('capped', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1, maxOpenLeads: 0 }, // always full
+      { key: 'b', on: true, hasManager: true, telecallers: 1 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 3; i++) owners.push((await createLeadIn(fx, 'a')).ownerId);
+
+    expect(owners).toEqual(Array(3).fill(fx.teams.b!.telecallerIds[0]));
+  });
+
+  it('hands the lead to the CREATING team manager when no team can take it', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('nobody', [
+      { key: 'a', on: true, hasManager: true, telecallers: 0 },
+      { key: 'b', on: true, hasManager: true, telecallers: 0 },
+    ]);
+    const lead = await createLeadIn(fx, 'b');
+    expect(lead.ownerId).toBe(fx.teams.b!.managerId);
+
+    // Never silent: the audit row records the fallback and why each team was skipped.
+    const audit = await seed((db) =>
+      db.auditLog.findFirst({
+        where: { entityId: lead.id, action: 'lead.assigned' },
+        select: { after: true },
+      }),
+    );
+    const routing = (audit?.after as { routing?: { branch: string; skipped: unknown[] } }).routing;
+    expect(routing?.branch).toBe('creating-team-fallback');
+    expect(routing?.skipped).toEqual(
+      expect.arrayContaining([
+        { teamId: fx.teams.a!.id, reason: 'no-telecallers' },
+        { teamId: fx.teams.b!.id, reason: 'no-telecallers' },
+      ]),
+    );
+  });
+
+  it('records the chosen team and previous cursor in the audit metadata', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('audit', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: true, telecallers: 1 },
+    ]);
+    const first = await createLeadIn(fx, 'a');
+    const second = await createLeadIn(fx, 'a');
+
+    const routingOf = async (leadId: string) => {
+      const row = await seed((db) =>
+        db.auditLog.findFirst({
+          where: { entityId: leadId, action: 'lead.assigned' },
+          select: { after: true },
+        }),
+      );
+      return (row?.after as { routing: { branch: string; chosenTeamId: string; previousLastAssignedAt: string | null } })
+        .routing;
+    };
+    const r1 = await routingOf(first.id);
+    const r2 = await routingOf(second.id);
+    expect(r1).toMatchObject({ branch: 'team-telecaller', chosenTeamId: fx.teams.a!.id, previousLastAssignedAt: null });
+    expect(r2).toMatchObject({ branch: 'team-manager', chosenTeamId: fx.teams.b!.id, previousLastAssignedAt: null });
+  });
+
+  it('a lead created in an OFF team goes to ITS manager and does not advance the rotation', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('offcreate', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: true, telecallers: 1 },
+    ]);
+    const viaB = await createLeadIn(fx, 'b');
+    expect(viaB.ownerId).toBe(fx.teams.b!.managerId);
+
+    const cursors = await seed((db) =>
+      db.projectTeam.findMany({
+        where: { projectId: fx.projectId },
+        select: { lastAssignedAt: true },
+      }),
+    );
+    expect(cursors.every((c) => c.lastAssignedAt === null)).toBe(true);
+    // The next ON-team create is therefore still turn 1 -> team A.
+    const viaA = await createLeadIn(fx, 'a');
+    expect(viaA.ownerId).toBe(fx.teams.a!.telecallerIds[0]);
+  });
+
+  it('an explicit assignedOwnerId does not consume a team turn', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('override', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: true, hasManager: true, telecallers: 1 },
+    ]);
+    const forced = await createLeadIn(fx, 'a', {
+      assignedOwnerId: fx.teams.b!.telecallerIds[0],
+    });
+    expect(forced.ownerId).toBe(fx.teams.b!.telecallerIds[0]);
+
+    const cursors = await seed((db) =>
+      db.projectTeam.findMany({
+        where: { projectId: fx.projectId },
+        select: { lastAssignedAt: true },
+      }),
+    );
+    expect(cursors.every((c) => c.lastAssignedAt === null)).toBe(true);
+  });
+
+  it('concurrent creates take different turns (advisory lock serializes the pick)', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('conc', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: true, hasManager: true, telecallers: 1 },
+    ]);
+    const leads = await Promise.all([createLeadIn(fx, 'a'), createLeadIn(fx, 'a')]);
+    const owners = leads.map((l) => l.ownerId).sort();
+    // Without the lock both reads see a NULL cursor and both pick team A.
+    expect(owners).toEqual(
+      [fx.teams.a!.telecallerIds[0]!, fx.teams.b!.telecallerIds[0]!].sort(),
+    );
+  });
+
+  it('an OFF team whose "manager" is an ADMIN (not a MANAGER; one-owner-per-org forbids seeding a 2nd OWNER, same code path) is skipped, never handed the lead', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('ownermgr', [
+      { key: 'a', on: true, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: true, telecallers: 1, managerRole: 'ADMIN' },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 3; i++) owners.push((await createLeadIn(fx, 'a')).ownerId);
+
+    expect(owners).not.toContain(fx.teams.b!.managerId);
+    expect(owners).toEqual(Array(3).fill(fx.teams.a!.telecallerIds[0]));
+    // Not silent: the first create records why team B was passed over.
+    const first = await seed((db) =>
+      db.auditLog.findFirst({
+        where: { entityType: 'Lead', action: 'lead.assigned', after: { path: ['routing', 'skipped'], array_contains: [{ teamId: fx.teams.b!.id, reason: 'invalid-manager' }] } },
+        select: { id: true },
+      }),
+    );
+    expect(first).not.toBeNull();
+  });
+
+  it('a lead created in an OFF team whose manager is an ADMIN is NOT handed to that user', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('ownercreate', [
+      { key: 'a', on: false, hasManager: true, telecallers: 1, managerRole: 'ADMIN' },
+    ]);
+    const lead = await createLeadIn(fx, 'a');
+    expect(lead.ownerId).not.toBe(fx.teams.a!.managerId);
+
+    const audit = await seed((db) =>
+      db.auditLog.findFirst({
+        where: { entityId: lead.id, action: 'lead.assigned' },
+        select: { after: true },
+      }),
+    );
+    const routing = (audit?.after as { routing?: { skipped: unknown[] } }).routing;
+    expect(routing?.skipped).toEqual([{ teamId: fx.teams.a!.id, reason: 'invalid-manager' }]);
+  });
+
+  it('two OFF teams: an admin creating WITHOUT a team alternates between the two managers', async () => {
+    if (prisma === null) return;
+    // The reported bug: a teamless admin always fell to the oldest team, so one
+    // manager received every lead.
+    const fx = await buildRrFixture('twooff', [
+      { key: 'a', on: false, hasManager: true, telecallers: 1 },
+      { key: 'b', on: false, hasManager: true, telecallers: 1 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const lead = await service.create(adminActor(), {
+        name: `Teamless ${i}`,
+        phone: nextPhone(),
+        source: 'TEST',
+        projectId: fx.projectId,
+      } as unknown as Parameters<LeadsService['create']>[1]);
+      LEAD_IDS.push(lead.id);
+      owners.push(lead.ownerId);
+    }
+    expect(owners).toEqual([
+      fx.teams.a!.managerId,
+      fx.teams.b!.managerId,
+      fx.teams.a!.managerId,
+      fx.teams.b!.managerId,
+    ]);
+  });
+
+  it('an OFF team with an invalid manager is not chosen as the default team', async () => {
+    if (prisma === null) return;
+    const fx = await buildRrFixture('twooffbad', [
+      { key: 'a', on: false, hasManager: true, telecallers: 1, managerRole: 'ADMIN' },
+      { key: 'b', on: false, hasManager: true, telecallers: 1 },
+    ]);
+    const owners: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const lead = await service.create(adminActor(), {
+        name: `Teamless bad ${i}`,
+        phone: nextPhone(),
+        source: 'TEST',
+        projectId: fx.projectId,
+      } as unknown as Parameters<LeadsService['create']>[1]);
+      LEAD_IDS.push(lead.id);
+      owners.push(lead.ownerId);
+    }
+    expect(owners).toEqual([fx.teams.b!.managerId, fx.teams.b!.managerId]);
   });
 });

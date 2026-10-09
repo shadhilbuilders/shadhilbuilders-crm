@@ -369,7 +369,17 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await shot(page, '07a-before-mark-completed');
     await markDone.click();
 
-    await expect(page.getByText(/Visit completed/i)).toBeVisible({ timeout: 15_000 });
+    // The success toast is exactly "Visit completed". The lead timeline now
+    // starts with the same sentence ("Visit completed (visit on …)"). A
+    // substring match resolves to both at once, and Playwright strict mode
+    // fails the step even though the outcome landed. Either surface is proof;
+    // `.first()` is only here so both being visible is still a pass.
+    await expect(
+      page
+        .getByText('Visit completed', { exact: true })
+        .or(page.getByText(/Visit completed \(visit on/i))
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       page
         .locator('[data-qa="lead-action-panel"]')

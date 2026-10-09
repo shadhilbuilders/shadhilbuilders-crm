@@ -59,7 +59,7 @@ beforeAll(async () => {
     data: { id: phaseId, name: 'tokchk', projectId: PROJECT, organizationId: ORG },
   });
   await db['unit']!.create({
-    data: { id: UNIT, phaseId, unitNumber: 'TC-1', bhk: 2, price: 100000, status: 'AVAILABLE', organizationId: ORG },
+    data: { id: UNIT, phaseId, unitNumber: 'TC-1', bhk: 2, buildupSqft: 100, pricePerSqft: 1000, price: 100000, status: 'AVAILABLE', organizationId: ORG },
   });
   await db['lead']!.create({
     data: {
@@ -97,8 +97,8 @@ async function rawInsert(amount: number, token: string): Promise<string> {
     const params: unknown[] = [id, LEAD, UNIT, ORG, USER, amount.toFixed(2)];
     if (token !== 'NULL') params.push(token);
     await (OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }).$executeRawUnsafe(
-      `INSERT INTO "Booking" (id,"leadId","unitId","organizationId","userId",status,amount,"tokenAmount","updatedAt")
-       VALUES ($1,$2,$3,$4,$5,'HOLD',$6,${tokenExpr},now())`,
+      `INSERT INTO "Booking" (id,"leadId","unitId","organizationId","userId",status,amount,"listAmount","tokenAmount","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,'HOLD',$6,$6,${tokenExpr},now())`,
       ...params,
     );
     await (OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }).$executeRawUnsafe(

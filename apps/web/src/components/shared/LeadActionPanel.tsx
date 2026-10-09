@@ -22,17 +22,19 @@
 // helpers that don't belong in the page file itself (Next.js 16's page
 // module allow-list is strict).
 
-import { useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import {
+  Box,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  ErrorMessage,
   Form,
   Label,
   Textarea,
@@ -47,6 +49,9 @@ import { LeadCoOwnerDialog } from '@/components/leads/LeadCoOwnerDialog';
 import { useTransitionLead, useUpdateLead } from '@/hooks/queries/crm';
 import { canReassign, useSessionUser } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
+import { TRANSITIONS, reopenTargetsFor, splitTransitions } from '@/lib/lead-transitions';
+
+export { allowedTransitionsFor } from '@/lib/lead-transitions';
 import {
   LuBookOpen,
   LuCalendarCheck,
@@ -59,87 +64,10 @@ import {
   LuPhoneIncoming,
   LuRotateCcw,
   LuTrophy,
+  LuUserPlus,
 } from '@paalstack/react-icons/lu';
 
-/**
- * Local mirror of the backend Model C transition table. Mirrored here
- * (not imported from the backend) because the backend file lives in
- * `apps/backend/src/leads/leads.state-machine.ts` and is NOT a published
- * package - importing across workspace boundaries would violate the
- * monorepo direction (apps/backend may not be consumed by apps/web).
- *
- * Source of truth: apps/backend/src/leads/leads.state-machine.ts:48-72.
- * Drift here means the user sees a button the server will reject - the
- * server still wins. Re-verify on every backend state-machine change.
- */
-const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
-  NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
-  VISITED: ['NEGOTIATION', 'VISIT_REQUESTED', 'RNR', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
-  BOOKING_INITIATED: ['WON', 'NEGOTIATION', 'RNR', 'LOST'],
-  WON: [],
-  LOST: [],
-  RNR: [],
-  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-};
-
 const STATES_REQUIRING_REASON: ReadonlySet<string> = new Set(['LOST', 'RNR']);
-
-/**
- * The one edge the visit handoff reserves (2026-09-16 owner ruling).
- *
- * The handoff happens while the lead is still VISIT_SCHEDULED: the assigned
- * SALES_EXEC records the visit as COMPLETED and the server drives
- * VISIT_SCHEDULED → VISITED (visits.service.ts, "Drive the parent lead state
- * on COMPLETED"). So this edge belongs to the exec, NOT to the telecaller -
- * even though VISIT_SCHEDULED is otherwise the telecaller's state.
- *
- * The mirror has to encode this because the telecaller lane reuses the raw
- * TRANSITIONS list for its states, so simply rendering `TRANSITIONS[status]`
- * would offer a telecaller a "Visited" button the server answers 403 for.
- * Mirrors HANDOFF_FROM/HANDOFF_TO in the backend state machine.
- */
-const HANDOFF_FROM = 'VISIT_SCHEDULED';
-const HANDOFF_TO = 'VISITED';
-
-/** Outgoing edges for `role` at `status`, per the server's role gates. */
-export function allowedTransitionsFor(status: string, role: string): readonly string[] {
-  const outgoing: readonly string[] = TRANSITIONS[status] ?? [];
-  const isTelecallerLane = TELECALLER_LANE.includes(status);
-  const isExecLane = EXEC_LANE.includes(status);
-  const isHandoffEdge = (to: string) => status === HANDOFF_FROM && to === HANDOFF_TO;
-
-  if (role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER') {
-    // Managers and admins drive any non-terminal edge; terminal states have
-    // no outgoing edges for them.
-    return outgoing;
-  }
-  if (role === 'TELECALLER') {
-    if (!isTelecallerLane) return [];
-    return outgoing.filter((to) => !isHandoffEdge(to));
-  }
-  if (role === 'SALES_EXEC') {
-    if (isExecLane) return outgoing;
-    // The exec's one out-of-lane edge: completing the visit they conducted.
-    return outgoing.filter(isHandoffEdge);
-  }
-  return [];
-}
-
-const TELECALLER_LANE: readonly string[] = [
-  'NEW',
-  'CONTACTED',
-  'VISIT_REQUESTED',
-  'VISIT_SCHEDULED',
-  'RESCHEDULED',
-  'NO_SHOW',
-];
-
-const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
 
 /**
  * A semantic icon for each lead state, used on the transition buttons so a
@@ -150,6 +78,7 @@ const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIAT
 // LeadState cannot ship with a silently-iconless transition button.
 export const STATE_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>>> = {
   // Forward motions
+  NEW: LuUserPlus, // back to a fresh lead
   CONTACTED: LuPhoneIncoming, // first contact / follow-up call
   VISIT_REQUESTED: LuCalendarPlus, // ask to schedule
   VISIT_SCHEDULED: LuCalendarCheck, // confirmed slot
@@ -181,6 +110,7 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
   const outgoing = TRANSITIONS[status] ?? [];
   const { user } = useSessionUser();
   const canAssign = user !== null && canReassign(user.role);
+  const reopenTargets = reopenTargetsFor(status, user?.role);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [coOwnerOpen, setCoOwnerOpen] = useState(false);
 
@@ -195,7 +125,12 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <EditLeadForm lead={lead} />
-          <TransitionLeadForm leadId={lead.id} outgoing={outgoing} status={status} />
+          <TransitionLeadForm
+            leadId={lead.id}
+            outgoing={reopenTargets.length > 0 ? reopenTargets : outgoing}
+            status={status}
+            reopen={reopenTargets.length > 0}
+          />
           {canAssign ? (
             <div className="flex justify-end gap-2 border-t pt-4">
               <Button
@@ -221,7 +156,12 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
         </CardContent>
       </Card>
       <LeadReassignDialog
-        lead={{ id: lead.id, name: lead.name ?? 'lead', projectId: lead.projectId ?? null }}
+        lead={{
+          id: lead.id,
+          name: lead.name ?? 'lead',
+          projectId: lead.projectId ?? null,
+          status,
+        }}
         currentOwnerId={lead.ownerId ?? ''}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
@@ -345,14 +285,25 @@ function TransitionLeadForm({
   leadId,
   outgoing,
   status,
+  reopen = false,
 }: {
   leadId: string;
   outgoing: readonly string[];
   status: string;
+  /** Admin reopening a terminal lead: targets are reopen choices, reason required. */
+  reopen?: boolean;
 }) {
   const transitionLead = useTransitionLead(leadId);
   const [toState, setToState] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+
+  // Move focus to the Reason field when validation fails so the user can type
+  // straight away (and screen readers announce the invalid field).
+  useEffect(() => {
+    if (reasonError !== null) reasonRef.current?.focus();
+  }, [reasonError]);
   const [notes, setNotes] = useState('');
 
   if (outgoing.length === 0) {
@@ -364,19 +315,25 @@ function TransitionLeadForm({
     );
   }
 
-  const requiresReason = toState !== null && STATES_REQUIRING_REASON.has(toState);
+  const requiresReason =
+    toState !== null && (reopen || STATES_REQUIRING_REASON.has(toState));
 
   function onSubmit(target: string) {
     const body: LeadStateTransitionDto = {
       leadId,
       toState: target as LeadStateTransitionDto['toState'],
     };
-    if (STATES_REQUIRING_REASON.has(target)) {
+    if (reopen || STATES_REQUIRING_REASON.has(target)) {
       const r = reason.trim();
       if (r.length === 0) {
-        toast.error(`Reason is required when transitioning to ${labelFor('lead', target)}`);
+        setReasonError(
+          reopen
+            ? 'Reason is required to reopen a closed lead'
+            : `Reason is required when transitioning to ${labelFor('lead', target)}`,
+        );
         return;
       }
+      setReasonError(null);
       body.reason = r;
     }
     if (notes.trim().length > 0) body.notes = notes.trim();
@@ -385,6 +342,7 @@ function TransitionLeadForm({
         toast.success(`Lead moved to ${labelFor('lead', target)}`);
         setToState(null);
         setReason('');
+        setReasonError(null);
         setNotes('');
       },
       onError: (e) => {
@@ -395,32 +353,52 @@ function TransitionLeadForm({
   }
 
   const ConfirmIcon = toState !== null ? STATE_ICONS[toState] : undefined;
+  const { forward, back } = reopen
+    ? { forward: outgoing, back: [] as readonly string[] }
+    : splitTransitions(status, outgoing);
+
+  function renderTargetButton(target: string, text: string) {
+    const Icon = STATE_ICONS[target];
+    return (
+      <Button
+        key={target}
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setReasonError(null);
+          setToState(target);
+        }}
+        data-qa={`transition-to-${target}`}
+        className="gap-1.5"
+      >
+        {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+        {text}
+      </Button>
+    );
+  }
 
   return (
     <div className="space-y-2 border-t pt-4">
       <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-        Transition
+        {reopen ? 'Reopen as' : 'Transition'}
       </div>
 
       {toState === null ? (
-        <div className="flex flex-wrap gap-2">
-          {outgoing.map((target) => {
-            const Icon = STATE_ICONS[target];
-            return (
-              <Button
-                key={target}
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setToState(target)}
-                data-qa={`transition-to-${target}`}
-                className="gap-1.5"
-              >
-                {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
-                {labelFor('lead', target)}
-              </Button>
-            );
-          })}
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {forward.map((target) => renderTargetButton(target, labelFor('lead', target)))}
+          </div>
+          {back.length > 0 ? (
+            <div className="space-y-1" data-qa="transition-move-back">
+              <div className="text-muted-foreground text-xs">Move back</div>
+              <div className="flex flex-wrap gap-2">
+                {back.map((target) =>
+                  renderTargetButton(target, `Back to ${labelFor('lead', target)}`),
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-4">
@@ -431,18 +409,35 @@ function TransitionLeadForm({
 
           {requiresReason ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor={`reason-${leadId}-${toState}`}>
-                Reason <span className="text-destructive">*</span>
+              <Label htmlFor={`reason-${leadId}-${toState}`} required>
+                Reason
               </Label>
               <Textarea
+                ref={reasonRef}
                 id={`reason-${leadId}-${toState}`}
                 value={reason}
-                onChange={(e) => setReason(e.currentTarget.value)}
+                onChange={(e) => {
+                  setReason(e.currentTarget.value);
+                  if (reasonError !== null) setReasonError(null);
+                }}
+                aria-invalid={reasonError !== null}
+                aria-describedby={
+                  reasonError !== null ? `reason-error-${leadId}-${toState}` : undefined
+                }
                 maxLength={500}
                 rows={2}
                 placeholder="e.g. price too high, competitor chosen, unresponsive after 3 follow-ups"
                 data-qa="transition-reason"
               />
+              {reasonError !== null ? (
+                <Box id={`reason-error-${leadId}-${toState}`}>
+                  <ErrorMessage
+                    data-qa="transition-reason-error"
+                    message={reasonError}
+                    className="mt-0"
+                  />
+                </Box>
+              ) : null}
             </div>
           ) : null}
 
@@ -467,6 +462,7 @@ function TransitionLeadForm({
               onClick={() => {
                 setToState(null);
                 setReason('');
+                setReasonError(null);
                 setNotes('');
               }}
             >

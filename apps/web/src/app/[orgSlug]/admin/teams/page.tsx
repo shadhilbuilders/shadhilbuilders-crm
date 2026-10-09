@@ -314,6 +314,20 @@ function TeamsTable({
         enableSorting: true,
       },
       {
+        // T-REPORTS-TO-OWNER (2026-10-06): the team's MANAGER reports to
+        // the org OWNER - fixed, nothing to assign here, only to display.
+        // Shown only when the team actually has a manager (otherwise
+        // there's nobody on this team reporting to the owner yet).
+        accessorKey: 'ownerName',
+        header: 'Reports to',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {row.original.managerName !== null ? row.original.ownerName ?? '—' : '—'}
+          </span>
+        ),
+        enableSorting: true,
+      },
+      {
         accessorKey: 'memberCount',
         header: 'Members',
         cell: ({ row }) => (

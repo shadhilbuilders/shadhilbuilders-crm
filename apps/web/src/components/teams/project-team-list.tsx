@@ -141,7 +141,7 @@ export function ProjectTeamList({
             <AccordionItem
               key={row.teamId}
               value={row.teamId}
-              className="rounded-lg border"
+              className="rounded-lg border data-open:bg-muted"
             >
               <div className="flex items-center justify-between gap-2 pl-3 pr-2 [&>h3]:flex-1 hover:bg-muted rounded-lg">
                 <AccordionTrigger
@@ -168,7 +168,7 @@ export function ProjectTeamList({
                   />
                 ) : null}
               </div>
-              <AccordionContent className="pt-2 pb-3">
+              <AccordionContent className="pt-2 pb-3 bg-background rounded-b-lg">
                 <MemberRoster members={row.members} />
               </AccordionContent>
             </AccordionItem>

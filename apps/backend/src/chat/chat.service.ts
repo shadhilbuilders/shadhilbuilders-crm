@@ -288,6 +288,7 @@ export class ChatService {
       await this.outbound.enqueue(
         {
           messageId: created.id,
+          organizationId: actor.organizationId,
           leadId: created.leadId ?? dto.leadId,
           sendType: 'TEMPLATE',
           templateName,
@@ -575,6 +576,7 @@ export class ChatService {
           await this.outbound.enqueue(
             {
               messageId: created.id,
+              organizationId: actor.organizationId,
               // A CUSTOMER send is always on a known-lead thread here, so
               // leadId is present; narrow it rather than passing null.
               leadId: created.leadId ?? dto.leadId,
@@ -1045,6 +1047,7 @@ export class ChatService {
       await this.outbound.enqueue(
         {
           messageId: created.id,
+          organizationId: actor.organizationId,
           contactId: created.contactId as string,
           sendType: 'FREEFORM',
           freeformBody: outBody,

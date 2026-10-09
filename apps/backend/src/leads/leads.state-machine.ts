@@ -2,14 +2,14 @@
 //
 // Allowed transitions are role-aware per DESIGN.md §3:
 //   - NEW → CONTACTED, VISIT_REQUESTED, RNR, LOST
-//   - CONTACTED → VISIT_REQUESTED, VISIT_SCHEDULED, RNR, LOST
-//   - VISIT_REQUESTED → VISIT_SCHEDULED, RNR, LOST
-//   - VISIT_SCHEDULED → VISITED, NO_SHOW, RESCHEDULED, CANCELLED, RNR, LOST
-//   - VISITED → NEGOTIATION, RNR, LOST
-//   - NEGOTIATION → BOOKING_INITIATED, RNR, LOST
-//   - BOOKING_INITIATED → WON, LOST
+//   - CONTACTED → NEW, VISIT_REQUESTED, VISIT_SCHEDULED, RNR, LOST
+//   - VISIT_REQUESTED → CONTACTED, VISIT_SCHEDULED, RNR, LOST
+//   - VISIT_SCHEDULED → VISIT_REQUESTED, VISITED, NO_SHOW, RESCHEDULED, RNR, LOST
+//   - VISITED → NEGOTIATION, VISIT_REQUESTED, RNR, LOST
+//   - NEGOTIATION → VISITED, VISIT_REQUESTED, BOOKING_INITIATED, RNR, LOST
+//   - BOOKING_INITIATED → NEGOTIATION, WON, LOST (back step is refused while a TOKEN booking is active)
 //   - WON, LOST, RNR - terminal (Admin-only override, see assertCanOverrideTerminal)
-//   - RESCHEDULED, NO_SHOW → VISIT_SCHEDULED, RNR, LOST (re-engagement path)
+//   - RESCHEDULED, NO_SHOW → VISIT_REQUESTED, VISIT_SCHEDULED, RNR, LOST (re-engagement path)
 //   - CANCELLED is a VisitStatus (per-visit outcome), not a LeadState - it
 //     does NOT appear in TRANSITIONS. The cancel-visits flow lives in the
 //     visits module and does NOT touch Lead.state.
@@ -48,17 +48,21 @@ export const LEAD_STATES = [
  */
 const TRANSITIONS: Readonly<Record<LeadState, readonly LeadState[]>> = {
   NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
-  VISITED: ['NEGOTIATION', 'RNR', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'RNR', 'LOST'],
-  BOOKING_INITIATED: ['WON', 'LOST'],
+  // Backward edges (2026-10-09): one step back on the pipeline, plus the
+  // "request visit again" loop (VISITED/NEGOTIATION -> VISIT_REQUESTED).
+  // VISITED -> VISIT_SCHEDULED is deliberately absent: Visit booked is only
+  // reachable by scheduling a visit, never by a bare state flip.
+  CONTACTED: ['NEW', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_REQUESTED: ['CONTACTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_SCHEDULED: ['VISIT_REQUESTED', 'VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
+  VISITED: ['NEGOTIATION', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  NEGOTIATION: ['VISITED', 'VISIT_REQUESTED', 'BOOKING_INITIATED', 'RNR', 'LOST'],
+  BOOKING_INITIATED: ['NEGOTIATION', 'WON', 'LOST'],
   WON: [], // terminal
   LOST: [], // terminal
   RNR: [], // terminal
-  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  RESCHEDULED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  NO_SHOW: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
 const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
@@ -93,6 +97,17 @@ const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
  */
 const HANDOFF_FROM: LeadState = 'VISIT_SCHEDULED';
 const HANDOFF_TO: LeadState = 'VISITED';
+
+/**
+ * REPEAT-VISIT EXCEPTION (2026-10-09): after "Request visit again" the lead is
+ * back in VISIT_REQUESTED but the exec who conducted the first visit still
+ * holds it, and the exec schedules the new visit. Scheduling drives
+ * VISIT_REQUESTED -> VISIT_SCHEDULED, which is in the telecaller lane, so it is
+ * the exec's second reserved out-of-lane edge. Still exactly one edge: the exec
+ * does not gain the rest of the VISIT_REQUESTED lane (CONTACTED, RNR, LOST).
+ */
+const REPEAT_FROM: LeadState = 'VISIT_REQUESTED';
+const REPEAT_TO: LeadState = 'VISIT_SCHEDULED';
 
 function canRoleTransition(
   from: LeadState,
@@ -142,8 +157,10 @@ function canRoleTransition(
     if (execLane.includes(from)) {
       return TRANSITIONS[from].includes(to);
     }
-    // The visit handoff is the exec's one out-of-lane edge.
+    // The visit handoff and the repeat-visit scheduling are the exec's two
+    // out-of-lane edges.
     if (isHandoffEdge) return true;
+    if (from === REPEAT_FROM && to === REPEAT_TO) return true;
     return false;
   }
 

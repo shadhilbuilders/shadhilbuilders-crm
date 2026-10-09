@@ -262,7 +262,7 @@ beforeAll(async () => {
       // FUTURE for the first hours of the day and the row silently drops out
       // (observed at 00:37). Midnight is "today" AND "not after now" at every
       // hour, which makes this the only offset that always works.
-      [VISITS.onActiveToday, FIXTURE[0].id, 'RESCHEDULED', MIDNIGHT],
+      [VISITS.onActiveToday, FIXTURE[0].id, 'SCHEDULED', MIDNIGHT],
       [VISITS.completed, FIXTURE[5].id, 'COMPLETED', new Date(NOW.getTime() - 4 * 24 * 60 * MIN)],
     ];
     for (const [id, leadId, status, scheduledFor] of visits) {
@@ -509,38 +509,46 @@ describe('settling a deal closes its open visits', () => {
     });
   });
 
-  it('lead -> WON does NOT close visits (a handover may still be pending)', async () => {
-    // The one deliberate exception. A won deal can still have a handover or site
-    // meeting to conduct, so silently cancelling it would destroy real work.
-    const leads = new LeadsService(new PrismaService());
-    const target = FIXTURE.find((r) => r.id.includes('fresh'))!;
-    const visitId = `statustruth-v-won-keep-${RUN}`;
-    await adminSeed(async (db) => {
-      await db.$executeRaw`
-        INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
-          "scheduledFor", "status", "createdAt", "updatedAt")
-        VALUES (${visitId}, ${target.id}, ${ORG}, ${TC_ID},
-          ${new Date(NOW.getTime() + 86_400_000)}, 'SCHEDULED', ${NOW}, ${NOW})
-      `;
-      await db.lead.update({ where: { id: target.id }, data: { state: 'BOOKING_INITIATED' } });
+  // T-VISIT-LEAD-SYNC (2026-10-09) REVERSES the old "WON never closes visits"
+  // rule. It left lead cmuzrrv5m000v41u8740254ur (WON) in Today's visits. The
+  // visit's own slot clock decides: passed -> COMPLETED, still ahead -> CANCELLED.
+  for (const [label, offsetMs, expected] of [
+    ['a slot that has passed is COMPLETED', -3_600_000, 'COMPLETED'],
+    ['a slot still ahead is CANCELLED (never faked as attended)', 86_400_000, 'CANCELLED'],
+  ] as const) {
+    it(`lead -> WON closes its open visit: ${label}`, async () => {
+      const leads = new LeadsService(new PrismaService());
+      // 'overdue' carries no fixture visit of its own, so the one-open-visit index is free.
+      const target = FIXTURE.find((r) => r.id.includes('overdue'))!;
+      const visitId = `statustruth-v-won-${expected}-${RUN}`;
+      await adminSeed(async (db) => {
+        await db.$executeRaw`
+          INSERT INTO "SiteVisit" ("id", "leadId", "organizationId", "userId",
+            "scheduledFor", "status", "createdAt", "updatedAt")
+          VALUES (${visitId}, ${target.id}, ${ORG}, ${TC_ID},
+            ${new Date(Date.now() + offsetMs)}, 'SCHEDULED', ${NOW}, ${NOW})
+        `;
+        await db.lead.update({ where: { id: target.id }, data: { state: 'BOOKING_INITIATED' } });
+      });
+
+      await leads.transition(actorFor(ADMIN_ID, 'ADMIN'), {
+        leadId: target.id,
+        toState: 'WON',
+        reason: 'deal closed',
+      } as never);
+
+      const visit = await adminSeed((db) =>
+        db.siteVisit.findUnique({ where: { id: visitId }, select: { status: true } }),
+      );
+      expect(visit?.status).toBe(expected);
+
+      await adminSeed(async (db) => {
+        await db.$executeRaw`DELETE FROM "AuditLog" WHERE "entityId" = ${visitId}`;
+        await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ${visitId}`;
+        await db.lead.update({ where: { id: target.id }, data: { state: 'NEW' } });
+      });
     });
-
-    await leads.transition(actorFor(ADMIN_ID, 'ADMIN'), {
-      leadId: target.id,
-      toState: 'WON',
-      reason: 'deal closed',
-    } as never);
-
-    const visit = await adminSeed((db) =>
-      db.siteVisit.findUnique({ where: { id: visitId }, select: { status: true } }),
-    );
-    expect(visit?.status).toBe('SCHEDULED');
-
-    await adminSeed(async (db) => {
-      await db.$executeRaw`DELETE FROM "SiteVisit" WHERE "id" = ${visitId}`;
-      await db.lead.update({ where: { id: target.id }, data: { state: 'NEW' } });
-    });
-  });
+  }
 
   it('refuses a visit outcome on a terminal lead (defence in depth)', async () => {
     // The cascade should have removed these rows, so this is the backstop: a

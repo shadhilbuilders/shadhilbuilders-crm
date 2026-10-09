@@ -18,6 +18,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { OverdueAlertsModule } from './overdue-alerts/overdue-alerts.module';
+import { VisitRemindersModule } from './visit-reminders/visit-reminders.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushModule } from './push/push.module';
 import { AuditModule } from './audit/audit.module';
@@ -75,6 +76,7 @@ import { StorageModule } from './storage/storage.module';
     // cron (mirrors RemindersModule). Depends on Notifications/Push for both the
     // in-app inbox row and the browser push.
     OverdueAlertsModule,
+    VisitRemindersModule,
     NotificationsModule,
     PushModule,
     AuditModule,

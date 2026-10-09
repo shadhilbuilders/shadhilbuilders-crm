@@ -13,12 +13,7 @@
 //
 // The owned-token release is the existing Lua releaseLock() - only
 // the holder of the token can DEL the key.
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
@@ -31,6 +26,7 @@ import {
   withRlsContext,
 } from '@shadhil/database';
 
+import { forEachOrganization } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 
@@ -40,11 +36,7 @@ const LOCK_RENEWAL_SEC = 25; // renew at half-life
 const BATCH_SIZE = 100;
 
 function isPrismaCode(err: unknown, code: string): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: unknown }).code === code
-  );
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === code;
 }
 
 export interface ReminderListResult {
@@ -255,15 +247,9 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     this.lastTick = tick;
 
     // Layer 1: Redis lock
-    const acquired = await this.redis.acquireLock(
-      REMINDER_LOCK_KEY,
-      LOCK_TTL_SEC,
-      this.replicaId,
-    );
+    const acquired = await this.redis.acquireLock(REMINDER_LOCK_KEY, LOCK_TTL_SEC, this.replicaId);
     if (!acquired) {
-      this.logger.debug(
-        `Skipping tick - another replica holds ${REMINDER_LOCK_KEY}`,
-      );
+      this.logger.debug(`Skipping tick - another replica holds ${REMINDER_LOCK_KEY}`);
       tick.finishedAt = new Date();
       return;
     }
@@ -278,9 +264,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
           .then((renewed) => {
             tick.renewedLease = renewed;
             if (!renewed) {
-              this.logger.warn(
-                `Lost lease on ${REMINDER_LOCK_KEY} mid-tick; stopping early`,
-              );
+              this.logger.warn(`Lost lease on ${REMINDER_LOCK_KEY} mid-tick; stopping early`);
             }
           })
           .catch((err: unknown) => {
@@ -303,14 +287,10 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         // policy. See
         // packages/database/prisma/migrations/20260907090000_reminder_cron_service_policy/
         // for the policy and known-runtime-bugs.md Bug 8 for context.
-        const claimResult = await withRlsContext(
-          this.client,
-          {
-            userId: 'cron-service',
-            role: 'CRON_SERVICE',
-            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
-          },
-          async (tx) =>
+        // T-CRON-MULTITENANT: claim + deliver per organization, each in its own
+        // CRON_SERVICE context (was one PUBLIC_ORG_ID context for every tenant).
+        await forEachOrganization(this.client, this.logger, 'Reminder tick', async (cronCtx) => {
+          const claimResult = await withRlsContext(this.client, cronCtx, async (tx) =>
             (tx as unknown as PrismaClient).reminder.updateMany({
               where: {
                 status: 'SCHEDULED',
@@ -322,25 +302,15 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                 claimedBy: this.replicaId,
               },
             }),
-        );
-        const claimed = { count: claimResult.count };
-        tick.claimed = claimed.count;
+          );
+          const claimed = { count: claimResult.count };
+          tick.claimed += claimed.count;
 
-        if (claimed.count === 0) {
-          tick.finishedAt = new Date();
-          return;
-        }
+          if (claimed.count === 0) return;
 
-        // Fetch the rows we just claimed (filter by claimedBy to
-        // avoid grabbing rows another replica claimed in a race).
-        const due = await withRlsContext(
-          this.client,
-          {
-            userId: 'cron-service',
-            role: 'CRON_SERVICE',
-            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
-          },
-          async (tx) =>
+          // Fetch the rows we just claimed (filter by claimedBy to
+          // avoid grabbing rows another replica claimed in a race).
+          const due = await withRlsContext(this.client, cronCtx, async (tx) =>
             (tx as unknown as PrismaClient).reminder.findMany({
               where: {
                 status: 'PROCESSING',
@@ -349,25 +319,16 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
               take: BATCH_SIZE,
               orderBy: { scheduledFor: 'asc' },
             }),
-        );
+          );
 
-        for (const reminder of due) {
-          if (!tick.renewedLease) {
-            this.logger.warn(
-              `Aborting batch at row ${reminder.id} - lease lost`,
-            );
-            break;
-          }
-          try {
-            await deliverReminder(reminder);
-            await withRlsContext(
-              this.client,
-              {
-                userId: 'cron-service',
-                role: 'CRON_SERVICE',
-                organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
-              },
-              async (tx) =>
+          for (const reminder of due) {
+            if (!tick.renewedLease) {
+              this.logger.warn(`Aborting batch at row ${reminder.id} - lease lost`);
+              break;
+            }
+            try {
+              await deliverReminder(reminder);
+              await withRlsContext(this.client, cronCtx, async (tx) =>
                 (tx as unknown as PrismaClient).reminder.update({
                   where: { id: reminder.id },
                   data: {
@@ -377,32 +338,26 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                     claimedBy: null,
                   },
                 }),
-            );
-            tick.sent++;
-          } catch (err) {
-            // FAILED is sticky - the row stays PROCESSING until the
-            // stuck-row recovery flips it back to SCHEDULED (or the
-            // operator re-queues). Per Plan §12, NO_SHOW_STAFF retries
-            // are handled by re-scheduling, not by cron retries.
-            this.logger.error(
-              `Reminder ${reminder.id} delivery failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            await withRlsContext(
-              this.client,
-              {
-                userId: 'cron-service',
-                role: 'CRON_SERVICE',
-                organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
-              },
-              async (tx) =>
+              );
+              tick.sent++;
+            } catch (err) {
+              // FAILED is sticky - the row stays PROCESSING until the
+              // stuck-row recovery flips it back to SCHEDULED (or the
+              // operator re-queues). Per Plan §12, NO_SHOW_STAFF retries
+              // are handled by re-scheduling, not by cron retries.
+              this.logger.error(
+                `Reminder ${reminder.id} delivery failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+              await withRlsContext(this.client, cronCtx, async (tx) =>
                 (tx as unknown as PrismaClient).reminder.update({
                   where: { id: reminder.id },
                   data: { status: 'FAILED' },
                 }),
-            );
-            tick.failed++;
+              );
+              tick.failed++;
+            }
           }
-        }
+        });
       } finally {
         clearInterval(renewTimer);
       }

@@ -38,6 +38,8 @@ export function TeamRosterMemberRow({
   teamName,
   member,
   managerId,
+  managerName,
+  ownerName,
   canRemove,
   extraActions,
   dataQaPrefix = 'team-member',
@@ -46,6 +48,15 @@ export function TeamRosterMemberRow({
   teamName: string;
   member: TeamMemberRow;
   managerId: string | null;
+  /** T-REPORTS-TO-OWNER (2026-10-06): this TEAM's manager's display name
+   * (null when unassigned) - a TELECALLER/SALES_EXEC row's "Reports to"
+   * target. */
+  managerName?: string | null;
+  /** The org OWNER's display name (null only when the org has no OWNER
+   * row) - a MANAGER row's "Reports to" target, fixed regardless of
+   * which team's roster is rendering it (see the "Reports to" rule
+   * below). */
+  ownerName?: string | null;
   /** Whether the CURRENT VIEWER may remove members from THIS team - not a
    * role check (see file header: this is per-team, not per-role). */
   canRemove: boolean;
@@ -81,6 +92,17 @@ export function TeamRosterMemberRow({
   // Weight is a SHARE of new leads, not a cap - see the input's title below.
   const canEditWeight =
     canRemove && !isManagerRow && member.role === 'TELECALLER';
+
+  // T-REPORTS-TO-OWNER (2026-10-06): "Reports to" is keyed off the
+  // member's ROLE, not the pinned manager badge - a MANAGER reports to
+  // the org OWNER even when shown as an ordinary member row on a team
+  // they don't lead (file header: "Ordinary memberships held by a
+  // manager in another team remain normal removable member rows").
+  // TELECALLER/SALES_EXEC report to THIS team's manager.
+  const reportsToLabel =
+    member.role === 'MANAGER'
+      ? (ownerName ?? null)
+      : (managerName ?? null);
 
   async function commitWeight(next: string) {
     const parsed = Number(next);
@@ -159,6 +181,12 @@ export function TeamRosterMemberRow({
           <Badge variant="outline">{labelFor('role', member.role)}</Badge>
         </div>
         <p className="text-muted-foreground text-xs">{member.email}</p>
+        <p
+          className="text-muted-foreground text-xs"
+          data-qa={`${dataQaPrefix}-reports-to-${member.userId}`}
+        >
+          Reports to {reportsToLabel ?? 'nobody assigned yet'}
+        </p>
       </div>
       <div className="flex flex-col items-end gap-1">
         {canEditWeight ? (

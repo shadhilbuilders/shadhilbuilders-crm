@@ -7,9 +7,62 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  orderTeamsForRotation,
   pickAutoAssignCandidate,
   type AutoAssignCandidate,
+  type RotationTeam,
 } from './auto-assign.engine';
+
+// T-TEAM-ROUND-ROBIN (2026-10-08): the team whose turn it is = the one routed to
+// longest ago; never-routed teams (null) go first.
+describe('orderTeamsForRotation', () => {
+  const T = (teamId: string, lastAssignedAt: Date | null): RotationTeam => ({
+    teamId,
+    lastAssignedAt,
+  });
+
+  it('puts never-routed teams (null) before any routed team', () => {
+    const ordered = orderTeamsForRotation([
+      T('b', new Date('2026-10-08T10:00:00Z')),
+      T('a', null),
+    ]);
+    expect(ordered.map((t) => t.teamId)).toEqual(['a', 'b']);
+  });
+
+  it('orders routed teams oldest-first (longest since last lead goes next)', () => {
+    const ordered = orderTeamsForRotation([
+      T('recent', new Date('2026-10-08T12:00:00Z')),
+      T('old', new Date('2026-10-08T09:00:00Z')),
+      T('mid', new Date('2026-10-08T10:30:00Z')),
+    ]);
+    expect(ordered.map((t) => t.teamId)).toEqual(['old', 'mid', 'recent']);
+  });
+
+  it('breaks ties (same timestamp, or both null) by teamId for determinism', () => {
+    const at = new Date('2026-10-08T10:00:00Z');
+    expect(
+      orderTeamsForRotation([T('z', at), T('m', at)]).map((t) => t.teamId),
+    ).toEqual(['m', 'z']);
+    expect(
+      orderTeamsForRotation([T('z', null), T('m', null)]).map((t) => t.teamId),
+    ).toEqual(['m', 'z']);
+  });
+
+  it('does not mutate its input and returns a new array', () => {
+    const input = [T('b', null), T('a', null)];
+    const snapshot = [...input];
+    const out = orderTeamsForRotation(input);
+    expect(input).toEqual(snapshot);
+    expect(out).not.toBe(input);
+  });
+
+  it('preserves extra fields on the team objects', () => {
+    const out = orderTeamsForRotation([
+      { teamId: 'a', lastAssignedAt: null, autoAssignLeads: true },
+    ]);
+    expect(out[0]).toMatchObject({ autoAssignLeads: true });
+  });
+});
 
 describe('pickAutoAssignCandidate', () => {
   it('picks the least-loaded member when everyone has the same weight', () => {

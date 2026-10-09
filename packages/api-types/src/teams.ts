@@ -34,6 +34,11 @@ export const TeamListItemSchema = z.object({
   // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads. Surfaced on the
   // list item so the admin roster/edit UI can toggle it.
   autoAssignLeads: z.boolean().optional(),
+  // T-REPORTS-TO-OWNER (2026-10-06): the org OWNER's display name - a
+  // MANAGER always reports to the OWNER (fixed, never assignable), so
+  // "who does this team's manager report to" is the same answer for every
+  // team in the org. Null only when the org somehow has no OWNER row.
+  ownerName: z.string().nullable().optional(),
 });
 export type TeamListItem = z.infer<typeof TeamListItemSchema>;
 
@@ -72,6 +77,16 @@ export const TeamDetailSchema = z.object({
   // T-AUTOASSIGN (2026-09-17): carried so the edit-team dialog's auto-assign
   // switch reflects the team's actual setting (was silently false before).
   autoAssignLeads: z.boolean().optional(),
+  // T-REPORTS-TO-OWNER (2026-10-06): the org OWNER identity - this team's
+  // manager reports to the OWNER (fixed, never assignable). Null only when
+  // the org somehow has no OWNER row.
+  owner: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+    })
+    .nullable(),
 });
 export type TeamDetail = z.infer<typeof TeamDetailSchema>;
 

@@ -70,6 +70,7 @@ async function fetchCoOwners(
     `/users${qs({
       search: q.length > 0 ? q : undefined,
       projectId: projectId ?? undefined,
+      availableOnly: 'true',
       limit: 10,
     })}`,
   );
@@ -96,7 +97,11 @@ export function CoOwnerFormBody({
   const fetchBound = (query: string) => fetchCoOwners(query, ownerId, projectId);
 
   // T-USER-PROJECT-SCOPE: scoped to the lead's project (see LeadReassignDialog).
-  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined });
+  const { data: defaultUsers } = useUsers({
+    limit: 10,
+    projectId: projectId ?? undefined,
+    availableOnly: true,
+  });
   const defaultOptions = useMemo(
     () =>
       (defaultUsers?.rows ?? [])

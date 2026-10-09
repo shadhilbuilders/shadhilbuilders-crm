@@ -40,6 +40,7 @@
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
 //   │   │       ├── Users          [canManageUsers]
+//   │   │       ├── Staff Permission [admin-like]
 //   │   │       └── Audit          [canViewAudit]
 //   │   └── Footer: UserMenu + Sign out
 //   └── SidebarInset
@@ -58,6 +59,7 @@ import {
   LuBell,
   LuShieldCheck,
   LuUserCog,
+  LuKeyRound,
   LuUsersRound,
   LuHandshake,
   LuMessageCircleQuestion,
@@ -65,6 +67,7 @@ import {
   LuMessageSquareText,
   LuSatellite,
   LuSend,
+  LuSettings,
   LuMessagesSquare,
 } from '@paalstack/react-icons/lu';
 
@@ -213,6 +216,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     scoped: false,
   },
   {
+    href: '/admin/staff-permission',
+    label: 'Staff Permission',
+    icon: LuKeyRound,
+    group: 'admin',
+    scoped: false,
+  },
+  {
     href: '/admin/projects',
     label: 'Projects',
     icon: LuFolderKanban,
@@ -262,6 +272,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
         scoped: false,
       },
     ],
+  },
+  {
+    href: '/admin/settings',
+    label: 'Settings',
+    icon: LuSettings,
+    group: 'admin',
+    scoped: false,
   },
   {
     href: '/admin/feedback',

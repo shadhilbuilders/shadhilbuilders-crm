@@ -145,7 +145,7 @@ export function pastEventClass(tone: TEventColor): string {
 //
 // DERIVED, NOT WRITTEN BY HAND. The entries come from `VISIT_STATUSES` (the
 // app's own list of the five `SiteVisit.status` values, in status-machine
-// order), the words from `labelFor('visit', …)` (the existing friendly
+// order), the words from `labelFor('visit', ...)` (the existing friendly
 // vocabulary: "Visit booked", "Done", "Didn't show up"), and the tones from
 // `VISIT_STATUS_COLOR` - the SAME map the calendar paints from. So the legend
 // cannot drift from the picture: add a status there and it appears here, change

@@ -81,6 +81,7 @@ interface StubOptions {
   user?: {
     id: string;
     email: string;
+    role?: string;
     mustChangePassword: boolean;
   } | null;
   accountPassword?: string | null;
@@ -264,14 +265,14 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   it('ADMIN resetting a different user → ALLOWED (privileged)', async () => {
     const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
-      user: { id: managerActor.sub, email: managerActor.email, mustChangePassword: true },
+      user: { id: managerActor.sub, email: managerActor.email, role: 'MANAGER', mustChangePassword: true },
       accountPassword: storedHash,
     });
 
     const result = await service.changePassword(
       adminActor,
       managerActor.sub,
-      { oldPassword: 'TargetOld123!', newPassword: 'NewPass456!' },
+      { newPassword: 'NewPass456!' },
     );
     expect(result).toEqual({ ok: true, mustChangePassword: false });
     expect(mocks.userUpdate).toHaveBeenCalled();
@@ -280,17 +281,39 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   it('OWNER resetting a different user → ALLOWED (privileged)', async () => {
     const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
-      user: { id: managerActor.sub, email: managerActor.email, mustChangePassword: true },
+      user: { id: managerActor.sub, email: managerActor.email, role: 'MANAGER', mustChangePassword: true },
       accountPassword: storedHash,
     });
 
     const result = await service.changePassword(
       ownerActor,
       managerActor.sub,
-      { oldPassword: 'TargetOld123!', newPassword: 'NewPass456!' },
+      { newPassword: 'NewPass456!' },
     );
     expect(result).toEqual({ ok: true, mustChangePassword: false });
     expect(mocks.userUpdate).toHaveBeenCalled();
+  });
+});
+
+describe('changePassword - admin reset hierarchy', () => {
+  it('ADMIN cannot reset the OWNER (does not outrank)', async () => {
+    const { service, mocks } = makeService({
+      user: { id: ownerActor.sub, email: ownerActor.email, role: 'OWNER', mustChangePassword: false },
+    });
+    await expect(
+      service.changePassword(adminActor, ownerActor.sub, { newPassword: 'NewPass456!' }),
+    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    expect(mocks.accountUpdate).not.toHaveBeenCalled();
+  });
+
+  it('self-change without oldPassword → BadRequestException', async () => {
+    const { service, mocks } = makeService({
+      user: { id: telecallerActor.sub, email: telecallerActor.email, role: 'TELECALLER', mustChangePassword: false },
+    });
+    await expect(
+      service.changePassword(telecallerActor, telecallerActor.sub, { newPassword: 'NewPass456!' }),
+    ).rejects.toMatchObject({ name: 'BadRequestException' });
+    expect(mocks.accountUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -545,18 +568,21 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN rows get the FULL org project
     // set via tx.project.findMany (the admin-projects branch). Defaults empty.
     const projectFindMany = vi.fn().mockResolvedValue([]);
+    // T-REPORTS-TO-OWNER: MANAGER/ADMIN rows resolve the org OWNER via
+    // findOrgOwner (tx.user.findFirst).
+    const userFindFirst = vi.fn().mockResolvedValue(null);
     // list() now runs inside ONE withRlsContext transaction - the tx must
     // expose every accessor it touches. Mocks shared so assertions see calls.
     const txMock = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
-      user: { findMany: userFindMany, count: userCount },
+      user: { findMany: userFindMany, count: userCount, findFirst: userFindFirst },
       project: { findFirst: projectFindFirst, findMany: projectFindMany },
       projectTeam: { findMany: projectTeamFindMany },
       $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     };
     const fakeClient = {
       team: { findFirst: teamFindFirst, findMany: teamFindMany },
-      user: { findMany: userFindMany, count: userCount },
+      user: { findMany: userFindMany, count: userCount, findFirst: userFindFirst },
       project: { findFirst: projectFindFirst, findMany: projectFindMany },
       projectTeam: { findMany: projectTeamFindMany },
       $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
@@ -572,9 +598,87 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
         projectFindFirst,
         projectFindMany,
         projectTeamFindMany,
+        userFindFirst,
       },
     };
   }
+
+  // ── "Reports to" column on the Users table (2026-10-08) ───────────────────
+  // Same rule as getUser(): staff -> their team's manager; MANAGER/ADMIN ->
+  // the org OWNER; OWNER -> nobody.
+  describe('reportsTo', () => {
+    const baseRow = { teamMemberships: [] as Array<{ teamId: string }> };
+    const ownerRow = { id: 'owner-1', name: 'Deepak Owner', email: 'owner@example.com' };
+
+    it('SALES_EXEC/TELECALLER report to their team manager', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'se-1', email: 'se@x', name: 'Priya', role: 'SALES_EXEC', teamMemberships: [{ teamId: 'team-1' }] },
+        { ...baseRow, id: 'tc-1', email: 'tc@x', name: 'Rajesh', role: 'TELECALLER', teamMemberships: [{ teamId: 'team-1' }] },
+      ]);
+      mocks.userCount.mockResolvedValue(2);
+      mocks.teamFindMany.mockImplementation(async (args: { where: { id?: unknown } }) =>
+        args.where.id !== undefined
+          ? [{ id: 'team-1', manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' } }]
+          : [],
+      );
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows.map((r) => r.reportsTo)).toEqual([
+        { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+        { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+      ]);
+    });
+
+    it('staff on an unled or missing team have reportsTo null', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'se-1', email: 'se@x', name: 'Priya', role: 'SALES_EXEC', teamMemberships: [{ teamId: 'team-unled' }] },
+        { ...baseRow, id: 'se-2', email: 'se2@x', name: 'Kiran', role: 'SALES_EXEC' },
+      ]);
+      mocks.userCount.mockResolvedValue(2);
+      mocks.teamFindMany.mockImplementation(async (args: { where: { id?: unknown } }) =>
+        args.where.id !== undefined ? [{ id: 'team-unled', manager: null }] : [],
+      );
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows.map((r) => r.reportsTo)).toEqual([null, null]);
+    });
+
+    it('MANAGER and ADMIN rows report to the org OWNER; the OWNER row to nobody', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'mgr-1', email: 'm@x', name: 'Ravi', role: 'MANAGER' },
+        { ...baseRow, id: 'adm-1', email: 'a@x', name: 'Second Admin', role: 'ADMIN' },
+        { ...baseRow, id: 'owner-1', email: 'owner@example.com', name: 'Deepak Owner', role: 'OWNER' },
+      ]);
+      mocks.userCount.mockResolvedValue(3);
+      mocks.userFindFirst.mockResolvedValue(ownerRow);
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows.map((r) => r.reportsTo)).toEqual([ownerRow, ownerRow, null]);
+      // One lookup for the whole page, not one per row.
+      expect(mocks.userFindFirst).toHaveBeenCalledTimes(1);
+      expect(mocks.userFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ role: 'OWNER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }),
+        }),
+      );
+    });
+
+    it('does not look up the owner when the page has no MANAGER/ADMIN rows', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([]);
+      mocks.userCount.mockResolvedValue(0);
+
+      await service.list(adminActor);
+
+      expect(mocks.userFindFirst).not.toHaveBeenCalled();
+    });
+  });
 
   it('ADMIN with no filter → base deletedAt filter + default limit/offset', async () => {
     const { service, mocks } = makeListService();
@@ -862,6 +966,8 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
           role: 'TELECALLER',
           teamId: 'team-x',
           projects: ['Shadhil Metro Heights'],
+          // team-x has no resolvable manager in this fixture.
+          reportsTo: null,
         },
       ],
       total: 1,

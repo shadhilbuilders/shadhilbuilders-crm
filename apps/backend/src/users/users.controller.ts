@@ -78,6 +78,7 @@ function parseFilter(query: Record<string, unknown>): UserFilterDto {
       typeof query['projectId'] === 'string' && query['projectId'].length > 0
         ? query['projectId']
         : undefined,
+    availableOnly: query['availableOnly'] === 'true' ? true : undefined,
     limit:
       typeof query['limit'] === 'string'
         ? Number.parseInt(query['limit'], 10)

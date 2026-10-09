@@ -38,7 +38,7 @@ import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
-import { assertCanCreateRole, assertCanChangeRole, isAdminClass, outranks, OWNER } from './roles';
+import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 /**
@@ -599,9 +599,12 @@ export class UsersService {
    * GET /api/users/:id - the user detail page (users/[userId], autoplan
    * 2026-09-13). Scope mirrors `list()`: OWNER/ADMIN see anyone; MANAGER
    * sees their own team's members (+ themselves); staff see only
-   * themselves. `manager` is populated only for TELECALLER/SALES_EXEC
-   * whose team has an assigned manager - MANAGER/ADMIN/OWNER report to
-   * nobody on this surface.
+   * themselves. `manager` ("Reports to") is populated per role:
+   *   - TELECALLER/SALES_EXEC: their resolved team's manager (assignable,
+   *     see `assignManager` below).
+   *   - MANAGER/ADMIN: the org OWNER (T-REPORTS-TO-OWNER - fixed, never
+   *     assignable; see `findOrgOwner`).
+   *   - OWNER: null (reports to nobody).
    */
   async getUser(actor: JwtPayload, targetUserId: string): Promise<UserDetail> {
     // The Team/TeamMember reads below are FORCE ROW LEVEL SECURITY, so the
@@ -676,9 +679,13 @@ export class UsersService {
         throw new ForbiddenException('You can only view your own user');
       }
 
-      // Manager is a reporting-line concept: only staff (TELECALLER/
-      // SALES_EXEC) report to a manager on this surface.
+      // T-REPORTS-TO-OWNER: "manager" is this user's reporting-line
+      // superior, and WHO that is depends on the target's own role, not a
+      // single rule. TELECALLER/SALES_EXEC report to their team's manager
+      // (assignable); MANAGER/ADMIN report to the org OWNER (fixed); OWNER
+      // reports to nobody.
       const reportsToManager = target.role === 'TELECALLER' || target.role === 'SALES_EXEC';
+      const reportsToOwner = target.role === 'MANAGER' || target.role === 'ADMIN';
 
       return {
         id: target.id,
@@ -694,7 +701,9 @@ export class UsersService {
                 name: team.manager.name,
                 email: team.manager.email,
               }
-            : null,
+            : reportsToOwner
+              ? await findOrgOwner(client, actor.organizationId)
+              : null,
         // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN see every project in
         // the org; staff see the projects linked to their resolved team.
         projects:
@@ -940,7 +949,7 @@ export class UsersService {
     // 1. Target must exist.
     const target = await this.client.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, email: true, mustChangePassword: true },
+      select: { id: true, email: true, role: true, mustChangePassword: true },
     });
     if (target === null) {
       throw new NotFoundException(`User ${targetUserId} not found`);
@@ -953,6 +962,19 @@ export class UsersService {
       throw new ForbiddenException(
         'You can only change your own password (admin/owner can reset others)',
       );
+    }
+    // Admin reset: the actor must strictly outrank the target (an ADMIN
+    // can't reset the OWNER or another ADMIN), mirroring the role-change
+    // hierarchy guard.
+    if (!isSelf && !outranks(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `You can't reset the password of a ${target.role} user`,
+      );
+    }
+    // Self-service rotation must prove knowledge of the current password.
+    // An admin reset of ANOTHER user does not (the admin doesn't know it).
+    if (isSelf && (dto.oldPassword === undefined || dto.oldPassword === '')) {
+      throw new BadRequestException('Current password is required');
     }
 
     // 3. Verify the old password against the credential Account row.
@@ -967,10 +989,10 @@ export class UsersService {
       },
       select: { password: true },
     });
-    if (
-      account === null ||
-      !verifyPassword(dto.oldPassword, account.password)
-    ) {
+    if (account === null) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (isSelf && !verifyPassword(dto.oldPassword as string, account.password)) {
       // 400 (not 401) - this is a request-body validation error from
       // the client's perspective. Same shape better-auth's sign-in uses
       // for wrong-password so a probe can't tell the difference between
@@ -1143,6 +1165,12 @@ export class UsersService {
         andClauses.push({ OR: projectScope });
       }
 
+      // Assignee pickers: only users who can take work (not banned).
+      // `banned` is nullable, so match false OR null.
+      if (filter.availableOnly === true) {
+        andClauses.push({ OR: [{ banned: false }, { banned: null }] });
+      }
+
       // Server-driven role filter (autoplan 2026-09-09): the UI's MultiSelect
       // sends ?role=SALES_EXEC,TELECALLER; apply it as a WHERE role IN (...)
       // so filtering works across the whole list, not just the loaded page.
@@ -1241,6 +1269,29 @@ export class UsersService {
         projectNamesByTeamId.set(pt.teamId, list);
       }
 
+      // "Reports to" column (2026-10-08) - same rule as getUser():
+      // TELECALLER/SALES_EXEC -> their resolved team's manager (one batched
+      // team lookup); MANAGER/ADMIN -> the org OWNER (one lookup for the whole
+      // page, only when such a row is present); OWNER -> nobody.
+      type ReportsTo = { id: string; name: string; email: string };
+      const staffTeamIds = Array.from(
+        new Set(
+          rows
+            .map((r, i) => (r.role === 'TELECALLER' || r.role === 'SALES_EXEC' ? resolvedTeamIds[i] : null))
+            .filter((id): id is string => id !== null && id !== undefined),
+        ),
+      );
+      const managerByTeamId = new Map<string, ReportsTo | null>();
+      if (staffTeamIds.length > 0) {
+        const managedTeams = await client.team.findMany({
+          where: { id: { in: staffTeamIds }, deletedAt: null },
+          select: { id: true, manager: { select: { id: true, name: true, email: true } } },
+        });
+        for (const t of managedTeams) managerByTeamId.set(t.id, t.manager ?? null);
+      }
+      const needsOwner = rows.some((r) => r.role === 'MANAGER' || r.role === 'ADMIN');
+      const orgOwner = needsOwner ? await findOrgOwner(client, actor.organizationId) : null;
+
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
       // the org, not just the (empty) set linked to their team. OWNER/ADMIN
       // carry no team (teamId null -> the team-linked map yields an empty
@@ -1276,6 +1327,12 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
+          reportsTo:
+            r.role === 'MANAGER' || r.role === 'ADMIN'
+              ? orgOwner
+              : r.role === 'OWNER'
+                ? null
+                : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
           // Admin-class rows expose the full org project set; everyone else
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)

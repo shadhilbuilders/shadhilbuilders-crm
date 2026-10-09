@@ -40,17 +40,17 @@ const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
 // (the test is the spec) - if the source drifts the test fails loudly.
 const ALLOWED_EDGES: Readonly<Record<LeadState, readonly LeadState[]>> = {
   NEW: ['CONTACTED', 'VISIT_REQUESTED', 'RNR', 'LOST'],
-  CONTACTED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_REQUESTED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  VISIT_SCHEDULED: ['VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
-  VISITED: ['NEGOTIATION', 'RNR', 'LOST'],
-  NEGOTIATION: ['BOOKING_INITIATED', 'RNR', 'LOST'],
-  BOOKING_INITIATED: ['WON', 'LOST'],
+  CONTACTED: ['NEW', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_REQUESTED: ['CONTACTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  VISIT_SCHEDULED: ['VISIT_REQUESTED', 'VISITED', 'NO_SHOW', 'RESCHEDULED', 'RNR', 'LOST'],
+  VISITED: ['NEGOTIATION', 'VISIT_REQUESTED', 'RNR', 'LOST'],
+  NEGOTIATION: ['VISITED', 'VISIT_REQUESTED', 'BOOKING_INITIATED', 'RNR', 'LOST'],
+  BOOKING_INITIATED: ['NEGOTIATION', 'WON', 'LOST'],
   WON: [],
   LOST: [],
   RNR: [],
-  RESCHEDULED: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
-  NO_SHOW: ['VISIT_SCHEDULED', 'RNR', 'LOST'],
+  RESCHEDULED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
+  NO_SHOW: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
 describe('leads.state-machine - LEAD_STATES source-of-truth', () => {
@@ -254,6 +254,30 @@ describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () =
     expect(result.ok).toBe(true);
   });
 
+  // Repeat visit (2026-10-09): after "Request visit again" the lead is back in
+  // VISIT_REQUESTED but the exec still holds it; scheduling the new visit
+  // drives VISIT_REQUESTED -> VISIT_SCHEDULED, the exec's second reserved edge.
+  it('SALES_EXEC: VISIT_REQUESTED → VISIT_SCHEDULED is allowed (repeat-visit scheduling)', () => {
+    const result = canTransition({
+      from: 'VISIT_REQUESTED',
+      to: 'VISIT_SCHEDULED',
+      role: 'SALES_EXEC',
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('SALES_EXEC: VISIT_REQUESTED → CONTACTED stays ROLE_FORBIDDEN', () => {
+    const result = canTransition({ from: 'VISIT_REQUESTED', to: 'CONTACTED', role: 'SALES_EXEC' });
+    expect(result.ok === false && result.code).toBe('ROLE_FORBIDDEN');
+  });
+
+  it('VISITED → VISIT_SCHEDULED is not an edge (booking needs a visit row)', () => {
+    for (const role of ROLES) {
+      const result = canTransition({ from: 'VISITED', to: 'VISIT_SCHEDULED', role });
+      expect(result.ok).toBe(false);
+    }
+  });
+
   // The exception is exactly one edge. Everything else out of
   // VISIT_SCHEDULED stays refused, so the exec cannot take over the
   // telecaller's re-engagement outcomes (Model C).
@@ -268,6 +292,7 @@ describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () =
   for (const outOfLane of LEAD_STATES) {
     if (execLane.includes(outOfLane)) continue;
     if (outOfLane === 'VISIT_SCHEDULED') continue; // covered by the handoff assertions above
+    if (outOfLane === 'VISIT_REQUESTED') continue; // exec's repeat-visit edge, asserted above
     for (const to of LEAD_STATES) {
       if (to === outOfLane) continue;
       it(`SALES_EXEC: ${outOfLane} → ${to} is non-ok`, () => {

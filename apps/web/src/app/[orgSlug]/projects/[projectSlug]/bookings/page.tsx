@@ -17,7 +17,7 @@
 //     refetches `{ limit, offset }` from the API.
 //   Columns: Unit (link to the booking) → Lead (link to the lead) → Status
 //     (Badge) → Amount → Token → Created → Owner / Approval.
-//   Row actions: Approve/Reject (TOKEN + manager) · View details (booking) ·
+//   Row actions: Approve/Reject (TOKEN + manager) ·
 //     View lead · Edit · Delete.
 import { AlertDialog, Badge, Button, Combobox, DataTable, DataTableRowActions, TypographyP, toast } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
@@ -33,7 +33,7 @@ import { BookingEditDialog } from '@/components/bookings/BookingEditDialog';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useBookings, useBookingsEnvelope, useDeleteBooking } from '@/hooks/queries/crm';
-import { currencyIntl, dateIntl } from '@/lib/format';
+import { currencyIntl, dateIntl, formatBalanceDue } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { canApproveBookings, canInitiateBookings, isAdminLike, useSessionUser } from '@/lib/session';
@@ -51,6 +51,9 @@ type BookingRow = {
   unitNumber?: string;
   userName?: string;
   amount?: string;
+  listAmount?: string;
+  negotiatedRate?: string | null;
+  negotiatedAmount?: string | null;
   tokenAmount?: string | null;
   status?: string;
   approvedByName?: string | null;
@@ -68,6 +71,9 @@ const bookingRowSchema = z.object({
   unitNumber: z.string().optional(),
   userName: z.string().optional(),
   amount: z.string().optional(),
+  listAmount: z.string().optional(),
+  negotiatedRate: z.string().nullable().optional(),
+  negotiatedAmount: z.string().nullable().optional(),
   tokenAmount: z.string().nullable().optional(),
   status: z.string().optional(),
   approvedByName: z.string().nullable().optional(),
@@ -267,6 +273,16 @@ export default function BookingsPage() {
         enableSorting: false,
       },
       {
+        id: 'balance',
+        header: 'Balance',
+        cell: ({ row }) => (
+          <span className="text-sm tabular-nums">
+            {formatBalanceDue(row.original.amount, row.original.tokenAmount)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
         accessorKey: 'createdAt',
         header: 'Created',
         cell: ({ row }) => (
@@ -330,15 +346,6 @@ export default function BookingsPage() {
                   },
                 ]
               : []),
-            {
-              label: 'View details',
-              value: 'view',
-              icon: LuArrowRight,
-              onClick: () =>
-                void router.push(
-                  projectHref(orgSlug, projectSlug, `/bookings/${row.original.id}`),
-                ),
-            },
             // T-BOOK-LINK: the Lead cell now opens the BOOKING, so the lead
             // itself needs its own entry point (context switching from a
             // booking back to the CRM record for the customer).

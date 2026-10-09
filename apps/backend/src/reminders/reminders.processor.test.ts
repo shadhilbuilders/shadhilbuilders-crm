@@ -142,6 +142,8 @@ async function seedDueReminder(label: string): Promise<string> {
         phaseId: phase.id,
         unitNumber: 'T-001',
         bhk: 3,
+        buildupSqft: '1000.00',
+        pricePerSqft: '10000.00',
         price: '10000000.00',
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },

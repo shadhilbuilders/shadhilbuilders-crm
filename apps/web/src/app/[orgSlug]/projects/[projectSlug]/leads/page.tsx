@@ -372,7 +372,11 @@ function LeadInboxPageInner() {
         lead={
           reassignTarget === null
             ? null
-            : { id: reassignTarget.id, name: reassignTarget.name }
+            : {
+                id: reassignTarget.id,
+                name: reassignTarget.name,
+                status: reassignTarget.status,
+              }
         }
         currentOwnerId={reassignTarget?.ownerId ?? ''}
         open={reassignTarget !== null}

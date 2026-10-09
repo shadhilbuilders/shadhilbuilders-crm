@@ -26,6 +26,8 @@ const UNIT = {
   bhk: 3,
   facing: 'North',
   sqft: 1450,
+  buildupSqft: '1450.00',
+  pricePerSqft: '4000.00',
   price: '5800000.00',
   status: 'AVAILABLE',
 };
@@ -36,7 +38,9 @@ function TestForm({ status = 'AVAILABLE' }: { status?: string }) {
     bhk: string;
     facing?: string;
     sqft?: string;
-    price: string;
+    buildupSqft: string;
+    pricePerSqft: string;
+    price?: string;
     status: string;
   }>({
     defaultValues: {
@@ -44,6 +48,8 @@ function TestForm({ status = 'AVAILABLE' }: { status?: string }) {
       bhk: String(UNIT.bhk),
       facing: UNIT.facing,
       sqft: String(UNIT.sqft),
+      buildupSqft: '1450.00',
+      pricePerSqft: '4000.00',
       price: UNIT.price,
       status,
     },
@@ -67,14 +73,18 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     expect(html).toContain('Unit number');
     expect(html).toContain('BHK');
     expect(html).toContain('Facing');
-    expect(html).toContain('Sqft');
-    expect(html).toContain('Price (₹)');
+    expect(html).toContain('Plot sq.ft');
+    expect(html).toContain('Buildup sq.ft');
+    expect(html).toContain('Per sq.ft price (₹)');
+    expect(html).toContain('Total sq.ft price (₹)');
     expect(html).toContain('Status');
 
     // data-qa regression canaries
     expect(html).toMatch(/data-qa="unit-edit-number"/);
     expect(html).toMatch(/data-qa="unit-edit-sqft"/);
     expect(html).toMatch(/data-qa="unit-edit-price"/);
+    expect(html).toMatch(/data-qa="unit-edit-buildup-sqft"/);
+    expect(html).toMatch(/data-qa="unit-edit-price-per-sqft"/);
 
     // BHK and Facing are Selects (bounded pickers from the shared
     // constants). The Select trigger hardcodes data-qa="select-trigger"
@@ -82,6 +92,15 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     // wrapper data-qa instead.
     expect(html).toMatch(/data-qa="form-field-bhk"/);
     expect(html).toMatch(/data-qa="form-field-facing"/);
+  });
+
+  it('renders the unit total as a read-only, auto-calculated field', () => {
+    const html = renderToStaticMarkup(<TestForm />);
+    const total = html.match(/<input[^>]*data-qa="unit-edit-price"[^>]*>/)?.[0] ?? '';
+    expect(total).toMatch(/readonly/i);
+    // The editable rate fields must NOT be read-only.
+    const rate = html.match(/<input[^>]*data-qa="unit-edit-price-per-sqft"[^>]*>/)?.[0] ?? '';
+    expect(rate).not.toMatch(/readonly/i);
   });
 
   // T-INV-SYNC follow-up: a held/token unit must NOT render the status picker.

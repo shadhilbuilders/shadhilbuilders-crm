@@ -53,10 +53,6 @@ describe('NewUnitPage - props-API Form surface', () => {
     expect(html).toContain('Unit number');
     expect(html).toContain('BHK');
     expect(html).toContain('Facing');
-    expect(html).toContain('Sqft');
-    expect(html).toContain('Price (₹)');
-    // Status is intentionally absent - always AVAILABLE on create (T-INV-SYNC).
-    expect(html).not.toMatch(/data-qa="unit-status"/);
 
     // The form's submit button text (props API)
     expect(html).toContain('Create unit');
@@ -76,7 +72,18 @@ describe('NewUnitPage - props-API Form surface', () => {
     // forwarded the data-qa attribute correctly (regression canary).
     expect(html).toMatch(/data-qa="unit-number"/);
     expect(html).toMatch(/data-qa="unit-sqft"/);
-    expect(html).toMatch(/data-qa="unit-price"/);
+    expect(html).toMatch(/data-qa="unit-buildup-sqft"/);
+    expect(html).toMatch(/data-qa="unit-price-per-sqft"/);
+    expect(html).toMatch(/data-qa="unit-total-price"/);
+    expect(html).toContain('Plot sq.ft');
+    expect(html).toContain('Buildup sq.ft');
+    expect(html).toContain('Per sq.ft price (₹)');
+    expect(html).toContain('Total sq.ft price (₹)');
+    // Total is auto-calculated and not typeable; the inputs feeding it are.
+    const at = html.indexOf('data-qa="unit-total-price"');
+    expect(html.slice(at, at + 1500)).toMatch(/readOnly=""/);
+    const rateAt = html.indexOf('data-qa="unit-price-per-sqft"');
+    expect(html.slice(rateAt, rateAt + 1500)).not.toMatch(/readOnly=""/);
 
     // BHK and Facing are Selects (bounded pickers from the shared
     // constants). The Select trigger hardcodes data-qa="select-trigger"

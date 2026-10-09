@@ -58,6 +58,7 @@ import {
   type RecordTokenTarget,
 } from '@/components/bookings/RecordTokenDialog';
 import { KpiStrip, SectionCard } from '@/components/dashboard/dashboard-shared';
+import { todaysOpenVisits } from '@/lib/visit-status';
 import { TodayVisitsCard } from '@/components/dashboard/TodayVisitsCard';
 import { LeadQueueRow, type QueueAction } from '@/components/dashboard/LeadQueueRow';
 import { PendingApprovalsCard } from '@/components/dashboard/PendingApprovalsCard';
@@ -98,6 +99,18 @@ type LeadListRow = {
   status?: string;
   createdAt?: string;
   ownerName?: string;
+};
+
+/**
+ * The fields `todaysOpenVisits` reads off a visit list row. `useVisits`
+ * returns `unknown[]` (it serves several endpoints), so this narrows just
+ * enough for that one call - see the note there.
+ */
+type VisitQueueRow = {
+  leadId?: string;
+  scheduledFor?: string;
+  status?: string;
+  leadState?: string;
 };
 
 // The per-role lane lives in `@/lib/queue-actions` (QUEUE_STATES_BY_ROLE) so
@@ -198,10 +211,12 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
     end.setDate(end.getDate() + 1);
     return { from: start.toISOString(), to: end.toISOString() };
   }, []);
-  const visitsQuery = useVisits({
+  const visitsQuery = useVisits<VisitQueueRow>({
     from: today.from,
     to: today.to,
     projectId: projectId ?? undefined,
+    // Open work only: a closed/replaced visit is not "to conduct today".
+    status: ['SCHEDULED'],
   });
 
   // Approvals are a manager/admin job - canApproveBookings mirrors the server.
@@ -259,7 +274,12 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
   // plausible. Declared here, AFTER `ordered`, so the fallback can't trip a
   // temporal-dead-zone error.
   const queueTotal = leadsEnvelope?.total ?? ordered.length;
-  const visits = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
+  // One row per lead, open visits on live deals only (T-VISIT-LEAD-SYNC).
+  // `useVisits` is typed `unknown[]` (it serves several endpoints' shapes);
+  // `todaysOpenVisits` only reads these four fields, so narrow to them here
+  // rather than widening the hook's return type for every caller.
+  const visitRows = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
+  const visits = todaysOpenVisits(visitRows);
 
   // T-STATUS-ONE-TRUTH (2026-09-28): the KPI strip's overdue count. Both
   // numbers come from the SERVER, but from two different endpoints - and they

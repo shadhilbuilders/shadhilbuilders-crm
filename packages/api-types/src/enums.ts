@@ -60,7 +60,14 @@ export const LeadOwnerTypeSchema = z.enum(['TELECALLER', 'SALES_EXEC', 'MANAGER'
 export type LeadOwnerType = z.infer<typeof LeadOwnerTypeSchema>;
 
 /** Activity timeline entry type. STATUS_CHANGE auto-emitted by state machine. */
-export const ActivityTypeSchema = z.enum(['CALL', 'NOTE', 'STATUS_CHANGE', 'VISIT', 'EMAIL']);
+export const ActivityTypeSchema = z.enum([
+  'CALL',
+  'NOTE',
+  'STATUS_CHANGE',
+  'VISIT',
+  'EMAIL',
+  'ASSIGNMENT',
+]);
 export type ActivityType = z.infer<typeof ActivityTypeSchema>;
 
 // ────────────────────────────────────────────────────────────────────────────

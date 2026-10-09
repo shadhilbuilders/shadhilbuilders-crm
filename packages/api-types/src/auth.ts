@@ -95,6 +95,12 @@ export const UserFilterDtoSchema = z.object({
    * admin/owner, other ORGANISATIONS).
    */
   projectId: z.string().min(1).optional(),
+  /**
+   * When true, exclude banned (deactivated) users so assignee pickers only
+   * offer people who can actually take work. Off by default: the admin Users
+   * table must still list banned users.
+   */
+  availableOnly: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -112,6 +118,12 @@ export const UserListResultSchema = z.object({
       // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
+      // "Reports to" for the Users table (2026-10-08), same rule as
+      // UserDetail.manager: staff -> their team's manager (null when
+      // unled), MANAGER/ADMIN -> the org OWNER, OWNER -> null.
+      reportsTo: z
+        .object({ id: z.string(), name: z.string(), email: z.string() })
+        .nullable(),
     }),
   ),
   total: z.number().int().nonnegative(),
@@ -120,11 +132,13 @@ export type UserListResult = z.infer<typeof UserListResultSchema>;
 
 /**
  * GET /api/users/:id - the user detail page (users/[userId], autoplan
- * 2026-09-13). `manager` is the team's manager identity, populated only
- * when the target reports to one (TELECALLER/SALES_EXEC with an assigned
- * team that has a manager) - null for MANAGER/ADMIN/OWNER or an
- * unassigned/unmanaged team. `projects` are the projects linked to the
- * target's team via ProjectTeam.
+ * 2026-09-13). `manager` ("Reports to") depends on the target's role
+ * (T-REPORTS-TO-OWNER):
+ *   - TELECALLER/SALES_EXEC: their resolved team's manager - assignable,
+ *     null when unassigned/unmanaged.
+ *   - MANAGER/ADMIN: the org OWNER - fixed, never assignable.
+ *   - OWNER: null (reports to nobody).
+ * `projects` are the projects linked to the target's team via ProjectTeam.
  */
 export const UserDetailSchema = z.object({
   id: z.string(),
@@ -261,10 +275,13 @@ export type RefreshTokenDto = z.infer<typeof RefreshTokenDtoSchema>;
  * chars (matches the seed's CreateUserDto shape).
  */
 export const ChangePasswordDtoSchema = z.object({
+  // Required for self-service rotation (enforced in UsersService); omitted
+  // when an ADMIN/OWNER resets ANOTHER user's password.
   oldPassword: z
     .string()
     .min(1, 'Current password is required')
-    .max(200, 'Password is too long'),
+    .max(200, 'Password is too long')
+    .optional(),
   newPassword: z
     .string()
     .min(8, 'New password must be at least 8 characters')
@@ -285,9 +302,29 @@ export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;
  * server validation can't drift: both fail on the same rules.
  */
 export const ChangePasswordFormSchema = ChangePasswordDtoSchema.extend({
+  oldPassword: z
+    .string()
+    .min(1, 'Current password is required')
+    .max(200, 'Password is too long'),
   confirmPassword: z.string().min(1, 'Please confirm the new password'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'New password and confirmation do not match',
   path: ['confirmPassword'],
 });
 export type ChangePasswordFormValues = z.infer<typeof ChangePasswordFormSchema>;
+/**
+ * Admin/owner password-reset form (users + staff-permission pages). No
+ * current password - the actor is resetting someone else's.
+ */
+export const AdminResetPasswordFormSchema = z
+  .object({
+    newPassword: ChangePasswordDtoSchema.shape.newPassword,
+    confirmPassword: z.string().min(1, 'Please confirm the new password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'New password and confirmation do not match',
+    path: ['confirmPassword'],
+  });
+export type AdminResetPasswordFormValues = z.infer<
+  typeof AdminResetPasswordFormSchema
+>;

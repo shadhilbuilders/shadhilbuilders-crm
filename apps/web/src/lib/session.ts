@@ -191,6 +191,18 @@ export function canScheduleVisits(role: Role | undefined): boolean {
   );
 }
 
+/**
+ * Who may book a visit from the LEAD page. Telecaller + managers (as above) plus
+ * the SALES_EXEC, who books the repeat visit after "Request visit again" (the
+ * lead stays with the exec; backend reserves VISIT_REQUESTED -> VISIT_SCHEDULED
+ * for them). Deliberately separate from `canScheduleVisits`: the dashboard queue
+ * pins that one against its own role list and must not start offering the exec
+ * a button on telecaller-lane rows.
+ */
+export function canScheduleLeadVisit(role: Role | undefined): boolean {
+  return canScheduleVisits(role) || role === 'SALES_EXEC';
+}
+
 /** Exec conducts/log outcomes; telecaller can mark NO_SHOW only. */
 export function canLogVisitOutcome(
   role: Role | undefined,

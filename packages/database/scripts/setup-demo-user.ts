@@ -224,6 +224,9 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
+        // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
+        buildupSqft: u.sqft.toFixed(2),
+        pricePerSqft: (u.price / u.sqft).toFixed(2),
         // status intentionally omitted - derived from bookings (T-INV-SYNC).
       },
       create: {
@@ -234,6 +237,9 @@ async function main() {
         facing: u.facing,
         sqft: u.sqft,
         price: u.price.toFixed(2),
+        // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
+        buildupSqft: u.sqft.toFixed(2),
+        pricePerSqft: (u.price / u.sqft).toFixed(2),
         status: 'AVAILABLE',
       },
     });
@@ -360,14 +366,16 @@ async function main() {
   // `status: AVAILABLE` ordered by unit number, which silently changed which
   // units got booked whenever an unrelated booking moved a status.)
   //
-  // The AMOUNT is taken from each unit's own `price`. It used to be hardcoded
-  // (D-101 booked at 5,800,000 while its price is 4,200,000 - unit D-102's
-  // price), i.e. every seeded booking disagreed with the unit it sat on. That is
-  // precisely the mismatch T-BOOK-AMOUNT now REJECTS at the API
-  // (bookings.service.ts derives the amount from the unit and refuses a
-  // disagreeing client value), so a hardcoded amount here would seed data the
-  // API itself would never accept - and would contradict the demo dashboard's
-  // own approval figures.
+  // The AMOUNT and listAmount are taken from each unit's own `price`.
+  // listAmount is the unit total at booking time (required; no negotiation
+  // on these fixtures, so the effective total equals the list). It used to
+  // be hardcoded (D-101 booked at 5,800,000 while its price is 4,200,000 -
+  // unit D-102's price), i.e. every seeded booking disagreed with the unit
+  // it sat on. That is precisely the mismatch T-BOOK-AMOUNT now REJECTS at
+  // the API (bookings.service.ts derives the amount from the unit and
+  // refuses a disagreeing client value), so a hardcoded amount here would
+  // seed data the API itself would never accept - and would contradict the
+  // demo dashboard's own approval figures.
   const demoBookingUnits = await prisma.unit.findMany({
     where: {
       organizationId: demoOrg.id,
@@ -388,6 +396,7 @@ async function main() {
           unitId: tokenUnit.id,
           userId: demoUser.id,
           amount: tokenUnit.price,
+          listAmount: tokenUnit.price,
           tokenAmount: '250000.00',
           status: 'TOKEN',
         },
@@ -397,6 +406,7 @@ async function main() {
           unitId: holdUnit.id,
           userId: demoUser.id,
           amount: holdUnit.price,
+          listAmount: holdUnit.price,
           tokenAmount: null,
           status: 'HOLD' as const,
         },

@@ -49,6 +49,8 @@ let root: Root | null = null;
 async function mount(props: {
   member: TeamMemberRow;
   managerId: string | null;
+  managerName?: string | null;
+  ownerName?: string | null;
   canRemove: boolean;
   dataQaPrefix?: string;
 }): Promise<void> {
@@ -66,6 +68,8 @@ async function mount(props: {
           teamName="Metro Sales"
           member={props.member}
           managerId={props.managerId}
+          managerName={props.managerName}
+          ownerName={props.ownerName}
           canRemove={props.canRemove}
           dataQaPrefix={props.dataQaPrefix}
         />
@@ -220,5 +224,60 @@ describe('TeamRosterMemberRow', () => {
   it('hides the weight editor when canRemove is false (matching remove gating)', async () => {
     await mount({ member: ordinaryMember, managerId: 'mgr-a', canRemove: false });
     expect(container?.querySelector('[data-qa="team-member-weight-tc-1"]')).toBeNull();
+  });
+
+  describe('"Reports to" (T-REPORTS-TO-OWNER, 2026-10-06)', () => {
+    it('a MANAGER row reports to the org OWNER, not this team\'s manager name', async () => {
+      await mount({
+        member: managerMember,
+        managerId: 'mgr-a',
+        managerName: 'Meera',
+        ownerName: 'Deepak Owner',
+        canRemove: true,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-mgr-a"]');
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain('Deepak Owner');
+    });
+
+    it('a TELECALLER/SALES_EXEC row reports to THIS team\'s manager', async () => {
+      await mount({
+        member: ordinaryMember,
+        managerId: 'mgr-a',
+        managerName: 'Meera',
+        ownerName: 'Deepak Owner',
+        canRemove: true,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-tc-1"]');
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain('Meera');
+    });
+
+    it('falls back to "nobody assigned yet" when the relevant target is null', async () => {
+      await mount({
+        member: ordinaryMember,
+        managerId: 'mgr-a',
+        managerName: null,
+        ownerName: 'Deepak Owner',
+        canRemove: true,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-tc-1"]');
+      expect(row?.textContent).toContain('nobody assigned yet');
+    });
+
+    it('a MANAGER row still reports to the owner even as an ordinary (non-pinned) member of a DIFFERENT team', async () => {
+      // managerId here is someone ELSE's id - this MANAGER member is not
+      // the pinned leader of THIS roster, but still reports to the owner.
+      await mount({
+        member: managerMember,
+        managerId: 'someone-else',
+        managerName: 'Someone Else',
+        ownerName: 'Deepak Owner',
+        canRemove: true,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-mgr-a"]');
+      expect(row?.textContent).toContain('Deepak Owner');
+      expect(row?.textContent).not.toContain('Someone Else');
+    });
   });
 });

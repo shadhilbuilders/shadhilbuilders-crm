@@ -1530,6 +1530,12 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- T-TEAM-ROUND-ROBIN (2026-10-08): ProjectTeam."lastAssignedAt" is the
+-- auto-assign rotation cursor. It is NOT application-writable under the policy
+-- above (ADMIN only); it advances through advance_project_team_cursor(), a
+-- SECURITY DEFINER function created by migration
+-- 20261008150000_project_team_round_robin, scoped to app.user_org_id.
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- T-INV-SYNC (2026-09-15): Unit.status is DERIVED from the booking lifecycle.
 -- ────────────────────────────────────────────────────────────────────────────
@@ -1554,3 +1560,14 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --
 -- See also: "one_active_booking_per_unit" partial unique index (same
 -- migration) - at most one HOLD/TOKEN/APPROVED booking per unit.
+
+-- ── T-CRON-MULTITENANT (2026-10-09) ─────────────────────────────────────────
+-- cron_list_org_ids(): SECURITY DEFINER, ids only, callable solely by the cron
+-- service account (role=CRON_SERVICE AND user_id=cron-service). Lets system
+-- crons iterate organizations instead of trusting PUBLIC_ORG_ID. Canonical copy
+-- lives in migrations/20261009030000_cron_list_org_ids/migration.sql.
+
+-- T-VISIT-REMINDER (2026-10-09): see migration 20261009050000_visit_reminders.
+--   site_visit_select_cron_service / site_visit_update_cron_service:
+--     role=CRON_SERVICE AND user_id='cron-service' AND org match.
+--   org_update_admin: ADMIN/OWNER may update their own Organization row.

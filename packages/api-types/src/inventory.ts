@@ -15,6 +15,7 @@
 
 import { z } from 'zod';
 import { ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
+import { MAX_RATE_PER_SQFT, MAX_SQFT } from './pricing';
 
 /**
  * Row shape for GET /api/inventory/units. `price` is a string (Prisma
@@ -30,7 +31,12 @@ export const UnitRowSchema = z.object({
   unitNumber: z.string(),
   bhk: z.number().int().min(1),
   facing: z.string().nullable(),
+  /** Plot area (UI label "Plot sq.ft"). */
   sqft: z.number().int().positive().nullable(),
+  /** Built-up area. Decimal serialises to string. */
+  buildupSqft: z.string(),
+  pricePerSqft: z.string(),
+  /** Derived unit total = buildupSqft x pricePerSqft. */
   price: z.string(),
   status: UnitStatusSchema,
   createdAt: z.iso.datetime({ offset: true }),
@@ -84,8 +90,8 @@ export const UpdateUnitStatusSchema = z.enum(['AVAILABLE', 'SOLD']);
 export type UpdateUnitStatus = z.infer<typeof UpdateUnitStatusSchema>;
 
 /**
- * POST /api/inventory/units body. `price` is a number (converted to a
- * Decimal string server-side). `facing`/`sqft` optional.
+ * POST /api/inventory/units body. The unit total `price` is NOT accepted:
+ * it is derived server-side from buildupSqft x pricePerSqft. `facing`/`sqft` optional.
  *
  * T-INV-SYNC: `status` accepts the MANUAL marks only (AVAILABLE|SOLD).
  * `Unit.status` is derived from the booking lifecycle - a trigger on `Booking`
@@ -105,7 +111,8 @@ export const CreateUnitDtoSchema = z.object({
   bhk: z.number().int().min(1).max(10),
   facing: z.string().trim().min(1).max(40).optional(),
   sqft: z.number().int().positive().max(100_000).optional(),
-  price: z.number().positive().max(100_000_000_00, 'Price too large (cap ₹100 Cr)'),
+  buildupSqft: z.number().positive().max(MAX_SQFT),
+  pricePerSqft: z.number().positive().max(MAX_RATE_PER_SQFT),
   status: UpdateUnitStatusSchema.optional(),
 });
 export type CreateUnitDto = z.infer<typeof CreateUnitDtoSchema>;
@@ -121,7 +128,8 @@ export const UpdateUnitDtoSchema = z.object({
   bhk: z.number().int().min(1).max(10).optional(),
   facing: z.string().trim().min(1).max(40).nullable().optional(),
   sqft: z.number().int().positive().max(100_000).nullable().optional(),
-  price: z.number().positive().max(100_000_000_00).optional(),
+  buildupSqft: z.number().positive().max(MAX_SQFT).optional(),
+  pricePerSqft: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
   status: UpdateUnitStatusSchema.optional(),
 });
 export type UpdateUnitDto = z.infer<typeof UpdateUnitDtoSchema>;

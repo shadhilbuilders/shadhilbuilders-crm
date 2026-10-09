@@ -6,6 +6,9 @@
 //   2. loading                                   -> <Skeleton />
 //   3. team loaded                                -> header "Actions" menu
 //      trigger + a "Move to team" button per member row.
+//   4. "Reports to" (T-REPORTS-TO-OWNER, 2026-10-06): subtitle + member row
+//      secondary line surface the org OWNER for the manager row, and the
+//      team's manager for TELECALLER/SALES_EXEC rows.
 //
 // Mount with createRoot + act (the page has a `mounted` gate), same
 // pattern as ../page.test.tsx and admin/users/[userId]/page.test.tsx.
@@ -158,6 +161,7 @@ describe('TeamRosterPage - org team roster', () => {
         id: 't-1',
         name: 'Construction Desk',
         manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
+        owner: { id: 'owner-1', name: 'Deepak Owner', email: 'owner@x' },
         members: [
           {
             userId: 'u-tc',
@@ -177,5 +181,49 @@ describe('TeamRosterPage - org team roster', () => {
     expect(html).toContain('data-qa="team-header-actions-button"');
     expect(html).toContain('data-qa="team-member-move-u-tc"');
     expect(html).toContain('Move to team');
+  });
+
+  it('T-REPORTS-TO-OWNER: subtitle names the org owner, and a TELECALLER row\'s secondary line names the team\'s manager', async () => {
+    baseMocks();
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
+      isPending: false,
+      error: null,
+    });
+    mocks.useTeam.mockReturnValue({
+      data: {
+        id: 't-1',
+        name: 'Construction Desk',
+        manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
+        owner: { id: 'owner-1', name: 'Deepak Owner', email: 'owner@x' },
+        members: [
+          {
+            userId: 'mgr-1',
+            name: 'Maya Rao',
+            email: 'maya@x',
+            role: 'MANAGER',
+          },
+          {
+            userId: 'u-tc',
+            name: 'Tele Caller One',
+            email: 'tc1@x',
+            role: 'TELECALLER',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('Managed by Maya Rao.');
+    expect(html).toContain('Reports to Deepak Owner.');
+    // The pinned manager row ("Reports to" = the org owner).
+    expect(html).toContain('data-qa="team-member-reports-to-mgr-1"');
+    expect(html).toContain('Reports to Deepak Owner');
+    // The TELECALLER row ("Reports to" = this team's manager).
+    expect(html).toContain('data-qa="team-member-reports-to-u-tc"');
+    expect(html).toContain('Reports to Maya Rao');
   });
 });

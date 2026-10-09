@@ -117,7 +117,7 @@ describe('LeadDetailPage - T-D3 state matrix', () => {
       error: null,
     } as never);
     mockedUseLeadActivities.mockReturnValue({
-      data: [],
+      data: { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] },
       isLoading: false,
       error: null,
     } as never);

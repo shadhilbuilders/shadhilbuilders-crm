@@ -2,8 +2,9 @@
 
 // UnitEditDialog - edit an inventory unit from the grid row actions.
 //
-// Editable surface (UpdateUnitDto): unitNumber / bhk / facing / sqft /
-// price / status. Phase is NOT editable here (a unit's phase is its
+// Editable surface (UpdateUnitDto): unitNumber / bhk / facing / sqft (Plot
+// sq.ft) / buildupSqft / pricePerSqft / status. The unit total (`price`) is
+// DERIVED (buildup x rate) and shown read-only. Phase is NOT editable here (a unit's phase is its
 // identity anchor; moving it is out of scope for v1).
 //
 // Two-API convention: props API `<Dialog open onOpenChange header footer>`
@@ -24,8 +25,10 @@ import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { computeUnitTotal } from '@shadhil/api-types';
 
 import { useUpdateUnit, useProjectOptions } from '@/hooks/queries/inventory';
+import { formatMoneyInput } from '@/lib/format';
 import {
   labelFor,
   INVENTORY_MANUAL_STATUSES,
@@ -57,18 +60,22 @@ const unitEditSchema = z.object({
         const n = Number(v);
         return Number.isInteger(n) && n > 0;
       },
-      { message: 'Sqft must be a positive number' },
+      { message: 'Plot sq.ft must be a positive number' },
     ),
-  price: z
+  buildupSqft: z
     .string()
-    .min(1, 'Price is required')
-    .refine(
-      (v) => {
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0;
-      },
-      { message: 'Price must be a positive number' },
-    ),
+    .min(1, 'Buildup sq.ft is required')
+    .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
+      message: 'Buildup sq.ft must be a positive number',
+    }),
+  pricePerSqft: z
+    .string()
+    .min(1, 'Price per sq.ft is required')
+    .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
+      message: 'Price per sq.ft must be a positive number',
+    }),
+  // DERIVED display field (buildup x rate); never submitted.
+  price: z.string().optional(),
   // Status is a string in the form (the Select holds the raw enum value);
   // the payload casts it to InventoryManualStatus on submit. T-INV-SYNC:
   // only the off-pipeline marks are offered - HOLD/TOKEN are set by bookings,
@@ -84,6 +91,8 @@ export type UnitEditTarget = {
   bhk: number;
   facing: string | null;
   sqft: number | null;
+  buildupSqft: string;
+  pricePerSqft: string;
   price: string;
   status: string;
 };
@@ -129,6 +138,8 @@ export function UnitEditFormBody({
    */
   derivedStatus?: string | null;
 }) {
+  // Subscribed at the top level so the formatted display tracks the derived total.
+  const totalDisplay = form.watch('price');
   return (
     <Form
       id={FORM_ID}
@@ -174,7 +185,7 @@ export function UnitEditFormBody({
         {
           type: 'input',
           name: 'sqft',
-          label: 'Sqft',
+          label: 'Plot sq.ft',
           inputType: 'number',
           inputProps: {
             min: 1,
@@ -184,13 +195,42 @@ export function UnitEditFormBody({
         },
         {
           type: 'input',
-          name: 'price',
-          label: 'Price (₹)',
+          name: 'buildupSqft',
+          label: 'Buildup sq.ft',
           required: true,
           inputType: 'number',
           inputProps: {
-            min: 1,
-            step: 1,
+            min: 0.01,
+            step: 0.01,
+            'data-qa': 'unit-edit-buildup-sqft',
+          },
+        },
+        {
+          type: 'input',
+          name: 'pricePerSqft',
+          label: 'Per sq.ft price (₹)',
+          required: true,
+          inputType: 'number',
+          inputProps: {
+            min: 0.01,
+            step: 0.01,
+            'data-qa': 'unit-edit-price-per-sqft',
+          },
+        },
+        {
+          // DERIVED: buildup sq.ft x per sq.ft price. Read-only, not disabled,
+          // so it stays announced and copyable (repo convention).
+          type: 'input',
+          name: 'price',
+          label: 'Total sq.ft price (₹)',
+          inputType: 'text',
+          className: 'bg-muted/50 cursor-not-allowed',
+          inputProps: {
+            // Display-only: the raw number stays in form state.
+            value: formatMoneyInput(totalDisplay),
+            readOnly: true,
+            tabIndex: -1,
+            'aria-readonly': true,
             'data-qa': 'unit-edit-price',
           },
         },
@@ -285,6 +325,8 @@ export function UnitEditDialog({
       bhk: unit ? String(unit.bhk) : '',
       facing: unit?.facing ?? '',
       sqft: unit?.sqft !== null && unit?.sqft !== undefined ? String(unit.sqft) : '',
+      buildupSqft: unit?.buildupSqft ?? '',
+      pricePerSqft: unit?.pricePerSqft ?? '',
       price: unit?.price ?? '',
       status: unit?.status ?? 'AVAILABLE',
     },
@@ -300,11 +342,24 @@ export function UnitEditDialog({
         bhk: String(unit.bhk),
         facing: unit.facing ?? '',
         sqft: unit.sqft !== null ? String(unit.sqft) : '',
+        buildupSqft: unit.buildupSqft,
+        pricePerSqft: unit.pricePerSqft,
         price: unit.price,
         status: unit.status,
       });
     }
   }, [open, unit?.id]);
+
+  // Total = buildup x rate, live. Hooks must run before the `unit === null`
+  // early return below.
+  const buildupValue = form.watch('buildupSqft');
+  const rateValue = form.watch('pricePerSqft');
+  const derivedTotal = computeUnitTotal(buildupValue, rateValue);
+  useEffect(() => {
+    if (derivedTotal !== null) {
+      form.setValue('price', derivedTotal.toFixed(2), { shouldValidate: false });
+    }
+  }, [derivedTotal, form]);
 
   if (unit === null) return null;
   const target = unit;
@@ -313,7 +368,8 @@ export function UnitEditDialog({
 
   function handleSubmit(values: UnitEditFormValues) {
     const bhk = Number(values.bhk);
-    const price = Number(values.price);
+    const buildupSqft = Number(values.buildupSqft);
+    const pricePerSqft = Number(values.pricePerSqft);
     let sqft: number | null | undefined;
     if (values.sqft !== undefined && values.sqft.trim().length > 0) {
       sqft = Number(values.sqft);
@@ -327,7 +383,8 @@ export function UnitEditDialog({
     const payload = {
       unitNumber: values.unitNumber.trim(),
       bhk,
-      price,
+      buildupSqft,
+      pricePerSqft,
       ...(values.facing && values.facing.trim().length > 0
         ? { facing: values.facing.trim() }
         : { facing: null }),

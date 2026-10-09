@@ -52,6 +52,8 @@ const unitRowSchema = z.object({
   bhk: z.number(),
   facing: z.string().nullable(),
   sqft: z.number().nullable(),
+  buildupSqft: z.string(),
+  pricePerSqft: z.string(),
   price: z.string(),
   status: z.string(),
   createdAt: z.string(),
@@ -231,7 +233,7 @@ export default function InventoryPage() {
       },
       {
         accessorKey: 'sqft',
-        header: 'Sqft',
+        header: 'Plot sq.ft',
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm tabular-nums">
             {row.original.sqft !== null ? numberIntl.format(row.original.sqft) : '-'}
@@ -240,8 +242,26 @@ export default function InventoryPage() {
         enableSorting: false,
       },
       {
+        accessorKey: 'buildupSqft',
+        header: 'Buildup sq.ft',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {numberIntl.format(Number(row.original.buildupSqft))}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'pricePerSqft',
+        header: 'Per sq.ft price (₹)',
+        cell: ({ row }) => (
+          <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
+        ),
+        enableSorting: false,
+      },
+      {
         accessorKey: 'price',
-        header: 'Price (₹)',
+        header: 'Total sq.ft price (₹)',
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">{formatMoney(row.original.price)}</span>
         ),
@@ -475,7 +495,6 @@ export default function InventoryPage() {
         onOpenChange={(open) => {
           if (!open) setDetailTarget(null);
         }}
-        projectId={projectId}
       />
 
       <UnitEditDialog

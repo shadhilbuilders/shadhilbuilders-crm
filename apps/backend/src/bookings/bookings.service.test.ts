@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
-import { BookingsService, legalNextStates } from './bookings.service';
+import { BookingsService, legalNextStates, resolveBookingPricing } from './bookings.service';
 
 function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
@@ -132,7 +132,7 @@ describe('findOne - single booking', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: { toString: () => '100000.00' },
       status: 'TOKEN',
       approvedById: null,
@@ -178,13 +178,14 @@ describe('create - start a new booking in HOLD state', () => {
       // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the server derives the booking
       // amount from this price, so the fixture must provide one.
       price: { toString: () => '5000000.00' },
+      buildupSqft: { toString: () => '1250.00' },
     });
     client.booking.create.mockResolvedValue({
       id: 'b-1',
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'mgr-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       status: 'HOLD',
       approvedById: null,
@@ -199,7 +200,6 @@ describe('create - start a new booking in HOLD state', () => {
     const result = await service.create(makeActor(), {
       leadId: 'lead-1',
       unitId: 'unit-1',
-      amount: 5_000_000,
     });
 
     expect(result.status).toBe('HOLD');
@@ -241,7 +241,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'missing',
         unitId: 'unit-1',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Lead missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -259,7 +258,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor(), {
         leadId: 'lead-1',
         unitId: 'missing',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/Unit missing not found/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -283,7 +281,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/cannot take a new booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -302,7 +300,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/cannot take a new booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -313,7 +311,6 @@ describe('create - start a new booking in HOLD state', () => {
       service.create(makeActor({ role: 'TELECALLER', sub: 'tc-1' }), {
         leadId: 'lead-1',
         unitId: 'unit-1',
-        amount: 5_000_000,
       }),
     ).rejects.toThrow(/can create a booking/);
     expect(client.booking.create).not.toHaveBeenCalled();
@@ -330,7 +327,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/can only start from/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -344,7 +341,7 @@ describe('create - start a new booking in HOLD state', () => {
     });
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/can only start from/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -372,7 +369,7 @@ describe('create - start a new booking in HOLD state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'mgr-1',
-      amount: { toString: () => '4250000.00' },
+      amount: { toString: () => '4250000.00' }, listAmount: { toString: () => '4250000.00' },
       tokenAmount: null,
       status: 'HOLD',
       approvedById: null,
@@ -384,7 +381,7 @@ describe('create - start a new booking in HOLD state', () => {
       approvedBy: null,
     });
 
-    await service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 4250000 });
+    await service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' });
 
     // The write carries the UNIT price, formatted as a Decimal string.
     expect(client.booking.create).toHaveBeenCalledWith(
@@ -394,31 +391,8 @@ describe('create - start a new booking in HOLD state', () => {
     );
   });
 
-  it('REJECTS an amount that disagrees with the unit price', async () => {
-    const { service, client } = makeService();
-    client.lead.findUnique.mockResolvedValue({
-      id: 'lead-1',
-      state: 'NEGOTIATION',
-      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
-    });
-    client.unit.findUnique.mockResolvedValue({
-      id: 'unit-1',
-      unitNumber: 'A-101',
-      status: 'AVAILABLE',
-      price: { toString: () => '4250000.00' },
-    });
-
-    // Loudly, not silently corrected: overwriting a bad amount would hide the UI
-    // bug, and the entire point is that the two can no longer disagree unnoticed.
-    await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 1 }),
-    ).rejects.toThrow(/must equal the unit price/);
-    expect(client.booking.create).not.toHaveBeenCalled();
-  });
-
-  it('allows a sub-rupee rounding difference but not a real one', async () => {
-    const { service, client } = makeService();
-    const setup = () => {
+  describe('negotiated rate (owner ruling 2026-10-09)', () => {
+    function arrange(client: ReturnType<typeof makeService>['client']) {
       client.lead.findUnique.mockResolvedValue({
         id: 'lead-1',
         state: 'NEGOTIATION',
@@ -428,14 +402,18 @@ describe('create - start a new booking in HOLD state', () => {
         id: 'unit-1',
         unitNumber: 'A-101',
         status: 'AVAILABLE',
-        price: { toString: () => '4250000.00' },
+        price: { toString: () => '5000000.00' },
+        buildupSqft: { toString: () => '1250.00' },
       });
       client.booking.create.mockResolvedValue({
         id: 'b-1',
         leadId: 'lead-1',
         unitId: 'unit-1',
         userId: 'mgr-1',
-        amount: { toString: () => '4250000.00' },
+        amount: { toString: () => '4750000.00' },
+        listAmount: { toString: () => '5000000.00' },
+        negotiatedRate: { toString: () => '3800.00' },
+        negotiatedAmount: { toString: () => '4750000.00' },
         tokenAmount: null,
         status: 'HOLD',
         approvedById: null,
@@ -446,24 +424,92 @@ describe('create - start a new booking in HOLD state', () => {
         user: { name: 'Mgr 1' },
         approvedBy: null,
       });
-    };
+    }
 
-    // 0.4 off: tolerated (wire rounding), still writes the UNIT price.
-    setup();
-    await service.create(makeActor(), {
-      leadId: 'lead-1',
-      unitId: 'unit-1',
-      amount: 4250000.4,
+    it('derives amount = buildup sq.ft x negotiated rate and keeps the list amount', async () => {
+      const { service, client } = makeService();
+      arrange(client);
+      const result = await service.create(makeActor(), {
+        leadId: 'lead-1',
+        unitId: 'unit-1',
+        negotiatedRate: 3800,
+      });
+      // 1250 sq.ft x 3800 = 4,750,000, against a 5,000,000 list price.
+      expect(client.booking.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: '4750000.00',
+            listAmount: '5000000.00',
+            negotiatedRate: '3800.00',
+            negotiatedAmount: '4750000.00',
+          }),
+        }),
+      );
+      expect(result.negotiatedAmount).toBe('4750000.00');
+      expect(result.listAmount).toBe('5000000.00');
+      expect(client.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'booking.create',
+            after: expect.objectContaining({
+              listAmount: '5000000.00',
+              negotiatedAmount: '4750000.00',
+            }),
+          }),
+        }),
+      );
     });
-    expect(client.booking.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ amount: '4250000.00' }) }),
-    );
 
-    // 2 off: a real disagreement, rejected.
-    setup();
-    await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 4250002 }),
-    ).rejects.toThrow(/must equal the unit price/);
+    it('without a rate: amount is the list amount and no negotiated fields are written', async () => {
+      const { service, client } = makeService();
+      arrange(client);
+      await service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' });
+      const data = (client.booking.create.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
+      expect(data['amount']).toBe('5000000.00');
+      expect(data['listAmount']).toBe('5000000.00');
+      expect(data).not.toHaveProperty('negotiatedRate');
+      expect(data).not.toHaveProperty('negotiatedAmount');
+    });
+
+    it('rejects a token larger than the NEGOTIATED total', async () => {
+      const { service, client } = makeService();
+      arrange(client);
+      await expect(
+        service.create(makeActor(), {
+          leadId: 'lead-1',
+          unitId: 'unit-1',
+          negotiatedRate: 3800,
+          // above 4.75M negotiated, below the 5M list price
+          tokenAmount: 4_900_000,
+        }),
+      ).rejects.toThrow(/cannot be more than the booking total/i);
+      expect(client.booking.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a negotiation that would exceed the booking cap', async () => {
+      const { service, client } = makeService();
+      arrange(client);
+      await expect(
+        service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', negotiatedRate: 5_000_000 }),
+      ).rejects.toThrow(/exceeds the booking cap/);
+      expect(client.booking.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a rate when the unit has no usable buildup sq.ft', async () => {
+      const { service, client } = makeService();
+      arrange(client);
+      client.unit.findUnique.mockResolvedValue({
+        id: 'unit-1',
+        unitNumber: 'A-101',
+        status: 'AVAILABLE',
+        price: { toString: () => '5000000.00' },
+        buildupSqft: { toString: () => '0' },
+      });
+      await expect(
+        service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', negotiatedRate: 3800 }),
+      ).rejects.toThrow(/Cannot compute the negotiated total/);
+      expect(client.booking.create).not.toHaveBeenCalled();
+    });
   });
 
   it('refuses to book a unit that has no usable price', async () => {
@@ -483,7 +529,7 @@ describe('create - start a new booking in HOLD state', () => {
     // A zero/priceless unit cannot produce an amount, and booking it at 0 would
     // be worse than failing: the figure would look deliberate.
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 0 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/no usable price/);
     expect(client.booking.create).not.toHaveBeenCalled();
   });
@@ -502,6 +548,7 @@ describe('create - start a new booking in HOLD state', () => {
       // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16): the server derives the booking
       // amount from this price, so the fixture must provide one.
       price: { toString: () => '5000000.00' },
+      buildupSqft: { toString: () => '1250.00' },
     });
     client.booking.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError(
@@ -511,7 +558,7 @@ describe('create - start a new booking in HOLD state', () => {
     );
 
     await expect(
-      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1', amount: 5_000_000 }),
+      service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' }),
     ).rejects.toThrow(/already has an active booking/);
   });
 });
@@ -527,7 +574,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       // T-TOKEN-GATE: approval requires the token amount to be recorded.
       tokenAmount: { toString: () => '500000.00' },
       approvedById: null,
@@ -544,7 +591,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -593,7 +640,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: { toString: () => '100000.00' },
       approvedById: null,
       createdAt: new Date(),
@@ -609,7 +656,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: { toString: () => '100000.00' },
       approvedById: 'admin-1',
       createdAt: new Date(),
@@ -642,7 +689,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -675,7 +722,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -702,7 +749,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -732,7 +779,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -748,7 +795,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -781,7 +828,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       // T-TOKEN-GATE: approval requires the token amount to be recorded, so this
       // row carries one to reach the role-gate assertion being tested.
       tokenAmount: { toString: () => '500000.00' },
@@ -799,7 +846,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       // Echoed consistently with the row we approved (which now records a token).
       tokenAmount: { toString: () => '500000.00' },
       approvedById: 'owner-1',
@@ -829,7 +876,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -858,7 +905,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -889,7 +936,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -913,7 +960,7 @@ describe('transition - advance booking state', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       approvedById: null,
       createdAt: new Date(),
@@ -1061,7 +1108,7 @@ describe('update - edit booking fields', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: { toString: () => '100000.00' },
       status: 'HOLD',
       approvedById: null,
@@ -1081,7 +1128,7 @@ describe('update - edit booking fields', () => {
     client.booking.findUnique.mockResolvedValue(bookingRow());
     client.booking.update.mockResolvedValue(
       bookingRow({
-        amount: { toString: () => '6000000.00' },
+        amount: { toString: () => '6000000.00' }, listAmount: { toString: () => '6000000.00' },
         tokenAmount: { toString: () => '200000.00' },
         notes: 'new note',
       }),
@@ -1210,7 +1257,7 @@ describe('update - edit booking fields', () => {
     });
     client.booking.create.mockResolvedValue({
       id: 'b-new', leadId: 'lead-1', unitId: 'unit-1', userId: 'tc-1',
-      amount: { toString: () => '5000000.00' }, tokenAmount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' }, tokenAmount: { toString: () => '5000000.00' },
       status: 'HOLD', approvedById: null, notes: null,
       createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
@@ -1233,7 +1280,7 @@ describe('delete - remove a booking (ADMIN/OWNER only)', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       tokenAmount: null,
       status: 'HOLD',
       approvedById: null,
@@ -1314,7 +1361,7 @@ describe('T-BOOK-LEADSYNC - lead.state follows the booking', () => {
       leadId: 'lead-1',
       unitId: 'unit-1',
       userId: 'tc-1',
-      amount: { toString: () => '5000000.00' },
+      amount: { toString: () => '5000000.00' }, listAmount: { toString: () => '5000000.00' },
       // T-TOKEN-GATE: a TOKEN booking must carry a recorded amount, or approval
       // is refused (owner instruction). These tests exercise the LEAD SYNC and
       // the role gate, so the row has to satisfy the token rule to reach them.
@@ -1460,6 +1507,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
       // T-TOKEN-GATE cap: the total must be a realistic figure - a token cannot
       // exceed it, and these tests use token amounts in the lakhs.
       amount: '5000000.00',
+      listAmount: '5000000.00',
       tokenAmount: null,
       approvedById: null,
       notes: null,
@@ -1477,6 +1525,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
       unitId: 'un1',
       userId: 'u-1',
       amount: '1000.00',
+      listAmount: '1000.00',
       tokenAmount: null,
       approvedById: null,
       notes: null,
@@ -1553,7 +1602,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeCancelService('HOLD');
     client.booking.findUnique.mockResolvedValue({
       id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
       notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1570,7 +1619,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeCancelService('HOLD');
     client.booking.findUnique.mockResolvedValue({
       id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1584,7 +1633,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeCancelService('HOLD');
     client.booking.findUnique.mockResolvedValue({
       id: 'bk1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: null, approvedById: null,
       notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1606,7 +1655,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1624,13 +1673,13 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
     client.booking.update.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4100000.00' },
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4100000.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1646,7 +1695,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'HOLD', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1663,7 +1712,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4000000.00' },
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '4000000.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1681,7 +1730,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1697,7 +1746,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '0.00' },
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '0.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1712,14 +1761,14 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
     // The visit cascade reads updated.leadId, so the update must echo a full row.
     client.booking.update.mockResolvedValue({
       id: 'b-1', status: 'APPROVED', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: { toString: () => '500000.00' },
       approvedById: 'admin-1', notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1740,13 +1789,13 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
     client.booking.update.mockResolvedValue({
       id: 'b-1', status: 'REJECTED', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4100000.00' }, tokenAmount: null,
+      amount: { toString: () => '4100000.00' }, listAmount: { toString: () => '4100000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-103' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1766,7 +1815,7 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '500000.00' },
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1782,13 +1831,13 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
     const { service, client } = makeServiceWithLeadSync();
     client.booking.findUnique.mockResolvedValue({
       id: 'b-1', status: 'TOKEN', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: null,
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: null,
       approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
     client.booking.update.mockResolvedValue({
       id: 'b-1', leadId: 'lead-1', unitId: 'u-1', userId: 'tc-1',
-      amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '777000.00' },
+      amount: { toString: () => '4200000.00' }, listAmount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '777000.00' },
       status: 'TOKEN', approvedById: null, notes: null, createdAt: new Date(), updatedAt: new Date(),
       lead: { name: 'L' }, unit: { unitNumber: 'A-101' }, user: { name: 'TC' }, approvedBy: null,
     });
@@ -1808,5 +1857,120 @@ describe('transition - a reason is required for CANCELLED/REJECTED', () => {
         tokenAmount: 0,
       } as never),
     ).rejects.toThrow(/greater than zero/i);
+  });
+});
+
+
+describe('resolveBookingPricing - pure derivation', () => {
+  const base = { unitNumber: 'A-101', listAmount: 5_000_000, buildupSqft: 1250 };
+
+  it('returns the list amount when un-negotiated', () => {
+    expect(resolveBookingPricing({ ...base, negotiatedRate: null })).toEqual({
+      amount: 5_000_000,
+      negotiatedRate: null,
+    });
+  });
+
+  it('returns buildup x rate when negotiated (above or below list)', () => {
+    expect(resolveBookingPricing({ ...base, negotiatedRate: 3800 }).amount).toBe(4_750_000);
+    expect(resolveBookingPricing({ ...base, negotiatedRate: 4200 }).amount).toBe(5_250_000);
+  });
+
+  it('throws for a zero/negative rate and for a zero buildup', () => {
+    expect(() => resolveBookingPricing({ ...base, negotiatedRate: 0 })).toThrow(/negotiated total/);
+    expect(() => resolveBookingPricing({ ...base, negotiatedRate: -5 })).toThrow(/negotiated total/);
+    expect(() => resolveBookingPricing({ ...base, buildupSqft: 0, negotiatedRate: 10 })).toThrow(
+      /negotiated total/,
+    );
+  });
+});
+
+describe('update - negotiated rate edits', () => {
+  function row(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'tc-1',
+      amount: { toString: () => '5000000.00' },
+      listAmount: { toString: () => '5000000.00' },
+      negotiatedRate: null,
+      negotiatedAmount: null,
+      tokenAmount: null,
+      status: 'HOLD',
+      approvedById: null,
+      notes: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-101' },
+      user: { name: 'TC 1' },
+      approvedBy: null,
+      ...overrides,
+    };
+  }
+  const unit = { unitNumber: 'A-101', buildupSqft: { toString: () => '1250.00' } };
+
+  it('sets a rate: derives amount + negotiatedAmount server-side', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(row());
+    client.unit.findUnique.mockResolvedValue(unit);
+    client.booking.update.mockResolvedValue(row());
+    await service.update(makeActor(), 'b-1', { negotiatedRate: 3800 });
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amount: '4750000.00',
+          negotiatedRate: '3800.00',
+          negotiatedAmount: '4750000.00',
+        }),
+      }),
+    );
+  });
+
+  it('clearing the rate (null) falls back to the list amount', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(
+      row({
+        amount: { toString: () => '4750000.00' },
+        negotiatedRate: { toString: () => '3800.00' },
+        negotiatedAmount: { toString: () => '4750000.00' },
+      }),
+    );
+    client.unit.findUnique.mockResolvedValue(unit);
+    client.booking.update.mockResolvedValue(row());
+    await service.update(makeActor(), 'b-1', { negotiatedRate: null });
+    expect(client.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amount: '5000000.00',
+          negotiatedRate: null,
+          negotiatedAmount: null,
+        }),
+      }),
+    );
+  });
+
+  it('refuses a manual amount on a negotiated booking', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(
+      row({ negotiatedRate: { toString: () => '3800.00' } }),
+    );
+    await expect(service.update(makeActor(), 'b-1', { amount: 1_000_000 })).rejects.toThrow(
+      /negotiated rate/,
+    );
+    expect(client.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('lowering the rate below an existing token is refused', async () => {
+    const { service, client } = makeServiceWithLeadSync();
+    client.booking.findUnique.mockResolvedValue(
+      row({ tokenAmount: { toString: () => '4900000.00' } }),
+    );
+    client.unit.findUnique.mockResolvedValue(unit);
+    await expect(service.update(makeActor(), 'b-1', { negotiatedRate: 3800 })).rejects.toThrow(
+      /cannot be more than the booking total/i,
+    );
+    expect(client.booking.update).not.toHaveBeenCalled();
   });
 });

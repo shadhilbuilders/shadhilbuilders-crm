@@ -107,6 +107,14 @@ type Fixture = {
 const PROBE_UNIT_A_ID = 'ydrwwx6zzyg7qnb7a9toe5bz';
 const PROBE_UNIT_B_ID = 'uwdjvvo0k5akc5hg5hm6pvci';
 
+// T-VISIT-LEAD-SYNC (2026-10-09): `SiteVisit_one_open_per_lead` is a DB-level
+// partial unique index (one SCHEDULED visit per lead). Fixture lead A already
+// carries one (visitA, below), so the SiteVisit INSERT probe needs its OWN
+// lead with no open visit - same reasoning as PROBE_UNIT_A/B_ID for Booking's
+// one_active_booking_per_unit. Without this every allowed role's INSERT probe
+// fails with a P2002 constraint error instead of the RLS outcome under test.
+const SITE_VISIT_PROBE_LEAD_ID = '1cee7968b0de17724d9fe528';
+
 /**
  * Build a fixture with two orgs, two leads, and one row of every business
  * table linked to each lead. Idempotent: re-running overwrites by cuid-
@@ -274,6 +282,8 @@ async function buildFixture(): Promise<Fixture> {
       phaseId: phaseAId,
       unitNumber: 'FA-001',
       bhk: 3,
+      buildupSqft: '1000.00',
+      pricePerSqft: '10000.00',
       price: '10000000.00',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -286,6 +296,8 @@ async function buildFixture(): Promise<Fixture> {
       phaseId: phaseBId,
       unitNumber: 'FB-001',
       bhk: 3,
+      buildupSqft: '1000.00',
+      pricePerSqft: '10000.00',
       price: '10000000.00',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -304,6 +316,8 @@ async function buildFixture(): Promise<Fixture> {
       phaseId: phaseAId,
       unitNumber: 'FA-002',
       bhk: 3,
+      buildupSqft: '1000.00',
+      pricePerSqft: '10000.00',
       price: '10000000.00',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -316,6 +330,8 @@ async function buildFixture(): Promise<Fixture> {
       phaseId: phaseBId,
       unitNumber: 'FB-002',
       bhk: 3,
+      buildupSqft: '1000.00',
+      pricePerSqft: '10000.00',
       price: '10000000.00',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -365,6 +381,25 @@ async function buildFixture(): Promise<Fixture> {
       ownerId: teleBId,
       ownerType: 'TELECALLER',
       projectId: projectBId,
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    },
+  });
+
+  // Same RLS profile as leadA (team A, owned by teleA) so the SiteVisit INSERT
+  // probe sees identical permission outcomes - it just needs a lead with no
+  // open visit yet. See SITE_VISIT_PROBE_LEAD_ID above.
+  await adminPrisma.lead.upsert({
+    where: { id: SITE_VISIT_PROBE_LEAD_ID },
+    update: { teamId: teamAId, ownerId: teleAId, ownerType: 'TELECALLER', projectId: projectAId },
+    create: {
+      id: SITE_VISIT_PROBE_LEAD_ID,
+      name: 'Fixture Lead A (SiteVisit INSERT probe)',
+      phone: '9900000003',
+      state: 'NEW',
+      teamId: teamAId,
+      ownerId: teleAId,
+      ownerType: 'TELECALLER',
+      projectId: projectAId,
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
   });
@@ -452,6 +487,7 @@ async function buildFixture(): Promise<Fixture> {
       unitId: unitAId,
       userId: execAId,
       amount: '100000.00',
+      listAmount: '100000.00',
       status: 'HOLD',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -465,6 +501,7 @@ async function buildFixture(): Promise<Fixture> {
       unitId: unitBId,
       userId: execBId,
       amount: '100000.00',
+      listAmount: '100000.00',
       status: 'HOLD',
       organizationId: 'ceid01lpfe1esm8jwsxid41k28',
     },
@@ -614,6 +651,9 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
   await adminPrisma.message.deleteMany({ where: { id: { in: all('Message') } } });
   await adminPrisma.booking.deleteMany({ where: { id: { in: all('Booking') } } });
   await adminPrisma.siteVisit.deleteMany({ where: { id: { in: all('SiteVisit') } } });
+  // The SiteVisit INSERT probe's own lead (not in rowIds, by id rather than
+  // name since unlike the Lead probe below it doesn't share a fixed name).
+  await adminPrisma.siteVisit.deleteMany({ where: { leadId: SITE_VISIT_PROBE_LEAD_ID } });
   await adminPrisma.activity.deleteMany({ where: { id: { in: all('Activity') } } });
   await adminPrisma.auditLog.deleteMany({ where: { id: { in: all('AuditLog') } } });
   // Rows the INSERT probes created during the run, which are NOT in rowIds.
@@ -1052,9 +1092,18 @@ async function runCase(
             },
           });
         } else if (table === 'SiteVisit') {
+          // T-VISIT-LEAD-SYNC: `SiteVisit_one_open_per_lead` forbids a second
+          // SCHEDULED visit per lead. leadA already carries the fixture's own
+          // visit, so this probe uses a dedicated lead with the SAME RLS
+          // profile (SITE_VISIT_PROBE_LEAD_ID) and clears any SCHEDULED row a
+          // PRIOR allowed role left there in this run - mirrors the Booking
+          // probe's `deleteMany` before `create`, for the same reason.
+          await tx.siteVisit.deleteMany({
+            where: { leadId: SITE_VISIT_PROBE_LEAD_ID, status: 'SCHEDULED' },
+          });
           await tx.siteVisit.create({
             data: {
-              leadId: fixture.leadAId,
+              leadId: SITE_VISIT_PROBE_LEAD_ID,
               userId: ctx.userId,
               scheduledFor: new Date(now.getTime() + 86400000),
               status: 'SCHEDULED',
@@ -1090,6 +1139,7 @@ async function runCase(
               unitId: probeUnit,
               userId: ctx.userId,
               amount: '1.00',
+              listAmount: '1.00',
               status: 'HOLD',
               organizationId: 'ceid01lpfe1esm8jwsxid41k28',
             },
@@ -1891,6 +1941,78 @@ describe('Team - RLS enable + policies (SELECT any-authenticated, write admin-on
           team: { delete: (a: { where: { id: string } }) => Promise<unknown> };
         }).team.delete({ where: { id: created.id } }),
       );
+    },
+  );
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Activity INSERT - lead-timeline writes (every lead action writes a row inside
+// its own transaction, so a role the policy rejects would fail that action).
+// Covers owner / co-owner / team manager / other-team manager / unrelated user,
+// plus OWNER (downcast to ADMIN). Never skipped silently: DATABASE_AVAILABLE is
+// hard-failed by the suite preamble when RLS_MATRIX_REQUIRED=true.
+// ────────────────────────────────────────────────────────────────────────────
+describe('Activity INSERT - timeline writers per role x relation to the lead', () => {
+  const ORG = 'ceid01lpfe1esm8jwsxid41k28';
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+    // execA becomes co-owner of lead A (leadA owner = teleA).
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: fixture.execAId },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    await adminPrisma.activity.deleteMany({
+      where: { leadId: fixture.leadAId, body: 'timeline-probe' },
+    });
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: null },
+    });
+  }, 30_000);
+
+  const cases: ReadonlyArray<{
+    name: string;
+    ctx: (f: Fixture) => RlsContext;
+    allowed: boolean;
+  }> = [
+    { name: 'owner (TELECALLER)', allowed: true, ctx: (f) => ({ userId: f.teleAId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'co-owner (SALES_EXEC)', allowed: true, ctx: (f) => ({ userId: f.execAId, role: 'SALES_EXEC', organizationId: ORG }) },
+    { name: 'team manager (MANAGER)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'ADMIN', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'ADMIN', organizationId: ORG }) },
+    { name: 'OWNER (downcast to ADMIN)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'OWNER', organizationId: ORG }) },
+    { name: 'other-team MANAGER', allowed: false, ctx: (f) => ({ userId: f.managerBId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'unrelated TELECALLER', allowed: false, ctx: (f) => ({ userId: f.teleBId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'unrelated SALES_EXEC', allowed: false, ctx: (f) => ({ userId: f.execBId, role: 'SALES_EXEC', organizationId: ORG }) },
+  ];
+
+  it.skipIf(!DATABASE_AVAILABLE).each(cases)(
+    '$name -> allowed=$allowed',
+    { timeout: 30_000 },
+    async ({ ctx, allowed }) => {
+      const context = ctx(fixture);
+      const attempt = withRlsContext(prisma, context, async (tx) =>
+        tx.activity.create({
+          data: {
+            leadId: fixture.leadAId,
+            userId: context.userId,
+            type: 'ASSIGNMENT',
+            body: 'timeline-probe',
+            organizationId: ORG,
+          },
+        }),
+      );
+      if (allowed) {
+        await expect(attempt).resolves.toBeDefined();
+      } else {
+        await expect(attempt).rejects.toBeDefined();
+      }
     },
   );
 });

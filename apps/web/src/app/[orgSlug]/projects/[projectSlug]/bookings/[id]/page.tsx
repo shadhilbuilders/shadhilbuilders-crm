@@ -44,7 +44,7 @@ import {
   type TransitionFormValues,
 } from '@/components/bookings/BookingTransitionConfirmStep';
 import { useBooking, useUpdateBooking } from '@/hooks/queries/crm';
-import { currencyIntl, dateIntl } from '@/lib/format';
+import { currencyIntl, dateIntl, formatBalanceDue } from '@/lib/format';
 import { labelFor, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
@@ -58,6 +58,9 @@ type BookingRow = {
   unitNumber?: string;
   userName?: string;
   amount?: string;
+  listAmount?: string;
+  negotiatedRate?: string | null;
+  negotiatedAmount?: string | null;
   tokenAmount?: string | null;
   status?: string;
   approvedByName?: string | null;
@@ -210,9 +213,16 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
     { label: 'Unit', value: booking.unitNumber ?? null },
     { label: 'Owner', value: booking.userName ?? null },
     { label: 'Approved by', value: booking.approvedByName ?? null },
+    { label: 'Unit price', value: formatMoney(booking.listAmount) },
+    {
+      label: 'Negotiated rate (per sq.ft)',
+      value: formatMoney(booking.negotiatedRate ?? undefined),
+    },
+    { label: 'Negotiated amount', value: formatMoney(booking.negotiatedAmount ?? undefined) },
     { label: 'Total amount', value: formatMoney(booking.amount) },
     { label: 'Token amount', value: formatMoney(booking.tokenAmount ?? undefined) },
   ];
+  const balanceDue = formatBalanceDue(booking.amount, booking.tokenAmount);
 
   return (
     <Card data-qa="booking-info-card">
@@ -262,6 +272,15 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
             </dd>
           </div>
         </dl>
+        <div
+          className="border-primary/30 bg-primary/10 flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+          data-qa="booking-balance-due"
+        >
+          <span className="text-primary text-xs font-semibold tracking-wide uppercase">
+            Balance to pay
+          </span>
+          <span className="text-primary text-lg font-bold tabular-nums">{balanceDue}</span>
+        </div>
         {typeof booking.notes === 'string' && booking.notes.length > 0 ? (
           <div className="border-border border-t pt-3">
             <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">

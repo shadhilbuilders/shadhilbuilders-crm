@@ -4,7 +4,8 @@
 //   1. session pending          → <Skeleton />
 //   2. user not authorized (MANAGER / TELECALLER / SALES_EXEC) → "Not authorized"
 //   3. useTeams isLoading       → <Skeleton variant="table" />
-//   4. useTeams data set        → DataTable rows (team, manager, member count)
+//   4. useTeams data set        → DataTable rows (team, manager, member count,
+//      "Reports to" = the org OWNER, T-REPORTS-TO-OWNER 2026-10-06)
 //   5. useTeams error           → inline retry branch
 //   6. empty                    → "No teams yet."
 //
@@ -128,6 +129,7 @@ describe('TeamsPage - org teams list', () => {
           managerId: 'mgr-1',
           managerName: 'Maya Rao',
           autoAssignLeads: true,
+          ownerName: 'Deepak Owner',
         },
         {
           id: 't-2',
@@ -137,6 +139,7 @@ describe('TeamsPage - org teams list', () => {
           managerId: null,
           managerName: null,
           autoAssignLeads: false,
+          ownerName: 'Deepak Owner',
         },
       ],
       isLoading: false,
@@ -157,6 +160,11 @@ describe('TeamsPage - org teams list', () => {
     expect(html).toContain('Auto-assign');
     expect(html).toContain('data-qa="team-auto-assign-t-2"');
     expect(html).toContain('Manager first');
+    // T-REPORTS-TO-OWNER: a led team shows the org owner's name; an unled
+    // team shows "—" even though `ownerName` is populated, since there's
+    // no manager on that team to report to the owner yet.
+    expect(html).toContain('Deepak Owner');
+    expect(html).toContain('—');
   });
 
   it('error surfaces inline', async () => {

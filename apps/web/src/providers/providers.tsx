@@ -29,7 +29,7 @@ export const Providers = ({ children }: ProvidersProps) => {
   return (
     <NextThemeProvider
       attribute="class"
-      defaultTheme="system"
+      defaultTheme="light"
       enableSystem
       disableTransitionOnChange
     >

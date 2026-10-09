@@ -11,6 +11,7 @@ import {
   CreateSiteVisitDtoSchema,
   SendMessageDtoSchema,
   CreateBookingDtoSchema,
+  UpdateBookingDtoSchema,
   BookingTransitionDtoSchema,
   TransitionReasonRequired,
   // T-TOKEN-GATE cap: the shared comparison, exercised directly.
@@ -284,22 +285,32 @@ describe('@shadhil/api-types - chat DTOs', () => {
 });
 
 describe('@shadhil/api-types - booking DTOs', () => {
-  it('CreateBookingDto accepts positive amount', () => {
+  it('CreateBookingDto accepts a negotiated rate and carries no client amount', () => {
     const r = CreateBookingDtoSchema.parse({
       leadId: 'cl1234567890abcdefghij',
       unitId: 'cl9999999999abcdefghij',
-      amount: 75_00_000,
+      negotiatedRate: 3900,
+      // A client-sent amount is NOT part of the contract: the server derives it.
+      amount: 1,
     });
-    expect(r.amount).toBe(75_00_000);
+    expect(r.negotiatedRate).toBe(3900);
+    expect(r).not.toHaveProperty('amount');
   });
-  it('CreateBookingDto rejects negative amount', () => {
-    expect(() =>
-      CreateBookingDtoSchema.parse({
-        leadId: 'cl1234567890abcdefghij',
-        unitId: 'cl9999999999abcdefghij',
-        amount: -1,
-      }),
-    ).toThrow();
+  it('CreateBookingDto rejects a non-positive negotiated rate', () => {
+    for (const negotiatedRate of [0, -1]) {
+      expect(() =>
+        CreateBookingDtoSchema.parse({
+          leadId: 'cl1234567890abcdefghij',
+          unitId: 'cl9999999999abcdefghij',
+          negotiatedRate,
+        }),
+      ).toThrow();
+    }
+  });
+  it('UpdateBookingDto: amount and negotiatedRate are mutually exclusive', () => {
+    expect(UpdateBookingDtoSchema.safeParse({ amount: 100, negotiatedRate: 5 }).success).toBe(false);
+    expect(UpdateBookingDtoSchema.safeParse({ negotiatedRate: null }).success).toBe(true);
+    expect(UpdateBookingDtoSchema.safeParse({ amount: 100 }).success).toBe(true);
   });
 
   // T-BOOK-REASON: the DTO's comment always claimed a reason was required for a
@@ -361,28 +372,15 @@ describe('@shadhil/api-types - booking DTOs', () => {
     }
   });
 
-  it('T-TOKEN-GATE cap: a token larger than the total is rejected on CREATE', () => {
-    // Owner instruction: "if tokenAmount provided that shouldn't be greater than
-    // totalAmount". A token is a PART payment of this booking, so both figures are
-    // in the payload and the rule is checkable right here.
-    const over = CreateBookingDtoSchema.safeParse({
-      leadId: 'cmabcdefghijklmnopqrstuv',
-      unitId: 'cmabcdefghijklmnopqrstuv',
-      amount: 4_100_000,
-      tokenAmount: 5_000_000,
-    });
-    expect(over.success).toBe(false);
-    if (!over.success) {
-      // The issue must land on `tokenAmount` so the form highlights the value to fix.
-      expect(over.error.issues.map((i) => i.path.join('.'))).toContain('tokenAmount');
-    }
-    // Exactly equal is allowed: a full payment IS a payment.
+  it('T-TOKEN-GATE cap on CREATE moved to BookingsService', () => {
+    // The booking total is derived server-side (unit price or negotiated rate x
+    // buildup), so the DTO can no longer compare token vs total. The service
+    // enforces it - see bookings.service.test.ts "token cap".
     expect(
       CreateBookingDtoSchema.safeParse({
         leadId: 'cmabcdefghijklmnopqrstuv',
         unitId: 'cmabcdefghijklmnopqrstuv',
-        amount: 4_100_000,
-        tokenAmount: 4_100_000,
+        tokenAmount: 5_000_000,
       }).success,
     ).toBe(true);
   });
@@ -579,21 +577,22 @@ describe('@shadhil/api-types - inventory DTOs', () => {
       bhk: 3,
       facing: 'North',
       sqft: 1450,
-      price: 5_000_000,
+      buildupSqft: 1250.5,
+      pricePerSqft: 4000,
     });
     expect(r.unitNumber).toBe('A-101');
-    expect(r.price).toBe(5_000_000);
+    expect(r.buildupSqft).toBe(1250.5);
+    expect(r.pricePerSqft).toBe(4000);
+    // The derived total is never accepted from the client.
+    expect(r).not.toHaveProperty('price');
   });
 
-  it('CreateUnitDto rejects a non-positive price', () => {
-    expect(() =>
-      CreateUnitDtoSchema.parse({
-        phaseId: PHASE_ID,
-        unitNumber: 'A-101',
-        bhk: 3,
-        price: 0,
-      }),
-    ).toThrow();
+  it('CreateUnitDto rejects non-positive buildup sq.ft or per sq.ft price', () => {
+    const base = { phaseId: PHASE_ID, unitNumber: 'A-101', bhk: 3 };
+    expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 0, pricePerSqft: 10 })).toThrow();
+    expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 10, pricePerSqft: 0 })).toThrow();
+    expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 10 })).toThrow();
+    expect(() => CreateUnitDtoSchema.parse({ ...base, pricePerSqft: 10 })).toThrow();
   });
 
   it('CreateUnitDto rejects bhk outside 1-10', () => {
@@ -602,7 +601,8 @@ describe('@shadhil/api-types - inventory DTOs', () => {
         phaseId: PHASE_ID,
         unitNumber: 'A-101',
         bhk: 0,
-        price: 1,
+        buildupSqft: 1,
+        pricePerSqft: 1,
       }),
     ).toThrow();
   });
@@ -613,7 +613,8 @@ describe('@shadhil/api-types - inventory DTOs', () => {
         phaseId: 'seed-phase-metro-a',
         unitNumber: 'A-101',
         bhk: 3,
-        price: 1,
+        buildupSqft: 1,
+        pricePerSqft: 1,
       }),
     ).toThrow(/cuid2/i);
   });

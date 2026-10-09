@@ -39,7 +39,8 @@ import type {
 // T-VISIT-CLOSE (2026-09-28): the shared "is this lead finished?" predicate.
 // Same source as the cascade that cancels open visits, so the guard here and the
 // cascade in leads/bookings cannot disagree about what "settled" means.
-import { isTerminalLeadState } from '@shadhil/api-types';
+import { isTerminalLeadState, leadStateLabel } from '@shadhil/api-types';
+import { formatVisitWhen, recordLeadActivity, withDetail } from '../leads/lead-activity';
 // T-VISIT-NO-SHOW-SCHEDULING (2026-09-30): the ONE list of lead states that may
 // accept a visit, plus the states a new visit advances the lead out of. Both are
 // imported rather than restated here so the guard, the lead picker and the
@@ -49,12 +50,24 @@ import {
   VISIT_SCHEDULING_ADVANCES_FROM,
 } from '@shadhil/api-types';
 
+import { OPEN_VISIT_STATUSES } from '@shadhil/api-types';
+
 import { LeadsService } from '../leads/leads.service';
+import { resolveVisitStakeholders } from './visit-recipients';
 import { PrismaService } from '../prisma/prisma.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamAccessService } from '../teams/team-access.service';
 
 import { canTransition } from './visits.state-machine';
+
+/** Timeline wording per recorded visit outcome. */
+const VISIT_OUTCOME_SENTENCE: Readonly<Record<string, string>> = {
+  COMPLETED: 'Visit completed',
+  NO_SHOW: 'Visit marked no-show',
+  CANCELLED: 'Visit cancelled',
+  RESCHEDULED: 'Visit marked rescheduled',
+  SCHEDULED: 'Visit scheduled',
+};
 // The LEAD state machine, aliased because this module already imports a
 // `canTransition` of its own (the visit one). The two are different graphs with
 // different role lanes and both are needed here: the visit guard decides whether
@@ -417,6 +430,19 @@ export class VisitsService {
           lead,
         );
 
+        // One OPEN (SCHEDULED) visit per lead. Backed by the partial unique
+        // index SiteVisit_one_open_per_lead; checked here so the operator gets
+        // a clear 409 instead of a raw constraint error.
+        const liveVisit = await tx.siteVisit.findFirst({
+          where: { leadId: dto.leadId, status: { in: [...OPEN_VISIT_STATUSES] } },
+          select: { id: true, scheduledFor: true },
+        });
+        if (liveVisit !== null) {
+          throw new ConflictException(
+            `Lead already has a scheduled visit (${liveVisit.scheduledFor.toISOString()}). Reschedule that visit instead of booking a second one.`,
+          );
+        }
+
         // ── Supersede the lead's outstanding no-show visit ────────────────────
         //
         // T-VISIT-NO-SHOW-SCHEDULING (2026-09-30). Before this, create() only
@@ -445,17 +471,11 @@ export class VisitsService {
         // moves to RESCHEDULED, outcome keeps saying what happened - the same
         // split `reschedule()` leaves behind.
         //
-        // WHAT IS DELIBERATELY NOT CLOSED: a live SCHEDULED or RESCHEDULED row
-        // (the rule is "supersede a NO_SHOW row", nothing wider). In this
-        // codebase both are OPEN work - `isUpcomingVisit`
-        // (apps/web/src/lib/visit-status.ts) and `OPEN_VISIT_STATUSES`
-        // (close-visits-for-lead.ts) both mean SCHEDULED | RESCHEDULED - so a
-        // live visit is a real appointment a customer is expecting, and closing
-        // it here would silently cancel it. A `VISIT_SCHEDULED` lead booking a
-        // SECOND visit therefore still leaves two open rows, exactly as before
-        // this change: that ambiguity is the reschedule endpoint's to resolve
-        // (`docs/designs/2026-09-16-work-dashboard-telecaller-queue.md` says so),
-        // and is pinned by a test below so it cannot drift silently.
+        // A live SCHEDULED visit is NOT closed here: it is refused (below).
+        // T-VISIT-LEAD-SYNC (2026-10-09) REVERSES the old carve-out that let a
+        // second visit be booked "leaving two open rows". Those duplicates are
+        // what rendered the same lead twice in the dashboard's Today's visits.
+        // One open visit per lead; moving it is `reschedule()`'s job.
         if (lead.state === 'NO_SHOW') {
           const stale = await tx.siteVisit.findMany({
             where: { leadId: dto.leadId, status: 'NO_SHOW' },
@@ -523,9 +543,10 @@ export class VisitsService {
         // transaction above has already locked this Lead row (the co-owner
         // grant), so two connections on one row self-deadlock into a 30s
         // "expired transaction". See transitionInTransaction's doc comment.
-        if (
-          (VISIT_SCHEDULING_ADVANCES_FROM as readonly string[]).includes(lead.state)
-        ) {
+        const advancesLead = (
+          VISIT_SCHEDULING_ADVANCES_FROM as readonly string[]
+        ).includes(lead.state);
+        if (advancesLead) {
           await this.leadsService.transitionInTransaction(
             actor,
             {
@@ -534,6 +555,8 @@ export class VisitsService {
               notes: `Visit scheduled for ${created.scheduledFor.toISOString()}`,
             },
             tx as unknown as PrismaClient,
+            // This visit writes its own richer VISIT row below: one action, one row.
+            'skip',
           );
         }
 
@@ -564,12 +587,26 @@ export class VisitsService {
           },
         });
 
-        // Notify the assigned exec that a site visit was scheduled for them.
-        this.emitBestEffort(created.userId, {
-          type: 'visit.scheduled',
-          title: 'Site visit scheduled',
-          body: `A site visit for ${created.lead.name} was scheduled for ${created.scheduledFor.toISOString()}.`,
+        await recordLeadActivity(tx, actor, {
           leadId: created.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `Visit booked for ${formatVisitWhen(created.scheduledFor)} with ${created.user.name}${
+              advancesLead ? `; lead moved to ${leadStateLabel('VISIT_SCHEDULED')}` : ''
+            }`,
+            created.notes,
+          ),
+        });
+
+        // Notify everyone accountable (exec, lead owner, team manager, org
+        // owner). Best-effort and AFTER the write: a notification failure must
+        // never undo a booked visit. The actor is skipped - they just did it.
+        void this.scheduleNotifications(actor, {
+          visitId: created.id,
+          leadId: created.leadId,
+          leadName: created.lead.name,
+          assigneeId: created.userId,
+          scheduledFor: created.scheduledFor,
         });
 
         return {
@@ -893,6 +930,7 @@ export class VisitsService {
                   `Visit ${dto.outcome.toLowerCase()} by ${assigneeName(updated.userId, actor)}`,
               },
               tx as unknown as PrismaClient,
+              'skip',
             );
             leadSynced = true;
           } else {
@@ -929,6 +967,19 @@ export class VisitsService {
             after: { status: updated.status, outcome: updated.outcome },
             reason: `Visit outcome set to ${updated.status} by ${actor.email} (${actor.role})`,
           },
+        });
+
+        await recordLeadActivity(tx, actor, {
+          leadId: updated.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `${VISIT_OUTCOME_SENTENCE[dto.outcome] ?? `Visit ${dto.outcome.toLowerCase()}`} (visit on ${formatVisitWhen(updated.scheduledFor)}, ${updated.user.name})${
+              leadSynced && leadTarget !== null
+                ? `; lead moved to ${leadStateLabel(leadTarget)}`
+                : ''
+            }`,
+            dto.notes,
+          ),
         });
 
         // 2026-09-29 (owner request): the SENDER of an outcome is not the only
@@ -1128,7 +1179,7 @@ export class VisitsService {
         // From RESCHEDULED/NO_SHOW the edge back to VISIT_SCHEDULED exists, so a
         // lead left there by an earlier outcome is normalised here too.
         // VISIT_REQUESTED -> VISIT_SCHEDULED is legal and is what scheduling does.
-        // Terminal and advanced states (WON/LOST/RNR/VISITED/NEGOTIATION/…) are
+        // Terminal and advanced states (WON/LOST/RNR/VISITED/NEGOTIATION/...) are
         // left alone: those edges do not exist, and forcing one would throw and
         // fail the reschedule itself.
         //
@@ -1169,12 +1220,24 @@ export class VisitsService {
               notes: `Visit rescheduled to ${created.scheduledFor.toISOString()}`,
             },
             tx as unknown as PrismaClient,
+            'skip',
           );
           leadSynced = true;
         } else {
           // Kept for the response's `leadSyncNote` - see the return value.
           leadSyncSkippedFrom = rescheduleLeadState;
         }
+
+        await recordLeadActivity(tx, actor, {
+          leadId: created.leadId,
+          type: 'VISIT',
+          body: withDetail(
+            `Visit rescheduled to ${formatVisitWhen(created.scheduledFor)} with ${created.user.name}${
+              leadSynced ? `; lead moved to ${leadStateLabel('VISIT_SCHEDULED')}` : ''
+            }`,
+            dto.notes,
+          ),
+        });
 
         return {
           id: created.id,
@@ -1296,6 +1359,38 @@ export class VisitsService {
       // Best-effort: a failed recipient lookup must not break the write, and
       // must not silently notify nobody-with-an-error either.
       return [];
+    }
+  }
+
+  /** Tell exec, lead owner, team manager and org owner a visit was scheduled. */
+  private async scheduleNotifications(
+    actor: JwtPayload,
+    ctx: {
+      visitId: string;
+      leadId: string;
+      leadName: string;
+      assigneeId: string;
+      scheduledFor: Date;
+    },
+  ): Promise<void> {
+    try {
+      const audience = await resolveVisitStakeholders(this.client, {
+        organizationId: actor.organizationId,
+        leadId: ctx.leadId,
+        assigneeId: ctx.assigneeId,
+      });
+      this.emitToMany(
+        audience.filter((id) => id !== actor.sub),
+        {
+          type: 'visit.scheduled',
+          title: `Site visit scheduled: ${ctx.leadName}`,
+          body: `Visit on ${formatVisitWhen(ctx.scheduledFor)}, booked by ${actor.email}.`,
+          leadId: ctx.leadId,
+        },
+      );
+    } catch (error) {
+      // Best-effort by design, but never silent: leave a trace for operators.
+      console.error(`visit.scheduled notification failed for visit ${ctx.visitId}`, error);
     }
   }
 

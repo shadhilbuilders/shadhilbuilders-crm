@@ -129,9 +129,17 @@ export default function TeamRosterPage() {
           { label: team?.name ?? 'Team' },
         ]}
         subtitle={
-          team?.manager
-            ? `Managed by ${team.manager.name}.`
-            : 'No manager assigned.'
+          team
+            ? [
+                team.manager ? `Managed by ${team.manager.name}.` : 'No manager assigned.',
+                // T-REPORTS-TO-OWNER (2026-10-06): the team's manager
+                // reports to the org OWNER - fixed, so this is always the
+                // same answer, not per-team state.
+                team.owner ? `Reports to ${team.owner.name}.` : null,
+              ]
+                .filter(Boolean)
+                .join(' ')
+            : undefined
         }
         action={
           teamAsListItem !== null ? (
@@ -198,6 +206,8 @@ export default function TeamRosterPage() {
           teamName={team.name}
           members={team.members}
           managerId={team.manager?.id ?? null}
+          managerName={team.manager?.name ?? null}
+          ownerName={team.owner?.name ?? null}
         />
       )}
     </div>
@@ -374,11 +384,15 @@ function MemberCard({
   teamName,
   member,
   managerId,
+  managerName,
+  ownerName,
 }: {
   teamId: string;
   teamName: string;
   member: TeamMemberRow;
   managerId: string | null;
+  managerName: string | null;
+  ownerName: string | null;
 }) {
   return (
     <TeamRosterMemberRow
@@ -386,6 +400,8 @@ function MemberCard({
       teamName={teamName}
       member={member}
       managerId={managerId}
+      managerName={managerName}
+      ownerName={ownerName}
       // Admin/Owner can remove from any org team (authorization matrix);
       // the manager row is still excluded inside the shared component.
       canRemove
@@ -473,12 +489,16 @@ function RosterTable({
   teamName,
   members,
   managerId,
+  managerName,
+  ownerName,
 }: {
   orgSlug: string | null;
   teamId: string;
   teamName: string;
   members: TeamMemberRow[];
   managerId: string | null;
+  managerName: string | null;
+  ownerName: string | null;
 }) {
   const [search, setSearch] = useState('');
   const columns = useMemo<DataTableColumnDef<TeamMemberRow>[]>(
@@ -492,12 +512,14 @@ function RosterTable({
             teamName={teamName}
             member={row.original}
             managerId={managerId}
+            managerName={managerName}
+            ownerName={ownerName}
           />
         ),
         enableSorting: true,
       },
     ],
-    [teamId, teamName, managerId],
+    [teamId, teamName, managerId, managerName, ownerName],
   );
 
   return (

@@ -11,10 +11,11 @@
 //     visible on desktop, per Wireframe #5).
 //   - Lead info card shows the full detail row: name, phone, email,
 //     source, status badge, owner, co-owner, created/updated.
-//   - Timeline renders the activity rows (oldest → newest) with the
+//   - Timeline renders the activity rows (newest first) with the
 //     acting user's name joined in ("First call (Asha)").
-import { Card, CardContent, CardHeader, CardTitle, TypographyP } from '@paalstack/react-ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
+import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
 import { LeadChatPane } from '@/components/shared/LeadChatPane';
@@ -32,7 +33,8 @@ import { labelFor } from '@/lib/labels';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { projectHref } from '@/lib/nav';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
-import type { LeadActivity, LeadDetail } from '@shadhil/api-types';
+import type { LeadDetail } from '@shadhil/api-types';
+import { LeadTimeline } from '@/components/leads/lead-timeline';
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
@@ -44,6 +46,16 @@ export default function LeadDetailPage() {
 
   const leadQuery = useLead(leadId);
   const activitiesQuery = useLeadActivities(leadId);
+
+  // Pages arrive newest-first; each page is oldest-first. Reverse each page so
+  // the feed reads newest -> oldest, with older pages appended below.
+  const activities = useMemo(
+    () =>
+      activitiesQuery.data === undefined
+        ? undefined
+        : activitiesQuery.data.pages.flatMap((p) => [...p.items].reverse()),
+    [activitiesQuery.data],
+  );
 
   const lead = leadQuery.data;
   const leadName = typeof lead?.name === 'string' ? lead.name : 'Detail';
@@ -76,7 +88,10 @@ export default function LeadDetailPage() {
             <LeadVisitPanel lead={lead} />
             <LeadTimeline
               leadName={lead.name}
-              activities={activitiesQuery.data}
+              activities={activities}
+              hasMore={activitiesQuery.hasNextPage === true}
+              isLoadingMore={activitiesQuery.isFetchingNextPage}
+              onLoadMore={() => void activitiesQuery.fetchNextPage()}
               isLoading={activitiesQuery.isLoading}
             />
           </div>
@@ -144,73 +159,6 @@ function LeadInfoCard({ lead }: { lead: LeadDetail }) {
             <dd className="text-sm">{formatDateTime(lead.updatedAt)}</dd>
           </div>
         </dl>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Timeline - the lead's activity feed (oldest → newest). */
-function LeadTimeline({
-  leadName,
-  activities,
-  isLoading,
-}: {
-  leadName: string;
-  activities: LeadActivity[] | undefined;
-  isLoading: boolean;
-}) {
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        <div className="border-border text-xs font-semibold tracking-wide uppercase">
-          Timeline
-        </div>
-        <Skeleton variant="list" count={3} />
-      </div>
-    );
-  }
-
-  const hasActivities = Array.isArray(activities) && activities.length > 0;
-
-  return (
-    <Card data-qa="lead-timeline">
-      <CardHeader>
-        <CardTitle className="text-base">Timeline</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {hasActivities ? (
-          <ol className="space-y-0">
-            {activities!.map((entry) => (
-              <li
-                key={entry.id}
-                className="border-border flex gap-3 border-b py-3 last:border-b-0"
-              >
-                <div className="bg-muted-foreground/20 mt-1.5 h-2 w-2 shrink-0 rounded-full" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                    <span className="text-sm font-medium">
-                      {labelFor('activity', entry.type)}
-                    </span>
-                    <span className="text-muted-foreground text-xs">
-                      {formatDateTime(entry.createdAt)}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5 text-sm">{entry.body}</p>
-                  {entry.userName !== null ? (
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      by {entry.userName}
-                    </p>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <TypographyP className="text-muted-foreground text-sm">
-            No activity for {leadName} yet. Timeline entries appear as the lead
-            is called, visited, and moved through the pipeline.
-          </TypographyP>
-        )}
       </CardContent>
     </Card>
   );

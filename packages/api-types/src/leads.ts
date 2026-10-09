@@ -219,3 +219,27 @@ export const LeadActivitySchema = z.object({
   userName: z.string().nullable(),
 });
 export type LeadActivity = z.infer<typeof LeadActivitySchema>;
+
+/** Default and maximum page size for GET /leads/:id/activities. */
+export const LEAD_ACTIVITIES_PAGE_SIZE = 50;
+export const LEAD_ACTIVITIES_MAX_PAGE_SIZE = 200;
+
+/**
+ * Query: `cursor` is the opaque `nextCursor` of the previous page (omit for the
+ * newest page); each page walks BACKWARDS in time.
+ */
+export const LeadActivitiesQuerySchema = z.object({
+  cursor: z.string().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(LEAD_ACTIVITIES_MAX_PAGE_SIZE).optional(),
+});
+export type LeadActivitiesQuery = z.infer<typeof LeadActivitiesQuerySchema>;
+
+/**
+ * Timeline page: `items` are oldest -> newest within the page; `nextCursor`
+ * fetches the next-OLDER page, or is null when there is nothing earlier.
+ */
+export const LeadActivitiesResponseSchema = z.object({
+  items: z.array(LeadActivitySchema),
+  nextCursor: z.string().nullable(),
+});
+export type LeadActivitiesResponse = z.infer<typeof LeadActivitiesResponseSchema>;

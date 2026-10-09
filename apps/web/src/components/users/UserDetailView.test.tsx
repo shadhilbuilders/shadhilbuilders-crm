@@ -1,13 +1,16 @@
-// User detail page (/admin/users/[userId], autoplan 2026-09-13).
+// UserDetailView (rendered on /admin/staff-permission; autoplan 2026-09-13).
 //
 // Pins the render branches:
 //   1. session pending             → <Skeleton variant="users" />
 //   2. user not authorized (non-admin) → "Not authorized" panel
 //   3. useUser isLoading           → <Skeleton variant="card" /> + "list"
 //   4. useUser error               → inline retry error branch
-//   5. SALES_EXEC/TELECALLER data  → manager row renders (name + email,
+//   5. SALES_EXEC/TELECALLER data  → "Reports to" row renders (name + email,
 //      or "No manager assigned") + "Assign manager"/"Reassign manager"
-//   6. MANAGER/ADMIN data          → manager row is OMITTED entirely
+//   6. MANAGER/ADMIN data          → "Reports to" row renders the org
+//      OWNER, read-only (no assign button) - T-REPORTS-TO-OWNER 2026-10-06
+//   6b. OWNER data                 → the row is OMITTED entirely (reports
+//      to nobody)
 //   7. projects render as badges; empty → the team-aware empty copy
 //      (T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover: Projects card is
 //      read-only now - ProjectMember, the per-user link this used to
@@ -32,6 +35,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/hooks/queries/users', () => ({
   useUser: mocks.useUser,
   useAssignManager: mocks.useAssignManager,
+  useResetUserPassword: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -41,18 +45,12 @@ vi.mock('@/hooks/queries/teams', () => ({
 vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
+  outranks: (actor: string, target: string) => {
+    const rank: Record<string, number> = { OWNER: 4, ADMIN: 3, MANAGER: 2, TELECALLER: 1, SALES_EXEC: 1 };
+    return (rank[actor] ?? 0) > (rank[target] ?? 0);
+  },
   canManageUsers: (role: string) =>
     role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
-}));
-
-vi.mock('@/lib/tenant-context', () => ({
-  useOrg: () => ({ id: 'org-ceid01', slug: 'shadhil-builders', name: 'Shadhil' }),
-  useOrgSlug: () => 'shadhil-builders',
-  useOrgId: () => 'org-ceid01',
-}));
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ userId: 'user-1' }),
 }));
 
 // T-USER-LEADS (2026-09-24): the page now mounts UserLeadsCard, which reads
@@ -66,7 +64,7 @@ vi.mock('@/components/users/UserLeadsCard', () => ({
   ),
 }));
 
-import UserDetailPage from './page';
+import { UserDetailView } from './UserDetailView';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -76,7 +74,7 @@ async function mount(): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<UserDetailPage />);
+    root?.render(<UserDetailView userId="user-1" />);
   });
 }
 
@@ -97,7 +95,7 @@ afterEach(async () => {
   mocks.useTeams.mockClear();
 });
 
-describe('UserDetailPage - state matrix', () => {
+describe('UserDetailView - state matrix', () => {
   it('session pending renders <Skeleton>', async () => {
     mocks.useSessionUser.mockReturnValue({ user: null, isPending: true });
     mocks.useUser.mockReturnValue({ data: undefined, isLoading: false, error: null });
@@ -247,7 +245,7 @@ describe('UserDetailPage - state matrix', () => {
     expect(html).not.toContain('data-qa="user-projects-list"');
   });
 
-  it('MANAGER row: the manager section is omitted entirely', async () => {
+  it('MANAGER row: "Reports to" shows the org OWNER, read-only (no assign button)', async () => {
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
       isPending: false,
@@ -260,7 +258,7 @@ describe('UserDetailPage - state matrix', () => {
         role: 'MANAGER',
         teamId: null,
         teamName: null,
-        manager: null,
+        manager: { id: 'owner-1', name: 'Deepak Owner', email: 'owner@example.com' },
         projects: [],
       },
       isLoading: false,
@@ -269,14 +267,17 @@ describe('UserDetailPage - state matrix', () => {
 
     await mount();
     const html = container?.innerHTML ?? '';
-    expect(html).not.toContain('data-qa="user-manager-row"');
-    // No manager section → no "assign manager" button either. The
-    // Projects card renders regardless (read-only, unaffected by role).
+    expect(html).toContain('data-qa="user-manager-row"');
+    expect(html).toContain('Reports to');
+    expect(html).toContain('Deepak Owner');
+    expect(html).toContain('owner@example.com');
+    // T-REPORTS-TO-OWNER: fixed, never assignable - no button for a
+    // MANAGER/ADMIN row even though the viewer canManageUsers.
     expect(html).not.toContain('data-qa="user-assign-manager-button"');
     expect(html).toContain('data-qa="user-projects-card"');
   });
 
-  it('ADMIN row: the manager section is omitted entirely', async () => {
+  it('ADMIN row: "Reports to" shows the org OWNER, read-only (no assign button)', async () => {
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
       isPending: false,
@@ -289,6 +290,33 @@ describe('UserDetailPage - state matrix', () => {
         role: 'ADMIN',
         teamId: null,
         teamName: null,
+        manager: { id: 'owner-1', name: 'Deepak Owner', email: 'owner@example.com' },
+        projects: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('data-qa="user-manager-row"');
+    expect(html).toContain('Deepak Owner');
+    expect(html).not.toContain('data-qa="user-assign-manager-button"');
+  });
+
+  it('OWNER row: the "Reports to" section is omitted entirely (reports to nobody)', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    });
+    mocks.useUser.mockReturnValue({
+      data: {
+        id: 'owner-1',
+        email: 'owner@example.com',
+        name: 'Deepak Owner',
+        role: 'OWNER',
+        teamId: null,
+        teamName: null,
         manager: null,
         projects: [],
       },
@@ -299,5 +327,6 @@ describe('UserDetailPage - state matrix', () => {
     await mount();
     const html = container?.innerHTML ?? '';
     expect(html).not.toContain('data-qa="user-manager-row"');
+    expect(html).not.toContain('data-qa="user-assign-manager-button"');
   });
 });

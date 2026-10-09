@@ -14,6 +14,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { recordLeadActivity } from './lead-activity';
 import { LeadsService } from './leads.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -280,14 +281,15 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
       actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
       LEAD_ID,
     );
-    expect(result.length).toBeGreaterThanOrEqual(2);
+    expect(result.items.length).toBeGreaterThanOrEqual(2);
+    expect(result.nextCursor).toBeNull();
     // Oldest first.
-    expect(result[0].type).toBe('CALL');
-    expect(result[0].body).toBe('First call');
-    expect(result[0].userName).toBe('Detail Test TC A');
-    expect(result[1].type).toBe('NOTE');
-    expect(result[1].userName).toBe('Detail Test TC A');
-    expect(typeof result[0].createdAt).toBe('string');
+    expect(result.items[0].type).toBe('CALL');
+    expect(result.items[0].body).toBe('First call');
+    expect(result.items[0].userName).toBe('Detail Test TC A');
+    expect(result.items[1].type).toBe('NOTE');
+    expect(result.items[1].userName).toBe('Detail Test TC A');
+    expect(typeof result.items[0].createdAt).toBe('string');
   });
 
   it('404s for a missing lead', async () => {
@@ -308,5 +310,159 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
         LEAD_ID,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ── Timeline writes + cap ───────────────────────────────────────────────────
+// Each lead-affecting action leaves exactly ONE Activity row (same tx as the
+// business write); activities() returns the newest 200, oldest-first.
+describe.skipIf(!HAS_DB)('Lead timeline writes', () => {
+  const WRITE_LEAD_ID = createId();
+  const CAP_LEAD_ID = createId();
+
+  beforeAll(async () => {
+    TEST_LEAD_IDS.push(WRITE_LEAD_ID, CAP_LEAD_ID);
+    await adminSeed(async (db) => {
+      for (const [id, n] of [
+        [WRITE_LEAD_ID, '003'],
+        [CAP_LEAD_ID, '004'],
+      ] as const) {
+        await db.lead.create({
+          data: {
+            id,
+            name: `Timeline Lead ${id.slice(0, 8)}`,
+            phone: `91${id.slice(0, 8)}${n}`,
+            phoneE164: `91${id.slice(0, 8)}${n}`,
+            source: 'WEBSITE',
+            state: 'NEW',
+            teamId: TEAM_A_ID,
+            ownerId: TC_A_ID,
+            ownerType: 'TELECALLER',
+            organizationId: ORG,
+            projectId: TEST_PROJECT_ID,
+          },
+        });
+      }
+    });
+  }, 30_000);
+
+  async function rows(leadId: string) {
+    return adminSeed((db) =>
+      db.activity.findMany({ where: { leadId }, orderBy: { createdAt: 'asc' } }),
+    );
+  }
+
+  it('transition leaves exactly one STATUS_CHANGE row with the friendly sentence', async () => {
+    const leads = makeLeadsService();
+    await leads.transition(actorFor({ sub: TC_A_ID, role: 'TELECALLER' }), {
+      leadId: WRITE_LEAD_ID,
+      toState: 'CONTACTED',
+      reason: 'Picked up',
+    });
+    const got = await rows(WRITE_LEAD_ID);
+    expect(got).toHaveLength(1);
+    expect(got[0].type).toBe('STATUS_CHANGE');
+    expect(got[0].body).toBe('New -> Talked - Picked up');
+    expect(got[0].userId).toBe(TC_A_ID);
+    expect(got[0].organizationId).toBe(ORG);
+  });
+
+  it('transitionInTransaction with activity "skip" writes no STATUS_CHANGE row', async () => {
+    const leads = makeLeadsService();
+    await withRlsContext(
+      prisma as PrismaClient,
+      { userId: TC_A_ID, role: 'TELECALLER', organizationId: ORG },
+      async (tx) =>
+        leads.transitionInTransaction(
+          actorFor({ sub: TC_A_ID, role: 'TELECALLER' }),
+          { leadId: WRITE_LEAD_ID, toState: 'VISIT_REQUESTED' },
+          tx as unknown as PrismaClient,
+          'skip',
+        ),
+    );
+    expect(await rows(WRITE_LEAD_ID)).toHaveLength(1);
+  });
+
+  it('reassign and co-owner each add one ASSIGNMENT row', async () => {
+    const leads = makeLeadsService();
+    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
+    await leads.reassign(admin, {
+      leadId: WRITE_LEAD_ID,
+      targetUserId: TC_B_ID,
+      reason: 'Balance load',
+    });
+    await leads.setCoOwner(admin, {
+      leadId: WRITE_LEAD_ID,
+      coOwnerId: TC_A_ID,
+      reason: 'Shared',
+    });
+    const got = (await rows(WRITE_LEAD_ID)).filter((r) => r.type === 'ASSIGNMENT');
+    expect(got.map((r) => r.body)).toEqual([
+      'Reassigned from Detail Test TC A to Detail Test TC B - Balance load',
+      'Co-owner set: Detail Test TC A - Shared',
+    ]);
+  });
+
+  it('an Activity insert rejected by RLS fails hard and writes nothing', async () => {
+    // TC_B neither owns, co-owns nor manages CAP_LEAD: the insert policy rejects it.
+    await expect(
+      withRlsContext(
+        prisma as PrismaClient,
+        { userId: TC_B_ID, role: 'TELECALLER', organizationId: ORG },
+        async (tx) =>
+          recordLeadActivity(
+            tx as unknown as PrismaClient,
+            actorFor({ sub: TC_B_ID, role: 'TELECALLER' }),
+            { leadId: CAP_LEAD_ID, type: 'NOTE', body: 'nope' },
+          ),
+      ),
+    ).rejects.toBeDefined();
+    expect(await rows(CAP_LEAD_ID)).toHaveLength(0);
+  });
+
+  it('pages backwards with a cursor: no gaps, no overlap, oldest-first per page', async () => {
+    const leads = makeLeadsService();
+    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
+    const base = Date.now() - 10_000_000;
+    // Same-millisecond pair exercises the (createdAt, id) tie-break.
+    await adminSeed((db) =>
+      db.activity.createMany({
+        data: Array.from({ length: 125 }, (_, i) => ({
+          leadId: CAP_LEAD_ID,
+          organizationId: ORG,
+          userId: TC_A_ID,
+          type: 'NOTE' as const,
+          body: `row ${i}`,
+          createdAt: new Date(base + Math.floor(i / 2) * 1000),
+        })),
+      }),
+    );
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const res = await leads.activities(admin, CAP_LEAD_ID, { cursor, limit: 50 });
+      pages += 1;
+      expect(res.items.length).toBeLessThanOrEqual(50);
+      seen.unshift(...res.items.map((r) => r.body));
+      cursor = res.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(pages).toBe(3);
+    expect(seen).toHaveLength(125);
+    expect(new Set(seen).size).toBe(125);
+    // Newest page holds the newest rows, oldest-first.
+    const first = await leads.activities(admin, CAP_LEAD_ID, { limit: 50 });
+    expect(first.items).toHaveLength(50);
+    expect(first.items[49].body).toMatch(/^row 12[34]$/);
+    expect(first.nextCursor).not.toBeNull();
+  });
+
+  it('rejects a malformed cursor', async () => {
+    const leads = makeLeadsService();
+    await expect(
+      leads.activities(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), CAP_LEAD_ID, {
+        cursor: 'not-a-cursor',
+      }),
+    ).rejects.toThrow(/Invalid timeline cursor/);
   });
 });

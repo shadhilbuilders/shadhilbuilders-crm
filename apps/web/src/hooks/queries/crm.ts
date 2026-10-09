@@ -9,7 +9,13 @@
 // T24 (PR3): every list-shape query has `placeholderData: keepPreviousData`
 // so the skeleton only renders on first load, not on refetch (avoids the
 // "stale data → skeleton → fresh data" flicker on navigation).
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
@@ -24,7 +30,7 @@ import type {
   CreateBookingDto,
   CreateLeadDto,
   CreateSiteVisitDto,
-  LeadActivity,
+  LeadActivitiesResponse,
   LeadDetail,
   LeadStateTransitionDto,
   RescheduleVisitDto,
@@ -205,11 +211,22 @@ export function useLead(id: string | null) {
   });
 }
 
+/**
+ * Lead timeline, cursor-paged BACKWARDS in time: page 0 is the newest slice and
+ * `fetchNextPage` loads the next-older one. Still under the `['leads']` prefix,
+ * so every lead mutation's invalidation refreshes it.
+ */
 export function useLeadActivities(id: string | null) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['leads', id, 'activities'] as const,
     enabled: id !== null && id.length > 0,
-    queryFn: ({ signal }) => api<LeadActivity[]>(`/leads/${id as string}/activities`, { signal }),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ signal, pageParam }) =>
+      api<LeadActivitiesResponse>(
+        `/leads/${id as string}/activities${qs({ cursor: pageParam })}`,
+        { signal },
+      ),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
 
@@ -381,25 +398,30 @@ export function useSetLeadCoOwner() {
 // Visits (contract: packages/api-types/src/visits.ts)
 // ---------------------------------------------------------------------------
 
-export function useVisits(
+export function useVisits<T extends unknown>(
   params: {
     from?: string;
     to?: string;
     projectId?: string;
     leadId?: string;
     limit?: number;
+    // Open-work filters (e.g. ['SCHEDULED']) - mirrors VisitFilterDto's
+    // `status` union, which accepts a single value or an array. Joined into
+    // a comma-separated query param, same pattern as useBookings' `status`.
+    status?: string[];
   } = {},
 ) {
   return useQuery({
     queryKey: ['visits', params] as const,
     queryFn: ({ signal }) =>
-      api<unknown>(
+      api<T>(
         `/visits${qs({
           from: params.from,
           to: params.to,
           projectId: params.projectId,
           leadId: params.leadId,
           limit: params.limit,
+          status: params.status?.join(','),
         })}`,
         { signal },
       ),
@@ -408,7 +430,7 @@ export function useVisits(
     // iterates `data` directly; the /visits page also expects an array.
     // Unwrap here so all consumers see the same shape - same pattern as
     // useLeads / useBookings / useNotifications.
-    select: unwrapRows<unknown>,
+    select: unwrapRows<T>,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });

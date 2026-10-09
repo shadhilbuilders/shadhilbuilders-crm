@@ -39,8 +39,8 @@ vi.mock('@/hooks/queries/inventory', () => ({
     data: [
       // T-BOOKING-AMOUNT-FROM-UNIT: `price` is what the total is derived from,
       // and it arrives as a STRING (Prisma Decimal over JSON).
-      { id: 'unit-1', unitNumber: 'A-101', bhk: 3, price: '4250000.00' },
-      { id: 'unit-2', unitNumber: 'B-201', bhk: 4, price: '5800000.00' },
+      { id: 'unit-1', unitNumber: 'A-101', bhk: 3, price: '4250000.00', buildupSqft: '1250.00' },
+      { id: 'unit-2', unitNumber: 'B-201', bhk: 4, price: '5800000.00', buildupSqft: '1450.00' },
     ],
   })),
 }));
@@ -124,5 +124,25 @@ describe('NewBookingPage - props-API Form surface (T-F4)', () => {
     // The exact grouping is ICU-defined; assert the formatted figures are present
     // in SOME form by checking the formatter was used on the fixture prices.
     expect(html).toMatch(/₹|42,50,000|4250000/);
+  });
+
+  it('adds the negotiation fields: editable rate, read-only derived amounts', () => {
+    const html = renderToStaticMarkup(<NewBookingPage />);
+    expect(html).toContain('Unit price (₹)');
+    expect(html).toContain('Negotiated price per sq.ft (₹, optional)');
+    expect(html).toContain('Negotiated amount (₹)');
+
+    const slice = (qa: string) => {
+      const at = html.indexOf(`data-qa="${qa}"`);
+      expect(at, `${qa} present`).toBeGreaterThan(-1);
+      return html.slice(at, at + 2000);
+    };
+    // The rate is the one thing the exec types.
+    expect(slice('booking-negotiated-rate')).not.toMatch(/readOnly=""/);
+    // Everything derived from it is read-only (and still focusable: not disabled).
+    for (const qa of ['booking-list-amount', 'booking-negotiated-amount', 'booking-amount']) {
+      expect(slice(qa)).toMatch(/readOnly=""/);
+      expect(slice(qa)).not.toContain('disabled=""');
+    }
   });
 });

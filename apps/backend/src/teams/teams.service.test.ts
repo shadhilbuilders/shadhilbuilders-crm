@@ -116,6 +116,15 @@ vi.mock('@shadhil/database', () => {
         }
         return null;
       }),
+      // T-REPORTS-TO-OWNER (2026-10-06): findOrgOwner()'s lookup -
+      // `list()`/`getTeam()` both resolve the org OWNER this way now, so
+      // every team's manager "reports to" the same fixture owner.
+      findFirst: vi.fn(async (args: { where: { role: string } }) => {
+        if (args.where.role === 'OWNER') {
+          return { id: 'owner-1', name: 'Demo Owner', email: 'owner@x' };
+        }
+        return null;
+      }),
     },
   };
   return {
@@ -236,7 +245,7 @@ describe('TeamsService.list', () => {
     expect(lastCall.where).toEqual({ deletedAt: null, id: { in: ['team-construction'] } });
   });
 
-  it('maps to TeamListItem with managerName (null when unassigned)', async () => {
+  it('maps to TeamListItem with managerName (null when unassigned) and the fixed org ownerName', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.list(ownerActor);
     expect(result).toEqual([
@@ -247,6 +256,9 @@ describe('TeamsService.list', () => {
         memberCount: 4,
         managerId: 'mgr-1',
         managerName: 'Maya Rao',
+        // T-REPORTS-TO-OWNER (2026-10-06): every row carries the SAME org
+        // owner - a team's manager always reports to the OWNER, fixed.
+        ownerName: 'Demo Owner',
       },
       {
         id: 'team-real-estate',
@@ -255,6 +267,7 @@ describe('TeamsService.list', () => {
         memberCount: 2,
         managerId: null,
         managerName: null,
+        ownerName: 'Demo Owner',
       },
     ]);
   });
@@ -293,7 +306,7 @@ describe('TeamsService.getTeam', () => {
     );
   });
 
-  it('returns manager + members (no per-member projects field - retired with ProjectMember)', async () => {
+  it('returns manager + members (no per-member projects field - retired with ProjectMember) + the fixed org owner', async () => {
     const svc = new TeamsService({ $client: {} } as never);
     const result = await svc.getTeam(ownerActor, 'team-construction');
     expect(result).toEqual({
@@ -301,6 +314,9 @@ describe('TeamsService.getTeam', () => {
       name: "Manager (placeholder)'s Team",
       autoAssignLeads: false,
       manager: { id: 'mgr-1', name: 'Maya Rao', email: 'maya@x' },
+      // T-REPORTS-TO-OWNER (2026-10-06): this team's manager reports to
+      // the org OWNER - fixed, resolved via findOrgOwner().
+      owner: { id: 'owner-1', name: 'Demo Owner', email: 'owner@x' },
       members: [
         {
           userId: 'u-tc',

@@ -122,17 +122,19 @@ ON CONFLICT ("projectId", type, value) DO UPDATE SET
   "organizationId" = EXCLUDED."organizationId";
 
 -- 9. Test Units (Phase A: 2BHK, 3BHK; Phase B: 3BHK, 4BHK) - no updatedAt
-INSERT INTO "Unit" (id, "phaseId", "unitNumber", bhk, facing, sqft, price, status, "organizationId", "createdAt")
+INSERT INTO "Unit" (id, "phaseId", "unitNumber", bhk, facing, sqft, "buildupSqft", "pricePerSqft", price, status, "organizationId", "createdAt")
 VALUES
-  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-101', 2, 'North', 1050, 4200000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
-  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-102', 3, 'East', 1450, 5800000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
-  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-103', 3, 'South', 1480, 5950000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
-  (gen_random_uuid(), 'a6bbl6uncqxwvzye5chn0dme', 'T-201', 3, 'West', 1500, 6100000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
-  (gen_random_uuid(), 'a6bbl6uncqxwvzye5chn0dme', 'T-202', 4, 'North', 1900, 8400000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW())
+  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-101', 2, 'North', 1050, 1050, 4000.00, 4200000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
+  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-102', 3, 'East', 1450, 1450, 4000.00, 5800000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
+  (gen_random_uuid(), 'zfoou6t9bvsi5wux4amhr3lc', 'T-103', 3, 'South', 1480, 1480, 4020.27, 5950000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
+  (gen_random_uuid(), 'a6bbl6uncqxwvzye5chn0dme', 'T-201', 3, 'West', 1500, 1500, 4066.67, 6100000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW()),
+  (gen_random_uuid(), 'a6bbl6uncqxwvzye5chn0dme', 'T-202', 4, 'North', 1900, 1900, 4421.05, 8400000.00, 'AVAILABLE', 'k7mjd78nxvpq9vs8fqkzmfyb', NOW())
 ON CONFLICT ("phaseId", "unitNumber") DO UPDATE SET
   bhk = EXCLUDED.bhk,
   facing = EXCLUDED.facing,
   sqft = EXCLUDED.sqft,
+  "buildupSqft" = EXCLUDED."buildupSqft",
+  "pricePerSqft" = EXCLUDED."pricePerSqft",
   price = EXCLUDED.price,
   status = EXCLUDED.status,
   "organizationId" = EXCLUDED."organizationId";

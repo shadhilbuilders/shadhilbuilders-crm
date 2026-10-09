@@ -98,6 +98,8 @@ export default function TeamRosterPage() {
               teamName={team.name}
               member={member}
               managerId={team.manager?.id ?? null}
+              managerName={team.manager?.name ?? null}
+              ownerName={team.owner?.name ?? null}
               canRemove={isManagerOfThisTeam}
               dataQaPrefix="my-team-member"
             />

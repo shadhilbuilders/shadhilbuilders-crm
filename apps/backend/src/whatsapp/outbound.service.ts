@@ -21,6 +21,7 @@ import {
   withRlsContext,
 } from '@shadhil/database';
 
+import { cronContextFor, listOrganizationIds } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
@@ -85,6 +86,9 @@ export class OutboundService {
       // CHECK constraint. A reply to an unknown number targets contactId.
       leadId?: string;
       contactId?: string;
+      /** Tenant that owns the thread (the acting user's org). Required: it used
+       *  to be read from PUBLIC_ORG_ID, which stamped every org's rows with one id. */
+      organizationId: string;
       sendType: OutboundSendType;
       freeformBody?: string;
       templateName?: string;
@@ -120,7 +124,7 @@ export class OutboundService {
         ...(opts.leadId !== undefined ? { leadId: opts.leadId } : {}),
         ...(opts.contactId !== undefined ? { contactId: opts.contactId } : {}),
         sendType: opts.sendType,
-        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+        organizationId: opts.organizationId,
         ...(opts.freeformBody !== undefined ? { freeformBody: opts.freeformBody } : {}),
         ...(opts.templateName !== undefined ? { templateName: opts.templateName } : {}),
         ...(opts.templateVars !== undefined ? { templateVars: opts.templateVars } : {}),
@@ -147,54 +151,67 @@ export class OutboundService {
    * the cron path was missed).
    */
   async claimPending(claimantId: string, limit: number): Promise<OutboundMessage[]> {
-    return withRlsContext(
-      this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
-      async (tx) => {
-        const now = new Date();
-        // First, find candidates (rows in PENDING that are not within a
-        // backoff window for their attempt count).
-        const candidates = await (tx as unknown as PrismaClient).outboundMessage.findMany({
-          where: { status: 'PENDING' },
-          orderBy: { createdAt: 'asc' },
-          take: limit * 3, // overshoot; updateMany will narrow to limit
-          select: { id: true, attempts: true, lastAttemptAt: true },
-        });
-        const ready: string[] = [];
-        for (const c of candidates) {
-          if (ready.length >= limit) break;
-          if (c.lastAttemptAt === null) {
-            ready.push(c.id);
-            continue;
-          }
-          const backoff = BACKOFF_MS[Math.min(c.attempts, BACKOFF_MS.length - 1)];
-          const elapsed = now.getTime() - c.lastAttemptAt.getTime();
-          if (elapsed >= backoff) {
-            ready.push(c.id);
-          }
+    // T-CRON-MULTITENANT: claim per organization, each in its own CRON_SERVICE
+    // context, until the batch limit is filled.
+    const claimed: OutboundMessage[] = [];
+    const orgIds = await listOrganizationIds(this.client);
+    for (const organizationId of orgIds) {
+      const remaining = limit - claimed.length;
+      if (remaining <= 0) break;
+      claimed.push(...(await this.claimPendingForOrg(claimantId, remaining, organizationId)));
+    }
+    return claimed;
+  }
+
+  private async claimPendingForOrg(
+    claimantId: string,
+    limit: number,
+    organizationId: string,
+  ): Promise<OutboundMessage[]> {
+    return withRlsContext(this.client, cronContextFor(organizationId), async (tx) => {
+      const now = new Date();
+      // First, find candidates (rows in PENDING that are not within a
+      // backoff window for their attempt count).
+      const candidates = await (tx as unknown as PrismaClient).outboundMessage.findMany({
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'asc' },
+        take: limit * 3, // overshoot; updateMany will narrow to limit
+        select: { id: true, attempts: true, lastAttemptAt: true },
+      });
+      const ready: string[] = [];
+      for (const c of candidates) {
+        if (ready.length >= limit) break;
+        if (c.lastAttemptAt === null) {
+          ready.push(c.id);
+          continue;
         }
-        if (ready.length === 0) return [];
+        const backoff = BACKOFF_MS[Math.min(c.attempts, BACKOFF_MS.length - 1)];
+        const elapsed = now.getTime() - c.lastAttemptAt.getTime();
+        if (elapsed >= backoff) {
+          ready.push(c.id);
+        }
+      }
+      if (ready.length === 0) return [];
 
-        // Atomic claim.
-        const updateResult = await (tx as unknown as PrismaClient).outboundMessage.updateMany({
-          where: { id: { in: ready }, status: 'PENDING' },
-          data: {
-            status: 'SENDING',
-            claimedAt: now,
-            claimedBy: claimantId,
-            attempts: { increment: 1 },
-            lastAttemptAt: now,
-          },
-        });
-        if (updateResult.count === 0) return [];
+      // Atomic claim.
+      const updateResult = await (tx as unknown as PrismaClient).outboundMessage.updateMany({
+        where: { id: { in: ready }, status: 'PENDING' },
+        data: {
+          status: 'SENDING',
+          claimedAt: now,
+          claimedBy: claimantId,
+          attempts: { increment: 1 },
+          lastAttemptAt: now,
+        },
+      });
+      if (updateResult.count === 0) return [];
 
-        return (tx as unknown as PrismaClient).outboundMessage.findMany({
-          where: { id: { in: ready }, status: 'SENDING', claimedBy: claimantId },
-          orderBy: { claimedAt: 'desc' },
-          take: limit,
-        });
-      },
-    );
+      return (tx as unknown as PrismaClient).outboundMessage.findMany({
+        where: { id: { in: ready }, status: 'SENDING', claimedBy: claimantId },
+        orderBy: { claimedAt: 'desc' },
+        take: limit,
+      });
+    });
   }
 
   /** Send a single claimed row via the Meta API. Updates status
@@ -217,9 +234,7 @@ export class OutboundService {
     // (RLS transaction holds a connection; the Meta fetch is a
     // blocking call to graph.facebook.com - we don't want to pin
     // a pool connection for the duration of a 30s+ HTTP call.)
-    let deliveryResult:
-      | { ok: true; wamid: string | null }
-      | { ok: false; error: string };
+    let deliveryResult: { ok: true; wamid: string | null } | { ok: false; error: string };
     try {
       if (row.sendType === 'TEMPLATE') {
         const templateName = this.resolveTemplateName(row);
@@ -276,10 +291,7 @@ export class OutboundService {
           if (text.length === 0) {
             throw new Error('FREEFORM outbound row has no freeformBody');
           }
-          const delivery = await this.whatsapp.sendTextMessage(
-            await this.threadPhone(row),
-            text,
-          );
+          const delivery = await this.whatsapp.sendTextMessage(await this.threadPhone(row), text);
           if (!delivery.accepted) {
             deliveryResult = {
               ok: false,
@@ -301,33 +313,29 @@ export class OutboundService {
     }
 
     // Now do the DB write inside the RLS transaction.
-    return withRlsContext(
-      this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
-      async (tx) => {
-        const txClient = tx as unknown as PrismaClient;
-        if (deliveryResult.ok) {
-          return txClient.outboundMessage.update({
-            where: { id: row.id },
-            data: {
-              status: 'SENT',
-              wamid: deliveryResult.wamid,
-            },
-          });
-        }
-        const isFinal = row.attempts >= MAX_ATTEMPTS;
-        this.logger.warn(
-          `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${deliveryResult.error}`,
-        );
+    return withRlsContext(this.client, cronContextFor(row.organizationId), async (tx) => {
+      const txClient = tx as unknown as PrismaClient;
+      if (deliveryResult.ok) {
         return txClient.outboundMessage.update({
           where: { id: row.id },
           data: {
-            status: isFinal ? 'FAILED' : 'PENDING',
-            lastError: deliveryResult.error,
+            status: 'SENT',
+            wamid: deliveryResult.wamid,
           },
         });
-      },
-    );
+      }
+      const isFinal = row.attempts >= MAX_ATTEMPTS;
+      this.logger.warn(
+        `[whatsapp] send failed id=${row.id} attempts=${row.attempts}/${MAX_ATTEMPTS} final=${isFinal} error=${deliveryResult.error}`,
+      );
+      return txClient.outboundMessage.update({
+        where: { id: row.id },
+        data: {
+          status: isFinal ? 'FAILED' : 'PENDING',
+          lastError: deliveryResult.error,
+        },
+      });
+    });
   }
 
   /** Resolve the lead's phone in E.164 form. Returns the digits-only
@@ -344,7 +352,7 @@ export class OutboundService {
     if (row.contactId !== null && row.contactId !== undefined) {
       const contact = await withRlsContext(
         this.client,
-        { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+        cronContextFor(row.organizationId),
         async (tx) =>
           (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
             where: { id: row.contactId as string },
@@ -363,18 +371,15 @@ export class OutboundService {
         `OutboundMessage ${row.id} has neither leadId nor contactId - cannot resolve a destination`,
       );
     }
-    return this.leadPhone(row.leadId);
+    return this.leadPhone(row.leadId, row.organizationId);
   }
 
-  private async leadPhone(leadId: string): Promise<string> {
-    const lead = await withRlsContext(
-      this.client,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
-      async (tx) =>
-        (tx as unknown as PrismaClient).lead.findUnique({
-          where: { id: leadId },
-          select: { phoneE164: true, phone: true },
-        }),
+  private async leadPhone(leadId: string, organizationId: string): Promise<string> {
+    const lead = await withRlsContext(this.client, cronContextFor(organizationId), async (tx) =>
+      (tx as unknown as PrismaClient).lead.findUnique({
+        where: { id: leadId },
+        select: { phoneE164: true, phone: true },
+      }),
     );
     if (lead === null) {
       throw new Error(`Lead ${leadId} not found in OutboundService.leadPhone`);
@@ -395,8 +400,10 @@ export class OutboundService {
     // already (via the OutboundService templateNames arg). The
     // raw value in `row.templateName` is one of the 3 we know about.
     if (row.templateName === this.templateNames.chatReply) return this.templateNames.chatReply;
-    if (row.templateName === this.templateNames.visitFollowup) return this.templateNames.visitFollowup;
-    if (row.templateName === this.templateNames.visitReminder) return this.templateNames.visitReminder;
+    if (row.templateName === this.templateNames.visitFollowup)
+      return this.templateNames.visitFollowup;
+    if (row.templateName === this.templateNames.visitReminder)
+      return this.templateNames.visitReminder;
     // Fallback: if the row was enqueued with a template name we
     // don't recognize, pass it through verbatim (Meta will reject
     // the unknown name with a 400).
@@ -449,9 +456,7 @@ export class OutboundService {
 }
 
 /** Map a MIME type to the Meta message media type, or null if unsupported. */
-function mediaTypeFor(
-  mime: string,
-): 'image' | 'document' | 'video' | 'audio' | null {
+function mediaTypeFor(mime: string): 'image' | 'document' | 'video' | 'audio' | null {
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';

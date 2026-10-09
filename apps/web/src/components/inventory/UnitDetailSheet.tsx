@@ -8,12 +8,12 @@
 import { Badge, Button, Sheet } from '@paalstack/react-ui';
 import { LuArrowRight } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 
 import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
+import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import type { UnitRow } from '@/hooks/queries/inventory';
 
@@ -47,13 +47,12 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export function UnitDetailSheet({
   unit,
   onOpenChange,
-  projectId,
 }: {
   unit: UnitRow | null;
   onOpenChange: (open: boolean) => void;
-  projectId: string | null;
 }) {
-  const { orgId } = useParams<{ orgId: string }>();
+  const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const { user } = useSessionUser();
   const canBook =
     user !== null &&
@@ -82,7 +81,7 @@ export function UnitDetailSheet({
       footer={{
         primaryAction:
           canBook && isAvailable ? (
-            <Button as={Link} href={`${projectHref(orgId, projectId, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`} rightIcon={<LuArrowRight className="size-4" />} data-qa="unit-book-button">
+            <Button as={Link} href={`${projectHref(orgSlug, projectSlug, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`} rightIcon={<LuArrowRight className="size-4" />} data-qa="unit-book-button">
               Create booking
             </Button>
           ) : null,
@@ -120,8 +119,10 @@ export function UnitDetailSheet({
         <div className="border-border divide-y divide-border rounded-lg border">
           <DetailRow label="BHK" value={`${unit.bhk} BHK`} />
           <DetailRow label="Facing" value={unit.facing ?? '-'} />
-          <DetailRow label="Sqft" value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'} />
-          <DetailRow label="Price" value={formatMoney(unit.price)} />
+          <DetailRow label="Plot sq.ft" value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'} />
+          <DetailRow label="Buildup sq.ft" value={numberIntl.format(Number(unit.buildupSqft))} />
+          <DetailRow label="Per sq.ft price" value={formatMoney(unit.pricePerSqft)} />
+          <DetailRow label="Total sq.ft price" value={formatMoney(unit.price)} />
           <DetailRow label="Phase" value={unit.phaseName} />
           <DetailRow label="Project" value={unit.projectName} />
         </div>

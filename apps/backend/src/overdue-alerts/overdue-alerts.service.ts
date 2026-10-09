@@ -30,21 +30,14 @@
 // inbox row AND fires a best-effort web push), deduped within a run so a
 // manager-of-many-teams or an org-owner who is also the lead owner isn't
 // spammed twice for the same lead.
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
 
-import {
-  withRlsContext,
-  type PrismaClient,
-} from '@shadhil/database';
+import { withRlsContext, type PrismaClient } from '@shadhil/database';
 
+import { forEachOrganization } from '../common/cron-orgs';
 import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
@@ -90,11 +83,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
     notifications: NotificationsService,
     replicaId: string,
   ): OverdueAlertsService {
-    const svc = new OverdueAlertsService(
-      prismaService,
-      redis,
-      notifications,
-    );
+    const svc = new OverdueAlertsService(prismaService, redis, notifications);
     (svc as unknown as { replicaId: string }).replicaId = replicaId;
     return svc;
   }
@@ -104,9 +93,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    this.logger.log(
-      `OverdueAlertsService initialized, replicaId=${this.replicaId}`,
-    );
+    this.logger.log(`OverdueAlertsService initialized, replicaId=${this.replicaId}`);
   }
 
   onModuleDestroy(): void {
@@ -152,9 +139,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
       this.replicaId,
     );
     if (!acquired) {
-      this.logger.debug(
-        `Skipping tick - another replica holds ${OVERDUE_ALERT_LOCK_KEY}`,
-      );
+      this.logger.debug(`Skipping tick - another replica holds ${OVERDUE_ALERT_LOCK_KEY}`);
       tick.finishedAt = new Date();
       return;
     }
@@ -171,115 +156,106 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
     }, LOCK_RENEWAL_SEC * 1000);
 
     try {
-      const orgId = process.env['PUBLIC_ORG_ID'] ?? '';
-      const cronCtx = {
-        userId: 'cron-service',
-        role: 'CRON_SERVICE' as const,
-        organizationId: orgId,
-      };
+      // T-CRON-MULTITENANT: one pass per organization, each in its own
+      // CRON_SERVICE context (was a single PUBLIC_ORG_ID context).
+      await forEachOrganization(this.client, this.logger, 'Overdue alerts', async (cronCtx) => {
+        // Overdue = NEW + created more than 30min ago AND last nagged more
+        // than 1h ago (or never). Prisma cannot express `lastOverduePushedAt
+        // IS NULL OR <= cutoff` as a plain where on an optional field directly
+        // with an OR across the same column cleanly inside findMany, so we
+        // query NEW+overdue-within-window plus separately handle NULL.
+        const cutoff = new Date(Date.now() - RE_PUSH_EVERY_MS);
+        const overdueCutoff = new Date(Date.now() - OVERDUE_AFTER_MIN * 60_000);
 
-      // Overdue = NEW + created more than 30min ago AND last nagged more
-      // than 1h ago (or never). Prisma cannot express `lastOverduePushedAt
-      // IS NULL OR <= cutoff` as a plain where on an optional field directly
-      // with an OR across the same column cleanly inside findMany, so we
-      // query NEW+overdue-within-window plus separately handle NULL.
-      const cutoff = new Date(Date.now() - RE_PUSH_EVERY_MS);
-      const overdueCutoff = new Date(Date.now() - OVERDUE_AFTER_MIN * 60_000);
+        const [cronLeadsQueried, neverPushedQueried] = await Promise.all([
+          // Run these two scans IN PARALLEL, each in its OWN withRlsContext
+          // transaction. @prisma/adapter-pg pins ONE pooled pg client per
+          // transaction, so concurrent `.query()` calls inside a SINGLE
+          // transaction hit the same client (pg deprecation, interleave risk).
+          // Separate transactions use separate pooled connections - parallel
+          // AND warning-free.
+          withRlsContext(this.client, cronCtx, (tx) =>
+            (tx as unknown as PrismaClient).lead.findMany({
+              where: {
+                ...LEAD_IN_ACTIVE_PROJECT,
+                state: 'NEW',
+                createdAt: { lte: overdueCutoff },
+                lastOverduePushedAt: { lte: cutoff },
+              },
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
+                teamId: true,
+                organizationId: true,
+              },
+              take: 100,
+            }),
+          ),
+          withRlsContext(this.client, cronCtx, (tx) =>
+            (tx as unknown as PrismaClient).lead.findMany({
+              where: {
+                ...LEAD_IN_ACTIVE_PROJECT,
+                state: 'NEW',
+                createdAt: { lte: overdueCutoff },
+                lastOverduePushedAt: null,
+              },
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
+                teamId: true,
+                organizationId: true,
+              },
+              take: 100,
+            }),
+          ),
+        ]);
 
-      const [cronLeadsQueried, neverPushedQueried] = await Promise.all([
-        // Run these two scans IN PARALLEL, each in its OWN withRlsContext
-        // transaction. @prisma/adapter-pg pins ONE pooled pg client per
-        // transaction, so concurrent `.query()` calls inside a SINGLE
-        // transaction hit the same client (pg deprecation, interleave risk).
-        // Separate transactions use separate pooled connections - parallel
-        // AND warning-free.
-        withRlsContext(this.client, cronCtx, (tx) =>
-          (tx as unknown as PrismaClient).lead.findMany({
-            where: {
-              ...LEAD_IN_ACTIVE_PROJECT,
-              state: 'NEW',
-              createdAt: { lte: overdueCutoff },
-              lastOverduePushedAt: { lte: cutoff },
-            },
-            select: {
-              id: true,
-              name: true,
-              ownerId: true,
-              teamId: true,
-              organizationId: true,
-            },
-            take: 100,
-          }),
-        ),
-        withRlsContext(this.client, cronCtx, (tx) =>
-          (tx as unknown as PrismaClient).lead.findMany({
-            where: {
-              ...LEAD_IN_ACTIVE_PROJECT,
-              state: 'NEW',
-              createdAt: { lte: overdueCutoff },
-              lastOverduePushedAt: null,
-            },
-            select: {
-              id: true,
-              name: true,
-              ownerId: true,
-              teamId: true,
-              organizationId: true,
-            },
-            take: 100,
-          }),
-        ),
-      ]);
+        const cronLeads = cronLeadsQueried as unknown as OverdueLead[];
+        const neverPushed = neverPushedQueried as unknown as OverdueLead[];
 
-      const cronLeads = cronLeadsQueried as unknown as OverdueLead[];
-      const neverPushed = neverPushedQueried as unknown as OverdueLead[];
+        const byId = new Map<string, OverdueLead>();
+        for (const l of [...cronLeads, ...neverPushed]) {
+          byId.set(l.id, l);
+        }
+        tick.considered += byId.size;
 
-      const byId = new Map<string, OverdueLead>();
-      for (const l of [...cronLeads, ...neverPushed]) {
-        byId.set(l.id, l);
-      }
-      tick.considered = byId.size;
+        if (byId.size === 0) return;
 
-      if (byId.size === 0) {
-        tick.finishedAt = new Date();
-        return;
-      }
-
-      // Resolve recipients + emit per lead, then stamp lastOverduePushedAt.
-      for (const lead of byId.values()) {
-        try {
-          const recipients = await this.resolveRecipients(
-            cronCtx,
-            lead.ownerId,
-            lead.teamId,
-            lead.organizationId,
-          );
+        // Resolve recipients + emit per lead, then stamp lastOverduePushedAt.
+        for (const lead of byId.values()) {
+          try {
+            const recipients = await this.resolveRecipients(
+              cronCtx,
+              lead.ownerId,
+              lead.teamId,
+              lead.organizationId,
+            );
           for (const sub of recipients) {
-            await this.notifications.emit(sub, {
-              type: 'lead.overdue',
-              title: `Lead overdue: ${lead.name}`,
-              body: 'Still NEW and unanswered past the 30-minute first-touch SLA.',
-              leadId: lead.id,
-            });
-          }
-          // Stamp after the emits - a crash between emit and stamp re-nags
-          // on the next tick (duplicate, never a lost alert).
-          await withRlsContext(
-            this.client,
-            cronCtx,
-            async (tx) =>
+              await this.notifications.emit(sub, {
+                type: 'lead.overdue',
+                title: `Lead overdue: ${lead.name}`,
+                body: 'Still NEW and unanswered past the 30-minute first-touch SLA.',
+                leadId: lead.id,
+              });
+            }
+            // Stamp after the emits - a crash between emit and stamp re-nags
+            // on the next tick (duplicate, never a lost alert).
+            await withRlsContext(this.client, cronCtx, async (tx) =>
               (tx as unknown as PrismaClient).lead.update({
                 where: { id: lead.id },
                 data: { lastOverduePushedAt: new Date() },
               }),
-          );
-          tick.pushed += recipients.length;
-        } catch (err) {
-          this.logger.error(
-            `Overdue alert failed for lead ${lead.id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+            );
+            tick.pushed += recipients.length;
+          } catch (err) {
+            this.logger.error(
+              `Overdue alert failed for lead ${lead.id}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
         }
-      }
+      });
     } finally {
       clearInterval(renewTimer);
       await this.redis.releaseLock(OVERDUE_ALERT_LOCK_KEY, this.replicaId);

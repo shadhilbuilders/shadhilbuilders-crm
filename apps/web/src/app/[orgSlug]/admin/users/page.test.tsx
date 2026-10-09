@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   })),
   useUpdateUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useDeleteUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useResetUserPassword: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useTeams: vi.fn(() => ({
     data: [
       { id: 't-1', name: 'Team Alpha', defaultAssigneeId: null, memberCount: 0 },
@@ -55,6 +56,7 @@ vi.mock('@/hooks/queries/users', () => ({
   useChangeUserRole: mocks.useChangeUserRole,
   useUpdateUser: mocks.useUpdateUser,
   useDeleteUser: mocks.useDeleteUser,
+  useResetUserPassword: mocks.useResetUserPassword,
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -274,6 +276,7 @@ describe('UsersPage - T-D3 state matrix', () => {
             role: 'SALES_EXEC',
             teamId: 't-1',
             projects: ['Shadhil Metro Heights'],
+            reportsTo: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
           },
         ],
         total: 2,
@@ -292,6 +295,17 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).not.toContain('data-qa="select-trigger"');
     // Actions column: a row-actions trigger per row (hierarchy-gated).
     expect(html).toContain('data-qa="data-table-row-actions-button"');
+    // User details live on Staff Permission now: names are plain text, no
+    // link to a per-user page.
+    expect(html).toContain('data-qa="user-row-name-u-priya"');
+    expect(html).not.toContain('data-qa="user-row-link-');
+    expect(html).not.toContain('/admin/users/');
+    expect(html).not.toContain('cursor-pointer');
+    // "Reports to" column: the manager/owner name, or a dash when nobody.
+    expect(html).toContain('Reports to');
+    expect(html).toContain('data-qa="user-reports-to-u-priya"');
+    expect(html).toContain('Ravi Manager');
+    expect(html).toContain('data-qa="user-reports-to-u-1"');
   });
 
   it('empty: useUsers data is [] renders the "No users yet." empty state', async () => {

@@ -275,7 +275,9 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
         { userId: OWNER_ID, role: 'TELECALLER' as const, organizationId: ORG_ID },
         async (tx) =>
           (tx as unknown as PrismaClient).notification.count({
-            where: { leadId: LEAD_ID, type: 'lead.overdue' },
+            // Explicit userId: the test connection can bypass notification RLS, so
+            // do not rely on the policy to narrow this to the owner's inbox.
+            where: { leadId: LEAD_ID, type: 'lead.overdue', userId: OWNER_ID },
           }),
       );
       // 1 from the first tick (owner's inbox), nothing duplicated by the second.
