@@ -22,6 +22,16 @@ import { gotoApp, login } from './helpers';
 
 const VISITS = '/demo/projects/demo-villas/visits';
 
+/**
+ * A seeded lead the schedule picker can offer (VISIT_SCHEDULED).
+ *
+ * The create API refuses a second OPEN visit on the same lead (409). This
+ * spec used to click the first option and then cancel "Demo Arjun", who is
+ * CONTACTED and never appears in the picker — so the visit it actually
+ * booked stayed open and the next test (and every re-run) died in the dialog.
+ */
+const FIXTURE_LEAD = 'Demo Anjali';
+
 /** The month the calendar is currently showing (\"September 2026\"). */
 async function visibleMonth(page: Page): Promise<string> {
   // Read the month label from the calendar's own DateNavigator (the
@@ -93,12 +103,14 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
       .locator('[data-qa="calendar-prev"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
+    // Clear any OPEN visit left by a previous run before this test books one.
+    await closeVisitsBookedBy(page, FIXTURE_LEAD);
   });
 
   // Undo the booking each test makes. The spec must be re-runnable and must not
-  // leave open visits behind for other specs to trip over.
+  // leave open visits behind for the other test in this file.
   test.afterEach(async ({ page }) => {
-    await closeVisitsBookedBy(page, 'Demo Arjun');
+    await closeVisitsBookedBy(page, FIXTURE_LEAD);
   });
 
   test('a visit dated in a LATER month moves the calendar to it', async ({ page }) => {
@@ -112,7 +124,7 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
 
     await dialog.getByRole('combobox', { name: /search a lead/i }).click();
     await page.waitForTimeout(700);
-    const option = page.locator('[role="option"]').first();
+    const option = page.getByRole('option', { name: new RegExp(FIXTURE_LEAD, 'i') });
     await expect(option).toBeVisible({ timeout: 10_000 });
     await option.click();
     await page.waitForTimeout(400);
@@ -173,7 +185,9 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
 
       await dialog.getByRole('combobox', { name: /search a lead/i }).click();
       await page.waitForTimeout(700);
-      await page.locator('[role="option"]').first().click();
+      const option = page.getByRole('option', { name: new RegExp(FIXTURE_LEAD, 'i') });
+      await expect(option).toBeVisible({ timeout: 10_000 });
+      await option.click();
       await page.waitForTimeout(400);
 
       await dialog.getByRole('textbox', { name: /date/i }).fill(slot!.date);

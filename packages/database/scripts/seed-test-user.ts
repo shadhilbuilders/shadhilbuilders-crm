@@ -346,14 +346,16 @@ async function main() {
   // notification above says "requested a token for Unit T-102", so the booking
   // has to BE on T-102 or the demo contradicts itself.
   //
-  // The AMOUNT is taken from each unit's own `price`. It used to be hardcoded
-  // (T-101 booked at 5,800,000 while its price is 4,200,000 - unit T-102's
-  // price), i.e. every seeded booking disagreed with the unit it sat on. That is
-  // precisely the mismatch T-BOOK-AMOUNT now REJECTS at the API
-  // (bookings.service.ts derives the amount from the unit and refuses a
-  // disagreeing client value), so a hardcoded amount here would seed data the
-  // API itself would never accept - and would contradict the test dashboard's
-  // own approval figures.
+  // The AMOUNT and listAmount are taken from each unit's own `price`.
+  // listAmount is the unit total at booking time (required; no negotiation
+  // on these fixtures, so the effective total equals the list). It used to
+  // be hardcoded (T-101 booked at 5,800,000 while its price is 4,200,000 -
+  // unit T-102's price), i.e. every seeded booking disagreed with the unit
+  // it sat on. That is precisely the mismatch T-BOOK-AMOUNT now REJECTS at
+  // the API (bookings.service.ts derives the amount from the unit and
+  // refuses a disagreeing client value), so a hardcoded amount here would
+  // seed data the API itself would never accept - and would contradict the
+  // test dashboard's own approval figures.
   const testBookingUnits = await prisma.unit.findMany({
     where: {
       organizationId: testOrg.id,
@@ -374,6 +376,7 @@ async function main() {
           unitId: tokenUnit.id,
           userId: testUser.id,
           amount: tokenUnit.price,
+          listAmount: tokenUnit.price,
           tokenAmount: '250000.00',
           status: 'TOKEN',
         },
@@ -383,6 +386,7 @@ async function main() {
           unitId: holdUnit.id,
           userId: testUser.id,
           amount: holdUnit.price,
+          listAmount: holdUnit.price,
           tokenAmount: null,
           status: 'HOLD' as const,
         },
