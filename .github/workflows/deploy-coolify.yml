@@ -180,25 +180,78 @@ jobs:
             docker push "ghcr.io/$OWNER/shadhil-crm-$s:prod"
           done
 
-      - name: Prepare SSH key
+      - name: Prepare SSH key + VPS ssh wrappers
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
 
+          # Two wrappers, both failing FAST. Without an explicit
+          # ConnectTimeout a blackholed runner->VPS path (SYN silently
+          # dropped upstream: nothing appears in the VPS's sshd journal AND
+          # nothing in ufw.log, so it is invisible from the box) burns the
+          # kernel default ~135s of SYN retries and then kills the job,
+          # leaving prod on the PREVIOUS images - exactly the 2026-10-10
+          # 11:52Z failure. ConnectTimeout=20 turns that into a 20s failure,
+          # and ServerAliveInterval keeps the long docker-save pipe from
+          # dying silently mid-stream (the 'Broken pipe ~13 min in' signature).
+          cat > "$HOME/.ssh/vps_ssh" <<'EOF'
+          #!/usr/bin/env bash
+          # One connection, strict timeouts. Use for streamed transfers and
+          # for anything that must not be silently replayed.
+          exec ssh -i "$HOME/.ssh/vps_key" -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=20 -o ConnectionAttempts=1 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+            deploy@187.126.115.174 "$@"
+          EOF
+          cat > "$HOME/.ssh/vps_ssh_retry" <<'EOF'
+          #!/usr/bin/env bash
+          # Same, but retries the CONNECT phase up to 3 times. Only for short,
+          # idempotent commands (probes, docker ps/images, prisma migrate
+          # deploy) - never for a 10+ minute image stream.
+          set -o pipefail
+          for attempt in 1 2 3; do
+            "$HOME/.ssh/vps_ssh" "$@" && exit 0
+            rc=$?
+            echo "vps ssh attempt $attempt failed (rc=$rc); retrying in 15s" >&2
+            sleep 15
+          done
+          echo "::error::could not reach 187.126.115.174:22 after 3 attempts - check the VPS is up and that GitHub runner ranges are not blocked on port 22" >&2
+          exit 1
+          EOF
+          chmod +x "$HOME/.ssh/vps_ssh" "$HOME/.ssh/vps_ssh_retry"
+          echo "$HOME/.ssh" >> "$GITHUB_PATH"
+
       - name: Transfer images to the VPS (docker save | docker load)
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.tag }}"
           OWNER="${{ github.repository_owner }}"
-          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
+
+          # Fail fast (and loudly) if the path is down, BEFORE spending
+          # minutes on a transfer that cannot land.
+          vps_ssh_retry 'echo "vps reachable: $(hostname) $(date -u +%FT%TZ)"'
+
           for s in api sse web; do
             IMG="ghcr.io/$OWNER/shadhil-crm-$s:$TAG"
             echo "transferring $IMG"
-            docker save "$IMG" | gzip | $SSH 'gunzip | docker load'
+            docker save "$IMG" | gzip | vps_ssh 'gunzip | docker load'
           done
-          $SSH 'docker images | grep shadhil-crm | head -8'
+
+          # Assert ALL THREE tags landed. The old `docker images | grep | head`
+          # only printed, so a missing image stayed invisible until Coolify
+          # restarted onto a stale (or absent) local tag.
+          if ! LANDED="$(vps_ssh_retry "docker images --format '{{.Repository}}:{{.Tag}}'")"; then
+            echo "::error::could not list images on the VPS - see the ssh attempts above"
+            exit 1
+          fi
+          echo "$LANDED" | grep -F 'shadhil-crm-' | head -12
+          for s in api sse web; do
+            echo "$LANDED" | grep -qx "ghcr.io/$OWNER/shadhil-crm-$s:$TAG" \
+              || { echo "::error::image ghcr.io/$OWNER/shadhil-crm-$s:$TAG did not land on the VPS"; exit 1; }
+          done
 
       - name: Sync docker-compose definition to Coolify
         id: compose
@@ -273,22 +326,24 @@ jobs:
           SEED_TEST_TENANT: ${{ inputs.seed_test_tenant }}
         run: |
           set -euo pipefail
-          SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
+          # vps_ssh = strict ConnectTimeout, no inner retry: this loop IS the
+          # retry (30 x 10s). Without it a blackholed path makes each poll
+          # block for the kernel default ~135s.
           for i in $(seq 1 30); do
             sleep 10
-            if $SSH 'docker ps --format "{{.Names}} {{.Status}}" | grep -q "shadhil-api.* Up "' 2>/dev/null; then
+            if vps_ssh 'docker ps --format "{{.Names}} {{.Status}}" | grep -q "shadhil-api.* Up "' 2>/dev/null; then
               echo "api container up after ~$((i*10))s"
-              $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
+              vps_ssh 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
               if [ "${SEED_TEST_TENANT}" = "true" ]; then
                 echo "seed_test_tenant=true - re-applying the test-tenant seed"
-                $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && npx tsx --env-file-if-exists=/dev/null scripts/seed-test-user.ts"'
+                vps_ssh 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && npx tsx --env-file-if-exists=/dev/null scripts/seed-test-user.ts"'
               else
                 echo "skipping the test-tenant seed (manual dispatch with seed_test_tenant=true re-applies it)"
               fi
               exit 0
             fi
           done
-          $SSH 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
+          vps_ssh 'docker ps -a --format "{{.Names}} {{.Status}}" | head -10'
           echo "api container did not come up in 300s"; exit 1
 
   # 4. Runs LAST, even if deploy failed, and only warns.
