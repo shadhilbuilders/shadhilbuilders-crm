@@ -6,6 +6,7 @@ import { type ReactNode } from 'react';
 
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar';
 import { InstallPrompt } from '@/components/install-prompt';
+import { DOCUMENT_TITLE_SUFFIX } from '@/lib/document-title';
 import { Providers } from '@/providers';
 
 import '@/styles/globals.css';
@@ -23,8 +24,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | Shadhil Builders CRM',
-    default: 'Shadhil Builders CRM',
+    template: `%s | ${DOCUMENT_TITLE_SUFFIX}`,
+    default: DOCUMENT_TITLE_SUFFIX,
   },
   description:
     'Real-estate CRM for Shadhil Builders - Lead Inbox, Site Visits, Bookings, Chat, Reminders.',

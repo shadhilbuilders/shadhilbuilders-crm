@@ -15,6 +15,7 @@
 // browser bundle and crashes the build ("Module not found: pg").
 import 'server-only';
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { issueJwt } from '@shadhil/auth';
 import { prisma } from '@shadhil/database';
@@ -117,9 +118,10 @@ export async function getOrganizationBySlug(
 /**
  * Resolve a project by slug within the actor's org (the `[projectSlug]`
  * segment, under `/organizations/projects/by-slug/`). Returns null when
- * unauthenticated or the project is not visible.
+ * unauthenticated or the project is not visible. Cached per request so the
+ * project layout and its generateMetadata share one lookup.
  */
-export async function getProjectBySlug(
+export const getProjectBySlug = cache(async function getProjectBySlug(
   slug: string,
 ): Promise<ProjectLookup | null> {
   try {
@@ -131,4 +133,4 @@ export async function getProjectBySlug(
     if (err instanceof NotAuthenticatedError) return null;
     throw err;
   }
-}
+});

@@ -1,13 +1,37 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 
+import { DOCUMENT_TITLE_SUFFIX } from '@/lib/document-title';
+import { getProjectBySlug } from '@/lib/server/tenant';
 import {
   ProjectProvider,
   type ProjectContextValue,
 } from '@/lib/tenant-context';
-import { getProjectBySlug } from '@/lib/server/tenant';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Project pages title as "Lead Inbox · Skyline | Shadhil Builders CRM".
+ * A segment's title.template replaces the parent template instead of nesting
+ * inside it, so the brand suffix has to be repeated here.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ projectSlug: string }>;
+}): Promise<Metadata> {
+  const { projectSlug } = await params;
+  const project = await getProjectBySlug(projectSlug);
+  const name = project?.name ?? 'Project';
+
+  return {
+    title: {
+      template: `%s · ${name} | ${DOCUMENT_TITLE_SUFFIX}`,
+      default: name,
+    },
+  };
+}
 
 /**
  * Server project layout - resolves the `[projectSlug]` URL segment to the
