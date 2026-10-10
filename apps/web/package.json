@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "postinstall": "bash scripts/setup-env-local.sh",
-    "prebuild": "pnpm --filter @shadhil/database generate && bash scripts/ensure-workspace-dists.sh",
+    "prebuild": "pnpm --filter @shadhil/database generate && sh scripts/ensure-workspace-dists.sh",
     "build": "NODE_ENV=production SERWIST_SUPPRESS_TURBOPACK_WARNING=1 next build --webpack",
     "analyze": "NODE_ENV=production ANALYZE=true next build",
     "start": "next start",

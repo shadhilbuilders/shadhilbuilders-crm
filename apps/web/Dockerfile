@@ -102,6 +102,7 @@ COPY apps/realtime-sse/ apps/realtime-sse/
 # `prebuild` hook on the next line, which runs `pnpm --filter @shadhil/database
 # generate` before anything compiles. Without that, `next build` fails with
 # TS2307 on './generated/prisma/client' exactly like the API image did.
+# prebuild's ensure-workspace-dists.sh is POSIX sh (not bash) so alpine works.
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # pnpm runs `prebuild` automatically: prisma generate → ensure workspace

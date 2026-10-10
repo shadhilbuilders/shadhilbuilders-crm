@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Rebuild @shadhil/database, @shadhil/auth, and @shadhil/api-types only when
 # their dist entry is missing.
 #
@@ -7,7 +7,9 @@
 # @shadhil/backend's `nest build` (web prebuild deletes dist while nest is
 # compiling). Docker / bare `pnpm --filter @shadhil/web build` still rebuilds
 # because the image starts with no dist/.
-set -euo pipefail
+#
+# POSIX sh only: apps/web/Dockerfile builder is node:*-alpine (no bash).
+set -eu
 
 # apps/web/scripts → ../.. = apps/web → need ../../.. for repo root
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -18,13 +20,13 @@ for rel in \
   packages/auth-client/dist/index.js \
   packages/api-types/dist/index.js
 do
-  if [[ ! -f "$REPO_ROOT/$rel" ]]; then
+  if [ ! -f "$REPO_ROOT/$rel" ]; then
     echo "[prebuild] missing $rel"
     missing=1
   fi
 done
 
-if [[ "$missing" -eq 0 ]]; then
+if [ "$missing" -eq 0 ]; then
   echo "[prebuild] workspace dists present - skipping package rebuild"
   exit 0
 fi
