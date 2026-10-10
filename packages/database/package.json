@@ -5,16 +5,16 @@
   "description": "Shadhil CRM - Prisma schema, generated client, and model type re-exports. Single source of truth for all Prisma-derived types consumed by @shadhil/api-types and the apps.",
   "type": "commonjs",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./test-db-isolation": {
-      "types": "./dist/test-db-isolation.d.ts",
+      "types": "./src/test-db-isolation.ts",
       "require": "./dist/test-db-isolation.js",
       "import": "./dist/test-db-isolation.js",
       "default": "./dist/test-db-isolation.js"
@@ -32,6 +32,7 @@
     "test": "vitest run",
     "seed": "tsx --env-file-if-exists=../../.env src/seed.ts",
     "seed:test": "tsx --env-file-if-exists=../../.env scripts/seed-test-user.ts",
+    "seed:test:sql": "tsx scripts/generate-test-data-sql.ts",
     "setup-demo-user": "tsx --env-file-if-exists=../../.env scripts/setup-demo-user.ts",
     "test:db:reset": "bash scripts/reset-test-db.sh",
     "format": "echo '(prisma format)' && prisma format",

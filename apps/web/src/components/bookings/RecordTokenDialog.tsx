@@ -44,6 +44,10 @@ import { currencyIntl } from '@/lib/format';
 
 const FORM_ID = 'booking-record-token-form';
 
+/** Same wording as BookingTransitionDto / booking detail transition form. */
+export const TOKEN_AMOUNT_REQUIRED_MESSAGE =
+  'Enter the token amount received before marking the token as received';
+
 /**
  * Client-side form for a move into TOKEN: the amount received is required.
  *
@@ -54,22 +58,28 @@ const FORM_ID = 'booking-record-token-form';
  * `z.string()` here is what produced "Invalid input: expected string, received
  * number" on every submit.
  *
- * `required_error` carries the "not entered" case, so a blank field still gets a
- * message aimed at the operator rather than zod's default.
+ * Blank stays `undefined` on the field (`.optional()`), and the required rule
+ * lives in `superRefine` so the Form can attach a field-level message - the Form
+ * ships with `noValidate`, so HTML `required` never surfaces an error.
  */
-const recordTokenSchemaFor = (totalAmount: number) =>
+export const recordTokenSchemaFor = (totalAmount: number) =>
   z
     .object({
       tokenAmount: TokenAmountSchema.optional(),
     })
     .superRefine((values, ctx) => {
+      if (values.tokenAmount === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message: TOKEN_AMOUNT_REQUIRED_MESSAGE,
+        });
+        return;
+      }
       // T-TOKEN-GATE cap (owner instruction): a token is a PART payment, so it can
       // never exceed the booking's total. The dialog knows the total, so it says so
       // before the request; the service re-checks it authoritatively.
-      if (
-        values.tokenAmount !== undefined &&
-        !isTokenWithinTotal(values.tokenAmount, totalAmount)
-      ) {
+      if (!isTokenWithinTotal(values.tokenAmount, totalAmount)) {
         ctx.addIssue({
           code: 'custom',
           path: ['tokenAmount'],

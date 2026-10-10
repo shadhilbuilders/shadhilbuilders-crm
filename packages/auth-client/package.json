@@ -5,16 +5,16 @@
   "description": "better-auth shared instance with Prisma adapter, JWT + admin plugins. Shared between apps/web (Next.js) and apps/backend (NestJS).",
   "type": "commonjs",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./auth-client": {
-      "types": "./dist/auth-client.d.ts",
+      "types": "./src/auth-client.ts",
       "require": "./dist/auth-client.js",
       "import": "./dist/auth-client.js",
       "default": "./dist/auth-client.js"

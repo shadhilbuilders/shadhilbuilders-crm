@@ -20,6 +20,16 @@ name: deploy-coolify
 # green run means the definition actually landed. The verify runs last on
 # purpose: a compose-sync problem must never stop app code from shipping.
 #
+# TEST-TENANT SEED (fixed 2026-10-10). This workflow used to run
+# `scripts/seed-test-user.ts` inside the api container on EVERY push-to-main
+# deploy. That was harmless while the script only created the test tenant, but
+# it is an UPSERT: once it carried real data (users, leads, bookings, visits) a
+# routine deploy RESET the test org and silently discarded any change made
+# through the UI. It was also the only step that could fail AFTER a successful
+# ship. The seed is now opt-in - dispatch this workflow with
+# `seed_test_tenant=true` to (re)create the tenant on a fresh database. A
+# routine deploy runs migrations only.
+#
 # Repo secrets (set once):
 #   COOLIFY_TOKEN - API token scoped write+deploy
 #   VPS_SSH_KEY   - private key of the non-root `deploy` VPS user
@@ -29,6 +39,10 @@ on:
     inputs:
       disable_cache:
         description: 'Disable the Docker build cache for this run'
+        type: boolean
+        default: false
+      seed_test_tenant:
+        description: 'Also re-apply the test-tenant seed (scripts/seed-test-user.ts) after the deploy'
         type: boolean
         default: false
   push:
@@ -247,6 +261,16 @@ jobs:
           echo "deploy queued with IMAGE_TAG=$TAG"
 
       - name: Wait for the stack + run migrations
+        env:
+          # OPT-IN ONLY. Seeding the test tenant is an UPSERT that RESETS its
+          # rows to the seeded state, so running it on a routine push-to-main
+          # deploy would silently overwrite any manual change made through the
+          # UI (a moved lead, a recorded token). It is also the only step here
+          # that can fail AFTER a successful ship, turning a green deploy red.
+          # `inputs` is empty on a push event, so this is false there; dispatch
+          # the workflow with seed_test_tenant=true to (re)create the tenant on
+          # a fresh database.
+          SEED_TEST_TENANT: ${{ inputs.seed_test_tenant }}
         run: |
           set -euo pipefail
           SSH="ssh -i ~/.ssh/vps_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new deploy@187.126.115.174"
@@ -255,8 +279,12 @@ jobs:
             if $SSH 'docker ps --format "{{.Names}} {{.Status}}" | grep -q "shadhil-api.* Up "' 2>/dev/null; then
               echo "api container up after ~$((i*10))s"
               $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && node node_modules/prisma/build/index.js migrate deploy"'
-              # Seed test user (test@shadhilbuilders.in) for production testing
-              $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && npx tsx --env-file-if-exists=/dev/null scripts/seed-test-user.ts"'
+              if [ "${SEED_TEST_TENANT}" = "true" ]; then
+                echo "seed_test_tenant=true - re-applying the test-tenant seed"
+                $SSH 'docker exec shadhil-api-0bjahklz8gtdtr4do4r7ae6m sh -lc "cd /app/packages/database && npx tsx --env-file-if-exists=/dev/null scripts/seed-test-user.ts"'
+              else
+                echo "skipping the test-tenant seed (manual dispatch with seed_test_tenant=true re-applies it)"
+              fi
               exit 0
             fi
           done

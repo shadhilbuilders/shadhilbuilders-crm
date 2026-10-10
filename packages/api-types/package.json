@@ -5,10 +5,10 @@
   "description": "Shadhil CRM - Shared TypeScript types and Zod schemas for the 9 NestJS modules. Re-exports Prisma-generated model types from @shadhil/database and provides request/response DTOs as Zod schemas (inferred TypeScript types via z.infer). One source of truth for validation in NestJS pipes AND Next.js route handlers.",
   "type": "commonjs",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"

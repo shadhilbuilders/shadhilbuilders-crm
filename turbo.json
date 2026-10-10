@@ -34,6 +34,7 @@
         "dist/**",
         ".next/**",
         "!.next/cache/**",
+        "!.next/dev/**",
         "node_modules/.prisma/client/**"
       ],
       "inputs": [
@@ -83,6 +84,21 @@
         "$TURBO_DEFAULT$",
         "vitest.config.*"
       ]
+    },
+    "@shadhil/api-types#test": {
+      "dependsOn": ["^build", "@shadhil/auth#test"],
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "vitest.config.*"]
+    },
+    "@shadhil/backend#test": {
+      "dependsOn": ["^build", "@shadhil/auth#test"],
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "vitest.config.*"]
+    },
+    "@shadhil/web#test": {
+      "dependsOn": ["^build", "@shadhil/auth#test"],
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "vitest.config.*"]
     },
     "clean": {
       "cache": false,

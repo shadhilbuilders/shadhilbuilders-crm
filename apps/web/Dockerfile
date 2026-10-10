@@ -104,8 +104,8 @@ COPY apps/realtime-sse/ apps/realtime-sse/
 # TS2307 on './generated/prisma/client' exactly like the API image did.
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# pnpm runs `prebuild` automatically: prisma generate → clean + build the
-# workspace packages the app imports → `next build`.
+# pnpm runs `prebuild` automatically: prisma generate → ensure workspace
+# package dists exist (build only if missing) → `next build`.
 # The inline vars are build-only placeholders (see the note above); they satisfy
 # the env validators' shape checks and never reach the runner stage.
 RUN BETTER_AUTH_URL=https://crm.shadhilbuilders.in \

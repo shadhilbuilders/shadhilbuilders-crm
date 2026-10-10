@@ -17,24 +17,25 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { describe, expect, it, vi } from 'vitest';
+
 import { z } from 'zod';
 
-import { TokenAmountSchema } from '@shadhil/api-types';
+import { TOKEN_EXCEEDS_TOTAL_MESSAGE, TokenAmountSchema } from '@shadhil/api-types';
 
-import { bookingLabel, RecordTokenFormBody } from './RecordTokenDialog';
+import {
+  bookingLabel,
+  recordTokenSchemaFor,
+  RecordTokenFormBody,
+  TOKEN_AMOUNT_REQUIRED_MESSAGE,
+} from './RecordTokenDialog';
 
-// The dialog's schema, minus the `undefined`-when-blank refinement: this harness
-// exercises the FIELD and the VALUE TYPE, which is where the bug was.
-//
-// T-TOKEN-GATE fix (2026-09-28): the harness used to declare `z.string()`, copying
-// the same wrong assumption as the production form, so it never caught "Invalid
-// input: expected string, received number". A test that mirrors the mistake cannot
-// detect it - which is why the schema is now IMPORTED from @shadhil/api-types.
-const schema = z.object({ tokenAmount: TokenAmountSchema.optional() });
+// Field/type harness: positive number rules only. Required + cap live on
+// `recordTokenSchemaFor` and are pinned in the schema describe below.
+const typeSchema = z.object({ tokenAmount: TokenAmountSchema.optional() });
 
 function Harness({ defaultValue }: { defaultValue?: number }) {
   const form = useForm<{ tokenAmount?: number }>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(typeSchema),
     defaultValues: { tokenAmount: defaultValue },
   });
   return <RecordTokenFormBody form={form} onSubmit={vi.fn()} />;
@@ -44,8 +45,8 @@ describe('RecordTokenFormBody', () => {
   it('renders the token amount field, marked required', () => {
     const html = renderToStaticMarkup(<Harness />);
     expect(html).toContain('Token amount received');
-    // `required` is what makes the browser refuse an empty submit before zod even
-    // runs - the first of the two layers that stop a token being recorded blank.
+    // Label/a11y `required` only - Form defaults to noValidate, so blank submit
+    // is blocked by recordTokenSchemaFor (see schema tests below), not the browser.
     expect(html).toMatch(/required/);
     expect(html).toContain('record-token-amount');
   });
@@ -64,23 +65,49 @@ describe('the token amount type (the bug this fixes)', () => {
     // `event.currentTarget.valueAsNumber` into the form. A `z.string()` schema
     // rejected it with "Invalid input: expected string, received number" on every
     // submit. This is the regression pin for that.
-    expect(schema.safeParse({ tokenAmount: 500_000 }).success).toBe(true);
-    expect(schema.safeParse({ tokenAmount: 500_000.5 }).success).toBe(true);
+    expect(typeSchema.safeParse({ tokenAmount: 500_000 }).success).toBe(true);
+    expect(typeSchema.safeParse({ tokenAmount: 500_000.5 }).success).toBe(true);
   });
 
   it('still rejects zero, negatives and non-numbers', () => {
     for (const v of [0, -5, 'abc']) {
-      expect(schema.safeParse({ tokenAmount: v }).success, `${String(v)} must be rejected`).toBe(
-        false,
-      );
+      expect(
+        typeSchema.safeParse({ tokenAmount: v }).success,
+        `${String(v)} must be rejected`,
+      ).toBe(false);
     }
   });
 
-  it('treats a blank field as "not entered" (undefined), not as invalid', () => {
-    // The field emits `undefined` when cleared, so absence must be representable -
-    // the "an amount is required" rule lives one level up, where it can tell a
-    // blank field from a zero one.
-    expect(schema.safeParse({ tokenAmount: undefined }).success).toBe(true);
+  it('treats a blank field as "not entered" (undefined) at the type layer', () => {
+    // The field emits `undefined` when cleared. The type schema allows that so
+    // zero (invalid amount) stays distinct from blank; required is enforced by
+    // recordTokenSchemaFor.
+    expect(typeSchema.safeParse({ tokenAmount: undefined }).success).toBe(true);
+  });
+});
+
+describe('recordTokenSchemaFor (field errors the Form can show)', () => {
+  const schema = recordTokenSchemaFor(1_000_000);
+
+  it('rejects a blank amount with the operator-facing message', () => {
+    // Form uses noValidate, so without this refine a blank submit called onSubmit
+    // and the dialog returned silently - no FieldError ever rendered.
+    const result = schema.safeParse({ tokenAmount: undefined });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.path).toEqual(['tokenAmount']);
+    expect(result.error.issues[0]?.message).toBe(TOKEN_AMOUNT_REQUIRED_MESSAGE);
+  });
+
+  it('rejects a token above the booking total', () => {
+    const result = schema.safeParse({ tokenAmount: 1_000_001 });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.message).toBe(TOKEN_EXCEEDS_TOTAL_MESSAGE);
+  });
+
+  it('accepts a positive token within the total', () => {
+    expect(schema.safeParse({ tokenAmount: 500_000 }).success).toBe(true);
   });
 });
 
