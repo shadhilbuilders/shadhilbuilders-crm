@@ -50,6 +50,12 @@ pnpm-debug.log*
 # ESLint
 .eslintcache
 
+# Python
+# scripts/extract-cmda-layout.py is run by hand - and by anyone re-deriving the
+# plot geometry after a drawing change - so running it leaves __pycache__ next
+# to the script.
+__pycache__/
+
 # Prisma
 packages/database/prisma/migrations/dev.db*
 
