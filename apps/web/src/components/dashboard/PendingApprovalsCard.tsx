@@ -103,9 +103,11 @@ export function PendingApprovalsCard({
             return (
               <li
                 key={booking.id}
-                className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm"
+                className="flex flex-col items-start gap-1 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:py-2"
               >
-                <span className="min-w-0 flex-1 truncate">{label}</span>
+                <span className="w-full min-w-0 wrap-break-word sm:w-auto sm:flex-1 sm:truncate">
+                  {label}
+                </span>
                 <span className="text-muted-foreground tabular-nums">
                   {formatMoney(booking.amount)}
                 </span>

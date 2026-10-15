@@ -79,9 +79,9 @@ export function TodayVisitsCard({
             return (
               <li
                 key={visit.id}
-                className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-start sm:justify-between gap-x-4 gap-y-1 py-2 text-sm"
+                className="flex flex-col items-start gap-1 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:py-2"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
                   <span className="shrink-0 tabular-nums">
                     {/* Was a hand-rolled `toLocaleTimeString`, which the standing
                         formatting convention forbids ("never hand-rolled Intl -
