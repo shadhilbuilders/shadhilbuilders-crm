@@ -1,9 +1,10 @@
-// Hover / selection callout for the plot map.
+// Hover callout for the plot map.
 //
 // Rendered as HTML over the <svg>, not as SVG text inside it: SVG text scales
 // with the viewBox, so the old pill was unreadably small zoomed out and
 // huge zoomed in. This one stays a constant screen size, sits above the plot
 // instead of covering it, and flips below when the plot is near the top edge.
+// Selection is shown by the plot fill and the details panel — no sticky badge.
 
 import { getPlotColor } from './plot-colors';
 import type { PlotStatus } from './plot-types';
@@ -18,7 +19,6 @@ export interface PlotTooltipProps {
   /** Anchor as a 0-100 percentage of the map's width/height. */
   anchorXPercent: number;
   anchorYPercent: number;
-  tone: 'hover' | 'selected';
 }
 
 /** Below this vertical position the callout flips under the plot. */
@@ -38,7 +38,6 @@ export function PlotTooltip({
   unitLabel,
   anchorXPercent,
   anchorYPercent,
-  tone,
 }: PlotTooltipProps) {
   const left = clamp(anchorXPercent, EDGE_CLAMP_PERCENT, 100 - EDGE_CLAMP_PERCENT);
   const below = anchorYPercent < FLIP_BELOW_PERCENT;
@@ -52,14 +51,9 @@ export function PlotTooltip({
         top: `${anchorYPercent}%`,
         transform: below ? 'translate(-50%, 14px)' : 'translate(-50%, calc(-100% - 14px))',
       }}
-      data-qa={tone === 'hover' ? 'plot-tooltip' : 'plot-selected-badge'}
+      data-qa="plot-tooltip"
     >
-      <div
-        className={
-          'bg-popover text-popover-foreground flex items-center gap-2.5 rounded-lg border px-3 py-2 shadow-lg ' +
-          (tone === 'selected' ? 'border-primary' : 'border-border')
-        }
-      >
+      <div className="bg-popover text-popover-foreground border-border flex items-center gap-2.5 rounded-lg border px-3 py-2 shadow-lg">
         <span
           aria-hidden="true"
           className="size-2.5 shrink-0 rounded-full"

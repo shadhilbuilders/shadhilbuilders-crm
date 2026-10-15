@@ -72,7 +72,10 @@ function PlotPolygonImpl({
           event.stopPropagation();
           onSelect(plot.plotNumber);
         }}
-        onPointerEnter={() => onHoverChange(plot.plotNumber)}
+        // Touch has no hover: a tap would leave the tooltip stuck on screen.
+        onPointerEnter={(event) => {
+          if (event.pointerType !== 'touch') onHoverChange(plot.plotNumber);
+        }}
         onPointerLeave={() => onHoverChange(null)}
         onFocus={() => onHoverChange(plot.plotNumber)}
         onBlur={() => onHoverChange(null)}

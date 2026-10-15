@@ -48,6 +48,9 @@ interface GestureState {
   lastX: number;
   lastY: number;
   pinchDistance: number | null;
+  /** Screen midpoint of the two fingers last frame, so a pinch also pans. */
+  pinchMidX: number;
+  pinchMidY: number;
   /** Plot captured on pointerdown - pointer capture means pointerup targets the svg. */
   pressedPlotNumber: number | null;
 }
@@ -60,6 +63,8 @@ function emptyGesture(): GestureState {
     lastX: 0,
     lastY: 0,
     pinchDistance: null,
+    pinchMidX: 0,
+    pinchMidY: 0,
     pressedPlotNumber: null,
   };
 }
@@ -151,6 +156,26 @@ export function PlotMap({
     return () => svg.removeEventListener('wheel', handleWheel);
   }, [planCentre, zoomByFactor]);
 
+  // iOS Safari ignores `touch-action: none` for page pinch-zoom in places and
+  // fires its own gesture events; Android Chrome can still scroll the page on
+  // touchmove. Cancelling both keeps the pinch ours.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (svg === null) return;
+    const block = (event: Event) => event.preventDefault();
+    const blockMulti = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+    };
+    svg.addEventListener('gesturestart', block);
+    svg.addEventListener('gesturechange', block);
+    svg.addEventListener('touchmove', blockMulti, { passive: false });
+    return () => {
+      svg.removeEventListener('gesturestart', block);
+      svg.removeEventListener('gesturechange', block);
+      svg.removeEventListener('touchmove', blockMulti);
+    };
+  }, []);
+
   // Centre on a plot that was found by search or a filter chip.
   const focusPlotNumber = focusRequest?.plotNumber ?? null;
   const focusNonce = focusRequest?.nonce ?? 0;
@@ -179,6 +204,8 @@ export function PlotMap({
         lastX: event.clientX,
         lastY: event.clientY,
         pinchDistance: null,
+        pinchMidX: 0,
+        pinchMidY: 0,
         pressedPlotNumber: pressed === null || pressed === undefined ? null : Number(pressed),
       };
     } else {
@@ -201,11 +228,23 @@ export function PlotMap({
         const [first, second] = points;
         if (first === undefined || second === undefined) return;
         const distance = Math.hypot(first.x - second.x, first.y - second.y);
-        const midpoint = anchorFor((first.x + second.x) / 2, (first.y + second.y) / 2);
+        const midX = (first.x + second.x) / 2;
+        const midY = (first.y + second.y) / 2;
         if (gesture.pinchDistance !== null && gesture.pinchDistance > 0) {
-          zoomByFactor(distance / gesture.pinchDistance, midpoint);
+          const rect = svg.getBoundingClientRect();
+          // Pan with the fingers' midpoint first, then zoom about the new
+          // midpoint, so a two-finger drag moves the map like native maps do.
+          if (rect.width > 0 && rect.height > 0) {
+            panByPlanUnits(
+              ((midX - gesture.pinchMidX) * viewBox.width) / rect.width,
+              ((midY - gesture.pinchMidY) * viewBox.height) / rect.height
+            );
+          }
+          zoomByFactor(distance / gesture.pinchDistance, anchorFor(midX, midY));
         }
         gesture.pinchDistance = distance;
+        gesture.pinchMidX = midX;
+        gesture.pinchMidY = midY;
         return;
       }
 
@@ -236,7 +275,18 @@ export function PlotMap({
     (event: React.PointerEvent<SVGSVGElement>) => {
       const gesture = gestureRef.current;
       pointersRef.current.delete(event.pointerId);
-      if (pointersRef.current.size > 0) return;
+      if (pointersRef.current.size > 0) {
+        // Pinch ended with one finger still down: rebase the pan origin on it
+        // so the map doesn't jump, and drop the stale pinch distance.
+        const remaining = [...pointersRef.current.values()][0];
+        gesture.pinchDistance = null;
+        gesture.moved = true;
+        if (remaining !== undefined) {
+          gesture.lastX = remaining.x;
+          gesture.lastY = remaining.y;
+        }
+        return;
+      }
 
       const pressed = gesture.pressedPlotNumber;
       const wasClick = !gesture.moved;
@@ -283,22 +333,16 @@ export function PlotMap({
     [centreOn, matchingNumbers, onSelect, plots, reset, selectedPlotNumber, zoomByStep]
   );
 
-  const selectedPlot = useMemo(
-    () => plots.find((plot) => plot.plotNumber === selectedPlotNumber) ?? null,
-    [plots, selectedPlotNumber]
-  );
   const hoveredPlot = useMemo(
     () => plots.find((plot) => plot.plotNumber === hoveredPlotNumber) ?? null,
     [hoveredPlotNumber, plots]
   );
 
-  // The hovered plot wins while hovering; otherwise the selection keeps its
-  // badge so a user who clicked can still read which plot is active.
-  const badgePlot = hoveredPlot ?? selectedPlot;
-  const badgeTone = hoveredPlot !== null ? 'hover' : 'selected';
-  const badgeAnchor = useMemo(
-    () => (badgePlot === null ? null : polygonCentroid(badgePlot.boundary)),
-    [badgePlot]
+  // Hover-only callout. Selection is shown by the plot fill and the details
+  // panel — a sticky badge after click duplicates that and covers the drawing.
+  const tooltipAnchor = useMemo(
+    () => (hoveredPlot === null ? null : polygonCentroid(hoveredPlot.boundary)),
+    [hoveredPlot]
   );
 
   if (plots.length === 0) {
@@ -363,19 +407,18 @@ export function PlotMap({
           </g>
         </svg>
 
-        {badgePlot !== null ? (
+        {hoveredPlot !== null ? (
           <PlotTooltip
-            plotNumber={badgePlot.plotNumber}
-            status={badgePlot.status}
-            statusLabel={PLOT_STATUS_LABEL[badgePlot.status]}
-            categoryLabel={PLOT_CATEGORY_LABEL[badgePlot.category]}
+            plotNumber={hoveredPlot.plotNumber}
+            status={hoveredPlot.status}
+            statusLabel={PLOT_STATUS_LABEL[hoveredPlot.status]}
+            categoryLabel={PLOT_CATEGORY_LABEL[hoveredPlot.category]}
             // The villa sitting on this plot, when one does. The callout names
             // it so an operator can tell which door number a coloured plot is
             // without opening the panel.
-            unitLabel={badgePlot.units[0]?.unit.unitNumber ?? null}
-            anchorXPercent={(((badgeAnchor?.x ?? 0) - viewBox.x) / viewBox.width) * 100}
-            anchorYPercent={(((badgeAnchor?.y ?? 0) - viewBox.y) / viewBox.height) * 100}
-            tone={badgeTone}
+            unitLabel={hoveredPlot.units[0]?.unit.unitNumber ?? null}
+            anchorXPercent={(((tooltipAnchor?.x ?? 0) - viewBox.x) / viewBox.width) * 100}
+            anchorYPercent={(((tooltipAnchor?.y ?? 0) - viewBox.y) / viewBox.height) * 100}
           />
         ) : null}
 
