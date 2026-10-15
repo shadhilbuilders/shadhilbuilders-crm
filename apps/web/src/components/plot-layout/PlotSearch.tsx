@@ -7,7 +7,7 @@
 // When plot statuses start coming from the API this stays correct: the filter
 // narrows the loaded set, and the map only dims what it has.
 
-import { Button, Input, Select } from '@paalstack/react-ui';
+import { Button, InputGroup, Select } from '@paalstack/react-ui';
 import { LuSearch, LuX } from '@paalstack/react-icons/lu';
 import { useEffect, useState } from 'react';
 
@@ -66,33 +66,33 @@ export function PlotSearch({
   return (
     <div className="flex flex-col gap-2" data-qa="plot-search">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-44 flex-1">
-          <LuSearch
-            aria-hidden="true"
-            className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-          />
-          <Input
-            value={draft}
+        <InputGroup
+          className="min-w-44 flex-1"
+          // The leading search icon is the group's start addon. The group owns
+          // the input's inset, so there is no absolutely-positioned icon and no
+          // `pl-8` to keep in sync with the icon's width.
+          addonStart={<LuSearch aria-hidden="true" />}
+          inputProps={{
+            value: draft,
             // Digits only: a plot "number" has no letters, and stripping them
             // means a pasted "Plot 20" still lands on plot 20.
-            onChange={(event) => {
+            onChange: (event) => {
               const digits = event.target.value.replace(/[^0-9]/g, '').slice(0, 3);
               setDraft(digits);
               onFiltersChange({ query: digits });
-            }}
-            onKeyDown={(event) => {
+            },
+            onKeyDown: (event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
                 onLocate(draft);
               }
-            }}
-            inputMode="numeric"
-            placeholder="Find plot number (1-125)"
-            aria-label="Find a plot by number"
-            className="pl-8"
-            data-qa="plot-search-input"
-          />
-        </div>
+            },
+            inputMode: 'numeric',
+            placeholder: 'Find plot number (1-125)',
+            'aria-label': 'Find a plot by number',
+            'data-qa': 'plot-search-input',
+          }}
+        />
 
         <Select
           value={filters.category}

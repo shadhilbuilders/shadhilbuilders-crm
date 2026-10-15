@@ -72,6 +72,32 @@ test.describe('plot layout', () => {
     await expect(page.locator('a[href$="/plots"]').first()).toBeVisible();
   });
 
+  test('the plot-number search is the library InputGroup, not a hand-rolled input', async ({
+    page,
+  }) => {
+    await page.goto(PLOTS_PATH, NAV);
+    await waitForMapToHydrate(page);
+
+    // `data-qa` alone cannot tell the two apart - the hand-rolled version carried
+    // it too, so a test selecting only on it would pass either way. The group's
+    // own data-slot markers are what actually prove the InputGroup renders: a
+    // `relative` wrapper with an absolutely-positioned icon has neither.
+    const input = page.locator('[data-qa="plot-search-input"]');
+    await expect(input).toBeVisible();
+    await expect(input).toHaveAttribute('data-slot', 'input-group-control');
+
+    const group = page.locator('[data-slot="input-group"]').filter({ has: input });
+    await expect(group).toHaveCount(1);
+    // The leading search icon is the group's start addon, so the input's inset
+    // belongs to the group instead of a hand-tuned `pl-*` kept in sync by hand.
+    await expect(group.locator('[data-slot="input-group-addon"]')).toHaveCount(1);
+
+    // And it is still a real, fillable input - fill() fails outright if the
+    // marker ever lands on a wrapper instead of the control.
+    await input.fill('20');
+    await expect(page.locator('[data-qa="plot-search-match-20"]')).toBeVisible();
+  });
+
   test('reads plot availability from the API, and explains an all-available result', async ({
     page,
   }) => {
