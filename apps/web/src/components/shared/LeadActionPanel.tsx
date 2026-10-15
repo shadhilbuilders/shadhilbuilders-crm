@@ -118,7 +118,7 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
     <>
       <Card data-qa="lead-action-panel">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             Actions
             <LeadStatusBadge status={status} />
           </CardTitle>
@@ -132,11 +132,12 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
             reopen={reopenTargets.length > 0}
           />
           {canAssign ? (
-            <div className="flex justify-end gap-2 border-t pt-4">
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => setReassignOpen(true)}
                 data-qa="lead-reassign-open"
               >
@@ -146,6 +147,7 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => setCoOwnerOpen(true)}
                 data-qa="lead-co-owner-open"
               >
@@ -247,8 +249,8 @@ function EditLeadForm({ lead }: { lead: LeadData }) {
           disabled: updateLead.isPending,
           'data-qa': 'edit-lead-save',
         }}
-        actionClassName="justify-end col-span-2"
-        className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 space-y-2 sm:gap-x-4"
+        actionClassName="justify-end sm:col-span-2 [&>button]:w-full sm:[&>button]:w-auto"
+        className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-x-4"
         hideResetButton
         fields={[
           {
@@ -370,7 +372,7 @@ function TransitionLeadForm({
           setToState(target);
         }}
         data-qa={`transition-to-${target}`}
-        className="gap-1.5"
+        className="h-auto min-h-9 justify-start gap-1.5 whitespace-normal text-left sm:justify-center sm:text-center"
       >
         {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
         {text}
@@ -386,13 +388,13 @@ function TransitionLeadForm({
 
       {toState === null ? (
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:flex sm:flex-wrap">
             {forward.map((target) => renderTargetButton(target, labelFor('lead', target)))}
           </div>
           {back.length > 0 ? (
             <div className="space-y-1" data-qa="transition-move-back">
               <div className="text-muted-foreground text-xs">Move back</div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:flex sm:flex-wrap">
                 {back.map((target) =>
                   renderTargetButton(target, `Back to ${labelFor('lead', target)}`),
                 )}
@@ -402,7 +404,7 @@ function TransitionLeadForm({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             Move from <LeadStatusBadge status={status} /> to{' '}
             <LeadStatusBadge status={toState} />
           </div>
@@ -454,11 +456,12 @@ function TransitionLeadForm({
             />
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
               type="button"
               size="sm"
               variant="ghost"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setToState(null);
                 setReason('');
@@ -472,6 +475,7 @@ function TransitionLeadForm({
               type="button"
               size="sm"
               variant="default"
+              className="h-auto min-h-9 w-full whitespace-normal sm:w-auto"
               onClick={() => onSubmit(toState)}
               disabled={transitionLead.isPending}
               data-qa="transition-confirm"
