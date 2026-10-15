@@ -33,10 +33,10 @@ Route: `/{orgSlug}/projects/{projectSlug}/plots`.
 The map is geometry plus availability, and they arrive from different places on
 purpose:
 
-| Half | Source | Changes when |
-|---|---|---|
-| 125 polygons | `plot-geometry.ts` | the approved drawing changes |
-| plot status | `GET /api/inventory/plots` | a unit is sold, held or released |
+| Half         | Source                     | Changes when                     |
+| ------------ | -------------------------- | -------------------------------- |
+| 125 polygons | `plot-geometry.ts`         | the approved drawing changes     |
+| plot status  | `GET /api/inventory/plots` | a unit is sold, held or released |
 
 `buildPlots(PLOT_GEOMETRY, rows)` joins them by plot number. Because the
 geometry is never rebuilt from the API, a status change repaints the map without
@@ -70,11 +70,11 @@ real state - the dev database has no units at all.
 Status mapping (`plotStatusFromUnitStatus`):
 
 | `UnitStatus` | `PlotStatus` |
-|---|---|
-| `AVAILABLE` | `available` |
-| `SOLD` | `booked` |
-| `HOLD` | `blocked` |
-| `TOKEN` | `blocked` |
+| ------------ | ------------ |
+| `AVAILABLE`  | `available`  |
+| `SOLD`       | `booked`     |
+| `HOLD`       | `blocked`    |
+| `TOKEN`      | `blocked`    |
 
 An unrecognised status throws rather than defaulting to available: a silent
 default would make every surface wrong at once.
@@ -86,7 +86,7 @@ GET /api/inventory/plots?projectId=<id>     -> PlotStatusListResult
 ```
 
 ```json
-{ "rows": [ { "plotNumber": 20, "status": "booked" } ] }
+{ "rows": [{ "plotNumber": 20, "status": "booked" }] }
 ```
 
 Defined in `packages/api-types/src/plot-status.ts`. The browser reaches it
@@ -120,10 +120,39 @@ The script prints its own verification: how many plot numbers mapped to a
 distinct polygon, the summed plot area against the drawing's area statement,
 and the percentage of each polygon's perimeter that lies on drawn ink.
 
-## Known geometry caveat
+## The EWS area figure on the drawing is wrong - do not surface it
 
-Plots 114-125 (EWS) sum to ~796 m² on the trace while the drawing states
-"E.W.S. PROVIDED 1265 SQ.M". Total plot area matches the drawing's implied total
-to 0.45%, so this reads as a difference in how the EWS figure is defined rather
-than a tracing error. It has not been resolved against the drawing and the
-geometry has deliberately not been adjusted to close the gap.
+The drawing's own quantity schedule states **"E.W.S. PROVIDED : 1265 SQ.M"** for
+"E.W.S PLOTS (114 TO 125) : 12 Nos." That figure is not the sum of those twelve
+plots, and the difference is large enough to matter.
+
+Measured: the 12 EWS plots total **795.6 m²** on the trace, 56.0-71.8 m² each
+(mean 66.3). 1265 m² would require **105.4 m² per plot**. The drawing's own
+printed dimensions contradict that - plot 117 prints 30' x 24' (66.9 m²), 124
+prints 35.75' x 20.75' (68.9 m²), 125 prints 37.25' x 20' (69.2 m²). Every EWS
+plot that prints both dimensions lands at ~69 m², matching the trace.
+
+The trace is not the outlier here. Two independent checks back it:
+
+- Across the 65 plots that print both dimensions, the printed `width x length`
+  sums to 5610.4 m² against 5801.5 m² traced (ratio 1.034; the traced figure is a
+  bounding rectangle, so >= 1 is expected). The trace agrees with the drawing's
+  own printed numbers, not merely with its total.
+- The drawing's schedule is otherwise internally exact: OSR 1269 = parks 360 +
+  909; public purpose 133 = 66 + 67; total extent 17775 = plottable 12421 + road 5354. So the schedule is reliable arithmetic - which makes 1265 a genuine
+  outlier rather than a rounding convention. It is also suspiciously close to
+  the OSR figure of 1269.
+
+**Consequences.** The drawing asserts "10% E.W.S. REQUIRED : 1242 SQ.M" and then
+claims to provide 1265. Measured against the plottable area of 12421 m², the
+twelve EWS plots are 795.6 m², or 6.4% - below the 10% the drawing itself cites.
+That is a planning question about the layout's approval, not a software one, and
+it needs an answer from whoever owns the drawing.
+
+**What this codebase does about it.** Nothing is displayed from that figure.
+Per-plot areas come from the trace, and the details panel labels them "measured
+from the approved layout drawing". Geometry is left exactly as traced: changing
+it to reach 1265 would be inventing boundaries, and the trace is the side with
+the evidence. If the EWS reservation genuinely includes land beyond the plot
+boundaries, the drawing does not label any such area, so there is nothing
+defensible to trace.

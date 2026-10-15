@@ -44,9 +44,14 @@ KNOWN LIMITS - read before trusting a number
   plot. Because a shared wall is dimensioned once, many plots carry a single
   figure; derive a plot's full size from `measuredSizeFt`, not from this list.
 - The EWS plots (114-125) sum to ~794 sq.m while the drawing's area statement
-  lists "E.W.S. PROVIDED 1265 SQ.M". The total plot area matches the statement
-  to 0.1%, so this is a difference in how the statement is measured, not a
-  tracing error - flagged, not silently smoothed over.
+  lists "E.W.S. PROVIDED 1265 SQ.M". The statement is the outlier, not the
+  trace: 1265 would require ~105 sq.m per plot, and every EWS plot whose own
+  printed dimensions are legible gives ~69 (117: 30'x24' = 66.9; 124:
+  35.75'x20.75' = 68.9; 125: 37.25'x20' = 69.2). The statement is otherwise
+  internally exact (OSR 1269 = 360 + 909; public purpose 133 = 66 + 67; extent
+  17775 = 12421 + 5354), so it is a real discrepancy and not a convention. It
+  also implies the EWS provision falls under the 10% the same statement
+  requires. Flagged, not silently smoothed over - see the component README.
 
 USAGE
 -----
@@ -473,7 +478,10 @@ export const PLOT_GEOMETRY: readonly PlotGeometry[] = [
     print(f"mapped to distinct faces  : {len(assignment)} (duplicate faces: {len(duplicated)})")
     print(f"summed plot area          : {total_area:.0f} sq.m vs implied {implied:.0f} sq.m")
     print(f"  delta                   : {abs(total_area - implied) / implied * 100:.2f}%")
-    print(f"EWS plots (114-125)       : {ews_area:.0f} sq.m (statement says 'E.W.S. PROVIDED 1265')")
+    print(f"EWS plots (114-125)       : {ews_area:.0f} sq.m")
+    print("                            NOTE: the statement's 'E.W.S. PROVIDED 1265' is NOT this sum.")
+    print("                            It would need 105 sq.m per plot, while every EWS plot's own")
+    print("                            printed dimensions give ~69. See the component README.")
     print(
         "perimeter on drawn ink    : median {:.1f}%, min {:.1f}%, below 99%: {}".format(
             ink_values[len(ink_values) // 2], ink_values[0], below or "none"
