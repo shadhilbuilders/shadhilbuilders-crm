@@ -115,7 +115,7 @@ export function PendingTokenCard({
                 key={booking.id}
                 className="flex flex-col items-start gap-1 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:py-2"
               >
-                <span className="w-full min-w-0 break-words sm:w-auto sm:flex-1 sm:truncate">
+                <span className="w-full min-w-0 wrap-break-word sm:w-auto sm:flex-1 sm:truncate">
                   {label}
                 </span>
                 <span className="text-muted-foreground tabular-nums">{formatMoney(booking.amount)}</span>
@@ -123,9 +123,6 @@ export function PendingTokenCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  // T-DASH-MOBILE: 28px tall as `size="sm"`; 44px on a coarse
-                  // pointer (see the approvals card for why `min-h-` not `h-`).
-                  className="min-h-11 pointer-fine:min-h-0"
                   // The accessible name carries the unit, so a screen-reader user
                   // hearing a list of identical buttons knows which row each one
                   // moves - and cannot fire the wrong one.

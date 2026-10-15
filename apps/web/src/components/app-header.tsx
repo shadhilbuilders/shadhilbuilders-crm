@@ -377,7 +377,7 @@ function UserMenu({
           <Button
             variant="ghost"
             size="sm"
-            className="min-h-11 gap-2 px-3"
+            className="gap-2 px-3"
             // The name span is `hidden` below `sm`, so at narrow widths this
             // icon-only button has no text content - without an explicit label
             // it has NO accessible name (axe `button-name`, critical).

@@ -130,20 +130,7 @@ export function PendingApprovalsCard({
                   type="button"
                   variant="link"
                   size="sm"
-                  // The variant already carries `underline-offset-4
-                  // hover:underline`, so the underline shows on hover only and
-                  // there is no second copy of it here to drift.
-                  // `text-link` overrides the variant's `text-primary`: --link
-                  // (the app's blue) is a DIFFERENT token from --primary (navy).
-                  //
-                  // T-DASH-MOBILE: a link-styled control is still a TAP TARGET.
-                  // `size="sm"` renders 28px tall, so on a coarse pointer this
-                  // gets the 44px minimum. `py-` rather than `min-h-` would
-                  // still be 28px of hit area once the library's own height
-                  // utility wins, hence `min-h-11` (a min-height beats a fixed
-                  // height in the cascade when both are utilities of the same
-                  // property, and the library sets `h-7`).
-                  className="text-link inline-flex min-h-11 items-center px-2 pointer-fine:min-h-0 pointer-fine:px-0"
+                  className="text-link inline-flex justify-start sm:justify-center items-center px-2 pointer-fine:px-0"
                   // The accessible name says WHICH booking, so a screen reader
                   // user hearing a list of "Review" buttons knows which is which.
                   // It carries the unit too, matching the visible row.
