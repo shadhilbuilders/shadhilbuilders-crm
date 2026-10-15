@@ -16,7 +16,7 @@
 // derives it from `UnitStatus` and the web paints it, and two declarations of
 // one union is how a status ends up unhandled on one side only.
 
-import type { PlotStatus } from '@shadhil/api-types';
+import type { PlotStatus, PlotUnitClaim } from '@shadhil/api-types';
 
 export type { PlotStatus };
 
@@ -33,20 +33,26 @@ export interface PlotVertex {
 }
 
 /**
- * A plot as rendered by the map: traced geometry plus live availability.
+ * A plot as rendered by the map: traced geometry plus live availability and the
+ * REAL records behind it.
  *
- * `areaSqFt` and `price` are optional because they are only known once a real
- * backend supplies them - the layout drawing carries no sale price and the UI
- * must not invent one. `areaSqM` on the geometry is measured, not estimated
- * (see the `plot-geometry.ts` header).
+ * The drawing carries no sale price and the geometry carries no availability -
+ * both come from the units the API joins onto each plot number. A plot with no
+ * claiming unit renders an explicit "not assigned yet" rather than a zero that
+ * reads as a real value.
  */
 export interface Plot {
   id: string;
   plotNumber: number;
   category: PlotCategory;
   status: PlotStatus;
+  /**
+   * Every unit that claims this plot number, most binding claim first, each
+   * with its live booking. Empty when no villa has been put on this plot - and
+   * the map must say that rather than invent one.
+   */
+  units: PlotUnitClaim[];
   areaSqFt?: number;
-  price?: number;
   boundary: PlotVertex[];
 }
 

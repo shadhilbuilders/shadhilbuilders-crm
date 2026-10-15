@@ -151,15 +151,15 @@ export function PlotLayout() {
   return (
     <div className="flex flex-col gap-3">
       {rows.length === 0 ? (
-        // An empty row set is a real answer, not a failure: the CRM identifies a
-        // plot by a unit number that IS a plot number, and this project has no
-        // such unit. Say so, because an all-grey layout otherwise looks broken.
+        // An empty row set is a real answer, not a failure: no villa in this
+        // project has been given a plot number yet, so no plot can name a unit.
+        // Say so, because an all-grey layout otherwise looks broken.
         <Alert
-          title="No unit in this project is numbered by plot yet"
+          title="No villa in this project has a plot number yet"
           description={
-            'Every plot therefore reads available. A plot is matched to a unit by number: a unit numbered ' +
-            '"37" is plot 37. Units numbered any other way - for example "D-101" - are not plots and are ' +
-            'ignored rather than guessed at.'
+            'Every plot therefore reads available. A plot number is set on the villa itself (the ' +
+            'Plot number column in the inventory grid) and is separate from its door number, so ' +
+            '"D-101" is a door number, not plot 101.'
           }
           data-qa="plot-no-unit-mapping"
         />

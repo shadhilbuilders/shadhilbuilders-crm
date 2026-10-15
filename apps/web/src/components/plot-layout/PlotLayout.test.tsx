@@ -26,12 +26,77 @@ import { PlotLayout } from './PlotLayout';
  * mocked module is first imported.
  */
 const mockPlotStatuses = vi.hoisted(() => ({
-  rows: [] as { plotNumber: number; status: string }[],
+  // Rows carry the units the API joins on the plot number. `units` is optional
+  // here so a test about colour can skip the record half entirely.
+  rows: [] as {
+    plotNumber: number;
+    status: string;
+    units?: {
+      unit: {
+        id: string;
+        phaseId: string;
+        phaseName: string;
+        projectId: string;
+        projectName: string;
+        unitNumber: string;
+        plotNumber: number | null;
+        bhk: number;
+        facing: string | null;
+        sqft: number | null;
+        buildupSqft: string;
+        pricePerSqft: string;
+        price: string;
+        status: string;
+        createdAt: string;
+      };
+      booking: {
+        id: string;
+        status: string;
+        amount: string;
+        tokenAmount: string | null;
+        leadId: string;
+        leadName: string;
+        createdAt: string;
+      } | null;
+    }[];
+  }[],
   isPending: false,
   isError: false,
   error: null as Error | null,
   refetch: () => undefined,
 }));
+
+/** A villa on a plot, as the API sends it: door number separate from plot number. */
+function claimFixture(overrides: { plotNumber?: number; unitNumber?: string } = {}) {
+  return {
+    unit: {
+      id: 'unit-a101',
+      phaseId: 'phase-1',
+      phaseName: 'Phase A',
+      projectId: 'proj-1',
+      projectName: 'Demo Villas',
+      unitNumber: overrides.unitNumber ?? 'A-101',
+      plotNumber: overrides.plotNumber ?? 20,
+      bhk: 3,
+      facing: 'East',
+      sqft: 1450,
+      buildupSqft: '1450',
+      pricePerSqft: '4000',
+      price: '5800000',
+      status: 'SOLD',
+      createdAt: '2026-10-01T09:00:00.000Z',
+    },
+    booking: {
+      id: 'booking-1',
+      status: 'APPROVED',
+      amount: '5800000',
+      tokenAmount: '250000',
+      leadId: 'lead-1',
+      leadName: 'Demo Vikram',
+      createdAt: '2026-10-02T09:00:00.000Z',
+    },
+  };
+}
 
 vi.mock('@/hooks/queries/inventory', () => ({
   usePlotStatuses: () => ({
@@ -137,12 +202,14 @@ describe('PlotLayout', () => {
   it('explains an empty availability result instead of looking broken', async () => {
     await mount();
     // An all-grey layout with no explanation reads as a bug. The real cause -
-    // no unit in the project is plot-numbered - has to be stated.
+    // no villa in the project has a plot number yet - has to be stated, along
+    // with the fact that a plot number is not a door number.
     expect(container?.querySelector('[data-qa="plot-no-unit-mapping"]')).not.toBeNull();
-    expect(html()).toContain('numbered by plot');
+    expect(html()).toContain('has a plot number yet');
+    expect(html()).toContain('door number');
   });
 
-  it('drops the explanation once the project has plot-numbered units', async () => {
+  it('drops the explanation once the project has a villa on a plot', async () => {
     mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
     await mount();
     expect(container?.querySelector('[data-qa="plot-no-unit-mapping"]')).toBeNull();
@@ -205,8 +272,59 @@ describe('PlotLayout', () => {
     // Measured values come from the traced geometry.
     const geometry = PLOT_GEOMETRY.find((plot) => plot.plotNumber === 20);
     expect(details?.textContent).toContain(`${geometry?.areaSqM.toFixed(1)} m`);
-    // No price exists, and the panel must say so instead of showing zero.
-    expect(details?.textContent).toContain('Not set');
+    // No villa claims this plot in this fixture, and the panel says exactly
+    // that instead of rendering a made-up record or a bare "Not set".
+    expect(details?.textContent).toContain('No villa on this plot yet');
+    expect(details?.querySelector('[data-qa="plot-villa"]')).toBeNull();
+  });
+
+  it('shows the real villa and its booking on a claimed plot, with links', async () => {
+    // The whole point of the join: the panel names the villa (by its DOOR
+    // number), its state and the deal on it, and each is a link to its own
+    // record rather than a dead end.
+    mockPlotStatuses.rows = [
+      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
+    ];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+
+    const details = container?.querySelector('[data-qa="plot-details"]');
+    expect(details?.textContent).toContain('A-101');
+    expect(details?.textContent).toContain('Sold');
+    expect(details?.textContent).toContain('Approved');
+    expect(details?.textContent).toContain('Demo Vikram');
+    expect(details?.textContent).toContain('Phase A');
+
+    // The villa link carries the plot map's unit id into the inventory grid.
+    expect(
+      details?.querySelector('[data-qa="plot-unit-link"]')?.getAttribute('href'),
+    ).toContain('/inventory?unit=unit-a101');
+    // The booking and the lead each open their own record.
+    expect(
+      details?.querySelector('[data-qa="plot-booking-link"]')?.getAttribute('href'),
+    ).toContain('/bookings/booking-1');
+    expect(
+      details?.querySelector('[data-qa="plot-booking-lead-link"]')?.getAttribute('href'),
+    ).toContain('/leads/lead-1');
+  });
+
+  it('does not claim "no booking" when a held villa hides its booking', async () => {
+    // RLS can hide a booking from the caller. The panel must say the booking is
+    // not visible rather than assert there is none.
+    const claim = claimFixture();
+    mockPlotStatuses.rows = [
+      { plotNumber: 20, status: 'booked', units: [{ ...claim, booking: null }] },
+    ];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+
+    const details = container?.querySelector('[data-qa="plot-details"]');
+    expect(details?.textContent).toContain('not visible to you');
+    expect(details?.textContent).not.toContain('No booking on this villa');
   });
 
   it('handles a plot number that does not exist without breaking the map', async () => {

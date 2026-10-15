@@ -369,6 +369,10 @@ export function PlotMap({
             status={badgePlot.status}
             statusLabel={PLOT_STATUS_LABEL[badgePlot.status]}
             categoryLabel={PLOT_CATEGORY_LABEL[badgePlot.category]}
+            // The villa sitting on this plot, when one does. The callout names
+            // it so an operator can tell which door number a coloured plot is
+            // without opening the panel.
+            unitLabel={badgePlot.units[0]?.unit.unitNumber ?? null}
             anchorXPercent={(((badgeAnchor?.x ?? 0) - viewBox.x) / viewBox.width) * 100}
             anchorYPercent={(((badgeAnchor?.y ?? 0) - viewBox.y) / viewBox.height) * 100}
             tone={badgeTone}

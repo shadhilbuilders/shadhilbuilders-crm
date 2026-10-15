@@ -13,6 +13,8 @@ export interface PlotTooltipProps {
   status: PlotStatus;
   statusLabel: string;
   categoryLabel: string;
+  /** The villa on this plot, or null when no unit carries the plot number. */
+  unitLabel: string | null;
   /** Anchor as a 0-100 percentage of the map's width/height. */
   anchorXPercent: number;
   anchorYPercent: number;
@@ -33,6 +35,7 @@ export function PlotTooltip({
   status,
   statusLabel,
   categoryLabel,
+  unitLabel,
   anchorXPercent,
   anchorYPercent,
   tone,
@@ -67,6 +70,11 @@ export function PlotTooltip({
           <span className="text-muted-foreground text-xs">
             {statusLabel} · {categoryLabel}
           </span>
+          {unitLabel === null ? null : (
+            <span className="text-muted-foreground text-xs" data-qa="plot-tooltip-villa">
+              Villa {unitLabel}
+            </span>
+          )}
         </div>
       </div>
     </div>

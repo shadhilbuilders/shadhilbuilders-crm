@@ -34,6 +34,10 @@ import { PageHeader } from '@/components/shared/PageHeader';
 const createUnitSchema = z.object({
   phaseId: z.string().min(1, 'Pick a phase'),
   unitNumber: z.string().trim().min(1, 'Unit number is required').max(40),
+  // Kept as a STRING for the form (the repo convention: numeric form fields are
+  // strings, converted on submit) and optional, because a project without a
+  // traced layout has no plots to number.
+  plotNumber: z.string().optional(),
   bhk: z.string().min(1, 'BHK is required'),
   facing: z.string().trim().max(40).optional(),
   sqft: z.string().optional(),
@@ -78,6 +82,7 @@ export default function NewUnitPage() {
     defaultValues: {
       phaseId: '',
       unitNumber: '',
+      plotNumber: '',
       bhk: '',
       facing: '',
       sqft: '',
@@ -125,12 +130,26 @@ export default function NewUnitPage() {
       sqft = parsed;
     }
 
+    // Optional: a blank field means the villa is not on the layout yet. A value
+    // off the layout's range would join to no polygon, so it is refused here as
+    // well as by the DTO.
+    let plotNumber: number | undefined;
+    if (values.plotNumber !== undefined && values.plotNumber.trim().length > 0) {
+      const parsed = Number(values.plotNumber);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 125) {
+        toast.error('Plot number must be a whole number between 1 and 125');
+        return;
+      }
+      plotNumber = parsed;
+    }
+
     const payload = {
       phaseId: values.phaseId,
       unitNumber: values.unitNumber.trim(),
       bhk,
       buildupSqft,
       pricePerSqft,
+      ...(plotNumber !== undefined ? { plotNumber } : {}),
       ...(values.facing && values.facing.trim().length > 0
         ? { facing: values.facing.trim() }
         : {}),
@@ -199,6 +218,21 @@ export default function NewUnitPage() {
             inputProps: {
               maxLength: 40,
               'data-qa': 'unit-number',
+            },
+          },
+          {
+            type: 'input',
+            name: 'plotNumber',
+            label: 'Plot number (1-125)',
+            placeholder: '37',
+            inputType: 'number',
+            description:
+              "Optional. The villa's position on the approved layout, and NOT its door number. Leave blank if it has no plot yet.",
+            inputProps: {
+              min: 1,
+              max: 125,
+              step: 1,
+              'data-qa': 'unit-plot-number-input',
             },
           },
           {

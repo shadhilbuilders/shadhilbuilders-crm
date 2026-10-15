@@ -113,42 +113,124 @@ test.describe('plot layout', () => {
     await waitForMapToHydrate(page);
 
     // The endpoint answers with a row set (possibly empty). An empty set is a
-    // real answer: no unit in this project is numbered by plot number.
+    // real answer: no villa in this project carries a plot number yet.
     const body = (await response.json()) as { rows: unknown[] };
     expect(Array.isArray(body.rows)).toBe(true);
 
     if (body.rows.length === 0) {
-      // Nothing is plot-numbered, so everything must read available and the page
+      // Nothing is on the layout, so everything must read available and the page
       // must SAY why - an entirely grey plan with no explanation reads as a bug.
       await expect(page.locator('[data-qa="plot-no-unit-mapping"]')).toContainText(
-        'numbered by plot'
+        'has a plot number yet'
       );
       expect(await page.locator('[data-plot-number="1"] polygon[fill="#9CA3AF"]').count()).toBe(1);
       expect(await page.locator('polygon[fill="#16A34A"]').count()).toBe(0);
       await expect(page.locator('[data-qa="plot-legend"]')).toContainText('Available (125)');
     } else {
-      // A project that does number its units by plot must not show the notice.
+      // A project whose villas carry plot numbers must not show the notice.
       await expect(page.locator('[data-qa="plot-no-unit-mapping"]')).toHaveCount(0);
     }
   });
 
+  test('names the real villa and booking behind a plot, and links to both', async ({ page }) => {
+    // THE test for this surface: the traced polygon, the real unit row and the
+    // real booking, all the way from the database. The demo project's villas
+    // carry plot numbers (packages/database/scripts/setup-demo-user.ts assigns
+    // them: D-202 sits on plot 114 and is sold to Demo Meera).
+    await page.goto(PLOTS_PATH, NAV);
+    await waitForMapToHydrate(page);
+
+    await page.locator('[data-plot-number="114"] polygon[role="button"]').click();
+
+    const details = page.locator('[data-qa="plot-details"]');
+    await expect(details).toContainText('Plot 114');
+    await expect(details).toContainText('Booked');
+    // The villa, by its DOOR number, with its own state - not the plot's.
+    await expect(details).toContainText('D-202');
+    await expect(details).toContainText('Sold');
+    // And the buyer, by name.
+    await expect(details).toContainText('Demo Meera');
+
+    // Each link opens its OWN entity, so neither is a dead end.
+    await expect(page.locator('[data-qa="plot-unit-link"]')).toHaveAttribute(
+      'href',
+      /\/inventory\?unit=/
+    );
+    await expect(page.locator('[data-qa="plot-booking-link"]')).toHaveAttribute(
+      'href',
+      /\/bookings\/[a-z0-9]+/
+    );
+    await expect(page.locator('[data-qa="plot-booking-lead-link"]')).toHaveAttribute(
+      'href',
+      /\/leads\/[a-z0-9]+/
+    );
+  });
+
+  test('the villa link from a plot opens that villa in the inventory grid', async ({ page }) => {
+    // A link that lands on an unfiltered list would make the operator search
+    // again by hand, so this walks the path: plot -> villa sheet.
+    await page.goto(PLOTS_PATH, NAV);
+    await waitForMapToHydrate(page);
+
+    await page.locator('[data-plot-number="114"] polygon[role="button"]').click();
+    await page.locator('[data-qa="plot-unit-link"]').click();
+
+    await page.waitForURL(/\/inventory\?unit=/, { timeout: 15_000 });
+    // The sheet for the REAL villa, fetched by id - D-202, which is SOLD.
+    await expect(page.locator('[data-qa="unit-detail-status"]')).toContainText('Sold');
+    await expect(page.getByText('D-202').first()).toBeVisible();
+  });
+
   test('paints a booked and a blocked plot from the API response', async ({ page }) => {
-    // Availability is INJECTED here rather than seeded, and that is deliberate:
-    // the demo project has no plot-numbered units, so there is no real row to
-    // assert against. Faking it at the HTTP boundary (not by stubbing the
-    // component) still exercises the whole client path - hook, merge, colour
-    // lookup, legend counts - against a real HTTP response, and it keeps the
-    // database read-only. The real derivation is covered by the backend unit
-    // tests in apps/backend/src/inventory/inventory.plots.test.ts.
+    // The COLOUR path is injected here rather than read from the demo project,
+    // so the legend counts are pinned against a known row set instead of
+    // whatever the fixtures happen to hold. Faking it at the HTTP boundary (not
+    // by stubbing the component) still exercises the whole client path - hook,
+    // merge, colour lookup, legend counts - against a real HTTP response, and it
+    // keeps the database read-only. The real join is covered by the two tests
+    // above and by apps/backend/src/inventory/inventory.plots.test.ts.
     await page.route('**/api/bff/inventory/plots*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           rows: [
-            { plotNumber: 5, status: 'booked' },
-            { plotNumber: 17, status: 'blocked' },
-            { plotNumber: 114, status: 'booked' },
+            {
+              plotNumber: 5,
+              status: 'booked',
+              units: [
+                {
+                  unit: {
+                    id: 'unit-d101',
+                    phaseId: 'phase-a',
+                    phaseName: 'Phase A',
+                    projectId: 'proj-1',
+                    projectName: 'Demo Villas',
+                    unitNumber: 'D-101',
+                    plotNumber: 5,
+                    bhk: 2,
+                    facing: 'North',
+                    sqft: 1050,
+                    buildupSqft: '1050',
+                    pricePerSqft: '4000',
+                    price: '4200000',
+                    status: 'SOLD',
+                    createdAt: '2026-10-01T09:00:00.000Z',
+                  },
+                  booking: {
+                    id: 'booking-approved',
+                    status: 'APPROVED',
+                    amount: '4200000',
+                    tokenAmount: '250000',
+                    leadId: 'lead-won',
+                    leadName: 'Demo Vikram',
+                    createdAt: '2026-10-02T09:00:00.000Z',
+                  },
+                },
+              ],
+            },
+            { plotNumber: 17, status: 'blocked', units: [] },
+            { plotNumber: 114, status: 'booked', units: [] },
           ],
         }),
       });
@@ -170,9 +252,13 @@ test.describe('plot layout', () => {
     await expect(legend).toContainText('Blocked (1)');
     await expect(page.locator('[data-qa="plot-no-unit-mapping"]')).toHaveCount(0);
 
-    // The details panel reports the status the API supplied.
+    // The details panel reports the status the API supplied, and names the
+    // records behind the plot from the same response.
     await page.locator('[data-plot-number="5"] polygon[role="button"]').click();
-    await expect(page.locator('[data-qa="plot-details"]')).toContainText('Booked');
+    const injectedDetails = page.locator('[data-qa="plot-details"]');
+    await expect(injectedDetails).toContainText('Booked');
+    await expect(injectedDetails).toContainText('D-101');
+    await expect(injectedDetails).toContainText('Demo Vikram');
   });
 
   test('clicking a plot selects that plot and fills the details panel', async ({ page }) => {
@@ -187,8 +273,13 @@ test.describe('plot layout', () => {
     await expect(details).toContainText('Regular plot');
     // Measured area comes from the traced geometry (plot 20 is ~96 sq.m).
     await expect(details).toContainText('m²');
-    // No price exists, and the panel says so instead of showing zero.
-    await expect(details).toContainText('Not set');
+    // Plot 20 carries a real villa in the demo fixtures (D-103, available), so
+    // the panel names it and its stored price rather than printing "Not set".
+    await expect(details).toContainText('D-103');
+    await expect(details).toContainText('Available');
+    await expect(page.locator('[data-qa="plot-booking-none"]')).toContainText(
+      'No booking on this villa'
+    );
 
     // A selected plot is marked by its fill alone: a single polygon, filled
     // blue, with no stroke or halo ring.

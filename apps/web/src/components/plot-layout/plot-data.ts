@@ -26,14 +26,15 @@ export function buildPlots(
 
   return geometry.map((shape) => {
     const row = byPlotNumber.get(shape.plotNumber);
-    // `price` is intentionally absent: the drawing states none and no plot
-    // price is recorded, so the details panel renders an explicit "Not set"
-    // rather than a zero that reads as a real value.
     return {
       id: `plot-${shape.plotNumber}`,
       plotNumber: shape.plotNumber,
       category: shape.category,
       status: row?.status ?? 'available',
+      // The units the API joined on the plot number, in the API's order (most
+      // binding claim first). No row, or a row with no units, means no villa is
+      // on this plot - not a villa the map may invent.
+      units: row?.units ?? [],
       // Measured from the traced polygon - never estimated.
       areaSqFt: Math.round(shape.areaSqM * 10.7639104 * 10) / 10,
       boundary: shape.boundary.map((vertex) => ({ x: vertex.x, y: vertex.y })),

@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import { ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
 import { MAX_RATE_PER_SQFT, MAX_SQFT } from './pricing';
+import { PlotNumberSchema } from './plot-number';
 
 /**
  * Row shape for GET /api/inventory/units. `price` is a string (Prisma
@@ -28,7 +29,14 @@ export const UnitRowSchema = z.object({
   phaseName: z.string(),
   projectId: z.string(),
   projectName: z.string(),
+  /** The DOOR number on the villa ("A-101"). Not the plot number. */
   unitNumber: z.string(),
+  /**
+   * The CMDA plot number this villa occupies on the approved layout, or null
+   * when nobody has assigned one. THE plot map's join key - never derived from
+   * `unitNumber`, which is a different identifier.
+   */
+  plotNumber: z.number().int().nullable(),
   bhk: z.number().int().min(1),
   facing: z.string().nullable(),
   /** Plot area (UI label "Plot sq.ft"). */
@@ -108,6 +116,8 @@ export const CreateUnitDtoSchema = z.object({
   // already z.cuid2(); phaseId follows the same convention.
   phaseId: z.cuid2(),
   unitNumber: z.string().trim().min(1).max(40),
+  // Optional: a project without a traced layout has no plots to number.
+  plotNumber: PlotNumberSchema.nullable().optional(),
   bhk: z.number().int().min(1).max(10),
   facing: z.string().trim().min(1).max(40).optional(),
   sqft: z.number().int().positive().max(100_000).optional(),
@@ -125,6 +135,9 @@ export type CreateUnitDto = z.infer<typeof CreateUnitDtoSchema>;
  */
 export const UpdateUnitDtoSchema = z.object({
   unitNumber: z.string().trim().min(1).max(40).optional(),
+  // `nullable` so a plot number can be CLEARED - the villa stops being read as
+  // that plot on the layout. Omitting the field keeps the current number.
+  plotNumber: PlotNumberSchema.nullable().optional(),
   bhk: z.number().int().min(1).max(10).optional(),
   facing: z.string().trim().min(1).max(40).nullable().optional(),
   sqft: z.number().int().positive().max(100_000).nullable().optional(),

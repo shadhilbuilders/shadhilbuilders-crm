@@ -209,17 +209,22 @@ async function main() {
     });
   }
 
+  // `plotNumber` is the villa's position on the approved CMDA layout, assigned
+  // here so the demo project has a layout with REAL records behind it: without
+  // one, every plot on /plots reads available and there is nothing to link to.
+  // It is a different identifier from `unitNumber` (the door number).
   const unitDefs = [
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-102', bhk: 3, facing: 'East', sqft: 1450, price: 5_800_000 },
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-103', bhk: 3, facing: 'South', sqft: 1480, price: 5_950_000 },
-    { phaseId: DEMO_PHASE_B, unitNumber: 'D-201', bhk: 3, facing: 'West', sqft: 1500, price: 6_100_000 },
-    { phaseId: DEMO_PHASE_B, unitNumber: 'D-202', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-101', plotNumber: 5, bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-102', plotNumber: 17, bhk: 3, facing: 'East', sqft: 1450, price: 5_800_000 },
+    { phaseId: DEMO_PHASE_A, unitNumber: 'D-103', plotNumber: 20, bhk: 3, facing: 'South', sqft: 1480, price: 5_950_000 },
+    { phaseId: DEMO_PHASE_B, unitNumber: 'D-201', plotNumber: 37, bhk: 3, facing: 'West', sqft: 1500, price: 6_100_000 },
+    { phaseId: DEMO_PHASE_B, unitNumber: 'D-202', plotNumber: 114, bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
       where: { phaseId_unitNumber: { phaseId: u.phaseId, unitNumber: u.unitNumber } },
       update: {
+        plotNumber: u.plotNumber,
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
@@ -233,6 +238,7 @@ async function main() {
         phaseId: u.phaseId,
         organizationId: demoOrg.id,
         unitNumber: u.unitNumber,
+        plotNumber: u.plotNumber,
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
@@ -379,7 +385,7 @@ async function main() {
   const demoBookingUnits = await prisma.unit.findMany({
     where: {
       organizationId: demoOrg.id,
-      unitNumber: { in: ['D-101', 'D-102'] },
+      unitNumber: { in: ['D-101', 'D-102', 'D-202'] },
     },
     select: { id: true, unitNumber: true, price: true },
     orderBy: { unitNumber: 'asc' },
@@ -387,7 +393,12 @@ async function main() {
   const byUnitNumber = new Map(demoBookingUnits.map((u) => [u.unitNumber, u]));
   const tokenUnit = byUnitNumber.get('D-101');
   const holdUnit = byUnitNumber.get('D-102');
-  if (tokenUnit && holdUnit) {
+  // The plot map needs at least one ACCEPTED deal against a real villa, or every
+  // plot it can link to would read available and blocked-by-a-hold. This unit
+  // sits on plot 114 (an EWS plot), so the layout shows a green plot whose
+  // booking and buyer are real records.
+  const approvedUnit = byUnitNumber.get('D-202');
+  if (tokenUnit && holdUnit && approvedUnit) {
     await prisma.booking.createMany({
       data: [
         {
@@ -410,11 +421,21 @@ async function main() {
           tokenAmount: null,
           status: 'HOLD' as const,
         },
+        {
+          leadId: DEMO_LEAD_5,
+          organizationId: demoOrg.id,
+          unitId: approvedUnit.id,
+          userId: demoUser.id,
+          amount: approvedUnit.price,
+          listAmount: approvedUnit.price,
+          tokenAmount: null,
+          status: 'APPROVED' as const,
+        },
       ],
     });
   } else {
     // eslint-disable-next-line no-console
-    console.warn('[demo-user] skipped demo bookings: D-101/D-102 not found in the demo org');
+    console.warn('[demo-user] skipped demo bookings: D-101/D-102/D-202 not found in the demo org');
   }
 
   // ── Demo visits ─────────────────────────────────────────────────────────────

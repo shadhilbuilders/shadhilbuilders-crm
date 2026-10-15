@@ -48,7 +48,7 @@ describe('getPlotColor', () => {
 
 describe('rendered status colours', () => {
   it('paints each plot with its own status colour', () => {
-    const plots = buildPlots(PLOT_GEOMETRY, [{ plotNumber: 20, status: 'booked' }]);
+    const plots = buildPlots(PLOT_GEOMETRY, [{ plotNumber: 20, status: 'booked', units: [] }]);
     const booked = plots.find((plot) => plot.plotNumber === 20);
     const available = plots.find((plot) => plot.plotNumber === 21);
     expect(getPlotColor(booked!.status)).toBe('#16A34A');

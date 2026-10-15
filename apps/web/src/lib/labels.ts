@@ -320,6 +320,50 @@ const FEEDBACK_STATUS_LABELS: Record<FeedbackStatusLabel, string> = {
  * a broken UI; the test in `labels.test.ts` then surfaces the gap as a
  * failing assertion so the label table gets updated before merge.
  */
+/**
+ * Badge variant for a unit status (AVAILABLE/HOLD/TOKEN/SOLD).
+ *
+ * ONE map for every surface that shows a unit status - the inventory grid, the
+ * unit detail sheet and the plot map's panel. Three copies of this is how one
+ * status ends up two different colours depending on the screen.
+ */
+export function inventoryStatusBadgeVariant(
+  status: string,
+): 'success' | 'warning' | 'info' | 'destructive' | 'muted' {
+  switch (status) {
+    case 'AVAILABLE':
+      return 'success';
+    case 'HOLD':
+      return 'warning';
+    case 'TOKEN':
+      return 'info';
+    case 'SOLD':
+      return 'destructive';
+    default:
+      return 'muted';
+  }
+}
+
+/** Badge variant for a booking status. Same one-map rule as the unit status. */
+export function bookingStatusBadgeVariant(
+  status: string,
+): 'success' | 'warning' | 'info' | 'destructive' | 'muted' {
+  switch (status) {
+    case 'APPROVED':
+      return 'success';
+    case 'TOKEN':
+      return 'info';
+    case 'HOLD':
+      return 'warning';
+    case 'REJECTED':
+      return 'destructive';
+    case 'CANCELLED':
+      return 'muted';
+    default:
+      return 'muted';
+  }
+}
+
 export function labelFor(
   kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role' | 'feedback',
   value: string,

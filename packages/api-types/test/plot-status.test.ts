@@ -8,17 +8,19 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  MAX_PLOT_NUMBER,
-  MIN_PLOT_NUMBER,
-  PLOT_NUMBER_STRINGS,
+  BOOKING_STATUS_BINDING_ORDER,
+  PLOT_STATUS_BINDING_ORDER,
   PLOT_STATUS_FROM_UNIT_STATUS,
   PlotStatusListResultSchema,
   PlotStatusRowSchema,
+  UNIT_STATUS_BINDING_ORDER,
+  bookingClaimRank,
   mostBindingPlotStatus,
-  parsePlotNumber,
   plotStatusFromUnitStatus,
+  unitClaimRank,
 } from '../src/plot-status';
-import { UnitStatusSchema } from '../src/enums';
+import { MAX_PLOT_NUMBER, MIN_PLOT_NUMBER, PlotNumberSchema } from '../src/plot-number';
+import { ACTIVE_BOOKING_STATUSES, UnitStatusSchema } from '../src/enums';
 
 describe('plotStatusFromUnitStatus', () => {
   it('maps each unit lifecycle state to plot availability', () => {
@@ -42,64 +44,33 @@ describe('plotStatusFromUnitStatus', () => {
   });
 });
 
-describe('parsePlotNumber', () => {
-  it('reads a bare integer as a plot number', () => {
-    expect(parsePlotNumber('1')).toBe(1);
-    expect(parsePlotNumber('37')).toBe(37);
-    expect(parsePlotNumber('125')).toBe(125);
-    expect(parsePlotNumber('  42  ')).toBe(42);
+describe('PlotNumberSchema', () => {
+  it('accepts every plot number the layout defines', () => {
+    expect(PlotNumberSchema.parse(MIN_PLOT_NUMBER)).toBe(1);
+    expect(PlotNumberSchema.parse(37)).toBe(37);
+    expect(PlotNumberSchema.parse(MAX_PLOT_NUMBER)).toBe(125);
   });
 
-  it('refuses the marketing numbering this repository actually uses', () => {
-    // These are real unit numbers from the demo project. Treating "D-101" as
-    // plot 101 would paint a plot that has nothing to do with that unit.
-    expect(parsePlotNumber('D-101')).toBeNull();
-    expect(parsePlotNumber('D-201')).toBeNull();
-    expect(parsePlotNumber('A-12')).toBeNull();
-    expect(parsePlotNumber('Villa 3')).toBeNull();
-    expect(parsePlotNumber('PH1-01')).toBeNull();
+  it('refuses numbers outside the traced layout', () => {
+    // A number off the layout would join to no polygon and vanish from the map
+    // without saying so, which reads as a missing villa rather than bad input.
+    expect(PlotNumberSchema.safeParse(0).success).toBe(false);
+    expect(PlotNumberSchema.safeParse(126).success).toBe(false);
+    expect(PlotNumberSchema.safeParse(-37).success).toBe(false);
   });
 
-  it('refuses numbers outside the layout', () => {
-    expect(parsePlotNumber('0')).toBeNull();
-    expect(parsePlotNumber('126')).toBeNull();
-    expect(parsePlotNumber('999')).toBeNull();
+  it('refuses a fractional or non-numeric plot number', () => {
+    // Plot numbers are positions on a drawing, not measurements.
+    expect(PlotNumberSchema.safeParse(37.5).success).toBe(false);
+    expect(PlotNumberSchema.safeParse('37').success).toBe(false);
+    expect(PlotNumberSchema.safeParse(null).success).toBe(false);
+    expect(PlotNumberSchema.safeParse(undefined).success).toBe(false);
   });
 
-  it('refuses forms Number() would happily coerce', () => {
-    // `Number(' ')` is 0, `Number('1e2')` is 100, `Number('0x10')` is 16.
-    // Coercion here would assign real plots to nonsense unit numbers.
-    expect(parsePlotNumber(' ')).toBeNull();
-    expect(parsePlotNumber('')).toBeNull();
-    expect(parsePlotNumber('1e2')).toBeNull();
-    expect(parsePlotNumber('0x10')).toBeNull();
-    expect(parsePlotNumber('+37')).toBeNull();
-    expect(parsePlotNumber('37.0')).toBeNull();
-    expect(parsePlotNumber('-37')).toBeNull();
-    expect(parsePlotNumber('NaN')).toBeNull();
-  });
-
-  it('refuses a zero-padded spelling, because the SQL pre-filter does too', () => {
-    // The parser and the backend's `unitNumber IN (...)` filter must accept
-    // exactly the same strings. The filter holds the canonical spellings, so
-    // folding "037" onto plot 37 here would create a value the query can never
-    // return - dead code that reads like support.
-    expect(parsePlotNumber('037')).toBeNull();
-    expect(parsePlotNumber('0037')).toBeNull();
-    expect(parsePlotNumber('0125')).toBeNull();
-  });
-});
-
-describe('PLOT_NUMBER_STRINGS', () => {
-  it('covers 1-125 exactly, as the strings a unit number compares against', () => {
-    expect(PLOT_NUMBER_STRINGS).toHaveLength(MAX_PLOT_NUMBER - MIN_PLOT_NUMBER + 1);
-    expect(PLOT_NUMBER_STRINGS[0]).toBe('1');
-    expect(PLOT_NUMBER_STRINGS[PLOT_NUMBER_STRINGS.length - 1]).toBe('125');
-    // Every listed candidate must survive the parser, otherwise the SQL
-    // pre-filter and the parse step would disagree about what a plot is.
-    for (const candidate of PLOT_NUMBER_STRINGS) {
-      expect(parsePlotNumber(candidate)).toBe(Number(candidate));
-    }
+  it('is nullable only at the call site, never inside the schema', () => {
+    // "No plot assigned" is a real state; a sentinel like 0 inside the range
+    // would be indistinguishable from a real plot number.
+    expect(PlotNumberSchema.nullable().safeParse(null).success).toBe(true);
   });
 });
 
@@ -116,13 +87,77 @@ describe('mostBindingPlotStatus', () => {
     expect(mostBindingPlotStatus(['available', 'available'])).toBe('available');
     expect(mostBindingPlotStatus([])).toBe('available');
   });
+
+  it('agrees with the binding order it is built from', () => {
+    // The panel lists units in this order, so the first unit it shows has to be
+    // the one this function took the colour from.
+    for (const status of PLOT_STATUS_BINDING_ORDER) {
+      expect(mostBindingPlotStatus([status, 'available'])).toBe(status);
+    }
+  });
+});
+
+describe('claim binding order', () => {
+  it('ranks a sold unit ahead of token, hold and free', () => {
+    expect(unitClaimRank('SOLD')).toBe(0);
+    expect(unitClaimRank('TOKEN')).toBeLessThan(unitClaimRank('HOLD'));
+    expect(unitClaimRank('HOLD')).toBeLessThan(unitClaimRank('AVAILABLE'));
+  });
+
+  it('covers every unit status, so nothing silently sorts last', () => {
+    // A new UnitStatus without a rank would be presented after AVAILABLE, i.e.
+    // as the least binding claim, which is never what a new state means.
+    expect(UNIT_STATUS_BINDING_ORDER).toHaveLength(UnitStatusSchema.options.length);
+    for (const status of UnitStatusSchema.options) {
+      expect(unitClaimRank(status)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('ranks an approved booking ahead of token and hold', () => {
+    expect(bookingClaimRank('APPROVED')).toBe(0);
+    expect(bookingClaimRank('TOKEN')).toBeLessThan(bookingClaimRank('HOLD'));
+  });
+
+  it('sorts a terminal booking last, so it can never read as the claim', () => {
+    // REJECTED/CANCELLED release the unit. If either ranked first, a cancelled
+    // deal would be shown as the reason the villa is gone.
+    expect(bookingClaimRank('CANCELLED')).toBe(BOOKING_STATUS_BINDING_ORDER.length);
+    expect(bookingClaimRank('REJECTED')).toBe(BOOKING_STATUS_BINDING_ORDER.length);
+    expect(bookingClaimRank('HOLD')).toBeLessThan(bookingClaimRank('CANCELLED'));
+  });
+
+  it('names exactly the statuses that claim a unit', () => {
+    // The DB's partial unique index and the unit-status trigger use this same
+    // list; the three must move together.
+    expect([...BOOKING_STATUS_BINDING_ORDER].sort()).toEqual([...ACTIVE_BOOKING_STATUSES].sort());
+  });
 });
 
 describe('wire schemas', () => {
+  /** A unit row exactly as `UnitRowSchema` requires it on the wire. */
+  const unitRow = {
+    id: 'unit-37',
+    phaseId: 'phase-cmda',
+    phaseName: 'CMDA Plots',
+    projectId: 'proj-1',
+    projectName: 'Demo Villas',
+    unitNumber: 'A-101',
+    plotNumber: 37,
+    bhk: 3,
+    facing: 'East',
+    sqft: 1450,
+    buildupSqft: '1450.00',
+    pricePerSqft: '4000.00',
+    price: '5800000.00',
+    status: 'SOLD',
+    createdAt: '2026-10-01T09:00:00.000Z',
+  };
+
   it('accepts a plot-status row and rejects an out-of-range plot number', () => {
     expect(PlotStatusRowSchema.parse({ plotNumber: 125, status: 'booked' })).toEqual({
       plotNumber: 125,
       status: 'booked',
+      units: [],
     });
     expect(PlotStatusRowSchema.safeParse({ plotNumber: 126, status: 'booked' }).success).toBe(
       false,
@@ -131,8 +166,81 @@ describe('wire schemas', () => {
     expect(PlotStatusRowSchema.safeParse({ plotNumber: 1, status: 'sold' }).success).toBe(false);
   });
 
+  it('carries the real unit and its booking through the row', () => {
+    const row = {
+      plotNumber: 37,
+      status: 'booked',
+      units: [
+        {
+          unit: unitRow,
+          booking: {
+            id: 'booking-1',
+            status: 'APPROVED',
+            amount: '5800000.00',
+            tokenAmount: '250000.00',
+            leadId: 'lead-1',
+            leadName: 'Demo Vikram',
+            createdAt: '2026-10-02T09:00:00.000Z',
+          },
+        },
+      ],
+    };
+    expect(PlotStatusRowSchema.parse(row)).toEqual(row);
+  });
+
+  it('accepts a unit with no live booking', () => {
+    // The honest shape for a free villa: the record exists, nothing holds it.
+    const parsed = PlotStatusRowSchema.parse({
+      plotNumber: 20,
+      status: 'available',
+      units: [
+        {
+          unit: { ...unitRow, unitNumber: 'D-103', plotNumber: 20, status: 'AVAILABLE' },
+          booking: null,
+        },
+      ],
+    });
+    expect(parsed.units[0]?.booking).toBeNull();
+    expect(parsed.units[0]?.unit.plotNumber).toBe(20);
+  });
+
+  it('rejects a unit claim that is not a unit row', () => {
+    // A claim carrying only an id would render as a blank panel with a live
+    // link, which is worse than a loud failure here.
+    expect(
+      PlotStatusRowSchema.safeParse({
+        plotNumber: 37,
+        status: 'booked',
+        units: [{ unit: { id: 'unit-37' }, booking: null }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a booking whose status is not a booking status', () => {
+    expect(
+      PlotStatusRowSchema.safeParse({
+        plotNumber: 37,
+        status: 'booked',
+        units: [
+          {
+            unit: unitRow,
+            booking: {
+              id: 'booking-1',
+              status: 'SOLD',
+              amount: '1.00',
+              tokenAmount: null,
+              leadId: 'lead-1',
+              leadName: 'Demo Vikram',
+              createdAt: '2026-10-02T09:00:00.000Z',
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it('accepts an empty row set', () => {
-    // The real case today: no unit in the project is plot-numbered.
+    // The real case for a project that numbers its units by phase.
     expect(PlotStatusListResultSchema.parse({ rows: [] })).toEqual({ rows: [] });
   });
 });

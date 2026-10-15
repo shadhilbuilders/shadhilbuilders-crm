@@ -9,24 +9,13 @@ import { Badge, Button, Sheet } from '@paalstack/react-ui';
 import { LuArrowRight } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 
-import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
+import { inventoryStatusBadgeVariant, labelFor } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import type { UnitRow } from '@/hooks/queries/inventory';
-
-const STATUS_BADGE_VARIANT: Record<InventoryStatus, 'success' | 'warning' | 'info' | 'destructive'> = {
-  AVAILABLE: 'success',
-  HOLD: 'warning',
-  TOKEN: 'info',
-  SOLD: 'destructive',
-};
-
-function isInventoryStatus(value: string): value is InventoryStatus {
-  return (INVENTORY_STATUSES as readonly string[]).includes(value);
-}
 
 function formatMoney(value: string | undefined): string {
   if (value === undefined) return '-';
@@ -63,9 +52,7 @@ export function UnitDetailSheet({
 
   if (unit === null) return null;
   const status = unit.status;
-  const badgeVariant = isInventoryStatus(status)
-    ? STATUS_BADGE_VARIANT[status]
-    : 'muted';
+  const badgeVariant = inventoryStatusBadgeVariant(status);
   const isAvailable = status === 'AVAILABLE';
 
   return (
@@ -103,7 +90,7 @@ export function UnitDetailSheet({
             variant={badgeVariant}
             data-qa="unit-detail-status"
           >
-            {isInventoryStatus(status) ? labelFor('inventory', status) : status || '-'}
+            {labelFor('inventory', status)}
           </Badge>
           {!isAvailable ? (
             <span className="text-muted-foreground text-xs">
@@ -117,6 +104,10 @@ export function UnitDetailSheet({
         </div>
 
         <div className="border-border divide-y divide-border rounded-lg border">
+          <DetailRow
+            label="Plot number"
+            value={unit.plotNumber === null ? 'Not on the layout' : String(unit.plotNumber)}
+          />
           <DetailRow label="BHK" value={`${unit.bhk} BHK`} />
           <DetailRow label="Facing" value={unit.facing ?? '-'} />
           <DetailRow label="Plot sq.ft" value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'} />

@@ -49,6 +49,10 @@ export type UnitRow = {
   unitNumber: string;
   bhk: number;
   facing: string | null;
+  // The plot map reads a unit's PLOT NUMBER (its position on the approved
+  // layout), never its door number. Null means nobody has placed the villa on a
+  // plot yet.
+  plotNumber: number | null;
   /** Plot sq.ft. */
   sqft: number | null;
   buildupSqft: string;
@@ -155,15 +159,33 @@ export function useInventoryPhases(projectId?: string) {
 }
 
 /**
+ * One unit by id (GET /api/inventory/units/:id).
+ *
+ * Used by the plot map's link into the inventory grid: the map hands over a unit
+ * ID, and the grid opens that unit's detail sheet. Without a fetch the grid
+ * would need the whole row on the query string, or the link would land on a
+ * filtered list the operator has to search again by hand.
+ */
+export function useUnit(id: string | null) {
+  return useQuery({
+    queryKey: ['inventory', 'unit', id ?? ''] as const,
+    queryFn: ({ signal }) => api<UnitRow>(`/inventory/units/${id}`, { signal }),
+    enabled: id !== null,
+    staleTime: 15_000,
+  });
+}
+
+/**
  * Plot availability for the CMDA layout map (GET /api/inventory/plots).
  *
- * Returns the `{ rows }` envelope: each row is `{ plotNumber, status }` for a
- * unit the CRM identifies as a plot. An EMPTY `rows` is a normal answer - it
- * means no unit in the project is numbered by plot number, so every plot reads
- * available. It is not an error and must not be treated as one.
+ * Returns the `{ rows }` envelope: each row is
+ * `{ plotNumber, status, units }` for a plot a unit has been assigned to, where
+ * each unit carries its real row and its live booking. An EMPTY `rows` is a
+ * normal answer - it means no villa in the project has a plot number yet, so
+ * every plot reads available. It is not an error and must not be treated as one.
  *
  * There is no Plot table: the 125 plot polygons are a static trace of the
- * approved drawing. This query is the availability half of that join.
+ * approved drawing, and `Unit.plotNumber` is the join key.
  */
 export function usePlotStatuses(projectId?: string) {
   return useQuery({

@@ -11,7 +11,7 @@ import { UnitStatusSchema } from '@shadhil/api-types';
 
 import { UNIT_STATUS_RANK } from './unit-status-rank';
 
-import { deriveUnitPrice, InventoryService } from './inventory.service';
+import { deriveUnitPrice, InventoryService, unitConflictMessage } from './inventory.service';
 
 function makeActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
@@ -35,6 +35,7 @@ function makeService(): {
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
       findUnique: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
       delete: ReturnType<typeof vi.fn>;
@@ -69,6 +70,7 @@ function makeService(): {
       findMany: vi.fn(),
       count: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
@@ -418,16 +420,29 @@ describe('list - search by villa number', () => {
 describe('findOne - unit detail', () => {
   it('returns the unit with phase + project names', async () => {
     const { service, client } = makeService();
-    client.unit.findUnique.mockResolvedValue(unitRow());
+    client.unit.findFirst.mockResolvedValue(unitRow());
     const result = await service.findOne(makeActor(), 'unit-1');
     expect(result.unitNumber).toBe('A-101');
     expect(result.phaseName).toBe('Phase A');
     expect(result.projectName).toBe('Metro Heights');
   });
 
+  it("reads the unit inside the actor's organization", async () => {
+    // Unit's SELECT policy checks the role only, so the org term in the query is
+    // what stops a cross-tenant read by id.
+    const { service, client } = makeService();
+    client.unit.findFirst.mockResolvedValue(unitRow());
+    await service.findOne(makeActor({ organizationId: 'org-7' }), 'unit-1');
+
+    const call = client.unit.findFirst.mock.calls[0]?.[0] as {
+      where: { id: string; organizationId?: string };
+    };
+    expect(call.where).toEqual({ id: 'unit-1', organizationId: 'org-7' });
+  });
+
   it('returns 404 when the unit does not exist', async () => {
     const { service, client } = makeService();
-    client.unit.findUnique.mockResolvedValue(null);
+    client.unit.findFirst.mockResolvedValue(null);
     await expect(service.findOne(makeActor(), 'missing')).rejects.toThrow(
       /Unit missing not found/,
     );
@@ -665,6 +680,7 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       id: 'unit-1',
       phaseId: 'phase-1',
       unitNumber: 'A-101',
+      plotNumber: 37,
       bhk: 3,
       facing: 'North',
       sqft: 1450,
@@ -673,11 +689,15 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       price: { toString: () => '5800000.00' },
       status: 'AVAILABLE',
       createdAt: new Date('2026-01-01T00:00:00Z'),
+      // The service returns the row through the shared `toUnitRow` mapper, so
+      // the mock has to carry the relation that mapper reads.
+      phase: { name: 'Phase A', projectId: 'proj-1', project: { name: 'Metro Heights' } },
     });
 
     const result = await service.create(makeActor(), {
       phaseId: 'phase-1',
       unitNumber: 'A-101',
+      plotNumber: 37,
       bhk: 3,
       facing: 'North',
       sqft: 1450,
@@ -687,10 +707,15 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
 
     expect(result.status).toBe('AVAILABLE');
     expect(result.price).toBe('5800000.00');
+    // The plot number and the phase names travel with it: the unit grid shows
+    // the plot, and the map joins on it.
+    expect(result.plotNumber).toBe(37);
+    expect(result.phaseName).toBe('Phase A');
     expect(client.unit.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'AVAILABLE',
+          plotNumber: 37,
           price: '5800000.00',
           buildupSqft: '1450.00',
           pricePerSqft: '4000.00',
@@ -762,6 +787,59 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
     ).rejects.toThrow(/already exists in this phase/);
     expect(client.auditLog.create).not.toHaveBeenCalled();
   });
+
+  it('returns 409 naming the PLOT when the plot number is already taken', async () => {
+    // A unit has two unique keys per phase. Prisma reports both as P2002, so the
+    // message has to read the constraint: sending the operator to fix the door
+    // number when the plot is the clash wastes a round trip.
+    const { service, client } = makeService();
+    client.phase.findUnique.mockResolvedValue({ id: 'phase-1' });
+    client.unit.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`phaseId`,`plotNumber`)',
+        { code: 'P2002', clientVersion: '7.10.0', meta: { target: ['phaseId', 'plotNumber'] } },
+      ),
+    );
+
+    await expect(
+      service.create(makeActor(), {
+        phaseId: 'phase-1',
+        unitNumber: 'A-101',
+        plotNumber: 37,
+        bhk: 3,
+        buildupSqft: 1,
+        pricePerSqft: 1,
+      }),
+    ).rejects.toThrow(/Plot 37 is already assigned/);
+  });
+});
+
+describe('unitConflictMessage', () => {
+  it('names the plot number when the plot is the clash', () => {
+    expect(
+      unitConflictMessage(['phaseId', 'plotNumber'], { unitNumber: 'A-101', plotNumber: 37 }),
+    ).toMatch(/Plot 37 is already assigned/);
+  });
+
+  it('names the index name form too, since Prisma reports either shape', () => {
+    expect(
+      unitConflictMessage('Unit_phaseId_plotNumber_key', {
+        unitNumber: 'A-101',
+        plotNumber: 37,
+      }),
+    ).toMatch(/Plot 37/);
+  });
+
+  it('falls back to the door number when the constraint says nothing about plots', () => {
+    // The pre-existing door-number clash must keep its old message.
+    expect(
+      unitConflictMessage(['phaseId', 'unitNumber'], { unitNumber: 'A-101', plotNumber: null }),
+    ).toBe('Unit A-101 already exists in this phase');
+    // And an error with no target at all must not invent a plot clash.
+    expect(unitConflictMessage(undefined, { unitNumber: 'A-101', plotNumber: 37 })).toBe(
+      'Unit A-101 already exists in this phase',
+    );
+  });
 });
 
 // ─── update - admin-only + audit row ────────────────────────────────
@@ -809,6 +887,55 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
       }),
     ).rejects.toThrow(/Only ADMIN\/OWNER/);
     expect(client.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('assigns a plot number, and records it in the audit before/after', async () => {
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ plotNumber: null }));
+    client.unit.update.mockResolvedValue(unitRow({ plotNumber: 37 }));
+
+    const result = await service.update(makeActor(), 'unit-1', { plotNumber: 37 });
+
+    expect(result.plotNumber).toBe(37);
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ plotNumber: 37 }) }),
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          before: expect.objectContaining({ plotNumber: null }),
+          after: expect.objectContaining({ plotNumber: 37 }),
+        }),
+      }),
+    );
+  });
+
+  it('clears a plot number with null, taking the villa off the layout', async () => {
+    // A villa pulled from the layout must stop claiming its plot, and the grid
+    // has to be the one to say it.
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ plotNumber: 37 }));
+    client.unit.update.mockResolvedValue(unitRow({ plotNumber: null }));
+
+    const result = await service.update(makeActor(), 'unit-1', { plotNumber: null });
+
+    expect(result.plotNumber).toBeNull();
+    expect(client.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ plotNumber: null }) }),
+    );
+  });
+
+  it('leaves the plot number alone when the update does not mention it', async () => {
+    // Omitting the field keeps the assignment: the edit dialog sends only what
+    // the user changed.
+    const { service, client } = makeService();
+    client.unit.findUnique.mockResolvedValue(unitRow({ plotNumber: 37 }));
+    client.unit.update.mockResolvedValue(unitRow({ plotNumber: 37 }));
+
+    await service.update(makeActor(), 'unit-1', { bhk: 4 });
+
+    const call = client.unit.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(call.data).not.toHaveProperty('plotNumber');
   });
 
   // ── T-INV-SYNC (2026-09-15): manual status override vs live bookings ──

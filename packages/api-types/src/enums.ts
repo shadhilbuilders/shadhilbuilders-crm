@@ -119,6 +119,18 @@ export const BookingStatusSchema = z.enum([
 ]);
 export type BookingStatus = z.infer<typeof BookingStatusSchema>;
 
+/**
+ * Booking statuses that still CLAIM their unit. The app-layer mirror of the
+ * partial unique index `one_active_booking_per_unit` and of the
+ * `unit_recompute_status` trigger's CASE (both in migration
+ * 20260915060000_unit_status_sync). REJECTED and CANCELLED are terminal: they
+ * release the unit. Three definitions of one rule on purpose - the DB owns it,
+ * the app mirrors it, and any drift shows up as a unit whose status disagrees
+ * with its own booking list.
+ */
+export const ACTIVE_BOOKING_STATUSES = ['HOLD', 'TOKEN', 'APPROVED'] as const;
+export type ActiveBookingStatus = (typeof ACTIVE_BOOKING_STATUSES)[number];
+
 /** Unit inventory state. */
 export const UnitStatusSchema = z.enum(['AVAILABLE', 'HOLD', 'TOKEN', 'SOLD']);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;

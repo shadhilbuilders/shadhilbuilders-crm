@@ -15,7 +15,8 @@ import { Badge, Button, DataTable, Select, TypographyP, AlertDialog, DataTableRo
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState, useEffect } from 'react';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { z } from 'zod';
 
@@ -29,9 +30,10 @@ import {
   useInventoryUnits,
   useInventoryUnitsEnvelope,
   useProjectOptions,
+  useUnit,
   type UnitRow,
 } from '@/hooks/queries/inventory';
-import { labelFor, INVENTORY_STATUSES, type InventoryStatus } from '@/lib/labels';
+import { inventoryStatusBadgeVariant, labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser, canManageProjectMembers } from '@/lib/session';
@@ -49,6 +51,7 @@ const unitRowSchema = z.object({
   projectId: z.string(),
   projectName: z.string(),
   unitNumber: z.string(),
+  plotNumber: z.number().nullable(),
   bhk: z.number(),
   facing: z.string().nullable(),
   sqft: z.number().nullable(),
@@ -66,18 +69,14 @@ function formatMoney(value: string | undefined): string {
   return currencyIntl.format(num);
 }
 
-const STATUS_BADGE_VARIANT: Record<InventoryStatus, 'success' | 'warning' | 'info' | 'destructive'> = {
-  AVAILABLE: 'success',
-  HOLD: 'warning',
-  TOKEN: 'info',
-  SOLD: 'destructive',
-};
-
-function isInventoryStatus(value: string): value is InventoryStatus {
-  return (INVENTORY_STATUSES as readonly string[]).includes(value);
-}
-
-export default function InventoryPage() {
+/**
+ * The grid. Split from the default export so the `?unit=` deep link can read
+ * `useSearchParams()` inside a Suspense boundary: Next requires that boundary,
+ * and without it the page fails to prerender.
+ */
+function InventoryGrid() {
+  const searchParams = useSearchParams();
+  const linkedUnitId = searchParams.get('unit');
   const { user } = useSessionUser();
   // T-ProjectSwitch: resolved project from tenant context; id keys API,
   // slugs key hrefs.
@@ -135,6 +134,12 @@ export default function InventoryPage() {
   const rows = Array.isArray(unitsQuery.data) ? (unitsQuery.data as UnitRow[]) : [];
 
   const [detailTarget, setDetailTarget] = useState<UnitRow | null>(null);
+  // Deep link from the plot map: `?unit=<id>` opens that villa's sheet. The map
+  // knows a unit ID, not the whole row, so the row is fetched here.
+  const linkedUnit = useUnit(linkedUnitId);
+  useEffect(() => {
+    if (linkedUnit.data !== undefined) setDetailTarget(linkedUnit.data);
+  }, [linkedUnit.data]);
   const [editTarget, setEditTarget] = useState<UnitRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UnitRow | null>(null);
   const deleteUnit = useDeleteUnit();
@@ -214,6 +219,18 @@ export default function InventoryPage() {
         enableSorting: false,
       },
       {
+        // The villa's position on the approved layout. Empty for most villas:
+        // a plot number is assigned by hand, separately from the door number.
+        accessorKey: 'plotNumber',
+        header: 'Plot #',
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm tabular-nums" data-qa="unit-plot-number">
+            {row.original.plotNumber === null ? '-' : row.original.plotNumber}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
         accessorKey: 'bhk',
         header: 'BHK',
         cell: ({ row }) => (
@@ -272,15 +289,9 @@ export default function InventoryPage() {
         header: 'Status',
         cell: ({ row }) => {
           const status = row.original.status;
-          const variant = isInventoryStatus(status)
-            ? STATUS_BADGE_VARIANT[status]
-            : 'muted';
           return (
-            <Badge
-              variant={variant}
-              data-qa="unit-status-badge"
-            >
-              {isInventoryStatus(status) ? labelFor('inventory', status) : status || '-'}
+            <Badge variant={inventoryStatusBadgeVariant(status)} data-qa="unit-status-badge">
+              {labelFor('inventory', status)}
             </Badge>
           );
         },
@@ -527,6 +538,21 @@ export default function InventoryPage() {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * /inventory - the villa grid, and the destination the plot map links into.
+ *
+ * The `?unit=<id>` query param opens that villa's detail sheet, so "open the
+ * villa on plot 37" lands on the villa itself rather than on a list the
+ * operator has to search again by hand.
+ */
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<Skeleton variant="table" />}>
+      <InventoryGrid />
+    </Suspense>
   );
 }
 
