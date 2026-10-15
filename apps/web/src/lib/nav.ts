@@ -69,6 +69,7 @@ import {
   LuSend,
   LuSettings,
   LuMessagesSquare,
+  LuMap,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -154,6 +155,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/inventory',
     label: 'Inventory',
     icon: LuPackage,
+    group: 'work',
+  },
+  // Interactive CMDA plot layout. Visible to every authenticated role, like
+  // Inventory - the map is a read-only view of the same availability the
+  // inventory grid shows, and booking decisions still go through the
+  // bookings module. Project-scoped: each project has its own drawing.
+  {
+    href: '/plots',
+    label: 'Plot Layout',
+    icon: LuMap,
     group: 'work',
   },
   // T-F5 (T-BOOK backend). Bookings are visible to every authenticated
@@ -458,6 +469,7 @@ export const PROJECT_SCOPED_PATHS = new Set([
   '/visits',
   '/my-team',
   '/inventory',
+  '/plots',
   '/bookings',
   '/notifications',
   '/dashboard',

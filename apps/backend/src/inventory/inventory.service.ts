@@ -23,11 +23,12 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { computeUnitTotal, MAX_UNIT_TOTAL } from '@shadhil/api-types';
+import { computeUnitTotal, MAX_UNIT_TOTAL, PLOT_NUMBER_STRINGS, parsePlotNumber, plotStatusFromUnitStatus, mostBindingPlotStatus, UnitStatusSchema, type PlotStatus, type PlotStatusListResult, type PlotStatusRow } from '@shadhil/api-types';
 
 import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
@@ -303,6 +304,68 @@ export class InventoryService {
           name: p.name,
           unitCount: p._count.units,
         }));
+      },
+    );
+  }
+
+  /**
+   * Plot availability for the CMDA layout map.
+   *
+   * There is no Plot table - the 125 plots are a static trace of the approved
+   * drawing. Availability is therefore derived from the project's units, keyed
+   * by the unit number when that number IS a plot number (see
+   * `parsePlotNumber`). Units the CRM numbers some other way are not plots and
+   * contribute nothing, which is why an empty `rows` is a normal, meaningful
+   * answer rather than an error: the map then reads every plot as available.
+   */
+  async plots(actor: JwtPayload, projectId?: string): Promise<PlotStatusListResult> {
+    return withRlsContext(
+      this.client,
+      rlsContextFrom(actor),
+      async (tx) => {
+        const client = tx as unknown as PrismaClient;
+        // Pre-filter in SQL to the only unit numbers that can be a plot. A
+        // project's whole unit list must not cross the wire just to be thrown
+        // away in JS, and the filter is exact rather than a LIKE.
+        const where: Prisma.UnitWhereInput = {
+          unitNumber: { in: [...PLOT_NUMBER_STRINGS] },
+        };
+        if (projectId !== undefined) where.phase = { projectId };
+
+        const units = await client.unit.findMany({
+          where,
+          select: { unitNumber: true, status: true },
+        });
+
+        const byPlot = new Map<number, PlotStatus[]>();
+        for (const unit of units) {
+          const parsedStatus = UnitStatusSchema.safeParse(unit.status);
+          if (!parsedStatus.success) {
+            // The database holds a UnitStatus the shared contract does not
+            // know, so every downstream surface would be guessing. Fail loudly
+            // instead of painting an unknown state as available.
+            throw new InternalServerErrorException(
+              `Unit ${unit.unitNumber} has status "${String(unit.status)}", which is not a known UnitStatus. ` +
+                'The database and the generated Prisma client have drifted - run `pnpm --filter @shadhil/database generate` ' +
+                'and redeploy the API.',
+            );
+          }
+          const plotNumber = parsePlotNumber(unit.unitNumber);
+          // Defensive: the SQL filter should already have excluded these.
+          if (plotNumber === null) continue;
+          const claims = byPlot.get(plotNumber) ?? [];
+          claims.push(plotStatusFromUnitStatus(parsedStatus.data));
+          byPlot.set(plotNumber, claims);
+        }
+
+        const rows: PlotStatusRow[] = [...byPlot.entries()]
+          .map(([plotNumber, claims]) => ({
+            plotNumber,
+            status: mostBindingPlotStatus(claims),
+          }))
+          .sort((a, b) => a.plotNumber - b.plotNumber);
+
+        return { rows };
       },
     );
   }

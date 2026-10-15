@@ -43,6 +43,7 @@ import {
   type PhaseRow,
   type ProjectOptionFilterDto,
   type ProjectOptionRow,
+  type PlotStatusListResult,
   type UnitFilterDto,
   type UnitListResult,
   type UnitRow,
@@ -161,6 +162,20 @@ export class InventoryController {
     @Query('projectId') projectId?: string,
   ): Promise<PhaseRow[]> {
     return this.inventory.phases(req.user!, projectId);
+  }
+
+  @Get('plots')
+  @ApiOperation({
+    summary:
+      'Plot availability for the CMDA layout map: { plotNumber, status } per plot, derived from ' +
+      "the project's plot-numbered units. An empty row set means no unit in the project is " +
+      'plot-numbered, so every plot reads available.',
+  })
+  async plots(
+    @Req() req: AuthedRequest,
+    @Query('projectId') projectId?: string,
+  ): Promise<PlotStatusListResult> {
+    return this.inventory.plots(req.user!, projectId);
   }
 
   @Post('phases')

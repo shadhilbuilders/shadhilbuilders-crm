@@ -24,6 +24,7 @@ export * from './visit-lead-sync';
 export * from './chat';
 export * from './bookings';
 export * from './inventory';
+export * from './plot-status';
 export * from './pricing';
 export * from './reminders';
 export * from './teams';

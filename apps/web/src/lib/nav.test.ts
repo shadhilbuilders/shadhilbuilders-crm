@@ -77,6 +77,7 @@ describe('lib/nav', () => {
       '/visits',
       '/staff',
       '/inventory',
+      '/plots',
       '/bookings',
       '/notifications',
     ];
@@ -94,6 +95,7 @@ describe('lib/nav', () => {
       '/my-team',
       '/staff',
       '/inventory',
+      '/plots',
       '/bookings',
       '/whatsapp-chat',
       '/notifications',

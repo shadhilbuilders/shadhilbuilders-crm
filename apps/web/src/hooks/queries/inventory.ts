@@ -21,6 +21,7 @@ import type {
   CreatePhaseDto,
   CreateProjectOptionDto,
   CreateUnitDto,
+  PlotStatusListResult,
   UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
@@ -31,6 +32,11 @@ function invalidateInventoryAndBookings(
 ) {
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+  // The plot map paints each plot from its unit's status, so it is a third
+  // view of the same fact. Approving a booking flips a unit to SOLD; without
+  // this the layout would keep showing that plot as available until someone
+  // reloaded the page.
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'plots'] });
   void queryClient.invalidateQueries({ queryKey: ['bookings'] });
 }
 
@@ -144,6 +150,26 @@ export function useInventoryPhases(projectId?: string) {
     queryKey: ['inventory', 'phases', projectId ?? ''] as const,
     queryFn: ({ signal }) =>
       api<PhaseRow[]>(`/inventory/phases${qs({ projectId })}`, { signal }),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Plot availability for the CMDA layout map (GET /api/inventory/plots).
+ *
+ * Returns the `{ rows }` envelope: each row is `{ plotNumber, status }` for a
+ * unit the CRM identifies as a plot. An EMPTY `rows` is a normal answer - it
+ * means no unit in the project is numbered by plot number, so every plot reads
+ * available. It is not an error and must not be treated as one.
+ *
+ * There is no Plot table: the 125 plot polygons are a static trace of the
+ * approved drawing. This query is the availability half of that join.
+ */
+export function usePlotStatuses(projectId?: string) {
+  return useQuery({
+    queryKey: ['inventory', 'plots', projectId ?? ''] as const,
+    queryFn: ({ signal }) =>
+      api<PlotStatusListResult>(`/inventory/plots${qs({ projectId })}`, { signal }),
     staleTime: 30_000,
   });
 }
