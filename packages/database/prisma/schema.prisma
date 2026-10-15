@@ -608,7 +608,15 @@ model Unit {
   phaseId        String
   // T-ORG: denormalized tenant axis.
   organizationId String
+  // The DOOR number printed on the villa ("A-101", "D-202"). Marketing naming,
+  // not the villa's position on a drawing.
   unitNumber     String
+  // The CMDA plot number (1-125) this villa occupies on the approved layout,
+  // when it has been assigned one. DELIBERATELY A SEPARATE FIELD from
+  // `unitNumber`: the door number and the plot number are two different
+  // identifiers, and the plot map joins on THIS one. Nullable, so a project
+  // with no traced layout simply leaves it empty.
+  plotNumber     Int?
   bhk            Int
   facing         String?
   // `sqft` is the PLOT area (UI label "Plot sq.ft"). The column/field name is
@@ -627,6 +635,10 @@ model Unit {
   bookings     Booking[]
 
   @@unique([phaseId, unitNumber])
+  // One plot per phase. Postgres treats NULLs as distinct, so any number of
+  // units may be unassigned. Two phases of one project may each hold plot 5;
+  // `plots()` resolves that by the most binding claim when it paints the map.
+  @@unique([phaseId, plotNumber])
   @@index([phaseId])
   @@index([organizationId])
   @@index([status])

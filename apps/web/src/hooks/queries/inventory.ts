@@ -21,6 +21,7 @@ import type {
   CreatePhaseDto,
   CreateProjectOptionDto,
   CreateUnitDto,
+  PlotStatusListResult,
   UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
@@ -31,6 +32,11 @@ function invalidateInventoryAndBookings(
 ) {
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
+  // The plot map paints each plot from its unit's status, so it is a third
+  // view of the same fact. Approving a booking flips a unit to SOLD; without
+  // this the layout would keep showing that plot as available until someone
+  // reloaded the page.
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'plots'] });
   void queryClient.invalidateQueries({ queryKey: ['bookings'] });
 }
 
@@ -43,6 +49,10 @@ export type UnitRow = {
   unitNumber: string;
   bhk: number;
   facing: string | null;
+  // The plot map reads a unit's PLOT NUMBER (its position on the approved
+  // layout), never its door number. Null means nobody has placed the villa on a
+  // plot yet.
+  plotNumber: number | null;
   /** Plot sq.ft. */
   sqft: number | null;
   buildupSqft: string;
@@ -144,6 +154,44 @@ export function useInventoryPhases(projectId?: string) {
     queryKey: ['inventory', 'phases', projectId ?? ''] as const,
     queryFn: ({ signal }) =>
       api<PhaseRow[]>(`/inventory/phases${qs({ projectId })}`, { signal }),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * One unit by id (GET /api/inventory/units/:id).
+ *
+ * Used by the plot map's link into the inventory grid: the map hands over a unit
+ * ID, and the grid opens that unit's detail sheet. Without a fetch the grid
+ * would need the whole row on the query string, or the link would land on a
+ * filtered list the operator has to search again by hand.
+ */
+export function useUnit(id: string | null) {
+  return useQuery({
+    queryKey: ['inventory', 'unit', id ?? ''] as const,
+    queryFn: ({ signal }) => api<UnitRow>(`/inventory/units/${id}`, { signal }),
+    enabled: id !== null,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * Plot availability for the CMDA layout map (GET /api/inventory/plots).
+ *
+ * Returns the `{ rows }` envelope: each row is
+ * `{ plotNumber, status, units }` for a plot a unit has been assigned to, where
+ * each unit carries its real row and its live booking. An EMPTY `rows` is a
+ * normal answer - it means no villa in the project has a plot number yet, so
+ * every plot reads available. It is not an error and must not be treated as one.
+ *
+ * There is no Plot table: the 125 plot polygons are a static trace of the
+ * approved drawing, and `Unit.plotNumber` is the join key.
+ */
+export function usePlotStatuses(projectId?: string) {
+  return useQuery({
+    queryKey: ['inventory', 'plots', projectId ?? ''] as const,
+    queryFn: ({ signal }) =>
+      api<PlotStatusListResult>(`/inventory/plots${qs({ projectId })}`, { signal }),
     staleTime: 30_000,
   });
 }

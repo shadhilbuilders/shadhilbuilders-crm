@@ -49,5 +49,10 @@ supabase/.temp/
 
 test-results/
 
-playwright-report/src/test/e2e/.auth/
 playwright-report/
+# Playwright storageState written by auth.setup.ts. It holds a LIVE
+# better-auth.session_token, so it must never be committed. These were once
+# fused onto one line (this rule and the one above, with no newline between
+# them), which matched nothing at all and left a session credential tracked in
+# git. Keep them as separate lines.
+src/test/e2e/.auth/

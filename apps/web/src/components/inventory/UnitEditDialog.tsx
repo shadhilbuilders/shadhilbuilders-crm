@@ -40,6 +40,19 @@ const FORM_ID = 'unit-edit-form';
 
 const unitEditSchema = z.object({
   unitNumber: z.string().trim().min(1, 'Unit number is required').max(40),
+  // The villa's position on the approved layout. Blank clears it, which takes
+  // the villa off the map - so the field is optional and validated by hand.
+  plotNumber: z
+    .string()
+    .optional()
+    .refine(
+      (v) => {
+        if (v === undefined || v.trim().length === 0) return true;
+        const n = Number(v);
+        return Number.isInteger(n) && n >= 1 && n <= 125;
+      },
+      { message: 'Plot number must be a whole number between 1 and 125' },
+    ),
   bhk: z
     .string()
     .min(1, 'BHK is required')
@@ -88,6 +101,8 @@ type UnitEditFormValues = z.infer<typeof unitEditSchema>;
 export type UnitEditTarget = {
   id: string;
   unitNumber: string;
+  /** The plot number on the approved layout, or null when the villa has none. */
+  plotNumber: number | null;
   bhk: number;
   facing: string | null;
   sqft: number | null;
@@ -160,6 +175,20 @@ export function UnitEditFormBody({
           inputProps: {
             maxLength: 40,
             'data-qa': 'unit-edit-number',
+          },
+        },
+        {
+          type: 'input',
+          name: 'plotNumber',
+          label: 'Plot number (1-125)',
+          placeholder: '37',
+          inputType: 'number',
+          description: 'Blank means the villa is not on the layout. This is not its door number.',
+          inputProps: {
+            min: 1,
+            max: 125,
+            step: 1,
+            'data-qa': 'unit-edit-plot-number',
           },
         },
         {
@@ -322,6 +351,7 @@ export function UnitEditDialog({
     resolver: zodResolver(unitEditSchema),
     defaultValues: {
       unitNumber: unit?.unitNumber ?? '',
+      plotNumber: unit?.plotNumber !== null && unit?.plotNumber !== undefined ? String(unit.plotNumber) : '',
       bhk: unit ? String(unit.bhk) : '',
       facing: unit?.facing ?? '',
       sqft: unit?.sqft !== null && unit?.sqft !== undefined ? String(unit.sqft) : '',
@@ -339,6 +369,7 @@ export function UnitEditDialog({
     if (open && unit !== null) {
       form.reset({
         unitNumber: unit.unitNumber,
+        plotNumber: unit.plotNumber !== null ? String(unit.plotNumber) : '',
         bhk: String(unit.bhk),
         facing: unit.facing ?? '',
         sqft: unit.sqft !== null ? String(unit.sqft) : '',
@@ -380,8 +411,17 @@ export function UnitEditDialog({
     // (UpdateUnitStatusSchema = AVAILABLE|SOLD) with a 400 and the whole save
     // fails - even a pure price edit. Omitting the key leaves Unit.status
     // untouched, so the booking keeps owning it.
+    // Blank clears the plot number (the villa leaves the layout); a value is
+    // sent as a number. The DTO takes `number | null | undefined`, so clearing
+    // is explicit rather than an omission.
+    const plotNumberValue =
+      values.plotNumber !== undefined && values.plotNumber.trim().length > 0
+        ? Number(values.plotNumber)
+        : null;
+
     const payload = {
       unitNumber: values.unitNumber.trim(),
+      plotNumber: plotNumberValue,
       bhk,
       buildupSqft,
       pricePerSqft,

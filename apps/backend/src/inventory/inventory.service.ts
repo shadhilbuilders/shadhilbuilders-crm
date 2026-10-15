@@ -23,11 +23,12 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { computeUnitTotal, MAX_UNIT_TOTAL } from '@shadhil/api-types';
+import { ACTIVE_BOOKING_STATUSES, BOOKING_STATUS_BINDING_ORDER, bookingClaimRank, computeUnitTotal, MAX_UNIT_TOTAL, plotStatusFromUnitStatus, mostBindingPlotStatus, unitClaimRank, UnitStatusSchema, type PlotBookingRef, type PlotStatusListResult, type PlotStatusRow, type PlotUnitClaim } from '@shadhil/api-types';
 
 import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
@@ -45,6 +46,7 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { UNIT_ROW_SELECT, toUnitRow } from './unit-row';
 import { unitStatusRank } from './unit-status-rank';
 import {
   canManageProjectMembers,
@@ -76,7 +78,102 @@ export function deriveUnitPrice(buildupSqft: number, pricePerSqft: number): stri
  * UnitRowSchema; the web app imports this shape in
  * apps/web/src/hooks/queries/inventory.ts (useInventoryUnits).
  */
-export type { UnitRow, UnitListResult, PhaseRow };
+export type { UnitRow, UnitListResult, PhaseRow, PlotUnitClaim };
+
+// ── Plot map: the booking half of a unit claim ──────────────────────────────
+
+/** Booking columns a plot needs, plus the buyer's name for the panel. */
+const CLAIM_BOOKING_SELECT = {
+  id: true,
+  unitId: true,
+  status: true,
+  amount: true,
+  tokenAmount: true,
+  leadId: true,
+  createdAt: true,
+  lead: { select: { name: true } },
+} as const satisfies Prisma.BookingSelect;
+
+/** A booking row as `CLAIM_BOOKING_SELECT` returns it. */
+export type ClaimBookingSource = Prisma.BookingGetPayload<{
+  select: typeof CLAIM_BOOKING_SELECT;
+}>;
+
+/** Most binding booking first (APPROVED > TOKEN > HOLD), then the newest. */
+function compareClaimBookings(a: ClaimBookingSource, b: ClaimBookingSource): number {
+  const rank = bookingClaimRank(a.status) - bookingClaimRank(b.status);
+  if (rank !== 0) return rank;
+  return b.createdAt.getTime() - a.createdAt.getTime();
+}
+
+/**
+ * The booking a plot presents for its unit, or null when nothing holds it.
+ *
+ * The query already filters to the statuses that claim a unit, and the partial
+ * unique index `one_active_booking_per_unit` allows only one row per unit, so
+ * this normally has nothing to choose between. It RANKS rather than taking the
+ * first row anyway: if a duplicate ever exists, the panel must show the
+ * approved deal, not whichever row the database happened to return first.
+ */
+export function pickClaimBooking(
+  bookings: readonly ClaimBookingSource[],
+): PlotBookingRef | null {
+  // Only statuses that still claim the unit. The query filters to these
+  // already; repeating it here means a terminal booking (a cancelled or
+  // rejected deal) can never be presented as the reason a villa is gone,
+  // whatever a future caller hands this function.
+  const claiming = bookings.filter(
+    (booking) => bookingClaimRank(booking.status) < BOOKING_STATUS_BINDING_ORDER.length,
+  );
+  const best = [...claiming].sort(compareClaimBookings)[0];
+  if (best === undefined) return null;
+  return {
+    id: best.id,
+    status: best.status,
+    amount: best.amount.toString(),
+    tokenAmount: best.tokenAmount?.toString() ?? null,
+    leadId: best.leadId,
+    leadName: best.lead.name,
+    createdAt: best.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Order the units claiming one plot: most binding claim first, then villa
+ * number so the order is stable run to run.
+ *
+ * The plot's colour is derived from the same order (see `plots()`), so the
+ * panel's leading unit is always the one that decided the colour.
+ */
+function comparePlotClaims(a: PlotUnitClaim, b: PlotUnitClaim): number {
+  const rank = unitClaimRank(a.unit.status) - unitClaimRank(b.unit.status);
+  if (rank !== 0) return rank;
+  return a.unit.unitNumber.localeCompare(b.unit.unitNumber);
+}
+
+/**
+ * Readable 409 text for a P2002 on Unit.
+ *
+ * A unit has TWO unique keys per phase - the door number and the plot number -
+ * and Prisma reports both as the same error code. Naming the wrong one sends the
+ * operator to edit the field that is already fine, so the constraint target
+ * decides the message. Prisma reports either the field list or the index name
+ * depending on how the client was generated, so the check is a substring match
+ * rather than an equality.
+ */
+export function unitConflictMessage(
+  target: unknown,
+  identifying: { unitNumber: string; plotNumber: number | null },
+): string {
+  const described = Array.isArray(target) ? target.join(',') : String(target);
+  if (described.includes('plotNumber')) {
+    return (
+      `Plot ${identifying.plotNumber ?? '?'} is already assigned to another unit in this phase. ` +
+      'Clear that unit\'s plot number first, or pick a different plot.'
+    );
+  }
+  return `Unit ${identifying.unitNumber} already exists in this phase`;
+}
 
 @Injectable()
 export class InventoryService {
@@ -171,26 +268,7 @@ export class InventoryService {
                 // Re-assert `where`: the ids are already scoped, and keeping
                 // the filters makes this read safe on its own.
                 where: { ...where, id: { in: pageIds } },
-                select: {
-                  id: true,
-                  phaseId: true,
-                  unitNumber: true,
-                  bhk: true,
-                  facing: true,
-                  sqft: true,
-                  buildupSqft: true,
-                  pricePerSqft: true,
-                  price: true,
-                  status: true,
-                  createdAt: true,
-                  phase: {
-                    select: {
-                      name: true,
-                      projectId: true,
-                      project: { select: { name: true } },
-                    },
-                  },
-                },
+                select: UNIT_ROW_SELECT,
               }),
           (tx as unknown as PrismaClient).unit.count({ where }),
         ]);
@@ -204,74 +282,33 @@ export class InventoryService {
 
         return {
           total,
-          rows: orderedRows.map((r) => ({
-            id: r.id,
-            phaseId: r.phaseId,
-            phaseName: r.phase.name,
-            projectId: r.phase.projectId,
-            projectName: r.phase.project.name,
-            unitNumber: r.unitNumber,
-            bhk: r.bhk,
-            facing: r.facing,
-            sqft: r.sqft,
-            buildupSqft: r.buildupSqft.toString(),
-            pricePerSqft: r.pricePerSqft.toString(),
-            price: r.price.toString(),
-            status: r.status,
-            createdAt: r.createdAt.toISOString(),
-          })),
+          rows: orderedRows.map((r) => toUnitRow(r)),
         };
       },
     );
   }
 
   /**
-   * GET /api/inventory/units/:id - unit detail (unit + phase + project
-   * + its bookings). Every authenticated role can read.
+   * GET /api/inventory/units/:id - unit detail (unit + phase + project).
+   * Every authenticated role can read, inside the ACTOR's organization only.
    */
   async findOne(actor: JwtPayload, unitId: string): Promise<UnitRow> {
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
       async (tx) => {
-        const unit = await (tx as unknown as PrismaClient).unit.findUnique({
-          where: { id: unitId },
-          select: {
-            id: true,
-            phaseId: true,
-            unitNumber: true,
-            bhk: true,
-            facing: true,
-            sqft: true,
-            buildupSqft: true,
-            pricePerSqft: true,
-            price: true,
-            status: true,
-            createdAt: true,
-            phase: {
-              select: { name: true, projectId: true, project: { select: { name: true } } },
-            },
-          },
+        // `findFirst`, not `findUnique`: the org term needs a compound where.
+        // Without it, any authenticated caller could read another tenant's unit
+        // by id - Unit's SELECT policy (unit_select_any_authenticated) checks
+        // the ROLE only, so the query is the only thing holding that line.
+        const unit = await (tx as unknown as PrismaClient).unit.findFirst({
+          where: { id: unitId, organizationId: actor.organizationId },
+          select: UNIT_ROW_SELECT,
         });
         if (unit === null) {
           throw new NotFoundException(`Unit ${unitId} not found`);
         }
-        return {
-          id: unit.id,
-          phaseId: unit.phaseId,
-          phaseName: unit.phase.name,
-          projectId: unit.phase.projectId,
-          projectName: unit.phase.project.name,
-          unitNumber: unit.unitNumber,
-          bhk: unit.bhk,
-          facing: unit.facing,
-          sqft: unit.sqft,
-          buildupSqft: unit.buildupSqft.toString(),
-          pricePerSqft: unit.pricePerSqft.toString(),
-          price: unit.price.toString(),
-          status: unit.status,
-          createdAt: unit.createdAt.toISOString(),
-        };
+        return toUnitRow(unit);
       },
     );
   }
@@ -303,6 +340,114 @@ export class InventoryService {
           name: p.name,
           unitCount: p._count.units,
         }));
+      },
+    );
+  }
+
+  /**
+   * Plot availability for the CMDA layout map.
+   *
+   * There is no Plot table - the 125 plots are a static trace of the approved
+   * drawing. Availability is therefore derived from the project's units, joined
+   * on `Unit.plotNumber`: the villa's position on the drawing, which is a
+   * different identifier from `Unit.unitNumber` (the door number, "A-101").
+   * Units nobody has given a plot number are not on the layout and contribute
+   * nothing, which is why an empty `rows` is a normal, meaningful answer rather
+   * than an error: the map then reads every plot as available.
+   *
+   * Each row also carries the RECORDS behind the plot: the unit row itself
+   * (same shape as the inventory grid) and its one live booking with the
+   * buyer's name, so the map can say "villa A-101, plot 37, sold to Demo
+   * Vikram" and link to both. Two queries total, never one per plot.
+   */
+  async plots(actor: JwtPayload, projectId?: string): Promise<PlotStatusListResult> {
+    return withRlsContext(
+      this.client,
+      rlsContextFrom(actor),
+      async (tx) => {
+        const client = tx as unknown as PrismaClient;
+        // Filter to the units that HAVE a plot number and to the ACTOR's
+        // organization. Both terms earn their place:
+        //   - `plotNumber`: only units somebody has placed on the layout are
+        //     plots at all, so a project's whole unit list never crosses the
+        //     wire just to be thrown away in JS.
+        //   - `organizationId`: `projectId` arrives from the query string, and
+        //     Unit's SELECT policy (unit_select_any_authenticated, migration
+        //     20260910000000_inventory_rls) checks the ROLE only. Without this
+        //     term a caller could pass another tenant's project and read their
+        //     villa numbers, areas and prices.
+        const where: Prisma.UnitWhereInput = {
+          plotNumber: { not: null },
+          organizationId: actor.organizationId,
+        };
+        if (projectId !== undefined) where.phase = { projectId };
+
+        const units = await client.unit.findMany({
+          where,
+          select: UNIT_ROW_SELECT,
+          orderBy: { plotNumber: 'asc' },
+        });
+
+        // Every live booking for those units in ONE query. A per-unit lookup
+        // would be up to 125 round trips on a fully plot-numbered project.
+        const bookings: ClaimBookingSource[] =
+          units.length === 0
+            ? []
+            : await client.booking.findMany({
+                where: {
+                  unitId: { in: units.map((unit) => unit.id) },
+                  status: { in: [...ACTIVE_BOOKING_STATUSES] },
+                },
+                select: CLAIM_BOOKING_SELECT,
+              });
+
+        const bookingsByUnit = new Map<string, ClaimBookingSource[]>();
+        for (const booking of bookings) {
+          const forUnit = bookingsByUnit.get(booking.unitId) ?? [];
+          forUnit.push(booking);
+          bookingsByUnit.set(booking.unitId, forUnit);
+        }
+
+        const byPlot = new Map<number, PlotUnitClaim[]>();
+        for (const unit of units) {
+          const parsedStatus = UnitStatusSchema.safeParse(unit.status);
+          if (!parsedStatus.success) {
+            // The database holds a UnitStatus the shared contract does not
+            // know, so every downstream surface would be guessing. Fail loudly
+            // instead of painting an unknown state as available.
+            throw new InternalServerErrorException(
+              `Unit ${unit.unitNumber} has status "${String(unit.status)}", which is not a known UnitStatus. ` +
+                'The database and the generated Prisma client have drifted - run `pnpm --filter @shadhil/database generate` ' +
+                'and redeploy the API.',
+            );
+          }
+          const plotNumber = unit.plotNumber;
+          // Defensive: the SQL filter should already have excluded these.
+          if (plotNumber === null) continue;
+          const claims = byPlot.get(plotNumber) ?? [];
+          claims.push({
+            unit: toUnitRow(unit),
+            booking: pickClaimBooking(bookingsByUnit.get(unit.id) ?? []),
+          });
+          byPlot.set(plotNumber, claims);
+        }
+
+        const rows: PlotStatusRow[] = [...byPlot.entries()]
+          .map(([plotNumber, claims]) => {
+            // Most binding claim first, so the unit the plot's colour came from
+            // is the one the details panel leads with.
+            const ordered = [...claims].sort(comparePlotClaims);
+            return {
+              plotNumber,
+              status: mostBindingPlotStatus(
+                ordered.map((claim) => plotStatusFromUnitStatus(claim.unit.status)),
+              ),
+              units: ordered,
+            };
+          })
+          .sort((a, b) => a.plotNumber - b.plotNumber);
+
+        return { rows };
       },
     );
   }
@@ -681,7 +826,9 @@ export class InventoryService {
       async (tx) => {
         const phase = await (tx as unknown as PrismaClient).phase.findUnique({
           where: { id: dto.phaseId },
-          select: { id: true, name: true, projectId: true, project: { select: { name: true } } },
+          // Only an existence check: the row returned below comes from the unit
+          // itself (UNIT_ROW_SELECT carries the phase/project names).
+          select: { id: true },
         });
         if (phase === null) {
           throw new NotFoundException(`Phase ${dto.phaseId} not found`);
@@ -694,6 +841,9 @@ export class InventoryService {
               phaseId: dto.phaseId,
               organizationId: actor.organizationId,
               unitNumber: dto.unitNumber,
+              // Optional: a project without a traced layout has no plots, and a
+              // unit can be entered before someone assigns its plot.
+              plotNumber: dto.plotNumber ?? null,
               bhk: dto.bhk,
               facing: dto.facing ?? null,
               sqft: dto.sqft ?? null,
@@ -709,24 +859,15 @@ export class InventoryService {
               // on Booking writes, so nothing would ever correct it.
               status: dto.status ?? 'AVAILABLE',
             },
-            select: {
-              id: true,
-              phaseId: true,
-              unitNumber: true,
-              bhk: true,
-              facing: true,
-              sqft: true,
-              buildupSqft: true,
-              pricePerSqft: true,
-              price: true,
-              status: true,
-              createdAt: true,
-            },
+            select: UNIT_ROW_SELECT,
           });
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             throw new ConflictException(
-              `Unit ${dto.unitNumber} already exists in this phase`,
+              unitConflictMessage(err.meta?.target, {
+                unitNumber: dto.unitNumber,
+                plotNumber: dto.plotNumber ?? null,
+              }),
             );
           }
           throw err;
@@ -742,6 +883,7 @@ export class InventoryService {
             after: {
               phaseId: created.phaseId,
               unitNumber: created.unitNumber,
+              plotNumber: created.plotNumber,
               bhk: created.bhk,
               price: created.price.toString(),
               status: created.status,
@@ -750,22 +892,7 @@ export class InventoryService {
           },
         });
 
-        return {
-          id: created.id,
-          phaseId: created.phaseId,
-          phaseName: phase.name,
-          projectId: phase.projectId,
-          projectName: phase.project.name,
-          unitNumber: created.unitNumber,
-          bhk: created.bhk,
-          facing: created.facing,
-          sqft: created.sqft,
-          buildupSqft: created.buildupSqft.toString(),
-          pricePerSqft: created.pricePerSqft.toString(),
-          price: created.price.toString(),
-          status: created.status,
-          createdAt: created.createdAt.toISOString(),
-        };
+        return toUnitRow(created);
       },
     );
   }
@@ -790,22 +917,7 @@ export class InventoryService {
       async (tx) => {
         const existing = await (tx as unknown as PrismaClient).unit.findUnique({
           where: { id: unitId },
-          select: {
-            id: true,
-            phaseId: true,
-            unitNumber: true,
-            bhk: true,
-            facing: true,
-            sqft: true,
-            buildupSqft: true,
-            pricePerSqft: true,
-            price: true,
-            status: true,
-            createdAt: true,
-            phase: {
-              select: { name: true, projectId: true, project: { select: { name: true } } },
-            },
-          },
+          select: UNIT_ROW_SELECT,
         });
         if (existing === null) {
           throw new NotFoundException(`Unit ${unitId} not found`);
@@ -813,6 +925,9 @@ export class InventoryService {
 
         const data: Record<string, unknown> = {};
         if (dto.unitNumber !== undefined) data['unitNumber'] = dto.unitNumber;
+        // `null` clears the assignment and takes the villa off the layout;
+        // omitting the field keeps the number it already has.
+        if (dto.plotNumber !== undefined) data['plotNumber'] = dto.plotNumber;
         if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
         if (dto.facing !== undefined) data['facing'] = dto.facing;
         if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
@@ -842,7 +957,7 @@ export class InventoryService {
           const liveBookings = await (tx as unknown as PrismaClient).booking.findMany({
             where: {
               unitId,
-              status: { in: ['HOLD', 'TOKEN', 'APPROVED'] },
+              status: { in: [...ACTIVE_BOOKING_STATUSES] },
             },
             select: { status: true },
           });
@@ -872,24 +987,15 @@ export class InventoryService {
           updated = await (tx as unknown as PrismaClient).unit.update({
             where: { id: unitId },
             data,
-            select: {
-              id: true,
-              phaseId: true,
-              unitNumber: true,
-              bhk: true,
-              facing: true,
-              sqft: true,
-              buildupSqft: true,
-              pricePerSqft: true,
-              price: true,
-              status: true,
-              createdAt: true,
-            },
+            select: UNIT_ROW_SELECT,
           });
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             throw new ConflictException(
-              `Unit ${dto.unitNumber ?? existing.unitNumber} already exists in this phase`,
+              unitConflictMessage(err.meta?.target, {
+                unitNumber: dto.unitNumber ?? existing.unitNumber,
+                plotNumber: dto.plotNumber ?? existing.plotNumber,
+              }),
             );
           }
           throw err;
@@ -904,6 +1010,7 @@ export class InventoryService {
             entityId: updated.id,
             before: {
               unitNumber: existing.unitNumber,
+              plotNumber: existing.plotNumber,
               bhk: existing.bhk,
               facing: existing.facing,
               sqft: existing.sqft,
@@ -914,6 +1021,7 @@ export class InventoryService {
             },
             after: {
               unitNumber: updated.unitNumber,
+              plotNumber: updated.plotNumber,
               bhk: updated.bhk,
               facing: updated.facing,
               sqft: updated.sqft,
@@ -926,22 +1034,7 @@ export class InventoryService {
           },
         });
 
-        return {
-          id: updated.id,
-          phaseId: updated.phaseId,
-          phaseName: existing.phase.name,
-          projectId: existing.phase.projectId,
-          projectName: existing.phase.project.name,
-          unitNumber: updated.unitNumber,
-          bhk: updated.bhk,
-          facing: updated.facing,
-          sqft: updated.sqft,
-          buildupSqft: updated.buildupSqft.toString(),
-          pricePerSqft: updated.pricePerSqft.toString(),
-          price: updated.price.toString(),
-          status: updated.status,
-          createdAt: updated.createdAt.toISOString(),
-        };
+        return toUnitRow(updated);
       },
     );
   }

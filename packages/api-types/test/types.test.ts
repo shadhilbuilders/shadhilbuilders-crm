@@ -587,6 +587,49 @@ describe('@shadhil/api-types - inventory DTOs', () => {
     expect(r).not.toHaveProperty('price');
   });
 
+  it('CreateUnitDto accepts a plot number, and accepts omitting it', () => {
+    // A project with no traced layout has no plots: the field is optional.
+    const withPlot = CreateUnitDtoSchema.parse({
+      phaseId: PHASE_ID,
+      unitNumber: 'A-101',
+      plotNumber: 37,
+      bhk: 3,
+      buildupSqft: 1250.5,
+      pricePerSqft: 4000,
+    });
+    expect(withPlot.plotNumber).toBe(37);
+    expect(withPlot.unitNumber).toBe('A-101');
+
+    const withoutPlot = CreateUnitDtoSchema.parse({
+      phaseId: PHASE_ID,
+      unitNumber: 'A-102',
+      bhk: 3,
+      buildupSqft: 1250.5,
+      pricePerSqft: 4000,
+    });
+    expect(withoutPlot.plotNumber).toBeUndefined();
+  });
+
+  it('CreateUnitDto rejects a plot number off the layout', () => {
+    const base = {
+      phaseId: PHASE_ID,
+      unitNumber: 'A-101',
+      bhk: 3,
+      buildupSqft: 1,
+      pricePerSqft: 1,
+    };
+    expect(() => CreateUnitDtoSchema.parse({ ...base, plotNumber: 126 })).toThrow();
+    expect(() => CreateUnitDtoSchema.parse({ ...base, plotNumber: 0 })).toThrow();
+    expect(() => CreateUnitDtoSchema.parse({ ...base, plotNumber: '37' })).toThrow();
+  });
+
+  it('UpdateUnitDto can clear a plot number with null, and leave it alone by omitting it', () => {
+    // Clearing matters: a villa taken off the layout must stop claiming a plot.
+    expect(UpdateUnitDtoSchema.parse({ plotNumber: null }).plotNumber).toBeNull();
+    expect(UpdateUnitDtoSchema.parse({ unitNumber: 'A-101' })).not.toHaveProperty('plotNumber');
+    expect(() => UpdateUnitDtoSchema.parse({ plotNumber: 999 })).toThrow();
+  });
+
   it('CreateUnitDto rejects non-positive buildup sq.ft or per sq.ft price', () => {
     const base = { phaseId: PHASE_ID, unitNumber: 'A-101', bhk: 3 };
     expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 0, pricePerSqft: 10 })).toThrow();

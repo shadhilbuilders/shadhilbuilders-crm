@@ -98,15 +98,19 @@ COPY apps/realtime-sse/ apps/realtime-sse/
 # it does (symlinking apps/web/.env.local → root .env) is wanted in an image -
 # production config arrives as build args and Coolify env vars.
 # NOTE the generated Prisma client IS needed here: src/lib/server/tenant.ts and
-# the /api/bff route import `prisma` from @shadhil/database. It is produced by the
-# `prebuild` hook on the next line, which runs `pnpm --filter @shadhil/database
-# generate` before anything compiles. Without that, `next build` fails with
-# TS2307 on './generated/prisma/client' exactly like the API image did.
+# the /api/bff route import `prisma` from @shadhil/database. The client is
+# gitignored, so a fresh image starts without it (or its dist), and `next build`
+# would fail with TS2307 on './generated/prisma/client' - exactly as the API
+# image did. It is produced by `prebuild` on the next line:
+# ensure-workspace-dists.sh sees no dist and no client in this fresh tree, so it
+# runs `pnpm --filter @shadhil/database build`, and THAT build runs
+# `prisma generate` before its own tsc (required: the database package's
+# src/index.ts imports the client).
 # prebuild's ensure-workspace-dists.sh is POSIX sh (not bash) so alpine works.
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# pnpm runs `prebuild` automatically: prisma generate → ensure workspace
-# package dists exist (build only if missing) → `next build`.
+# pnpm runs `prebuild` automatically: ensure the workspace package dists AND the
+# generated Prisma client exist (building them only if missing) → `next build`.
 # The inline vars are build-only placeholders (see the note above); they satisfy
 # the env validators' shape checks and never reach the runner stage.
 RUN BETTER_AUTH_URL=https://crm.shadhilbuilders.in \

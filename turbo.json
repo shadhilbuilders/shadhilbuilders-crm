@@ -35,7 +35,8 @@
         ".next/**",
         "!.next/cache/**",
         "!.next/dev/**",
-        "node_modules/.prisma/client/**"
+        "node_modules/.prisma/client/**",
+        "src/generated/prisma/**"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
