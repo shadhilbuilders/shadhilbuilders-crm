@@ -29,19 +29,17 @@ export const PLOT_STATUS_FILL: Record<PlotStatus, string> = {
  */
 export const PLOT_FILL_OPACITY = 0.34;
 
-/** Outline of the currently selected plot. */
-export const PLOT_SELECTED_STROKE = '#2563EB';
-export const PLOT_SELECTED_WIDTH = 2;
-/** Selected plots also get a wider translucent halo drawn underneath. */
-export const PLOT_SELECTED_HALO_OPACITY = 0.35;
+/**
+ * The map sheet colour.
+ *
+ * Repeats the `bg-white` on the map's `<svg>` as a literal, because an SVG
+ * `stroke`/`fill` attribute cannot read the app's CSS tokens. If the sheet in
+ * `PlotMap.tsx` changes, change this with it.
+ */
+export const PLOT_MAP_BACKGROUND = '#2563EB';
 
-/** Default (unselected) outline - matches the drawing's printed linework. */
-export const PLOT_OUTLINE_STROKE = '#111827';
-export const PLOT_OUTLINE_WIDTH = 0.4;
-
-/** Hovered plot outline. */
-export const PLOT_HOVER_STROKE = '#0F172A';
-export const PLOT_HOVER_WIDTH = 0.9;
+/** Fill of the selected plot - painted like the booked/blocked fills, and used by the legend swatch. No selection stroke. */
+export const PLOT_SELECTED_FILL = '#2563EB';
 
 /**
  * Opacity applied to a plot that does not match the active search/filter.

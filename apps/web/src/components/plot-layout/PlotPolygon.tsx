@@ -10,13 +10,7 @@ import { memo } from 'react';
 import {
   PLOT_DIMMED_OPACITY,
   PLOT_FILL_OPACITY,
-  PLOT_HOVER_STROKE,
-  PLOT_HOVER_WIDTH,
-  PLOT_OUTLINE_STROKE,
-  PLOT_OUTLINE_WIDTH,
-  PLOT_SELECTED_HALO_OPACITY,
-  PLOT_SELECTED_STROKE,
-  PLOT_SELECTED_WIDTH,
+  PLOT_SELECTED_FILL,
   getPlotColor,
 } from './plot-colors';
 import { toPointsAttribute } from './plot-shapes';
@@ -25,7 +19,6 @@ import type { Plot } from './plot-types';
 export interface PlotPolygonProps {
   plot: Plot;
   selected: boolean;
-  hovered: boolean;
   /** True when the plot does not match the active search/filter. */
   dimmed: boolean;
   /** Human-readable status/category, used for the accessible name. */
@@ -38,7 +31,6 @@ export interface PlotPolygonProps {
 function PlotPolygonImpl({
   plot,
   selected,
-  hovered,
   dimmed,
   statusLabel,
   categoryLabel,
@@ -55,22 +47,11 @@ function PlotPolygonImpl({
       data-plot-status={plot.status}
       opacity={dimmed ? PLOT_DIMMED_OPACITY : 1}
     >
-      {selected ? (
-        <polygon
-          points={points}
-          fill="none"
-          stroke={PLOT_SELECTED_STROKE}
-          strokeOpacity={PLOT_SELECTED_HALO_OPACITY}
-          strokeWidth={PLOT_SELECTED_WIDTH * 3}
-          strokeLinejoin="round"
-        />
-      ) : null}
       <polygon
         points={points}
-        fill={getPlotColor(plot.status)}
+        fill={selected ? PLOT_SELECTED_FILL : getPlotColor(plot.status)}
         fillOpacity={PLOT_FILL_OPACITY}
-        stroke={hovered ? PLOT_HOVER_STROKE : PLOT_OUTLINE_STROKE}
-        strokeWidth={hovered ? PLOT_HOVER_WIDTH : PLOT_OUTLINE_WIDTH}
+        stroke="none"
         // Placed AFTER fill/stroke so the class list reads as the interaction
         // contract: hit area, cursor, focus ring.
         className="focus-visible:ring-ring/50 outline-none focus-visible:ring-2"

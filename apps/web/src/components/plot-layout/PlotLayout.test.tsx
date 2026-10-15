@@ -16,6 +16,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PLOT_SELECTED_FILL } from './plot-colors';
 import { PLOT_GEOMETRY } from './plot-geometry';
 import { PlotLayout } from './PlotLayout';
 
@@ -218,15 +219,75 @@ describe('PlotLayout', () => {
     expect(container?.querySelector('[data-qa="plot-search-empty"]')).not.toBeNull();
   });
 
-  it('marks a plot as selected with the blue outline', async () => {
+  it('fills the selected plot with the selected colour and draws no selection stroke', async () => {
     mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
     await mount();
     await typeInto(searchInput(), '20');
     click('[data-qa="plot-search-match-20"]');
     await act(async () => {});
     const selected = container?.querySelectorAll('[data-plot-number="20"] polygon');
-    const strokes = [...(selected ?? [])].map((node) => node.getAttribute('stroke'));
-    expect(strokes).toContain('#2563EB');
+    // Only the plot's own polygon remains - no extra halo/ring polygon.
+    expect(selected).toHaveLength(1);
+    expect(selected?.[0]?.getAttribute('fill')).toBe(PLOT_SELECTED_FILL);
+    expect(selected?.[0]?.getAttribute('stroke')).toBe('none');
+  });
+
+  it('clears the selected plot when the status filter changes', async () => {
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+    expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_SELECTED_FILL
+    );
+
+    const trigger = container?.querySelectorAll('[role="combobox"]')[1];
+    await act(async () => {
+      trigger?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+      trigger?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    });
+    const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      node.textContent?.includes('Booked')
+    );
+    expect(option).toBeDefined();
+    await act(async () => {
+      for (const type of [
+        'pointerover',
+        'pointermove',
+        'pointerdown',
+        'mousedown',
+        'pointerup',
+        'mouseup',
+        'click',
+      ]) {
+        option?.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+      }
+    });
+    await act(async () => {});
+
+    expect(
+      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')
+    ).not.toBe(PLOT_SELECTED_FILL);
+    expect(html()).toContain('No plot selected');
+  });
+
+  it('clears the selected plot when the filters are cleared', async () => {
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+    expect(html()).not.toContain('No plot selected');
+
+    click('[data-qa="plot-filters-reset"]');
+    await act(async () => {});
+
+    expect(html()).toContain('No plot selected');
+    expect(
+      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')
+    ).not.toBe(PLOT_SELECTED_FILL);
   });
 
   it('dims plots the search excludes, and stops them intercepting clicks', async () => {

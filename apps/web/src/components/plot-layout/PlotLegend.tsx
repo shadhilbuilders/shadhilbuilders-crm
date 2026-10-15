@@ -3,11 +3,12 @@
 // Colour key for the map.
 //
 // Every swatch reads from `plot-colors.ts`, so this cannot drift from what the
-// polygons are actually painted with.
+// polygons are actually painted with - including "Selected", which is a filled
+// swatch (`PLOT_SELECTED_FILL`) just like booked and blocked.
 
 import {
   PLOT_FILL_OPACITY,
-  PLOT_SELECTED_STROKE,
+  PLOT_SELECTED_FILL,
   PLOT_STATUS_FILL,
   PLOT_STATUS_LABEL,
 } from './plot-colors';
@@ -45,8 +46,11 @@ export function PlotLegend({ counts, matchCount, totalCount }: PlotLegendProps) 
       <span className="flex items-center gap-1.5 text-xs">
         <span
           aria-hidden="true"
-          className="inline-block size-3.5 rounded-sm border-2 bg-transparent"
-          style={{ borderColor: PLOT_SELECTED_STROKE }}
+          className="inline-block size-3.5 rounded-sm"
+          style={{
+            backgroundColor: PLOT_SELECTED_FILL,
+            opacity: Math.max(PLOT_FILL_OPACITY, 0.6),
+          }}
         />
         <span className="text-foreground">Selected</span>
       </span>

@@ -190,9 +190,13 @@ test.describe('plot layout', () => {
     // No price exists, and the panel says so instead of showing zero.
     await expect(details).toContainText('Not set');
 
-    // The selected plot carries the blue outline.
+    // A selected plot draws no coloured outline: its ring is the sheet colour,
+    // so selection is marked by the badge instead of a blue border.
     expect(
       await page.locator('[data-plot-number="20"] polygon[stroke="#2563EB"]').count()
+    ).toBe(0);
+    expect(
+      await page.locator('[data-plot-number="20"] polygon[stroke="#FFFFFF"]').count()
     ).toBeGreaterThan(0);
   });
 

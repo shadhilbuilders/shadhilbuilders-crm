@@ -15,13 +15,14 @@ import { Button, Empty } from '@paalstack/react-ui';
 import { LuMaximize, LuMinus, LuPlus } from '@paalstack/react-icons/lu';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { PLOT_CATEGORY_LABEL, PLOT_STATUS_LABEL, PLOT_SELECTED_STROKE } from './plot-colors';
+import { PLOT_CATEGORY_LABEL, PLOT_STATUS_LABEL } from './plot-colors';
 import { PLAN_VIEWBOX, PLAN_SOURCE } from './plot-geometry';
 import { findNeighbour, type PlotDirection } from './plot-navigation';
 import { polygonCentroid } from './plot-shapes';
 import type { Plot, PlotVertex } from './plot-types';
 import { usePlotViewport } from './use-plot-viewport';
 import { PlotPolygon } from './PlotPolygon';
+import { PlotTooltip } from './PlotTooltip';
 
 export interface PlotMapProps {
   /** Every plot on the layout. */
@@ -40,12 +41,6 @@ export interface PlotMapProps {
 
 /** Movement (px) beyond which a pointer gesture counts as a pan, not a click. */
 const DRAG_THRESHOLD_PX = 4;
-/** Tooltip/label text size in screen pixels; scaled into plan units per zoom. */
-const LABEL_SCREEN_PX = 9;
-const LABEL_PADDING_SCREEN_PX = 4;
-/** Rough advance width per character at LABEL_SCREEN_PX, used to size the pill. */
-const LABEL_CHAR_WIDTH_RATIO = 0.55;
-
 interface GestureState {
   moved: boolean;
   startX: number;
@@ -127,10 +122,6 @@ export function PlotMap({
     }),
     []
   );
-
-  /** Screen-pixel scale: 1 plan unit is this many screen units at the current zoom. */
-  const labelFontSize = LABEL_SCREEN_PX * (viewBox.width / PLAN_VIEWBOX.width);
-  const labelPadding = LABEL_PADDING_SCREEN_PX * (viewBox.width / PLAN_VIEWBOX.width);
 
   const anchorFor = useCallback(
     (clientX: number, clientY: number): PlotVertex => {
@@ -305,6 +296,10 @@ export function PlotMap({
   // badge so a user who clicked can still read which plot is active.
   const badgePlot = hoveredPlot ?? selectedPlot;
   const badgeTone = hoveredPlot !== null ? 'hover' : 'selected';
+  const badgeAnchor = useMemo(
+    () => (badgePlot === null ? null : polygonCentroid(badgePlot.boundary)),
+    [badgePlot]
+  );
 
   if (plots.length === 0) {
     return (
@@ -323,12 +318,14 @@ export function PlotMap({
           ref={svgRef}
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio="xMidYMid meet"
+          // Always a light sheet: the approved drawing is black linework on
+          // transparent, so it vanishes on a dark theme background.
           // A single tab stop: arrow keys then walk the layout. 125 individual
           // tab stops would make the page unusable by keyboard.
           tabIndex={0}
           role="group"
           aria-label="Residential plot layout. Use arrow keys to move between plots, plus and minus to zoom, zero to reset."
-          className="bg-background focus-visible:ring-ring/50 block w-full touch-none select-none focus-visible:ring-2 focus-visible:outline-none"
+          className="focus-visible:ring-ring/50 block w-full touch-none bg-white select-none focus-visible:ring-2 focus-visible:outline-none"
           style={{ aspectRatio: `${PLAN_VIEWBOX.width} / ${PLAN_VIEWBOX.height}`, cursor: 'grab' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -356,7 +353,6 @@ export function PlotMap({
                 key={plot.id}
                 plot={plot}
                 selected={plot.plotNumber === selectedPlotNumber}
-                hovered={plot.plotNumber === hoveredPlotNumber}
                 dimmed={!matchingNumbers.has(plot.plotNumber)}
                 statusLabel={PLOT_STATUS_LABEL[plot.status]}
                 categoryLabel={PLOT_CATEGORY_LABEL[plot.category]}
@@ -365,48 +361,19 @@ export function PlotMap({
               />
             ))}
           </g>
-
-          {badgePlot !== null ? (
-            <g
-              transform={`translate(${polygonCentroid(badgePlot.boundary).x} ${polygonCentroid(badgePlot.boundary).y})`}
-              style={{ pointerEvents: 'none' }}
-              data-qa={badgeTone === 'hover' ? 'plot-tooltip' : 'plot-selected-badge'}
-            >
-              <rect
-                x={
-                  -(
-                    (`Plot ${badgePlot.plotNumber} - ${PLOT_STATUS_LABEL[badgePlot.status]}`
-                      .length *
-                      LABEL_SCREEN_PX *
-                      LABEL_CHAR_WIDTH_RATIO) /
-                      2 +
-                    labelPadding
-                  )
-                }
-                y={-(labelFontSize / 2 + labelPadding)}
-                width={
-                  `Plot ${badgePlot.plotNumber} - ${PLOT_STATUS_LABEL[badgePlot.status]}`.length *
-                    LABEL_SCREEN_PX *
-                    LABEL_CHAR_WIDTH_RATIO +
-                  labelPadding * 2
-                }
-                height={labelFontSize + labelPadding * 2}
-                rx={labelPadding}
-                fill={badgeTone === 'hover' ? '#0F172A' : PLOT_SELECTED_STROKE}
-                fillOpacity={0.92}
-                stroke="none"
-              />
-              <text
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={labelFontSize}
-                fill="#FFFFFF"
-              >
-                {`Plot ${badgePlot.plotNumber} - ${PLOT_STATUS_LABEL[badgePlot.status]}`}
-              </text>
-            </g>
-          ) : null}
         </svg>
+
+        {badgePlot !== null ? (
+          <PlotTooltip
+            plotNumber={badgePlot.plotNumber}
+            status={badgePlot.status}
+            statusLabel={PLOT_STATUS_LABEL[badgePlot.status]}
+            categoryLabel={PLOT_CATEGORY_LABEL[badgePlot.category]}
+            anchorXPercent={(((badgeAnchor?.x ?? 0) - viewBox.x) / viewBox.width) * 100}
+            anchorYPercent={(((badgeAnchor?.y ?? 0) - viewBox.y) / viewBox.height) * 100}
+            tone={badgeTone}
+          />
+        ) : null}
 
         <div className="absolute top-2 right-2 flex flex-col gap-1">
           <Button
@@ -433,9 +400,10 @@ export function PlotMap({
           </Button>
           <Button
             type="button"
-            size="icon"
+            size="sm"
             variant="outline"
-            aria-label="Reset zoom and pan"
+            aria-label="Zoom out fully to show the whole layout"
+            title="Show whole layout (0)"
             data-qa="plot-map-reset"
             disabled={atMinZoom}
             onClick={reset}

@@ -90,7 +90,23 @@ export function PlotLayout() {
     locatePlot(Number(trimmed));
   };
 
-  const handleResetFilters = () => setFilters(DEFAULT_FILTERS);
+  const handleResetFilters = () => {
+    setSelectedPlotNumber(null);
+    setFocusRequest(null);
+    setFilters(DEFAULT_FILTERS);
+  };
+
+  const handleFiltersChange = (patch: Partial<PlotFilters>) => {
+    // Changing category or status starts a new view of the map, so a previous
+    // selection (and any pending recentre) no longer applies.
+    const categoryChanged = patch.category !== undefined && patch.category !== filters.category;
+    const statusChanged = patch.status !== undefined && patch.status !== filters.status;
+    if (categoryChanged || statusChanged) {
+      setSelectedPlotNumber(null);
+      setFocusRequest(null);
+    }
+    setFilters((current) => ({ ...current, ...patch }));
+  };
 
   if (statusQuery.isPending) {
     return (
@@ -151,7 +167,7 @@ export function PlotLayout() {
 
       <PlotSearch
         filters={filters}
-        onFiltersChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+        onFiltersChange={handleFiltersChange}
         onLocate={handleLocate}
         matches={matches}
         totalCount={plots.length}
