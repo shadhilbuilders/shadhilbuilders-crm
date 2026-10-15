@@ -190,14 +190,12 @@ test.describe('plot layout', () => {
     // No price exists, and the panel says so instead of showing zero.
     await expect(details).toContainText('Not set');
 
-    // A selected plot draws no coloured outline: its ring is the sheet colour,
-    // so selection is marked by the badge instead of a blue border.
-    expect(
-      await page.locator('[data-plot-number="20"] polygon[stroke="#2563EB"]').count()
-    ).toBe(0);
-    expect(
-      await page.locator('[data-plot-number="20"] polygon[stroke="#FFFFFF"]').count()
-    ).toBeGreaterThan(0);
+    // A selected plot is marked by its fill alone: a single polygon, filled
+    // blue, with no stroke or halo ring.
+    const selectedPolygons = page.locator('[data-plot-number="20"] polygon');
+    await expect(selectedPolygons).toHaveCount(1);
+    await expect(selectedPolygons).toHaveAttribute('fill', '#2563EB');
+    await expect(selectedPolygons).toHaveAttribute('stroke', 'none');
   });
 
   test('zooms in and back out without distorting the drawing, and resets', async ({ page }) => {
