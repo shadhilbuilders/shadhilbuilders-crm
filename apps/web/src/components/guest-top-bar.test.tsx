@@ -33,6 +33,11 @@ describe('GuestTopBar (guest brand bar)', () => {
     // instruction: use logo.png everywhere).
     expect(html).toContain('/brand/logo.png');
     expect(html).not.toContain('logo-with-bg');
+    // T-SafeArea: the bar IS the sticky element at the viewport's top edge, so
+    // nothing above it can reserve the iOS inset on its behalf. Assert it on the
+    // RENDERED class string, not the source, so a wrapper or a conditional that
+    // drops the class is caught too.
+    expect(html).toContain('env(safe-area-inset-top)');
   });
 
   it('the logo asset is public in the auth proxy (unauthenticated pages can load it)', () => {

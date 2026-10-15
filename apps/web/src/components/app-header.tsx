@@ -80,7 +80,28 @@ export function AppHeader() {
   const showDebugPill = searchParams.get('debug') === '1';
 
   return (
-    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))] backdrop-blur">
+    // T-SafeArea: `sticky top-0` pins this bar to the viewport's physical top
+    // edge, which in an installed iOS PWA sits BEHIND the Dynamic Island
+    // (`statusBarStyle: 'black-translucent'` + `viewportFit: 'cover'` in the
+    // root layout let content draw under it). Three terms, three jobs:
+    //
+    //   pt-[max(0px,env(safe-area-inset-top))] grows the bar's OWN box (not a
+    //     margin, so the sticky anchor stays at the true viewport top) to push
+    //     the CONTENT clear of the cutout.
+    //
+    //   4rem in the min-height keeps the designed 64px CONTENT BAND below that
+    //     inset. Padding alone does not: box-sizing is border-box, so the inset
+    //     comes OUT of the band, and at a small band the controls end up tight
+    //     against both the cutout and the bottom border. Growing the box by the
+    //     inset keeps the band a constant 64px on every device.
+    //
+    //   +min(1rem,env(safe-area-inset-top)) is the breathing room asked for from
+    //     a real device: one extra rem of band, but ONLY where a top inset
+    //     exists. min() clamps that term to 0 when there is no inset (desktop,
+    //     Android, Safari tab), so the header is byte-identical there and the
+    //     calc still resolves to exactly 4rem. GuestTopBar carries the same
+    //     clamp in its own units.
+    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top)+min(1rem,env(safe-area-inset-top)))] items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))] backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
             shadcn sidebar-07 position) - beside the welcome message, visible
