@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
     ],
     isLoading: false,
   })),
+  push: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/users', () => ({
@@ -81,7 +82,11 @@ vi.mock('@/lib/session', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mocks.push }),
+}));
+
+vi.mock('@/lib/tenant-context', () => ({
+  useOrgSlug: () => 'shadhil-builders',
 }));
 
 import UsersPage from './page';
@@ -111,6 +116,7 @@ afterEach(async () => {
   await unmount();
   mocks.useSessionUser.mockReset();
   mocks.useUsers.mockReset();
+  mocks.push.mockReset();
 });
 
 describe('UsersPage - T-D3 state matrix', () => {
@@ -295,17 +301,57 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).not.toContain('data-qa="select-trigger"');
     // Actions column: a row-actions trigger per row (hierarchy-gated).
     expect(html).toContain('data-qa="data-table-row-actions-button"');
-    // User details live on Staff Permission now: names are plain text, no
-    // link to a per-user page.
-    expect(html).toContain('data-qa="user-row-name-u-priya"');
-    expect(html).not.toContain('data-qa="user-row-link-');
-    expect(html).not.toContain('/admin/users/');
-    expect(html).not.toContain('cursor-pointer');
+    // The name cell links to THAT user's own page (/admin/users/[userId]) -
+    // the row's own entity, per the repo's row-link rule. The whole row is
+    // clickable too, so the row carries the pointer cursor.
+    expect(html).toContain('data-qa="user-row-link-u-priya"');
+    expect(html).toContain('href="/shadhil-builders/admin/users/u-priya"');
+    expect(html).toContain('cursor-pointer');
     // "Reports to" column: the manager/owner name, or a dash when nobody.
     expect(html).toContain('Reports to');
     expect(html).toContain('data-qa="user-reports-to-u-priya"');
     expect(html).toContain('Ravi Manager');
     expect(html).toContain('data-qa="user-reports-to-u-1"');
+  });
+
+  it('clicking a row (not a link or a control) opens that user\'s page', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
+      isPending: false,
+      error: null,
+    });
+    mocks.useUsers.mockReturnValue({
+      data: {
+        rows: [
+          {
+            id: 'u-priya',
+            name: 'Priya Sharma',
+            email: 'priya@example.com',
+            role: 'SALES_EXEC',
+            teamId: 't-1',
+            projects: [],
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    await mount();
+    const row = container?.querySelector('[data-qa="data-table-row"]');
+    expect(row).not.toBeNull();
+    // A click on a non-interactive cell (the email cell) navigates.
+    const emailCell = container?.querySelector(
+      '[data-qa="data-table-row"] td:nth-child(2)',
+    );
+    await act(async () => {
+      emailCell?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(mocks.push).toHaveBeenCalledWith('/shadhil-builders/admin/users/u-priya');
   });
 
   it('empty: useUsers data is [] renders the "No users yet." empty state', async () => {

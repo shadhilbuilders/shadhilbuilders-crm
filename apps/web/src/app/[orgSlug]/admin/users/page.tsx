@@ -50,6 +50,8 @@ import {
 } from '@paalstack/react-icons/lu';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import z from 'zod';
 
 import { ChangeRoleDtoSchema, UpdateUserDtoSchema } from '@shadhil/api-types';
@@ -64,11 +66,13 @@ import {
 import { useTeams } from '@/hooks/queries/teams';
 import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
+import { orgHref } from '@/lib/nav';
 import {
   isAdminLike,
   outranks,
   useSessionUser,
 } from '@/lib/session';
+import { useOrgSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -477,6 +481,8 @@ function UserTable({
   onChangePassword: (row: UserRow) => void;
   createTrigger: React.ReactNode;
 }) {
+  const orgSlug = useOrgSlug();
+  const router = useRouter();
   // Server-driven role filter (autoplan 2026-09-09): a MultiSelect in the
   // toolbar feeds the `role` query param directly (mirrors the leads page
   // status filter). The backend applies WHERE role IN (...) and returns the
@@ -495,14 +501,19 @@ function UserTable({
       {
         accessorKey: 'name',
         header: 'Name',
+        // The name cell is the row's identity link: it opens THIS user's
+        // page (/admin/users/[userId]) - the same entity the table lists.
+        // The whole row is clickable too (tableRowProps below); the link
+        // keeps middle-click / cmd-click / keyboard working.
         cell: ({ row }) => (
           <div className="min-w-45">
-            <span
-              className="text-sm font-medium"
-              data-qa={`user-row-name-${row.original.id}`}
+            <Link
+              href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
+              className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
+              data-qa={`user-row-link-${row.original.id}`}
             >
               {row.original.name}
-            </span>
+            </Link>
             {row.original.id === selfId ? (
               <span className="text-muted-foreground block text-xs">(you)</span>
             ) : null}
@@ -612,7 +623,7 @@ function UserTable({
         enableHiding: false,
       },
     ],
-    [selfId, actorRole, onEdit, onDelete, onRoleChange, onChangePassword],
+    [selfId, actorRole, orgSlug, onEdit, onDelete, onRoleChange, onChangePassword],
   );
 
   const isSearchActive = search.trim().length > 0;
@@ -644,6 +655,19 @@ function UserTable({
           pageSizeOptions: [10, 25, 50],
           showTotalResults: true,
           showOnlyIfTotalGreaterThanPageSize: true,
+        }}
+        // Whole-row click → that user's page (/admin/users/[userId]). The
+        // name cell keeps its Link (middle-click / cmd-click / keyboard).
+        // Skip interactive controls so the row-actions menu and the name
+        // link don't double-navigate.
+        tableRowProps={{
+          className: 'cursor-pointer',
+          onClick: (row, event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('a, button, [role="menuitem"]')) return;
+            router.push(orgHref(orgSlug, `/admin/users/${row.original.id}`));
+          },
         }}
         isLoading={isFetching}
         loadingContent={<Loading content="Loading users..." />}

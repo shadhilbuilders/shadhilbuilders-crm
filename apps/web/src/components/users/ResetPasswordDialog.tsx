@@ -1,9 +1,9 @@
 'use client';
 
 // ResetPasswordDialog - ADMIN/OWNER sets a new password for another user.
-// Shared by /admin/users (row action) and /admin/staff-permission (detail
-// panel). Authorization is enforced server-side (actor must strictly outrank
-// the target); callers only decide when to offer the action.
+// Shared by /admin/users (row action) and the user detail page
+// (/admin/users/[userId]). Authorization is enforced server-side (actor must
+// strictly outrank the target); callers only decide when to offer the action.
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 

@@ -313,7 +313,7 @@ export const ChangePasswordFormSchema = ChangePasswordDtoSchema.extend({
 });
 export type ChangePasswordFormValues = z.infer<typeof ChangePasswordFormSchema>;
 /**
- * Admin/owner password-reset form (users + staff-permission pages). No
+ * Admin/owner password-reset form (users table + user detail page). No
  * current password - the actor is resetting someone else's.
  */
 export const AdminResetPasswordFormSchema = z

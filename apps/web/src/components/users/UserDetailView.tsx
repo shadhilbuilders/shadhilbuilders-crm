@@ -1,8 +1,8 @@
 'use client';
 
 // UserDetailView - the full admin user-detail panel (identity, team, reports-to,
-// projects, leads). Rendered on /admin/staff-permission once a user is picked
-// (the old /admin/users/[userId] route now redirects there).
+// projects, leads). Rendered on /admin/users/[userId] - the specific-user
+// page the Users table opens.
 //
 // Reports-to rules (T-REPORTS-TO-OWNER, 2026-10-06):
 //   - TELECALLER/SALES_EXEC: their team's manager (assignable via

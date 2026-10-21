@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
-  title: 'Staff Permission',
+  title: 'User Details',
 };
 
-export default function AdminStaffPermissionLayout({ children }: { children: ReactNode }) {
+export default function AdminUserDetailLayout({ children }: { children: ReactNode }) {
   return children;
 }

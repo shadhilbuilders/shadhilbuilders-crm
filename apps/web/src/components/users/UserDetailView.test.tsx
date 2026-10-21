@@ -1,4 +1,4 @@
-// UserDetailView (rendered on /admin/staff-permission; autoplan 2026-09-13).
+// UserDetailView (rendered on /admin/users/[userId]; autoplan 2026-09-13).
 //
 // Pins the render branches:
 //   1. session pending             → <Skeleton variant="users" />

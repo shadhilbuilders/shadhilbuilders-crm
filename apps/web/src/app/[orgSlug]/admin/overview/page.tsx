@@ -323,7 +323,7 @@ function ProblemInbox() {
             const href = member.userId
               ? orgHref(
                   orgSlug,
-                  `/admin/staff-permission?userId=${encodeURIComponent(member.userId)}`,
+                  `/admin/users/${encodeURIComponent(member.userId)}`,
                 )
               : null;
             return (
