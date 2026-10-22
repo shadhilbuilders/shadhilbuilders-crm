@@ -130,7 +130,7 @@ export function PendingApprovalsCard({
                   type="button"
                   variant="link"
                   size="sm"
-                  className="text-link inline-flex justify-start sm:justify-center items-center px-2 pointer-fine:px-0"
+                  className="text-link inline-flex justify-start sm:justify-center items-center"
                   // The accessible name says WHICH booking, so a screen reader
                   // user hearing a list of "Review" buttons knows which is which.
                   // It carries the unit too, matching the visible row.
