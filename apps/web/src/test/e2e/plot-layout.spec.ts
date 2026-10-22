@@ -123,8 +123,9 @@ test.describe('plot layout', () => {
       await expect(page.locator('[data-qa="plot-no-unit-mapping"]')).toContainText(
         'has a plot number yet'
       );
-      expect(await page.locator('[data-plot-number="1"] polygon[fill="#9CA3AF"]').count()).toBe(1);
-      expect(await page.locator('polygon[fill="#16A34A"]').count()).toBe(0);
+      // available = green
+      expect(await page.locator('[data-plot-number="1"] polygon[fill="#15803D"]').count()).toBe(1);
+      expect(await page.locator('polygon[fill="#DC2626"]').count()).toBe(0);
       await expect(page.locator('[data-qa="plot-legend"]')).toContainText('Available (125)');
     } else {
       // A project whose villas carry plot numbers must not show the notice.
@@ -239,11 +240,23 @@ test.describe('plot layout', () => {
     await page.goto(PLOTS_PATH, NAV);
     await waitForMapToHydrate(page);
 
-    expect(await page.locator('[data-plot-number="5"] polygon[fill="#16A34A"]').count()).toBe(1);
-    expect(await page.locator('[data-plot-number="17"] polygon[fill="#DC2626"]').count()).toBe(1);
-    expect(await page.locator('[data-plot-number="1"] polygon[fill="#9CA3AF"]').count()).toBe(1);
+    // available = green, blocked = gold, booked = red.
+    expect(await page.locator('[data-plot-number="5"] polygon[fill="#DC2626"]').count()).toBe(1);
+    expect(await page.locator('[data-plot-number="17"] polygon[fill="#E3C563"]').count()).toBe(1);
+    expect(await page.locator('[data-plot-number="1"] polygon[fill="#15803D"]').count()).toBe(1);
     // EWS plots are painted from the same response.
-    expect(await page.locator('[data-plot-number="114"] polygon[fill="#16A34A"]').count()).toBe(1);
+    expect(await page.locator('[data-plot-number="114"] polygon[fill="#DC2626"]').count()).toBe(1);
+
+    // The plot number is written on the fill, in a colour that reads on THAT
+    // fill - so the plan still says which plot is which even though the fill
+    // covers the drawing's own printed number.
+    const number = page.locator('[data-plot-number="5"] [data-qa="plot-number"]');
+    await expect(number).toHaveText('5');
+    await expect(number).toHaveAttribute('fill', '#FFFFFF');
+    // The gold fill carries dark ink, because white on gold is 1.69:1.
+    const blockedNumber = page.locator('[data-plot-number="17"] [data-qa="plot-number"]');
+    await expect(blockedNumber).toHaveText('17');
+    await expect(blockedNumber).toHaveAttribute('fill', '#1F2937');
 
     // The legend counts the injected rows, and the notice is gone.
     const legend = page.locator('[data-qa="plot-legend"]');
@@ -287,6 +300,32 @@ test.describe('plot layout', () => {
     await expect(selectedPolygons).toHaveCount(1);
     await expect(selectedPolygons).toHaveAttribute('fill', '#2563EB');
     await expect(selectedPolygons).toHaveAttribute('stroke', 'none');
+  });
+
+  test('clicking the selected plot again clears the selection', async ({ page }) => {
+    // The toggle: a second click on the already-selected plot deselects it.
+    // This is the whole point of the interaction, so it is asserted in a real
+    // browser rather than only in the component test - the map decides on
+    // `pointerup`, not on the polygon's `onClick`, and only a browser can
+    // prove the gesture actually toggles.
+    await page.goto(PLOTS_PATH, NAV);
+    await waitForMapToHydrate(page);
+
+    const plot = page.locator('[data-plot-number="20"] polygon[role="button"]');
+    const details = page.locator('[data-qa="plot-details"]');
+
+    await plot.click();
+    await expect(details).toContainText('Plot 20');
+    await expect(plot).toHaveAttribute('fill', '#2563EB');
+
+    // Same plot again: the selection clears and the panel goes empty.
+    await plot.click();
+    await expect(details).toContainText('No plot selected');
+    await expect(plot).not.toHaveAttribute('fill', '#2563EB');
+
+    // And it can be selected again afterwards.
+    await plot.click();
+    await expect(details).toContainText('Plot 20');
   });
 
   test('zooms in and back out without distorting the drawing, and resets', async ({ page }) => {

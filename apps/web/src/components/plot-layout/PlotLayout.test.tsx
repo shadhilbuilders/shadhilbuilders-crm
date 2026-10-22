@@ -16,7 +16,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { PLOT_SELECTED_FILL } from './plot-colors';
+import { PLOT_SELECTED_FILL, PLOT_STATUS_FILL } from './plot-colors';
 import { PLOT_GEOMETRY } from './plot-geometry';
 import { PlotLayout } from './PlotLayout';
 
@@ -144,6 +144,47 @@ function click(selector: string) {
 }
 
 /**
+ * Click a plot on the map the way a user does.
+ *
+ * The map does NOT select on the polygon's `onClick`: it decides on
+ * `pointerup`, because a drag that starts on a plot must be a pan, not a
+ * selection. So the gesture is dispatched as pointerdown on the polygon
+ * (which is where the map reads the pressed plot from) and pointerup on the
+ * <svg> (which is where the browser delivers it, because the map takes
+ * pointer capture on the svg).
+ */
+function clickPlot(plotNumber: number) {
+  const polygon = container?.querySelector(
+    `[data-plot-number="${plotNumber}"] polygon[role="button"]`
+  );
+  const svg = container?.querySelector('[data-qa="plot-map"]');
+  if (polygon === null || polygon === undefined) {
+    throw new Error(`expected to find plot ${plotNumber}`);
+  }
+  if (svg === null || svg === undefined) {
+    throw new Error('expected to find the map');
+  }
+
+  const pointerEvent = (type: string, target: Element) => {
+    const event = new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    // jsdom has no PointerEvent, so the pointer-specific fields are added to
+    // a MouseEvent. React reads them off the native event.
+    Object.defineProperty(event, 'pointerId', { value: 1 });
+    Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+    target.dispatchEvent(event);
+  };
+
+  pointerEvent('pointerdown', polygon);
+  pointerEvent('pointerup', svg);
+}
+
+/**
  * Type into a controlled React input.
  *
  * Assigning `input.value` directly does NOT work: React keeps a shadow copy of
@@ -242,15 +283,49 @@ describe('PlotLayout', () => {
       { plotNumber: 17, status: 'blocked' },
     ];
     await mount();
+    // available = green, blocked = gold, booked = red.
     expect(
-      container?.querySelector('[data-plot-number="5"] polygon[fill="#16A34A"]')
+      container?.querySelector('[data-plot-number="5"] polygon[fill="#DC2626"]')
     ).not.toBeNull();
     expect(
-      container?.querySelector('[data-plot-number="17"] polygon[fill="#DC2626"]')
+      container?.querySelector('[data-plot-number="17"] polygon[fill="#E3C563"]')
     ).not.toBeNull();
     expect(
-      container?.querySelector('[data-plot-number="1"] polygon[fill="#9CA3AF"]')
+      container?.querySelector('[data-plot-number="1"] polygon[fill="#15803D"]')
     ).not.toBeNull();
+  });
+
+  it('writes the plot number in a colour that reads on its fill', async () => {
+    // The status fill is opaque, so it covers the number the approved drawing
+    // prints inside the plot. The number is re-drawn on top, at the plot's own
+    // centre, in a colour that reads against THAT fill: white on the dark
+    // green and red, dark ink on the light gold.
+    mockPlotStatuses.rows = [
+      { plotNumber: 20, status: 'booked' },
+      { plotNumber: 17, status: 'blocked' },
+    ];
+    await mount();
+    const booked = container?.querySelector('[data-plot-number="20"] [data-qa="plot-number"]');
+    expect(booked?.textContent).toBe('20');
+    expect(booked?.getAttribute('fill')).toBe('#FFFFFF');
+    // Centred on the plot, not floating in a corner.
+    expect(booked?.getAttribute('text-anchor')).toBe('middle');
+
+    const blocked = container?.querySelector('[data-plot-number="17"] [data-qa="plot-number"]');
+    expect(blocked?.textContent).toBe('17');
+    // A light gold fill cannot carry white text, so it carries dark ink.
+    expect(blocked?.getAttribute('fill')).toBe('#1F2937');
+  });
+
+  it('does not write a number on a dimmed plot', async () => {
+    // A filtered-out plot must not read as a live, sellable plot, so it
+    // carries no number either.
+    await mount();
+    await typeInto(searchInput(), '20');
+    const dimmed = container?.querySelector('[data-plot-number="1"] [data-qa="plot-number"]');
+    expect(dimmed).toBeNull();
+    const shown = container?.querySelector('[data-plot-number="20"] [data-qa="plot-number"]');
+    expect(shown?.textContent).toBe('20');
   });
 
   it('starts with the details panel empty rather than showing a random plot', async () => {
@@ -348,6 +423,76 @@ describe('PlotLayout', () => {
     expect(selected).toHaveLength(1);
     expect(selected?.[0]?.getAttribute('fill')).toBe(PLOT_SELECTED_FILL);
     expect(selected?.[0]?.getAttribute('stroke')).toBe('none');
+  });
+
+  it('selects a plot when it is clicked', async () => {
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+    clickPlot(20);
+    await act(async () => {});
+    expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_SELECTED_FILL
+    );
+    expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 20');
+  });
+
+  it('deselects the plot when the SELECTED plot is clicked again', async () => {
+    // The toggle: a second click on the already-selected plot clears the
+    // selection, so the details panel empties and the plot goes back to its
+    // status colour.
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+
+    clickPlot(20);
+    await act(async () => {});
+    expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_SELECTED_FILL
+    );
+
+    clickPlot(20);
+    await act(async () => {});
+    // Back to the status colour, and the panel is empty again.
+    expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_STATUS_FILL.booked
+    );
+    expect(html()).toContain('No plot selected');
+  });
+
+  it('selects the OTHER plot when a different plot is clicked', async () => {
+    // The toggle is per-plot: clicking a second plot moves the selection
+    // rather than clearing it.
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+
+    clickPlot(20);
+    await act(async () => {});
+    clickPlot(21);
+    await act(async () => {});
+
+    expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_STATUS_FILL.booked
+    );
+    expect(container?.querySelector('[data-plot-number="21"] polygon')?.getAttribute('fill')).toBe(
+      PLOT_SELECTED_FILL
+    );
+    expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 21');
+  });
+
+  it('selects a plot found by search even when it was already selected', async () => {
+    // Search is a "show me this plot" action, not a toggle: asking for the
+    // plot you are already looking at must not empty the panel.
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked' }];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+    expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 20');
+
+    await typeInto(searchInput(), '');
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+    expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 20');
   });
 
   it('clears the selected plot when the status filter changes', async () => {

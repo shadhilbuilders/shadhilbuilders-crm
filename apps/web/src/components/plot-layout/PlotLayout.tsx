@@ -67,6 +67,22 @@ export function PlotLayout() {
     [plots, selectedPlotNumber]
   );
 
+  /**
+   * Click on the map: select the plot, or DESELECT it if it is already the
+   * selected one.
+   *
+   * The toggle lives here, in the one place that owns the selection state,
+   * rather than in the polygon: the map's gesture handler and the polygon's
+   * own onClick are two paths to the same state, and a rule implemented in
+   * only one of them would behave differently depending on how the click was
+   * delivered. (Measured: a real mouse click fires `onSelect` exactly once,
+   * because the map's pointer capture redirects pointerup/click to the <svg>,
+   * so the polygon's onClick does not also run.)
+   */
+  const toggleSelect = (plotNumber: number) => {
+    setSelectedPlotNumber((current) => (current === plotNumber ? null : plotNumber));
+  };
+
   /** Select a plot and bring it into view (used by search and the filter chips). */
   const locatePlot = (plotNumber: number) => {
     focusNonce.current += 1;
@@ -182,7 +198,8 @@ export function PlotLayout() {
           plots={plots}
           matchingNumbers={matchingNumbers}
           selectedPlotNumber={selectedPlotNumber}
-          onSelect={setSelectedPlotNumber}
+          onSelect={toggleSelect}
+          onSelectWithoutToggle={setSelectedPlotNumber}
           focusRequest={focusRequest}
         />
         <PlotDetails

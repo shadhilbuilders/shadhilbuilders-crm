@@ -28,6 +28,85 @@ scripts/extract-cmda-layout.py         regenerates the two files above
 
 Route: `/{orgSlug}/projects/{projectSlug}/plots`.
 
+## The map sheet colour, the status fills, and the plot number
+
+The status fill is OPAQUE, and each plot carries its number on top of it, in
+a colour that reads against that particular fill. The three facts belong
+together:
+
+| status    | fill     | number  | meaning                              |
+| --------- | -------- | ------- | ------------------------------------ |
+| available | `#15803D` green | white | free to sell                |
+| blocked   | `#E3C563` gold  | dark  | held, not gone           |
+| booked    | `#DC2626` red   | white | sold, gone                |
+| selected  | `#2563EB` blue  | white | the plot the panel is showing |
+
+`PLOT_STATUS_FILL` in `plot-colors.ts` is the only place those live. The map
+fill, the legend swatch, the hover tooltip's dot and the details panel's badge
+all read from it, so they cannot disagree.
+
+**Why blocked is gold and not orange.** The brief asked for orange, and orange
+was the first implementation. It does not work: orange-600 (`#EA580C`) and
+red-600 (`#DC2626`) are adjacent hues in the same ramp, and they are not
+distinguishable in practice. Measured:
+
+- CIE dE76 between them is 23.3, in the "noticeable" band, not "clearly
+  different" (>25). On the map they read as the same colour, which is what was
+  reported.
+- Under deuteranopia the gap collapses to dE 5.7. Both render as the same
+  olive, so a red-green colourblind user cannot tell booked from blocked at
+  all.
+- White text on orange is 3.56:1, which fails WCAG AA.
+
+Gold is dE 75.5 from the red in normal vision and dE 27.7 worst-case across
+normal vision, deuteranopia, protanopia and tritanopia.
+
+**Why the number colour is per-status.** The fills are opaque, so the number
+sits on a coloured field and must contrast with THAT field. White works on the
+dark green and red, but a gold fill carries white at only 1.69:1, so the gold
+carries a dark ink instead. This is the same rule the app's own design system
+uses: its `warning` token pairs an amber background with a dark foreground.
+
+**Why available is green-700, not green-600.** `#16A34A` carries white text at
+3.30:1, which fails AA. `#15803D` carries it at 5.02:1, and the two are a
+barely perceptible step apart - the same hue, one step darker.
+
+Every fill and its number clear WCAG AA's 4.5:1 for small text: available
+5.02:1, booked 4.83:1, blocked 8.69:1, selected 5.17:1.
+
+**Why the fill is opaque.** The plot number has to read against the fill, and
+a number on a translucent fill is unreadable over whatever the drawing shows
+through.
+
+**Why the number is drawn by us.** The approved drawing prints each plot number
+inside its own polygon, and the opaque fill covers it. The number is re-drawn
+at the polygon's area centroid in white, at the plan's own typeface size
+(font-size 6.2), which is where the drawing puts it: the traced centroid is
+within 0.15 plan units of the printed label's visual centre.
+
+**A dimmed plot gets no number.** A plot excluded by the active filter stays
+translucent and unlabelled, so a filtered-out plot never reads as a live,
+sellable plot.
+
+## Selection toggles
+
+Clicking a plot selects it; clicking the SAME plot again deselects it. The
+toggle lives in `PlotLayout` (`toggleSelect`), in the one place that owns the
+selection state, because the map's gesture handler and the polygon's `onClick`
+are two paths to that state.
+
+Measured: a real mouse click fires `onSelect` exactly ONCE. The map takes
+pointer capture on the `<svg>`, so `pointerup` and `click` are delivered to the
+svg rather than to the polygon - the polygon's `onClick` does not also run. A
+toggle would cancel itself out if both paths fired.
+
+The arrow-key cursor does NOT toggle. It moves the selection, so it uses
+`onSelectWithoutToggle`; pressing an arrow at the edge of the layout keeps the
+same plot selected instead of deselecting it.
+
+Search and the filter chips do NOT toggle either. Asking for the plot you are
+already looking at must not empty the details panel.
+
 ## Two inputs, one join
 
 The map is geometry plus availability, and they arrive from different places on

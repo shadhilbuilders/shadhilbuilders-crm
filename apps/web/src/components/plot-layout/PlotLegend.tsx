@@ -7,7 +7,6 @@
 // swatch (`PLOT_SELECTED_FILL`) just like booked and blocked.
 
 import {
-  PLOT_FILL_OPACITY,
   PLOT_SELECTED_FILL,
   PLOT_STATUS_FILL,
   PLOT_STATUS_LABEL,
@@ -32,10 +31,7 @@ export function PlotLegend({ counts, matchCount, totalCount }: PlotLegendProps) 
           <span
             aria-hidden="true"
             className="border-border inline-block size-3.5 rounded-sm border"
-            style={{
-              backgroundColor: PLOT_STATUS_FILL[status],
-              opacity: Math.max(PLOT_FILL_OPACITY, 0.6),
-            }}
+            style={{ backgroundColor: PLOT_STATUS_FILL[status] }}
           />
           <span className="text-foreground">
             {PLOT_STATUS_LABEL[status]}
@@ -47,10 +43,7 @@ export function PlotLegend({ counts, matchCount, totalCount }: PlotLegendProps) 
         <span
           aria-hidden="true"
           className="inline-block size-3.5 rounded-sm"
-          style={{
-            backgroundColor: PLOT_SELECTED_FILL,
-            opacity: Math.max(PLOT_FILL_OPACITY, 0.6),
-          }}
+          style={{ backgroundColor: PLOT_SELECTED_FILL }}
         />
         <span className="text-foreground">Selected</span>
       </span>

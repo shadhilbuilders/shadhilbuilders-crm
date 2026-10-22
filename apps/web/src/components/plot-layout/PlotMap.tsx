@@ -30,7 +30,18 @@ export interface PlotMapProps {
   /** Plot numbers that match the active search/filter. Others render dimmed. */
   matchingNumbers: ReadonlySet<number>;
   selectedPlotNumber: number | null;
+  /**
+   * Click on a plot: selects it, or deselects it if it is already selected.
+   * This is the TOGGLE path.
+   */
   onSelect: (plotNumber: number) => void;
+  /**
+   * Move the selection to a plot WITHOUT toggling - used by the arrow-key
+   * cursor, where pressing an arrow at the edge of the layout keeps the cursor
+   * where it is. A toggle there would deselect the plot the user is trying to
+   * move away from.
+   */
+  onSelectWithoutToggle: (plotNumber: number) => void;
   /**
    * Bump `nonce` to ask the map to centre on a plot (search, filter chips).
    * A counter rather than a bare number so asking for the same plot twice
@@ -109,6 +120,7 @@ export function PlotMap({
   matchingNumbers,
   selectedPlotNumber,
   onSelect,
+  onSelectWithoutToggle,
   focusRequest = null,
 }: PlotMapProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -314,7 +326,10 @@ export function PlotMap({
         if (origin === undefined) return;
         event.preventDefault();
         const next = findNeighbour(navigable, origin, direction) ?? origin;
-        onSelect(next);
+        // The arrow key MOVES the cursor, so it never toggles: pressing an
+        // arrow at the edge of the layout keeps the same plot selected rather
+        // than deselecting it.
+        onSelectWithoutToggle(next);
         const nextPlot = plots.find((plot) => plot.plotNumber === next);
         if (nextPlot !== undefined) centreOn(polygonCentroid(nextPlot.boundary));
         return;
@@ -330,7 +345,7 @@ export function PlotMap({
         reset();
       }
     },
-    [centreOn, matchingNumbers, onSelect, plots, reset, selectedPlotNumber, zoomByStep]
+    [centreOn, matchingNumbers, onSelectWithoutToggle, plots, reset, selectedPlotNumber, zoomByStep]
   );
 
   const hoveredPlot = useMemo(

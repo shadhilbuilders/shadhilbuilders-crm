@@ -11,9 +11,11 @@ import {
   PLOT_DIMMED_OPACITY,
   PLOT_FILL_OPACITY,
   PLOT_SELECTED_FILL,
+  PLOT_SELECTED_NUMBER,
+  PLOT_STATUS_NUMBER,
   getPlotColor,
 } from './plot-colors';
-import { toPointsAttribute } from './plot-shapes';
+import { polygonCentroid, toPointsAttribute } from './plot-shapes';
 import type { Plot } from './plot-types';
 
 export interface PlotPolygonProps {
@@ -28,6 +30,16 @@ export interface PlotPolygonProps {
   onHoverChange: (plotNumber: number | null) => void;
 }
 
+/**
+ * Font size of the plot number drawn on the fill, in plan units.
+ *
+ * The drawing prints its own plot number at font-size ~6.2, and the traced
+ * polygon is 12.8 x 24.8 units, so 6.2 matches the approved plan's own
+ * typography. The number is drawn at the polygon's centroid, which is where
+ * the drawing puts it.
+ */
+const PLOT_NUMBER_FONT_SIZE = 6.2;
+
 function PlotPolygonImpl({
   plot,
   selected,
@@ -39,6 +51,8 @@ function PlotPolygonImpl({
 }: PlotPolygonProps) {
   const points = toPointsAttribute(plot.boundary);
   const ariaLabel = `Plot ${plot.plotNumber}, ${categoryLabel}, ${statusLabel}`;
+  // The area centroid, which is where the approved drawing prints the number.
+  const centre = polygonCentroid(plot.boundary);
 
   return (
     <g
@@ -80,6 +94,35 @@ function PlotPolygonImpl({
         onFocus={() => onHoverChange(plot.plotNumber)}
         onBlur={() => onHoverChange(null)}
       />
+      {/*
+        The plot number, drawn on the fill.
+
+        The status fill is opaque, so it hides the number the APPROVED DRAWING
+        prints inside the same plot - and the number is the one thing that
+        makes a plan readable, so it is re-drawn here, at the area centroid
+        (where the drawing prints it) in the plan's own typeface size.
+
+        The colour comes from `PLOT_STATUS_NUMBER`, so it always reads against
+        the fill it sits on. A DIMMED plot gets no number: it is excluded by
+        the active filter, and a filtered-out plot must not read as a live,
+        sellable plot.
+      */}
+      {dimmed ? null : (
+        <text
+          x={centre.x}
+          y={centre.y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={PLOT_NUMBER_FONT_SIZE}
+          fontFamily="Helvetica,Arial,sans-serif"
+          fontWeight={600}
+          fill={selected ? PLOT_SELECTED_NUMBER : PLOT_STATUS_NUMBER[plot.status]}
+          pointerEvents="none"
+          data-qa="plot-number"
+        >
+          {plot.plotNumber}
+        </text>
+      )}
     </g>
   );
 }

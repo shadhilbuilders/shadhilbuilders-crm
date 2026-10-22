@@ -41,10 +41,18 @@ export interface PlotDetailsProps {
   requestedPlotNumber: number | null;
 }
 
-const STATUS_BADGE_VARIANT: Record<PlotStatus, 'success' | 'info' | 'destructive'> = {
-  available: 'info',
-  booked: 'success',
-  blocked: 'destructive',
+/**
+ * Badge variant per status.
+ *
+ * The variant must agree with the colour the MAP paints the plot in, or the
+ * panel and the plan disagree about the same plot: available is green
+ * (`success`), booked is red (`danger`), blocked is gold (`warning` - the
+ * app's amber, which is the same colour family as the map's gold fill).
+ */
+const STATUS_BADGE_VARIANT: Record<PlotStatus, 'success' | 'danger' | 'warning'> = {
+  available: 'success',
+  booked: 'danger',
+  blocked: 'warning',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
