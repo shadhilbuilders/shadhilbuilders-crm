@@ -46,7 +46,6 @@ function PlotPolygonImpl({
   dimmed,
   statusLabel,
   categoryLabel,
-  onSelect,
   onHoverChange,
 }: PlotPolygonProps) {
   const points = toPointsAttribute(plot.boundary);
@@ -82,9 +81,12 @@ function PlotPolygonImpl({
         // by the map's arrow-key cursor, without adding 125 stops to the page
         // tab order.
         tabIndex={-1}
+        // Selection is decided on pointerup by PlotMap (so a pan that starts
+        // on a plot does not select). Keeping an onClick here would double-fire
+        // on touch, where the synthetic click still reaches the polygon after
+        // pointer capture, cancelling the tap out.
         onClick={(event) => {
           event.stopPropagation();
-          onSelect(plot.plotNumber);
         }}
         // Touch has no hover: a tap would leave the tooltip stuck on screen.
         onPointerEnter={(event) => {
