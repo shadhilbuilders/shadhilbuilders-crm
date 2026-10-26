@@ -153,7 +153,10 @@ export function UnitProgressTabContent({ unitId, phases }: { unitId: string; pha
               return (
                 <li key={p.id} className="border-border rounded-lg border" data-qa="progress-photo-row">
                   <div className="flex items-start gap-3 p-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {/* Same-origin BFF media URL — cookie-authenticated, so
+                        next/image's optimizer would drop the session. Plain
+                        <img> is the correct render here (same call as
+                        LeadChatPane). */}
                     <img
                       src={p.mediaUrl}
                       alt={p.caption}
