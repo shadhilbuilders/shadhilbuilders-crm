@@ -12,12 +12,17 @@ import type { PrismaClient, Role } from '@shadhil/database';
 // Lower number = more authority. Total order over the create/change-user
 // capability. Model C responsibility boundaries are NOT part of this
 // order (exec cannot schedule visits; telecaller cannot log VISITED).
+// ENGINEER (issue #7 slice 1) sits BELOW both staff roles: rank 1 keeps the
+// outranks() gate allowing MANAGER+ to manage engineer ROWS they already
+// own, but assertCanCreateRole/assertCanChangeRole additionally pin ENGINEER
+// assignment to the admin class (site-staff provisioning is an admin act).
 const RANK: Record<Role, number> = {
   OWNER: 4,
   ADMIN: 3,
   MANAGER: 2,
   TELECALLER: 1,
   SALES_EXEC: 1,
+  ENGINEER: 1,
 };
 
 export const OWNER: Role = 'OWNER';
@@ -70,15 +75,22 @@ export function outranks(actor: Role, target: Role): boolean {
 /**
  * Assert the actor may CREATE a user with `targetRole` (Rounds 17/20/21).
  *   OWNER   → any role except OWNER
- *   ADMIN   → MANAGER / TELECALLER / SALES_EXEC
+ *   ADMIN   → MANAGER / TELECALLER / SALES_EXEC / ENGINEER
  *   MANAGER → TELECALLER / SALES_EXEC (team scope enforced in service)
  *   staff   → nothing
  * OWNER is never a creatable target (uniqueness invariant).
+ * Issue #7 slice 1: ENGINEER is OWNER/ADMIN-only (site-staff provisioning
+ * is an admin act; a MANAGER must never provision site crew).
  */
 export function assertCanCreateRole(actor: Role, targetRole: Role): void {
   if (targetRole === OWNER) {
     throw new ForbiddenException(
       'OWNER cannot be created via the API - exactly one exists via seed',
+    );
+  }
+  if (targetRole === 'ENGINEER' && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot create ${targetRole} users - ENGINEER provisioning is OWNER/ADMIN only`,
     );
   }
   if (RANK[actor] <= RANK[targetRole]) {
@@ -93,6 +105,7 @@ export function assertCanCreateRole(actor: Role, targetRole: Role): void {
  *   staff   → nobody
  * Guards (all three client-confirmed): no self-changes, only OWNER
  * touches ADMIN rows, OWNER role itself is unassignable.
+ * Issue #7 slice 1: ENGINEER target/assignment is OWNER/ADMIN-only.
  */
 export function assertCanChangeRole(
   actor: Role,
@@ -103,6 +116,12 @@ export function assertCanChangeRole(
   if (newRole === OWNER || targetRole === OWNER) {
     throw new ForbiddenException(
       'The OWNER role cannot be created, assigned, or changed via the API',
+    );
+  }
+  // Guard 0b (issue #7): ENGINEER assignments are an admin act.
+  if (newRole === 'ENGINEER' && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot assign the ${newRole} role - ENGINEER provisioning is OWNER/ADMIN only`,
     );
   }
   // Guard 1: nobody changes their own role.

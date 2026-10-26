@@ -517,11 +517,17 @@ export class TeamsService {
           );
         }
         const ineligible = users.filter(
-          (u) => u.role !== 'TELECALLER' && u.role !== 'SALES_EXEC',
+          (u) =>
+            // Issue #7 slice 1: ENGINEER joins the team-member pool
+            // (TEAM_ONLY staff roles); managers still lead via managerId,
+            // admins are not team staff.
+            u.role !== 'TELECALLER' &&
+            u.role !== 'SALES_EXEC' &&
+            u.role !== 'ENGINEER',
         );
         if (ineligible.length > 0) {
           throw new BadRequestException(
-            `Only telecallers and sales execs can be added as team members; ` +
+            `Only telecallers, sales execs and site engineers can be added as team members; ` +
               `not eligible: ${ineligible.map((u) => `${u.name} (${u.role})`).join(', ')}. ` +
               'Managers lead a team via the team manager setting.',
           );

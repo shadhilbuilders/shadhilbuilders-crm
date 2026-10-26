@@ -271,7 +271,7 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
 
 /**
  * Staff-role values per the Prisma `User.role` enum (OWNER/ADMIN/MANAGER/
- * SALES_EXEC/TELECALLER). The users page renders these via
+ * SALES_EXEC/TELECALLER/ENGINEER). The users page renders these via
  * `labelFor('role', ...)` so staff see "Sales executive" not "SALES_EXEC".
  * Added 2026-09-09 alongside the users-page DataTable rebuild.
  */
@@ -281,6 +281,7 @@ export const ROLES = [
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  'ENGINEER',
 ] as const;
 export type RoleLabel = (typeof ROLES)[number];
 
@@ -290,7 +291,22 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
   MANAGER: 'Manager',
   SALES_EXEC: 'Sales Executive',
   TELECALLER: 'Telecaller',
+  ENGINEER: 'Site Engineer',
 };
+
+/**
+ * Site-staff uploader label (issue #7 slice 1): "Site Manager" when the
+ * photo-lead row exists on the project, "Site Engineer" otherwise, "Unknown"
+ * for a deleted creator. Pure renderer of server-precomputed timeline fields
+ * (no client-side team resolution - TeamMember RLS hides other members' rows).
+ */
+export function siteMemberLabel(
+  creatorName: string | null,
+  creatorIsPhotoLead: boolean | null,
+): string {
+  if (creatorName === null) return 'Unknown';
+  return creatorIsPhotoLead ? 'Site Manager' : 'Site Engineer';
+}
 
 /**
  * Feedback triage-status values per the Prisma `Feedback.status` enum

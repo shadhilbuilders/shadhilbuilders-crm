@@ -42,4 +42,14 @@ export interface StorageProvider {
 
   /** Public URL for a key, or null when the impl has no public base. */
   publicUrl?(key: string): string | null;
+
+  /**
+   * Delete the stored bytes by key. Compensation path for progress-photo
+   * uploads (issue #7): storage.save() runs BEFORE the DB write, so a failed
+   * DB transaction must remove the orphaned blob. Implementations MUST NOT
+   * throw - a best-effort compensation failure is logged by the caller and
+   * the blob is orphaned, never a user-facing error (the upload already
+   * failed at that point).
+   */
+  delete(key: string): Promise<void>;
 }

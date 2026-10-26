@@ -162,20 +162,30 @@ export function canUseWhatsappInbox(role: Role | undefined): boolean {
   return isAdminLike(role) || isManager(role);
 }
 
-/** Users module: admin-class creates any role below; manager → staff only. */
+/** Users module: admin-class creates any role below; manager → staff only.
+ *  ENGINEER (issue #7) is the exception: OWNER/ADMIN only, never MANAGER -
+ *  site-staff provisioning is an admin act (mirrors assertCanCreateRole). */
 export function canManageUsers(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';
 }
 
+/** ENGINEER create/change is OWNER/ADMIN-only (issue #7; never MANAGER). */
+export function canManageEngineers(role: Role | undefined): boolean {
+  return isAdminLike(role);
+}
+
 // Role rank for the users surface (mirrors apps/backend/src/users/roles.ts
 // RANK). Higher = more authority. An actor can edit/delete/change-role a
-// target they strictly outrank.
+// target they strictly outrank. ENGINEER (issue #7) sits below SALES_EXEC:
+// site staff hold no CRM authority outranking anything but their own role,
+// and MANAGER may NOT create/change them (spec: OWNER/ADMIN only).
 const ROLE_RANK: Record<Role, number> = {
   OWNER: 4,
   ADMIN: 3,
   MANAGER: 2,
   TELECALLER: 1,
   SALES_EXEC: 1,
+  ENGINEER: 0,
 };
 
 /** True when the actor strictly outranks the target role (users surface). */

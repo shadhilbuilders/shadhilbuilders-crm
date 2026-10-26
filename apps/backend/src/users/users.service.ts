@@ -194,7 +194,7 @@ export class UsersService {
           // Handled post-user-creation (needs the user id).
         } else {
           throw new BadRequestException(
-            'teamId is required when an admin creates TELECALLER/SALES_EXEC users',
+            'teamId is required when an admin creates TELECALLER/SALES_EXEC/ENGINEER users',
           );
         }
       }

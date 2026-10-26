@@ -6,9 +6,9 @@
 // packages/api-types/src/auth.ts (name/email/password rules + role enum).
 // The server re-validates the same shape and surfaces errors verbatim via
 // toast. teamId is optional in the schema but the service REQUIRES it when
-// role is TELECALLER/SALES_EXEC (an admin creating staff without a team =
-// "teamId is required"). The dialog shows the Team field only for staff
-// roles.
+// role is TELECALLER/SALES_EXEC/ENGINEER (an admin creating staff without
+// a team = "teamId is required"). The dialog shows the Team field only for
+// staff roles.
 import { Combobox, Form, toast } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -69,7 +69,10 @@ export function CreateUserForm({
       password: values.password,
       role: values.role,
     };
-    const needsTeam = values.role === 'TELECALLER' || values.role === 'SALES_EXEC';
+    const needsTeam =
+      values.role === 'TELECALLER' ||
+      values.role === 'SALES_EXEC' ||
+      values.role === 'ENGINEER';
     if (needsTeam) {
       if (!values.teamId) {
         toast.error('Please select a team for this user.');
@@ -146,7 +149,9 @@ export function CreateUserForm({
   // a teamId; MANAGER auto-creates a team and ADMIN/OWNER users aren't
   // created with a team here.
   const isStaffRole =
-    selectedRole === 'TELECALLER' || selectedRole === 'SALES_EXEC';
+    selectedRole === 'TELECALLER' ||
+    selectedRole === 'SALES_EXEC' ||
+    selectedRole === 'ENGINEER';
   if (showTeamField && isStaffRole) {
     fields.push({
       type: 'custom',

@@ -27,6 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuRoot,
   DropdownMenuTrigger,
+  Label,
+  Switch,
   toast,
   TypographyP,
 } from '@paalstack/react-ui';
@@ -41,6 +43,7 @@ import {
   type ProjectTeamRow,
   type TeamMembership,
 } from '@/hooks/queries/project-teams';
+import { useSetPhotoLead } from '@/hooks/queries/customer-progress';
 import { labelFor } from '@/lib/labels';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
@@ -169,7 +172,7 @@ export function ProjectTeamList({
                 ) : null}
               </div>
               <AccordionContent className="pt-2 pb-3 bg-background rounded-b-lg">
-                <MemberRoster members={row.members} />
+                <MemberRoster members={row.members} projectId={projectId} canManage={canManage} />
               </AccordionContent>
             </AccordionItem>
           ))}
@@ -199,7 +202,15 @@ function TeamListSkeleton() {
   );
 }
 
-function MemberRoster({ members }: { members: TeamMembership[] }) {
+function MemberRoster({
+  members,
+  projectId,
+  canManage,
+}: {
+  members: TeamMembership[];
+  projectId: string;
+  canManage: boolean;
+}) {
   if (members.length === 0) {
     return (
       <TypographyP className="text-muted-foreground pl-6 text-sm">
@@ -223,8 +234,49 @@ function MemberRoster({ members }: { members: TeamMembership[] }) {
             </Badge>
           ) : null}
           {!m.isManagerSlot && <Badge variant="outline">{labelFor('role', m.role)}</Badge>}
+          {canManage && m.role === 'ENGINEER' ? (
+            <PhotoLeadToggle memberId={m.userId} memberName={m.name} projectId={projectId} />
+          ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Issue #7 slice 1: per-project photo-lead authority switch (OWNER/ADMIN
+ *  only; the endpoint enforces isAdminClass server-side regardless of this
+ *  prop - the prop is a courtesy that hides the switch from managers). The
+ *  switch state itself is intentionally NOT lifted from the server: the
+ *  project-teams payload has no photoLead field yet (that arrives with the
+ *  users-page option in slice 2), so this is a local optimistic toggle whose
+ *  mutation is authoritative. */
+function PhotoLeadToggle({
+  memberId,
+  memberName,
+  projectId,
+}: {
+  memberId: string;
+  memberName: string;
+  projectId: string;
+}) {
+  const setPhotoLead = useSetPhotoLead(projectId);
+  return (
+    <div className="ml-auto flex items-center gap-2" data-qa={`photo-lead-toggle-${memberId}`}>
+      <Label className="text-muted-foreground text-xs">Photo lead</Label>
+      <Switch
+        checked={false}
+        onCheckedChange={(checked) =>
+          setPhotoLead.mutate(
+            { userId: memberId, photoLead: checked },
+            {
+              onSuccess: () =>
+                toast.success(`${memberName} ${checked ? 'can now' : 'can no longer'} edit other members' site photos on this project.`),
+              onError: (error: unknown) =>
+                toast.error(error instanceof Error ? error.message : 'Photo-lead update failed'),
+            },
+          )
+        }
+      />
     </div>
   );
 }

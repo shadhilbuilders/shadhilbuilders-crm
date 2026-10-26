@@ -46,6 +46,11 @@ enum Role {
   MANAGER
   SALES_EXEC
   TELECALLER
+  // Site-staff role (issue #7, slice 1). RLS rights: ProgressPhoto
+  // SELECT/INSERT/UPDATE/DELETE scoped to units of projects whose teams the
+  // user is a member of. Zero policies on lead/chat/booking/revenue tables -
+  // permissive-by-absence denies. See docs/specs/SPEC-customer-progress-slice-1-body.md.
+  ENGINEER
 }
 
 enum LeadState {
@@ -193,19 +198,19 @@ enum FeedbackStatus {
 // would destroy tenant history). Orgs are soft-lifecycle; deletion is a
 // deliberate destructive admin op.
 model Organization {
-  id        String   @id @default(cuid(2))
-  name      String
-  slug      String   @unique
+  id                       String   @id @default(cuid(2))
+  name                     String
+  slug                     String   @unique
   // T-ORG-OWNER (2026-09-17): the user who created the org via self-signup
   // becomes its OWNER. createdBy records that origin (the OWNER role itself
   // already grants full access via the admin downcast); nullable because the
   // seeded bootstrap org predates the field. Set on user.create in the
   // better-auth hook; never mutated afterward.
-  createdBy String?
+  createdBy                String?
   // T-VISIT-REMINDER: how long before a scheduled visit the reminder fires (5..1440, DB CHECK).
   visitReminderLeadMinutes Int      @default(60)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   users                   User[]
   teams                   Team[]
@@ -304,6 +309,9 @@ model User {
   teamMemberships           TeamMember[]       @relation("TeamMembershipUser")
   teamMembershipsAssignedBy TeamMember[]       @relation("TeamMembershipAssignedBy")
   projectTeamsAssignedBy    ProjectTeam[]      @relation("ProjectTeamAssignedBy")
+  staffRoles                ProjectStaffRole[] @relation("ProjectStaffRoleUser")
+  staffRolesAssignedBy      ProjectStaffRole[] @relation("ProjectStaffRoleAssignedBy")
+  createdProgressPhotos     ProgressPhoto[]    @relation("ProgressPhotoCreator")
   managedTeams              Team[]             @relation("TeamManager")
   defaultAssigneeOf         Team[]             @relation("TeamDefaultAssignee")
   ownedLeads                Lead[]             @relation("LeadOwner")
@@ -327,8 +335,6 @@ model User {
 
   // better-auth admin() plugin fields (AR-8: required by admin plugin user model)
 
-  @@index([organizationId])
-  @@index([role])
   // T-EMAIL-PER-ORG (2026-10-04): replaces the old bare `@@index([email])` +
   // column-level `@unique` - uniqueness is now scoped to the org (see the
   // comment on `email` above). Still serves as the lookup index for the
@@ -336,6 +342,8 @@ model User {
   // callers), since a composite index's leading column (`email`) is usable
   // on its own.
   @@unique([email, organizationId])
+  @@index([organizationId])
+  @@index([role])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -446,7 +454,7 @@ model ProjectTeam {
   teamId         String
   // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
   organizationId String
-  assignedAt     DateTime @default(now())
+  assignedAt     DateTime  @default(now())
   assignedById   String?
   // T-TEAM-ROUND-ROBIN (2026-10-08): rotation cursor for auto-assign. The team
   // that was routed to longest ago (NULL = never) goes next. Advanced only via
@@ -462,6 +470,70 @@ model ProjectTeam {
   @@id([projectId, teamId])
   @@index([projectId])
   @@index([teamId])
+  @@index([organizationId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4d. ProjectStaffRole (per-project staff authority grant; issue #7 slice 1)
+// ────────────────────────────────────────────────────────────────────────────
+// Per-project supervision authority, NOT per-team: one team may link to
+// several projects, so a flag on TeamMember.roster would leak authority to
+// sibling projects. kind='PHOTO_LEAD' grants photo correction/delete powers
+// on ONE project. Composite PK keeps one row per (user, project, kind).
+model ProjectStaffRole {
+  userId         String
+  projectId      String
+  organizationId String
+  // String discriminator (not enum) so future kinds ('SNAG_LEAD', ...)
+  // need no enum migration; the service layer validates the value.
+  kind           String
+  assignedById   String?
+  assignedAt     DateTime @default(now())
+
+  user       User    @relation("ProjectStaffRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  project    Project @relation("ProjectStaffRoleProject", fields: [projectId], references: [id], onDelete: Cascade)
+  assignedBy User?   @relation("ProjectStaffRoleAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, projectId, kind])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5c. ProgressPhoto (site construction progress; issue #7 slice 1)
+// ────────────────────────────────────────────────────────────────────────────
+// One row per uploaded site photo. The unit's project is resolved THROUGH
+// Phase (Unit has no projectId): membership policies join
+// Unit -> Phase.projectId. Bytes live in object storage via StorageProvider
+// (local-disk dev / imagekit prod); `key` is the provider's storage key, never
+// a DB blob. RLS policies + GRANTs ship in the same migration (issue #7).
+model ProgressPhoto {
+  id             String   @id @default(cuid())
+  unitId         String
+  phaseId        String?
+  // T-ORG: denormalized tenant axis so RLS compares a column, not a join.
+  organizationId String
+  key            String
+  mimeType       String
+  filename       String
+  // Auto-filled server-side: "{phase.name} {month name} {year}" (en-GB,
+  // month from takenAt converted to UTC), e.g. "Foundation October 2026".
+  // Retained verbatim when the phase row is later deleted (SetNull below);
+  // caption editing is slice-4 scope.
+  caption        String
+  // Client-captured capture time (ISO 8601 with offset, normalized to UTC);
+  // falls back to server now() when omitted.
+  takenAt        DateTime
+  // Uploader. Nullable + SetNull so photos survive user deletion (audit
+  // trail); the timeline renders "Unknown" for a NULL creator.
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  unit          Unit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  phase         Phase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  createdByUser User?  @relation("ProgressPhotoCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([unitId, takenAt(sort: Desc)])
   @@index([organizationId])
 }
 
@@ -542,7 +614,8 @@ model Project {
   leads          Lead[]
   projectTeams   ProjectTeam[]
   projectOptions ProjectOption[]
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffRoles     ProjectStaffRole[] @relation("ProjectStaffRoleProject")
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, slug])
   @@index([slug])
@@ -561,9 +634,10 @@ model Phase {
   name           String
   createdAt      DateTime @default(now())
 
-  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  units        Unit[]
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  units          Unit[]
+  progressPhotos ProgressPhoto[]
 
   @@index([projectId])
   @@index([organizationId])
@@ -630,9 +704,10 @@ model Unit {
   status         UnitStatus @default(AVAILABLE)
   createdAt      DateTime   @default(now())
 
-  phase        Phase        @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  bookings     Booking[]
+  phase          Phase           @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bookings       Booking[]
+  progressPhotos ProgressPhoto[]
 
   @@unique([phaseId, unitNumber])
   // One plot per phase. Postgres treats NULLs as distinct, so any number of
@@ -696,20 +771,20 @@ model Lead {
   // stamp is older than 1h (or NULL).
   lastOverduePushedAt DateTime?
 
-  owner            User              @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  coOwner          User?             @relation("LeadCoOwner", fields: [coOwnerId], references: [id], onDelete: SetNull)
-  team             Team              @relation(fields: [teamId], references: [id], onDelete: Restrict)
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  project          Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  activities       Activity[]
-  visits           SiteVisit[]
-  messages         Message[]
+  owner             User               @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  coOwner           User?              @relation("LeadCoOwner", fields: [coOwnerId], references: [id], onDelete: SetNull)
+  team              Team               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  activities        Activity[]
+  visits            SiteVisit[]
+  messages          Message[]
   messageRecipients MessageRecipient[] @relation("MessageRecipientLead")
-  outboundMessages OutboundMessage[]
-  chatReadStates   ChatReadState[]
-  bookings         Booking[]
-  reminders        Reminder[]
-  consents         Consent[]
+  outboundMessages  OutboundMessage[]
+  chatReadStates    ChatReadState[]
+  bookings          Booking[]
+  reminders         Reminder[]
+  consents          Consent[]
 
   @@index([ownerId])
   @@index([coOwnerId])
@@ -820,10 +895,10 @@ model Message {
   externalId     String? // WhatsApp message id (for dedupe / status sync)
   createdAt      DateTime         @default(now())
 
-  lead         Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact      WhatsappUnknownContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
   outbound     OutboundMessage?
   recipients   MessageRecipient[]
 
@@ -842,23 +917,20 @@ model Message {
 /**
  * One addressed recipient of an INTERNAL note - the record that makes an
  * `@mention` a real grant rather than a name-shaped guess.
- *
  * WHY IT EXISTS. `emitMentions` used to resolve `@Name` against `User.name`
  * with NO team narrowing for ordinary staff, then put `body.slice(0, 100)` in a
  * `chat.mention` notification. Two defects followed:
- *   1. A telecaller could surface a lead's internal note to ANY same-named user
- *      in the whole organization.
- *   2. The mentioned teammate could not open the lead (RLS gates Message on the
- *      parent Lead's owner/co-owner), so the notification quoted text they had
- *      no way to read the rest of - or to act on.
- *
+ * 1. A telecaller could surface a lead's internal note to ANY same-named user
+ * in the whole organization.
+ * 2. The mentioned teammate could not open the lead (RLS gates Message on the
+ * parent Lead's owner/co-owner), so the notification quoted text they had
+ * no way to read the rest of - or to act on.
  * `userId` is the recipient picked in the composer, not a name match, so a
  * mention can no longer land on a stranger with the same display name.
- *
  * DENORMALIZED COLUMNS ARE LOAD-BEARING, not denormalization for speed:
- *   - `leadId` mirrors the parent Message's leadId.
- *   - `organizationId` mirrors the parent Message's org (same reason
- *     Message.organizationId exists).
+ * - `leadId` mirrors the parent Message's leadId.
+ * - `organizationId` mirrors the parent Message's org (same reason
+ * Message.organizationId exists).
  * Both let EVERY policy on this table test its OWN columns only. If the policies
  * joined back through `Message` or `Lead`, Postgres would have a policy cycle:
  * `Lead`'s policy reads this table and this table's policy reads `Lead` back -
@@ -893,29 +965,27 @@ model MessageRecipient {
 
 /**
  * Read position for ONE user on ONE thread.
- *
  * Why per-user and not a `lastReadAt` column on the thread: three managers
  * share the same WhatsApp thread, and one reading it must not clear the
  * others' unread badges. Unread is a property of (user, thread), so it is
  * its own row. Keyed on whichever thread column is set - the
  * chat_read_state_thread_exactly_one CHECK mirrors Message's.
- *
  * `lastReadAt` is a high-water mark, NOT a list of read message ids: a
  * message counts as unread when `createdAt > lastReadAt` AND it is inbound
  * (direction = IN). Outbound messages never contribute to unread.
  */
 model ChatReadState {
-  id        String   @id @default(cuid())
-  userId    String
-  leadId    String?
-  contactId String?
+  id         String   @id @default(cuid())
+  userId     String
+  leadId     String?
+  contactId  String?
   lastReadAt DateTime @default(now())
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact      WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead    Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   // One row per user per thread. Postgres treats NULLs as distinct, so these
   // are complemented by two partial unique indexes in the migration
@@ -929,25 +999,25 @@ model ChatReadState {
 // ────────────────────────────────────────────────────────────────────────────
 
 model Booking {
-  id             String        @id @default(cuid())
-  leadId         String
-  unitId         String
+  id               String        @id @default(cuid())
+  leadId           String
+  unitId           String
   // T-ORG: denormalized from parent Lead.
-  organizationId String
-  userId         String // who created the booking
+  organizationId   String
+  userId           String // who created the booking
   // Effective booking total: negotiatedAmount when set, else listAmount.
-  amount         Decimal       @db.Decimal(12, 2)
+  amount           Decimal       @db.Decimal(12, 2)
   // Unit total at booking time (audit baseline for the negotiation).
-  listAmount     Decimal       @db.Decimal(12, 2)
+  listAmount       Decimal       @db.Decimal(12, 2)
   // Negotiated per-sq.ft rate and the derived total (buildupSqft * rate).
-  negotiatedRate   Decimal?    @db.Decimal(12, 2)
-  negotiatedAmount Decimal?    @db.Decimal(12, 2)
-  status         BookingStatus @default(HOLD)
-  tokenAmount    Decimal?      @db.Decimal(12, 2)
-  approvedById   String?
-  notes          String?       @db.Text
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  negotiatedRate   Decimal?      @db.Decimal(12, 2)
+  negotiatedAmount Decimal?      @db.Decimal(12, 2)
+  status           BookingStatus @default(HOLD)
+  tokenAmount      Decimal?      @db.Decimal(12, 2)
+  approvedById     String?
+  notes            String?       @db.Text
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Restrict)
@@ -1265,10 +1335,10 @@ model OutboundMessage {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  message      Message                  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  lead         Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact      WhatsappUnknownContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  message      Message                 @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  lead         Lead?                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      WhatsappUnknownContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([status, lastAttemptAt]) // cron scan: PENDING rows that aren't being retried too soon
   @@index([leadId])

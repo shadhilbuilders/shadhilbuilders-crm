@@ -1571,3 +1571,134 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --   site_visit_select_cron_service / site_visit_update_cron_service:
 --     role=CRON_SERVICE AND user_id='cron-service' AND org match.
 --   org_update_admin: ADMIN/OWNER may update their own Organization row.
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Issue #7 slice 1 (2026-10-26): Customer progress - ProgressPhoto +
+-- ProjectStaffRole. Live policies: migration 20261026160800 (this catalog
+-- mirrors it; the migration is the shipped artifact).
+-- ────────────────────────────────────────────────────────────────────────────
+-- Access model: a site photo is visible to
+--   * the project's staff, i.e. members of ProjectTeam-linked teams
+--     (Unit has no projectId - the membership join goes
+--     Unit.phaseId → Phase.projectId → ProjectTeam → TeamMember, plus the
+--     Team.managerId arm so a team manager keeps the access of their team),
+--   * ADMIN + OWNER org-wide (OWNER travels as ADMIN at the GUC layer).
+-- ENGINEER INSERT/UPDATE/DELETE are member-scoped AND creator-bound
+-- (progress_photo_write_member: createdBy = app.user_id).
+-- PHOTO_LEAD is per-project (ProjectStaffRole.kind='PHOTO_LEAD') - never
+-- per-team, because a team linked to multiple projects must not carry the
+-- authority to sibling projects. Admin-only writes on the authority table.
+-- Cross-project and sales-table (Lead/Message/Booking) denials are EMPTY
+-- SET, by design - the service layer is the messaging wall.
+
+ALTER TABLE "ProgressPhoto" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProgressPhoto" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY progress_photo_select_member ON "ProgressPhoto"
+  FOR SELECT
+  USING (
+    ("organizationId" = current_setting('app.user_org_id', true)
+     AND current_setting('app.user_role', true) = 'ADMIN')
+    OR
+    ("organizationId" = current_setting('app.user_org_id', true)
+     AND EXISTS (
+       SELECT 1 FROM "Unit" u
+       JOIN "Phase" ph ON ph."id" = u."phaseId"
+       JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+       JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+       WHERE u."id" = "ProgressPhoto"."unitId"
+         AND tm."userId" = current_setting('app.user_id', true)
+     ))
+  );
+
+CREATE POLICY progress_photo_write_member ON "ProgressPhoto"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  );
+
+CREATE POLICY progress_photo_insert_member ON "ProgressPhoto"
+  FOR INSERT
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Unit" u
+      JOIN "Phase" ph ON ph."id" = u."phaseId"
+      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE u."id" = "ProgressPhoto"."unitId"
+        AND tm."userId" = current_setting('app.user_id', true)
+        AND "ProgressPhoto"."createdBy" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY progress_photo_creator_update ON "ProgressPhoto"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  );
+
+CREATE POLICY progress_photo_creator_delete ON "ProgressPhoto"
+  FOR DELETE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  );
+
+CREATE POLICY progress_photo_lead_write ON "ProgressPhoto"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "ProjectStaffRole" psr
+      WHERE psr."projectId" = (
+            SELECT ph."projectId" FROM "Unit" u
+            JOIN "Phase" ph ON ph."id" = u."phaseId"
+            WHERE u."id" = "ProgressPhoto"."unitId")
+        AND psr."userId" = current_setting('app.user_id', true)
+        AND psr."kind" = 'PHOTO_LEAD'
+    )
+  )
+  WITH CHECK (true);
+
+ALTER TABLE "ProjectStaffRole" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProjectStaffRole" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY project_staff_role_select_admin ON "ProjectStaffRole"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (current_setting('app.user_role', true) = 'ADMIN'
+         OR "userId" = current_setting('app.user_id', true))
+  );
+
+CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  );
+
+-- ENGINEER reads on the dependency surfaces (member-scoped, never org-wide):
+-- migration 20261026160800 adds project_team_select_engineer, and the
+-- unit/phase engineer policies alongside these (see unit_select_team_member /
+-- phase_select_team_member). Project SELECT for engineers rides the same
+-- ProjectTeam join added by that migration.
+--
+-- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
+-- (creator_name, creator_is_photo_lead) for a photo the caller can read -
+-- visibility-predicated and fail-closed without GUCs (search_path locked).

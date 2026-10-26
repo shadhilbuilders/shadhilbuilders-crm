@@ -327,13 +327,21 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
 /** Per-item visibility. Admin namespace + Admin launcher: OWNER/ADMIN only.
  *  My Team: MANAGER only (design doc UI1 - "Managers receive a Work ->
  *  My Team route"; other staff don't manage/belong-to teams in a way
- *  this surface is useful for, and Admin/Owner already use Admin -> Teams). */
+ *  this surface is useful for, and Admin/Owner already use Admin -> Teams).
+ *  ENGINEER (issue #7 slice 1): site-staff surface = Inventory (units +
+ *  UnitDetailSheet's Progress tab) only; every other Work item is filtered
+ *  out. RLS is the wall; this is the courtesy that keeps the nav honest. */
 function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | undefined): boolean {
   if (item.href === '/admin' || item.href === '/work' || item.href.startsWith('/admin/')) {
     return isAdminLike(role);
   }
   if (item.href === '/my-team') {
     return role === 'MANAGER';
+  }
+  if (role === 'ENGINEER') {
+    // Inventory only (the plot layout reads the same surface but the map
+    // link needs bookings context engineers don't have).
+    return item.href === '/inventory';
   }
   // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE
   // the catch-all `group === 'work' => true` at the end of this function,

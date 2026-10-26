@@ -30,6 +30,7 @@ import { WhatsappUnknownContactsModule } from './whatsapp-unknown-contacts/whats
 import { FeedbacksModule } from './feedbacks/feedbacks.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { PublicLeadsModule } from './public-leads/public-leads.module';
+import { CustomerProgressModule } from './customer-progress/customer-progress.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -104,6 +105,10 @@ import { StorageModule } from './storage/storage.module';
     // ApiKeyGuard with PUBLIC_API_KEY (shared with the feedback endpoint).
     // Registers POST /api/public/leads.
     PublicLeadsModule,
+    // Customer progress (issue #7 slice 1): site-photo upload + staff
+    // preview timeline per unit. Needs no explicit imports - PrismaModule
+    // and StorageModule are @Global().
+    CustomerProgressModule,
     // T-E2b systematic-failure alert: Telegram channel send when
     // the outbound cron sees N consecutive all-failed ticks.
     // @Global() so WhatsappModule's OutboundCronService can inject
