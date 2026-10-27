@@ -53,6 +53,16 @@ export function CreateUserForm({
   // being created auto-creates its own team, so no team picker needed).
   const selectedRole = form.watch('role');
 
+  // RHF's handleSubmit drops invalid submissions silently, and the react-ui
+  // Form renders no per-field error text, so a blocked submit (bad email,
+  // short password, empty name) looked like a dead button: click, nothing
+  // happens, no message anywhere. Subscribe to the error state and surface
+  // every message in one visible summary; re-subscribes because `errors`
+  // changes per render.
+  const fieldErrors = Object.entries(form.formState.errors)
+    .map(([field, err]) => ({ field, message: err?.message }))
+    .filter((e): e is { field: string; message: string } => typeof e.message === 'string');
+
   function onSubmit(values: CreateUserFormValues) {
     // The payload is CreateUserDto-shaped. teamId is sent only when a staff
     // user is being created (the field is present) - the server auto-creates
@@ -175,13 +185,26 @@ export function CreateUserForm({
   }
 
   return (
-    <Form
-      id="create-user-form"
-      form={form}
-      onSubmit={onSubmit}
-      hideSubmitButton
-      hideResetButton
-      fields={fields}
-    />
+    <>
+      {fieldErrors.length > 0 ? (
+        <div
+          role="alert"
+          data-qa="create-user-errors"
+          className="text-destructive bg-destructive/10 rounded-md border border-destructive/30 px-3 py-2 text-sm"
+        >
+          {fieldErrors.map((e) => (
+            <p key={e.field}>{e.message}</p>
+          ))}
+        </div>
+      ) : null}
+      <Form
+        id="create-user-form"
+        form={form}
+        onSubmit={onSubmit}
+        hideSubmitButton
+        hideResetButton
+        fields={fields}
+      />
+    </>
   );
 }
