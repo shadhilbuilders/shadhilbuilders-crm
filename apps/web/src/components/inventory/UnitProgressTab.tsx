@@ -16,14 +16,9 @@ import type { PhaseRow } from '@/hooks/queries/inventory';
 import {
   useUnitPhotos,
   useUploadUnitPhoto,
+  isForbidden,
   type TimelinePhoto,
 } from '@/hooks/queries/customer-progress';
-
-type ApiErrorLike = { status?: number };
-
-function isForbidden(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as ApiErrorLike).status === 403;
-}
 
 /** The chip is green on the phase of the unit's MOST RECENT photo in the
  *  loaded set (spec: "green where current"); otherwise neutral. */

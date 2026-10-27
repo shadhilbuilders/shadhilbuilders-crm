@@ -235,7 +235,7 @@ function MemberRoster({
           ) : null}
           {!m.isManagerSlot && <Badge variant="outline">{labelFor('role', m.role)}</Badge>}
           {canManage && m.role === 'ENGINEER' ? (
-            <PhotoLeadToggle memberId={m.userId} memberName={m.name} projectId={projectId} />
+            <PhotoLeadToggle memberId={m.userId} memberName={m.name} projectId={projectId} photoLead={m.photoLead} />
           ) : null}
         </div>
       ))}
@@ -254,17 +254,24 @@ function PhotoLeadToggle({
   memberId,
   memberName,
   projectId,
+  photoLead,
 }: {
   memberId: string;
   memberName: string;
   projectId: string;
+  photoLead: boolean;
 }) {
   const setPhotoLead = useSetPhotoLead(projectId);
+  // Rendered state comes from the roster payload (member.photoLead); the
+  // mutation invalidates the teams query, so the switch re-renders from the
+  // server truth after every grant/revoke. It is NOT a local optimistic
+  // toggle - a hardwired `checked={false}` would send photoLead:true on
+  // every click and make revoke impossible from the UI.
   return (
     <div className="ml-auto flex items-center gap-2" data-qa={`photo-lead-toggle-${memberId}`}>
       <Label className="text-muted-foreground text-xs">Photo lead</Label>
       <Switch
-        checked={false}
+        checked={photoLead}
         onCheckedChange={(checked) =>
           setPhotoLead.mutate(
             { userId: memberId, photoLead: checked },

@@ -26,6 +26,16 @@ export type TimelineResponse = {
   nextCursor: string | null;
 };
 
+type ApiErrorLike = { status?: number };
+
+/** True when a customer-progress error is the 403 non-member denial. Shared
+ *  by the Progress tab (hide itself on 403, per the sheet's visibility
+ *  contract) and the sheet's gate that removes the tab chrome entirely for
+ *  non-booking roles. */
+export function isForbidden(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as ApiErrorLike).status === 403;
+}
+
 export type UploadPhotoInput = {
   phaseId: string;
   base64: string;

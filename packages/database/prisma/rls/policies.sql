@@ -1391,6 +1391,26 @@ CREATE POLICY team_select_any_authenticated ON "Team"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- Issue #7 slice 1 fix (2026-10-27): member-scoped ENGINEER SELECT.
+-- The customer-progress membership join (ProjectTeam -> Team -> TeamMember)
+-- needs the Team row itself; without this policy an assigned engineer 403s.
+-- Mirrors project_team_select_engineer - org + role + membership check,
+-- never org-wide. Ships in migration 20261027160000_engineer_team_select.
+-- The membership check goes through the SECURITY DEFINER helper
+-- team_member_exists(): a raw EXISTS subquery on "TeamMember" recurses
+-- (TeamMember's own SELECT policy subqueries Team.managerId -> 42P17
+-- infinite recursion), and the helper reads TeamMember outside RLS with
+-- search_path locked. project_team_select_engineer (from the slice-1
+-- migration) is revised to the same helper in the same migration - its
+-- EXISTS shape would have recursed identically once Team opened up.
+CREATE POLICY team_select_engineer ON "Team"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND team_member_exists("Team"."id", current_setting('app.user_id', true))
+  );
+
 CREATE POLICY team_insert_admin ON "Team"
   FOR INSERT
   WITH CHECK (
@@ -1697,7 +1717,11 @@ CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
 -- migration 20261026160800 adds project_team_select_engineer, and the
 -- unit/phase engineer policies alongside these (see unit_select_team_member /
 -- phase_select_team_member). Project SELECT for engineers rides the same
--- ProjectTeam join added by that migration.
+-- ProjectTeam join added by that migration. REVISION: migration
+-- 20261027160000_engineer_team_select rewrites project_team_select_engineer
+-- to use the team_member_exists() SECURITY DEFINER helper (raw EXISTS on
+-- TeamMember recursed with TeamMember's own policy once Team opened up) and
+-- adds team_select_engineer on Team (see the Team block above).
 --
 -- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
 -- (creator_name, creator_is_photo_lead) for a photo the caller can read -

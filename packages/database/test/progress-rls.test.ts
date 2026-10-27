@@ -58,6 +58,8 @@ const PHOTO_SELF_ID = 'cq9kvh1p2m7n3r8s4t5u6vwe'; // eng A's own photo
 const PHOTO_OTHER_ID = 'cq9kvh1p2m7n3r8s4t5u6vwf'; // eng B's photo (same unit - cross-project probe)
 const PHOTO_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vwg'; // photo createdBy eng-A, edited by photo-lead
 
+const UNIT_A_ID = 'cq9kvh1p2m7n3r8s4t5u6vwi'; // unit on project A (PA-ENG-001, fixture above)
+
 // ── Fixture ────────────────────────────────────────────────────────────────
 
 async function buildFixture(): Promise<void> {
@@ -426,5 +428,80 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
       tx.project.findMany({ where: { id: { in: [PROJ_A_ID, PROJ_B_ID] } } }),
     );
     expect(projects).toHaveLength(1);
+  });
+
+  it('protects= the SERVICE relation-filter join resolves for a member engineer; fails_when= Team row invisible (regression: slice-1 migration missed the Team policy)', async () => {
+    // AssertUnitAccess (apps/backend/src/customer-progress/
+    // customer-progress.service.ts) resolves membership by reading the
+    // unit through ProjectTeam -> Team -> TeamMember as a nested relation
+    // filter - NOT the single-table reads above. The slice-1 migration
+    // added ENGINEER SELECT policies on Project/Phase/ProjectTeam/Unit but
+    // omitted Team, so this exact shape returned zero rows (presented as a
+    // service-layer 403 "You are not assigned to this project."). Pin the
+    // whole chain so any future policy gap resurfaces here, not as a
+    // runtime 403.
+    const membershipJoin = await withRlsContext(prisma, engA, async (tx) =>
+      tx.unit.findFirst({
+        where: {
+          id: UNIT_A_ID,
+          organizationId: ORG_ID,
+          phase: {
+            project: {
+              projectTeams: {
+                some: {
+                  team: {
+                    deletedAt: null,
+                    OR: [{ teamMembers: { some: { userId: ENG_A_ID } } }, { managerId: ENG_A_ID }],
+                  },
+                },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      }),
+    );
+    expect(membershipJoin).not.toBeNull();
+
+    // And the direct arm the same service path leans on: the Team row
+    // itself must be readable by a member engineer (team_select_engineer).
+    const teamRows = await withRlsContext(prisma, engA, async (tx) =>
+      (tx as unknown as {
+        team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+      }).team.findMany({ where: { id: TEAM_A_ID } }),
+    );
+    expect(teamRows).toHaveLength(1);
+
+    // Negative arms: a non-member engineer (eng-N) resolves nothing through
+    // the same join, and cannot read the Team row either.
+    const nonMemberJoin = await withRlsContext(prisma, engN, async (tx) =>
+      tx.unit.findFirst({
+        where: {
+          id: UNIT_A_ID,
+          organizationId: ORG_ID,
+          phase: {
+            project: {
+              projectTeams: {
+                some: {
+                  team: {
+                    deletedAt: null,
+                    OR: [{ teamMembers: { some: { userId: ENG_N_ID } } }, { managerId: ENG_N_ID }],
+                  },
+                },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      }),
+    );
+    expect(nonMemberJoin).toBeNull();
+
+    const nonMemberTeam = await withRlsContext(prisma, engN, async (tx) =>
+      (tx as unknown as {
+        team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+      }).team.findMany({ where: { id: TEAM_A_ID } }),
+    );
+    expect(nonMemberTeam).toHaveLength(0);
   });
 });

@@ -15,9 +15,13 @@ import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { useInventoryPhases } from '@/hooks/queries/inventory';
+import {
+  useUnitPhotos,
+  isForbidden,
+} from '@/hooks/queries/customer-progress';
 import { UnitProgressTabContent } from './UnitProgressTab';
 
-import type { UnitRow } from '@/hooks/queries/inventory';
+import type { PhaseRow, UnitRow } from '@/hooks/queries/inventory';
 
 function formatMoney(value: string | undefined): string {
   if (value === undefined) return '-';
@@ -33,6 +37,21 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-sm font-medium">{value}</span>
     </div>
   );
+}
+
+/** Issue #7 slice 1: site-staff surface. For non-booking roles (ENGINEER,
+ *  TELECALLER) there is no Details tab, so no tab chrome is rendered at
+ *  all - the timeline GET decides what shows: skeleton while loading, the
+ *  full progress panel on 2xx, and NOTHING on 403 (the documented contract:
+ *  a non-member's Progress tab hides itself entirely, instead of leaving an
+ *  empty tab shell). */
+function UnitProgressGate({ unitId, phases }: { unitId: string; phases: PhaseRow[] }) {
+  // Shares the same TanStack query key as UnitProgressTabContent's own
+  // useUnitPhotos call, so this resolves in one network round trip and the
+  // panel below renders from cache without a second fetch.
+  const photosQuery = useUnitPhotos(unitId);
+  if (isForbidden(photosQuery.error)) return null;
+  return <UnitProgressTabContent unitId={unitId} phases={phases} />;
 }
 
 export function UnitDetailSheet({
@@ -111,7 +130,7 @@ export function UnitDetailSheet({
                 {
                   label: 'Progress',
                   value: 'progress',
-                  content: <UnitProgressTabContent unitId={unit.id} phases={phases.data ?? []} />,
+                  content: <UnitProgressGate unitId={unit.id} phases={phases.data ?? []} />,
                 },
               ]
         }
