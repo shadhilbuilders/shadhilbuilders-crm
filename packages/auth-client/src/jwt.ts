@@ -28,6 +28,7 @@ export const ROLES = [
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  'ENGINEER', // issue #7 slice 1: site-staff (customers still arrive in slice 2)
 ] as const;
 export type Role = (typeof ROLES)[number];
 

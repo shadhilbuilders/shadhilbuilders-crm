@@ -78,7 +78,8 @@ export class ProjectTeamsService {
       const rows: ProjectTeamRow[] = await Promise.all(
         links.map(async (link) => {
           const [members, leadCount] = await Promise.all([
-            this.buildMembership(tx, link.teamId),
+            // Project-scoped roster: members carry their photoLead state.
+            this.buildMembership(tx, link.teamId, projectId),
             tx.lead.count({ where: { projectId, teamId: link.teamId } }),
           ]);
           return {
@@ -256,8 +257,8 @@ export class ProjectTeamsService {
    * costs nothing and matches the design doc's `isManagerSlot` contract
    * exactly either way).
    */
-  private async buildMembership(tx: Tx, teamId: string): Promise<TeamMembership[]> {
-    const [team, memberRows] = await Promise.all([
+  private async buildMembership(tx: Tx, teamId: string, projectId?: string): Promise<TeamMembership[]> {
+    const [team, memberRows, photoLeadRows] = await Promise.all([
       tx.team.findUnique({
         where: { id: teamId },
         select: { manager: { select: { id: true, name: true, email: true, role: true } } },
@@ -267,9 +268,19 @@ export class ProjectTeamsService {
         include: { user: { select: { name: true, email: true, role: true } } },
         orderBy: { assignedAt: 'asc' },
       }),
+      // Issue #7 slice 1: the staff page renders the photo-lead switch's
+      // REAL state, so the roster carries it. projectStaffRole is scoped per
+      // (userId, projectId); only the project-scoped callers pass projectId.
+      projectId !== undefined
+        ? tx.projectStaffRole.findMany({
+            where: { projectId, kind: 'PHOTO_LEAD' },
+            select: { userId: true },
+          })
+        : Promise.resolve([] as Array<{ userId: string }>),
     ]);
 
     const manager = team?.manager ?? null;
+    const photoLeadIds = new Set(photoLeadRows.map((r) => r.userId));
     const rows: TeamMembership[] = memberRows.map((m) => ({
       userId: m.userId,
       teamId,
@@ -281,6 +292,7 @@ export class ProjectTeamsService {
       // comment, but costs nothing to handle): if the manager somehow
       // ALSO holds an ordinary row for this same team, still pin them.
       isManagerSlot: manager !== null && manager.id === m.userId,
+      photoLead: photoLeadIds.has(m.userId),
     }));
 
     if (manager !== null && !rows.some((r) => r.userId === manager.id)) {
@@ -292,6 +304,7 @@ export class ProjectTeamsService {
         role: manager.role,
         assignedAt: new Date(0).toISOString(),
         isManagerSlot: true,
+        photoLead: photoLeadIds.has(manager.id),
       });
     }
     return rows;

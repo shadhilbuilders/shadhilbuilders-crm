@@ -6,7 +6,7 @@
 // The org is part of the key so cross-tenant reads are blocked by the
 // key namespace, and the per-file cuid keeps the URL unpredictable.
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -55,6 +55,14 @@ export class LocalDiskStorage implements StorageProvider {
     const st = await stat(target);
     if (!st.isFile()) return null;
     return readFile(target);
+  }
+
+  async delete(key: string): Promise<void> {
+    // Same traversal guard as read(): only keys that resolve inside the
+    // media root are ever touched. rm fails silently for a missing path.
+    const target = this.keyPath(key);
+    if (!target.startsWith(join(this.mediaDir))) return;
+    await rm(target, { force: true, recursive: true });
   }
 
   publicUrl(key: string): string | null {

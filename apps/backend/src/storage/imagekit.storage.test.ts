@@ -10,6 +10,8 @@ import { ImageKitStorage } from './imagekit.storage';
 // Hoisted so the vi.mock factory can reference it (vi.mock is hoisted to the
 // top of the module, before `const uploadMock` would otherwise be assigned).
 const uploadMock = vi.hoisted(() => vi.fn());
+const listFilesMock = vi.hoisted(() => vi.fn());
+const deleteFileMock = vi.hoisted(() => vi.fn());
 
 // Mock the imagekit SDK (module is a CJS `export = ImageKit` class; the
 // `import X from 'imagekit'` resolves to its `.default`, so the factory must
@@ -18,6 +20,8 @@ vi.mock('imagekit', () => ({
   default: class {
     constructor(_opts: object) {}
     upload = uploadMock;
+    listFiles = listFilesMock;
+    deleteFile = deleteFileMock;
   },
 }));
 
@@ -164,5 +168,37 @@ describe('ImageKitStorage', () => {
     } as unknown as Response);
 
     expect(await s.read('/org/a/photo.png')).toEqual(Buffer.from(png));
+  });
+
+  it('delete(): looks the fileId up by folder+name and deletes it', async () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    listFilesMock.mockResolvedValue({ response: [{ fileId: 'f_9', filePath: '/org-1/abc/photo.png', type: 'file' }] });
+    deleteFileMock.mockResolvedValue({});
+
+    const s = new ImageKitStorage();
+    await s.delete('/org-1/abc/photo.png');
+
+    expect(listFilesMock).toHaveBeenCalledWith(expect.objectContaining({ path: '/org-1/abc', name: 'photo.png' }));
+    expect(deleteFileMock).toHaveBeenCalledWith('f_9');
+  });
+
+  it('delete(): a missing file resolves silently (nothing to compensate)', async () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    listFilesMock.mockResolvedValue({ response: [] });
+
+    const s = new ImageKitStorage();
+    await expect(s.delete('/org-1/abc/never.png')).resolves.toBeUndefined();
+    expect(deleteFileMock).not.toHaveBeenCalled();
+  });
+
+  it('delete(): an API error logs and resolves - never throws to the compensation caller', async () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    listFilesMock.mockRejectedValue(new Error('ik down'));
+
+    const s = new ImageKitStorage();
+    await expect(s.delete('/org-1/abc/photo.png')).resolves.toBeUndefined();
   });
 });

@@ -80,8 +80,11 @@ import { labelFor } from '@/lib/labels';
 import { CreateUserDialog } from './components/CreateUserDialog';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 
-const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
-const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC'] as const;
+// Issue #7 slice 1: ENGINEER is creatable by admin class only (neither list
+// for MANAGER includes it; assertCanCreateRole rejects MANAGER->ENGINEER
+// server-side regardless of canManageUsers).
+const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const;
+const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
 type UserRow = {

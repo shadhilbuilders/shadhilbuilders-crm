@@ -251,6 +251,7 @@ describe('lib/labels', () => {
         MANAGER: 'Manager',
         SALES_EXEC: 'Sales Executive',
         TELECALLER: 'Telecaller',
+        ENGINEER: 'Site Engineer',
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('role', enumValue)).toBe(expected);

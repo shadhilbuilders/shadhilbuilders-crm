@@ -1285,7 +1285,12 @@ function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' |
   // exclude it here. CRON_SERVICE appears only in T-CRONS' standalone
   // cases (outside the 4×8×4 matrix). PUBLIC_API is the feedback
   // submit-only service marker (insert-only on Feedback).
+  // ENGINEER (issue #7 slice 1) is likewise outside the 4×8×4 matrix -
+  // its isolation suite is progress-rls.test.ts.
   if (ctx.role === 'OWNER') return 'ADMIN';
+  if (ctx.role === 'ENGINEER') {
+    expect.unreachable('ENGINEER contexts belong in progress-rls.test.ts, not the 4x8x4 matrix');
+  }
   return ctx.role;
 }
 
