@@ -12,13 +12,17 @@ import { RoleSchema } from './enums';
 /**
  * Email format - strict enough to reject obvious typos, lenient enough to
  * accept every RFC-5322-legal address. We lowercase before persisting.
+ *
+ * `.min(3)` carries its own message: without one, an empty field surfaced
+ * Zod's default "Too small: expected string to have >=3 characters", which
+ * tells an operator nothing about which field or what to do.
  */
 const emailSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .min(3)
-  .max(254)
+  .min(3, 'Email is required')
+  .max(254, 'Email must be at most 254 characters')
   .email('Invalid email address');
 
 /**
@@ -49,6 +53,28 @@ export const LoginDtoSchema = z.object({
 export type LoginDto = z.infer<typeof LoginDtoSchema>;
 
 /**
+ * Team the new user joins (required by the SERVICE for staff roles, optional
+ * in the DTO so the MANAGER auto-team path keeps working).
+ *
+ * NOT a `cuid2()` check. `Team.id` is Prisma's `@default(cuid())`; the seed
+ * inserts cuid2 ids; and the team test fixtures/DB also hold slug-style ids
+ * with dashes (`test-outbound-cron-team`, `auto-team-cap-<ts>`) - all of
+ * them legitimately appear in the create dialog's Team picker. `z.cuid2()`
+ * accepted the first two but REJECTED the dashed ones with a bare
+ * "Invalid cuid2" that named no field and sent no request, so creating an
+ * ENGINEER (the role that surfaces the Team picker) looked like a dead
+ * button (reported 2026-11-01). This accepts the same shape `Project.id` /
+ * `Phase.id` already use (see visits.ts / inventory.ts): a non-empty id
+ * string. Existence, soft-deletion and org membership are enforced in the
+ * service.
+ */
+const teamIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'Select a team for this user')
+  .optional();
+
+/**
  * POST /api/auth/signup - admin-provisioned account creation. `role`
  * defaults to TELECALLER for self-serve flows; managers/admins are created
  * from the admin console, which sets role explicitly.
@@ -58,9 +84,7 @@ export const SignupDtoSchema = z.object({
   password: passwordSchema,
   name: nameSchema,
   role: RoleSchema.default('TELECALLER'),
-  // Team ids are cuid2 - validate strictly (validation of existence happens
-  // in the service).
-  teamId: z.cuid2().optional(),
+  teamId: teamIdSchema,
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 
