@@ -100,3 +100,5 @@ apps/backend/media/
 apps/web/playwright-report/
 
 .cursor/
+
+brain/
