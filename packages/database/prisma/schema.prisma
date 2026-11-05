@@ -75,6 +75,27 @@ enum LeadOwnerType {
   ADMIN
 }
 
+// T-LEAD-FACTS (2026-11-05): the lead fact ledger. See
+// docs/designs/lead-fact-ledger.md.
+//
+// A `LeadFact` row is an OBSERVATION about a lead, not a decision. The band
+// is priced from the evidence by `apps/backend/src/leads/lead-evidence.ts`,
+// never set by the writer, and `LeadFactService` is the only write path to
+// the columns it names. VERIFIED (and a blank field) may fill a column;
+// everything else waits as a PROPOSED suggestion for a human.
+enum FactBand {
+  VERIFIED
+  PROBABLE
+  POSSIBLE
+}
+
+enum FactStatus {
+  APPLIED
+  PROPOSED
+  DISMISSED
+  SUPERSEDED
+}
+
 enum ActivityType {
   CALL
   NOTE
@@ -238,6 +259,7 @@ model Organization {
   teamMembers             TeamMember[]
   projectTeams            ProjectTeam[]
   messageRecipients       MessageRecipient[]
+  leadFacts               LeadFact[]
 
   @@index([slug])
 }
@@ -329,6 +351,7 @@ model User {
   pushNotifications         PushNotification[]
   auditLogs                 AuditLog[]
   streamTickets             StreamTicket[]
+  decidedLeadFacts          LeadFact[]         @relation("LeadFactDecider")
   banned                    Boolean?
   banReason                 String?
   banExpires                DateTime?
@@ -785,6 +808,7 @@ model Lead {
   bookings          Booking[]
   reminders         Reminder[]
   consents          Consent[]
+  facts             LeadFact[]
 
   @@index([ownerId])
   @@index([coOwnerId])
@@ -793,6 +817,43 @@ model Lead {
   @@index([state])
   @@index([projectId])
   @@index([createdAt])
+}
+
+// A single observation about a lead, priced by evidence rather than by a
+// model's confidence. `field` names a real Lead column (see the FIELDS map in
+// apps/backend/src/leads/lead-evidence.ts); `value` is what the source said,
+// stored verbatim, and `canonicalValue` is only ever used to compare.
+model LeadFact {
+  id             String     @id @default(cuid())
+  leadId         String
+  // T-ORG: denormalized to every lead-scoped child so RLS compares a column
+  // instead of joining Lead on every row.
+  organizationId String
+  field          String
+  value          String
+  score          Float
+  band           FactBand
+  // One entry per independent source. Never a confidence: the shape is
+  // { kind, detail, sourceUrl? } and the weights live in code.
+  evidence       Json
+  // 'whatsapp.profile-name', 'enquiry-form', ... - who observed it, for the
+  // rep's tooltip. Distinct from `evidence`, which says why it is believed.
+  method         String
+  sourceUrl      String?
+  status         FactStatus @default(PROPOSED)
+  observedAt     DateTime   @default(now())
+  decidedById    String?
+  decidedAt      DateTime?
+  supersededAt   DateTime?
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  decidedBy    User?        @relation("LeadFactDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, field, status])
+  @@index([leadId, observedAt])
+  @@index([organizationId])
+  @@index([status])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
