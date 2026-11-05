@@ -1726,3 +1726,125 @@ CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
 -- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
 -- (creator_name, creator_is_photo_lead) for a photo the caller can read -
 -- visibility-predicated and fail-closed without GUCs (search_path locked).
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- LeadFact (T-LEAD-FACTS, 2026-11-05)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Visibility mirrors Activity/SiteVisit/Message: org + a Lead the actor may
+-- see, with MANAGER resolved through Team.managerId (multi-team) and staff
+-- through owner/co-owner. ENGINEER has NO policy here on purpose - site staff
+-- see progress photos, not leads, and permissive-by-absence denies.
+--
+-- DELETE is admin-only: the product never deletes a fact (a human dismisses
+-- one). The policy exists for admin tooling and for test cleanup, which runs
+-- as ADMIN; without it `deleteMany` returns 0 silently and rows leak between
+-- test runs.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "LeadFact" TO shadhil_app;
+
+ALTER TABLE "LeadFact" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY lead_fact_select_team ON "LeadFact"
+  FOR SELECT
+  USING (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'ADMIN')
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  );
+
+CREATE POLICY lead_fact_insert_team ON "LeadFact"
+  FOR INSERT
+  WITH CHECK (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  );
+
+CREATE POLICY lead_fact_insert_admin ON "LeadFact"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+    )
+  );
+
+CREATE POLICY lead_fact_update_team ON "LeadFact"
+  FOR UPDATE
+  USING (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  )
+  WITH CHECK (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY lead_fact_update_admin ON "LeadFact"
+  FOR UPDATE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY lead_fact_delete_admin ON "LeadFact"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );

@@ -2021,3 +2021,153 @@ describe('Activity INSERT - timeline writers per role x relation to the lead', (
     },
   );
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T-LEAD-FACTS (2026-11-05) - the fact ledger's RLS surface.
+// ────────────────────────────────────────────────────────────────────────────
+// Same visibility rule as Activity (org + a Lead the actor may see), so the
+// same relation cases apply. What is NEW here:
+//   * ENGINEER has no policy at all - site staff must not read lead facts.
+//   * DELETE is admin-only (the product never deletes a fact; a human
+//     dismisses it), so an owner's own row still cannot be deleted.
+describe('LeadFact - fact ledger writers per role x relation to the lead', () => {
+  const ORG = 'ceid01lpfe1esm8jwsxid41k28';
+  const FIELD = 'name';
+  const METHOD = 'rls-probe';
+  let fixture: Fixture;
+
+  beforeAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    fixture = await buildFixture();
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: fixture.execAId },
+    });
+    await adminPrisma.leadFact.deleteMany({
+      where: { leadId: fixture.leadAId, method: METHOD },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!DATABASE_AVAILABLE) return;
+    await adminPrisma.leadFact.deleteMany({
+      where: { leadId: fixture.leadAId, method: METHOD },
+    });
+    await adminPrisma.lead.update({
+      where: { id: fixture.leadAId },
+      data: { coOwnerId: null },
+    });
+  }, 30_000);
+
+  function factData(f: Fixture, org: string) {
+    return {
+      leadId: f.leadAId,
+      organizationId: org,
+      field: FIELD,
+      value: 'Rls Probe',
+      score: 0.6,
+      band: 'PROBABLE' as const,
+      evidence: [{ kind: 'whatsapp.profile-name', detail: 'rls probe' }],
+      method: METHOD,
+      status: 'PROPOSED' as const,
+    };
+  }
+
+  const cases: ReadonlyArray<{
+    name: string;
+    ctx: (f: Fixture) => RlsContext;
+    allowed: boolean;
+  }> = [
+    { name: 'owner (TELECALLER)', allowed: true, ctx: (f) => ({ userId: f.teleAId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'co-owner (SALES_EXEC)', allowed: true, ctx: (f) => ({ userId: f.execAId, role: 'SALES_EXEC', organizationId: ORG }) },
+    { name: 'team manager (MANAGER)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'ADMIN', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'ADMIN', organizationId: ORG }) },
+    { name: 'OWNER (downcast to ADMIN)', allowed: true, ctx: (f) => ({ userId: f.managerAId, role: 'OWNER', organizationId: ORG }) },
+    { name: 'other-team MANAGER', allowed: false, ctx: (f) => ({ userId: f.managerBId, role: 'MANAGER', organizationId: ORG }) },
+    { name: 'unrelated TELECALLER', allowed: false, ctx: (f) => ({ userId: f.teleBId, role: 'TELECALLER', organizationId: ORG }) },
+    { name: 'unrelated SALES_EXEC', allowed: false, ctx: (f) => ({ userId: f.execBId, role: 'SALES_EXEC', organizationId: ORG }) },
+    // Site staff: deliberately no policy on any lead-scoped table.
+    { name: 'ENGINEER (no lead policies)', allowed: false, ctx: (f) => ({ userId: f.execBId, role: 'ENGINEER', organizationId: ORG }) },
+  ];
+
+  it.skipIf(!DATABASE_AVAILABLE).each(cases)(
+    'INSERT $name -> allowed=$allowed',
+    { timeout: 30_000 },
+    async ({ ctx, allowed }) => {
+      const context = ctx(fixture);
+      const attempt = withRlsContext(prisma, context, async (tx) =>
+        tx.leadFact.create({ data: factData(fixture, ORG) }),
+      );
+      if (allowed) {
+        await expect(attempt).resolves.toBeDefined();
+      } else {
+        await expect(attempt).rejects.toBeDefined();
+      }
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'owner can read and decide (UPDATE) their own lead fact',
+    { timeout: 30_000 },
+    async () => {
+      const ctx: RlsContext = { userId: fixture.teleAId, role: 'TELECALLER', organizationId: ORG };
+      const created = await withRlsContext(prisma, ctx, async (tx) =>
+        tx.leadFact.create({ data: factData(fixture, ORG) }),
+      );
+      const read = await withRlsContext(prisma, ctx, async (tx) =>
+        tx.leadFact.findMany({ where: { leadId: fixture.leadAId, id: created.id } }),
+      );
+      expect(read).toHaveLength(1);
+      const decided = await withRlsContext(prisma, ctx, async (tx) =>
+        tx.leadFact.update({
+          where: { id: created.id },
+          data: { status: 'DISMISSED', decidedById: fixture.teleAId, decidedAt: new Date() },
+        }),
+      );
+      expect(decided.status).toBe('DISMISSED');
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'a fact cannot be moved to another organization by an UPDATE',
+    { timeout: 30_000 },
+    async () => {
+      const ctx: RlsContext = { userId: fixture.teleAId, role: 'TELECALLER', organizationId: ORG };
+      const created = await withRlsContext(prisma, ctx, async (tx) =>
+        tx.leadFact.create({ data: factData(fixture, ORG) }),
+      );
+      await expect(
+        withRlsContext(prisma, ctx, async (tx) =>
+          tx.leadFact.update({
+            where: { id: created.id },
+            data: { organizationId: 'ceid01lpfe1esm8jwsxid41k29' },
+          }),
+        ),
+      ).rejects.toBeDefined();
+    },
+  );
+
+  it.skipIf(!DATABASE_AVAILABLE)(
+    'DELETE is admin-only - the product dismisses, it does not delete',
+    { timeout: 30_000 },
+    async () => {
+      const ownerCtx: RlsContext = { userId: fixture.teleAId, role: 'TELECALLER', organizationId: ORG };
+      const created = await withRlsContext(prisma, ownerCtx, async (tx) =>
+        tx.leadFact.create({ data: factData(fixture, ORG) }),
+      );
+
+      const ownerDelete = await withRlsContext(prisma, ownerCtx, async (tx) =>
+        tx.leadFact.deleteMany({ where: { id: created.id } }),
+      );
+      // No DELETE policy for a staff role: zero rows, no error.
+      expect(ownerDelete.count).toBe(0);
+
+      const adminCtx: RlsContext = { userId: fixture.managerAId, role: 'ADMIN', organizationId: ORG };
+      const adminDelete = await withRlsContext(prisma, adminCtx, async (tx) =>
+        tx.leadFact.deleteMany({ where: { id: created.id } }),
+      );
+      expect(adminDelete.count).toBe(1);
+    },
+  );
+});
+

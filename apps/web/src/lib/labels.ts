@@ -323,6 +323,60 @@ const FEEDBACK_STATUS_LABELS: Record<FeedbackStatusLabel, string> = {
   ARCHIVED: 'Archived',
 };
 
+/**
+ * Fact-ledger band values per the Prisma `FactBand` enum
+ * (VERIFIED/PROBABLE/POSSIBLE). T-LEAD-FACTS (2026-11-05): the lead sheet
+ * renders a suggestion's band beside it, so the rep can tell "a customer told
+ * us this" from "their WhatsApp profile name says this".
+ */
+export const FACT_BANDS = ['VERIFIED', 'PROBABLE', 'POSSIBLE'] as const;
+export type FactBandLabel = (typeof FACT_BANDS)[number];
+
+const FACT_BAND_LABELS: Record<FactBandLabel, string> = {
+  VERIFIED: 'Verified',
+  PROBABLE: 'Probable',
+  POSSIBLE: 'Possible',
+};
+
+/**
+ * Fact statuses per the Prisma `FactStatus` enum. A PROPOSED row is what the
+ * rep is being asked about; APPLIED is already on the record.
+ */
+export const FACT_STATUSES = [
+  'APPLIED',
+  'PROPOSED',
+  'DISMISSED',
+  'SUPERSEDED',
+] as const;
+export type FactStatusLabel = (typeof FACT_STATUSES)[number];
+
+const FACT_STATUS_LABELS: Record<FactStatusLabel, string> = {
+  APPLIED: 'On the record',
+  PROPOSED: 'Needs a decision',
+  DISMISSED: 'Dismissed',
+  SUPERSEDED: 'Replaced',
+};
+
+/**
+ * Badge variant for a fact band. One map for every surface that shows a band,
+ * same rule as the unit and booking status maps: a second copy is how the same
+ * band ends up two colours on two screens.
+ */
+export function factBandBadgeVariant(
+  band: string,
+): 'success' | 'warning' | 'info' | 'destructive' | 'muted' {
+  switch (band) {
+    case 'VERIFIED':
+      return 'success';
+    case 'PROBABLE':
+      return 'warning';
+    case 'POSSIBLE':
+      return 'info';
+    default:
+      return 'muted';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -381,7 +435,17 @@ export function bookingStatusBadgeVariant(
 }
 
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role' | 'feedback',
+  kind:
+    | 'lead'
+    | 'visit'
+    | 'inventory'
+    | 'booking'
+    | 'source'
+    | 'activity'
+    | 'role'
+    | 'feedback'
+    | 'factBand'
+    | 'factStatus',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -409,6 +473,12 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'feedback') {
     const mapped = (FEEDBACK_STATUS_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'factBand') {
+    const mapped = (FACT_BAND_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'factStatus') {
+    const mapped = (FACT_STATUS_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];
