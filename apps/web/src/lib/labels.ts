@@ -46,6 +46,12 @@
 // text so the UI reads as a work tool, not a chat app.
 
 import { LEAD_STATE_LABELS } from '@shadhil/api-types';
+// T-LEAD-SOURCES (2026-11-05): the lead-source vocabulary is shared with the
+// backend, which normalises an inbound channel against it.
+import {
+  LEAD_SOURCES as SHARED_LEAD_SOURCES,
+  type LeadSource,
+} from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
@@ -171,20 +177,16 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 /**
  * Lead-source values as stored in the DB (free-form uppercase strings,
  * not a Prisma enum). The Source column renders these via `labelFor('source', ...)`
- * so staff see "Magicbricks" not "MAGICBRICKS". Added 2026-09-08.
+ * so staff see "Magicbricks" not "MAGICBRICKS".
+ *
+ * T-LEAD-SOURCES (2026-11-05): the list moved to `@shadhil/api-types` and is
+ * re-exported here, because the public-leads endpoint now normalises an inbound
+ * channel against the same closed set. Two copies of this list is how a new
+ * channel ends up unassignable (the routing rule matches `Lead.source` exactly)
+ * and unlabelled at the same time.
  */
-export const LEAD_SOURCES = [
-  '99ACRES',
-  'HOUSING',
-  'LANDING',
-  'MAGICBRICKS',
-  'META_AD',
-  'OTHER',
-  'REFERRAL',
-  'WALK_IN',
-  'WEBSITE',
-] as const;
-export type LeadSource = (typeof LEAD_SOURCES)[number];
+export { SHARED_LEAD_SOURCES as LEAD_SOURCES };
+export type { LeadSource };
 
 /**
  * Activity-timeline entry types (Prisma `Activity.type` enum). The lead

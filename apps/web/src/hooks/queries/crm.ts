@@ -32,6 +32,8 @@ import type {
   CreateSiteVisitDto,
   LeadActivitiesResponse,
   LeadDetail,
+  LeadFactsResponse,
+  LeadFactRow,
   LeadStateTransitionDto,
   RescheduleVisitDto,
   SendContactMessageDto,
@@ -268,6 +270,50 @@ export function useUpdateLead(leadId: string | null) {
       });
     },
     onSuccess: () => {
+      invalidateLeadCaches(queryClient, leadId ?? undefined);
+    },
+  });
+}
+
+/**
+ * T-LEAD-FACTS (2026-11-05): the lead's fact ledger - APPLIED values with the
+ * evidence that put them there, and PROPOSED suggestions waiting on a rep.
+ *
+ * Keyed separately from `LeadDetail` on purpose: the ledger changes when an
+ * observation arrives, which is not a reason to refetch the whole lead row.
+ */
+export function useLeadFacts(leadId: string | null) {
+  return useQuery({
+    queryKey: ['lead-facts', leadId] as const,
+    queryFn: ({ signal }) =>
+      api<LeadFactsResponse>(`/leads/${leadId}/facts`, { signal }),
+    enabled: leadId !== null && leadId.length > 0,
+  });
+}
+
+/**
+ * Accept or dismiss a suggestion. Accepting writes the Lead column server-side,
+ * so the lead caches are invalidated too - otherwise the sheet would show the
+ * old value next to a fact that says the new one is on the record.
+ */
+export function useDecideLeadFact(leadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      factId: string;
+      decision: 'ACCEPT' | 'DISMISS';
+      reason?: string;
+    }) => {
+      if (leadId === null) {
+        return Promise.reject(new Error('Lead id required'));
+      }
+      return api<LeadFactRow>(`/leads/${leadId}/facts/${input.factId}`, {
+        method: 'PATCH',
+        json: { decision: input.decision, reason: input.reason },
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lead-facts', leadId] });
       invalidateLeadCaches(queryClient, leadId ?? undefined);
     },
   });
