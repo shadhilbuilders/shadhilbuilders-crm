@@ -3,8 +3,14 @@
 // POST /api/public/leads maps a landing-page EnquiryInput to a real CRM
 // Lead and creates it via LeadsService.create():
 //
-//   - source is FORCED to "LANDING" (never trusted from the client), so the
-//     manager-assignment engine routes it by the source=LANDING rule.
+//   - source is NORMALISED, never trusted raw. The caller may send any channel
+//     ('facebook', 'ig', 'housing.com', 'instagram', ...) and the server maps it
+//     onto the closed vocabulary in @shadhil/api-types (T-LEAD-SOURCES). That
+//     matters because the manager-assignment engine matches `rule.source ===
+//     lead.source` EXACTLY: two spellings of one channel split the routing
+//     rules and the leads land on the wrong team. An unrecognised channel
+//     becomes OTHER rather than rejecting the enquiry; an absent one stays
+//     LANDING, which is what the landing page has always sent.
 //   - The lead runs as a synthetic ADMIN actor (sub = the resolved owner).
 //     This reuses the existing ADMIN lead-create path without new RLS
 //     policies; ADMIN is not a real JWT we mint, it is only used to satisfy
@@ -35,9 +41,11 @@ import type { JwtPayload } from '@shadhil/auth';
 import { withRlsContext, type PrismaClient } from '@shadhil/database';
 import {
   CreateLeadDtoSchema,
+  normalizeLeadSource,
 } from '@shadhil/api-types';
 
 import { LeadsService } from '../leads/leads.service';
+import { LeadFactsService } from '../leads/lead-facts.service';
 import { PrismaService } from '../prisma/prisma.module';
 
 import type {
@@ -64,6 +72,7 @@ export class PublicLeadsService {
 
   constructor(
     @Inject(LeadsService) private readonly leadsService: LeadsService,
+    @Inject(LeadFactsService) private readonly leadFacts: LeadFactsService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
@@ -115,8 +124,17 @@ export class PublicLeadsService {
     const createDto = CreateLeadDtoSchema.parse({
       name: dto.fullName,
       phone: dto.phone,
-      email: dto.email || undefined,
-      source: 'LANDING', // forced - analytics + routing must be correct
+      // T-LEAD-FACTS (2026-11-05): the address is deliberately NOT written
+      // here. It goes through the fact ledger in the same transaction below,
+      // so the lead carries the provenance of the address that created it.
+      // `email` stays undefined on the create DTO, which is also what lets the
+      // ledger fill the blank rather than refuse to overwrite itself.
+      // T-LEAD-SOURCES (2026-11-05): the caller's channel, normalised onto the
+      // closed vocabulary the manager-assignment rules match EXACTLY
+      // (`rule.source === lead.source`). 'facebook', 'ig', 'housing.com' and
+      // the canonical tokens all land on one value; an unrecognised channel
+      // becomes OTHER rather than losing the lead.
+      source: normalizeLeadSource(dto.source),
       projectId,
       notes: notes || undefined,
       // Validated owner override threaded into the DTO. The lead service
@@ -141,12 +159,56 @@ export class PublicLeadsService {
       iss: 'shadhil-crm',
     };
 
-    const lead = await this.leadsService.create(actor, createDto);
+    const lead = await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
+      async (tx) => {
+        const client = tx as unknown as PrismaClient;
+
+        const created = await this.leadsService.createInTransaction(
+          actor,
+          createDto,
+          client,
+        );
+
+        const email = (dto.email ?? '').trim();
+        if (email !== '') {
+          const recorded = await this.leadFacts.recordInTransaction(
+            actor,
+            created.id,
+            {
+              field: 'email',
+              value: email,
+              evidence: [
+                {
+                  kind: 'enquiry.form-email',
+                  detail: 'the landing enquiry form carried this address',
+                },
+              ],
+              method: 'landing-enquiry',
+            },
+            client,
+          );
+
+          // A form address on a blank field is VERIFIED, so a refusal here
+          // would be a bug, not a policy decision. Log it loudly: the lead is
+          // still created, and the landing page keeps Sheets as its primary
+          // record, so the address is recoverable rather than lost.
+          if (!recorded.applied) {
+            this.logger.error(
+              `[public-leads] email fact NOT applied lead=${created.id} band=${recorded.band ?? 'none'} reason=${recorded.reason ?? 'unknown'}`,
+            );
+          }
+        }
+
+        return created;
+      },
+    );
 
     this.logger.log(
-      `[public-leads] created lead=${lead.id} owner=${lead.ownerId} source=LANDING org=${orgId} project=${projectId ?? 'null'}`,
+      `[public-leads] created lead=${lead.id} owner=${lead.ownerId} source=${createDto.source} org=${orgId} project=${projectId ?? 'null'}`,
     );
-    return { ok: true, id: lead.id, state: lead.status };
+    return { ok: true, id: lead.id, state: lead.state };
   }
 
   /** Resolve an org slug -> org id. Falls back to PUBLIC_ORG_ID env when the

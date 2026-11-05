@@ -18,6 +18,7 @@ import { dateIntl } from '@paalstack/react-ui/lib';
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { LeadActionPanel } from '@/components/shared/LeadActionPanel';
+import { LeadFactsPanel } from '@/components/leads/lead-facts-panel';
 import { LeadChatPane } from '@/components/shared/LeadChatPane';
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
 import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
@@ -84,6 +85,7 @@ export default function LeadDetailPage() {
           {/* Left - lead info + actions + timeline */}
           <div className="space-y-4">
             <LeadInfoCard lead={lead} />
+            <LeadFactsPanel leadId={lead.id} />
             <LeadActionPanel lead={lead} />
             <LeadVisitPanel lead={lead} />
             <LeadTimeline

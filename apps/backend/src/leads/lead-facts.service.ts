@@ -113,126 +113,146 @@ export class LeadFactsService {
     leadId: string,
     dto: RecordLeadFactDto,
   ): Promise<RecordLeadFactResult> {
-    const evidence = dto.evidence as unknown as Evidence[];
-    const scored = scoreEvidence(evidence);
-
     return withRlsContext(
       this.prisma as unknown as PrismaClient,
       rlsContextFrom(actor),
-      async (tx) => {
-        const lead = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: SUBJECT_SELECT,
-        });
-
-        if (!lead) throw new NotFoundException('Lead not found');
-
-        const subject: LeadFactSubject = {
-          name: lead.name,
-          email: lead.email,
-          source: lead.source,
-        };
-
-        const existingRows = await tx.leadFact.findMany({
-          where: { leadId, field: dto.field },
-          select: { value: true, status: true },
-        });
-
-        const existing: ExistingFact[] = existingRows.map((row) => ({
-          value: row.value,
-          status: row.status,
-        }));
-
-        const decision = decideLeadFactWrite({
-          field: dto.field as FactLedgerField,
-          value: dto.value,
-          scored,
-          subject,
-          existing,
-        });
-
-        if (decision.action === 'REFUSE' || decision.action === 'NOOP') {
-          return {
-            stored: false,
-            applied: false,
-            band: scored.band,
-            score: scored.score,
-            rationale: scored.rationale,
-            reason: decision.reason,
-          };
-        }
-
-        const applies = decision.action === 'APPLY';
-        const value = dto.value.trim();
-
-        if (applies) {
-          // One APPLIED row per field: whatever it replaces becomes history.
-          await tx.leadFact.updateMany({
-            where: {
-              leadId,
-              field: dto.field,
-              status: { in: ['APPLIED', 'PROPOSED'] },
-            },
-            data: { status: 'SUPERSEDED', supersededAt: new Date() },
-          });
-        }
-
-        const fact = await tx.leadFact.create({
-          data: {
-            leadId,
-            organizationId: lead.organizationId,
-            field: dto.field,
-            value,
-            score: scored.score,
-            band: scored.band as FactBand,
-            evidence: dto.evidence as unknown as Prisma.InputJsonValue,
-            method: dto.method,
-            sourceUrl: dto.sourceUrl ?? null,
-            status: applies ? 'APPLIED' : 'PROPOSED',
-          },
-        });
-
-        if (!applies) {
-          return {
-            stored: true,
-            applied: false,
-            band: scored.band,
-            score: scored.score,
-            rationale: scored.rationale,
-            reason:
-              'The record is not blank here, so this is kept as a suggestion for a rep. That is a normal outcome - do not try to raise the score.',
-            fact: toWireRow(fact),
-          };
-        }
-
-        await tx.lead.update({
-          where: { id: leadId },
-          data: columnPatch(dto.field, value),
-        });
-
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: lead.organizationId,
-            action: 'lead.fact.apply',
-            entityType: 'Lead',
-            entityId: leadId,
-            before: { [dto.field]: subject[dto.field] },
-            after: { [dto.field]: value },
-            reason: `${dto.method} (${scored.band})`,
-          },
-        });
-
-        return {
-          stored: true,
-          applied: true,
-          band: scored.band,
-          score: scored.score,
-          rationale: scored.rationale,
-          fact: toWireRow(fact),
-        };
-      },
+      (tx) =>
+        this.recordInTransaction(
+          actor,
+          leadId,
+          dto,
+          tx as unknown as PrismaClient,
+        ),
     );
+  }
+
+  /**
+   * The same write, inside a caller-owned transaction. A producer that must
+   * commit the observation and the row it describes together uses this (the
+   * landing-form enquiry creates the Lead and its email fact in one
+   * transaction, so a lead is never left without the address that created it).
+   * The caller has already set the RLS context; this must not open another.
+   */
+  async recordInTransaction(
+    actor: JwtPayload,
+    leadId: string,
+    dto: RecordLeadFactDto,
+    client: PrismaClient,
+  ): Promise<RecordLeadFactResult> {
+    const evidence = dto.evidence as unknown as Evidence[];
+    const scored = scoreEvidence(evidence);
+
+    const lead = await client.lead.findUnique({
+      where: { id: leadId },
+      select: SUBJECT_SELECT,
+    });
+
+    if (!lead) throw new NotFoundException('Lead not found');
+
+    const subject: LeadFactSubject = {
+      name: lead.name,
+      email: lead.email,
+      source: lead.source,
+    };
+
+    const existingRows = await client.leadFact.findMany({
+      where: { leadId, field: dto.field },
+      select: { value: true, status: true },
+    });
+
+    const existing: ExistingFact[] = existingRows.map((row) => ({
+      value: row.value,
+      status: row.status,
+    }));
+
+    const decision = decideLeadFactWrite({
+      field: dto.field as FactLedgerField,
+      value: dto.value,
+      scored,
+      subject,
+      existing,
+    });
+
+    if (decision.action === 'REFUSE' || decision.action === 'NOOP') {
+      return {
+        stored: false,
+        applied: false,
+        band: scored.band,
+        score: scored.score,
+        rationale: scored.rationale,
+        reason: decision.reason,
+      };
+    }
+
+    const applies = decision.action === 'APPLY';
+    const value = dto.value.trim();
+
+    if (applies) {
+      // One APPLIED row per field: whatever it replaces becomes history.
+      await client.leadFact.updateMany({
+        where: {
+          leadId,
+          field: dto.field,
+          status: { in: ['APPLIED', 'PROPOSED'] },
+        },
+        data: { status: 'SUPERSEDED', supersededAt: new Date() },
+      });
+    }
+
+    const fact = await client.leadFact.create({
+      data: {
+        leadId,
+        organizationId: lead.organizationId,
+        field: dto.field,
+        value,
+        score: scored.score,
+        band: scored.band as FactBand,
+        evidence: dto.evidence as unknown as Prisma.InputJsonValue,
+        method: dto.method,
+        sourceUrl: dto.sourceUrl ?? null,
+        status: applies ? 'APPLIED' : 'PROPOSED',
+      },
+    });
+
+    if (!applies) {
+      return {
+        stored: true,
+        applied: false,
+        band: scored.band,
+        score: scored.score,
+        rationale: scored.rationale,
+        reason:
+          'The record is not blank here, so this is kept as a suggestion for a rep. That is a normal outcome - do not try to raise the score.',
+        fact: toWireRow(fact),
+      };
+    }
+
+    await client.lead.update({
+      where: { id: leadId },
+      data: columnPatch(dto.field, value),
+    });
+
+    await client.auditLog.create({
+      data: {
+        userId: actor.sub,
+        organizationId: lead.organizationId,
+        action: 'lead.fact.apply',
+        entityType: 'Lead',
+        entityId: leadId,
+        before: { [dto.field]: subject[dto.field] },
+        after: { [dto.field]: value },
+        reason: `${dto.method} (${scored.band})`,
+      },
+    });
+
+    return {
+      stored: true,
+      applied: true,
+      band: scored.band,
+      score: scored.score,
+      rationale: scored.rationale,
+      fact: toWireRow(fact),
+    };
   }
 
   /**

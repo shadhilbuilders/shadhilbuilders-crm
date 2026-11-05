@@ -36,6 +36,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/queries/crm', () => ({
   useLead: vi.fn(),
   useLeadActivities: vi.fn(),
+  // T-LEAD-FACTS (2026-11-05): the page now renders LeadFactsPanel, which reads
+  // the ledger. The panel itself is not under test here; it just needs a hook
+  // that resolves so this suite keeps asserting the page's own state matrix.
+  useLeadFacts: vi.fn(() => ({ data: undefined, isPending: false })),
+  useDecideLeadFact: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock('@/components/shared/LeadActionPanel', () => ({
