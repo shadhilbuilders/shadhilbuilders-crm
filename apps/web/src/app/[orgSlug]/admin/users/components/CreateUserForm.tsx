@@ -220,6 +220,7 @@ export function CreateUserForm({
           data-qa="create-user-team"
           selectOptionAsValue
           isInvalid={fieldState.invalid}
+          errorMessage={fieldState.error?.message}
           onValueChange={(value) => {
             field.onChange(value ?? undefined);
           }}
