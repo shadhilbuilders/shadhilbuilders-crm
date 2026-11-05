@@ -182,10 +182,15 @@ export class PublicLeadsService {
               evidence: [
                 {
                   kind: 'enquiry.form-email',
-                  detail: 'the landing enquiry form carried this address',
+                  // T-LEAD-SOURCES (2026-11-05): channel-agnostic wording. The
+                  // same endpoint takes a landing enquiry, a Meta lead-form
+                  // post and a portal enquiry, and the rep reads this sentence
+                  // on the lead page. Naming a channel here would be wrong for
+                  // the others.
+                  detail: 'the enquiry carried this address',
                 },
               ],
-              method: 'landing-enquiry',
+              method: 'public-enquiry',
             },
             client,
           );

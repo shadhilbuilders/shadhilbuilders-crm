@@ -105,12 +105,12 @@ describe('PublicLeadsService - the landing enquiry produces an email fact', () =
     expect(recorded[0]?.dto).toMatchObject({
       field: 'email',
       value: 'ramesh@example.com',
-      method: 'landing-enquiry',
+      method: 'public-enquiry',
     });
     expect(recorded[0]?.dto['evidence']).toEqual([
       {
         kind: 'enquiry.form-email',
-        detail: 'the landing enquiry form carried this address',
+        detail: 'the enquiry carried this address',
       },
     ]);
 
