@@ -97,15 +97,12 @@ export function CreateUserForm({
 
   // RHF's handleSubmit drops invalid submissions silently and the react-ui
   // Form renders no per-field error text, so a blocked submit (bad email,
-  // short password, empty name) looked like a dead button: click, nothing
-  // happens, no message anywhere. Subscribe to the error state and surface
-  // every message in one visible summary; re-subscribes because `errors`
-  // changes per render. The Team picker ALSO renders its own message inline
-  // (see the teamId field below) - the summary is the catch-all for fields
-  // that render none.
-  const fieldErrors = Object.entries(form.formState.errors)
-    .map(([field, err]) => ({ field, message: err?.message }))
-    .filter((e): e is { field: string; message: string } => typeof e.message === 'string');
+  // short password, empty name) used to look like a dead button: click,
+  // nothing happens, no message anywhere. That was fixed by moving the
+  // team-required rule into `CreateUserFormSchema` above, which makes every
+  // failure a normal field error the fields render inline. The old
+  // `fieldErrors` summary that read `form.formState.errors` here was left
+  // behind by that refactor with no render site - it is gone.
 
   function onSubmit(values: CreateUserFormValues) {
     // The payload is CreateUserDto-shaped. teamId is sent only when a staff
