@@ -79,6 +79,14 @@ const ROLE_LANES: Readonly<
     NO_SHOW: ['RESCHEDULED'],
     CANCELLED: [],
   },
+  // Issue #7 slice 1: site staff schedule nothing; every transition denies.
+  ENGINEER: {
+    SCHEDULED: [],
+    RESCHEDULED: [],
+    COMPLETED: [],
+    NO_SHOW: [],
+    CANCELLED: [],
+  },
 };
 
 function canRoleTransition(

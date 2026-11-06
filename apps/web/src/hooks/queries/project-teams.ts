@@ -14,6 +14,8 @@ export type TeamMembership = {
   role: string;
   assignedAt: string;
   isManagerSlot: boolean;
+  /** Project-scoped only: this member is the project's photo lead (issue #7). */
+  photoLead: boolean;
 };
 
 export type ProjectTeamRow = {

@@ -1,0 +1,101 @@
+{
+  "version": 2,
+  "round": 3,
+  "document": "/home/paalstack/workspace/shadhil-projects/shadhilbuilders-crm/docs/designs/customer-progress-portal.md",
+  "quality_score": 7,
+  "dimensions": {
+    "completeness": "ISSUES",
+    "consistency": "ISSUES",
+    "clarity": "ISSUES",
+    "scope": "PASS",
+    "feasibility": "PASS"
+  },
+  "findings": [
+    {
+      "id": "R3-1",
+      "dimension": "consistency",
+      "severity": "blocking",
+      "changed_text": null,
+      "problem": "Persisting R2-1: the Slice 1 resequencing (staff/admin preview only, no customer authentication; customer go-live in Slice 2) still contradicts 'The Assignment', which instructs: 'Write the slice-1 spec as a backlog-ready issue: the upload flow (site manager's phone, per-unit, phase label), the customer timeline route, and the ProgressPhoto Prisma model.' An implementer following The Assignment would spec the unauthenticated customer route the revised Slice 1 explicitly excludes. The document is unchanged since round 2, so this original obligation is still unmet.",
+      "remedy": "Update The Assignment to match the revised Slice 1: the slice-1 spec covers the upload flow, the stage labels, the ProgressPhoto model, and the staff/admin preview timeline (inside existing CRM auth); the customer timeline route moves to the slice-2 spec."
+    },
+    {
+      "id": "R3-2",
+      "dimension": "consistency",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Persisting R2-2: the Dependencies section still says 'Web push plumbing is present in the schema but unverified for customer subscriptions; confirm during Slice 1', but the committed sequencing moves customer subscriptions and push activation to Slice 2 ('Customer go-live, customer logins and push activation all land in Slice 2 ... Web push on new upload activates here'). The instruction points at the wrong slice; document text is unchanged since round 2.",
+      "remedy": "Reword the dependency to 'confirm during Slice 2' (or drop the slice reference and tie it to when push activates)."
+    },
+    {
+      "id": "R3-3",
+      "dimension": "completeness",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Persisting R2-3 (originally R1-3): no correction behavior for the upload loop is specified — wrong-unit uploads, duplicates, caption edits, or deletion of a photo already published to customer timelines. Document is unchanged since round 2.",
+      "remedy": "Specify edit/delete/reassign behavior for ProgressPhoto in v1, or explicitly defer it and state how a wrongly published photo is handled."
+    },
+    {
+      "id": "R3-4",
+      "dimension": "consistency",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Persisting R2-4 (originally R1-4): Premise 4 still says 'Sequencing: photo timeline ships first inside the portal shell', while the committed sequencing ships the timeline as a staff-facing preview in Slice 1 and the portal shell only arrives in Slice 2 ('The shell absorbs the timeline built in Slice 1'). Wording contradiction, unchanged since round 2.",
+      "remedy": "Reword Premise 4 to match the committed sequencing (timeline ships first, shell later absorbs it)."
+    },
+    {
+      "id": "R3-5",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Persisting R2-5 (originally R1-5): Slice 3's parenthetical '(each cell links to its own entity)' under 'the unit number as the primary identifier' remains unexplained jargon; unchanged since round 1.",
+      "remedy": "Rewrite the parenthetical in plain terms (e.g., the unit number is displayed as a link to that unit's own detail page)."
+    },
+    {
+      "id": "R3-6",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Persisting R2-6 (originally R1-7): the success metric 'Measured: first login to last photo in under a minute on a mid-range Android phone' remains ambiguous — time-to-first-photo, total session duration, or time until every photo is loaded; unchanged since round 1.",
+      "remedy": "Reword the measurement unambiguously, e.g. 'from login, the latest construction photos are visible on the timeline within 60 seconds on a mid-range Android phone.'"
+    }
+  ],
+  "prior": [
+    {
+      "id": "R2-1",
+      "status": "persisting",
+      "evidence": "The Assignment still reads 'Write the slice-1 spec as a backlog-ready issue: the upload flow (site manager's phone, per-unit, phase label), the customer timeline route, and the ProgressPhoto Prisma model', while Slice 1 still commits 'staff- and admin-facing only (preview inside the existing CRM auth); no customer authentication exists yet'. The same original obligation (Assignment must match the revised Slice 1) is unmet; document unchanged since round 2.",
+      "current_id": "R3-1"
+    },
+    {
+      "id": "R2-2",
+      "status": "persisting",
+      "evidence": "Dependencies still reads 'confirm during Slice 1' and Slice 2 still carries 'Web push on new upload activates here'; the obligation to align the dependency timing with the committed sequencing is unmet.",
+      "current_id": "R3-2"
+    },
+    {
+      "id": "R2-3",
+      "status": "persisting",
+      "evidence": "No edit/delete/reassign/duplicate behavior for ProgressPhoto appears anywhere in the current design; the obligation to specify or explicitly defer correction behavior is unmet. This also carries the originally identical R1-3 obligation.",
+      "current_id": "R3-3"
+    },
+    {
+      "id": "R2-4",
+      "status": "persisting",
+      "evidence": "Premise 4 still reads 'Sequencing: photo timeline ships first inside the portal shell' while Slice 2 says 'The shell absorbs the timeline built in Slice 1'; the obligation to align Premise 4 with the committed sequencing is unmet. This also carries the originally identical R1-4 obligation.",
+      "current_id": "R3-4"
+    },
+    {
+      "id": "R2-5",
+      "status": "persisting",
+      "evidence": "Slice 3 still contains '(each cell links to its own entity)' with no explanation; the obligation to rewrite it plainly is unmet. This also carries the originally identical R1-5 obligation.",
+      "current_id": "R3-5"
+    },
+    {
+      "id": "R2-6",
+      "status": "persisting",
+      "evidence": "Success Criteria still reads 'Measured: first login to last photo in under a minute on a mid-range Android phone'; the obligation to state the metric unambiguously is unmet. This also carries the originally identical R1-7 obligation.",
+      "current_id": "R3-6"
+    }
+  ]
+}

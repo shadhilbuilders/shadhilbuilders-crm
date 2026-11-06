@@ -33,7 +33,8 @@ export type Role =
   | 'ADMIN'
   | 'MANAGER'
   | 'SALES_EXEC'
-  | 'TELECALLER';
+  | 'TELECALLER'
+  | 'ENGINEER';
 
 export const STAFF_ROLES: readonly Role[] = [
   'OWNER',
@@ -41,7 +42,19 @@ export const STAFF_ROLES: readonly Role[] = [
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  'ENGINEER', // issue #7 slice 1: site-staff, upload progress photos
 ];
+
+const ROLE_VALUES: readonly string[] = STAFF_ROLES;
+
+function normalizeRole(raw: unknown): Role {
+  const value = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+  if (ROLE_VALUES.includes(value)) return value as Role;
+  // Issue #7: fail-closed — an unrecognized role string must never masquerade
+  // as a known role (the TELECALLER default pre-dates ENGINEER and could
+  // silently grant an engineer the telecaller surface).
+  throw new ApiError(`Unknown role in session payload: ${String(raw)}`, 500);
+}
 
 export type SessionUser = {
   id: string;
@@ -51,18 +64,11 @@ export type SessionUser = {
   organizationId: string | null;
 };
 
-const ROLE_VALUES: readonly string[] = STAFF_ROLES;
-
-function normalizeRole(raw: unknown): Role {
-  const value = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
-  return ROLE_VALUES.includes(value) ? (value as Role) : 'TELECALLER';
-}
-
 /**
  * Pull the current session user out of a better-auth session payload.
  * `role` rides as an additional field on the user object
- * (@shadhil/auth user.additionalFields) - default to TELECALLER if absent.
- * Team membership is a TeamMember row, not a session scalar.
+ * (@shadhil/auth user.additionalFields). Team membership is a TeamMember
+ * row, not a session scalar.
  */
 export function sessionUserFromSession(session: unknown): SessionUser | null {
   if (session === null || typeof session !== 'object') return null;

@@ -23,6 +23,7 @@ export const RoleSchema = z.enum([
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  'ENGINEER', // issue #7 slice 1: site-staff (upload progress photos only)
 ]);
 export type Role = z.infer<typeof RoleSchema>;
 

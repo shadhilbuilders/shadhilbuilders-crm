@@ -7,10 +7,12 @@ import { Module } from '@nestjs/common';
 
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
+import { LeadFactsController } from './lead-facts.controller';
+import { LeadFactsService } from './lead-facts.service';
 
 @Module({
-  controllers: [LeadsController],
-  providers: [LeadsService],
-  exports: [LeadsService],
+  controllers: [LeadsController, LeadFactsController],
+  providers: [LeadsService, LeadFactsService],
+  exports: [LeadsService, LeadFactsService],
 })
 export class LeadsModule {}

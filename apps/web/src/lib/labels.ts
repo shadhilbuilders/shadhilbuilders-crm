@@ -46,6 +46,12 @@
 // text so the UI reads as a work tool, not a chat app.
 
 import { LEAD_STATE_LABELS } from '@shadhil/api-types';
+// T-LEAD-SOURCES (2026-11-05): the lead-source vocabulary is shared with the
+// backend, which normalises an inbound channel against it.
+import {
+  LEAD_SOURCES as SHARED_LEAD_SOURCES,
+  type LeadSource,
+} from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
@@ -171,20 +177,16 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 /**
  * Lead-source values as stored in the DB (free-form uppercase strings,
  * not a Prisma enum). The Source column renders these via `labelFor('source', ...)`
- * so staff see "Magicbricks" not "MAGICBRICKS". Added 2026-09-08.
+ * so staff see "Magicbricks" not "MAGICBRICKS".
+ *
+ * T-LEAD-SOURCES (2026-11-05): the list moved to `@shadhil/api-types` and is
+ * re-exported here, because the public-leads endpoint now normalises an inbound
+ * channel against the same closed set. Two copies of this list is how a new
+ * channel ends up unassignable (the routing rule matches `Lead.source` exactly)
+ * and unlabelled at the same time.
  */
-export const LEAD_SOURCES = [
-  '99ACRES',
-  'HOUSING',
-  'LANDING',
-  'MAGICBRICKS',
-  'META_AD',
-  'OTHER',
-  'REFERRAL',
-  'WALK_IN',
-  'WEBSITE',
-] as const;
-export type LeadSource = (typeof LEAD_SOURCES)[number];
+export { SHARED_LEAD_SOURCES as LEAD_SOURCES };
+export type { LeadSource };
 
 /**
  * Activity-timeline entry types (Prisma `Activity.type` enum). The lead
@@ -271,7 +273,7 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
 
 /**
  * Staff-role values per the Prisma `User.role` enum (OWNER/ADMIN/MANAGER/
- * SALES_EXEC/TELECALLER). The users page renders these via
+ * SALES_EXEC/TELECALLER/ENGINEER). The users page renders these via
  * `labelFor('role', ...)` so staff see "Sales executive" not "SALES_EXEC".
  * Added 2026-09-09 alongside the users-page DataTable rebuild.
  */
@@ -281,6 +283,7 @@ export const ROLES = [
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  'ENGINEER',
 ] as const;
 export type RoleLabel = (typeof ROLES)[number];
 
@@ -290,7 +293,22 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
   MANAGER: 'Manager',
   SALES_EXEC: 'Sales Executive',
   TELECALLER: 'Telecaller',
+  ENGINEER: 'Site Engineer',
 };
+
+/**
+ * Site-staff uploader label (issue #7 slice 1): "Site Manager" when the
+ * photo-lead row exists on the project, "Site Engineer" otherwise, "Unknown"
+ * for a deleted creator. Pure renderer of server-precomputed timeline fields
+ * (no client-side team resolution - TeamMember RLS hides other members' rows).
+ */
+export function siteMemberLabel(
+  creatorName: string | null,
+  creatorIsPhotoLead: boolean | null,
+): string {
+  if (creatorName === null) return 'Unknown';
+  return creatorIsPhotoLead ? 'Site Manager' : 'Site Engineer';
+}
 
 /**
  * Feedback triage-status values per the Prisma `Feedback.status` enum
@@ -306,6 +324,60 @@ const FEEDBACK_STATUS_LABELS: Record<FeedbackStatusLabel, string> = {
   REVIEWED: 'Reviewed',
   ARCHIVED: 'Archived',
 };
+
+/**
+ * Fact-ledger band values per the Prisma `FactBand` enum
+ * (VERIFIED/PROBABLE/POSSIBLE). T-LEAD-FACTS (2026-11-05): the lead sheet
+ * renders a suggestion's band beside it, so the rep can tell "a customer told
+ * us this" from "their WhatsApp profile name says this".
+ */
+export const FACT_BANDS = ['VERIFIED', 'PROBABLE', 'POSSIBLE'] as const;
+export type FactBandLabel = (typeof FACT_BANDS)[number];
+
+const FACT_BAND_LABELS: Record<FactBandLabel, string> = {
+  VERIFIED: 'Verified',
+  PROBABLE: 'Probable',
+  POSSIBLE: 'Possible',
+};
+
+/**
+ * Fact statuses per the Prisma `FactStatus` enum. A PROPOSED row is what the
+ * rep is being asked about; APPLIED is already on the record.
+ */
+export const FACT_STATUSES = [
+  'APPLIED',
+  'PROPOSED',
+  'DISMISSED',
+  'SUPERSEDED',
+] as const;
+export type FactStatusLabel = (typeof FACT_STATUSES)[number];
+
+const FACT_STATUS_LABELS: Record<FactStatusLabel, string> = {
+  APPLIED: 'On the record',
+  PROPOSED: 'Needs a decision',
+  DISMISSED: 'Dismissed',
+  SUPERSEDED: 'Replaced',
+};
+
+/**
+ * Badge variant for a fact band. One map for every surface that shows a band,
+ * same rule as the unit and booking status maps: a second copy is how the same
+ * band ends up two colours on two screens.
+ */
+export function factBandBadgeVariant(
+  band: string,
+): 'success' | 'warning' | 'info' | 'destructive' | 'muted' {
+  switch (band) {
+    case 'VERIFIED':
+      return 'success';
+    case 'PROBABLE':
+      return 'warning';
+    case 'POSSIBLE':
+      return 'info';
+    default:
+      return 'muted';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -365,7 +437,17 @@ export function bookingStatusBadgeVariant(
 }
 
 export function labelFor(
-  kind: 'lead' | 'visit' | 'inventory' | 'booking' | 'source' | 'activity' | 'role' | 'feedback',
+  kind:
+    | 'lead'
+    | 'visit'
+    | 'inventory'
+    | 'booking'
+    | 'source'
+    | 'activity'
+    | 'role'
+    | 'feedback'
+    | 'factBand'
+    | 'factStatus',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -393,6 +475,12 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'feedback') {
     const mapped = (FEEDBACK_STATUS_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'factBand') {
+    const mapped = (FACT_BAND_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'factStatus') {
+    const mapped = (FACT_STATUS_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];

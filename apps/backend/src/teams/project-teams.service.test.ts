@@ -61,6 +61,7 @@ type TxMock = {
     delete: ReturnType<typeof vi.fn>;
   };
   teamMember: { findMany: ReturnType<typeof vi.fn> };
+  projectStaffRole: { findMany: ReturnType<typeof vi.fn> };
   lead: { count: ReturnType<typeof vi.fn> };
   user: { findUnique: ReturnType<typeof vi.fn> };
   auditLog: { create: ReturnType<typeof vi.fn> };
@@ -78,6 +79,7 @@ function makeTx(overrides: Partial<{
   }>;
   projectTeamLink: { teamId: string; projectId: string } | null;
   teamMembers: Array<{ userId: string; assignedAt: Date; user: { name: string; email: string; role: string } }>;
+  photoLeads: Array<{ userId: string }>;
   leadCount: number;
   managers: Record<string, { id: string; name: string } | null>;
 }> = {}): TxMock {
@@ -113,6 +115,9 @@ function makeTx(overrides: Partial<{
     },
     teamMember: {
       findMany: vi.fn(async () => overrides.teamMembers ?? []),
+    },
+    projectStaffRole: {
+      findMany: vi.fn(async () => overrides.photoLeads ?? []),
     },
     lead: {
       count: vi.fn(async () => overrides.leadCount ?? 0),
@@ -174,6 +179,36 @@ describe('ProjectTeamsService.list', () => {
     expect(row.memberCount).toBe(2);
     expect(row.members.find((m) => m.isManagerSlot)?.userId).toBe('mgr-a');
     expect(row.canUnlink).toBe(true);
+  });
+
+  it('carries photoLead onto roster members from ProjectStaffRole (issue #7)', async () => {
+    makeTx({
+      projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
+      projectTeamLinks: [{ teamId: 'team-a', team: { name: 'Metro Sales', manager: null } }],
+      teams: {
+        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+      },
+      teamMembers: [
+        {
+          userId: 'eng-1',
+          assignedAt: new Date('2026-01-01T00:00:00Z'),
+          user: { name: 'Arjun', email: 'arjun@x.in', role: 'ENGINEER' },
+        },
+        {
+          userId: 'eng-2',
+          assignedAt: new Date('2026-01-02T00:00:00Z'),
+          user: { name: 'Kiran', email: 'kiran@x.in', role: 'ENGINEER' },
+        },
+      ],
+      // eng-1 is the photo lead on THIS project; eng-2 is not.
+      photoLeads: [{ userId: 'eng-1' }],
+      leadCount: 0,
+    });
+    const svc = new ProjectTeamsService({ $client: {} } as never);
+    const result = await svc.list(adminActor, 'proj-1');
+    const members = result.teams[0]!.members;
+    expect(members.find((m) => m.userId === 'eng-1')?.photoLead).toBe(true);
+    expect(members.find((m) => m.userId === 'eng-2')?.photoLead).toBe(false);
   });
 
   it('canUnlink is false for a non-admin actor even with zero leads', async () => {

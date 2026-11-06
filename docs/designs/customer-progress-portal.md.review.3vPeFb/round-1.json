@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "round": 1,
+  "document": "/home/paalstack/workspace/shadhil-projects/shadhilbuilders-crm/docs/designs/customer-progress-portal.md",
+  "quality_score": 7,
+  "dimensions": {
+    "completeness": "ISSUES",
+    "consistency": "ISSUES",
+    "clarity": "ISSUES",
+    "scope": "PASS",
+    "feasibility": "PASS"
+  },
+  "findings": [
+    {
+      "id": "R1-1",
+      "dimension": "completeness",
+      "severity": "blocking",
+      "changed_text": null,
+      "problem": "Slice 1 delivers the customer-facing timeline page scoped \"to the customer's booking\" and web push on new upload, but customer logins and the Customer role are built in Slice 2. In Slice 1 there is no defined way for a customer to be authenticated, so the scoping subject of the timeline and the push target are undefined: the first slice cannot deliver customer value as committed.",
+      "remedy": "Resolve the sequencing: either move the minimal customer login (Customer role + session) ahead of or into Slice 1, or redefine Slice 1's customer side as an internal/staff-preview page with the customer go-live (and push activation) happening in Slice 2 once login exists. State the chosen interim access path explicitly."
+    },
+    {
+      "id": "R1-2",
+      "dimension": "completeness",
+      "severity": "blocking",
+      "changed_text": null,
+      "problem": "The committed ProgressPhoto model includes phaseId and site managers apply a \"phase label per upload\", but the document never defines where phase data comes from. No phase taxonomy, existing entity, or creation/maintenance behavior is specified, so the phaseId field has no defined referent and the timeline's phase labels have no source.",
+      "remedy": "Document the phase source: either state that an existing CRM phase/entity is reused (name it), or add the phase taxonomy creation and list of phases as an explicit part of Slice 1 / an Open Question. Do not leave phaseId referencing an undefined concept in the committed data model."
+    },
+    {
+      "id": "R1-3",
+      "dimension": "completeness",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "No correction behavior for the upload loop is specified: what happens when a site manager uploads a photo to the wrong unit, uploads a duplicate, needs to edit a caption, or needs to delete a photo that has already appeared on customer timelines.",
+      "remedy": "Specify edit/delete/reassign behavior for ProgressPhoto in v1, or explicitly defer it and state how a wrongly published photo is handled."
+    },
+    {
+      "id": "R1-4",
+      "dimension": "consistency",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Premise 4 says the photo timeline \"ships first inside the portal shell\", but the slice list has the timeline in Slice 1 and the portal shell in Slice 2, which then \"absorbs the timeline from Slice 1\" — i.e. the timeline initially ships outside the shell.",
+      "remedy": "Reword Premise 4 to match the committed sequencing (timeline ships first, shell later absorbs it)."
+    },
+    {
+      "id": "R1-5",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Slice 3's parenthetical \"(each cell links to its own entity)\" in \"the unit number as the primary identifier\" is unexplained jargon; a reader without the earlier conversation cannot tell what decision it encodes.",
+      "remedy": "Rewrite the parenthetical in plain terms (e.g., the unit number is displayed as a link to that unit's own detail page)."
+    },
+    {
+      "id": "R1-6",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Web push on new upload is a committed Slice 1 behavior with no fallback: if a customer has not granted notification permission or has no subscription, the design does not say whether the timeline alone is the delivery path or whether an alternative (e.g., email digest, in-app badge) is intended.",
+      "remedy": "Choose and document the fallback: push is best-effort with the timeline as the source of truth, or an explicit secondary channel is in scope."
+    },
+    {
+      "id": "R1-7",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "The success metric \"Measured: first login to last photo in under a minute\" is ambiguous — \"first login to last photo\" could mean time-to-first-photo, total session duration, or time until every photo is loaded.",
+      "remedy": "Reword the measurement unambiguously, e.g. \"from login, the latest construction photos are visible on the timeline within 60 seconds on a mid-range Android phone.\""
+    }
+  ],
+  "prior": []
+}

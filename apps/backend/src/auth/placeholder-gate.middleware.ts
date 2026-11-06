@@ -3,9 +3,10 @@
 // Sits in front of the better-auth catch-all (which is mounted at
 // /api/auth/*splat) and rejects sign-in for any email listed in
 // packages/auth-client/placeholder-users.json. The list is committed
-// to the repo and contains the 5 seed accounts from Plan §17 Input
-// #5. Production deploys that don't run the seed have an empty
-// list; the gate is a no-op.
+// to the repo and contains the seed accounts from Plan §17 Input
+// #5 (owner, admin, manager, telecaller, sales_exec, and engineer
+// as of issue #7 slice 1). Production deploys that don't run the seed
+// have an empty list; the gate is a no-op.
 //
 // Why this exists as a Nest middleware (not a better-auth `hooks.before`):
 // better-auth 1.7.2's `hooks.before` is declared in the type signature

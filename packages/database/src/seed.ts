@@ -50,7 +50,7 @@ interface SeedUser {
 }
 
 function readSeedUser(
-  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC',
+  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER',
 ): SeedUser {
   // Plan §17 Input #5: fall back to documented placeholder users so a fresh
   // clone can seed before the client roster arrives. Placeholders MUST be
@@ -64,6 +64,7 @@ function readSeedUser(
   //   MANAGER     → manager@shadhilbuilders.in
   //   TELECALLER  → telecaller@shadhilbuilders.in
   //   SALES_EXEC  → sales_exec@shadhilbuilders.in
+  //   ENGINEER    → engineer@shadhilbuilders.in (issue #7 slice 1 site staff)
   // Each email mirrors the role name - Round 23 swap from
   // admin@/admin2@ → owner@/admin@.
   const FALLBACK_EMAIL: Record<typeof prefix, string> = {
@@ -72,6 +73,7 @@ function readSeedUser(
     MANAGER: 'manager@shadhilbuilders.in',
     TELECALLER: 'telecaller@shadhilbuilders.in',
     SALES_EXEC: 'sales_exec@shadhilbuilders.in',
+    ENGINEER: 'engineer@shadhilbuilders.in',
   };
   const FALLBACK_NAME: Record<typeof prefix, string> = {
     OWNER: 'Owner',
@@ -79,6 +81,7 @@ function readSeedUser(
     MANAGER: 'Manager',
     TELECALLER: 'Telecaller',
     SALES_EXEC: 'Sales Exec',
+    ENGINEER: 'Site Engineer',
   };
   const FALLBACK_PASSWORD: Record<typeof prefix, string> = {
     OWNER: 'owner_placeholder_pw',
@@ -86,6 +89,7 @@ function readSeedUser(
     MANAGER: 'manager_placeholder_pw',
     TELECALLER: 'telecaller_placeholder_pw',
     SALES_EXEC: 'sales_exec_placeholder_pw',
+    ENGINEER: 'engineer_placeholder_pw',
   };
 
   const email = process.env[`SEED_${prefix}_EMAIL`] ?? FALLBACK_EMAIL[prefix];
@@ -101,7 +105,7 @@ function readSeedUser(
   return { email, name, password };
 }
 
-type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC';
+type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER';
 
 // Fixed cuid2 ids for the seeded projects. Generated once with
 // `createId()` from @paralleldrive/cuid2 and validated against
@@ -137,6 +141,10 @@ export const SEED_ADMIN_ID = 'b2djb8x7jpk8702v8o83rl6s';
 export const SEED_MANAGER_ID = 'jhl2a7l1x7d7bes0jf7ktkhw';
 export const SEED_TELECALLER_ID = 'bscdnl31d81fmwioebupnmwr';
 export const SEED_SALES_EXEC_ID = 'b7ucheo93987ss7oldrzlazd';
+// Issue #7 slice 1: a seeded site engineer on the demo team (the team links
+// to every demo project, so this engineer gets Progress-tab access to all of
+// them out of the box).
+export const SEED_ENGINEER_ID = 'c1mg1xq8xv2xkq0n1rd5t8ea';
 
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
@@ -222,6 +230,7 @@ async function main() {
   const manager = readSeedUser('MANAGER');
   const telecaller = readSeedUser('TELECALLER');
   const salesExec = readSeedUser('SALES_EXEC');
+  const engineer = readSeedUser('ENGINEER');
 
   // ── Manager first so we have a teamId ────────────────────────────────────
   const managerUser = await upsertUser(SEED_MANAGER_ID, manager, 'MANAGER');
@@ -248,6 +257,7 @@ async function main() {
   await upsertUser(SEED_ADMIN_ID, admin, 'ADMIN');
   const telecallerUser = await upsertUser(SEED_TELECALLER_ID, telecaller, 'TELECALLER', team.id);
   await upsertUser(SEED_SALES_EXEC_ID, salesExec, 'SALES_EXEC', team.id);
+  await upsertUser(SEED_ENGINEER_ID, engineer, 'ENGINEER', team.id);
 
   // ── Demo projects - the REAL Project registry (T-ProjectSwitch) ─────────
   // Phase 2 of real project switching: the sidebar switcher reads
@@ -303,6 +313,27 @@ async function main() {
   // (0 rows on re-runs) and the Team rows have no leads pointing at them.
   await prisma.team.deleteMany({
     where: { id: { in: ['seed-project-skyline', 'seed-project-lakeview'] } },
+  });
+  // Issue #7 slice 1: per-project photo-lead authority row. The demo
+  // MANAGER can edit other members' site photos on Metro Heights (the
+  // project with seeded phases/units). ProjectStaffRow is per-project by
+  // design - no grant on the two upcoming projects.
+  await prisma.projectStaffRole.upsert({
+    where: {
+      userId_projectId_kind: {
+        userId: managerUser.id,
+        projectId: metroHeights.id,
+        kind: 'PHOTO_LEAD',
+      },
+    },
+    update: {},
+    create: {
+      userId: managerUser.id,
+      projectId: metroHeights.id,
+      kind: 'PHOTO_LEAD',
+      organizationId: SEED_ORG_ID,
+      assignedById: SEED_ADMIN_ID,
+    },
   });
   // Staff the seed team onto every demo project so GET /api/projects
   // (ProjectTeam-scoped for managers) returns the registry.
@@ -450,7 +481,7 @@ async function main() {
   console.log(`[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`);
 
   // eslint-disable-next-line no-console
-  console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec created/updated');
+  console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec, engineer created/updated');
   // eslint-disable-next-line no-console
   console.log(`[seed] team: ${team.name} (${team.id})`);
 

@@ -29,14 +29,13 @@ import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
+import { MAX_UPLOAD_BYTES } from './storage.limits';
 import { STORAGE_PROVIDER } from './storage.tokens';
 import type { StorageProvider } from './storage.provider';
 
-// Meta's media caps (document 100MB, image 5MB, video 16MB, audio 16MB).
-// We cap at 10MB for the base64 body - base64 inflates ~4/3, so a 10MB file
-// is ~13.4MB of JSON through the BFF (both hops allow 25MB, so there is
-// headroom). ImageKit has no lower cap of its own.
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+// Upload cap moved to the shared storage.limits.ts module (issue #7 slice 1:
+// the customer-progress module needs the same cap; one definition, two
+// consumers).
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'text/', 'video/', 'audio/'];
 

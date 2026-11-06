@@ -21,6 +21,9 @@ import {
   ACTIVITY_TYPES,
   ROLES,
   FEEDBACK_STATUSES,
+  FACT_BANDS,
+  FACT_STATUSES,
+  factBandBadgeVariant,
   type LeadStatus,
   type VisitOutcome,
   type VisitStatus,
@@ -251,6 +254,7 @@ describe('lib/labels', () => {
         MANAGER: 'Manager',
         SALES_EXEC: 'Sales Executive',
         TELECALLER: 'Telecaller',
+        ENGINEER: 'Site Engineer',
       };
       for (const [enumValue, expected] of Object.entries(expectations)) {
         expect(labelFor('role', enumValue)).toBe(expected);
@@ -298,6 +302,35 @@ describe('lib/labels', () => {
   describe('lead labels come from the shared api-types map', () => {
     it.each(Object.entries(LEAD_STATE_LABELS))('%s matches the shared label', (state, label) => {
       expect(labelFor('lead', state)).toBe(label);
+    });
+  });
+
+  // T-LEAD-FACTS (2026-11-05): a new Prisma enum reaches the lead sheet's
+  // suggestion rows, so it gets the same source-of-truth assertion as every
+  // other enum.
+  describe('FACT_BANDS / FACT_STATUSES - every value has a friendly label', () => {
+    it.each(FACT_BANDS)('%s renders a non-empty, non-raw band label', (band) => {
+      const label = labelFor('factBand', band);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(band);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
+
+    it.each(FACT_STATUSES)(
+      '%s renders a non-empty, non-raw status label',
+      (status) => {
+        const label = labelFor('factStatus', status);
+        expect(label.length).toBeGreaterThan(0);
+        expect(label).not.toBe(status);
+        expect(label).not.toMatch(/^[A-Z_]+$/);
+      },
+    );
+
+    it('maps a band to a badge variant', () => {
+      expect(factBandBadgeVariant('VERIFIED')).toBe('success');
+      expect(factBandBadgeVariant('PROBABLE')).toBe('warning');
+      expect(factBandBadgeVariant('POSSIBLE')).toBe('info');
+      expect(factBandBadgeVariant('SOMETHING_NEW')).toBe('muted');
     });
   });
 });

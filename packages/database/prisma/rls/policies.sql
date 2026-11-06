@@ -1391,6 +1391,26 @@ CREATE POLICY team_select_any_authenticated ON "Team"
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
+-- Issue #7 slice 1 fix (2026-10-27): member-scoped ENGINEER SELECT.
+-- The customer-progress membership join (ProjectTeam -> Team -> TeamMember)
+-- needs the Team row itself; without this policy an assigned engineer 403s.
+-- Mirrors project_team_select_engineer - org + role + membership check,
+-- never org-wide. Ships in migration 20261027160000_engineer_team_select.
+-- The membership check goes through the SECURITY DEFINER helper
+-- team_member_exists(): a raw EXISTS subquery on "TeamMember" recurses
+-- (TeamMember's own SELECT policy subqueries Team.managerId -> 42P17
+-- infinite recursion), and the helper reads TeamMember outside RLS with
+-- search_path locked. project_team_select_engineer (from the slice-1
+-- migration) is revised to the same helper in the same migration - its
+-- EXISTS shape would have recursed identically once Team opened up.
+CREATE POLICY team_select_engineer ON "Team"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND team_member_exists("Team"."id", current_setting('app.user_id', true))
+  );
+
 CREATE POLICY team_insert_admin ON "Team"
   FOR INSERT
   WITH CHECK (
@@ -1571,3 +1591,260 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --   site_visit_select_cron_service / site_visit_update_cron_service:
 --     role=CRON_SERVICE AND user_id='cron-service' AND org match.
 --   org_update_admin: ADMIN/OWNER may update their own Organization row.
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Issue #7 slice 1 (2026-10-26): Customer progress - ProgressPhoto +
+-- ProjectStaffRole. Live policies: migration 20261026160800 (this catalog
+-- mirrors it; the migration is the shipped artifact).
+-- ────────────────────────────────────────────────────────────────────────────
+-- Access model: a site photo is visible to
+--   * the project's staff, i.e. members of ProjectTeam-linked teams
+--     (Unit has no projectId - the membership join goes
+--     Unit.phaseId → Phase.projectId → ProjectTeam → TeamMember, plus the
+--     Team.managerId arm so a team manager keeps the access of their team),
+--   * ADMIN + OWNER org-wide (OWNER travels as ADMIN at the GUC layer).
+-- ENGINEER INSERT/UPDATE/DELETE are member-scoped AND creator-bound
+-- (progress_photo_write_member: createdBy = app.user_id).
+-- PHOTO_LEAD is per-project (ProjectStaffRole.kind='PHOTO_LEAD') - never
+-- per-team, because a team linked to multiple projects must not carry the
+-- authority to sibling projects. Admin-only writes on the authority table.
+-- Cross-project and sales-table (Lead/Message/Booking) denials are EMPTY
+-- SET, by design - the service layer is the messaging wall.
+
+ALTER TABLE "ProgressPhoto" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProgressPhoto" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY progress_photo_select_member ON "ProgressPhoto"
+  FOR SELECT
+  USING (
+    ("organizationId" = current_setting('app.user_org_id', true)
+     AND current_setting('app.user_role', true) = 'ADMIN')
+    OR
+    ("organizationId" = current_setting('app.user_org_id', true)
+     AND EXISTS (
+       SELECT 1 FROM "Unit" u
+       JOIN "Phase" ph ON ph."id" = u."phaseId"
+       JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+       JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+       WHERE u."id" = "ProgressPhoto"."unitId"
+         AND tm."userId" = current_setting('app.user_id', true)
+     ))
+  );
+
+CREATE POLICY progress_photo_write_member ON "ProgressPhoto"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  );
+
+CREATE POLICY progress_photo_insert_member ON "ProgressPhoto"
+  FOR INSERT
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Unit" u
+      JOIN "Phase" ph ON ph."id" = u."phaseId"
+      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE u."id" = "ProgressPhoto"."unitId"
+        AND tm."userId" = current_setting('app.user_id', true)
+        AND "ProgressPhoto"."createdBy" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY progress_photo_creator_update ON "ProgressPhoto"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  );
+
+CREATE POLICY progress_photo_creator_delete ON "ProgressPhoto"
+  FOR DELETE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "createdBy" = current_setting('app.user_id', true)
+  );
+
+CREATE POLICY progress_photo_lead_write ON "ProgressPhoto"
+  FOR UPDATE
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "ProjectStaffRole" psr
+      WHERE psr."projectId" = (
+            SELECT ph."projectId" FROM "Unit" u
+            JOIN "Phase" ph ON ph."id" = u."phaseId"
+            WHERE u."id" = "ProgressPhoto"."unitId")
+        AND psr."userId" = current_setting('app.user_id', true)
+        AND psr."kind" = 'PHOTO_LEAD'
+    )
+  )
+  WITH CHECK (true);
+
+ALTER TABLE "ProjectStaffRole" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProjectStaffRole" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY project_staff_role_select_admin ON "ProjectStaffRole"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (current_setting('app.user_role', true) = 'ADMIN'
+         OR "userId" = current_setting('app.user_id', true))
+  );
+
+CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ADMIN'
+  );
+
+-- ENGINEER reads on the dependency surfaces (member-scoped, never org-wide):
+-- migration 20261026160800 adds project_team_select_engineer, and the
+-- unit/phase engineer policies alongside these (see unit_select_team_member /
+-- phase_select_team_member). Project SELECT for engineers rides the same
+-- ProjectTeam join added by that migration. REVISION: migration
+-- 20261027160000_engineer_team_select rewrites project_team_select_engineer
+-- to use the team_member_exists() SECURITY DEFINER helper (raw EXISTS on
+-- TeamMember recursed with TeamMember's own policy once Team opened up) and
+-- adds team_select_engineer on Team (see the Team block above).
+--
+-- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
+-- (creator_name, creator_is_photo_lead) for a photo the caller can read -
+-- visibility-predicated and fail-closed without GUCs (search_path locked).
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- LeadFact (T-LEAD-FACTS, 2026-11-05)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Visibility mirrors Activity/SiteVisit/Message: org + a Lead the actor may
+-- see, with MANAGER resolved through Team.managerId (multi-team) and staff
+-- through owner/co-owner. ENGINEER has NO policy here on purpose - site staff
+-- see progress photos, not leads, and permissive-by-absence denies.
+--
+-- DELETE is admin-only: the product never deletes a fact (a human dismisses
+-- one). The policy exists for admin tooling and for test cleanup, which runs
+-- as ADMIN; without it `deleteMany` returns 0 silently and rows leak between
+-- test runs.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "LeadFact" TO shadhil_app;
+
+ALTER TABLE "LeadFact" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY lead_fact_select_team ON "LeadFact"
+  FOR SELECT
+  USING (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'ADMIN')
+          OR (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  );
+
+CREATE POLICY lead_fact_insert_team ON "LeadFact"
+  FOR INSERT
+  WITH CHECK (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  );
+
+CREATE POLICY lead_fact_insert_admin ON "LeadFact"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+    )
+  );
+
+CREATE POLICY lead_fact_update_team ON "LeadFact"
+  FOR UPDATE
+  USING (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+    AND EXISTS (
+      SELECT 1 FROM "Lead" l
+      WHERE l.id = "LeadFact"."leadId"
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND (
+          (current_setting('app.user_role', true) = 'MANAGER'
+              AND EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = l."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              ))
+          OR (current_setting('app.user_role', true) IN ('TELECALLER', 'SALES_EXEC')
+              AND (
+                l."ownerId" = current_setting('app.user_id', true)
+                OR l."coOwnerId" = current_setting('app.user_id', true)
+              ))
+        )
+    )
+  )
+  WITH CHECK (
+    "LeadFact"."organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY lead_fact_update_admin ON "LeadFact"
+  FOR UPDATE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY lead_fact_delete_admin ON "LeadFact"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );

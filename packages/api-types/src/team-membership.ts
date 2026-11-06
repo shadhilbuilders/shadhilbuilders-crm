@@ -39,6 +39,14 @@ export const TeamMembershipSchema = z.object({
    * different team.
    */
   isManagerSlot: z.boolean(),
+  /**
+   * Whether this member is the photo lead on a project (issue #7).
+   * Only populated by the project-teams roster endpoint
+   * (GET /api/projects/:projectId/teams); roster endpoints that are not
+   * project-scoped leave false. Drives the staff page's photo-lead
+   * switch's rendered state.
+   */
+  photoLead: z.boolean(),
 });
 export type TeamMembership = z.infer<typeof TeamMembershipSchema>;
 

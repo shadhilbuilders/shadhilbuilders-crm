@@ -115,6 +115,48 @@ export class ImageKitStorage implements StorageProvider {
     }
   }
 
+  async delete(key: string): Promise<void> {
+    // ImageKit's delete API keys on fileId, not filePath. Look the file up
+    // by path first (list API, prefix search); a missing file is fine
+    // (nothing to compensate). This is a best-effort compensation path -
+    // every failure logs WARN and resolves; the upload request that brought
+    // us here has ALREADY failed, so a delete error must never surface to
+    // the caller.
+    try {
+      // listFiles searches a FOLDER (path), so split the key
+      // /<org>/<cuid>/<name> into its parent folder + name and filter the
+      // result by exact filePath (path search is a prefix, not exact).
+      const segments = key.split('/').filter(Boolean);
+      const name = segments.pop();
+      const folder = '/' + segments.join('/');
+      if (!name) return;
+      const files = await this.imagekit.listFiles({
+        path: folder,
+        name,
+        limit: 10,
+      });
+      // Narrow to FileObject (FolderObject carries no fileId): the only
+      // fileId-bearing entries are files, and the exact filePath must match.
+      // The SDK resolves an IKResponse envelope ({ response: FileObject[] }).
+      const list: unknown[] = Array.isArray(files)
+        ? files
+        : Array.isArray((files as { response?: unknown[] }).response)
+          ? (files as { response: unknown[] }).response
+          : [];
+      const match = list.find(
+        (f) => (f as { type?: string }).type === 'file' && (f as { filePath?: string }).filePath === key,
+      ) as { fileId?: string } | undefined;
+      if (!match) return; // nothing stored under this key (or already gone)
+      const fileId = match.fileId;
+      if (typeof fileId !== 'string' || fileId.length === 0) return;
+      await this.imagekit.deleteFile(fileId);
+    } catch (err) {
+      this.logger.warn(
+        `[media] imagekit delete failed key=${key}: ${err instanceof Error ? err.message : String(err)} - blob orphaned`,
+      );
+    }
+  }
+
   publicUrl(key: string): string | null {
     if (!key) return null;
     // key is an imagekit filePath already (begins with /). Prepend the URL

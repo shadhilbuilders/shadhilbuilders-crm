@@ -43,7 +43,9 @@ export function AddTeamMembersDialog({
 
   const teamQuery = useTeam(team.id);
   const usersQuery = useUsers({
-    role: ['TELECALLER', 'SALES_EXEC'],
+    // Issue #7 slice 1: ENGINEER joins the add-member pool (TEAM_ONLY staff
+    // roles; the lead-assignment lists stay ENGINEER-free by design).
+    role: ['TELECALLER', 'SALES_EXEC', 'ENGINEER'],
     search: serverSearch,
     limit: 50,
     offset: 0,

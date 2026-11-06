@@ -1,0 +1,107 @@
+{
+  "version": 2,
+  "round": 2,
+  "document": "/home/paalstack/workspace/shadhil-projects/shadhilbuilders-crm/docs/designs/customer-progress-portal.md",
+  "quality_score": 7,
+  "dimensions": {
+    "completeness": "ISSUES",
+    "consistency": "ISSUES",
+    "clarity": "ISSUES",
+    "scope": "PASS",
+    "feasibility": "PASS"
+  },
+  "findings": [
+    {
+      "id": "R2-1",
+      "dimension": "consistency",
+      "severity": "blocking",
+      "changed_text": "this slice is staff- and admin-facing only",
+      "problem": "The change makes Slice 1's timeline staff- and admin-facing with customer go-live in Slice 2, but 'The Assignment' section still instructs: 'Write the slice-1 spec as a backlog-ready issue: the upload flow (site manager's phone, per-unit, phase label), the customer timeline route, and the ProgressPhoto Prisma model.' The slice-1 spec would therefore be written to include a customer timeline route at a stage where the design now commits that no customer authentication exists. An implementer following The Assignment would build the unauthenticated customer route the revised Slice 1 explicitly excludes, or drop it and produce a spec that contradicts the Assignment text. The change introduced this contradiction: before the resequencing, Slice 1 legitimately contained the customer timeline.",
+      "remedy": "Update The Assignment to match the revised Slice 1: the slice-1 spec covers the upload flow, the stage labels, the ProgressPhoto model, and the staff/admin preview timeline (inside existing CRM auth); the customer timeline route moves to the slice-2 spec."
+    },
+    {
+      "id": "R2-2",
+      "dimension": "consistency",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "The Dependencies section still says 'Web push plumbing is present in the schema but unverified for customer subscriptions; confirm during Slice 1', but the resequenced design moves push activation to Slice 2 ('push activation all land in Slice 2, ... Web push on new upload activates here'). Slice 1 no longer involves customers or push, so the timing instruction points at the wrong slice. Verification during Slice 1 would be harmless if read as early diligence, but as written it contradicts the committed sequencing (text outside the changed hunks).",
+      "remedy": "Reword the dependency to 'confirm during Slice 2' (or drop the slice reference and tie it to when push activates)."
+    },
+    {
+      "id": "R2-3",
+      "dimension": "completeness",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "No correction behavior for the upload loop is specified: what happens when a site manager uploads a photo to the wrong unit, uploads a duplicate, needs to edit a caption, or needs to delete a photo that has already appeared on customer timelines. The change did not touch this area.",
+      "remedy": " Specify edit/delete/reassign behavior for ProgressPhoto in v1, or explicitly defer it and state how a wrongly published photo is handled."
+    },
+    {
+      "id": "R2-4",
+      "dimension": "consistency",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Premise 4 still says the photo timeline 'ships first inside the portal shell', while the committed sequencing has the timeline shipping in Slice 1 (now as a staff-facing preview) and the portal shell arriving only in Slice 2, which 'absorbs the timeline built in Slice 1'. The resequencing did not address the Premise 4 wording. It does not change any decision — Slice 2's absorption is unambiguous — but it remains a wording contradiction.",
+      "remedy": "Reword Premise 4 to match the committed sequencing (timeline ships first, shell later absorbs it)."
+    },
+    {
+      "id": "R2-5",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "Slice 3's parenthetical '(each cell links to its own entity)' under 'the unit number as the primary identifier' remains unexplained jargon; unchanged since round 1.",
+      "remedy": "Rewrite the parenthetical in plain terms (e.g., the unit number is displayed as a link to that unit's own detail page)."
+    },
+    {
+      "id": "R2-6",
+      "dimension": "clarity",
+      "severity": "minor",
+      "changed_text": null,
+      "problem": "The success metric 'Measured: first login to last photo in under a minute on a mid-range Android phone' remains ambiguous — it could mean time-to-first-photo, total session duration, or time until every photo is loaded; unchanged since round 1.",
+      "remedy": "Reword the measurement unambiguously, e.g. 'from login, the latest construction photos are visible on the timeline within 60 seconds on a mid-range Android phone.'"
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-1",
+      "status": "resolved",
+      "evidence": "Slice 1 is redefined as 'The timeline page in this slice is staff- and admin-facing only (preview inside the existing CRM auth); no customer authentication exists yet. Customer go-live, customer logins and push activation all land in Slice 2, where the Customer role and session are built.' — removing the unauthenticated customer-facing timeline from Slice 1 entirely, which was the obligation.",
+      "current_id": null
+    },
+    {
+      "id": "R1-2",
+      "status": "resolved",
+      "evidence": "The design now states 'ProgressPhoto.phaseId references the existing model Phase in the Prisma schema (per-project phase records staff already manage); no new taxonomy is introduced.' Verified against the repo: model Phase exists at packages/database/prisma/schema.prisma lines 556-570 (id, projectId, organizationId, name) with a Unit[] relation, so the phaseId field now has a defined, existing referent.",
+      "current_id": null
+    },
+    {
+      "id": "R1-3",
+      "status": "persisting",
+      "evidence": "No edit/delete/reassign/duplicate behavior for ProgressPhoto appears anywhere in the current design; the changed text concerns sequencing and phase sourcing only. See current finding R2-3.",
+      "current_id": "R2-3"
+    },
+    {
+      "id": "R1-4",
+      "status": "persisting",
+      "evidence": "Premise 4 (line 'Sequencing: photo timeline ships first inside the portal shell.') is unchanged and still conflicts with the slice list, where the shell arrives in Slice 2 and absorbs the Slice 1 timeline. See current finding R2-4.",
+      "current_id": "R2-4"
+    },
+    {
+      "id": "R1-5",
+      "status": "persisting",
+      "evidence": "Slice 3's '(each cell links to its own entity)' parenthetical is unchanged in the current design. See current finding R2-5.",
+      "current_id": "R2-5"
+    },
+    {
+      "id": "R1-6",
+      "status": "resolved",
+      "evidence": "Slice 2 now commits the fallback: 'push is best-effort, with the timeline page as the source of truth when a customer has no subscription granted.'",
+      "current_id": null
+    },
+    {
+      "id": "R1-7",
+      "status": "persisting",
+      "evidence": "The success metric wording 'Measured: first login to last photo in under a minute' is unchanged in the current design. See current finding R2-6.",
+      "current_id": "R2-6"
+    }
+  ]
+}

@@ -92,7 +92,8 @@ describe('AddTeamMembersDialog', () => {
     expect(html).toContain('Priya');
     expect(html).toContain('Already in team');
     expect(mocks.useUsers).toHaveBeenCalledWith(
-      expect.objectContaining({ role: ['TELECALLER', 'SALES_EXEC'] }),
+      // Issue #7 slice 1: ENGINEER joined the add-member pool.
+      expect.objectContaining({ role: ['TELECALLER', 'SALES_EXEC', 'ENGINEER'] }),
     );
     const submit = document.body.querySelector(
       '[data-qa="team-add-members-submit"]',

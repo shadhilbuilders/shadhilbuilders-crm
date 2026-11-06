@@ -53,6 +53,7 @@ export type Role =
   | 'MANAGER'
   | 'SALES_EXEC'
   | 'TELECALLER'
+  | 'ENGINEER'
   | 'CRON_SERVICE'
   | 'PUBLIC_API';
 
@@ -98,6 +99,9 @@ const ROLES: readonly string[] = [
   'MANAGER',
   'SALES_EXEC',
   'TELECALLER',
+  // Issue #7 slice 1: site-staff role for progress-photo upload/read.
+  // Policies: prisma/migrations/20261026160800_customer_progress_slice1.
+  'ENGINEER',
   'CRON_SERVICE',
   'PUBLIC_API',
 ];
