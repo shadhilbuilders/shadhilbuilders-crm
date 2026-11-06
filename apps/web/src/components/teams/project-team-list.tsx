@@ -245,11 +245,10 @@ function MemberRoster({
 
 /** Issue #7 slice 1: per-project photo-lead authority switch (OWNER/ADMIN
  *  only; the endpoint enforces isAdminClass server-side regardless of this
- *  prop - the prop is a courtesy that hides the switch from managers). The
- *  switch state itself is intentionally NOT lifted from the server: the
- *  project-teams payload has no photoLead field yet (that arrives with the
- *  users-page option in slice 2), so this is a local optimistic toggle whose
- *  mutation is authoritative. */
+ *  prop - the prop is a courtesy that hides the switch from managers).
+ *  Checked state comes from the roster payload: ProjectTeamsService reads
+ *  ProjectStaffRole(kind='PHOTO_LEAD') for the project and emits photoLead
+ *  per member, so the server is the source of truth after every mutation. */
 function PhotoLeadToggle({
   memberId,
   memberName,
