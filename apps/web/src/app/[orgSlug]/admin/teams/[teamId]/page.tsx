@@ -406,7 +406,18 @@ function MemberCard({
       // the manager row is still excluded inside the shared component.
       canRemove
       dataQaPrefix="team-member"
-      extraActions={<MoveToTeamButton teamId={teamId} member={member} />}
+      // 2026-11-07: no "Move to team" for an ENGINEER row. A move deletes
+      // their TeamMember row, which is the ONLY thing granting them access to
+      // this team's projects under RLS - the server refuses it (see
+      // TeamsService.reassignMembers), and offering the button would just
+      // produce a rejection after the operator has already picked a team.
+      // Engineers get another project by being ADDED to another team
+      // (Add members), never by being moved off one.
+      extraActions={
+        member.role === 'ENGINEER' ? undefined : (
+          <MoveToTeamButton teamId={teamId} member={member} />
+        )
+      }
     />
   );
 }
