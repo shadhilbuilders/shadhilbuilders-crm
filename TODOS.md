@@ -86,41 +86,33 @@ actor, so the blast radius is routing/reporting, not access. Start by reading
 
 ## Customer progress (photos)
 
-### The photo-lead grant has no route to use it
+### ~~The photo-lead grant has no route to use it~~ — FIXED 2026-11-07
 
-**What:** Build the photo edit and delete endpoints (and their UI controls) that
-`ProjectStaffRole(kind='PHOTO_LEAD')` exists to authorize.
+**Shipped:** `PATCH /api/customer-progress/photos/:photoId` (caption only) and
+`DELETE /api/customer-progress/photos/:photoId` (row, then bytes). UI is inline on each
+staff timeline row (`ProgressPhotoActions.tsx`), with a confirm dialog whose copy names
+the customer portal because a buyer may already have seen the photo.
 
-**Why:** The authority is real in the database and invisible in the product.
-`progress_photo_update` and `progress_photo_delete` (migration
-`20261026160800`, mirrored in `policies.sql` since 2026-11-07) both grant
-ADMIN, the creator, or the project's photo lead. But there is **no** `@Delete`
-or `@Patch` anywhere in `apps/backend/src/customer-progress/`, and the only
-`progressPhoto.update/delete` calls in the repo are backfill scripts
-(`scripts/backfill-media-mime.ts:337`, `scripts/migrate-local-media.ts:320`).
-So an admin flips the "Photo lead" switch, gets a success toast, and nothing
-changes for anybody. Every support ticket on this feature will read "the toggle
-does nothing", and it will be correct.
+**Authority is RLS's, not the service's.** Both methods read the row inside the
+caller's `withRlsContext`; if `progress_photo_update` / `progress_photo_delete` deny it,
+the read returns nothing and the answer is 404 - never 403, which would confirm the row
+exists. That keeps one statement of the rule and makes drift impossible.
 
-**Context:** Slice 1 shipped upload + read only; the grant was seeded
-(`manager@shadhilbuilders.in` holds PHOTO_LEAD on Metro Heights) and the toggle
-was wired, but the consuming routes were deferred to slice 2. Before building
-them, note three things: (1) the RLS arms already exist, so this is a service +
-controller + UI job, not a policy job; (2) `progress_photo_select_customer`
-exists for the buyer portal, so a delete must consider what a buyer has already
-seen; (3) `setPhotoLead` now refuses a GRANT to someone not staffed on the
-project (2026-11-07) but deliberately still allows REVOKE, so a stale grant can
-be cleared. Start at `apps/backend/src/customer-progress/customer-progress.controller.ts`.
+**Two deliberate choices:**
+- Caption is the ONLY editable field. `phaseId` is a property of the unit (the upload
+  stops asking), `takenAt` is evidence of when site work happened, `unitId` would move
+  a buyer's photo to another home. zod strips the others, so the DTO cannot carry them.
+- Delete is ordered row-then-bytes, with the audit row written INSIDE the transaction
+  (before the bytes go). A blob failure logs a WARN and returns success: the record
+  survives and an operator still has the key to find the orphan. The reverse would
+  leave a row pointing at bytes that are gone.
 
-**Effort:** M
-**Priority:** P2
-**Depends on:** Nothing, but land it with the UI control or the gap just moves.
+**Tests:** 14 service cases + 8 UI cases + 1 DB case proving the DELETE arm (creator,
+photo lead, ADMIN allowed; a non-owner's `deleteMany` removes 0). The UI controls are
+driven by a server-computed `canMutate` flag rather than a client-side role guess.
 
-**Scope decision 2026-11-07:** deliberately NOT built in the slice-1/2 completion pass.
-Slice 1 assigns photo correction to slice 4, and the consuming routes are a product
-surface (what happens to a photo a buyer has already seen?) rather than a loose end.
-The grant, the RLS arms and the now-correct toggle all ship; only the routes are
-deferred. Treat this as slice 4's first task.
+**Still open (not this item):** bulk correction, undo, and a "replace photo" flow.
+None is specified; none was in scope.
 
 ### The photo-lead toggle only renders on ENGINEER rows — RESOLVED 2026-11-07
 
@@ -145,32 +137,29 @@ revoked from the UI at all — a one-way door.
 
 ## Security
 
-### Media bytes are org-scoped, not row-scoped — PARTIALLY FIXED 2026-11-07
+### ~~Media bytes are org-scoped, not row-scoped~~ — FIXED 2026-11-07
 
-**What:** `GET /api/media/:key` now refuses any key whose first path segment is not
-the caller's org (`apps/backend/src/storage/media-key-scope.ts`, 12 tests). That closes
-the cross-tenant read. What remains open is intra-org: any authenticated session in the
-right org can read any key it holds, even one belonging to a photo/attachment row that
-RLS would hide from them.
+**What:** `GET /api/media/:key` now enforces two walls:
+1. the key's first path segment must be the caller's org
+   (`media-key-scope.ts`, 12 tests);
+2. an owning row must be visible to the caller under their own RLS context
+   (`media-access.service.ts`, 11 tests).
 
-**Why it matters:** A progress photo is protected by `progress_photo_select_*` at the
-row level, but `mediaUrl` points at the bytes. A CUSTOMER in the correct org who
-obtained another buyer's key would read that image. Keys are `{org}/{cuid}/{name}`, so
-this needs a leak rather than a guess — that is why it is P2 rather than a hotfix.
+The second is the one that closes intra-org exposure. The key is resolved against
+`ProgressPhoto.key` or `Message.mediaKey` (plus the legacy `Message.mediaUrl` BFF-path
+form, so attachments older than 2026-09-18 still resolve) inside the caller's
+`withRlsContext`, so the policies - not a second copy of the rules - decide what is
+visible. A key with no visible owner answers 404, exactly like a key that does not
+exist; a 403 would confirm it is real.
 
-**Why not fixed now:** Proper row-level authorization needs a key→row lookup (which
-table owns this key?) plus an actor check, i.e. a per-request join on a hot media path.
-That is a design decision, not a patch. Options: (a) sign short-lived URLs at read time,
-(b) add a `MediaObject` table keyed by storage key carrying its owner scope, (c) resolve
-the key against the four owning tables (ProgressPhoto, Message, OutboundMessage,
-attachment) in order. None has been decided.
+**Residual, accepted:** a staff member in the right org can read any key whose row
+they can already see - which is the intent. The cost is one extra indexed lookup per
+media read (ProgressPhoto has an index on the row; Message.mediaKey is unindexed, so a
+chat attachment read does a scan). If that shows up in a trace, add
+`@@index([mediaKey])` to `Message`.
 
-**Context:** The original defect was worse — no org check at all, so any authenticated
-user in ANY org could read a key they held. That is the fixed half. Start at
-`media.controller.ts` `read()`.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** A decision on which of (a)/(b)/(c) to take.
+**Rejected designs:** (a) sign short-lived URLs - needs a signing secret and a new
+URL surface, and the BFF already carries the session; (b) a `MediaObject` table - a
+migration plus a backfill for a problem two indexed lookups solve.
 
 ## Completed

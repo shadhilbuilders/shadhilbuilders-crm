@@ -373,6 +373,72 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     ).rejects.toThrow();
   });
 
+  // ── DELETE arm (slice 4, 2026-11-07) ───────────────────────────────────
+  // The delete route shipped with the slice-1/2 completion pass, so the policy
+  // it relies on is now load-bearing. Until this test there was no proof that
+  // progress_photo_delete grants the creator and the photo lead while denying
+  // everyone else - only the UPDATE arm was exercised.
+  // protects= DELETE is allowed for the creator, the project photo lead and
+  //           ADMIN, and a non-owner's deleteMany removes 0 rows;
+  // fails_when= a non-member or sibling-project lead can remove a photo;
+  // no_claim= does not prove the service's 404 mapping (that is
+  //           customer-progress.photo-mutation.test.ts).
+  it('protects= DELETE: creator + photo lead + ADMIN may delete; fails_when= a non-owner removes rows', async () => {
+    // Seed three throwaway photos so the cases do not interfere.
+    const mk = (id: string, unitId: string, createdBy: string) => ({
+      id,
+      unitId,
+      phaseId: PHASE_A_ID,
+      organizationId: ORG_ID,
+      key: `progress/delete-${id}.jpg`,
+      mimeType: 'image/jpeg',
+      filename: `delete-${id}.jpg`,
+      caption: `delete test ${id}`,
+      takenAt: new Date('2026-10-26T12:00:00Z'),
+      createdBy,
+    });
+    const D_SELF = 'cq9kvh1p2m7n3r8s4t5u6vwh';
+    const D_LEAD = 'cq9kvh1p2m7n3r8s4t5u6vwi';
+    const D_NONE = 'cq9kvh1p2m7n3r8s4t5u6vwj';
+    const D_ADMIN = 'cq9kvh1p2m7n3r8s4t5u6vwk';
+    await adminPrisma.progressPhoto.createMany({
+      data: [
+        mk(D_SELF, UNIT_A_ID, ENG_A_ID),
+        mk(D_LEAD, UNIT_A_ID, ENG_A_ID),
+        mk(D_NONE, UNIT_A_ID, ENG_A_ID),
+        mk(D_ADMIN, UNIT_A_ID, ENG_A_ID),
+      ],
+    });
+
+    // Creator arm.
+    const own = await withRlsContext(prisma, engA, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_SELF } }),
+    );
+    expect(own.count).toBe(1);
+
+    // Photo-lead arm (plA leads project A, did not create this photo).
+    const asLead = await withRlsContext(prisma, plA, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_LEAD } }),
+    );
+    expect(asLead.count).toBe(1);
+
+    // Non-owner: 0 rows, no throw (deleteMany reports the count).
+    const denied = await withRlsContext(prisma, engN, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_NONE } }),
+    );
+    expect(denied.count).toBe(0);
+
+    // ADMIN org-wide.
+    const asAdmin = await withRlsContext(prisma, admin, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_ADMIN } }),
+    );
+    expect(asAdmin.count).toBe(1);
+
+    // The denied row survived.
+    const survivor = await adminPrisma.progressPhoto.findUnique({ where: { id: D_NONE } });
+    expect(survivor).not.toBeNull();
+  });
+
   it('protects= creator label helper; fails_when= cross-org or no-context reads', async () => {
     // Member context: label resolves + photo-lead flag false (eng-A has no
     // PHOTO_LEAD row on project A).

@@ -9,6 +9,15 @@
 // ordering (takenAt DESC, id DESC), same page size, same creator-label
 // helper, same DTO shape. Callers own the access check; this file owns
 // reading and mapping inside the caller's RLS transaction.
+//
+// `canMutate` (2026-11-07, slice 4): a per-row COURTESY flag for the staff UI
+// saying whether this session should be offered the edit/delete controls. It
+// mirrors the progress_photo_update / _delete predicate (ADMIN, the creator, or
+// the project's photo lead) but it is NOT the authority - RLS is, and both
+// mutation routes re-read the row inside the caller's context. Computed here
+// because the id-based facts (who uploaded it, does this viewer lead the
+// project) are not on the wire DTO and must not be: the buyer portal consumes
+// this same shape and has no business receiving staff authority flags.
 import type { RlsTx } from '@shadhil/database';
 
 export const PAGE_SIZE = 50;
@@ -27,6 +36,17 @@ export interface TimelinePhotoDto {
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
   mediaUrl: string;
+  /**
+   * May this session be offered the edit/delete controls? Mirrors the
+   * progress_photo_update/_delete predicate (ADMIN, the creator, or the
+   * project's photo lead). Always present so the buyer and staff timelines
+   * keep the identical wire shape the spec requires; always false for a
+   * CUSTOMER, who has no write arm on any table.
+   *
+   * ADVISORY ONLY: both mutation routes re-read the row inside the caller's
+   * RLS context, so a wrong value here cannot grant anything.
+   */
+  canMutate: boolean;
 }
 
 export interface TimelineResponseDto {
@@ -80,6 +100,7 @@ interface PhotoRow {
   takenAt: Date;
   createdAt: Date;
   key: string;
+  createdBy: string | null;
 }
 
 interface CreatorLabel {
@@ -87,8 +108,33 @@ interface CreatorLabel {
   creator_is_photo_lead: boolean | null;
 }
 
+/**
+ * Who is asking, for the advisory `canMutate` flag. Mirrors the RLS predicate
+ * on progress_photo_update / _delete; see the file header for why this is a
+ * courtesy and not the wall. `viewer: null` is the buyer portal, which gets
+ * `canMutate: false` on every row (CUSTOMER has no write arm anywhere).
+ */
+export interface ViewerScope {
+  /** null for the buyer portal. */
+  viewer: { userId: string; role: string } | null;
+  /** True when the viewer holds PHOTO_LEAD on this photo's project. */
+  leadsProject: boolean;
+}
+
+/** The RLS mutation predicate, restated for the UI. ADMIN (OWNER travels as ADMIN). */
+export function canMutateRow(row: { createdBy: string | null }, scope: ViewerScope): boolean {
+  if (scope.viewer === null) return false; // buyer: read-only by design (D5)
+  if (scope.viewer.role === 'ADMIN' || scope.viewer.role === 'OWNER') return true;
+  if (scope.leadsProject) return true;
+  return row.createdBy !== null && row.createdBy === scope.viewer.userId;
+}
+
 /** Map one stored row (+ its creator label) to the wire DTO. */
-export function toTimelinePhotoDto(row: PhotoRow, label: CreatorLabel | null): TimelinePhotoDto {
+export function toTimelinePhotoDto(
+  row: PhotoRow,
+  label: CreatorLabel | null,
+  scope: ViewerScope,
+): TimelinePhotoDto {
   return {
     id: row.id,
     unitId: row.unitId,
@@ -102,6 +148,7 @@ export function toTimelinePhotoDto(row: PhotoRow, label: CreatorLabel | null): T
     creatorName: label?.creator_name ?? null,
     creatorIsPhotoLead: label?.creator_is_photo_lead ?? null,
     mediaUrl: mediaUrlFor(row.key),
+    canMutate: canMutateRow(row, scope),
   };
 }
 
@@ -113,7 +160,23 @@ export function toTimelinePhotoDto(row: PhotoRow, label: CreatorLabel | null): T
  */
 export async function readTimelinePage(
   tx: RlsTx,
-  args: { unitId: string; organizationId: string; cursorRaw: string | undefined },
+  args: {
+    unitId: string;
+    organizationId: string;
+    cursorRaw: string | undefined;
+    /**
+     * Read exactly this one photo instead of a page (2026-11-07). Used by
+     * updatePhoto so the edit response is the SAME DTO the timeline renders -
+     * the client can swap the row in place. Pagination args are then ignored.
+     */
+    onlyPhotoId?: string;
+    /**
+     * Who is asking, for the advisory canMutate flag. Required so the buyer and
+     * staff timelines emit the identical wire shape; the portal passes
+     * `viewer: null` and every row comes back `canMutate: false`.
+     */
+    scope: ViewerScope;
+  },
 ): Promise<TimelineResponseDto> {
   const cursor = decodeCursor(args.cursorRaw); // malformed/absent = fresh page
 
@@ -121,6 +184,9 @@ export async function readTimelinePage(
     where: {
       unitId: args.unitId,
       organizationId: args.organizationId,
+      ...(args.onlyPhotoId !== undefined
+        ? { id: args.onlyPhotoId }
+        : {}),
       ...(cursor !== null
         ? {
             OR: [
@@ -131,7 +197,7 @@ export async function readTimelinePage(
         : {}),
     },
     orderBy: [{ takenAt: 'desc' }, { id: 'desc' }],
-    take: PAGE_SIZE + 1, // fetch one extra to know whether a next page exists
+    take: args.onlyPhotoId !== undefined ? 1 : PAGE_SIZE + 1, // one extra row tells us whether a next page exists
     select: {
       id: true,
       unitId: true,
@@ -143,10 +209,11 @@ export async function readTimelinePage(
       takenAt: true,
       createdAt: true,
       key: true,
+      createdBy: true,
     },
   });
 
-  const hasMore = rows.length > PAGE_SIZE;
+  const hasMore = args.onlyPhotoId === undefined && rows.length > PAGE_SIZE;
   const page = rows.slice(0, PAGE_SIZE);
 
   const labelRows = await Promise.all(
@@ -158,7 +225,9 @@ export async function readTimelinePage(
   );
   const labelById = new Map(labelRows);
 
-  const photos = page.map((r) => toTimelinePhotoDto(r, labelById.get(r.id) ?? null));
+  const photos = page.map((r) =>
+    toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope),
+  );
   const last = page[page.length - 1];
   return {
     photos,

@@ -167,11 +167,48 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
 ## Out of scope (slice 1)
 
 - CUSTOMER role, login, portal routes, push (slice 2 — separate spec).
-- Photo correction/delete UI (slice 4) — column + policies ship now to avoid
-  a destructive migration later.
+- ~~Photo correction/delete UI (slice 4) — column + policies ship now to avoid
+  a destructive migration later.~~ **Shipped early on 2026-11-07** — see
+  "Photo correction" below. The column + policies landed in slice 1 as planned;
+  the consuming routes followed once the grant turned out to be inert.
 - Payment/doc/message views (slice 3).
 - Caption editing in v1 (captions auto-fill "{phase} {month}" server-side;
   editing is part of slice 4 supervision work).
+
+## Photo correction (shipped 2026-11-07, was slice 4)
+
+The `ProjectStaffRole(kind='PHOTO_LEAD')` grant existed from slice 1 and
+authorized nothing: `progress_photo_update` and `progress_photo_delete` granted
+ADMIN, the creator and the photo lead, but no route consumed them. An admin
+could flip the "Photo lead" switch, get a success toast, and change behaviour for
+nobody.
+
+```
+PATCH  /api/customer-progress/photos/:photoId   { caption }   -> TimelinePhotoDto
+DELETE /api/customer-progress/photos/:photoId                 -> { id, unitId }
+```
+
+- **Authority is RLS's.** Both methods read the row inside the caller's
+  `withRlsContext`; a denied actor gets 404, never 403 (a 403 would confirm the
+  row exists). There is no second copy of the rule in the service.
+- **Caption is the only editable field.** `phaseId` belongs to the unit (the
+  upload stops asking), `takenAt` is evidence of when site work happened, and
+  `unitId` would move a buyer's photo to another home. zod strips the rest.
+- **Delete is row-then-bytes.** The audit row is written inside the transaction,
+  before the bytes go. A storage failure logs WARN and still returns success:
+  the record survives and the key is on the audit row, so the orphan is
+  findable. The reverse would leave a row pointing at bytes that are gone.
+- **The timeline DTO carries `canMutate`**, computed server-side from the same
+  predicate (`ADMIN | creator | photo lead`). It is advisory - the routes
+  re-check - and it is `false` for every CUSTOMER, so the buyer and staff
+  responses keep one wire shape.
+- **UI**: inline controls on each staff timeline row (`ProgressPhotoActions.tsx`)
+  with a confirm dialog whose copy names the customer portal, because a buyer may
+  already have seen the photo.
+
+Tests: 14 service cases, 8 UI cases, 10 mapper cases, and a DB case proving the
+DELETE arm (creator + photo lead + ADMIN allowed; a non-owner's `deleteMany`
+removes 0 rows).
 
 ## Open Questions
 

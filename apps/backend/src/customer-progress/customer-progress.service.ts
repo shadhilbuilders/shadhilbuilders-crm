@@ -18,7 +18,7 @@ import { MAX_UPLOAD_BYTES } from '../storage/storage.limits';
 import { reconcileUploadMime } from '../storage/sniff-mime';
 import { PrismaService } from '../prisma/prisma.module';
 import { PortalNotifier } from '../customer-portal/portal-notifier.service';
-import { withRlsContext, rlsContextFrom } from '@shadhil/database';
+import { withRlsContext, rlsContextFrom, type PrismaClient, type RlsTx } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
 import {
@@ -54,6 +54,22 @@ export const SetPhotoLeadSchema = z.object({
   photoLead: z.boolean(),
 });
 export type SetPhotoLeadDto = z.infer<typeof SetPhotoLeadSchema>;
+
+/**
+ * Photo correction (slice 4, 2026-11-07). CAPTION ONLY by design: phaseId is a
+ * property of the unit, takenAt is evidence of when the site work happened, and
+ * unitId would move a buyer's photo to another home. Trimming is rejected
+ * rather than silently applied so a client sending " Foundation " gets the
+ * caption it asked for, not a surprise.
+ */
+export const UpdatePhotoSchema = z.object({
+  caption: z
+    .string()
+    .trim()
+    .min(1, 'caption cannot be empty')
+    .max(200, 'caption is too long (max 200 characters)'),
+});
+export type UpdatePhotoDto = z.infer<typeof UpdatePhotoSchema>;
 
 // Wire shapes + PAGE_SIZE + cursor codec live in progress-photo.mapper.ts so the
 // buyer portal reads through the identical code path (issue #8). Re-exported
@@ -224,6 +240,9 @@ export class CustomerProgressService {
           creatorName: await this.userName(tx, actor.sub),
           creatorIsPhotoLead: null,
           mediaUrl: mediaUrlFor(stored.key),
+          // The uploader just created this row, so they always hold the creator
+          // arm of the mutation predicate. True regardless of role.
+          canMutate: true,
         };
       });
     } catch (err) {
@@ -247,10 +266,28 @@ export class CustomerProgressService {
   }
 
   async timeline(actor: JwtPayload, unitId: string, cursorRaw: string | undefined): Promise<TimelineResponseDto> {
-    await this.assertUnitAccess(actor, unitId);
-    return withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
-      readTimelinePage(tx, { unitId, organizationId: actor.organizationId, cursorRaw }),
-    );
+    const { projectId } = await this.assertUnitAccess(actor, unitId);
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Staff-only advisory flag (slice 4): should this viewer be offered the
+      // edit/delete controls? Read here rather than in the mapper because the
+      // authority lives in ProjectStaffRole for THIS project. RLS stays the
+      // real wall - both mutation routes re-check by reading the row.
+      const lead = await tx.projectStaffRole.findFirst({
+        where: {
+          projectId,
+          userId: actor.sub,
+          kind: 'PHOTO_LEAD',
+          organizationId: actor.organizationId,
+        },
+        select: { projectId: true },
+      });
+      return readTimelinePage(tx, {
+        unitId,
+        organizationId: actor.organizationId,
+        cursorRaw,
+        scope: { viewer: { userId: actor.sub, role: actor.role }, leadsProject: lead !== null },
+      });
+    });
   }
 
   /** OWNER/ADMIN only (spec: MANAGER excluded regardless of canManageUsers). */
@@ -337,5 +374,114 @@ export class CustomerProgressService {
       });
     });
     return { userId, projectId, photoLead: dto.photoLead };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Photo correction (slice 4, shipped early with the slice-1/2 completion pass).
+  //
+  // The authority already existed and did nothing: progress_photo_update and
+  // progress_photo_delete grant ADMIN, the CREATOR, or the project's PHOTO_LEAD,
+  // but no route consumed them - so flipping the "Photo lead" switch was inert.
+  //
+  // Two rules this code must not get wrong:
+  //   1. The authority is decided by RLS, not by a copy of the rule here. Both
+  //      methods read the row inside the caller's context; if the policy denies,
+  //      the read returns nothing and the answer is 404. That keeps ONE
+  //      statement of who may act, and it cannot drift from the database.
+  //   2. Editable surface is CAPTION ONLY. phaseId is a property of the unit
+  //      (the upload stops asking), takenAt is evidence of when the site work
+  //      happened, and unitId would move a buyer's photo to another home.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Resolve a photo the caller may mutate, or throw 404 (RLS decides). */
+  private async assertPhotoMutable(tx: RlsTx, actor: JwtPayload, photoId: string): Promise<{ id: string; unitId: string; key: string; caption: string }> {
+    const photo = await tx.progressPhoto.findFirst({
+      where: { id: photoId, organizationId: actor.organizationId },
+      select: { id: true, unitId: true, key: true, caption: true },
+    });
+    // No row here means either "does not exist" or "the write policy hides it".
+    // Both answer 404 - a 403 would confirm a row the caller may not know about.
+    if (photo === null) throw new NotFoundException('Photo not found.');
+    return photo;
+  }
+
+  async updatePhoto(actor: JwtPayload, photoId: string, dto: UpdatePhotoDto): Promise<TimelinePhotoDto> {
+    const updated = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const photo = await this.assertPhotoMutable(tx, actor, photoId);
+      await (tx as unknown as PrismaClient).progressPhoto.update({
+        where: { id: photo.id },
+        data: { caption: dto.caption },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'progress.photo_caption_updated',
+          organizationId: actor.organizationId,
+          entityType: 'ProgressPhoto',
+          entityId: photo.id,
+          before: { caption: photo.caption },
+          after: { caption: dto.caption },
+          reason: `photo caption corrected by ${actor.email} (${actor.role})`,
+        },
+      });
+      // Re-read through the shared mapper so the response is the SAME shape the
+      // timeline renders - the client can swap the row without a refetch.
+      const page = await readTimelinePage(tx, {
+        unitId: photo.unitId,
+        organizationId: actor.organizationId,
+        cursorRaw: undefined,
+        onlyPhotoId: photo.id,
+        scope: { viewer: { userId: actor.sub, role: actor.role }, leadsProject: true },
+      });
+      return page.photos[0] ?? null;
+    });
+
+    if (updated === null) {
+      throw new NotFoundException('Photo not found.');
+    }
+    return updated;
+  }
+
+  async deletePhoto(actor: JwtPayload, photoId: string): Promise<{ id: string; unitId: string }> {
+    const removed = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const photo = await this.assertPhotoMutable(tx, actor, photoId);
+
+      const deleted = await (tx as unknown as PrismaClient).progressPhoto.deleteMany({
+        where: { id: photo.id },
+      });
+      // deleteMany (not delete) so an RLS-denied row is a 0-count instead of a
+      // P2025 throw that would look like a server fault.
+      if (deleted.count === 0) throw new NotFoundException('Photo not found.');
+
+      // Audit BEFORE the bytes go: the row is the audit's only anchor, and a
+      // storage failure must not lose the record of the delete. Key + unit are
+      // recorded so an operator can still find the blob if compensation failed.
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'progress.photo_deleted',
+          organizationId: actor.organizationId,
+          entityType: 'ProgressPhoto',
+          entityId: photo.id,
+          before: { caption: photo.caption, key: photo.key, unitId: photo.unitId },
+          after: {},
+          reason: `photo deleted by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id: photo.id, unitId: photo.unitId, key: photo.key };
+    });
+
+    // Bytes AFTER the row commits: a failed delete leaves an orphaned blob
+    // (logged) rather than a row pointing at bytes that are gone. Same
+    // posture as the upload's compensation path, inverted.
+    try {
+      await this.storage.delete(removed.key);
+    } catch (err) {
+      this.logger.warn(
+        `[progress] photo ${removed.id} row deleted but blob ${removed.key} remains: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    return { id: removed.id, unitId: removed.unitId };
   }
 }

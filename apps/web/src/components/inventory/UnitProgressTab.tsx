@@ -27,6 +27,8 @@ import {
   type UploadPhotoInput,
 } from '@/hooks/queries/customer-progress';
 
+import { ProgressPhotoActions } from './ProgressPhotoActions';
+
 /** The unit fields this tab needs: its id (the timeline route key) and the
  *  phase every photo it uploads is labelled with. */
 export type ProgressUnit = Pick<UnitRow, 'id' | 'phaseId' | 'phaseName'>;
@@ -192,6 +194,10 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
                     <p className="text-muted-foreground text-xs" data-qa="progress-uploader">
                       {siteMemberLabel(p.creatorName, p.creatorIsPhotoLead)}
                     </p>
+                    {/* Slice 4: correction controls, offered only where the
+                        server's advisory flag says this session may act. The
+                        mutation routes re-check against RLS regardless. */}
+                    <ProgressPhotoActions photo={p} unitId={unit.id} />
                   </div>
                 </div>
               </li>

@@ -145,7 +145,15 @@ export class CustomerPortalService {
         select: { id: true },
       });
       if (booking === null) throw new NotFoundException('Unit not found.');
-      return readTimelinePage(tx, { unitId, organizationId: actor.organizationId, cursorRaw });
+      return readTimelinePage(tx, {
+        unitId,
+        organizationId: actor.organizationId,
+        cursorRaw,
+        // A buyer has no write arm on any table (spec D5), so canMutate is
+        // false on every row. Passed explicitly to keep the wire shape
+        // identical to the staff timeline.
+        scope: { viewer: null, leadsProject: false },
+      });
     });
   }
 }

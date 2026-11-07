@@ -27,6 +27,7 @@ const photo = (id: string, phaseId: string, phaseName: string, takenAt: string, 
   creatorName: 'Ravi',
   creatorIsPhotoLead: false,
   mediaUrl: `/api/bff/media/${id}`,
+  canMutate: false,
 });
 
 const base: PortalTimelineProps = {

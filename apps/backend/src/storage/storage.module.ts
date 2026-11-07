@@ -16,6 +16,7 @@ import { Global, Module } from '@nestjs/common';
 
 import { ImageKitStorage } from './imagekit.storage';
 import { LocalDiskStorage } from './local-disk.storage';
+import { MediaAccessService } from './media-access.service';
 import { MediaController } from './media.controller';
 import { STORAGE_PROVIDER } from './storage.tokens';
 
@@ -23,6 +24,9 @@ import { STORAGE_PROVIDER } from './storage.tokens';
 @Module({
   controllers: [MediaController],
   providers: [
+    // Byte-level authorization for GET /api/media/:key (2026-11-07): resolves
+    // the key to an owning row the CALLER can see, inside their RLS context.
+    MediaAccessService,
     {
       provide: STORAGE_PROVIDER,
       // imagekit constructor throws fail-fast if creds are missing, so only
@@ -39,6 +43,6 @@ import { STORAGE_PROVIDER } from './storage.tokens';
     // the whole API down, e2e included. The factory above is the only consumer
     // and constructs it explicitly, so nothing needs the class as a token.
   ],
-  exports: [STORAGE_PROVIDER],
+  exports: [STORAGE_PROVIDER, MediaAccessService],
 })
 export class StorageModule {}

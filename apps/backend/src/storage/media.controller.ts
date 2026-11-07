@@ -31,7 +31,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
-import { keyBelongsToOrg } from './media-key-scope';
+import { MediaAccessService } from './media-access.service';
 import { MAX_UPLOAD_BYTES } from './storage.limits';
 import { sniffMime, reconcileUploadMime } from './sniff-mime';
 import { STORAGE_PROVIDER } from './storage.tokens';
@@ -57,6 +57,7 @@ const UploadSchema = z.object({
 export class MediaController {
   constructor(
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    @Inject(MediaAccessService) private readonly mediaAccess: MediaAccessService,
   ) {}
 
   @Post()
@@ -124,15 +125,13 @@ export class MediaController {
     } catch {
       throw new NotFoundException('Media not found');
     }
-    // TENANT WALL (2026-11-07). Both adapters name every key with the owning
-    // org as the first path segment, so the key namespace IS the authorization
-    // here. Before this check the handler verified only that a session
-    // existed, then served whatever bytes the key named - a buyer whose own
-    // unit was RLS-empty could still read another org's file if they held its
-    // key. 404, not 403: a 403 would confirm the key exists.
-    if (!keyBelongsToOrg(decoded, req.user!.organizationId)) {
-      throw new NotFoundException('Media not found');
-    }
+    // TENANT + ROW WALL (2026-11-07). Two checks, in this order:
+    //   1. the key's org segment must be the caller's org (cheap, no query);
+    //   2. an owning row must be VISIBLE under the caller's RLS context.
+    // Row RLS protects the row; these protect the BYTES it points at. Without
+    // (2) a session could read a photo hidden from them just by holding the
+    // key. 404 either way - a 403 would confirm the key exists.
+    await this.mediaAccess.assertReadable(req.user!, decoded);
     const data = await this.storage.read(decoded);
     if (data === null) throw new NotFoundException('Media not found');
     // Write the raw bytes directly to the response (no StreamableFile envelope,

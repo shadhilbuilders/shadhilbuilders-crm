@@ -76,6 +76,10 @@ function baseTx(overrides: Record<string, unknown> = {}) {
     },
     progressPhoto: { findMany, groupBy: vi.fn(async () => []) },
     unit: { findFirst: vi.fn(async () => ({ id: 'unit-1', unitNumber: 'A-1', phase: { projectId: 'p-1' } })) },
+    // The staff timeline reads PHOTO_LEAD to compute the advisory canMutate
+    // flag (slice 4). A buyer's context has no ProjectStaffRole row, and the
+    // parity test compares the two responses, so this must return null.
+    projectStaffRole: { findFirst: vi.fn(async () => null) },
     $queryRaw: vi.fn(async () => [{ creator_name: 'Ravi', creator_is_photo_lead: false }]),
     ...overrides,
   };
@@ -189,7 +193,19 @@ describe('timeline parity with the staff route', () => {
 
     const staffPage1 = await staff.timeline(actor('ADMIN', 'admin-1'), 'unit-1', undefined);
     const portalPage1 = await portal.timeline(actor('CUSTOMER'), 'unit-1', undefined);
-    expect(portalPage1).toEqual(staffPage1);
+
+    // PARITY IS ABOUT CONTENT, NOT CAPABILITY. The two surfaces must agree on
+    // which photos exist, their order, their captions and the cursor - that is
+    // what makes the staff preview trustworthy as a preview of the buyer's
+    // view. `canMutate` is deliberately viewer-relative (an admin may correct a
+    // photo, a buyer may not), so it is excluded here and asserted separately
+    // below. Same key set, different value where the capability legitimately
+    // differs.
+    const content = (page: typeof portalPage1) => ({
+      nextCursor: page.nextCursor,
+      photos: page.photos.map(({ canMutate: _canMutate, ...rest }) => rest),
+    });
+    expect(content(portalPage1)).toEqual(content(staffPage1));
     expect(portalPage1.photos.length).toBe(50);
     expect(portalPage1.nextCursor).not.toBeNull();
 
@@ -203,5 +219,14 @@ describe('timeline parity with the staff route', () => {
     await portal.timeline(actor('CUSTOMER'), 'unit-1', portalPage1.nextCursor!);
     const where = (tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: { OR: unknown[] } }])[0].where;
     expect(where.OR).toHaveLength(2);
+
+    // Same DTO keys on both surfaces - a field present for staff and missing
+    // for a buyer would be a wire-shape drift.
+    const keys = (p: (typeof portalPage1)['photos'][number]) => Object.keys(p).sort();
+    expect(keys(portalPage1.photos[0]!)).toEqual(keys(staffPage1.photos[0]!));
+
+    // The capability itself: admin may correct, buyer never may.
+    expect(staffPage1.photos.every((p) => p.canMutate === true)).toBe(true);
+    expect(portalPage1.photos.every((p) => p.canMutate === false)).toBe(true);
   });
 });

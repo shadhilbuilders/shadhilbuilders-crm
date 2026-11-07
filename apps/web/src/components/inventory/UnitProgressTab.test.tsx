@@ -23,6 +23,10 @@ vi.mock('@/hooks/queries/customer-progress', () => {
       error: null,
       reset: vi.fn(),
     })),
+    // Slice 4: the row actions are rendered by UnitProgressTab, so the module
+    // must expose them or the tab throws at import time.
+    useUpdatePhoto: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+    useDeletePhoto: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
     isForbidden: vi.fn(() => false),
   };
   // Exposed so individual cases can drive a state; the hook factory above is

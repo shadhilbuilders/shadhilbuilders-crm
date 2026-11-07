@@ -19,6 +19,12 @@ export type TimelinePhoto = {
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
   mediaUrl: string;
+  /**
+   * Server-computed advisory: may this session be offered the edit/delete
+   * controls? Mirrors the RLS mutation predicate. Always present - false for
+   * every CUSTOMER - so the buyer and staff timelines share one wire shape.
+   */
+  canMutate: boolean;
 };
 
 export type TimelineResponse = {
@@ -94,6 +100,44 @@ export function useSetPhotoLead(projectId: string) {
       // Project team rows now carry the CURRENT photo-lead state (key shape
       // matches hooks/queries/project-teams.ts PROJECT_TEAMS_KEY).
       void qc.invalidateQueries({ queryKey: ['projects', 'teams', projectId] });
+    },
+  });
+}
+
+// ── Photo correction (slice 4, 2026-11-07) ──────────────────────────────────
+// Authority is the server's: ADMIN, the uploader, or the project's photo lead.
+// A denied actor gets 404 from the API, so the UI shows the server's message
+// rather than guessing from the role - and a hidden control is a courtesy, not
+// the wall.
+
+/** PATCH /customer-progress/photos/:photoId - caption only. */
+export function useUpdatePhoto(unitId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ photoId, caption }: { photoId: string; caption: string }) =>
+      api<TimelinePhoto>(`/customer-progress/photos/${photoId}`, {
+        method: 'PATCH',
+        json: { caption },
+      }),
+    onSuccess: () => {
+      // The response carries the corrected DTO, but the row's place in the
+      // month sections is derived from the whole loaded set, so a refetch is
+      // the honest invalidation. gcTime is 0 on this query, so this is cheap.
+      void qc.invalidateQueries({ queryKey: [...PHOTOS_KEY, unitId] });
+    },
+  });
+}
+
+/** DELETE /customer-progress/photos/:photoId - row then bytes. */
+export function useDeletePhoto(unitId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (photoId: string) =>
+      api<{ id: string; unitId: string }>(`/customer-progress/photos/${photoId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...PHOTOS_KEY, unitId] });
     },
   });
 }

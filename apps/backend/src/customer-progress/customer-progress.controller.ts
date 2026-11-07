@@ -1,9 +1,11 @@
-// Customer-progress controller (issue #7 slice 1).
+// Customer-progress controller (issue #7 slice 1; correction routes slice 4).
 //
-// POST /api/customer-progress/units/:unitId/photos   - upload a site photo
-// GET  /api/customer-progress/units/:unitId/photos   - staff timeline (cursor)
-// POST /api/customer-progress/projects/:projectId/members/:userId/photo-lead
-//                                                    - grant/revoke (OWNER/ADMIN)
+// POST   /api/customer-progress/units/:unitId/photos   - upload a site photo
+// GET    /api/customer-progress/units/:unitId/photos   - staff timeline (cursor)
+// POST   /api/customer-progress/projects/:projectId/members/:userId/photo-lead
+//                                                      - grant/revoke (OWNER/ADMIN)
+// PATCH  /api/customer-progress/photos/:photoId        - correct a caption
+// DELETE /api/customer-progress/photos/:photoId        - delete row + bytes
 //
 // Auth: global JwtAuthGuard (not @Public). Authorization per the spec matrix
 // inside the service (withRlsContext second wall).
@@ -11,9 +13,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -24,7 +28,9 @@ import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import {
   CustomerProgressService,
   SetPhotoLeadSchema,
+  UpdatePhotoSchema,
   UploadPhotoSchema,
+  type TimelinePhotoDto,
   type TimelineResponseDto,
 } from './customer-progress.service';
 
@@ -76,5 +82,38 @@ export class CustomerProgressController {
       throw new BadRequestException('photoLead must be a boolean');
     }
     return this.service.setPhotoLead(req.user!, projectId, userId, parsed.data);
+  }
+
+  // ── Photo correction (slice 4) ────────────────────────────────────────────
+  // Authority is RLS's: ADMIN, the CREATOR, or the project's PHOTO_LEAD. The
+  // service reads the row inside the caller's context, so a denied actor gets
+  // 404 exactly like a missing photo - never a 403 that confirms it exists.
+
+  @Patch('photos/:photoId')
+  @ApiOperation({
+    summary: 'Correct a photo caption (ADMIN, the uploader, or the project photo lead).',
+  })
+  async updatePhoto(
+    @Req() req: AuthedRequest,
+    @Param('photoId') photoId: string,
+    @Body() body: unknown,
+  ): Promise<TimelinePhotoDto> {
+    const parsed = UpdatePhotoSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      throw new BadRequestException(msg || 'Invalid photo update');
+    }
+    return this.service.updatePhoto(req.user!, photoId, parsed.data);
+  }
+
+  @Delete('photos/:photoId')
+  @ApiOperation({
+    summary: 'Delete a photo and its stored bytes (ADMIN, the uploader, or the project photo lead).',
+  })
+  async deletePhoto(
+    @Req() req: AuthedRequest,
+    @Param('photoId') photoId: string,
+  ): Promise<{ id: string; unitId: string }> {
+    return this.service.deletePhoto(req.user!, photoId);
   }
 }
