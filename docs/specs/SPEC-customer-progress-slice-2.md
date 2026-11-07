@@ -517,7 +517,10 @@ Total: ~26h human-equivalent.
 - Slice 3 portal surfaces: booking details, unit summary, payments, documents.
 - Staff "View as customer" preview link. It needs a staff-allowed portal read path and
   its own matrix; leaving it out keeps the portal CUSTOMER-only.
-- Photo correction/delete UI and caption editing (slice 4).
+- Photo correction/delete UI and caption editing — **shipped 2026-11-07** (moved
+  ahead of slice 4; see `SPEC-customer-progress-slice-1.md` "Photo correction").
+  Slice 4 keeps the remaining supervision ideas: bulk correction, undo, and a
+  replace-photo flow. None is specified.
 - Self-service signup, phone OTP, magic links, invite email. D3 ships provisioned
   logins; nothing else exists to send mail or SMS.
 - Push frequency tuning, digesting, quiet hours.

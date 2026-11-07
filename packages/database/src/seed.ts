@@ -184,8 +184,8 @@ async function upsertUser(
       organizationId: SEED_ORG_ID,
       emailVerified: true,
       // Placeholder-password gate (T-S hardening, 2026-09-04, re-scoped
-      // 2026-09-15): ONLY the OWNER is forced through /change-password on
-      // first sign-in. Every other role starts ungated.
+      // 2026-09-15): the OWNER is forced through /change-password on first
+      // sign-in. Every other STAFF role starts ungated.
       //
       // OWNER-only because it is the single highest-privilege account and the
       // only one that cannot be created through the API
@@ -197,7 +197,14 @@ async function upsertUser(
       // Set on CREATE only, matching the previous behaviour: a re-seed must not
       // re-arm the gate after the OWNER has legitimately rotated their
       // password (which flips this to false).
-      mustChangePassword: role === 'OWNER',
+      //
+      // CUSTOMER is GATED TOO (issue #8 slice 2, 2026-11-07). Staff accounts
+      // created through the API arm the gate (UsersService.create), but the
+      // seeded buyer is written HERE, so without this arm the one account the
+      // manual portal test uses would be the only customer in the system
+      // sitting on the placeholder password - and the test would never
+      // exercise the forced-rotation path it is meant to verify.
+      mustChangePassword: role === 'OWNER' || role === 'CUSTOMER',
     },
   });
 
