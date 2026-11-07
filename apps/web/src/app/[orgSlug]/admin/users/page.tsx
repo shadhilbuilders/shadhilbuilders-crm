@@ -83,8 +83,11 @@ import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 // Issue #7 slice 1: ENGINEER is creatable by admin class only (neither list
 // for MANAGER includes it; assertCanCreateRole rejects MANAGER->ENGINEER
 // server-side regardless of canManageUsers).
-const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const;
-const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const;
+//
+// Issue #8 slice 2: CUSTOMER (a buyer's portal login) is likewise admin class
+// only; the form then requires the lead it belongs to.
+const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const;
+const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
 type UserRow = {
@@ -282,7 +285,8 @@ export default function UsersPage() {
 
       <ChangeRoleDialog
         target={roleTarget}
-        assignableRoles={[...creatableRoles]}
+        // CUSTOMER is create-only: it needs a lead pointer that a role change cannot collect.
+        assignableRoles={creatableRoles.filter((r) => r !== 'CUSTOMER')}
         changeRole={changeRole}
         onClose={() => setRoleTarget(null)}
       />

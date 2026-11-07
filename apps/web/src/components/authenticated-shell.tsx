@@ -17,6 +17,10 @@ import { AppShell } from '@/components/app-shell';
 import { AppHeader } from '@/components/app-header';
 import { PushEnablePrompt } from '@/components/push-enable-prompt';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { PageLoading } from '@/components/shared/PageLoading';
+import { useRouter } from 'next/navigation';
+import { redirectForArea } from '@/lib/portal-routing';
+import { useSessionUser } from '@/lib/session';
 
 const DESKTOP_BREAKPOINT_QUERY = '(min-width: 768px)';
 
@@ -39,6 +43,17 @@ function useIsDesktop(): boolean {
 
 export function AuthenticatedShell({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
+  const router = useRouter();
+  const { user } = useSessionUser();
+  // Issue #8 (D6/D7): the staff shell never renders for a CUSTOMER. Bounce to
+  // the portal and render nothing staff-shaped in the meantime.
+  const bounceTo = user === null ? null : redirectForArea('staff', user.role);
+
+  useEffect(() => {
+    if (bounceTo !== null) router.replace(bounceTo);
+  }, [bounceTo, router]);
+
+  if (bounceTo !== null) return <PageLoading content="Opening your portal..." />;
 
   return (
     <SidebarProvider defaultOpen={isDesktop}>

@@ -27,7 +27,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'src/**/*.test.ts', 'scripts/**/*.test.ts'],
     // T-ENVSETUP (2026-09-16): without this, DATABASE_URL is undefined inside
     // every test (vitest does not read `tsx --env-file`), so all DB-backed
     // suites silently skipped and a real RLS gap went unnoticed. See

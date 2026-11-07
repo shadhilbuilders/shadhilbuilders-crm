@@ -96,6 +96,10 @@ export type SignupDto = z.infer<typeof SignupDtoSchema>;
  */
 export const CreateUserDtoSchema = SignupDtoSchema.extend({
   role: RoleSchema, // explicit - no default on the admin/manager surface
+  // Issue #8 slice 2: the Lead a CUSTOMER login belongs to. The service
+  // requires it for CUSTOMER and rejects it for every other role; shape is
+  // checked here, existence + same-org in UsersService.create.
+  customerLeadId: z.string().min(1).max(64).optional(),
 });
 export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
 

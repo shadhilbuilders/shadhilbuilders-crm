@@ -338,6 +338,9 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
   if (item.href === '/my-team') {
     return role === 'MANAGER';
   }
+  // CUSTOMER (issue #8 slice 2) has no staff surface at all: the portal has
+  // its own layout and nav. The staff shell must never list anything for them.
+  if (role === 'CUSTOMER') return false;
   if (role === 'ENGINEER') {
     // Inventory only (the plot layout reads the same surface but the map
     // link needs bookings context engineers don't have).

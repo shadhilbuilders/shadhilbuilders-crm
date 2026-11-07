@@ -7,13 +7,16 @@
 // database (assertUnitAccess RLS behavior is owned by
 // packages/database/test/progress-rls.test.ts) nor the storage adapters
 // (their delete tests live beside them).
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JwtPayload } from '@shadhil/auth';
 
 import {
   UploadPhotoSchema,
+  CustomerProgressService,
   buildCaption,
   decodeCursor,
   encodeCursor,
+  type UploadPhotoDto,
 } from './customer-progress.service';
 
 describe('UploadPhotoSchema', () => {
@@ -84,5 +87,116 @@ describe('cursor codec', () => {
     expect(decodeCursor('')).toBeNull();
     expect(decodeCursor('!not base64url!')).toBeNull();
     expect(decodeCursor(Buffer.from('{"id":null}', 'utf8').toString('base64url'))).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upload() - the type recorded must come from the BYTES (2026-11-06).
+//
+// The bug this pins: a phone's camera roll hands back JPEG bytes under a name
+// like IMG_2676.PNG, so the browser's File.type said image/png. Storing that
+// verbatim wrote rows whose `mimeType` contradicted their own bytes, and the
+// browser (nosniff) refused to render them. upload() now sniffs first.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+function makeUploadActor(): JwtPayload {
+  return {
+    sub: 'admin-1',
+    email: 'admin@shadhilbuilders.in',
+    role: 'ADMIN',
+    organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    iat: 0,
+    exp: 0,
+    iss: 'shadhil-crm',
+  };
+}
+
+/** Stub Prisma whose transaction runs the callback against itself. */
+function makeUploadService() {
+  const save = vi.fn(async (_data: Buffer, meta: { mimeType: string; filename: string }) => ({
+    key: `/org/abc/${meta.filename}`,
+    mimeType: meta.mimeType,
+    filename: meta.filename,
+    size: 1,
+  }));
+  const client = {
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
+    $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    unit: { findFirst: vi.fn().mockResolvedValue({ id: 'unit-1', unitNumber: 'A-101', phase: { projectId: 'proj-1' } }) },
+    phase: { findFirst: vi.fn().mockResolvedValue({ name: 'Phase A' }) },
+    progressPhoto: {
+      create: vi.fn().mockResolvedValue({ id: 'photo-1', createdAt: new Date('2026-11-06T10:00:00Z') }),
+    },
+    user: { findUnique: vi.fn().mockResolvedValue({ name: 'Ravi' }) },
+  };
+  const prismaService = { $client: client } as never;
+  const storage = { save, read: vi.fn(), delete: vi.fn(), publicUrl: vi.fn() } as never;
+  const service = new CustomerProgressService(prismaService, storage);
+  return { service, client, save };
+}
+
+const UPLOAD_DTO = {
+  phaseId: 'cmw4n0zqn5yvpfhm3a5n3f9z',
+  base64: '',
+  mimeType: 'image/png',
+  filename: 'IMG_2676.PNG',
+  takenAt: '2026-11-06T10:00:00Z',
+} satisfies UploadPhotoDto;
+
+describe('upload() - the stored MIME comes from the bytes', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('records image/jpeg when PNG was declared but the bytes are JPEG', async () => {
+    const { service, client, save } = makeUploadService();
+    const dto = { ...UPLOAD_DTO, base64: JPEG_BYTES.toString('base64') };
+
+    const result = await service.upload(makeUploadActor(), 'unit-1', dto);
+
+    // The row, the response, and the stored object all agree with the BYTES.
+    expect(result.mimeType).toBe('image/jpeg');
+    expect(client.progressPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ mimeType: 'image/jpeg' }) }),
+    );
+    expect(save.mock.calls[0]![1]).toMatchObject({ mimeType: 'image/jpeg' });
+  });
+
+  it('keeps the declared type when it matches the bytes', async () => {
+    const { service } = makeUploadService();
+    const dto: UploadPhotoDto = { ...UPLOAD_DTO, mimeType: 'image/png', base64: PNG_BYTES.toString('base64') };
+
+    const result = await service.upload(makeUploadActor(), 'unit-1', dto);
+
+    expect(result.mimeType).toBe('image/png');
+  });
+
+  it('rejects an unidentifiable buffer instead of storing it', async () => {
+    const { service, save } = makeUploadService();
+    const dto = { ...UPLOAD_DTO, base64: Buffer.from('definitely not an image').toString('base64') };
+
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unrecognised image format/);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('rejects HEIC with an actionable message even when declared as jpeg', async () => {
+    const { service, save } = makeUploadService();
+    const heic = Buffer.concat([
+      Buffer.from([0x00, 0x00, 0x00, 0x18]),
+      Buffer.from('ftypheic', 'binary'),
+    ]);
+    const dto: UploadPhotoDto = { ...UPLOAD_DTO, mimeType: 'image/jpeg', base64: heic.toString('base64') };
+
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/HEIC.*Most Compatible/);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-photo format the sniffer CAN identify (e.g. PDF)', async () => {
+    const { service, save } = makeUploadService();
+    const dto = { ...UPLOAD_DTO, base64: Buffer.from('%PDF-1.7\n').toString('base64') };
+
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unsupported image type: application\/pdf/);
+    expect(save).not.toHaveBeenCalled();
   });
 });

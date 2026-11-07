@@ -1848,3 +1848,183 @@ CREATE POLICY lead_fact_delete_admin ON "LeadFact"
     current_setting('app.user_role', true) = 'ADMIN'
     AND "organizationId" = current_setting('app.user_org_id', true)
   );
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Slice-1 ENGINEER policies (mirror of migration 20261026160800 +
+-- 20261027160000). These were deployed but missing from this canonical file;
+-- mirrored verbatim in the slice-2 change so the file matches the database.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE POLICY project_select_team_member ON "Project"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "Project"."id"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY phase_select_team_member ON "Phase"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "Phase"."projectId"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY project_team_select_engineer ON "ProjectTeam"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND team_member_exists("ProjectTeam"."teamId", current_setting('app.user_id', true))
+  );
+
+CREATE POLICY unit_select_team_member ON "Unit"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "Phase" ph
+      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE ph."id" = "Unit"."phaseId"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Slice 2: CUSTOMER portal (migration 20261106160000_customer_portal_slice2)
+--
+-- READ-ONLY. No INSERT/UPDATE/DELETE policy exists for CUSTOMER anywhere.
+-- Permissive-OR: every policy is FOR SELECT, org-gated, and gated on a
+-- CUSTOMER-only predicate, so it cannot widen any staff role's reads.
+-- Helpers are SECURITY DEFINER (RLS recursion, see team_member_exists above);
+-- they compare u."role"::text because the migration adds the enum value in
+-- the same transaction (55P04).
+-- progress_photo_creator_label() gains a customer arm in the same migration
+-- (CREATE OR REPLACE; the function body lives in that migration).
+-- The spec's push_*_portal_service policies are intentionally NOT created:
+-- PortalNotifier delivers under each recipient's own context.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION customer_lead_id() RETURNS TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT u."customerLeadId"
+    FROM "User" u
+    WHERE u."id" = current_setting('app.user_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."role"::text = 'CUSTOMER'
+      AND u."deletedAt" IS NULL
+      AND u."customerLeadId" IS NOT NULL
+  $$;
+REVOKE ALL ON FUNCTION customer_lead_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_lead_id() TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION customer_can_read_unit(p_unit_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Booking" b
+      JOIN "Lead" l ON l."id" = b."leadId"
+      WHERE b."unitId" = p_unit_id
+        AND b."status" = 'APPROVED'
+        AND b."organizationId" = current_setting('app.user_org_id', true)
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND b."leadId" = customer_lead_id()
+    )
+  $$;
+REVOKE ALL ON FUNCTION customer_can_read_unit(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_unit(TEXT) TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION unit_customer_user_ids(p_unit_id TEXT) RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT DISTINCT u."id"
+    FROM "Booking" b
+    JOIN "Lead" l ON l."id" = b."leadId"
+    JOIN "User" u ON u."customerLeadId" = l."id"
+    WHERE b."unitId" = p_unit_id
+      AND b."status" = 'APPROVED'
+      AND b."organizationId" = current_setting('app.user_org_id', true)
+      AND l."organizationId" = current_setting('app.user_org_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."role"::text = 'CUSTOMER'
+      AND u."deletedAt" IS NULL
+  $$;
+REVOKE ALL ON FUNCTION unit_customer_user_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION unit_customer_user_ids(TEXT) TO shadhil_app;
+
+-- True when the caller can read some unit in this phase / project (APPROVED
+-- booking on their lead). Needed as helpers, not inline subqueries: Unit's
+-- engineer policy already subqueries Phase, so a Phase policy that subqueried
+-- Unit would form a policy cycle (42P17 "infinite recursion detected in
+-- policy for relation Unit"). Found by the slice-1 progress-rls suite going
+-- red the first time the customer policies were applied.
+CREATE OR REPLACE FUNCTION customer_can_read_phase(p_phase_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Unit" u
+      WHERE u."phaseId" = p_phase_id
+        AND u."organizationId" = current_setting('app.user_org_id', true)
+        AND customer_can_read_unit(u."id")
+    )
+  $$;
+
+REVOKE ALL ON FUNCTION customer_can_read_phase(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_phase(TEXT) TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION customer_can_read_project(p_project_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Phase" ph
+      JOIN "Unit" u ON u."phaseId" = ph."id"
+      WHERE ph."projectId" = p_project_id
+        AND u."organizationId" = current_setting('app.user_org_id', true)
+        AND customer_can_read_unit(u."id")
+    )
+  $$;
+
+REVOKE ALL ON FUNCTION customer_can_read_project(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_project(TEXT) TO shadhil_app;
+
+CREATE POLICY booking_select_customer ON "Booking"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CUSTOMER'
+    AND "status" = 'APPROVED'
+    AND "leadId" = customer_lead_id()
+  );
+
+CREATE POLICY unit_select_customer ON "Unit"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_unit("id")
+  );
+
+CREATE POLICY phase_select_customer ON "Phase"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_phase("id")
+  );
+
+CREATE POLICY project_select_customer ON "Project"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_project("id")
+  );
+
+CREATE POLICY progress_photo_select_customer ON "ProgressPhoto"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_unit("unitId")
+  );

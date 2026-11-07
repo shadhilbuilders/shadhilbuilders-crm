@@ -119,6 +119,9 @@ vi.mock('@/lib/tenant-context', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: vi.fn(() => ({ projectId: 'proj-metro' })),
+  // ENGINEER redirection (workSurfaceForRole) is the only router use in the
+  // page; every non-engineer case below never fires it.
+  useRouter: vi.fn(() => ({ replace: vi.fn(), push: vi.fn() })),
 }));
 
 // The real LeadVisitPanel pulls its own visit queries and session; this test is
@@ -219,6 +222,18 @@ describe('Work dashboard - one page, every action in place', () => {
     const out = html();
     expect(out).toContain('data-qa="work-queue"');
     expect(out).toContain('Asha');
+  });
+
+  // ENGINEER (site engineer) has no lead queue: their only Work surface is
+  // Inventory. A bookmark/deep link to /dashboard must forward there instead
+  // of rendering a shell of RLS-denied fetches.
+  it('redirects an ENGINEER to the project inventory instead of rendering the queue', async () => {
+    ROLE.current = 'ENGINEER';
+    LEADS.current = [lead({})];
+    await mount();
+    const out = html();
+    expect(out).not.toContain('data-qa="work-queue"');
+    expect(out).not.toContain('Asha');
   });
 
   it('offers the next action as a real button on the collapsed row', async () => {

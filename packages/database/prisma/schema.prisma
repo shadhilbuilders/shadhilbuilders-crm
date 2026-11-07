@@ -51,6 +51,10 @@ enum Role {
   // user is a member of. Zero policies on lead/chat/booking/revenue tables -
   // permissive-by-absence denies. See docs/specs/SPEC-customer-progress-slice-1-body.md.
   ENGINEER
+  // Buyer role (issue #7, slice 2). READ-ONLY by design: the only arms are
+  // the *_select_customer policies, scoped through customer_lead_id() /
+  // customer_can_read_unit() to units with an APPROVED booking. No write arm.
+  CUSTOMER
 }
 
 enum LeadState {
@@ -230,6 +234,9 @@ model Organization {
   createdBy                String?
   // T-VISIT-REMINDER: how long before a scheduled visit the reminder fires (5..1440, DB CHECK).
   visitReminderLeadMinutes Int      @default(60)
+  // Issue #8 slice 2: the project office number the customer portal lock
+  // screen shows. NULL renders copy-only ("contact the project office").
+  contactPhone             String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
@@ -356,6 +363,14 @@ model User {
   banReason                 String?
   banExpires                DateTime?
 
+  // Issue #8 slice 2: the Lead a CUSTOMER login belongs to. NULL for every
+  // staff role and for a customer whose lead was deleted (SetNull), which is
+  // why the portal treats a null pointer as "not provisioned" rather than
+  // "no photos". NOT unique: a jointly-bought flat needs two logins on one
+  // lead (spec D2).
+  customerLeadId            String?
+  customerLead              Lead?              @relation("CustomerLeadUser", fields: [customerLeadId], references: [id], onDelete: SetNull)
+
   // better-auth admin() plugin fields (AR-8: required by admin plugin user model)
 
   // T-EMAIL-PER-ORG (2026-10-04): replaces the old bare `@@index([email])` +
@@ -367,6 +382,7 @@ model User {
   @@unique([email, organizationId])
   @@index([organizationId])
   @@index([role])
+  @@index([customerLeadId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -809,6 +825,7 @@ model Lead {
   reminders         Reminder[]
   consents          Consent[]
   facts             LeadFact[]
+  customerUsers     User[]             @relation("CustomerLeadUser")
 
   @@index([ownerId])
   @@index([coOwnerId])

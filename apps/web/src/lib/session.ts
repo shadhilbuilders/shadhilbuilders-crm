@@ -185,7 +185,8 @@ const ROLE_RANK: Record<Role, number> = {
   MANAGER: 2,
   TELECALLER: 1,
   SALES_EXEC: 1,
-  ENGINEER: 0,
+  ENGINEER: 1,
+  CUSTOMER: 0,
 };
 
 /** True when the actor strictly outranks the target role (users surface). */

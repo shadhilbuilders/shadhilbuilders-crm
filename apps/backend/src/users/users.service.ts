@@ -152,6 +152,19 @@ export class UsersService {
     // 1. Role hierarchy gate (fails closed for any staff role).
     assertCanCreateRole(actorRole, dto.role);
 
+    // 1b. Issue #8 slice 2: customerLeadId <-> CUSTOMER is a strict pairing,
+    //     and a customer belongs to no team. Shape rules fail before any I/O.
+    if (dto.role === 'CUSTOMER') {
+      if (dto.customerLeadId === undefined) {
+        throw new BadRequestException('customerLeadId is required when creating a CUSTOMER user');
+      }
+      if (dto.teamId !== undefined) {
+        throw new BadRequestException('A CUSTOMER user belongs to no team - omit teamId');
+      }
+    } else if (dto.customerLeadId !== undefined) {
+      throw new BadRequestException('customerLeadId is only valid for CUSTOMER users');
+    }
+
     // Everything below runs in ONE RLS transaction: the Team reads are
     // FORCE ROW LEVEL SECURITY (unreadable on the bare client), and the
     // user + credential + team + membership + audit writes must all commit
@@ -187,7 +200,7 @@ export class UsersService {
         } else {
           teamId = managedTeams[0]!.id;
         }
-      } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && !dto.teamId) {
+      } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && dto.role !== 'CUSTOMER' && !dto.teamId) {
         // Admin creating a manager WITHOUT teamId: auto-create the team.
         // Admin creating a STAFF user without teamId: reject - ambiguous.
         if (dto.role === 'MANAGER') {
@@ -209,6 +222,19 @@ export class UsersService {
         }
       }
 
+      // 3b. The lead a CUSTOMER points at must exist IN THIS ORG. Read under
+      //     the actor's context (admin class sees the org's leads); a lead in
+      //     another org reads as absent, which is the answer we want.
+      if (dto.role === 'CUSTOMER') {
+        const lead = await client.lead.findFirst({
+          where: { id: dto.customerLeadId, organizationId: actor.organizationId },
+          select: { id: true },
+        });
+        if (lead === null) {
+          throw new NotFoundException(`Lead ${dto.customerLeadId} not found`);
+        }
+      }
+
       // 4. Create user + credential + (team for new managers) + TeamMember
       //    row + audit row.
       //
@@ -227,6 +253,7 @@ export class UsersService {
             role: dto.role,
             emailVerified: false,
             organizationId: actor.organizationId,
+            ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
           },
         })
         .catch(rethrowAsEmailConflict);
@@ -271,6 +298,7 @@ export class UsersService {
             email: created.email,
             role: created.role,
             createdBy: actor.sub,
+            ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
           },
           reason: `user.create by ${actor.email} (${actor.role})`,
         },
@@ -317,6 +345,15 @@ export class UsersService {
       //    the target's current role and the new role).
       assertCanChangeRole(actor.role, target.role as Role, dto.role);
 
+      // 3b. Issue #8: a CUSTOMER cannot be minted by a role change - it needs a
+      //     lead pointer, which only create() collects. Provision a new
+      //     customer account instead.
+      if (dto.role === 'CUSTOMER' && target.role !== 'CUSTOMER') {
+        throw new BadRequestException(
+          'A user cannot be changed into a CUSTOMER - create a customer account with a linked lead instead',
+        );
+      }
+
       // 4. Demotion guard: a manager still leading a team cannot be demoted.
       if (target.role === 'MANAGER' && dto.role !== 'MANAGER') {
         const ledTeam = await client.team.findFirst({
@@ -348,7 +385,13 @@ export class UsersService {
 
       const updated = await client.user.update({
         where: { id: target.id },
-        data: { role: dto.role },
+        // A role change away from CUSTOMER clears the lead pointer in the SAME
+        // write (spec): a stale pointer on a staff row would be dead data that
+        // the customer helpers must never be trusted to ignore.
+        data: {
+          role: dto.role,
+          ...(target.role === 'CUSTOMER' && dto.role !== 'CUSTOMER' ? { customerLeadId: null } : {}),
+        },
       });
       const teamId = await this.resolveDisplayTeamId(
         client,

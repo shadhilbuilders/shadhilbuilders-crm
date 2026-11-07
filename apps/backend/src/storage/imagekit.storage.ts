@@ -29,6 +29,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import ImageKit from 'imagekit';
 
 import type { StorageProvider, StoredFile } from './storage.provider';
+import { looksLikeJpeg, looksLikePng } from './sniff-mime';
 
 /** Strip path separators / traversal tokens from a filename so a
  *  user-supplied name cannot escape the folder root. */
@@ -95,18 +96,29 @@ export class ImageKitStorage implements StorageProvider {
         return null;
       }
       const buf = Buffer.from(await res.arrayBuffer());
-      // Fail loud rather than serving a derivative silently: a JPEG magic
-      // number for a key whose stored mime says PNG means the orig-true
-      // parameter stopped being honoured.
+      // BYTES ARE THE TRUTH, THE FILENAME IS A LABEL (2026-11-06).
+      //
+      // This adapter used to REFUSE to serve bytes whose magic number
+      // contradicted the key's extension ("re-encoded JPEG for a PNG key"),
+      // on the theory that a mismatch proved ?tr=orig-true was being ignored.
+      // That theory is wrong, and the guard broke real uploads: phones
+      // routinely produce JPEG bytes under a name the camera roll gave the
+      // file (IMG_2676.PNG holding a 27,711-byte JPEG). Verified against the
+      // live CDN for exactly that key - `?tr=orig-true` returned 27,711 bytes
+      // (ImageKit's own recorded size, mime=image/jpeg) while the BARE url
+      // returned a 16,473-byte derivative, so the parameter IS honoured and
+      // the stored original really is a JPEG misnamed .PNG.
+      //
+      // The original-bytes guarantee is instead held by media.controller,
+      // which now sniffs the bytes and serves the type they actually are. A
+      // mismatch here is logged (it is a useful "someone's filename lies"
+      // signal) and never blocks the read.
       const ext = key.split('.').pop()?.toLowerCase() ?? '';
-      const looksPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
-      const looksJpeg = buf[0] === 0xff && buf[1] === 0xd8;
-      if (ext === 'png' && !looksPng && looksJpeg) {
-        this.logger.error(
-          `[media] imagekit read returned a re-encoded JPEG for a PNG key=${key} - ` +
-            'the ?tr=orig-true parameter is not being honoured; refusing to serve a derivative',
+      if (ext === 'png' && !looksLikePng(buf) && looksLikeJpeg(buf)) {
+        this.logger.debug(
+          `[media] key=${key} is named .png but holds JPEG bytes - serving the bytes; ` +
+            'the filename came from the device, not from the content',
         );
-        return null;
       }
       return buf;
     } catch (err) {
@@ -159,10 +171,20 @@ export class ImageKitStorage implements StorageProvider {
 
   publicUrl(key: string): string | null {
     if (!key) return null;
-    // key is an imagekit filePath already (begins with /). Prepend the URL
-    // endpoint (trimmed of trailing slash) to build the absolute CDN URL.
+    // key is an imagekit filePath and normally begins with '/'. Prepend the
+    // URL endpoint (trimmed of trailing slash) to build the absolute CDN URL.
+    //
+    // THE LEADING SLASH IS LOAD-BEARING (2026-11-06). A bare `endpoint + key`
+    // silently glues them together for a key that lacks it -
+    // `https://ik.imagekit.io/paalstack` + `ceid01.../dot.png` becomes
+    // `https://ik.imagekit.io/paalstackceid01.../dot.png` - which 404s with no
+    // hint why. Upload always returns a slash-prefixed filePath, but rows
+    // written by the LOCAL-DISK adapter carry a slashless key
+    // (`<org>/<cuid>/<name>`), and those same rows are read through THIS
+    // adapter after a MEDIA_STORAGE switch. Normalising here means the URL is
+    // correct for both shapes instead of depending on which provider wrote it.
     const endpoint = (process.env.IMAGEKIT_URL_ENDPOINT ?? '').replace(/\/+$/, '');
     if (!endpoint) return null;
-    return endpoint + key;
+    return endpoint + (key.startsWith('/') ? key : `/${key}`);
   }
 }

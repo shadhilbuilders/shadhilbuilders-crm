@@ -30,6 +30,7 @@ import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import { MAX_UPLOAD_BYTES } from './storage.limits';
+import { sniffMime, reconcileUploadMime } from './sniff-mime';
 import { STORAGE_PROVIDER } from './storage.tokens';
 import type { StorageProvider } from './storage.provider';
 
@@ -65,10 +66,13 @@ export class MediaController {
     if (!parsed.success) {
       throw new BadRequestException('Invalid upload payload');
     }
-    const { filename, mimeType, base64 } = parsed.data;
+    const { filename, base64 } = parsed.data;
+    // The declared type is only checked against the broad prefix allowlist
+    // below; the STORED type comes from the bytes (see reconcileUploadMime).
+    const declaredMimeType = parsed.data.mimeType;
 
-    if (!ALLOWED_MIME_PREFIXES.some((p) => mimeType.startsWith(p))) {
-      throw new BadRequestException(`Unsupported media type: ${mimeType}`);
+    if (!ALLOWED_MIME_PREFIXES.some((p) => declaredMimeType.startsWith(p))) {
+      throw new BadRequestException(`Unsupported media type: ${declaredMimeType}`);
     }
 
     let buf: Buffer;
@@ -81,6 +85,12 @@ export class MediaController {
     if (buf.length > MAX_UPLOAD_BYTES) {
       throw new BadRequestException(`File too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB)`);
     }
+
+    // Same rule as the progress-photo upload: record what the BYTES are, not
+    // what the filename implied. Falls back to the client's declaration when
+    // the format is one we cannot identify (office documents, archives) - the
+    // controller-wide prefix allowlist already vetted it.
+    const mimeType = reconcileUploadMime(buf, declaredMimeType)?.mimeType ?? declaredMimeType;
 
     const stored = await this.storage.save(buf, {
       organizationId: req.user!.organizationId,
@@ -114,7 +124,15 @@ export class MediaController {
     if (data === null) throw new NotFoundException('Media not found');
     // Write the raw bytes directly to the response (no StreamableFile envelope,
     // no JSON serialization) so <img>/<a> load the exact file bytes.
-    res.setHeader('Content-Type', guessMime(decoded));
+    //
+    // CONTENT-TYPE COMES FROM THE BYTES, NOT THE FILENAME (2026-11-06). The
+    // key's extension is user-supplied and frequently lies: a phone's camera
+    // roll names a JPEG `IMG_2676.PNG`, and serving that as `image/png` makes
+    // the browser drop it outright under `X-Content-Type-Options: nosniff`
+    // (set in apps/web/next.config.ts) - the image renders as nothing. Sniff
+    // the magic number first and only fall back to the extension for formats
+    // we cannot identify (documents, archives).
+    res.setHeader('Content-Type', sniffMime(data) ?? guessMime(decoded));
     res.setHeader('Content-Length', String(data.length));
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.end(data);

@@ -160,6 +160,11 @@ export function UnitEditFormBody({
       id={FORM_ID}
       form={form}
       onSubmit={onSubmit}
+      // The dialog shell caps the height and pins the header/footer, so this
+      // element is the scroll container for the field list (min-h-0 lets it
+      // shrink inside the grid row instead of overflowing). The negative
+      // margin keeps focus rings from being clipped at the edges.
+      className='-mx-1 min-h-0 overflow-y-auto px-1'
       // The Save action lives in the Dialog footer (linked via
       // form={FORM_ID} + type="submit" on the footer button); hide the
       // Form's own action buttons so the submit isn't duplicated.
@@ -452,7 +457,13 @@ export function UnitEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName='sm:max-w-lg'
+      // Height cap + scrollable body: the dialog stacks 8 fields, so on a
+      // short viewport (landscape phone, small laptop) the footer's Save
+      // button used to sit below the fold with nothing scrollable. The fixed
+      // rows keep the header and the Cancel/Save footer pinned while only the
+      // field list scrolls (`minmax(0,1fr)` lets the middle row shrink instead
+      // of overflowing).
+      contentClassName='grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg'
       header={{ title: `Edit unit ${target.unitNumber}`, description: 'Update the unit details.' }}
       footer={
         <div className="flex w-full justify-end gap-2">

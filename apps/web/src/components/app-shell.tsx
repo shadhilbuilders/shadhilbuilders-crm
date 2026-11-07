@@ -71,7 +71,7 @@ import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
 import { pickDefaultProject, useProjects, type ProjectListItem } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import { useOrgSlug } from '@/lib/tenant-context';
-import { workLandingHref } from '@/lib/dashboard-redirect';
+import { workLandingHref, workSurfaceForRole } from '@/lib/dashboard-redirect';
 import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
@@ -254,6 +254,9 @@ function SidebarSwitcherSlot({
       activeProjectSlug={activeProjectSlug}
       activeOrgSlug={activeOrgSlug}
       canManageProjects={canManageProjects}
+      // ENGINEER's only Work surface is Inventory - switching projects must
+      // not drop them on a dashboard they have no nav entry for.
+      fallbackSurface={workSurfaceForRole(user.role)}
     />
   );
 }

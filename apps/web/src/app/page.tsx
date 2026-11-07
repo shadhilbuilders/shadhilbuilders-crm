@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 
 import { useOrgSlugForId } from '@/hooks/queries/organizations';
 import { useSessionUser } from '@/lib/session';
+import { PORTAL_HOME, isPortalRole } from '@/lib/portal-routing';
 import { PageLoading } from '@/components/shared/PageLoading';
 import { PageError } from '@/components/shared/PageError';
 
@@ -28,7 +29,14 @@ export default function OrgRootRedirectPage() {
   );
 
   useEffect(() => {
-    if (isPending || orgsPending) return;
+    if (isPending) return;
+    // Issue #8: a buyer has no staff org home; send them to the portal before
+    // the (staff) org lookup, which they have no reason to wait on or fail on.
+    if (user !== null && isPortalRole(user.role)) {
+      router.replace(PORTAL_HOME);
+      return;
+    }
+    if (orgsPending) return;
     if (orgsError !== null) return; // error UI takes over below
     if (user === null || !user.organizationId) {
       router.replace('/login');
@@ -41,8 +49,9 @@ export default function OrgRootRedirectPage() {
   // Session still resolving → skeleton.
   if (isPending) return <PageLoading content="Loading workspace..." />;
 
-  // Orgs lookup failed → real error state with retry.
-  if (orgsError !== null) {
+  // Orgs lookup failed → real error state with retry (staff only: a buyer is
+  // already being redirected and must not see a staff error).
+  if (orgsError !== null && !isPortalRole(user?.role)) {
     const message =
       orgsError instanceof Error ? orgsError.message : 'Could not load your organization';
     return (

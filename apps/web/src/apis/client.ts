@@ -34,7 +34,8 @@ export type Role =
   | 'MANAGER'
   | 'SALES_EXEC'
   | 'TELECALLER'
-  | 'ENGINEER';
+  | 'ENGINEER'
+  | 'CUSTOMER';
 
 export const STAFF_ROLES: readonly Role[] = [
   'OWNER',
@@ -43,6 +44,10 @@ export const STAFF_ROLES: readonly Role[] = [
   'SALES_EXEC',
   'TELECALLER',
   'ENGINEER', // issue #7 slice 1: site-staff, upload progress photos
+  // Issue #8 slice 2: NOT staff, but it must be a KNOWN role: normalizeRole
+  // throws on anything else, so a buyer's session would 500 without it.
+  // Staff surfaces gate on nav/RLS, never on this list.
+  'CUSTOMER',
 ];
 
 const ROLE_VALUES: readonly string[] = STAFF_ROLES;

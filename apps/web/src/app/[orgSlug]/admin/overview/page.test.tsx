@@ -34,6 +34,12 @@ describe('commandCenterRedirectTarget - /overview guard', () => {
     );
   });
 
+  it('ENGINEER: /[orgSlug]/projects/[projectSlug]/inventory (their only Work surface)', () => {
+    expect(commandCenterRedirectTarget('ENGINEER', PROJ, ORG_SLUG)).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/inventory',
+    );
+  });
+
   it('non-admin + empty registry: /[orgSlug]/work (no loop into admin)', () => {
     expect(commandCenterRedirectTarget('TELECALLER', [], ORG_SLUG)).toBe(
       '/shadhil-builders/work',

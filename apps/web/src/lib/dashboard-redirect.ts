@@ -15,15 +15,30 @@ import { pickDefaultProject, type ProjectListItem } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
 import type { Role } from '@/apis/client';
 
-/** Default project dashboard, or `/{orgSlug}/work` when the registry is empty. */
+/**
+ * The project work surface a role lands on when it enters Work.
+ *
+ * ENGINEER (site engineer, issue #7 slice 1) has exactly one work surface:
+ * Inventory (`lib/nav.ts` filters every other Work item out for that role,
+ * and RLS only grants progress-photo + unit reads). Sending them to
+ * `/dashboard` would land them on a page whose nav item they cannot see, so
+ * their landing surface is the inventory grid.
+ */
+export function workSurfaceForRole(role: Role | undefined): string {
+  return role === 'ENGINEER' ? '/inventory' : '/dashboard';
+}
+
+/** The role's project work surface, or `/{orgSlug}/work` when the registry
+ *  is empty. */
 export function workLandingHref(
   orgSlug: string | null,
   projects: ProjectListItem[],
+  role: Role | undefined = undefined,
 ): string {
   if (!orgSlug) return '/work';
   const project = pickDefaultProject(projects);
   if (project !== null) {
-    return projectHref(orgSlug, project.slug, '/dashboard');
+    return projectHref(orgSlug, project.slug, workSurfaceForRole(role));
   }
   return `/${orgSlug}/work`;
 }
@@ -31,13 +46,14 @@ export function workLandingHref(
 export type RedirectTarget =
   | { kind: 'login' }
   | { kind: 'command-center' }
-  | { kind: 'project-dashboard'; href: string }
+  | { kind: 'project-work'; href: string }
   | { kind: 'work'; href: string };
 
 /**
  * Decide the root `/` redirect target from the session + project registry.
  *   - user null (expired/errored) → /login
  *   - admin/owner                 → /{orgSlug}/admin (command center)
+ *   - engineer + default project  → /{orgSlug}/projects/{slug}/inventory
  *   - non-admin + default project → /{orgSlug}/projects/{slug}/dashboard
  *   - non-admin + empty registry  → /{orgSlug}/work (not the admin registry)
  */
@@ -48,16 +64,17 @@ export function rootRedirectTarget(
 ): RedirectTarget {
   if (user === null) return { kind: 'login' };
   if (isAdminLike(user.role)) return { kind: 'command-center' };
-  const href = workLandingHref(orgSlug, projects);
+  const href = workLandingHref(orgSlug, projects, user.role);
   const project = pickDefaultProject(projects);
   if (orgSlug && project !== null) {
-    return { kind: 'project-dashboard', href };
+    return { kind: 'project-work', href };
   }
   return { kind: 'work', href };
 }
 /**
  * Decide the `/admin/overview` command-center guard target.
  *   - admin/owner                 → null (render the command center)
+ *   - engineer + default project  → /{orgSlug}/projects/{slug}/inventory
  *   - non-admin + default project → /{orgSlug}/projects/{slug}/dashboard
  *   - non-admin + empty registry  → /{orgSlug}/work (no loop into admin)
  */
@@ -67,5 +84,5 @@ export function commandCenterRedirectTarget(
   orgSlug: string | null = null,
 ): string | null {
   if (isAdminLike(role)) return null;
-  return workLandingHref(orgSlug, projects);
+  return workLandingHref(orgSlug, projects, role);
 }

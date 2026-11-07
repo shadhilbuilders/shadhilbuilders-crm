@@ -284,6 +284,7 @@ export const ROLES = [
   'SALES_EXEC',
   'TELECALLER',
   'ENGINEER',
+  'CUSTOMER',
 ] as const;
 export type RoleLabel = (typeof ROLES)[number];
 
@@ -294,6 +295,7 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
   SALES_EXEC: 'Sales Executive',
   TELECALLER: 'Telecaller',
   ENGINEER: 'Site Engineer',
+  CUSTOMER: 'Customer',
 };
 
 /**

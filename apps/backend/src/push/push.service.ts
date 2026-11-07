@@ -17,6 +17,14 @@ import webpush from 'web-push';
 
 import { PrismaService } from '../prisma/prisma.module';
 
+export type PushPayload = {
+  title: string;
+  body: string;
+  url?: string;
+  /** Collapses repeat notifications for the same subject on the device. */
+  tag?: string;
+};
+
 @Injectable()
 export class PushService {
   private readonly logger = new Logger(PushService.name);
@@ -85,13 +93,49 @@ export class PushService {
    */
   async sendToUser(
     userId: string,
-    payload: { title: string; body: string; url?: string },
+    payload: PushPayload,
+    organizationId: string,
+  ): Promise<number> {
+    return this.sendAs(userId, 'TELECALLER', payload, organizationId);
+  }
+
+  /**
+   * Deliver one payload to several recipients (issue #8: the customer portal
+   * photo notifier). Each recipient is processed in their OWN RLS context
+   * (the push policies are owner-scoped: app.user_id = recipient), so one
+   * recipient's expired subscription (404/410 -> deleted by deliver()) or
+   * failure never affects another's. Never throws; returns the number of
+   * subscriptions attempted across all recipients.
+   */
+  async sendToUsers(
+    organizationId: string,
+    userIds: readonly string[],
+    payload: PushPayload,
+    role: 'CUSTOMER' | 'TELECALLER' = 'CUSTOMER',
+  ): Promise<number> {
+    let attempted = 0;
+    for (const userId of new Set(userIds)) {
+      try {
+        attempted += await this.sendAs(userId, role, payload, organizationId);
+      } catch (err) {
+        this.logger.warn(
+          `[push] recipient ${userId} failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return attempted;
+  }
+
+  private async sendAs(
+    userId: string,
+    role: 'CUSTOMER' | 'TELECALLER',
+    payload: PushPayload,
     organizationId: string,
   ): Promise<number> {
     if (!this.enabled) return 0;
     return withRlsContext(
       this.client,
-      { userId, role: 'TELECALLER', organizationId },
+      { userId, role, organizationId },
       async (tx) => {
         const subs = await (tx as unknown as PrismaClient).pushSubscription.findMany({
           where: { userId, platform: 'WEB' },
@@ -119,7 +163,7 @@ export class PushService {
     endpoint: string,
     p256dh: string,
     auth: string,
-    payload: { title: string; body: string; url?: string },
+    payload: PushPayload,
   ): Promise<void> {
     try {
       await webpush.sendNotification({ endpoint, keys: { p256dh, auth } }, JSON.stringify(payload));

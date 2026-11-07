@@ -36,7 +36,7 @@ import {
 import { inventoryStatusBadgeVariant, labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser, canManageProjectMembers } from '@/lib/session';
+import { useSessionUser, canManageProjectMembers, isAdminLike } from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -144,8 +144,11 @@ function InventoryGrid() {
   const [deleteTarget, setDeleteTarget] = useState<UnitRow | null>(null);
   const deleteUnit = useDeleteUnit();
 
-  const canEdit =
-    mounted && user !== null && (user.role === 'ADMIN' || user.role === 'OWNER');
+  // Unit WRITES (create/edit/delete) are ADMIN/OWNER only - mirrors the
+  // service gates in InventoryService.create/update/delete and the RLS
+  // policies. Every role may READ the grid, so the row menu must not offer
+  // an action the API answers 403 for.
+  const canEdit = mounted && user !== null && isAdminLike(user.role);
 
   // Phase management (add/rename/delete) is MANAGER/ADMIN/OWNER; the
   // "Phases" header button is hidden for non-manager roles.
@@ -300,18 +303,37 @@ function InventoryGrid() {
       {
         id: 'actions',
         header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row }) => (
-          <div className="text-right">
-            <DataTableRowActions
-              row={row}
-              rowSchema={unitRowSchema}
-              actionItems={[
-                { label: 'Edit', value: 'edit', icon: LuPencil, onClick: () => setEditTarget(row.original) },
-                { label: 'Delete', value: 'delete', icon: LuTrash2, onClick: () => setDeleteTarget(row.original) },
-              ].filter((item) => item.value !== 'delete' || canEdit)}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          // Non-admin roles (MANAGER/TELECALLER/SALES_EXEC/ENGINEER) can read
+          // the grid but not write a unit, so they get NO actions menu at all -
+          // an empty kebab that opens a blank popup is worse than no trigger.
+          const actionItems = canEdit
+            ? [
+                {
+                  label: 'Edit',
+                  value: 'edit',
+                  icon: LuPencil,
+                  onClick: () => setEditTarget(row.original),
+                },
+                {
+                  label: 'Delete',
+                  value: 'delete',
+                  icon: LuTrash2,
+                  onClick: () => setDeleteTarget(row.original),
+                },
+              ]
+            : [];
+          if (actionItems.length === 0) return null;
+          return (
+            <div className="text-right">
+              <DataTableRowActions
+                row={row}
+                rowSchema={unitRowSchema}
+                actionItems={actionItems}
+              />
+            </div>
+          );
+        },
         enableSorting: false,
         enableHiding: false,
       },

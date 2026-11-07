@@ -103,6 +103,17 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     expect(rate).not.toMatch(/readonly/i);
   });
 
+  // The dialog caps its own height and pins header/footer, so the form is the
+  // scroll container for the field list. Without it the lower fields (and the
+  // footer's Save button) fall below the fold on short viewports.
+  it('makes the field list the dialog scroll container', () => {
+    const html = renderToStaticMarkup(<TestForm />);
+    const form = html.match(/<form[^>]*data-qa="form"[^>]*>/)?.[0] ?? '';
+
+    expect(form).toMatch(/overflow-y-auto/);
+    expect(form).toMatch(/min-h-0/);
+  });
+
   // T-INV-SYNC follow-up: a held/token unit must NOT render the status picker.
   // It used to render a SELECT pre-selected with 'HOLD' - a value its options
   // (AVAILABLE|SOLD) cannot contain - and always submitted it, so the server

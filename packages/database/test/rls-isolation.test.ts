@@ -1291,6 +1291,11 @@ function roleFromCtx(ctx: RlsContext): 'TELECALLER' | 'SALES_EXEC' | 'MANAGER' |
   if (ctx.role === 'ENGINEER') {
     expect.unreachable('ENGINEER contexts belong in progress-rls.test.ts, not the 4x8x4 matrix');
   }
+  // CUSTOMER (issue #8 slice 2) is read-only and likewise outside the matrix -
+  // its isolation suite is customer-portal-rls.test.ts.
+  if (ctx.role === 'CUSTOMER') {
+    expect.unreachable('CUSTOMER contexts belong in customer-portal-rls.test.ts, not the 4x8x4 matrix');
+  }
   return ctx.role;
 }
 

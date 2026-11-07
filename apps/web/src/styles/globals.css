@@ -200,3 +200,27 @@
     transparent 0.5px 8px
   );
 }
+/* Customer portal (issue #8): the ONE motion moment. A photo opened from a
+ * push deep link (?photo=<id>) settles into view over 220ms. Everything else
+ * in the portal is static. Honors prefers-reduced-motion. */
+@keyframes portal-focus {
+  from {
+    transform: translateY(6px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .animate-portal-focus {
+    animation: portal-focus 220ms ease-out 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-portal-focus {
+      animation: none;
+    }
+  }
+}

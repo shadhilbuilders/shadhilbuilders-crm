@@ -14,14 +14,13 @@ import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
-import { useInventoryPhases } from '@/hooks/queries/inventory';
 import {
   useUnitPhotos,
   isForbidden,
 } from '@/hooks/queries/customer-progress';
-import { UnitProgressTabContent } from './UnitProgressTab';
+import { UnitProgressTabContent, type ProgressUnit } from './UnitProgressTab';
 
-import type { PhaseRow, UnitRow } from '@/hooks/queries/inventory';
+import type { UnitRow } from '@/hooks/queries/inventory';
 
 function formatMoney(value: string | undefined): string {
   if (value === undefined) return '-';
@@ -45,13 +44,13 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  *  full progress panel on 2xx, and NOTHING on 403 (the documented contract:
  *  a non-member's Progress tab hides itself entirely, instead of leaving an
  *  empty tab shell). */
-function UnitProgressGate({ unitId, phases }: { unitId: string; phases: PhaseRow[] }) {
+function UnitProgressGate({ unit }: { unit: ProgressUnit }) {
   // Shares the same TanStack query key as UnitProgressTabContent's own
   // useUnitPhotos call, so this resolves in one network round trip and the
   // panel below renders from cache without a second fetch.
-  const photosQuery = useUnitPhotos(unitId);
+  const photosQuery = useUnitPhotos(unit.id);
   if (isForbidden(photosQuery.error)) return null;
-  return <UnitProgressTabContent unitId={unitId} phases={phases} />;
+  return <UnitProgressTabContent unit={unit} />;
 }
 
 export function UnitDetailSheet({
@@ -72,11 +71,18 @@ export function UnitDetailSheet({
       user.role === 'SALES_EXEC');
   // Issue #7 slice 1: site-staff surface. The Progress tab renders for every
   // role INSIDE the sheet - its own visibility contract is the timeline GET
-  // (a 403 non-member hides the tab entirely, inside UnitProgressTabContent);
-  // phases come from the unit's project (useInventoryPhases takes projectId).
-  const phases = useInventoryPhases(unit?.projectId);
+  // (a 403 non-member hides the tab entirely, inside UnitProgressTabContent).
+  // The photo's phase comes from the unit itself (Unit.phaseId is required),
+  // so no phase list is fetched here any more.
 
   if (unit === null) return null;
+  // Only the progress tab's three fields - the tab must not gain access to
+  // booking/money fields it has no business reading.
+  const progressUnit: ProgressUnit = {
+    id: unit.id,
+    phaseId: unit.phaseId,
+    phaseName: unit.phaseName,
+  };
   const status = unit.status;
   const isAvailable = status === 'AVAILABLE';
 
@@ -112,6 +118,7 @@ export function UnitDetailSheet({
       <Tabs
         defaultValue="details"
         variant="line"
+        className="px-4"
         tabs={
           canBook
             ? [
@@ -123,14 +130,14 @@ export function UnitDetailSheet({
                 {
                   label: 'Progress',
                   value: 'progress',
-                  content: <UnitProgressTabContent unitId={unit.id} phases={phases.data ?? []} />,
+                  content: <UnitProgressTabContent unit={progressUnit} />,
                 },
               ]
             : [
                 {
                   label: 'Progress',
                   value: 'progress',
-                  content: <UnitProgressGate unitId={unit.id} phases={phases.data ?? []} />,
+                  content: <UnitProgressGate unit={progressUnit} />,
                 },
               ]
         }

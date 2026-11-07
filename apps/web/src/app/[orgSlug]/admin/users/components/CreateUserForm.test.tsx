@@ -250,13 +250,18 @@ describe('CreateUserForm team-required error renders INLINE (not a toast)', () =
       submitForm();
     });
 
-    // The inline error lives inside the Team field, as the Combobox's own
-    // error message.
+    // The message is rendered ONCE, by react-ui's Form, in the field's error
+    // slot. It used to also be passed to the Combobox as `errorMessage`, which
+    // printed the same sentence twice under the picker (2026-11-06 report).
     const teamField = container?.querySelector('[data-qa="form-field-teamId"]');
     expect(teamField).not.toBeNull();
-    const inline = teamField?.querySelector('[data-qa="combobox-error-message"]');
+    const inline = teamField?.querySelector('[data-qa="form-error-message-teamId"]');
     expect(inline).not.toBeNull();
     expect(inline?.textContent ?? '').toContain('Select a team for this user');
+    // Guards the duplicate: the Combobox's own message must NOT be present.
+    expect(teamField?.querySelector('[data-qa="combobox-error-message"]')).toBeNull();
+    const occurrences = (teamField?.textContent ?? '').split('Select a team for this user').length - 1;
+    expect(occurrences).toBe(1);
 
     // The picker is marked invalid so it reads as an error, not a hint.
     const input = teamField?.querySelector('input');

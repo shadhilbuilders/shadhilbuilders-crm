@@ -23,6 +23,10 @@ const RANK: Record<Role, number> = {
   TELECALLER: 1,
   SALES_EXEC: 1,
   ENGINEER: 1,
+  // Issue #8 slice 2: buyer login. Rank 1 like the other non-managers, but
+  // assertCanCreateRole/assertCanChangeRole pin CUSTOMER to the admin class
+  // and MANAGER may never touch a CUSTOMER row.
+  CUSTOMER: 1,
 };
 
 export const OWNER: Role = 'OWNER';
@@ -93,6 +97,11 @@ export function assertCanCreateRole(actor: Role, targetRole: Role): void {
       `${actor} cannot create ${targetRole} users - ENGINEER provisioning is OWNER/ADMIN only`,
     );
   }
+  if (targetRole === 'CUSTOMER' && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot create ${targetRole} users - CUSTOMER provisioning is OWNER/ADMIN only`,
+    );
+  }
   if (RANK[actor] <= RANK[targetRole]) {
     throw new ForbiddenException(`${actor} cannot create ${targetRole} users`);
   }
@@ -122,6 +131,13 @@ export function assertCanChangeRole(
   if (newRole === 'ENGINEER' && !isAdminClass(actor)) {
     throw new ForbiddenException(
       `${actor} cannot assign the ${newRole} role - ENGINEER provisioning is OWNER/ADMIN only`,
+    );
+  }
+  // Guard 0c (issue #8): CUSTOMER is an admin-class act in BOTH directions -
+  // assigning the role, and moving a CUSTOMER row to any other role.
+  if ((newRole === 'CUSTOMER' || targetRole === 'CUSTOMER') && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot change CUSTOMER roles - CUSTOMER provisioning is OWNER/ADMIN only`,
     );
   }
   // Guard 1: nobody changes their own role.

@@ -27,6 +27,8 @@ export type CreateUserInput = {
   password: string;
   role: Role;
   teamId?: string;
+  /** Issue #8: required for CUSTOMER, rejected for every other role. */
+  customerLeadId?: string;
 };
 
 const USERS_KEY = ['users'] as const;

@@ -50,7 +50,7 @@ interface SeedUser {
 }
 
 function readSeedUser(
-  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER',
+  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER' | 'CUSTOMER',
 ): SeedUser {
   // Plan §17 Input #5: fall back to documented placeholder users so a fresh
   // clone can seed before the client roster arrives. Placeholders MUST be
@@ -65,6 +65,8 @@ function readSeedUser(
   //   TELECALLER  → telecaller@shadhilbuilders.in
   //   SALES_EXEC  → sales_exec@shadhilbuilders.in
   //   ENGINEER    → engineer@shadhilbuilders.in (issue #7 slice 1 site staff)
+  //   CUSTOMER    → customer@shadhilbuilders.in (issue #8 slice 2 buyer; linked
+  //                 to a demo lead with an APPROVED booking, see below)
   // Each email mirrors the role name - Round 23 swap from
   // admin@/admin2@ → owner@/admin@.
   const FALLBACK_EMAIL: Record<typeof prefix, string> = {
@@ -74,6 +76,7 @@ function readSeedUser(
     TELECALLER: 'telecaller@shadhilbuilders.in',
     SALES_EXEC: 'sales_exec@shadhilbuilders.in',
     ENGINEER: 'engineer@shadhilbuilders.in',
+    CUSTOMER: 'customer@shadhilbuilders.in',
   };
   const FALLBACK_NAME: Record<typeof prefix, string> = {
     OWNER: 'Owner',
@@ -82,6 +85,7 @@ function readSeedUser(
     TELECALLER: 'Telecaller',
     SALES_EXEC: 'Sales Exec',
     ENGINEER: 'Site Engineer',
+    CUSTOMER: 'Demo Customer',
   };
   const FALLBACK_PASSWORD: Record<typeof prefix, string> = {
     OWNER: 'owner_placeholder_pw',
@@ -90,6 +94,7 @@ function readSeedUser(
     TELECALLER: 'telecaller_placeholder_pw',
     SALES_EXEC: 'sales_exec_placeholder_pw',
     ENGINEER: 'engineer_placeholder_pw',
+    CUSTOMER: 'customer_placeholder_pw',
   };
 
   const email = process.env[`SEED_${prefix}_EMAIL`] ?? FALLBACK_EMAIL[prefix];
@@ -105,7 +110,7 @@ function readSeedUser(
   return { email, name, password };
 }
 
-type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER';
+type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER' | 'CUSTOMER';
 
 // Fixed cuid2 ids for the seeded projects. Generated once with
 // `createId()` from @paralleldrive/cuid2 and validated against
@@ -145,6 +150,13 @@ export const SEED_SALES_EXEC_ID = 'b7ucheo93987ss7oldrzlazd';
 // to every demo project, so this engineer gets Progress-tab access to all of
 // them out of the box).
 export const SEED_ENGINEER_ID = 'c1mg1xq8xv2xkq0n1rd5t8ea';
+// Issue #8 slice 2: a seeded buyer login, so the portal can be exercised
+// with no manual setup. Linked to the demo lead below (Vikram Singh, WON)
+// whose booking on unit A-101 is APPROVED.
+export const SEED_CUSTOMER_ID = 'c1mg1xq8xv2xkq0n1rd5t8eb';
+export const SEED_CUSTOMER_BOOKING_ID = 'c1mg1xq8xv2xkq0n1rd5t8ec';
+const SEED_CUSTOMER_LEAD_PHONE = '9876500008';
+const SEED_CUSTOMER_UNIT = { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101' } as const;
 
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
@@ -158,15 +170,17 @@ async function upsertUser(
   user: SeedUser,
   role: Role,
   teamId?: string,
+  customerLeadId?: string,
 ) {
   const dbUser = await prisma.user.upsert({
     where: { id },
-    update: { role },
+    update: { role, ...(customerLeadId !== undefined ? { customerLeadId } : {}) },
     create: {
       id,
       email: user.email,
       name: user.name,
       role,
+      ...(customerLeadId !== undefined ? { customerLeadId } : {}),
       organizationId: SEED_ORG_ID,
       emailVerified: true,
       // Placeholder-password gate (T-S hardening, 2026-09-04, re-scoped
@@ -529,6 +543,44 @@ async function main() {
   }
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ ${demoLeads.length} demo leads created/updated across all LeadStates`);
+
+  // ── Customer portal demo (issue #8 slice 2) ─────────────────────────────
+  // One buyer login on a lead with an APPROVED booking, plus the office phone
+  // the portal's lock screen shows. The booking is created APPROVED directly
+  // (seed bypasses the HOLD -> TOKEN -> APPROVED workflow on purpose); the
+  // Booking trigger derives Unit.status as for any other booking.
+  const customerLead = await prisma.lead.findUniqueOrThrow({
+    where: { phone: SEED_CUSTOMER_LEAD_PHONE },
+    select: { id: true },
+  });
+  const customerUnit = await prisma.unit.findUniqueOrThrow({
+    where: { phaseId_unitNumber: SEED_CUSTOMER_UNIT },
+    select: { id: true, price: true },
+  });
+  await prisma.booking.upsert({
+    where: { id: SEED_CUSTOMER_BOOKING_ID },
+    update: { status: 'APPROVED', leadId: customerLead.id, unitId: customerUnit.id },
+    create: {
+      id: SEED_CUSTOMER_BOOKING_ID,
+      leadId: customerLead.id,
+      unitId: customerUnit.id,
+      organizationId: SEED_ORG_ID,
+      userId: SEED_MANAGER_ID,
+      approvedById: SEED_ADMIN_ID,
+      amount: customerUnit.price,
+      listAmount: customerUnit.price,
+      status: 'APPROVED',
+    },
+  });
+  await upsertUser(SEED_CUSTOMER_ID, readSeedUser('CUSTOMER'), 'CUSTOMER', undefined, customerLead.id);
+  await prisma.organization.update({
+    where: { id: SEED_ORG_ID },
+    data: { contactPhone: process.env.SEED_ORG_CONTACT_PHONE ?? '+91 98765 00000' },
+  });
+  // eslint-disable-next-line no-console
+  console.log(
+    `[seed] ✓ customer ${readSeedUser('CUSTOMER').email} -> lead ${SEED_CUSTOMER_LEAD_PHONE}, APPROVED booking on ${SEED_CUSTOMER_UNIT.unitNumber}`,
+  );
 
   // ── Demo ManagerAssignmentRule rows (T-ARM-SCHEMA, 2026-09-04) ────────
   // Three rules demonstrating the priority + criteria engine:

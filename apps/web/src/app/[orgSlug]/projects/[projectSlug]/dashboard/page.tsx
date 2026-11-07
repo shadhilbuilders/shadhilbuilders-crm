@@ -45,6 +45,7 @@
 import { Button, TypographyP, toast } from '@paalstack/react-ui';
 import { LuCalendarCheck, LuListChecks, LuPhoneMissed, LuUserPlus } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -77,6 +78,7 @@ import {
 } from '@/hooks/queries/crm';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
 import { dateIntl } from '@/lib/format';
+import { workSurfaceForRole } from '@/lib/dashboard-redirect';
 import { labelFor } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
 import { canApproveBookings, canInitiateBookings, useSessionUser } from '@/lib/session';
@@ -117,7 +119,10 @@ type VisitQueueRow = {
 // the states shown and the actions offered cannot drift apart.
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { user, isPending: sessionPending } = useSessionUser();
+  const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -129,6 +134,18 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // ENGINEER (site engineer) has no dashboard: their only Work surface is
+  // Inventory (lib/nav.ts hides every other Work item, and the queue's lead
+  // data is RLS-denied to them). A bookmark or deep link to /dashboard must
+  // therefore forward to the inventory grid instead of rendering a shell full
+  // of failed requests - same destination as the post-login redirect
+  // (workSurfaceForRole).
+  const isEngineer = user?.role === 'ENGINEER';
+  useEffect(() => {
+    if (!mounted || sessionPending || !isEngineer) return;
+    router.replace(projectHref(orgSlug, projectSlug, workSurfaceForRole('ENGINEER')));
+  }, [mounted, sessionPending, isEngineer, orgSlug, projectSlug, router]);
 
   if (!mounted || sessionPending) {
     return <Skeleton variant="overview" className="py-4" />;
@@ -146,6 +163,10 @@ export default function DashboardPage() {
         .
       </div>
     );
+  }
+
+  if (isEngineer) {
+    return <Skeleton variant="overview" className="py-4" />;
   }
 
   return <WorkQueue role={user.role as Role} userName={user.name ?? ''} />;

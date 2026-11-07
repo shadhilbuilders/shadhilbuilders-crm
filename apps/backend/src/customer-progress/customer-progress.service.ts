@@ -8,16 +8,28 @@
 // service-403ed (RLS alone denies silently - permissive-by-absence looks
 // like "no photos yet", which is why the service check is the messaging
 // wall).
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional, forwardRef } from '@nestjs/common';
 import { z } from 'zod';
 
 import { isAdminClass } from '../users/roles';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
 import { MAX_UPLOAD_BYTES } from '../storage/storage.limits';
+import { reconcileUploadMime } from '../storage/sniff-mime';
 import { PrismaService } from '../prisma/prisma.module';
-import { withRlsContext, rlsContextFrom, type RlsTx } from '@shadhil/database';
+import { PortalNotifier } from '../customer-portal/portal-notifier.service';
+import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
+
+import {
+  PAGE_SIZE,
+  decodeCursor,
+  encodeCursor,
+  mediaUrlFor,
+  readTimelinePage,
+  type TimelinePhotoDto,
+  type TimelineResponseDto,
+} from './progress-photo.mapper';
 
 // ── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -43,28 +55,11 @@ export const SetPhotoLeadSchema = z.object({
 });
 export type SetPhotoLeadDto = z.infer<typeof SetPhotoLeadSchema>;
 
-const PAGE_SIZE = 50;
-
-/** Timeline entry DTO (single authoritative shape, pinned by the spec). */
-export interface TimelinePhotoDto {
-  id: string;
-  unitId: string;
-  phaseId: string | null;
-  phaseName: string | null;
-  mimeType: string;
-  filename: string;
-  caption: string;
-  takenAt: string;
-  createdAt: string;
-  creatorName: string | null;
-  creatorIsPhotoLead: boolean | null;
-  mediaUrl: string;
-}
-
-export interface TimelineResponseDto {
-  photos: TimelinePhotoDto[];
-  nextCursor: string | null;
-}
+// Wire shapes + PAGE_SIZE + cursor codec live in progress-photo.mapper.ts so the
+// buyer portal reads through the identical code path (issue #8). Re-exported
+// here so existing importers (controller, tests) are unaffected.
+export { PAGE_SIZE, decodeCursor, encodeCursor };
+export type { TimelinePhotoDto, TimelineResponseDto };
 
 // ── Service ─────────────────────────────────────────────────────────────────
 
@@ -75,35 +70,16 @@ export function buildCaption(phaseName: string | null, takenAt: Date): string {
   return `${phaseName ?? 'Site photo'} ${month} ${year}`;
 }
 
-/** Cursor codec: opaque base64 JSON {takenAt, id}. */
-export function encodeCursor(takenAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ takenAt: takenAt.toISOString(), id }), 'utf8').toString('base64url');
-}
-
-export function decodeCursor(raw: string | undefined): { takenAt: Date; id: string } | null {
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      typeof (parsed as { takenAt?: unknown }).takenAt !== 'string' ||
-      typeof (parsed as { id?: unknown }).id !== 'string'
-    ) {
-      return null;
-    }
-    const { takenAt, id } = parsed as { takenAt: string; id: string };
-    return { takenAt: new Date(takenAt), id };
-  } catch {
-    return null; // malformed cursor = fresh first page (log at debug upstream)
-  }
-}
-
 @Injectable()
 export class CustomerProgressService {
+  private readonly logger = new Logger(CustomerProgressService.name);
+
   constructor(
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(forwardRef(() => STORAGE_PROVIDER)) private readonly storage: StorageProvider,
+    // Issue #8: best-effort buyer push after a photo commits. Optional so the
+    // staff upload path boots (and its tests construct the service) without it.
+    @Optional() @Inject(PortalNotifier) private readonly portalNotifier?: PortalNotifier,
   ) {}
 
   private get client() {
@@ -122,15 +98,15 @@ export class CustomerProgressService {
    * unit's project (resolved THROUGH Phase - Unit has no projectId).
    * RLS is the second wall; this is the messaging wall (RLS deny is silent).
    */
-  private async assertUnitAccess(actor: JwtPayload, unitId: string): Promise<{ projectId: string }> {
+  private async assertUnitAccess(actor: JwtPayload, unitId: string): Promise<{ projectId: string; unitNumber: string }> {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const unit = await tx.unit.findFirst({
         where: { id: unitId, organizationId: actor.organizationId },
-        select: { id: true, phase: { select: { projectId: true } } },
+        select: { id: true, unitNumber: true, phase: { select: { projectId: true } } },
       });
       if (unit === null) throw new NotFoundException(`Unit not found.`);
 
-      if (isAdminClass(actor.role)) return { projectId: unit.phase.projectId };
+      if (isAdminClass(actor.role)) return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
       if (actor.role === 'ENGINEER' || actor.role === 'MANAGER' || actor.role === 'SALES_EXEC' || actor.role === 'TELECALLER') {
         const member = await tx.projectTeam.findFirst({
           where: {
@@ -146,19 +122,56 @@ export class CustomerProgressService {
           },
           select: { projectId: true },
         });
-        if (member !== null) return { projectId: unit.phase.projectId };
+        if (member !== null) return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
       }
       throw new ForbiddenException('You are not assigned to this project.');
     });
   }
 
   async upload(actor: JwtPayload, unitId: string, dto: UploadPhotoDto): Promise<TimelinePhotoDto> {
-    const { projectId } = await this.assertUnitAccess(actor, unitId);
+    const { projectId, unitNumber } = await this.assertUnitAccess(actor, unitId);
 
     const buf = Buffer.from(dto.base64, 'base64');
     if (buf.length === 0) throw new BadRequestException('Empty file');
     if (buf.length > MAX_UPLOAD_BYTES) {
       throw new BadRequestException(`File too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB)`);
+    }
+
+    // THE BYTES DECIDE THE TYPE, THE CLIENT ONLY HINTS AT IT (2026-11-06).
+    //
+    // `dto.mimeType` comes from the browser's File.type, which is derived from
+    // the FILENAME. Phones hand back a JPEG's bytes under the name the camera
+    // roll chose (`IMG_2676.PNG`), so the declared type can be wrong for
+    // perfectly ordinary uploads - trusting it wrote `image/png` rows whose
+    // stored bytes were JPEG, which the browser then refused to render under
+    // nosniff. Sniffing here records the truth at rest.
+    const reconciled = reconcileUploadMime(buf, dto.mimeType);
+    if (reconciled === null) {
+      throw new BadRequestException(
+        'Unrecognised image format - the file is not a valid JPEG, PNG or WebP.',
+      );
+    }
+    if (reconciled.mimeType === 'image/heic' || reconciled.mimeType === 'image/avif') {
+      throw new BadRequestException(
+        `This photo is ${reconciled.mimeType === 'image/heic' ? 'HEIC' : 'AVIF'} - please use JPEG, PNG or WebP (iPhone: Settings > Camera > Formats > Most Compatible).`,
+      );
+    }
+    // Slice-1 allowlist (spec): JPEG/PNG/WebP. Anything else the sniffer CAN
+    // identify (GIF, PDF, MP4, MP3) is still not a progress photo.
+    if (
+      reconciled.mimeType !== 'image/jpeg' &&
+      reconciled.mimeType !== 'image/png' &&
+      reconciled.mimeType !== 'image/webp'
+    ) {
+      throw new BadRequestException(
+        `Unsupported image type: ${reconciled.mimeType}. Use JPEG, PNG or WebP.`,
+      );
+    }
+    const mimeType = reconciled.mimeType;
+    if (reconciled.declaredWasWrong) {
+      this.logger.debug(
+        `[progress] unit=${unitId} file="${dto.filename}" declared ${dto.mimeType} but the bytes are ${mimeType} - recording the bytes`,
+      );
     }
 
     // Phase must belong to the unit's project (client-supplied taxonomy).
@@ -177,19 +190,20 @@ export class CustomerProgressService {
     // surfaced - the request 500s regardless).
     const stored = await this.storage.save(buf, {
       organizationId: actor.organizationId,
-      mimeType: dto.mimeType,
+      mimeType,
       filename: dto.filename,
     });
 
+    let created: TimelinePhotoDto;
     try {
-      return await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      created = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
         const photo = await tx.progressPhoto.create({
           data: {
             unitId,
             phaseId: dto.phaseId,
             organizationId: actor.organizationId,
             key: stored.key,
-            mimeType: dto.mimeType,
+            mimeType,
             filename: stored.filename,
             caption: buildCaption(phaseOk.name, takenAt),
             takenAt,
@@ -202,14 +216,14 @@ export class CustomerProgressService {
           unitId,
           phaseId: dto.phaseId,
           phaseName: phaseOk.name,
-          mimeType: dto.mimeType,
+          mimeType,
           filename: stored.filename,
           caption: buildCaption(phaseOk.name, takenAt),
           takenAt: takenAt.toISOString(),
           createdAt: photo.createdAt.toISOString(),
           creatorName: await this.userName(tx, actor.sub),
           creatorIsPhotoLead: null,
-          mediaUrl: `/api/bff/media/${encodeURIComponent(stored.key)}`,
+          mediaUrl: mediaUrlFor(stored.key),
         };
       });
     } catch (err) {
@@ -217,75 +231,26 @@ export class CustomerProgressService {
       await this.storage.delete(stored.key);
       throw err;
     }
+
+    // The row is committed. Tell the buyers (D8: best effort, never awaited,
+    // never able to fail this response - the notifier catches and logs
+    // everything itself). Deliberately OUTSIDE the try above: a notifier
+    // fault must not trigger the blob-compensation delete.
+    void this.portalNotifier?.notifyNewPhoto({
+      organizationId: actor.organizationId,
+      unitId,
+      unitNumber,
+      photoId: created.id,
+      caption: created.caption,
+    });
+    return created;
   }
 
   async timeline(actor: JwtPayload, unitId: string, cursorRaw: string | undefined): Promise<TimelineResponseDto> {
     await this.assertUnitAccess(actor, unitId);
-    const cursor = decodeCursor(cursorRaw); // malformed/absent = fresh page
-
-    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
-      // Stable composite ordering (spec): takenAt DESC, id DESC.
-      const rows = await tx.progressPhoto.findMany({
-        where: {
-          unitId,
-          organizationId: actor.organizationId,
-          ...(cursor !== null
-            ? {
-                OR: [
-                  { takenAt: { lt: cursor.takenAt } },
-                  { takenAt: cursor.takenAt, id: { lt: cursor.id } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ takenAt: 'desc' }, { id: 'desc' }],
-        take: PAGE_SIZE + 1, // fetch one extra to know whether a next page exists
-        select: { id: true, unitId: true, phaseId: true, phase: { select: { name: true } }, mimeType: true, filename: true, caption: true, takenAt: true, createdAt: true, key: true },
-      });
-
-      const hasMore = rows.length > PAGE_SIZE;
-      const page = rows.slice(0, PAGE_SIZE);
-
-      // Creator labels resolved per-photo via the SECURITY DEFINER helper
-      // (TeamMember RLS hides other members' rows by design).
-      const ids = page.map((r) => r.id);
-      // Creator labels via the SECURITY DEFINER helper, one call per photo
-      // (the function takes a single id; a 50-photo page is at most 50 tiny
-      // round trips - correct first, batch in slice 2 if pages ever grow).
-      const labelRows = await Promise.all(
-        page.map(async (r) => {
-          const rows = await tx.$queryRaw<Array<{ creator_name: string | null; creator_is_photo_lead: boolean | null }>>`
-            SELECT creator_name, creator_is_photo_lead FROM progress_photo_creator_label(${r.id})`;
-          return [r.id, rows[0] ?? null] as const;
-        }),
-      );
-      const labelById = new Map(labelRows);
-
-      // Assemble the DTO page.
-      const photos: TimelinePhotoDto[] = page.map((r) => {
-        const label = labelById.get(r.id) ?? null;
-        return {
-          id: r.id,
-          unitId: r.unitId,
-          phaseId: r.phaseId,
-          phaseName: r.phase?.name ?? null,
-          mimeType: r.mimeType,
-          filename: r.filename,
-          caption: r.caption,
-          takenAt: r.takenAt.toISOString(),
-          createdAt: r.createdAt.toISOString(),
-          creatorName: label?.creator_name ?? null,
-          creatorIsPhotoLead: label?.creator_is_photo_lead ?? null,
-          mediaUrl: `/api/bff/media/${encodeURIComponent(r.key)}`,
-        };
-      });
-
-      const last = page[page.length - 1];
-      return {
-        photos,
-        nextCursor: hasMore && last ? encodeCursor(last.takenAt, last.id) : null,
-      };
-    });
+    return withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+      readTimelinePage(tx, { unitId, organizationId: actor.organizationId, cursorRaw }),
+    );
   }
 
   /** OWNER/ADMIN only (spec: MANAGER excluded regardless of canManageUsers). */
