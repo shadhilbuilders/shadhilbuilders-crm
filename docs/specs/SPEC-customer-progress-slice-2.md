@@ -1,8 +1,22 @@
 # SPEC: Customer Progress Portal, slice 2 - portal shell, customer auth, live timeline
 
-Status: draft for approval. Design source: `docs/designs/customer-progress-portal.md`
-(eng + design reviews CLEARED 2026-10-26). Slice 1 shipped: PR #8, main `198e335`,
-closed out in PR #13, main `349b9e4`.
+Status: implemented on `feat/customer-progress-slice-2` (not yet merged). Design source:
+`docs/designs/customer-progress-portal.md` (eng + design reviews CLEARED 2026-10-26).
+Slice 1 shipped: PR #8, main `198e335`, closed out in PR #13, main `349b9e4`.
+
+Amended 2026-11-07 during the completion pass, where the code and this document had
+diverged:
+- **D3** now describes what ships: `UsersService.create` arms `mustChangePassword` for a
+  CUSTOMER, so the provisioned password must be rotated on first login. It previously
+  claimed the gate already did this; it did not (the column defaults false and only the
+  seed's OWNER arm ever set it).
+- **RLS** section corrected to four helpers / five policies. The two
+  `push_*_portal_service` policies the first draft specified were never created — the
+  notifier delivers under each recipient's own context instead, which is narrower.
+- **Web** section gained `portal-push-prompt.tsx`. AC9 was unreachable without it: a
+  CUSTOMER can reach neither the staff shell's prompt nor Settings, so no
+  `PushSubscription` row could ever exist.
+- **AC9** wording now says "web-push 410/404" rather than "a webhook push endpoint".
 
 ## Context
 
@@ -76,9 +90,10 @@ split the photo history across two leads. Many users may point at one lead.
 **D3. Logins are provisioned by staff, not self-service.** There is no SMS or email
 provider in the repo (`auth.ts:130`), and the design's journey step 1 already says the
 invite goes out over WhatsApp after booking. Staff create the CUSTOMER user through
-the existing admin users flow with a temporary password; the existing
-`mustChangePassword` gate (documented on `User` in `schema.prisma`, enforced by
-`JwtAuthGuard`) forces a password change on first login. No new auth plugin, no new
+the existing admin users flow with a temporary password; `UsersService.create` arms
+`mustChangePassword` for a CUSTOMER, and the existing gate (enforced by
+`JwtAuthGuard` as `403 PASSWORD_CHANGE_REQUIRED`, routed by the web client to
+`/change-password`) forces the rotation on first login. No new auth plugin, no new
 secret, no new vendor.
 
 **D4. Portal access requires an `APPROVED` booking.** `HOLD` and `TOKEN` are
@@ -164,9 +179,9 @@ No unique constraint (D2). `onDelete: SetNull`, not Cascade: deleting a lead mus
 delete the person's login row, audit trail or push subscriptions. The pointer clearing
 is what removes portal access.
 
-### RLS: two helpers and six policies
+### RLS: four helpers and five policies
 
-Helpers first. Both are `SECURITY DEFINER` with `search_path = public`, `STABLE`,
+Helpers first. All are `SECURITY DEFINER` with `search_path = public`, `STABLE`,
 `REVOKE ALL FROM PUBLIC` and `GRANT EXECUTE TO shadhil_app`, matching
 `team_member_exists()`.
 
@@ -243,26 +258,20 @@ CREATE POLICY progress_photo_select_customer ON "ProgressPhoto"
   );
 ```
 
-Plus the push system path, scoped to a service identity and nothing else:
+Plus the push system path, as shipped. The original design below was replaced during
+implementation and the replacement is narrower, not wider:
 
-```sql
--- PortalNotifier reads the recipients' subscriptions and writes their queue rows.
--- Guarded by role + a fixed service user id, so no staff or customer session can
--- use it.
-CREATE POLICY push_subscription_select_portal_service ON "PushSubscription"
-  FOR SELECT USING (
-    current_setting('app.user_role', true) = 'CRON_SERVICE'
-    AND current_setting('app.user_id', true) = 'portal-notifier'
-    AND "organizationId" = current_setting('app.user_org_id', true)
-  );
-
-CREATE POLICY push_notification_insert_portal_service ON "PushNotification"
-  FOR INSERT WITH CHECK (
-    current_setting('app.user_role', true) = 'CRON_SERVICE'
-    AND current_setting('app.user_id', true) = 'portal-notifier'
-    AND "organizationId" = current_setting('app.user_org_id', true)
-  );
-```
+The spec originally proposed two policies (`push_subscription_select_portal_service`,
+`push_notification_insert_portal_service`) letting a `portal-notifier` service identity
+read every recipient's subscriptions and write their queue rows. **They were not
+created.** `PortalNotifier` instead resolves recipients through a SECURITY DEFINER
+helper (`unit_customer_user_ids()`, which applies the same APPROVED-booking predicate as
+the read path) and then delivers each message under **that recipient's own RLS
+context** via `PushService.sendToUsers`. The existing owner-scoped
+`push_subscription_*` / `push_notification_*` policies stay untouched, so no service
+identity ever reads a subscription it does not own. See
+`pkg/database/prisma/rls/policies.sql` ("The spec's push_*_portal_service policies are
+intentionally NOT created") and `portal-notifier.service.ts`.
 
 Deny by absence does the rest: CUSTOMER gets `Lead`, `Message`, `Activity`,
 `SiteVisit`, `Reminder`, `OutboundMessage` and `AuditLog` reads as an empty set, which
@@ -326,12 +335,14 @@ Authorization, all in the service, RLS as the second wall:
 
 `PortalNotifier` (`apps/backend/src/customer-portal/portal-notifier.service.ts`):
 
-- `notifyNewPhoto({ organizationId, unitId, photoId, caption, phaseName })`.
-- Runs with an explicit service RLS context: `{ userId: 'portal-notifier', role:
-  'CRON_SERVICE', organizationId }`. The `push_*_portal_service` policies are the only
-  thing that context can reach.
-- Recipients: `User WHERE role = 'CUSTOMER' AND customerLeadId = (lead of an APPROVED
-  booking on this unit)`. One push per user, deduped by subscription `endpoint`.
+- `notifyNewPhoto({ organizationId, unitId, unitNumber, photoId, caption })`.
+- Resolves recipients with an explicit service RLS context: `{ userId:
+  'portal-notifier', role: 'CRON_SERVICE', organizationId }`, calling the SECURITY
+  DEFINER helper `unit_customer_user_ids(unitId)`. Delivery then happens per recipient
+  under THAT recipient's own context (`PushService.sendToUsers`), so the service
+  identity never touches `PushSubscription` and no new policy is needed.
+- Recipients: live `CUSTOMER` users whose lead holds an `APPROVED` booking on this
+  unit, in this org. One push per user, deduped by subscription `endpoint`.
 - Payload: `{ title: 'New photos for <unitNumber>', body: caption, url: '/portal?photo=<photoId>', tag: 'progress-<unitId>' }`.
 - Every failure is caught and logged at WARN. The upload has already committed; a push
   failure must never surface to the staff member holding the phone.
@@ -355,6 +366,15 @@ Authorization, all in the service, RLS as the second wall:
 - `apps/web/src/components/portal/unit-switcher.tsx`: chips, one per unit, rendered
   only when the customer has more than one (design D4). Single unit means no control at
   all.
+- `apps/web/src/components/portal/portal-push-prompt.tsx`: the buyer's ONLY route to a
+  `PushSubscription`. The staff shell's `PushEnablePrompt` is mounted in
+  `AuthenticatedShell`, which bounces every CUSTOMER to `/portal` before rendering, and
+  Settings -> Notifications sits behind `/[orgSlug]` (also bounced). Without this
+  component AC9 is unreachable: the notifier's recipient query always resolves to a
+  buyer with zero subscriptions. Inline dismissible card, not the staff AlertDialog -
+  the design forbids modal chrome on the customer home. Rendered only when push is
+  supported, this device is not already subscribed, and the buyer has not dismissed
+  it. Mounted in `portal/page.tsx` above the timeline.
 - `apps/web/src/components/portal/portal-lock.tsx`: the two dead-end states from the
   design state table - `customerLeadId` null ("photos not linked yet, contact the
   office" + the project office phone from `Project`/`Organization`) and zero units.
@@ -405,9 +425,12 @@ Admin mechanics:
    seeded rows, and the timeline returns the photos slice 1 uploaded.
 9. Push: uploading a photo as an engineer inserts one `PushNotification` row per
    customer user on an `APPROVED` booking for that unit, with
-   `payload.url = '/portal?photo=<id>'`. A webhook push endpoint that returns 410 marks
-   the subscription for deletion the way `PushService` already handles it. A push
-   failure leaves the upload response 201 and logs one WARN.
+   `payload.url = '/portal?photo=<id>'`. A buyer enables push from the portal's own
+   card (`portal-push-prompt.tsx`) — the staff shell's prompt and Settings are both
+   unreachable for a CUSTOMER, so without that card the recipient set is always empty.
+   A web-push response of 410 (or 404) deletes the subscription, the way `PushService`
+   already handles it; any other failure keeps it. A push failure leaves the upload
+   response 201 and logs one WARN.
 10. Admin controls: CUSTOMER appears in the role list for OWNER/ADMIN only, the lead
     picker is required and org-scoped, and neither is visible to a MANAGER session.
 11. No degradation: full existing suite passes; `pnpm lint`, `pnpm type-check` and
@@ -420,10 +443,10 @@ rejects>; no_claim=<what green does not prove>`.
 
 | Layer | What | Count |
 |---|---|---|
-| DB RLS (`packages/database/test/customer-portal-rls.test.ts`) | customer-vs-customer isolation on 5 tables; sales-table denial on 6; 5 booking statuses; helper fail-closed without GUCs; cross-org pointer; no write arms | +14 |
-| Unit (backend) | `me` ordering + empty case; timeline cursor parity with the staff route; 403/403/404/200 matrix; notifier recipient selection; notifier swallows failure | +9 |
-| Unit (web) | portal layout role guards (3 cases); timeline states (4); unit switcher visible only for 2+ units; lock screen for null pointer | +7 |
-| E2E (manual, slice gate) | seeded customer logs in on Android Chrome, sees their unit timeline, receives a push on the next engineer upload and the tap opens the photo | +1 |
+| DB RLS (`packages/database/test/customer-portal-rls.test.ts`) | customer-vs-customer isolation on 5 tables; sales-table denial on 6; 5 booking statuses; helper fail-closed without GUCs; cross-org pointer; no write arms | +16 |
+| Unit (backend) | `me` ordering + empty case; timeline cursor parity with the staff route; 403/403/404/200 matrix; notifier recipient selection; notifier swallows failure; push delivery contract (410/404 drop the row, transient keeps it, failure never escapes) | +16 |
+| Unit (web) | portal layout role guards (3 cases); timeline states (4); unit switcher visible only for 2+ units; lock screen for null pointer; push prompt gating, dismissal durability, denied-permission guidance | +15 |
+| E2E (manual, slice gate) | seeded customer logs in on Android Chrome with a temporary password, is forced through `/change-password`, sees their unit timeline, enables notifications from the portal card, receives a push on the next engineer upload and the tap opens the photo | +1 |
 
 ## Rules for the implementing agent
 
@@ -445,7 +468,7 @@ rejects>; no_claim=<what green does not prove>`.
 
 Code revert removes the portal routes, the module, the notifier and the admin controls.
 The migration is forward-only: reverting code without the migration leaves the CUSTOMER
-enum value, `User.customerLeadId`, the two helpers and their policies in place, inert,
+enum value, `User.customerLeadId`, the four helpers and their policies in place, inert,
 because no code path sets `role = 'CUSTOMER'` any more. Do not drop the customer
 policies in a hotfix: absent policies deny, which is the safe direction.
 
@@ -483,7 +506,8 @@ Total: ~26h human-equivalent.
 | `apps/web/src/app/[orgSlug]/layout.tsx` | bounce CUSTOMER to `/portal` |
 | `apps/web/src/proxy.ts` | `/portal` behind the session gate |
 | `apps/web/src/app/(portal)/layout.tsx`, `portal/page.tsx` | new portal shell and timeline route |
-| `apps/web/src/components/portal/*` | timeline, unit switcher, lock screen, nav |
+| `apps/web/src/components/portal/*` | timeline, unit switcher, lock screen, nav, push prompt |
+| `apps/web/src/app/(portal)/portal/page.tsx` | mounts `<PortalPushPrompt />` above the timeline (the buyer's only push opt-in) |
 | `apps/web/src/hooks/queries/customer-portal.ts` | new query hooks |
 | `apps/web/src/app/[orgSlug]/admin/users/components/CreateUserForm.tsx` | CUSTOMER option + required lead picker |
 | `packages/database/src/seed.ts` | demo customer + APPROVED booking |

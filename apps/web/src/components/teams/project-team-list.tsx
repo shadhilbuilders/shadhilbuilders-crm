@@ -234,7 +234,14 @@ function MemberRoster({
             </Badge>
           ) : null}
           {!m.isManagerSlot && <Badge variant="outline">{labelFor('role', m.role)}</Badge>}
-          {canManage && m.role === 'ENGINEER' ? (
+          {/* The switch follows the ENDPOINT's authority, not the role label:
+              setPhotoLead accepts any staffed member (a MANAGER is commonly
+              the site supervisor), but this used to render only on ENGINEER
+              rows - so the seeded MANAGER grant on Metro Heights could not be
+              revoked from the UI at all, a one-way door. Rendering it for
+              every member row is safe: `canManage` is still OWNER/ADMIN, and
+              setPhotoLead re-checks isAdminClass server-side. */}
+          {canManage ? (
             <PhotoLeadToggle memberId={m.userId} memberName={m.name} projectId={projectId} photoLead={m.photoLead} />
           ) : null}
         </div>

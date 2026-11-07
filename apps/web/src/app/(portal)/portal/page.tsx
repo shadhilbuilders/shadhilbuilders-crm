@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PageLoading } from '@/components/shared/PageLoading';
 import { PhotoLightbox } from '@/components/portal/photo-lightbox';
 import { PortalLock } from '@/components/portal/portal-lock';
+import { PortalPushPrompt } from '@/components/portal/portal-push-prompt';
 import { PortalTimeline } from '@/components/portal/portal-timeline';
 import { UnitSwitcher } from '@/components/portal/unit-switcher';
 import {
@@ -76,6 +77,12 @@ function PortalProgress() {
         </h1>
       </div>
       <UnitSwitcher units={units} selectedUnitId={selectedUnitId} onSelect={setChosenUnitId} />
+      {/* The only surface a buyer ever sees, so the push opt-in lives here:
+          the staff shell's PushEnablePrompt is unreachable for a CUSTOMER
+          (AuthenticatedShell bounces them to /portal). Without this the
+          notifier has no subscription to deliver to. Renders nothing when
+          unsupported, already enabled, or previously dismissed. */}
+      <PortalPushPrompt />
       <PortalTimeline
         photos={photos}
         isLoading={timeline.isPending}

@@ -275,6 +275,19 @@ export class UsersService {
             emailVerified: false,
             organizationId: actor.organizationId,
             ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
+            // issue #8 slice 2 (D3): a buyer's login is PROVISIONED by staff
+            // with a temporary password that was read out over WhatsApp and
+            // typed by somebody else. Spec D3 promises the existing gate
+            // forces a rotation on first login, but the column defaults to
+            // false and nothing outside the seed's OWNER arm ever set it - so
+            // a customer would have sat on `customer_placeholder_pw`
+            // indefinitely. Arm it here, for CUSTOMER only: staff roles keep
+            // the ungated default chosen in migration 20260915160000.
+            //
+            // The gate is enforced by JwtAuthGuard (403 PASSWORD_CHANGE_REQUIRED,
+            // which the BFF routes to /change-password) and cleared by
+            // changePassword() in this same service.
+            ...(dto.role === 'CUSTOMER' ? { mustChangePassword: true } : {}),
           },
         })
         .catch(rethrowAsEmailConflict);

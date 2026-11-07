@@ -1,5 +1,11 @@
 # Spec: Customer Progress Photos — Slice 1 (upload + staff preview)
 
+Shipped in slice 1 (PR #8). Corrected 2026-11-07: this spec said "Jest" (the repo runs
+Vitest), pointed the RLS test at `packages/database/src/` (it lives in `test/`),
+described a phase picker the upload no longer has (the phase comes from the unit), and
+implied the service tests covered authorization (they cover the guards; the status
+codes needed their own cases, added 2026-11-07).
+
 Spec-driven development, slice 1 of the Customer Progress Portal initiative.
 Source of truth for scope: `docs/designs/customer-progress-portal.md`
 (APPROVED, amended with the Site-staff model; eng review CLEARED, design
@@ -62,15 +68,15 @@ packages/database/prisma/migrations/            → migration 1: ENGINEER + phot
 packages/database/src/rls.ts                    → ROLES list gains 'ENGINEER'
 packages/auth-client/src/auth.ts                → role additional-field (no change needed if
                                                   it passes through enum; verify at impl)
-packages/database/src/progress-rls.test.ts      → DB-first RLS isolation tests
+packages/database/test/progress-rls.test.ts      → DB-first RLS isolation tests
 apps/backend/src/customer-progress/
   customer-progress.module.ts                   → NestJS feature module, registered in app.module.ts
   customer-progress.controller.ts               → POST /api/customer-progress/units/:unitId/photos
                                                   + GET timeline endpoints (staff roles only)
   customer-progress.service.ts                  → all writes/reads inside withRlsContext
   customer-progress.service.test.ts             → upload guards, authorization, pagination
-apps/web/src/app/[orgSlug]/...unit page...      → Progress tab (upload button + phase picker +
-                                                  preview timeline mirroring lead-timeline states)
+apps/web/src/app/[orgSlug]/...unit page...      → Progress tab (camera button + preview timeline
+                                                  mirroring lead-timeline states)
 apps/web/src/lib/labels.ts (or new helper)      → siteMemberLabel(member)
 apps/web/src/components/teams/project-team-list.tsx → "Progress lead" toggle, ADMIN/OWNER-only
 apps/web/src/app/[orgSlug]/admin/users/…        → ENGINEER option in role Select, ADMIN/OWNER-only
@@ -104,9 +110,12 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
 
 ## Testing Strategy
 
-- Framework: Jest, colocated `*.test.ts` next to source (repo convention).
+- Framework: Vitest, `*.test.ts` colocated beside source (backend/web) or in the
+  package's `test/` dir (database) — the repo convention. Note: this line said
+  "Jest" when the spec was written; the repo has always run Vitest.
 - DB-first RLS isolation tests (REQUIRED before ship, per the 2026-09-12
-  binding decision) in packages/database, following the existing pattern:
+  binding decision) in `packages/database/test/progress-rls.test.ts`, following
+  the existing pattern:
   - customer bridge is out of scope; in this slice: ENGINEER isolation
     (engineer can read/upload only own-project units' photos; engineer can
     NOT select from lead/chat/booking tables — expect the RLS deny),
@@ -114,9 +123,11 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
     DELETE another member's photo; photoLead member can), cross-project
     engineer denied.
 - Service tests: upload guards (MIME allowlist, size cap MAX_UPLOAD_BYTES,
-  empty file, unit-not-in-actor's-project → 403/404), pagination
-  (LIMIT 50 + cursor), phase validation (phase must belong to the unit's
-  project).
+  empty file), pagination (LIMIT 50 + cursor), phase validation (phase must
+  belong to the unit's project). Plus `assertUnitAccess` directly — the
+  unit-not-in-actor's-project case returns 403 and an unknown unit returns 404;
+  RLS returning an empty set is indistinguishable from "no photos" to a
+  caller, so the STATUS CODE needs its own test.
 - Web: mirroring states tested like lead-timeline.test.tsx (skeleton, empty,
   error, hasMore).
 - Manual verify: phone camera flow under 30s; upload visible in timeline

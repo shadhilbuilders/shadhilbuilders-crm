@@ -8,6 +8,7 @@
 // packages/database/test/progress-rls.test.ts) nor the storage adapters
 // (their delete tests live beside them).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 
 import {
@@ -214,6 +215,195 @@ describe('upload() - the stored MIME comes from the bytes', () => {
 
     await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unsupported image type: application\/pdf/);
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upload() - the buyer notification never touches the upload result (D8).
+//
+// The photo row has already committed when the notifier runs. A push failure -
+// a buyer's phone gone, FCM down, a throw from anywhere inside the notifier -
+// must not turn the site engineer's 201 into an error, and must not trip the
+// blob-compensation delete that handles a FAILED row write.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('upload() - PortalNotifier is best effort (D8)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** Same service, with an optional notifier injected as the 3rd arg. */
+  function withNotifier(notifyNewPhoto: (n: unknown) => Promise<number>) {
+    const built = makeUploadService();
+    const notifier = { notifyNewPhoto: vi.fn(notifyNewPhoto) };
+    const service = new CustomerProgressService(
+      { $client: built.client } as never,
+      { save: built.save, read: vi.fn(), delete: vi.fn(), publicUrl: vi.fn() } as never,
+      notifier as never,
+    );
+    return { ...built, service, notifier };
+  }
+
+  it('protects= the upload resolves even when the notifier throws', async () => {
+    const { service, notifier } = withNotifier(async () => {
+      throw new Error('push is down');
+    });
+    const dto = { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') };
+
+    const result = await service.upload(makeUploadActor(), 'unit-1', dto);
+
+    expect(result.id).toBe('photo-1');
+    expect(notifier.notifyNewPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails_when= a notifier fault trips the blob-compensation delete', async () => {
+    const built = makeUploadService();
+    const storageDelete = vi.fn();
+    const svc = new CustomerProgressService(
+      { $client: built.client } as never,
+      { save: built.save, read: vi.fn(), delete: storageDelete, publicUrl: vi.fn() } as never,
+      {
+        notifyNewPhoto: vi.fn(async () => {
+          throw new Error('push is down');
+        }),
+      } as never,
+    );
+
+    await svc.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+
+    // The row committed, so the bytes must stay.
+    expect(storageDelete).not.toHaveBeenCalled();
+  });
+
+  it('passes the committed photo + unit context to the notifier', async () => {
+    const { service, notifier } = withNotifier(async () => 1);
+
+    await service.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+
+    expect(notifier.notifyNewPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        unitId: 'unit-1',
+        unitNumber: 'A-101',
+        photoId: 'photo-1',
+      }),
+    );
+  });
+
+  it('does not notify when the upload itself fails (no row, no push)', async () => {
+    const { service, client, notifier } = withNotifier(async () => 1);
+    client.progressPhoto.create.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(
+      service.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toThrow(/db down/);
+
+    expect(notifier.notifyNewPhoto).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// assertUnitAccess() - the messaging wall in front of RLS (slice-1 AC4).
+//
+// The spec demands "unit-not-in-actor's-project → 403/404" and the module
+// disclaimer claimed the DB test owned it. progress-rls.test.ts proves the
+// POLICY denies rows; it does not prove the SERVICE returns the right status
+// code, and a silent RLS empty set is indistinguishable from "no photos" to a
+// caller. These pin the four branches directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeAccessService(over: {
+  unit?: unknown;
+  member?: unknown;
+}) {
+  const built = makeUploadService();
+  if ('unit' in over) built.client.unit.findFirst.mockResolvedValue(over.unit);
+  const projectTeamFindFirst = vi.fn().mockResolvedValue(over.member ?? null);
+  Object.assign(built.client, { projectTeam: { findFirst: projectTeamFindFirst } });
+  return { ...built, projectTeamFindFirst };
+}
+
+const STAFF_ROLES = ['ENGINEER', 'MANAGER', 'SALES_EXEC', 'TELECALLER'] as const;
+const actorAs = (role: JwtPayload['role']): JwtPayload => ({ ...makeUploadActor(), role });
+
+describe('assertUnitAccess - the service returns a typed status, not a silent empty set', () => {
+  const UNIT = { id: 'unit-1', unitNumber: 'A-101', phase: { projectId: 'proj-1' } };
+
+  it('ADMIN reaches any org unit without a project-team lookup', async () => {
+    const { service, projectTeamFindFirst } = makeAccessService({ unit: UNIT });
+    await expect(
+      service.upload(actorAs('ADMIN'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).resolves.toBeDefined();
+    expect(projectTeamFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('protects= a project member may upload (one row per staff role)', async () => {
+    for (const role of STAFF_ROLES) {
+      const { service } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
+      await expect(
+        service.upload(actorAs(role), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      ).resolves.toBeDefined();
+    }
+  });
+
+  // AC4 exact: "unit-not-in-actor's-project → 403".
+  it('fails_when= a staff role outside the project gets through (403)', async () => {
+    for (const role of STAFF_ROLES) {
+      const { service } = makeAccessService({ unit: UNIT, member: null });
+      await expect(
+        service.upload(actorAs(role), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+
+  it('fails_when= an unknown unit reports 403 instead of 404 (404 never confirms a foreign unit)', async () => {
+    const { service } = makeAccessService({ unit: null });
+    await expect(
+      service.upload(actorAs('ENGINEER'), 'unit-x', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('fails_when= the unit lookup is not org-scoped (cross-org read)', async () => {
+    const { service, client } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
+    await service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+    expect(client.unit.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: 'ceid01lpfe1esm8jwsxid41k28' }),
+      }),
+    );
+  });
+
+  it('fails_when= the membership lookup ignores soft-deleted teams', async () => {
+    const { service, projectTeamFindFirst } = makeAccessService({ unit: UNIT, member: null });
+    await expect(
+      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(projectTeamFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          team: expect.objectContaining({ deletedAt: null }),
+        }),
+      }),
+    );
+  });
+
+  // A role with no business uploading at all must not fall through to the
+  // membership arm and must not be treated as admin. A buyer's RLS context
+  // sees no units, so the unit read resolves null and the answer is 404 - the
+  // same shape a foreign unit takes. What matters is that it is NOT 201.
+  it('fails_when= a CUSTOMER can reach the staff upload route', async () => {
+    const { service } = makeAccessService({ unit: null, member: { projectId: 'proj-1' } });
+    await expect(
+      service.upload(actorAs('CUSTOMER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('fails_when= a CUSTOMER with a visible unit is granted by the membership arm', async () => {
+    // Even if the unit row were somehow visible, CUSTOMER is not in the
+    // staff-role list, so it must fall through to 403 - never inherit the
+    // membership path that ENGINEER/MANAGER/SALES_EXEC/TELECALLER use.
+    const { service } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
+    await expect(
+      service.upload(actorAs('CUSTOMER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

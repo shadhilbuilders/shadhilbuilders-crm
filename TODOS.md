@@ -116,27 +116,61 @@ be cleared. Start at `apps/backend/src/customer-progress/customer-progress.contr
 **Priority:** P2
 **Depends on:** Nothing, but land it with the UI control or the gap just moves.
 
-### The photo-lead toggle only renders on ENGINEER rows
+**Scope decision 2026-11-07:** deliberately NOT built in the slice-1/2 completion pass.
+Slice 1 assigns photo correction to slice 4, and the consuming routes are a product
+surface (what happens to a photo a buyer has already seen?) rather than a loose end.
+The grant, the RLS arms and the now-correct toggle all ship; only the routes are
+deferred. Treat this as slice 4's first task.
 
-**What:** Decide whether non-engineer photo leads should be toggleable in the UI,
-or whether non-engineer grants should be prevented.
+### The photo-lead toggle only renders on ENGINEER rows — RESOLVED 2026-11-07
 
-**Why:** `project-team-list.tsx:237` gates the switch on `m.role === 'ENGINEER'`,
-but the endpoint and RLS accept any staffed user. The seeded demo data already
-grants PHOTO_LEAD to a **MANAGER**, whose row therefore shows no switch — so
-that grant cannot be revoked from the UI at all, only via the API. That is a
-one-way door in the product.
+**Decision:** Option (a) — widen the toggle. The switch now renders on every member
+row in `MemberRoster` whenever `canManage` is true, matching what `setPhotoLead` and
+the RLS policy already accepted. `canManage` stays OWNER/ADMIN-only, and the endpoint
+re-checks `isAdminClass` server-side, so this widens the UI to the endpoint's existing
+authority rather than widening the authority itself.
 
-**Context:** Two coherent resolutions. (a) Widen the toggle to any member row
-whose `photoLead` is true or who is eligible, matching the endpoint. (b) Keep
-the UI engineer-only and have `setPhotoLead` refuse non-engineer targets, making
-the seeded manager grant a data mistake to correct. Option (a) matches the
-spec's intent ("photo lead = the site supervisor", who is often the manager) and
-needs only a condition change plus a test; option (b) needs a service guard and
-a seed fix. Nothing has been decided.
+**Why this option:** The spec's intent is "photo lead = the site supervisor", who is
+commonly the manager, not an engineer. The seeded demo data already grants PHOTO_LEAD
+to a MANAGER on Metro Heights. Option (b) would have required a service guard + a seed
+correction to make valid production data an error.
 
-**Effort:** S
-**Priority:** P3
-**Depends on:** Nothing.
+**Tests:** `project-team-list.test.tsx` — 4 cases pin that a MANAGER row shows the
+switch, that the checked state reflects the server (`aria-checked="true"`), that every
+non-manager row carries it regardless of role, and that `canManage=false` renders none.
+
+**Historical note:** the previous text here said `project-team-list.tsx:237` gated the
+switch on `m.role === 'ENGINEER'`, which meant a MANAGER's seeded grant could not be
+revoked from the UI at all — a one-way door.
+
+## Security
+
+### Media bytes are org-scoped, not row-scoped — PARTIALLY FIXED 2026-11-07
+
+**What:** `GET /api/media/:key` now refuses any key whose first path segment is not
+the caller's org (`apps/backend/src/storage/media-key-scope.ts`, 12 tests). That closes
+the cross-tenant read. What remains open is intra-org: any authenticated session in the
+right org can read any key it holds, even one belonging to a photo/attachment row that
+RLS would hide from them.
+
+**Why it matters:** A progress photo is protected by `progress_photo_select_*` at the
+row level, but `mediaUrl` points at the bytes. A CUSTOMER in the correct org who
+obtained another buyer's key would read that image. Keys are `{org}/{cuid}/{name}`, so
+this needs a leak rather than a guess — that is why it is P2 rather than a hotfix.
+
+**Why not fixed now:** Proper row-level authorization needs a key→row lookup (which
+table owns this key?) plus an actor check, i.e. a per-request join on a hot media path.
+That is a design decision, not a patch. Options: (a) sign short-lived URLs at read time,
+(b) add a `MediaObject` table keyed by storage key carrying its owner scope, (c) resolve
+the key against the four owning tables (ProgressPhoto, Message, OutboundMessage,
+attachment) in order. None has been decided.
+
+**Context:** The original defect was worse — no org check at all, so any authenticated
+user in ANY org could read a key they held. That is the fixed half. Start at
+`media.controller.ts` `read()`.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** A decision on which of (a)/(b)/(c) to take.
 
 ## Completed

@@ -10,8 +10,10 @@
 //                       (proxied through the BFF).
 //
 // Auth: global JwtAuthGuard (not @Public). Upload and read both require a
-// logged-in staff session. The key is org-namespaced by the provider, so a
-// cross-tenant key simply doesn't exist.
+// logged-in session. Upload writes into the CALLER's org namespace; read
+// refuses any key whose first path segment is not the caller's org
+// (media-key-scope.ts). The key namespace is the tenant wall, because the
+// stored bytes carry no RLS of their own.
 import {
   BadRequestException,
   Body,
@@ -29,6 +31,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
+import { keyBelongsToOrg } from './media-key-scope';
 import { MAX_UPLOAD_BYTES } from './storage.limits';
 import { sniffMime, reconcileUploadMime } from './sniff-mime';
 import { STORAGE_PROVIDER } from './storage.tokens';
@@ -108,6 +111,7 @@ export class MediaController {
   @Get(':key')
   @ApiOperation({ summary: 'Read a stored chat attachment by key.' })
   async read(
+    @Req() req: AuthedRequest,
     @Param('key') key: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -118,6 +122,15 @@ export class MediaController {
     try {
       decoded = decodeURIComponent(key);
     } catch {
+      throw new NotFoundException('Media not found');
+    }
+    // TENANT WALL (2026-11-07). Both adapters name every key with the owning
+    // org as the first path segment, so the key namespace IS the authorization
+    // here. Before this check the handler verified only that a session
+    // existed, then served whatever bytes the key named - a buyer whose own
+    // unit was RLS-empty could still read another org's file if they held its
+    // key. 404, not 403: a 403 would confirm the key exists.
+    if (!keyBelongsToOrg(decoded, req.user!.organizationId)) {
       throw new NotFoundException('Media not found');
     }
     const data = await this.storage.read(decoded);

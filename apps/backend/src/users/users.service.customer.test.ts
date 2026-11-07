@@ -102,6 +102,36 @@ describe('create CUSTOMER', () => {
     expect(res.teamId).toBeNull();
   });
 
+  // issue #8 slice 2, D3: a provisioned buyer's password was read out over
+  // WhatsApp and typed by someone else, so it MUST be rotated on first login.
+  // protects= CUSTOMER creation arms the mustChangePassword gate;
+  // fails_when= the create omits the flag and the buyer keeps the temp password;
+  // no_claim= does not exercise the guard that enforces it (jwt-auth.guard
+  // owns that) nor the change-password write that clears it.
+  it('protects= arms mustChangePassword so the temp password must be rotated', async () => {
+    const t = tx();
+    setTx(t);
+    await svc().create(actor('ADMIN'), dto());
+    expect(t.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ mustChangePassword: true }),
+    });
+  });
+
+  it('fails_when= a staff role is created gated (only CUSTOMER arms it)', async () => {
+    const t = tx({
+      team: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        findUnique: vi.fn(async () => ({ id: 'team-1', deletedAt: null })),
+        create: vi.fn(),
+      },
+    });
+    setTx(t);
+    await svc().create(actor('ADMIN'), dto({ role: 'TELECALLER', customerLeadId: undefined, teamId: 'team-1' }));
+    const data = t.user.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.mustChangePassword).toBeUndefined();
+  });
+
   it('requires customerLeadId', async () => {
     await expect(svc().create(actor('ADMIN'), dto({ customerLeadId: undefined }))).rejects.toBeInstanceOf(
       BadRequestException,
