@@ -160,12 +160,12 @@ export type UserListResult = z.infer<typeof UserListResultSchema>;
 
 /**
  * GET /api/users/:id - the user detail page (users/[userId], autoplan
- * 2026-09-13). `manager` ("Reports to") depends on the target's role
- * (T-REPORTS-TO-OWNER):
- *   - TELECALLER/SALES_EXEC: their resolved team's manager - assignable,
- *     null when unassigned/unmanaged.
+ * 2026-09-13). `manager` ("Reports to") depends on the target's role - the
+ * rule is the exhaustive map in ./reporting:
+ *   - TELECALLER/SALES_EXEC/ENGINEER: their team's manager - assignable,
+ *     null when unassigned/unmanaged. ENGINEER included 2026-11-07.
  *   - MANAGER/ADMIN: the org OWNER - fixed, never assignable.
- *   - OWNER: null (reports to nobody).
+ *   - OWNER/CUSTOMER: null (reports to nobody).
  * `projects` are the projects linked to the target's team via ProjectTeam.
  */
 export const UserDetailSchema = z.object({
@@ -173,8 +173,16 @@ export const UserDetailSchema = z.object({
   email: z.string(),
   name: z.string(),
   role: RoleSchema,
+  /** The "display team" (see resolveDisplayTeamId): newest membership for
+   *  ordinary staff, the led team for a MANAGER. Null when none. */
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
+  /** EVERY team the user belongs to (TeamMember rows), newest first.
+   *  Added 2026-11-07 so the "assign manager" picker can exclude teams the
+   *  user is already on - `teamId` alone only excludes the display team, so an
+   *  engineer on two teams could "assign" to a team they already belonged to
+   *  and get a success toast for a no-op. */
+  teamIds: z.array(z.string()).optional(),
   manager: z
     .object({
       id: z.string(),
@@ -241,13 +249,19 @@ export const UpdateProfileDtoSchema = z.object({
 export type UpdateProfileDto = z.infer<typeof UpdateProfileDtoSchema>;
 
 /**
- * PATCH /api/users/:id/manager - assign/reassign the manager for a
- * TELECALLER/SALES_EXEC (autoplan 2026-09-13). A user's "manager" is
- * derived from `Team.managerId` via `User.teamId`, so this DTO sets
- * `teamId` to an existing team (which must have a manager for the UI's
- * concept of "manager" to mean anything, but the server only requires the
- * team to exist - an unled team is rejected server-side with a clear
- * message rather than silently no-oping).
+ * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+ * TELECALLER / SALES_EXEC / ENGINEER (autoplan 2026-09-13; ENGINEER
+ * 2026-11-07). A user's "manager" is derived from `Team.managerId` via their
+ * TeamMember row(s), so this DTO names the team to link them to. The team must
+ * have a manager for the UI's concept of "manager" to mean anything, and the
+ * server rejects an unled team with a clear message rather than silently
+ * no-oping.
+ *
+ * Write mode depends on the TARGET's role:
+ *   - TELECALLER / SALES_EXEC: MOVE - other memberships in the org are removed.
+ *   - ENGINEER: ADDITIVE - existing memberships are kept (team membership is
+ *     the engineer's project-access grant, so a move would revoke access).
+ *     ADMIN/OWNER actors only.
  */
 export const AssignManagerDtoSchema = z.object({
   teamId: z.string().cuid2(),

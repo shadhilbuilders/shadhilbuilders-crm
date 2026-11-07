@@ -141,7 +141,7 @@ export class UsersController {
   @Patch(':id/manager')
   @ApiOperation({
     summary:
-      "Assign/reassign a TELECALLER/SALES_EXEC's manager (autoplan 2026-09-13) by moving them into the manager's team. OWNER/ADMIN: any led team; MANAGER: own team only.",
+      "Assign/reassign the reporting line for a TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07). TELECALLER/SALES_EXEC are MOVED into the chosen team (OWNER/ADMIN: any led team; MANAGER: own team only). ENGINEER is ADDED to it - existing memberships are kept, because team membership is what grants project access - and only OWNER/ADMIN may do it.",
   })
   async assignManager(
     @Req() req: AuthedRequest,

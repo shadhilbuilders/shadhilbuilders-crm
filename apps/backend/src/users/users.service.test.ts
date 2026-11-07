@@ -604,8 +604,9 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
   }
 
   // ── "Reports to" column on the Users table (2026-10-08) ───────────────────
-  // Same rule as getUser(): staff -> their team's manager; MANAGER/ADMIN ->
-  // the org OWNER; OWNER -> nobody.
+  // Same rule as getUser(): team-manager roles -> their team's manager;
+  // MANAGER/ADMIN -> the org OWNER; OWNER/CUSTOMER -> nobody. Rule lives in
+  // @shadhil/api-types (`reportingTargetFor`).
   describe('reportsTo', () => {
     const baseRow = { teamMemberships: [] as Array<{ teamId: string }> };
     const ownerRow = { id: 'owner-1', name: 'Deepak Owner', email: 'owner@example.com' };
@@ -631,6 +632,72 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       ]);
     });
 
+    // The original bug (2026-11-07): ENGINEER was in no positive role union, so
+    // an engineer on a team WITH a manager rendered "Reports to: -" while the
+    // team roster showed that same manager.
+    it('ENGINEER reports to their team manager', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-1' }] },
+      ]);
+      mocks.userCount.mockResolvedValue(1);
+      mocks.teamFindMany.mockImplementation(async (args: { where: { id?: unknown } }) =>
+        args.where.id !== undefined
+          ? [{ id: 'team-1', manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' } }]
+          : [],
+      );
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows[0]?.reportsTo).toEqual({
+        id: 'mgr-1',
+        name: 'Ravi Manager',
+        email: 'ravi@example.com',
+      });
+    });
+
+    it('batches an ENGINEER into the same manager lookup as telecallers', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-1' }] },
+        { ...baseRow, id: 'tc-1', email: 'tc@x', name: 'Rajesh', role: 'TELECALLER', teamMemberships: [{ teamId: 'team-1' }] },
+      ]);
+      mocks.userCount.mockResolvedValue(2);
+      mocks.teamFindMany.mockImplementation(async (args: { where: { id?: unknown } }) =>
+        args.where.id !== undefined ? [{ id: 'team-1', manager: null }] : [],
+      );
+
+      await service.list(adminActor);
+
+      // One batched team->manager fetch for BOTH rows, not one per role lane.
+      const staffLookup = mocks.teamFindMany.mock.calls.filter(
+        (c) => (c[0] as { where: { id?: unknown } }).where.id !== undefined,
+      );
+      expect(staffLookup).toHaveLength(1);
+      expect((staffLookup[0]?.[0] as { where: { id: { in: string[] } } }).where.id.in).toEqual([
+        'team-1',
+      ]);
+    });
+
+    // Regression: `showReportsTo` used to be `role !== 'OWNER'`, which put a
+    // bogus "No manager assigned" row on buyer accounts.
+    it('CUSTOMER reports to nobody', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        { ...baseRow, id: 'cust-1', email: 'buyer@x', name: 'Buyer', role: 'CUSTOMER', teamMemberships: [{ teamId: 'team-1' }] },
+      ]);
+      mocks.userCount.mockResolvedValue(1);
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows[0]?.reportsTo).toBeNull();
+      // No manager lookup at all for a role that has no reporting line.
+      const staffLookup = mocks.teamFindMany.mock.calls.filter(
+        (c) => (c[0] as { where: { id?: unknown } }).where.id !== undefined,
+      );
+      expect(staffLookup).toHaveLength(0);
+    });
+
     it('staff on an unled or missing team have reportsTo null', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
@@ -645,6 +712,51 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       const result = await service.list(adminActor);
 
       expect(result.rows.map((r) => r.reportsTo)).toEqual([null, null]);
+    });
+
+    // D8 regression (2026-11-07): "Reports to" is derived from the NEWEST
+    // TeamMember row. With 'asc' an additive team link was invisible - the
+    // endpoint returned the new teamId while the table kept the old manager.
+    // This changed existing behaviour for every non-manager role, so it is
+    // pinned rather than left to integration testing.
+    it('resolves the NEWEST membership, not the oldest', async () => {
+      const { service, mocks } = makeListService();
+      mocks.userFindMany.mockResolvedValue([
+        // The service takes teamMemberships[0]; the DB ordered newest-first.
+        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-new' }] },
+      ]);
+      mocks.userCount.mockResolvedValue(1);
+      mocks.teamFindMany.mockImplementation(async (args: { where: { id?: unknown } }) =>
+        args.where.id !== undefined
+          ? [
+              { id: 'team-new', manager: { id: 'mgr-new', name: 'New Manager', email: 'new@x' } },
+              { id: 'team-old', manager: { id: 'mgr-old', name: 'Old Manager', email: 'old@x' } },
+            ]
+          : [],
+      );
+
+      const result = await service.list(adminActor);
+
+      expect(result.rows[0]?.teamId).toBe('team-new');
+      expect(result.rows[0]?.reportsTo).toEqual({
+        id: 'mgr-new',
+        name: 'New Manager',
+        email: 'new@x',
+      });
+      // The fixture would "pass" even with 'asc' if we only asserted the
+      // output, so pin the ORDER the service actually asks the DB for.
+      // `teamId` is the deterministic tie-break: assignedAt defaults to now(),
+      // which Postgres evaluates once per transaction, so bulk inserts can
+      // share a timestamp.
+      expect(mocks.userFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            teamMemberships: expect.objectContaining({
+              orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+            }),
+          }),
+        }),
+      );
     });
 
     it('MANAGER and ADMIN rows report to the org OWNER; the OWNER row to nobody', async () => {
@@ -1092,7 +1204,8 @@ function makeManageService(opts: ManageStubOptions = {}) {
   const auditCreate = vi.fn().mockResolvedValue({});
   // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): update()'s return
   // value resolves `teamId` via resolveDisplayTeamId - a non-manager
-  // target (SALES_EXEC fixture default) reads its oldest TeamMember row.
+  // target (SALES_EXEC fixture default) reads its NEWEST TeamMember row
+  // (2026-11-07, D8: was oldest).
   const teamMemberFindFirst = vi.fn().mockResolvedValue({ teamId: 't-1' });
   // update() now runs wholly inside ONE withRlsContext transaction, so the
   // tx must expose the user write, the audit row, and the Team/TeamMember

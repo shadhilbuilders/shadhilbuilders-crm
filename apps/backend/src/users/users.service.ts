@@ -36,6 +36,7 @@ import {
 } from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
+import { hasReportingLine, reportingTargetFor, reportsToTeamManager } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
 import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
@@ -106,11 +107,17 @@ export class UsersService {
    * T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolves the single
    * "display team" for a user's `CreatedUser.teamId`/`UserDetail.teamId`
    * response field, now that `User.teamId` is gone. A MANAGER's team is
-   * the one they lead (Team.managerId); everyone else's is their first
-   * (oldest-assigned) ordinary TeamMember row, or null if they have none.
+   * the one they lead (Team.managerId); everyone else's is their most
+   * recently assigned ordinary TeamMember row, or null if they have none.
    * This preserves the pre-cutover single-team-per-user CONTRACT for
    * these legacy response shapes even though the underlying model now
    * supports multiple TeamMember rows per user.
+   *
+   * 2026-11-07 (D8): "oldest" became "newest". "Reports to" is derived from
+   * this row, so an additive team link (assignManager's ENGINEER branch, or
+   * POST /teams/:id/members) must change the display. With oldest-first the
+   * new membership was invisible: the endpoint returned the new teamId while
+   * the detail page kept showing the original manager.
    *
    * The caller MUST pass a client bound to an open `withRlsContext`
    * transaction: both `Team` and `TeamMember` are FORCE ROW LEVEL SECURITY,
@@ -137,7 +144,21 @@ export class UsersService {
     }
     const membership = await client.teamMember.findFirst({
       where: { userId, organizationId },
-      orderBy: { assignedAt: 'asc' },
+      // 2026-11-07 (D8): NEWEST membership wins, not oldest. "Reports to" is
+      // derived from this row, so when an admin adds a user to a team
+      // (assignManager's additive ENGINEER branch, or the team roster) the
+      // change has to be visible immediately. With `asc` the display kept
+      // pointing at the first team joined while the endpoint reported success.
+      // This applies to every non-manager role - a SALES_EXEC on two teams now
+      // shows their most recently assigned team's manager.
+      //
+      // The `teamId` tie-break is NOT cosmetic: `assignedAt` defaults to
+      // now(), which Postgres evaluates once per TRANSACTION, not per row. The
+      // bulk "reassign all members" path inserts every row in one statement, so
+      // a page of memberships can share a timestamp - and with a single sort
+      // key the display team would flip arbitrarily between reads. Ordering by
+      // id breaks the tie deterministically.
+      orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
     });
     return membership?.teamId ?? null;
   }
@@ -724,11 +745,27 @@ export class UsersService {
 
       // T-REPORTS-TO-OWNER: "manager" is this user's reporting-line
       // superior, and WHO that is depends on the target's own role, not a
-      // single rule. TELECALLER/SALES_EXEC report to their team's manager
-      // (assignable); MANAGER/ADMIN report to the org OWNER (fixed); OWNER
-      // reports to nobody.
-      const reportsToManager = target.role === 'TELECALLER' || target.role === 'SALES_EXEC';
-      const reportsToOwner = target.role === 'MANAGER' || target.role === 'ADMIN';
+      // single rule. TELECALLER/SALES_EXEC/ENGINEER report to their team's
+      // manager (assignable); MANAGER/ADMIN report to the org OWNER (fixed);
+      // OWNER/CUSTOMER report to nobody.
+      //
+      // 2026-11-07: the role check is a shared, EXHAUSTIVE map
+      // (@shadhil/api-types reportingTargetFor) rather than an inline union.
+      // ENGINEER was missing here for three weeks because the union was not
+      // exhaustive and TypeScript had no way to object.
+      const reportsToManager = reportsToTeamManager(target.role as Role);
+      const reportsToOwner = reportingTargetFor(target.role as Role) === 'ORG_OWNER';
+
+      // Every team this user belongs to, newest first - the "assign manager"
+      // picker excludes them all. `teamId` above is only the DISPLAY team, so
+      // a two-team engineer could otherwise "assign" to a team they are
+      // already on and get a success toast for a no-op (2026-11-07).
+      const allMemberships = await client.teamMember.findMany({
+        where: { userId: target.id, organizationId: actor.organizationId },
+        select: { teamId: true },
+        // Same tie-break as resolveDisplayTeamId (see the note there).
+        orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+      });
 
       return {
         id: target.id,
@@ -737,6 +774,7 @@ export class UsersService {
         role: target.role,
         teamId,
         teamName: team?.name ?? null,
+        teamIds: allMemberships.map((m) => m.teamId),
         manager:
           reportsToManager && team?.manager
             ? {
@@ -772,10 +810,23 @@ export class UsersService {
   }
 
   /**
-   * PATCH /api/users/:id/manager - assign/reassign the manager for a
-   * TELECALLER/SALES_EXEC (autoplan 2026-09-13). "Manager" is a
-   * reporting-line concept derived from `Team.managerId`, so this replaces
-   * the target's ordinary TeamMember row(s) with one for the chosen team.
+   * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+   * TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07).
+   * "Manager" is a reporting-line concept derived from `Team.managerId`, so
+   * this sets the target's membership in the chosen team.
+   *
+   * TWO WRITE MODES, chosen by the TARGET's role:
+   *
+   *   - TELECALLER / SALES_EXEC -> MOVE. Replaces the target's ordinary
+   *     TeamMember row(s) with one for the chosen team. Safe for these roles:
+   *     their work comes from lead ownership, not team membership.
+   *
+   *   - ENGINEER -> ADDITIVE. Never deletes. An engineer's ENTIRE RLS surface
+   *     (units, phases, progress photos) is derived from TeamMember ->
+   *     ProjectTeam joins, so a move would silently revoke access to every
+   *     project staffed by their previous team(s). Adding them to a second
+   *     team is the normal way to give an engineer another project.
+   *
    * Scope:
    *   - OWNER/ADMIN: assign to any existing (led) team.
    *   - MANAGER: only into their OWN team - they can't poach staff into
@@ -783,7 +834,8 @@ export class UsersService {
    *     already means a MANAGER only reaches this for a user already in
    *     their own team, but the team-ownership check here is the actual
    *     gate (belt-and-braces, same pattern as `list()`'s where-clause
-   *     comment).
+   *     comment). ENGINEER targets are further restricted to the admin class
+   *     (below) - team membership IS the project-access grant.
    *   - staff: never - `outranks()` fails closed (RANK[staff] never
    *     exceeds RANK[staff]).
    */
@@ -806,10 +858,25 @@ export class UsersService {
         throw new NotFoundException(`User ${targetUserId} not found`);
       }
 
-      // 1. Only TELECALLER/SALES_EXEC report to a manager on this surface.
-      if (target.role !== 'TELECALLER' && target.role !== 'SALES_EXEC') {
+      // 1. Only team-linked staff report to a manager on this surface.
+      //    2026-11-07: shared exhaustive rule - ENGINEER included.
+      if (!reportsToTeamManager(target.role as Role)) {
         throw new BadRequestException(
-          'Only TELECALLER/SALES_EXEC report to a manager',
+          'Only TELECALLER/SALES_EXEC/ENGINEER report to a manager',
+        );
+      }
+
+      // 1b. ENGINEER targets are admin-class only. Team membership IS the
+      //     project-access grant for an engineer (TeamMember -> ProjectTeam
+      //     under RLS), so letting a MANAGER use this endpoint would let them
+      //     hand out site access - contradicting roles.ts's rule that ENGINEER
+      //     provisioning is an admin act (assertCanCreateRole /
+      //     assertCanChangeRole). The general outranks() check below would
+      //     otherwise pass, because MANAGER (rank 2) outranks ENGINEER (1).
+      const isEngineerTarget = target.role === 'ENGINEER';
+      if (isEngineerTarget && !isAdminClass(actor.role)) {
+        throw new ForbiddenException(
+          `${actor.role} cannot change an ENGINEER's team - team membership grants site access, so this is OWNER/ADMIN only`,
         );
       }
 
@@ -847,9 +914,9 @@ export class UsersService {
       }
 
       // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "assign into this
-      // team" now means "move them into the chosen team" - this endpoint
-      // models a single-team move for TELECALLER/SALES_EXEC, mirroring
-      // reassignMembers()'s move semantics.
+      // team" means "move them into the chosen team" for TELECALLER/
+      // SALES_EXEC - this endpoint models a single-team move for those roles,
+      // mirroring reassignMembers()'s move semantics.
       //
       // SCOPED MOVE (2026-09-13, partial-move fix): the delete is scoped to
       // the memberships the ACTOR can actually mutate, and the end state is
@@ -874,7 +941,75 @@ export class UsersService {
         where: { userId: target.id, organizationId: actor.organizationId },
         select: { teamId: true },
       });
+      const beforeTeamIds = currentMemberships.map((m) => m.teamId).sort();
 
+      if (isEngineerTarget) {
+        // ── ENGINEER: ADDITIVE ────────────────────────────────────────────
+        // Never delete. An engineer's whole RLS surface is TeamMember ->
+        // ProjectTeam, so removing a membership revokes project access. Adding
+        // a second team is how an engineer gets another project, and this
+        // endpoint must not be able to take one away.
+        if (beforeTeamIds.includes(dto.teamId)) {
+          // Fail loudly instead of writing an audit row for a no-op.
+          throw new ConflictException(
+            `User ${target.id} is already a member of team ${dto.teamId}. Nothing was changed.`,
+          );
+        }
+
+        await client.teamMember.create({
+          data: {
+            userId: target.id,
+            teamId: dto.teamId,
+            organizationId: actor.organizationId,
+            assignedById: actor.sub,
+          },
+        });
+
+        // Additive invariant, same transaction: every membership that existed
+        // before must still exist, and the destination must now be present.
+        // This replaces the move-only "settled to exactly one" assertion -
+        // without it the additive branch would be enforced by tests alone.
+        const additiveAfter = await client.teamMember.findMany({
+          where: { userId: target.id, organizationId: actor.organizationId },
+          select: { teamId: true },
+        });
+        const afterTeamIds = additiveAfter.map((m) => m.teamId);
+        const lost = beforeTeamIds.filter((id) => !afterTeamIds.includes(id));
+        if (lost.length > 0 || !afterTeamIds.includes(dto.teamId)) {
+          throw new ConflictException(
+            `Could not add user ${target.id} to team ${dto.teamId} without disturbing their other teams (${lost.join(', ') || 'destination missing'}). No change was applied.`,
+          );
+        }
+
+        await client.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.assignManager',
+            organizationId: actor.organizationId,
+            entityType: 'User',
+            entityId: target.id,
+            // teamIds (plural) so the ADDED membership is visible - the
+            // previous before/after teamId pair could not express "kept both".
+            before: { teamIds: beforeTeamIds },
+            after: { teamIds: [...afterTeamIds].sort() },
+            reason: `engineer added to team by ${actor.email} (${actor.role})`,
+          },
+        });
+
+        return {
+          id: target.id,
+          email: target.email,
+          name: target.name,
+          role: target.role,
+          // Newest membership wins in resolveDisplayTeamId, so the team just
+          // added is the one the response reports.
+          teamId: dto.teamId,
+        };
+      }
+
+      // ── TELECALLER / SALES_EXEC: MOVE (unchanged) ───────────────────────
+      // Safe for these roles: their workload comes from lead ownership, not
+      // from team membership.
       if (actor.role === 'MANAGER') {
         const managed = await client.team.findMany({
           where: {
@@ -1251,13 +1386,17 @@ export class UsersService {
             email: true,
             name: true,
             role: true,
-            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): the NEWEST
             // TeamMember row is this row's "display team" for non-managers
             // (resolveDisplayTeamId's rule) - a MANAGER's team is resolved
             // separately below via Team.managerId.
+            // 2026-11-07 (D8): was 'asc'; flipped so a newly added membership
+            // is visible in the table instead of the first team ever joined.
+            // teamId tie-break: identical assignedAt is possible within one
+            // transaction (see resolveDisplayTeamId).
             teamMemberships: {
               select: { teamId: true },
-              orderBy: { assignedAt: 'asc' },
+              orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
               take: 1,
             },
           },
@@ -1319,8 +1458,10 @@ export class UsersService {
       type ReportsTo = { id: string; name: string; email: string };
       const staffTeamIds = Array.from(
         new Set(
+          // 2026-11-07: shared exhaustive rule (was an inline TELECALLER/
+          // SALES_EXEC union, which silently excluded ENGINEER).
           rows
-            .map((r, i) => (r.role === 'TELECALLER' || r.role === 'SALES_EXEC' ? resolvedTeamIds[i] : null))
+            .map((r, i) => (reportsToTeamManager(r.role as Role) ? resolvedTeamIds[i] : null))
             .filter((id): id is string => id !== null && id !== undefined),
         ),
       );
@@ -1332,7 +1473,8 @@ export class UsersService {
         });
         for (const t of managedTeams) managerByTeamId.set(t.id, t.manager ?? null);
       }
-      const needsOwner = rows.some((r) => r.role === 'MANAGER' || r.role === 'ADMIN');
+      // 2026-11-07: shared rule (was an inline MANAGER/ADMIN union).
+      const needsOwner = rows.some((r) => reportingTargetFor(r.role as Role) === 'ORG_OWNER');
       const orgOwner = needsOwner ? await findOrgOwner(client, actor.organizationId) : null;
 
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
@@ -1370,12 +1512,13 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
-          reportsTo:
-            r.role === 'MANAGER' || r.role === 'ADMIN'
+          // 2026-11-07: shared exhaustive rule. MANAGER/ADMIN -> org OWNER;
+          // OWNER/CUSTOMER -> nobody; everyone else -> their team's manager.
+          reportsTo: !hasReportingLine(r.role as Role)
+            ? null
+            : reportingTargetFor(r.role as Role) === 'ORG_OWNER'
               ? orgOwner
-              : r.role === 'OWNER'
-                ? null
-                : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
+              : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
           // Admin-class rows expose the full org project set; everyone else
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)
@@ -1531,12 +1674,13 @@ export class UsersService {
           email: true,
           name: true,
           role: true,
-          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): newest
           // TeamMember row (SALES_EXEC is never a manager, so no
           // Team.managerId branch needed - see resolveDisplayTeamId).
+          // 2026-11-07 (D8): was 'asc' - see resolveDisplayTeamId.
           teamMemberships: {
             select: { teamId: true },
-            orderBy: { assignedAt: 'asc' },
+            orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
             take: 1,
           },
         },
@@ -1694,7 +1838,9 @@ export class UsersService {
           role: true,
           teamMemberships: {
             select: { teamId: true },
-            orderBy: { assignedAt: 'asc' },
+            // 2026-11-07 (D8): was 'asc' - newest membership is the display
+            // team, matching resolveDisplayTeamId.
+            orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
             take: 1,
           },
         },
@@ -1702,7 +1848,7 @@ export class UsersService {
         take: 200,
       });
       // Managers resolve their display teamId via Team.managerId (see
-      // resolveDisplayTeamId); everyone else uses their oldest TeamMember row.
+      // resolveDisplayTeamId); everyone else uses their newest TeamMember row.
       const managerRows = users.filter((u) => u.role === 'MANAGER');
       const ledTeams =
         managerRows.length > 0

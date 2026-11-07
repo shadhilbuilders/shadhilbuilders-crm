@@ -279,5 +279,52 @@ describe('TeamRosterMemberRow', () => {
       expect(row?.textContent).toContain('Deepak Owner');
       expect(row?.textContent).not.toContain('Someone Else');
     });
+
+    // 2026-11-07: ENGINEER. This surface was accidentally correct because it
+    // used a NEGATIVE check ("not a manager -> show the team manager"), which
+    // is exactly why the roster and the Users table disagreed for the same
+    // engineer. Pinned so the shared rule keeps it correct.
+    it('an ENGINEER row reports to THIS team\'s manager', async () => {
+      await mount({
+        member: { userId: 'eng-1', name: 'Arjun', email: 'arjun@x.in', role: 'ENGINEER' },
+        managerId: 'mgr-a',
+        managerName: 'Meera',
+        ownerName: 'Deepak Owner',
+        canRemove: true,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-eng-1"]');
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain('Meera');
+      // Not the owner - only MANAGER/ADMIN report to the owner.
+      expect(row?.textContent).not.toContain('Deepak Owner');
+    });
+
+    // Regression: the old negative check would have given a CUSTOMER row this
+    // team's manager. CUSTOMER has no reporting line at all.
+    it('a CUSTOMER row reports to nobody', async () => {
+      await mount({
+        member: { userId: 'cust-1', name: 'Buyer', email: 'buyer@x.in', role: 'CUSTOMER' },
+        managerId: 'mgr-a',
+        managerName: 'Meera',
+        ownerName: 'Deepak Owner',
+        canRemove: false,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-cust-1"]');
+      expect(row?.textContent).toContain('nobody assigned yet');
+      expect(row?.textContent).not.toContain('Meera');
+    });
+
+    // Fail closed on a role the shared rule does not recognise.
+    it('an unknown role reports to nobody', async () => {
+      await mount({
+        member: { userId: 'x-1', name: 'Mystery', email: 'x@x.in', role: 'SURVEYOR' },
+        managerId: 'mgr-a',
+        managerName: 'Meera',
+        ownerName: 'Deepak Owner',
+        canRemove: false,
+      });
+      const row = container?.querySelector('[data-qa="team-member-reports-to-x-1"]');
+      expect(row?.textContent).toContain('nobody assigned yet');
+    });
   });
 });

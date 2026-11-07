@@ -68,7 +68,9 @@ Same user, two answers, depending which page you open.
 | **D2** | Derive from the linked team's manager. No `User.reportsToId` column, no migration, no backfill. | The team link already *is* the link. |
 | **D3+D7** | `assignManager` accepts ENGINEER, **gated to ADMIN/OWNER only**. | Managers must not grant site access (`roles.ts:95`). |
 | **D4** | One pure shared predicate, consumed by both apps. | Kills the copy-paste class of bug. |
-| **D5+D8** | `assignManager` is **additive** for ENGINEER, and the resolve order prefers the **most recent** membership so the change is visible. | Additive alone is invisible: `resolveDisplayTeamId` returns the OLDEST row. |
+| **D5+D8** | `assignManager` is **additive** for ENGINEER, and the resolve order prefers the **most recent** membership so the change is visible. | Additive alone is invisible: `resolveDisplayTeamId` returned the OLDEST row. |
+| **D9** | `reassignMembers` **refuses** any request that would move an ENGINEER, naming them. UI hides "Move to team" on engineer rows. | Found while reviewing the implementation: this is the *other* door into the same data loss D5 closed. |
+| **D10** | `orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }]` at all four resolve sites. | `assignedAt` defaults to `now()`, which Postgres evaluates once per TRANSACTION - bulk inserts share a timestamp, so one sort key is nondeterministic. |
 
 ---
 
@@ -264,6 +266,14 @@ be deferred.
   different concept and does not become the reporting line.
 - **`users.service.ts` size** (1,730 lines) — deferred to `TODOS.md`.
 - **ENGINEER nav / role gating** — untouched.
+- **Removing an engineer from a team** — `TeamMemberRemovalDialog` /
+  remove-member is a DELIBERATE, labelled removal (not a "move"), so it is left
+  as-is. D9 only blocks the path that looks like a label change but destroys
+  access.
+- **`canManageUsers` for a MANAGER viewer** — investigated and found NOT to be
+  reachable: `UserDetailView` returns "Not authorized" unless
+  `isAdminLike(user.role)`, so a MANAGER never renders the assign button at all.
+  No change needed (an earlier draft added a redundant branch; reverted).
 
 ---
 

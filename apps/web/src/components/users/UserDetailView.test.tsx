@@ -329,4 +329,95 @@ describe('UserDetailView - state matrix', () => {
     expect(html).not.toContain('data-qa="user-manager-row"');
     expect(html).not.toContain('data-qa="user-assign-manager-button"');
   });
+
+  // ── ENGINEER (2026-11-07) ───────────────────────────────────────────────
+  // The reported bug: this page said "No manager assigned" for an engineer
+  // whose team clearly had one, because the reporting rule was a positive
+  // role union that excluded ENGINEER.
+  it('ENGINEER: shows manager + assign button (the reported bug)', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    });
+    mocks.useUser.mockReturnValue({
+      data: {
+        id: 'eng-1',
+        email: 'arjun@example.com',
+        name: 'Arjun Site',
+        role: 'ENGINEER',
+        teamId: 'team-1',
+        teamName: "Ravi's Team",
+        teamIds: ['team-1'],
+        manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+        projects: [{ id: 'proj-1', name: 'Metro Heights' }],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('data-qa="user-manager-row"');
+    expect(html).toContain('Ravi Manager');
+    expect(html).not.toContain('No manager assigned');
+    // Assignable - an admin can repair an engineer's reporting line.
+    expect(html).toContain('data-qa="user-assign-manager-button"');
+    expect(html).toContain('Reassign manager');
+  });
+
+  // ── CUSTOMER (regression) ───────────────────────────────────────────────
+  // `showReportsTo = role !== 'OWNER'` rendered a bogus "No manager assigned"
+  // row for buyer accounts. CUSTOMER has no reporting line at all.
+  it('ADMIN viewer: assign button IS offered on an ENGINEER', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    });
+    mocks.useUser.mockReturnValue({
+      data: {
+        id: 'eng-1',
+        email: 'arjun@example.com',
+        name: 'Arjun Site',
+        role: 'ENGINEER',
+        teamId: 'team-1',
+        teamName: "Ravi's Team",
+        teamIds: ['team-1'],
+        manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+        projects: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    expect(container?.innerHTML ?? '').toContain('data-qa="user-assign-manager-button"');
+  });
+
+  it('CUSTOMER: no "Reports to" row and no assign button', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    });
+    mocks.useUser.mockReturnValue({
+      data: {
+        id: 'cust-1',
+        email: 'buyer@example.com',
+        name: 'Buyer',
+        role: 'CUSTOMER',
+        teamId: null,
+        teamName: null,
+        teamIds: [],
+        manager: null,
+        projects: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).not.toContain('data-qa="user-manager-row"');
+    expect(html).not.toContain('No manager assigned');
+    expect(html).not.toContain('data-qa="user-assign-manager-button"');
+  });
 });

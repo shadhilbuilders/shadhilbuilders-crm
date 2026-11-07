@@ -114,6 +114,39 @@ const ownerRow: FakeUserRow = {
   team: null,
 };
 
+// 2026-11-07: site engineer. The original bug - included here because
+// ENGINEER was absent from every positive role union, so this fixture resolved
+// `manager: null` while the team roster showed the same manager.
+const engineerRow: FakeUserRow = {
+  id: 'eng-1',
+  email: 'eng@x',
+  name: 'Arjun Site',
+  role: 'ENGINEER',
+  teamId: 'team-1',
+  team: {
+    id: 'team-1',
+    name: "Ravi's Team",
+    manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [{ project: { id: 'proj-1', name: 'Metro Heights' } }],
+  },
+};
+
+// Buyer login (issue #8). Has a team fixture on purpose: a CUSTOMER must
+// report to nobody even if a stray membership exists.
+const customerRow: FakeUserRow = {
+  id: 'cust-1',
+  email: 'buyer@x',
+  name: 'Buyer',
+  role: 'CUSTOMER',
+  teamId: 'team-1',
+  team: {
+    id: 'team-1',
+    name: "Ravi's Team",
+    manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+    projectTeams: [],
+  },
+};
+
 function makeService(opts: {
   user: FakeUserRow | null;
   /** The ACTOR's own managed-team id, when the actor is a MANAGER doing
@@ -152,11 +185,17 @@ function makeService(opts: {
         : [],
     );
   // resolveDisplayTeamId's non-MANAGER branch: the fixture user's own
-  // (single, oldest) TeamMember row.
+  // (single, newest) TeamMember row.
   const teamMemberFindFirst = vi.fn().mockResolvedValue(
     opts.user?.role !== 'MANAGER' && opts.user?.team !== null && opts.user !== null
       ? { teamId: opts.user.team!.id }
       : null,
+  );
+  // 2026-11-07: getUser() also returns `teamIds` (EVERY membership, newest
+  // first) so the assign-manager picker can exclude teams the user is already
+  // on. Same single-team fixture as findFirst unless a test overrides it.
+  const teamMemberFindMany = vi.fn().mockResolvedValue(
+    opts.user?.team !== null && opts.user !== null ? [{ teamId: opts.user.team!.id }] : [],
   );
   // The resolved team's full detail (manager + linked projects) - only one
   // team fixture is ever in play per test, so this ignores the id filter.
@@ -176,14 +215,14 @@ function makeService(opts: {
   const txMock = {
     user: { findUnique: userFindUnique, findFirst: userFindFirst },
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
-    teamMember: { findFirst: teamMemberFindFirst },
+    teamMember: { findFirst: teamMemberFindFirst, findMany: teamMemberFindMany },
     project: { findMany: projectFindMany },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
     user: { findUnique: userFindUnique, findFirst: userFindFirst },
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
-    teamMember: { findFirst: teamMemberFindFirst },
+    teamMember: { findFirst: teamMemberFindFirst, findMany: teamMemberFindMany },
     project: { findMany: projectFindMany },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
@@ -196,6 +235,7 @@ function makeService(opts: {
       teamFindFirst,
       teamFindMany,
       teamMemberFindFirst,
+      teamMemberFindMany,
       teamFindUnique,
       projectFindMany,
     },
@@ -226,6 +266,9 @@ describe('getUser - ADMIN/OWNER scope', () => {
       role: 'SALES_EXEC',
       teamId: 'team-1',
       teamName: "Ravi's Team",
+      // Every membership, newest first (2026-11-07) - feeds the picker's
+      // "exclude teams they're already on" rule.
+      teamIds: ['team-1'],
       manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
       projects: [{ id: 'proj-1', name: 'Metro Heights' }],
     });
@@ -325,5 +368,49 @@ describe('getUser - "Reports to" depends on the TARGET role (T-REPORTS-TO-OWNER)
     expect(result.teamId).toBeNull();
     expect(result.teamName).toBeNull();
     expect(result.manager).toBeNull();
+  });
+
+  // ── ENGINEER (2026-11-07) ────────────────────────────────────────────────
+  // The reported bug: an engineer on a team WITH a manager resolved to null
+  // here, so the Users detail page showed "No manager assigned" while the team
+  // roster showed that same manager.
+  it('an ENGINEER row reports to their team manager', async () => {
+    const { service } = makeService({ user: engineerRow });
+    const result = await service.getUser(adminActor, engineerRow.id);
+    expect(result.manager).toEqual({
+      id: 'mgr-1',
+      name: 'Ravi Manager',
+      email: 'ravi@x',
+    });
+  });
+
+  it('an ENGINEER on an unled team → manager null, team still shown', async () => {
+    const unled: FakeUserRow = {
+      ...engineerRow,
+      team: { id: 'team-2', name: 'Unled Team', manager: null, projectTeams: [] },
+    };
+    const { service } = makeService({ user: unled });
+    const result = await service.getUser(adminActor, unled.id);
+    expect(result.teamName).toBe('Unled Team');
+    expect(result.manager).toBeNull();
+  });
+
+  it('returns every team membership in teamIds (feeds the assign picker)', async () => {
+    const { service, mocks } = makeService({ user: engineerRow });
+    mocks.teamMemberFindMany.mockResolvedValue([{ teamId: 'team-2' }, { teamId: 'team-1' }]);
+    const result = await service.getUser(adminActor, engineerRow.id);
+    // Newest first - the display team is team-1 per the single-row fixture,
+    // but BOTH are offered so the picker can exclude both.
+    expect(result.teamIds).toEqual(['team-2', 'team-1']);
+  });
+
+  // Regression: this surface used `showReportsTo = role !== 'OWNER'`, so a
+  // buyer account rendered a bogus "No manager assigned" row.
+  it('a CUSTOMER row reports to nobody, even with a team membership', async () => {
+    const { service, mocks } = makeService({ user: customerRow });
+    const result = await service.getUser(adminActor, customerRow.id);
+    expect(result.manager).toBeNull();
+    // Never looked up the owner for a CUSTOMER either.
+    expect(mocks.userFindFirst).not.toHaveBeenCalled();
   });
 });

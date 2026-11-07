@@ -16,8 +16,9 @@ export type BackendCreatedUser = {
   /** Project names the user is a member of (via ProjectMember). */
   projects: string[];
   /** "Reports to" - present on GET /users rows only (staff -> team manager,
-   *  MANAGER/ADMIN -> org OWNER, OWNER -> null). Absent on create/update
-   *  responses, hence optional. */
+   *  MANAGER/ADMIN -> org OWNER, OWNER/CUSTOMER -> null). Absent on create/
+   *  update responses, hence optional. Rule: reportingTargetFor in
+   *  @shadhil/api-types. */
   reportsTo?: { id: string; name: string; email: string } | null;
 };
 
@@ -125,8 +126,11 @@ export type BackendUserDetail = {
   role: Role;
   teamId: string | null;
   teamName: string | null;
-  /** Populated only for TELECALLER/SALES_EXEC whose team has a manager. */
+  /** Populated for TELECALLER/SALES_EXEC/ENGINEER whose team has a manager. */
   manager: { id: string; name: string; email: string } | null;
+  /** Every team the user belongs to, newest first (2026-11-07). Lets the
+   *  assign-manager picker exclude teams they are already on. */
+  teamIds?: string[];
   projects: UserDetailProject[];
 };
 
@@ -231,8 +235,11 @@ export function useUpdateProfile() {
 }
 
 /**
- * PATCH /api/users/:id/manager - assign/reassign a TELECALLER/SALES_EXEC's
- * manager (autoplan 2026-09-13), by moving them into the manager's team.
+ * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+ * TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07).
+ * TELECALLER/SALES_EXEC are MOVED into the manager's team; ENGINEER is ADDED
+ * to it (existing memberships are kept - team membership grants project
+ * access) and only ADMIN/OWNER may do it.
  * Invalidates the user-detail query too (not just the list) so the
  * detail page's manager/team panel refreshes immediately.
  */
