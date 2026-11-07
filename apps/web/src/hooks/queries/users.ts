@@ -7,6 +7,12 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api, qs, type Role } from '@/apis/client';
 
+export type ReportsToLine = {
+  teamId: string;
+  teamName: string;
+  manager: { id: string; name: string; email: string } | null;
+};
+
 export type BackendCreatedUser = {
   id: string;
   email: string;
@@ -15,11 +21,17 @@ export type BackendCreatedUser = {
   teamId: string | null;
   /** Project names the user is a member of (via ProjectMember). */
   projects: string[];
-  /** "Reports to" - present on GET /users rows only (staff -> team manager,
-   *  MANAGER/ADMIN -> org OWNER, OWNER/CUSTOMER -> null). Absent on create/
-   *  update responses, hence optional. Rule: reportingTargetFor in
-   *  @shadhil/api-types. */
-  reportsTo?: { id: string; name: string; email: string } | null;
+  /**
+   * "Reports to" - present on GET /users rows only. One entry per team the
+   * user belongs to, newest first, each with that team's manager (null when the
+   * team is unled). MANAGER/ADMIN get a single org-OWNER entry; OWNER/CUSTOMER
+   * get an empty array. Rule: reportingTargetFor in @shadhil/api-types.
+   *
+   * Absent on create/update responses, hence optional.
+   */
+  reportsTo?: ReportsToLine[];
+  /** @deprecated Use `reportsTo`. First entry's manager, kept one release. */
+  reportsToPrimary?: { id: string; name: string; email: string } | null;
 };
 
 export type CreateUserInput = {
@@ -128,6 +140,13 @@ export type BackendUserDetail = {
   teamName: string | null;
   /** Populated for TELECALLER/SALES_EXEC/ENGINEER whose team has a manager. */
   manager: { id: string; name: string; email: string } | null;
+  /**
+   * Every reporting line (2026-11-07): one entry per team the user belongs to,
+   * newest first, with that team's manager. `manager` above stays as the
+   * single-value view the assign button reads. Optional so a cached response
+   * from an older API still parses.
+   */
+  reportsTo?: ReportsToLine[];
   /** Every team the user belongs to, newest first (2026-11-07). Lets the
    *  assign-manager picker exclude teams they are already on. */
   teamIds?: string[];

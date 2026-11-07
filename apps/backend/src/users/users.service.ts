@@ -36,7 +36,7 @@ import {
 } from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
-import { hasReportingLine, reportingTargetFor, reportsToTeamManager } from '@shadhil/api-types';
+import { reportingTargetFor, reportsToTeamManager, type TeamReportingLine } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
 import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
@@ -161,6 +161,72 @@ export class UsersService {
       orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
     });
     return membership?.teamId ?? null;
+  }
+
+  /**
+   * Every reporting line for one user: each team they belong to, newest first,
+   * with that team's manager.
+   *
+   * WHY THIS EXISTS (2026-11-07 product decision): a staff member may hold
+   * several TeamMember rows and their RLS access covers ALL of them, but the
+   * surface reported only one manager - the newest team's - so an engineer on
+   * Team A (Ramesh) and Team B (Suresh) showed only Suresh, and which name
+   * appeared silently flipped when D8 changed the resolver from oldest to
+   * newest. An admin had no way to learn the other line existed.
+   *
+   * MANAGER/ADMIN keep the fixed org-OWNER line (they lead rather than sit in a
+   * team); OWNER/CUSTOMER get an empty list (`NONE`). Only `TEAM_MANAGER` roles
+   * get team entries, matching every other reporting surface.
+   *
+   * MUST run inside the caller's `withRlsContext` transaction: Team and
+   * TeamMember are FORCE RLS, so on the bare client every row is invisible and
+   * this would return [] instead of failing loudly.
+   */
+  private async resolveReportingLines(
+    client: PrismaClient,
+    userId: string,
+    role: string,
+    organizationId: string,
+  ): Promise<TeamReportingLine[]> {
+    const target = reportingTargetFor(role as Role);
+
+    if (target === 'NONE') return [];
+
+    if (target === 'ORG_OWNER') {
+      const owner = await findOrgOwner(client, organizationId);
+      return owner === null
+        ? []
+        : [{ teamId: '', teamName: 'Organisation', manager: owner }];
+    }
+
+    // TEAM_MANAGER: one entry per membership, newest first. Same tie-break as
+    // resolveDisplayTeamId - `assignedAt` is evaluated once per transaction, so
+    // a bulk insert can produce identical timestamps and the order would
+    // otherwise flip between reads.
+    const memberships = await client.teamMember.findMany({
+      where: { userId, organizationId },
+      orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+      select: {
+        teamId: true,
+        team: {
+          select: {
+            name: true,
+            deletedAt: true,
+            manager: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    // A soft-deleted team grants no access, so it is not a reporting line the
+    // admin should see advertised.
+    return memberships
+      .filter((m) => m.team.deletedAt === null)
+      .map((m) => ({
+        teamId: m.teamId,
+        teamName: m.team.name,
+        manager: m.team.manager,
+      }));
   }
 
   async create(actor: JwtPayload, dto: CreateUserDto): Promise<CreatedUser> {
@@ -769,6 +835,28 @@ export class UsersService {
       const reportsToManager = reportsToTeamManager(target.role as Role);
       const reportsToOwner = reportingTargetFor(target.role as Role) === 'ORG_OWNER';
 
+      // The full list of lines (2026-11-07): every team this user is on, with
+      // that team's manager, newest first.
+      const reportsTo = await this.resolveReportingLines(
+        client,
+        target.id,
+        target.role,
+        actor.organizationId,
+      );
+
+      // `manager` is the single-value view the existing card and the assign
+      // button read, DERIVED from the list rather than fetched separately.
+      //
+      // Deriving matters beyond tidiness: before this, MANAGER/ADMIN rows hit
+      // findOrgOwner twice per getUser (once here, once in the resolver), which
+      // is a wasted round trip on every user detail view and made the two
+      // values free to disagree if the org's OWNER changed between the calls.
+      //
+      // Null for OWNER/CUSTOMER: resolveReportingLines returns [] for NONE, and
+      // for a team with no manager the first line's manager is null - both of
+      // which are the answers this field already gave.
+      const primaryManager = reportsTo[0]?.manager ?? null;
+
       // Every team this user belongs to, newest first - the "assign manager"
       // picker excludes them all. `teamId` above is only the DISPLAY team, so
       // a two-team engineer could otherwise "assign" to a team they are
@@ -788,16 +876,8 @@ export class UsersService {
         teamId,
         teamName: team?.name ?? null,
         teamIds: allMemberships.map((m) => m.teamId),
-        manager:
-          reportsToManager && team?.manager
-            ? {
-                id: team.manager.id,
-                name: team.manager.name,
-                email: team.manager.email,
-              }
-            : reportsToOwner
-              ? await findOrgOwner(client, actor.organizationId)
-              : null,
+        manager: primaryManager,
+        reportsTo,
         // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN see every project in
         // the org; staff see the projects linked to their resolved team.
         projects:
@@ -1464,31 +1544,58 @@ export class UsersService {
         projectNamesByTeamId.set(pt.teamId, list);
       }
 
-      // "Reports to" column (2026-10-08) - same rule as getUser():
-      // TELECALLER/SALES_EXEC -> their resolved team's manager (one batched
-      // team lookup); MANAGER/ADMIN -> the org OWNER (one lookup for the whole
-      // page, only when such a row is present); OWNER -> nobody.
-      type ReportsTo = { id: string; name: string; email: string };
-      const staffTeamIds = Array.from(
-        new Set(
-          // 2026-11-07: shared exhaustive rule (was an inline TELECALLER/
-          // SALES_EXEC union, which silently excluded ENGINEER).
-          rows
-            .map((r, i) => (reportsToTeamManager(r.role as Role) ? resolvedTeamIds[i] : null))
-            .filter((id): id is string => id !== null && id !== undefined),
-        ),
-      );
-      const managerByTeamId = new Map<string, ReportsTo | null>();
-      if (staffTeamIds.length > 0) {
-        const managedTeams = await client.team.findMany({
-          where: { id: { in: staffTeamIds }, deletedAt: null },
-          select: { id: true, manager: { select: { id: true, name: true, email: true } } },
-        });
-        for (const t of managedTeams) managerByTeamId.set(t.id, t.manager ?? null);
-      }
+      // "Reports to" (2026-10-08, pluralised 2026-11-07). The per-team
+      // single-manager batch that used to live here was replaced by the
+      // multi-line builder below, which needs the membership rows anyway (the
+      // old code derived teams from `resolvedTeamIds[i]`, i.e. only the DISPLAY
+      // team, which is exactly the lossiness this decision fixes).
+      //
       // 2026-11-07: shared rule (was an inline MANAGER/ADMIN union).
       const needsOwner = rows.some((r) => reportingTargetFor(r.role as Role) === 'ORG_OWNER');
       const orgOwner = needsOwner ? await findOrgOwner(client, actor.organizationId) : null;
+
+      // ── Multi-line "Reports to" (2026-11-07 product decision) ─────────────
+      // A staff member on two teams reports to two managers. The single
+      // `reportsTo` collapsed that to the newest team's manager, so an admin
+      // had no way to learn the other line existed. Built here with ONE batched
+      // membership query for the whole page (not per row) plus ONE team query,
+      // so paging 50 users costs the same two round trips as before.
+      const reportingLineUserIds = rows
+        .filter((r) => reportsToTeamManager(r.role as Role))
+        .map((r) => r.id);
+      const reportingLinesByUserId = new Map<string, TeamReportingLine[]>();
+      if (reportingLineUserIds.length > 0) {
+        const membershipRows = await client.teamMember.findMany({
+          where: { userId: { in: reportingLineUserIds }, organizationId: actor.organizationId },
+          // Same tie-break as resolveDisplayTeamId: `assignedAt` defaults to
+          // now(), evaluated once per transaction, so bulk inserts can share a
+          // timestamp and a single sort key would flip between reads.
+          orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+          select: {
+            userId: true,
+            teamId: true,
+            team: {
+              select: {
+                name: true,
+                deletedAt: true,
+                manager: { select: { id: true, name: true, email: true } },
+              },
+            },
+          },
+        });
+        for (const m of membershipRows) {
+          // A soft-deleted team grants no access, so it is not a line to show.
+          if (m.team.deletedAt !== null) continue;
+          const list = reportingLinesByUserId.get(m.userId) ?? [];
+          list.push({ teamId: m.teamId, teamName: m.team.name, manager: m.team.manager });
+          reportingLinesByUserId.set(m.userId, list);
+        }
+      }
+      // ORG_OWNER roles get the fixed single line; NONE gets an empty array.
+      const ownerLine: TeamReportingLine[] =
+        orgOwner === null
+          ? []
+          : [{ teamId: '', teamName: 'Organisation', manager: orgOwner }];
 
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
       // the org, not just the (empty) set linked to their team. OWNER/ADMIN
@@ -1525,13 +1632,23 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
-          // 2026-11-07: shared exhaustive rule. MANAGER/ADMIN -> org OWNER;
-          // OWNER/CUSTOMER -> nobody; everyone else -> their team's manager.
-          reportsTo: !hasReportingLine(r.role as Role)
-            ? null
-            : reportingTargetFor(r.role as Role) === 'ORG_OWNER'
-              ? orgOwner
-              : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
+          // 2026-11-07: exhaustive reporting map. MANAGER/ADMIN -> org OWNER;
+          // OWNER/CUSTOMER -> nobody; everyone else -> one line per team.
+          reportsTo: (() => {
+            const target = reportingTargetFor(r.role as Role);
+            if (target === 'NONE') return [];
+            if (target === 'ORG_OWNER') return ownerLine;
+            return reportingLinesByUserId.get(r.id) ?? [];
+          })(),
+          // Deprecated single-value companion (one release). The first entry's
+          // manager keeps any client still reading the old field working; the
+          // new UI reads `reportsTo`.
+          reportsToPrimary: (() => {
+            const target = reportingTargetFor(r.role as Role);
+            if (target === 'NONE') return null;
+            if (target === 'ORG_OWNER') return orgOwner;
+            return (reportingLinesByUserId.get(r.id) ?? [])[0]?.manager ?? null;
+          })(),
           // Admin-class rows expose the full org project set; everyone else
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)

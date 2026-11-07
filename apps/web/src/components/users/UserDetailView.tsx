@@ -203,14 +203,40 @@ function UserDetailContent({
                   <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Reports to
                   </p>
-                  {detail.manager ? (
-                    <>
-                      <p className="text-sm font-medium">{detail.manager.name}</p>
-                      <p className="text-muted-foreground text-xs">{detail.manager.email}</p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No manager assigned</p>
-                  )}
+                  {/* One line per team (2026-11-07). A two-team engineer has
+                      two managers; showing only the newest hid a real line.
+                      Falls back to `manager` if an older API omits the list. */}
+                  {(() => {
+                    const lines =
+                      detail.reportsTo ??
+                      (detail.manager
+                        ? [{ teamId: '', teamName: detail.teamName ?? '', manager: detail.manager }]
+                        : []);
+                    if (lines.length === 0) {
+                      return <p className="text-muted-foreground text-sm">No manager assigned</p>;
+                    }
+                    return (
+                      <ul className="space-y-0.5" data-qa="user-reports-to-list">
+                        {lines.map((line) => (
+                          <li key={line.teamId === '' ? 'org-owner' : line.teamId} data-qa="user-reports-to-line">
+                            {line.manager ? (
+                              <>
+                                <p className="text-sm font-medium">{line.manager.name}</p>
+                                <p className="text-muted-foreground text-xs">
+                                  {line.manager.email}
+                                  {line.teamName !== '' ? ` · ${line.teamName}` : ''}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-muted-foreground text-sm">
+                                {line.teamName} has no manager yet
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
                 </div>
               </div>
               {/* T-REPORTS-TO-OWNER: a MANAGER/ADMIN's "Reports to" is the

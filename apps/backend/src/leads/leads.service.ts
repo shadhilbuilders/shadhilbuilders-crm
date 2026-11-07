@@ -801,13 +801,21 @@ export class LeadsService {
     // via their own TeamMember rows now, mirroring the MANAGER branch
     // below: `dto.teamId` picks one explicitly (validated against their
     // own memberships - lead_insert_telecaller's RLS policy enforces the
-    // same EXISTS(TeamMember) check as a second wall), omitted defaults
-    // to their first (oldest-assigned) team.
+    // same EXISTS(TeamMember) check as a second wall).
+    //
+    // 2026-11-07 (product decision): an omitted teamId now defaults to the
+    // NEWEST membership, matching every display surface
+    // (resolveDisplayTeamId). It used to be the OLDEST, so a telecaller on two
+    // teams saw Team B on their profile while their new leads landed in Team A -
+    // a silent mismatch nobody had decided. The tie-break on teamId is not
+    // cosmetic: `assignedAt` defaults to now(), evaluated once per TRANSACTION,
+    // so a bulk membership insert can share a timestamp and a single sort key
+    // would pick arbitrarily between requests.
     let teamId: string | null = null;
     if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
       const memberships = await client.teamMember.findMany({
         where: { userId: actor.sub, organizationId: actor.organizationId },
-        orderBy: { assignedAt: 'asc' },
+        orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
         select: { teamId: true },
       });
       const memberTeamIds = memberships.map((m) => m.teamId);

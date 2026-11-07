@@ -62,6 +62,7 @@ import {
   useUpdateUser,
   useUsers,
   type BackendCreatedUser,
+  type ReportsToLine,
 } from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
 import type { Role } from '@/apis/client';
@@ -90,14 +91,17 @@ const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'EN
 const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
-type UserRow = {
+  type UserRow = {
   id: string;
   name: string;
   email: string;
   role: Role;
   teamId: string | null;
   projects: string[];
-  reportsTo?: { id: string; name: string; email: string } | null;
+  /** Every team this user reports through, newest first (2026-11-07). */
+  reportsTo?: ReportsToLine[];
+  /** @deprecated Use `reportsTo`. Kept for one release. */
+  reportsToPrimary?: { id: string; name: string; email: string } | null;
 };
 
 export default function UsersPage() {
@@ -555,30 +559,45 @@ function UserTable({
       {
         id: 'reportsTo',
         header: 'Reports to',
-        // Staff -> their team manager; MANAGER/ADMIN -> the org OWNER; the
-        // OWNER (and unled staff) show a dash.
+        // One line per team (2026-11-07): a two-team engineer reports to two
+        // managers, and showing only one hid a real line. MANAGER/ADMIN keep
+        // their fixed org-OWNER line; the OWNER shows a dash.
         cell: ({ row }) => {
-          const reportsTo = row.original.reportsTo;
-          return reportsTo ? (
-            <Tooltip
-              content={reportsTo.email}
-              side="top"
-              trigger={
-                <span
-                  className="text-sm"
-                  data-qa={`user-reports-to-${row.original.id}`}
-                >
-                  {reportsTo.name}
-                </span>
-              }
-            />
-          ) : (
-            <span
-              className="text-muted-foreground text-sm"
+          const lines = row.original.reportsTo ?? [];
+          if (lines.length === 0) {
+            return (
+              <span
+                className="text-muted-foreground text-sm"
+                data-qa={`user-reports-to-${row.original.id}`}
+              >
+                -
+              </span>
+            );
+          }
+          return (
+            <div
+              className="flex flex-col gap-0.5"
               data-qa={`user-reports-to-${row.original.id}`}
+              data-reports-to-count={lines.length}
             >
-              -
-            </span>
+              {lines.map((line) => (
+                <Tooltip
+                  key={line.teamId === '' ? 'org-owner' : line.teamId}
+                  content={line.manager ? line.manager.email : `${line.teamName} has no manager yet`}
+                  side="top"
+                  trigger={
+                    <span className="text-sm" data-qa="user-reports-to-name">
+                      {line.manager ? line.manager.name : `${line.teamName}: nobody`}
+                      {/* The team qualifier matters once there is more than
+                          one line: two names with no context read as a bug. */}
+                      {lines.length > 1 ? (
+                        <span className="text-muted-foreground"> · {line.teamName}</span>
+                      ) : null}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
           );
         },
         enableSorting: false,

@@ -195,7 +195,21 @@ function makeService(opts: {
   // first) so the assign-manager picker can exclude teams the user is already
   // on. Same single-team fixture as findFirst unless a test overrides it.
   const teamMemberFindMany = vi.fn().mockResolvedValue(
-    opts.user?.team !== null && opts.user !== null ? [{ teamId: opts.user.team!.id }] : [],
+    opts.user?.team !== null && opts.user !== null
+      ? [
+          {
+            teamId: opts.user.team!.id,
+            // 2026-11-07: resolveReportingLines reads the nested team (name +
+            // deletedAt + manager) to build one line per membership. A stub
+            // with only `teamId` made it throw on `m.team.deletedAt`.
+            team: {
+              name: opts.user.team!.name,
+              deletedAt: null,
+              manager: opts.user.team!.manager ?? null,
+            },
+          },
+        ]
+      : [],
   );
   // The resolved team's full detail (manager + linked projects) - only one
   // team fixture is ever in play per test, so this ignores the id filter.
@@ -270,6 +284,14 @@ describe('getUser - ADMIN/OWNER scope', () => {
       // "exclude teams they're already on" rule.
       teamIds: ['team-1'],
       manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+      // 2026-11-07: one entry per membership, so a two-team user shows both.
+      reportsTo: [
+        {
+          teamId: 'team-1',
+          teamName: "Ravi's Team",
+          manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@x' },
+        },
+      ],
       projects: [{ id: 'proj-1', name: 'Metro Heights' }],
     });
   });
@@ -397,11 +419,44 @@ describe('getUser - "Reports to" depends on the TARGET role (T-REPORTS-TO-OWNER)
 
   it('returns every team membership in teamIds (feeds the assign picker)', async () => {
     const { service, mocks } = makeService({ user: engineerRow });
-    mocks.teamMemberFindMany.mockResolvedValue([{ teamId: 'team-2' }, { teamId: 'team-1' }]);
+    mocks.teamMemberFindMany.mockResolvedValue([
+      { teamId: 'team-2', team: { name: 'Team Two', deletedAt: null, manager: null } },
+      { teamId: 'team-1', team: { name: 'Team One', deletedAt: null, manager: null } },
+    ]);
     const result = await service.getUser(adminActor, engineerRow.id);
     // Newest first - the display team is team-1 per the single-row fixture,
     // but BOTH are offered so the picker can exclude both.
     expect(result.teamIds).toEqual(['team-2', 'team-1']);
+    // 2026-11-07: and BOTH appear as reporting lines, newest first.
+    expect(result.reportsTo?.map((l) => l.teamId)).toEqual(['team-2', 'team-1']);
+  });
+
+  it('protects= a two-team engineer reports to both managers on the detail page', async () => {
+    const { service, mocks } = makeService({ user: engineerRow });
+    mocks.teamMemberFindMany.mockResolvedValue([
+      {
+        teamId: 'team-2',
+        team: { name: 'Skyline Crew', deletedAt: null, manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' } },
+      },
+      {
+        teamId: 'team-1',
+        team: { name: 'Metro Crew', deletedAt: null, manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' } },
+      },
+    ]);
+    const result = await service.getUser(adminActor, engineerRow.id);
+    expect(result.reportsTo).toEqual([
+      { teamId: 'team-2', teamName: 'Skyline Crew', manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' } },
+      { teamId: 'team-1', teamName: 'Metro Crew', manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' } },
+    ]);
+  });
+
+  it('fails_when= a soft-deleted team appears as a reporting line', async () => {
+    const { service, mocks } = makeService({ user: engineerRow });
+    mocks.teamMemberFindMany.mockResolvedValue([
+      { teamId: 'team-gone', team: { name: 'Gone Crew', deletedAt: new Date(), manager: null } },
+    ]);
+    const result = await service.getUser(adminActor, engineerRow.id);
+    expect(result.reportsTo).toEqual([]);
   });
 
   // Regression: this surface used `showReportsTo = role !== 'OWNER'`, so a

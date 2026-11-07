@@ -27,6 +27,8 @@
 // module has no imports beyond the Role type, so both apps share one rule.
 // ────────────────────────────────────────────────────────────────────────────
 
+import { z } from 'zod';
+
 import { RoleSchema, type Role } from './enums';
 
 /**
@@ -96,3 +98,29 @@ export function reportsToTeamManager(role: Role): boolean {
 export function hasReportingLine(role: Role): boolean {
   return reportingTargetFor(role) !== 'NONE';
 }
+
+/**
+ * One "Reports to" entry: a team this user belongs to and that team's manager.
+ *
+ * WHY A LIST (2026-11-07): a staff member may hold several TeamMember rows, and
+ * their RLS access covers EVERY one of those teams. Collapsing that to a single
+ * manager was lossy in a way nobody could see: an engineer on Team A (Ramesh)
+ * and Team B (Suresh) showed only Suresh, and the choice silently flipped from
+ * Ramesh to Suresh when D8 changed the resolver from oldest to newest. An admin
+ * reading "Reports to: Suresh" had no way to learn Ramesh existed.
+ *
+ * `manager` is null when the team has no manager assigned (an unled team is a
+ * real state, not an error).
+ */
+export const TeamReportingLineSchema = z.object({
+  teamId: z.string(),
+  teamName: z.string(),
+  manager: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+    })
+    .nullable(),
+});
+export type TeamReportingLine = z.infer<typeof TeamReportingLineSchema>;

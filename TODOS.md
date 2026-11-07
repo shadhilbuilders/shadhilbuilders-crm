@@ -5,36 +5,28 @@ P0 first. Format reference: `~/.cursor/skills/gstack/review/TODOS-format.md`.
 
 ## Users / Teams
 
-### Multi-team ENGINEER shows the manager of their newest team, not a per-team breakdown
+### ~~Multi-team ENGINEER shows the manager of their newest team~~ — RESOLVED 2026-11-07
 
-**What:** Decide and implement how "Reports to" is resolved when a staff member
-holds more than one `TeamMember` row.
+**Decision (product):** report EVERY team and its manager.
 
-**Why:** `resolveDisplayTeamId` (`apps/backend/src/users/users.service.ts:139`)
-returns the NEWEST `TeamMember` row by `assignedAt` (D8, 2026-11-07; it was
-OLDEST before that). So a person on two teams displays exactly one manager -
-the most recently assigned team's. That is defensible but lossy: their ENGINEER
-RLS access covers EVERY team they belong to
-(`packages/database/prisma/rls/policies.sql:1853+`), so they can see two
-projects while "Reports to" names one manager. It also changed existing
-behaviour for SALES_EXEC, who now show their newest team instead of their
-first.
+`reportsTo` is now `{ teamId, teamName, manager }[]` on both the admin Users rows and
+the user detail; the UI renders one line per team and adds the team qualifier when
+there is more than one. An engineer on Team A (Ramesh) and Team B (Suresh) now shows
+both, instead of only whichever team happened to be newest.
 
-**Context:** The single-team assumption predates multi-team support
-(T-TEAM-AUTHORITATIVE, 2026-09-13, Decision Audit Trail #39/#40). Every legacy
-response shape (`CreatedUser.teamId`, `UserDetail.teamId`, `UserListResult`
-`reportsTo`) still collapses N memberships to one. Options: (a) report the
-managers of ALL teams (change the field to an array - a breaking api-types
-change touching `packages/api-types/src/auth.ts` and both web surfaces),
-(b) keep one manager but let the admin pick which team is "primary"
-(adds a column + a UI affordance), (c) leave it and document the
-newest-row rule. No decision has been made. Start by reading
-`resolveDisplayTeamId` and its four callers.
+**Why:** their RLS access covers every team they belong to, so naming one manager
+described an access model the product does not have. Which single name appeared also
+silently flipped from oldest to newest when D8 landed, so the surface was unstable as
+well as lossy.
 
-**Effort:** M
-**Priority:** P2
-**Depends on:** The ENGINEER reporting-line fix landing first (otherwise the
-ambiguity is invisible and untestable).
+**Compatibility:** the old single-value field survives one release as
+`reportsToPrimary` (list) and `manager` (detail), both now DERIVED from the list rather
+than queried separately - which also fixed a doubled `findOrgOwner` round trip on every
+MANAGER/ADMIN detail view.
+
+**Batching:** the list path reads memberships with ONE query per page (filtered to the
+row ids), so paging 50 users still costs the same round trips as before. Soft-deleted
+teams are excluded (they grant no access, so they are not a line to advertise).
 
 ### users.service.ts is 1,730 lines and mixes six concerns
 
@@ -59,30 +51,27 @@ changes; mechanical extraction only.
 **Priority:** P3
 **Depends on:** None — but land it separately from any behaviour change.
 
-### Team resolution order diverges between "display" and "lead creation default"
+**Decision 2026-11-07:** deferred. The duplication that motivated this entry is already
+gone — the exhaustive `reportingTargetFor` map replaced the three copy-pasted role
+unions, and `resolveReportingLines` is now the single resolver behind both read paths.
+What remains is structural size (~1,900 lines), not a correctness hazard, so it is not
+worth making a five-file breaking-change diff unreviewable by bundling it.
 
-**What:** Decide whether lead creation should default to the NEWEST team, like
-every display surface now does.
+### ~~Team resolution order diverges between "display" and "lead creation default"~~ — RESOLVED 2026-11-07
 
-**Why:** `resolveDisplayTeamId` and the three other display resolvers use
-`assignedAt: 'desc'` (newest wins) since 2026-11-07. Lead creation
-(`apps/backend/src/leads/leads.service.ts:805-810`) still defaults to the
-**oldest** membership when `dto.teamId` is omitted. A telecaller on two teams
-therefore sees Team B on their profile while new leads they create land in
-Team A. This is not a bug in either place - they answer different questions
-("which team identifies me" vs "which team's pipeline do I feed") - but nobody
-has decided that, so it reads as an inconsistency.
+**Decision (product):** NEWEST wins in both places.
 
-**Context:** Both call sites are now commented with their ordering rule. Before
-changing lead creation, confirm which is intended with the owner: the newest
-team is the most recently assigned (probably current), but the oldest may be
-the primary posting. A lead created into the wrong team is still owned by the
-actor, so the blast radius is routing/reporting, not access. Start by reading
-`leads.service.ts:805` and `users.service.ts:137`.
+`leads.service.create` now orders memberships `assignedAt desc, teamId asc`, matching
+`resolveDisplayTeamId` and the three other display resolvers. The comment at the call
+site explains the ordering rule rather than leaving it implied.
 
-**Effort:** S
-**Priority:** P3
-**Depends on:** None; needs a product decision, not code.
+**Why:** a telecaller on two teams saw Team B on their profile while their new leads
+landed in Team A. Nothing marked either team "primary", so "oldest" was an accident of
+insertion order, not a decision.
+
+**Blast radius:** routing and reporting only - the actor owns the lead either way, so no
+access changes. The `teamId` tie-break is load-bearing: `assignedAt` defaults to `now()`,
+evaluated once per transaction, so a bulk membership insert can share a timestamp.
 
 ## Customer progress (photos)
 

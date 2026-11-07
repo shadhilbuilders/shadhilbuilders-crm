@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { RoleSchema } from './enums';
+import { TeamReportingLineSchema } from './reporting';
 
 /**
  * Email format - strict enough to reject obvious typos, lenient enough to
@@ -146,12 +147,20 @@ export const UserListResultSchema = z.object({
       // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
-      // "Reports to" for the Users table (2026-10-08), same rule as
-      // UserDetail.manager: staff -> their team's manager (null when
-      // unled), MANAGER/ADMIN -> the org OWNER, OWNER -> null.
-      reportsTo: z
+      // "Reports to" for the Users table (2026-10-08), now a LIST (2026-11-07).
+      // Staff on several teams report to several managers and their RLS access
+      // covers all those teams, so the single-object form was lossy. Every team
+      // the user belongs to appears here, newest first, with that team's
+      // manager (null when the team is unled). MANAGER/ADMIN still resolve to
+      // the single org OWNER; OWNER/CUSTOMER get an empty array.
+      reportsTo: z.array(TeamReportingLineSchema),
+      /** @deprecated Use `reportsTo`. First entry's manager, kept for one
+       *  release so an older client keeps rendering. Remove once no client
+       *  reads it. */
+      reportsToPrimary: z
         .object({ id: z.string(), name: z.string(), email: z.string() })
-        .nullable(),
+        .nullable()
+        .optional(),
     }),
   ),
   total: z.number().int().nonnegative(),
@@ -190,6 +199,12 @@ export const UserDetailSchema = z.object({
       email: z.string(),
     })
     .nullable(),
+  /**
+   * Every team this user belongs to and its manager (2026-11-07). The list form
+   * of `manager`: a two-team engineer reports to two managers, and collapsing
+   * to one hid a real line. Empty for roles with no team membership.
+   */
+  reportsTo: z.array(TeamReportingLineSchema).optional(),
   projects: z.array(
     z.object({
       id: z.string(),

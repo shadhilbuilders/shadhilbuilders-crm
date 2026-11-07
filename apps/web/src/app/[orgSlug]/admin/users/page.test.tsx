@@ -282,7 +282,13 @@ describe('UsersPage - T-D3 state matrix', () => {
             role: 'SALES_EXEC',
             teamId: 't-1',
             projects: ['Shadhil Metro Heights'],
-            reportsTo: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+            reportsTo: [
+              {
+                teamId: 't-1',
+                teamName: 'Metro Sales',
+                manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+              },
+            ],
           },
         ],
         total: 2,
