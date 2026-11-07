@@ -95,6 +95,18 @@ vi.mock('@/lib/tenant-context', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: vi.fn(() => ({ projectId: 'proj-metro' })),
+  // The dashboard page resolves the project from useRouter().params (slice-2
+  // change); the mock must expose it or every audit case dies on import with
+  // `No "useRouter" export is defined on the "next/navigation" mock`.
+  useRouter: vi.fn(() => ({
+    params: { projectId: 'proj-metro', projectSlug: 'metro', orgSlug: 'shadhil' },
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  })),
 }));
 
 import DashboardPage from './page';

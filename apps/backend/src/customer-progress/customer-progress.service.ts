@@ -269,6 +269,49 @@ export class CustomerProgressService {
         select: { id: true },
       });
       if (user === null) throw new NotFoundException('User not found.');
+
+      // 2026-11-07: on GRANT, the target must actually be STAFFED on this
+      // project.
+      //
+      // Without this, any org user could be granted PHOTO_LEAD on any project:
+      // the write succeeds, the audit row says "granted", and nothing visibly
+      // changes - because the grant is only useful to someone who can already
+      // see the project. Worse, the day a photo edit/delete route ships, an
+      // unstaffed sales exec would hold project-wide authority over other
+      // people's site photos.
+      //
+      // The predicate mirrors the read path exactly (assertUnitAccess and
+      // progress_photo_select_member): a member of a ProjectTeam-linked team,
+      // OR the manager who leads such a team. A manager supervising the site
+      // qualifies without holding a TeamMember row, which matches the seeded
+      // demo data (a MANAGER holds PHOTO_LEAD on Metro Heights).
+      //
+      // Deliberately NOT applied to REVOKE: removing someone from a team
+      // leaves their ProjectStaffRole row behind, and a revoke that demanded
+      // staffing could never clear that stale grant. Revoking is always
+      // allowed (still ADMIN/OWNER-only, still audited).
+      if (dto.photoLead) {
+        const staffed = await tx.projectTeam.findFirst({
+          where: {
+            projectId,
+            organizationId: actor.organizationId,
+            team: {
+              deletedAt: null,
+              OR: [
+                { teamMembers: { some: { userId } } },
+                { managerId: userId },
+              ],
+            },
+          },
+          select: { projectId: true },
+        });
+        if (staffed === null) {
+          throw new BadRequestException(
+            'That user is not staffed on this project - add them to one of its teams (or make them the team manager) before granting photo lead.',
+          );
+        }
+      }
+
       if (dto.photoLead) {
         await tx.projectStaffRole.upsert({
           where: { userId_projectId_kind: { userId, projectId, kind: 'PHOTO_LEAD' } },

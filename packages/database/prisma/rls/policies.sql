@@ -1603,8 +1603,15 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --     Unit.phaseId → Phase.projectId → ProjectTeam → TeamMember, plus the
 --     Team.managerId arm so a team manager keeps the access of their team),
 --   * ADMIN + OWNER org-wide (OWNER travels as ADMIN at the GUC layer).
--- ENGINEER INSERT/UPDATE/DELETE are member-scoped AND creator-bound
--- (progress_photo_write_member: createdBy = app.user_id).
+-- Writes are three-armed (progress_photo_update / _delete): ADMIN org-wide;
+-- the CREATOR on their own photo (createdBy = app.user_id, any staff role);
+-- or the project's PHOTO_LEAD on any photo of that project.
+-- 2026-11-07: this catalog previously described a DIFFERENT set of policies
+-- (progress_photo_write_member / _creator_update / _creator_delete /
+-- _lead_write) that were never created in the database, and omitted the
+-- Team.managerId arm from SELECT - so a fresh DB rebuilt from this file gave
+-- a team manager an empty photo timeline with no error. Resynced verbatim
+-- against migration 20261026160800; a diff of the two was empty afterwards.
 -- PHOTO_LEAD is per-project (ProjectStaffRole.kind='PHOTO_LEAD') - never
 -- per-team, because a team linked to multiple projects must not carry the
 -- authority to sibling projects. Admin-only writes on the authority table.
@@ -1617,100 +1624,150 @@ ALTER TABLE "ProgressPhoto" FORCE ROW LEVEL SECURITY;
 CREATE POLICY progress_photo_select_member ON "ProgressPhoto"
   FOR SELECT
   USING (
-    ("organizationId" = current_setting('app.user_org_id', true)
-     AND current_setting('app.user_role', true) = 'ADMIN')
-    OR
-    ("organizationId" = current_setting('app.user_org_id', true)
-     AND EXISTS (
-       SELECT 1 FROM "Unit" u
-       JOIN "Phase" ph ON ph."id" = u."phaseId"
-       JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
-       JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
-       WHERE u."id" = "ProgressPhoto"."unitId"
-         AND tm."userId" = current_setting('app.user_id', true)
-     ))
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        EXISTS (
+          SELECT 1 FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "ProgressPhoto"."unitId"
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
+    )
   );
 
-CREATE POLICY progress_photo_write_member ON "ProgressPhoto"
-  FOR ALL
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  )
-  WITH CHECK (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  );
-
+-- INSERT (WITH CHECK mirrors SELECT's member arm, plus creator binding:
+-- a member can only create rows they own; ADMIN may insert org-wide).
 CREATE POLICY progress_photo_insert_member ON "ProgressPhoto"
   FOR INSERT
   WITH CHECK (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND EXISTS (
-      SELECT 1 FROM "Unit" u
-      JOIN "Phase" ph ON ph."id" = u."phaseId"
-      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
-      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
-      WHERE u."id" = "ProgressPhoto"."unitId"
-        AND tm."userId" = current_setting('app.user_id', true)
-        AND "ProgressPhoto"."createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND EXISTS (
+          SELECT 1 FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "ProgressPhoto"."unitId"
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
     )
   );
 
-CREATE POLICY progress_photo_creator_update ON "ProgressPhoto"
+-- UPDATE / DELETE (shipped shape, migration 20261026160800): three arms -
+-- ADMIN org-wide, the CREATOR on their own photo, or the project's PHOTO_LEAD
+-- on any photo in that project. Mirrored verbatim; the canonical file had
+-- split this into progress_photo_creator_update / _creator_delete /
+-- progress_photo_lead_write, none of which exist in the database.
+CREATE POLICY progress_photo_update ON "ProgressPhoto"
   FOR UPDATE
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR "createdBy" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
+    )
   )
   WITH CHECK (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR "createdBy" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
+    )
   );
 
-CREATE POLICY progress_photo_creator_delete ON "ProgressPhoto"
+CREATE POLICY progress_photo_delete ON "ProgressPhoto"
   FOR DELETE
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
-  );
-
-CREATE POLICY progress_photo_lead_write ON "ProgressPhoto"
-  FOR UPDATE
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND EXISTS (
-      SELECT 1 FROM "ProjectStaffRole" psr
-      WHERE psr."projectId" = (
-            SELECT ph."projectId" FROM "Unit" u
-            JOIN "Phase" ph ON ph."id" = u."phaseId"
-            WHERE u."id" = "ProgressPhoto"."unitId")
-        AND psr."userId" = current_setting('app.user_id', true)
-        AND psr."kind" = 'PHOTO_LEAD'
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR "createdBy" = current_setting('app.user_id', true)
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
     )
-  )
-  WITH CHECK (true);
+  );
 
 ALTER TABLE "ProjectStaffRole" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ProjectStaffRole" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY project_staff_role_select_admin ON "ProjectStaffRole"
+CREATE POLICY project_staff_role_select_own_or_admin ON "ProjectStaffRole"
   FOR SELECT
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND (current_setting('app.user_role', true) = 'ADMIN'
-         OR "userId" = current_setting('app.user_id', true))
+    AND (
+      "userId" = current_setting('app.user_id', true)
+      OR current_setting('app.user_role', true) = 'ADMIN'
+    )
   );
 
 CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
-  FOR ALL
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  )
+  FOR INSERT
   WITH CHECK (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY project_staff_role_delete_admin ON "ProjectStaffRole"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 -- ENGINEER reads on the dependency surfaces (member-scoped, never org-wide):

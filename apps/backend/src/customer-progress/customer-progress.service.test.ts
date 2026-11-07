@@ -87,6 +87,22 @@ describe('cursor codec', () => {
     expect(decodeCursor('')).toBeNull();
     expect(decodeCursor('!not base64url!')).toBeNull();
     expect(decodeCursor(Buffer.from('{"id":null}', 'utf8').toString('base64url'))).toBeNull();
+    // 2026-11-07: right SHAPE but an unparseable date. This used to decode to
+    // an Invalid Date and reach Prisma, which throws
+    // PrismaClientValidationError -> a 500 on a GET that must degrade to page
+    // one. The two assertions above only covered structural failure.
+    expect(
+      decodeCursor(Buffer.from('{"takenAt":"not-a-date","id":"x"}', 'utf8').toString('base64url')),
+    ).toBeNull();
+    expect(
+      decodeCursor(Buffer.from('{"takenAt":"2026-13-45T99:99:99Z","id":"x"}', 'utf8').toString('base64url')),
+    ).toBeNull();
+    // A VALID date still decodes (guard is not over-eager).
+    const ok = decodeCursor(
+      Buffer.from('{"takenAt":"2026-11-07T10:00:00.000Z","id":"abc"}', 'utf8').toString('base64url'),
+    );
+    expect(ok?.id).toBe('abc');
+    expect(ok?.takenAt.toISOString()).toBe('2026-11-07T10:00:00.000Z');
   });
 });
 
@@ -198,5 +214,99 @@ describe('upload() - the stored MIME comes from the bytes', () => {
 
     await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unsupported image type: application\/pdf/);
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// setPhotoLead() - the target must be STAFFED on the project (2026-11-07).
+//
+// The bug this pins: the grant only checked "project exists" + "user exists in
+// this org", so an admin could grant project-wide photo authority to someone
+// on no team that touches the site. Nothing visibly broke because no photo
+// edit/delete route exists yet - the grant just sat there, waiting to matter.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makePhotoLeadService(opts: { staffed: boolean }) {
+  const projectTeamFindFirst = vi.fn().mockResolvedValue(opts.staffed ? { projectId: 'proj-1' } : null);
+  const projectStaffRoleUpsert = vi.fn().mockResolvedValue({});
+  const projectStaffRoleDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
+  const auditCreate = vi.fn().mockResolvedValue({});
+  const client = {
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
+    $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    project: { findFirst: vi.fn().mockResolvedValue({ id: 'proj-1' }) },
+    user: { findFirst: vi.fn().mockResolvedValue({ id: 'eng-1' }) },
+    projectTeam: { findFirst: projectTeamFindFirst },
+    projectStaffRole: {
+      upsert: projectStaffRoleUpsert,
+      deleteMany: projectStaffRoleDeleteMany,
+    },
+    auditLog: { create: auditCreate },
+  };
+  const prismaService = { $client: client } as never;
+  const storage = { save: vi.fn(), read: vi.fn(), delete: vi.fn(), publicUrl: vi.fn() } as never;
+  return {
+    service: new CustomerProgressService(prismaService, storage),
+    projectTeamFindFirst,
+    projectStaffRoleUpsert,
+    projectStaffRoleDeleteMany,
+    auditCreate,
+  };
+}
+
+describe('setPhotoLead() - staffing gate', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('GRANT is refused when the target is on no team linked to the project', async () => {
+    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({ staffed: false });
+
+    await expect(
+      service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: true }),
+    ).rejects.toThrow(/not staffed on this project/);
+
+    // Nothing written, nothing logged - a refused grant must not look applied.
+    expect(projectStaffRoleUpsert).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('GRANT succeeds when the target is staffed on the project', async () => {
+    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({ staffed: true });
+
+    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: true });
+
+    expect(res).toEqual({ userId: 'eng-1', projectId: 'proj-1', photoLead: true });
+    expect(projectStaffRoleUpsert).toHaveBeenCalled();
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'progress.photo_lead_granted' }),
+      }),
+    );
+  });
+
+  it('REVOKE still works for someone no longer staffed (stale grant must be clearable)', async () => {
+    const { service, projectStaffRoleDeleteMany, auditCreate } = makePhotoLeadService({ staffed: false });
+
+    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: false });
+
+    expect(res.photoLead).toBe(false);
+    // The staffing predicate is a GRANT rule only: removing someone from a
+    // team leaves their ProjectStaffRole behind, and a revoke that demanded
+    // staffing could never clear it.
+    expect(projectStaffRoleDeleteMany).toHaveBeenCalled();
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'progress.photo_lead_revoked' }),
+      }),
+    );
+  });
+
+  it('non-admin is refused before any project/user lookup', async () => {
+    const { service, projectTeamFindFirst } = makePhotoLeadService({ staffed: true });
+    const managerActor: JwtPayload = { ...makeUploadActor(), role: 'MANAGER' };
+
+    await expect(
+      service.setPhotoLead(managerActor, 'proj-1', 'eng-1', { photoLead: true }),
+    ).rejects.toThrow(/Only ADMIN or OWNER/);
+    expect(projectTeamFindFirst).not.toHaveBeenCalled();
   });
 });

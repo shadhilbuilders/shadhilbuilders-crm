@@ -52,7 +52,14 @@ export function decodeCursor(raw: string | undefined): { takenAt: Date; id: stri
       return null;
     }
     const { takenAt, id } = parsed as { takenAt: string; id: string };
-    return { takenAt: new Date(takenAt), id };
+    // Shape is not enough: `takenAt` must also PARSE. A cursor with a valid
+    // shape but an unparseable date (truncated by a proxy, hand-edited, or
+    // written by an older encoder) produced `new Date('not-a-date')` = an
+    // Invalid Date, which Prisma rejects with PrismaClientValidationError =>
+    // a 500 on a GET that is supposed to degrade to a fresh first page.
+    const when = new Date(takenAt);
+    if (Number.isNaN(when.getTime())) return null;
+    return { takenAt: when, id };
   } catch {
     return null; // malformed cursor = fresh first page (log at debug upstream)
   }
