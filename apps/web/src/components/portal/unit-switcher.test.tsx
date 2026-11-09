@@ -18,6 +18,19 @@ const unit = (unitId: string, unitNumber: string): PortalUnit => ({
   expectedHandoverDate: null,
   milestones: [],
   photoCount: 0,
+  plotNumber: null,
+  bhk: 2,
+  facing: null,
+  plotSqft: null,
+  buildupSqft: '1090.00',
+  pricePerSqft: '4018.35',
+  listAmount: '4380000.00',
+  phaseName: null,
+  negotiatedRate: null,
+  negotiatedAmount: null,
+  finalAmount: '4380000.00',
+  isNegotiated: false,
+  tokenAmount: null,
 });
 
 describe('UnitSwitcher', () => {

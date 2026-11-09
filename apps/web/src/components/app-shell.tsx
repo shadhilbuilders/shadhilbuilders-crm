@@ -30,6 +30,11 @@
 //   │   └── Group "Admin"            [role-gated]
 //   │       ├── Users                [canManageUsers]
 //   │       └── Audit                [canViewAudit]
+//   │
+//   │   NOTE (2026-11-09): the Work group no longer carries an "Admin"
+//   │   launcher - entering /admin is the account menu's "Switch Admin" row
+//   │   (topbar UserMenu + this footer's NavUser), above Settings.
+//   │
 //   └── <SidebarFooter>
 //       ├── <UserMenu /> popover
 //       └── Sign out button (uses useSignOut)
@@ -75,6 +80,7 @@ import { workLandingHref, workSurfaceForRole } from '@/lib/dashboard-redirect';
 import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
+  adminLauncherHrefFor,
   getVisibleNav,
   isAdminPathname,
   isNavItemActive,
@@ -611,6 +617,7 @@ function UserMenuFooter() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
   const orgSlug = useOrgSlug();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -644,6 +651,10 @@ function UserMenuFooter() {
       // segment when the context isn't mounted, and returns null off-app - in
       // which case NavUser renders the row inert instead of linking to a 404.
       settingsHref={orgSlug !== null ? orgHref(orgSlug, '/settings') : null}
+      // 2026-11-09: "Switch Admin" (was the sidebar Work-group launcher).
+      // The gate (OWNER/ADMIN, off /admin/*, resolved slug) lives in
+      // adminLauncherHrefFor so the topbar and this menu cannot disagree.
+      adminHref={adminLauncherHrefFor(user.role, pathname, orgSlug)}
       onSignOut={() => void signOut()}
     />
   );

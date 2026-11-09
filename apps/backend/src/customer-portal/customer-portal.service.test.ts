@@ -138,12 +138,49 @@ describe('CustomerPortalService authorization (4 exact assertions)', () => {
 });
 
 describe('me', () => {
-  const unitRow = (id: string, unitNumber: string, project: string, handover: Date | null = null) => ({
+  const unitRow = (
+    id: string,
+    unitNumber: string,
+    project: string,
+    handover: Date | null = null,
+    over: Partial<{
+      plotNumber: number | null;
+      bhk: number;
+      facing: string | null;
+      sqft: number | null;
+      buildupSqft: string;
+      pricePerSqft: string;
+      price: string;
+      phaseName: string | null;
+      listAmount: string;
+      negotiatedRate: string | null;
+      negotiatedAmount: string | null;
+      amount: string;
+      tokenAmount: string | null;
+    }> = {},
+  ) => ({
+    // Money lives on the BOOKING (audit baseline + agreed terms); physical
+    // facts live on the UNIT. The service reads both.
+    listAmount: { toString: () => over.listAmount ?? '4380000.00' },
+    negotiatedRate: over.negotiatedRate ? { toString: () => over.negotiatedRate } : null,
+    negotiatedAmount: over.negotiatedAmount ? { toString: () => over.negotiatedAmount } : null,
+    amount: { toString: () => over.amount ?? over.negotiatedAmount ?? over.listAmount ?? '4380000.00' },
+    tokenAmount: over.tokenAmount ? { toString: () => over.tokenAmount } : null,
     unit: {
       id,
       unitNumber,
       expectedHandoverDate: handover,
-      phase: { project: { id: `p-${project}`, name: project } },
+      plotNumber: over.plotNumber ?? null,
+      bhk: over.bhk ?? 2,
+      facing: over.facing ?? null,
+      sqft: over.sqft ?? null,
+      buildupSqft: { toString: () => over.buildupSqft ?? '1090.00' },
+      pricePerSqft: { toString: () => over.pricePerSqft ?? '4018.35' },
+      price: { toString: () => over.price ?? '4380000.00' },
+      phase: {
+        name: over.phaseName ?? null,
+        project: { id: `p-${project}`, name: project },
+      },
     },
   });
 
@@ -175,8 +212,111 @@ describe('me', () => {
       photoCount: 7,
       expectedHandoverDate: null,
       milestones: [],
+      // Unit record + this buyer's terms.
+      plotNumber: null,
+      bhk: 2,
+      facing: null,
+      plotSqft: null,
+      buildupSqft: '1090.00',
+      pricePerSqft: '4018.35',
+      listAmount: '4380000.00',
+      phaseName: null,
+      negotiatedRate: null,
+      negotiatedAmount: null,
+      finalAmount: '4380000.00',
+      isNegotiated: false,
+      tokenAmount: null,
     });
     expect(res.units[2]).toMatchObject({ currentPhaseName: null, photoCount: 0 });
+  });
+
+  // 2026-11-09: the buyer's own commercial record. Every figure the office
+  // quotes on the phone must be on their screen, with the AMOUNT THEY PAY
+  // stated explicitly and the list vs negotiated split kept honest.
+  it('exposes the unit record and the amount the buyer actually pays', async () => {
+    const tx = baseTx({
+      booking: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(async () => [
+          unitRow('u1', 'A-101', 'Shadhil Metro Heights', null, {
+            plotNumber: 41,
+            bhk: 2,
+            facing: 'North',
+            sqft: 1090,
+            buildupSqft: '1090.00',
+            pricePerSqft: '4018.35',
+            price: '4380000.00',
+            phaseName: 'Phase C',
+            listAmount: '4380000.00',
+          }),
+        ]),
+      },
+    });
+    setTx(tx);
+    const res = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+    expect(res.units[0]).toMatchObject({
+      unitNumber: 'A-101',
+      plotNumber: 41,
+      bhk: 2,
+      facing: 'North',
+      plotSqft: 1090,
+      buildupSqft: '1090.00',
+      pricePerSqft: '4018.35',
+      listAmount: '4380000.00',
+      phaseName: 'Phase C',
+      // Nothing negotiated: the buyer pays the list total.
+      negotiatedRate: null,
+      negotiatedAmount: null,
+      finalAmount: '4380000.00',
+      isNegotiated: false,
+      tokenAmount: null,
+    });
+  });
+
+  it('exposes the token received so the portal can show the balance due', async () => {
+    const tx = baseTx({
+      booking: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(async () => [
+          unitRow('u1', 'A-101', 'Shadhil Metro Heights', null, {
+            listAmount: '4380000.00',
+            tokenAmount: '500000.00',
+          }),
+        ]),
+      },
+    });
+    setTx(tx);
+    const res = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+    expect(res.units[0]).toMatchObject({
+      finalAmount: '4380000.00',
+      tokenAmount: '500000.00',
+    });
+  });
+
+  it('reports a negotiated deal without hiding the list total', async () => {
+    const tx = baseTx({
+      booking: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(async () => [
+          unitRow('u1', 'A-101', 'Shadhil Metro Heights', null, {
+            listAmount: '4380000.00',
+            negotiatedRate: '3900.00',
+            negotiatedAmount: '4251000.00',
+            amount: '4251000.00',
+          }),
+        ]),
+      },
+    });
+    setTx(tx);
+    const res = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+    expect(res.units[0]).toMatchObject({
+      // Both numbers survive: the buyer can see what they saved.
+      listAmount: '4380000.00',
+      negotiatedRate: '3900.00',
+      negotiatedAmount: '4251000.00',
+      finalAmount: '4251000.00',
+      isNegotiated: true,
+    });
   });
 
   it('carries the handover date and only the unit\'s own project milestones, in staff order', async () => {

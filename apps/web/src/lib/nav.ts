@@ -11,8 +11,12 @@
 //
 // Locked decisions (DESIGN.md §4 + plan §3 / §11 / §14 + Decision #38):
 //   - Detailed Admin nav is OWNER/ADMIN only under `/admin/*`.
-//   - Work nav shows an `Admin` launcher for OWNER/ADMIN; Admin nav shows
-//     a `Work` launcher back to the default project dashboard.
+//   - Admin nav shows a `Work` launcher back to the default project dashboard.
+//   - 2026-11-09: the entry INTO admin is NOT a nav item any more - it is the
+//     "Switch Admin" row in the account menus (topbar + sidebar footer), see
+//     ADMIN_LAUNCHER / adminLauncherHref below. Owner decision: the admin
+//     namespace is a mode switch, so it belongs with Settings/Sign out, not
+//     among the work pages.
 //   - Friendly labels (D2) are handled separately in `lib/labels.ts`; this
 //     file only owns the nav structure, not display copy for enums.
 //   - Role helpers in `lib/session.ts` are the canonical permission source -
@@ -37,6 +41,8 @@
 //   │   │   ├── Inventory        (no badge)
 //   │   │   ├── Bookings         (no badge - T-F5, T-BOOK backend)
 //   │   │   └── Notifications    (badge: unread count)
+//   │   │   (the Admin launcher is NOT here - it is the account menu's
+//   │   │    "Switch Admin" row; see ADMIN_LAUNCHER in lib/nav.ts)
 //   │   │   ├── SidebarSeparator  [admin-class only]
 //   │   │   └── Group "Admin"     [role-gated]
 //   │   │       ├── Users          [canManageUsers]
@@ -208,14 +214,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: 'work',
     badgeKey: 'unreadNotifications',
   },
-  // OWNER/ADMIN launcher into /admin/* (hidden for every other role).
-  {
-    href: '/admin',
-    label: 'Admin',
-    icon: LuShieldCheck,
-    group: 'work',
-    scoped: false,
-  },
+  // NOTE (2026-11-09): the Admin launcher used to be a `work` item here
+  // (`href: '/admin'`). It MOVED into the account menus as "Switch Admin" -
+  // see ADMIN_LAUNCHER below. It is not a nav entry because it is a mode
+  // switch out of the work namespace, not a work page.
   // ── admin group (OWNER/ADMIN only; shown on /admin/* paths) ─
   // NOTE: the "Go to Work" exit is a standalone link above the group
   // label (see `app-shell.tsx`'s `AdminNavGroup`), not a NAV_ITEMS entry -
@@ -302,6 +304,65 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
 ] as const;
 
+// ---------------------------------------------------------------------------
+// Admin launcher - the "Switch Admin" entry in the account menus
+// ---------------------------------------------------------------------------
+// 2026-11-09 (owner decision): ENTERING the admin namespace moved out of the
+// sidebar's Work group and into the account menu, as a "Switch Admin" row
+// ABOVE Settings. It is a MODE SWITCH (work surfaces <-> admin surfaces), the
+// same class of action as Settings / Sign out, so it belongs with them rather
+// than among the work pages.
+//
+// It is deliberately NOT in NAV_ITEMS: that array is the list of pages the
+// sidebar walks, and `/admin` is not a work page (it immediately redirects to
+// `/admin/overview`). Keeping it here preserves the single-source-of-truth
+// contract - both consumer menus import the same shape, and both read the
+// role gate from `isAdminLike` via `adminLauncherHrefFor`.
+//
+// The exit direction ("Go to Work") is still rendered by `AdminNavGroup` in
+// `app-shell.tsx`, because inside /admin/* the sidebar is already the admin
+// nav and needs its own way back.
+
+/** Label + icon + route for the account menu's "Switch Admin" row. */
+export const ADMIN_LAUNCHER = {
+  /** Template path - resolve with `adminLauncherHref(orgSlug)`. */
+  href: '/admin',
+  label: 'Switch Admin',
+  icon: LuShieldCheck,
+} as const;
+
+/**
+ * Resolve the admin launcher to an org-scoped URL.
+ * `shadhil-builders` → `/shadhil-builders/admin`; null → the template path
+ * (callers render the row inert rather than linking to a route-less `/admin`).
+ */
+export function adminLauncherHref(orgSlug: string | null): string {
+  return orgHref(orgSlug, ADMIN_LAUNCHER.href);
+}
+
+/**
+ * The ONE gate for the "Switch Admin" row - null means "hide it". Both account
+ * menus (topbar `UserMenu`, sidebar `NavUser`) call this so they can never
+ * disagree about who sees the row or where it points.
+ *
+ * Hidden when:
+ *   - the role is not admin-class (the namespace 403s for everyone else), or
+ *   - the org slug has not resolved (a bare `/admin` matches no route), or
+ *   - the pathname is already under `/admin/*` - there the sidebar's own
+ *     "Go to Work" is the matching switch, and this row would link to the page
+ *     in view.
+ */
+export function adminLauncherHrefFor(
+  role: Role | undefined,
+  pathname: string,
+  orgSlug: string | null,
+): string | null {
+  if (!isAdminLike(role)) return null;
+  if (isAdminPathname(pathname)) return null;
+  if (orgSlug === null) return null;
+  return adminLauncherHref(orgSlug);
+}
+
 /**
  * Filter the nav tree by the current role. Pure function so it can be
  * exhaustively unit-tested in `nav.test.ts` without rendering.
@@ -315,7 +376,6 @@ export function getVisibleNav(role: Role | undefined): NavItem[] {
   for (const item of NAV_ITEMS) {
     if (item.group === 'work') {
       // Per-project Staff is viewable by every authenticated role.
-      // The Admin launcher is OWNER/ADMIN only.
       if (!isNavItemVisible(item, role)) continue;
       items.push(item);
       continue;

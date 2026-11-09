@@ -32,6 +32,8 @@ import {
 import { LuLogOut, LuSettings } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 
+import { ADMIN_LAUNCHER } from '@/lib/nav';
+
 function initials(name: string): string {
   return name
     .trim()
@@ -46,6 +48,7 @@ export function NavUser({
   email,
   role,
   settingsHref,
+  adminHref,
   onSignOut,
 }: {
   name: string;
@@ -57,8 +60,15 @@ export function NavUser({
    * than as a link that would 404 at the app root.
    */
   settingsHref: string | null;
+  /**
+   * Resolved org-prefixed "Switch Admin" URL, or null to hide the row: null
+   * for non-admin roles, while the slug is unresolved, and on /admin/* (where
+   * the sidebar's own "Go to Work" is the matching switch).
+   */
+  adminHref: string | null;
   onSignOut: () => void;
 }) {
+  const AdminIcon = ADMIN_LAUNCHER.icon;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -106,6 +116,22 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* Admin mode switch - ABOVE Settings (owner order, 2026-11-09).
+                Same row shape as Settings; only rendered when the caller
+                resolved an admin href (OWNER/ADMIN, off /admin/*, slug
+                known). */}
+            {adminHref !== null ? (
+              <DropdownMenuItem
+                data-qa="sidebar-user-admin"
+                className="cursor-pointer gap-2"
+                render={
+                  <Link href={adminHref}>
+                    <AdminIcon className="size-4 shrink-0" />
+                    {ADMIN_LAUNCHER.label}
+                  </Link>
+                }
+              />
+            ) : null}
             {settingsHref !== null ? (
               // Use `render={<Link />}` so the menu item IS the link (same
               // pattern as project-team-list). Nesting <Link> as a child of

@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { PhotoLightbox } from '@/components/portal/photo-lightbox';
 import { PageError } from '@/components/shared/PageError';
+import { PortalUnitRecord } from '@/components/portal/portal-unit-record';
 import { PortalHandoverCard } from '@/components/portal/portal-handover-card';
 import { PortalHero } from '@/components/portal/portal-hero';
 import { PortalJourney } from '@/components/portal/portal-journey';
@@ -142,6 +143,16 @@ function PortalProgress() {
       </PortalHero>
 
       <UnitSwitcher units={units} selectedUnitId={selectedUnitId} onSelect={setChosenUnitId} />
+
+      {/* The unit record + what the buyer owes (2026-11-09). The component
+          lays its two halves out side by side itself, so this wrapper is just
+          the vertical rhythm - a two-column grid here would have wrapped a
+          single child for no reason. */}
+      {selectedUnit !== null ? (
+        <div className="py-7">
+          <PortalUnitRecord unit={selectedUnit} />
+        </div>
+      ) : null}
 
       {/* Handover figures: a full-width band of spec figures under the record,
           on the same edges as every other rule on the page. */}

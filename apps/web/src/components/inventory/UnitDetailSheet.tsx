@@ -100,6 +100,7 @@ export function UnitDetailSheet({
       onOpenChange={onOpenChange}
       trigger={null}
       side="right"
+      className='w-full data-[side=right]:sm:max-w-xl'
       header={{
         title: `Unit ${unit.unitNumber}`,
         description: `${unit.projectName} · ${unit.phaseName}`,

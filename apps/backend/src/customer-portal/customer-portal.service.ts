@@ -30,6 +30,43 @@ export interface PortalUnitDto {
   expectedHandoverDate: string | null;
   /** The project's buyer-visible checkpoints, in staff-defined order. */
   milestones: PortalMilestoneDto[];
+
+  // ── The unit's own record (2026-11-09) ────────────────────────────────
+  // A buyer asking "what did I buy and what do I owe" deserves the figures on
+  // one screen instead of a call to the office. Every field is nullable and
+  // renders nothing when absent - the portal never invents a value.
+  /** CMDA plot number on the approved layout; null when unassigned. */
+  plotNumber: number | null;
+  /** Bedrooms, e.g. 2. */
+  bhk: number;
+  /** "North", "East"...; null when the unit records none. */
+  facing: string | null;
+  /** PLOT area in sq.ft (Unit.sqft); null when unrecorded. */
+  plotSqft: number | null;
+  /** Built-up area in sq.ft, as a decimal string (Prisma Decimal). */
+  buildupSqft: string;
+  /** List rate per built-up sq.ft, decimal string. */
+  pricePerSqft: string;
+  /** List total = round(buildupSqft * pricePerSqft, 2), decimal string. */
+  listAmount: string;
+  /** Phase name ("Phase C"); null when the unit has no phase name. */
+  phaseName: string | null;
+
+  // ── What this buyer owes (APPROVED booking) ───────────────────────────
+  /** Negotiated per-sq.ft rate, or null when the buyer did not negotiate. */
+  negotiatedRate: string | null;
+  /** Negotiated lump sum, or null. */
+  negotiatedAmount: string | null;
+  /** The amount the buyer actually pays: negotiated when set, else list. */
+  finalAmount: string;
+  /** Set when negotiatedAmount/negotiatedRate differs from the list total. */
+  isNegotiated: boolean;
+  /**
+   * Token / advance already received against this booking (2026-11-09).
+   * Null when staff recorded none, which is NOT the same as zero: an unrecorded
+   * token must not render "₹0" as if the buyer had paid nothing on purpose.
+   */
+  tokenAmount: string | null;
 }
 
 export interface PortalMilestoneDto {
@@ -100,22 +137,38 @@ export class CustomerPortalService {
       const bookings = await tx.booking.findMany({
         where: { leadId, organizationId: actor.organizationId, status: 'APPROVED' },
         select: {
+          // The buyer's own commercial terms. Read from the BOOKING, not the
+          // unit: listAmount/negotiatedAmount are the audit baseline and the
+          // agreed price for THIS deal, and the unit's `price` may have been
+          // edited since approval.
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          amount: true,
+          tokenAmount: true,
           unit: {
             select: {
               id: true,
               unitNumber: true,
+              plotNumber: true,
+              bhk: true,
+              facing: true,
+              sqft: true,
+              buildupSqft: true,
+              pricePerSqft: true,
+              price: true,
               expectedHandoverDate: true,
-              phase: { select: { project: { select: { id: true, name: true } } } },
+              phase: { select: { name: true, project: { select: { id: true, name: true } } } },
             },
           },
         },
       });
 
-      const byId = new Map(bookings.map((b) => [b.unit.id, b.unit] as const));
+      const byId = new Map(bookings.map((b) => [b.unit.id, b] as const));
       const unitIds = [...byId.keys()];
       if (unitIds.length === 0) return { customerName: name, units: [] };
 
-      const projectIds = [...new Set([...byId.values()].map((u) => u.phase.project.id))];
+      const projectIds = [...new Set([...byId.values()].map((b) => b.unit.phase.project.id))];
       const [counts, newest, milestoneRows] = await Promise.all([
         tx.progressPhoto.groupBy({
           by: ['unitId'],
@@ -149,16 +202,39 @@ export class CustomerPortalService {
       const phaseByUnit = new Map(newest.map((n) => [n.unitId, n.phase?.name ?? null] as const));
 
       const units = [...byId.values()]
-        .map<PortalUnitDto>((u) => ({
-          unitId: u.id,
-          unitNumber: u.unitNumber,
-          projectName: u.phase.project.name,
-          projectId: u.phase.project.id,
-          currentPhaseName: phaseByUnit.get(u.id) ?? null,
-          photoCount: countByUnit.get(u.id) ?? 0,
-          expectedHandoverDate: u.expectedHandoverDate?.toISOString() ?? null,
-          milestones: milestonesByProject.get(u.phase.project.id) ?? [],
-        }))
+        .map<PortalUnitDto>((b) => {
+          const u = b.unit;
+          const listAmount = b.listAmount.toString();
+          const negotiatedAmount = b.negotiatedAmount?.toString() ?? null;
+          const negotiatedRate = b.negotiatedRate?.toString() ?? null;
+          // `amount` is the effective total (negotiated when set, else list),
+          // already resolved server-side at approval time. Fall back to the
+          // list total only if it is somehow absent.
+          const finalAmount = b.amount?.toString() ?? negotiatedAmount ?? listAmount;
+          return {
+            unitId: u.id,
+            unitNumber: u.unitNumber,
+            projectName: u.phase.project.name,
+            projectId: u.phase.project.id,
+            currentPhaseName: phaseByUnit.get(u.id) ?? null,
+            photoCount: countByUnit.get(u.id) ?? 0,
+            expectedHandoverDate: u.expectedHandoverDate?.toISOString() ?? null,
+            milestones: milestonesByProject.get(u.phase.project.id) ?? [],
+            plotNumber: u.plotNumber,
+            bhk: u.bhk,
+            facing: u.facing,
+            plotSqft: u.sqft,
+            buildupSqft: u.buildupSqft.toString(),
+            pricePerSqft: u.pricePerSqft.toString(),
+            listAmount,
+            phaseName: u.phase.name,
+            negotiatedRate,
+            negotiatedAmount,
+            finalAmount,
+            isNegotiated: negotiatedAmount !== null || negotiatedRate !== null,
+            tokenAmount: b.tokenAmount?.toString() ?? null,
+          };
+        })
         .sort(compareUnits);
       return { customerName: name, units };
     });

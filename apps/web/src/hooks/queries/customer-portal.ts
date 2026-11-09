@@ -28,6 +28,33 @@ export type PortalUnit = {
   /** Staff-entered; null renders nothing (never an estimate). */
   expectedHandoverDate: string | null;
   milestones: PortalMilestone[];
+
+  // ── The unit's own record (2026-11-09) ────────────────────────────────
+  // Decimal values arrive as STRINGS (Prisma Decimal serialised over JSON), so
+  // every consumer must format rather than do float maths on them.
+  plotNumber: number | null;
+  bhk: number;
+  facing: string | null;
+  /** PLOT area in sq.ft. */
+  plotSqft: number | null;
+  /** Built-up area in sq.ft. */
+  buildupSqft: string;
+  pricePerSqft: string;
+  /** List total: buildupSqft × pricePerSqft, resolved server-side. */
+  listAmount: string;
+  phaseName: string | null;
+
+  // ── What this buyer owes (their APPROVED booking) ─────────────────────
+  negotiatedRate: string | null;
+  negotiatedAmount: string | null;
+  /** Negotiated when set, else the list total. Always present. */
+  finalAmount: string;
+  isNegotiated: boolean;
+  /**
+   * Token / advance received. Null when staff recorded none — distinct from
+   * zero, so an unrecorded token never renders as "₹0 paid".
+   */
+  tokenAmount: string | null;
 };
 
 export type PortalMe = {

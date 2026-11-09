@@ -11,6 +11,10 @@
 //     surface that queues work, not in a global <main>)
 //   - UserMenu popover (avatar + sign out + Settings)
 //
+// 2026-11-09: the account menu also carries the admin MODE SWITCH
+// ("Switch Admin", above Settings) for OWNER/ADMIN on work routes. It used
+// to be a sidebar Work-group nav item; see ADMIN_LAUNCHER in lib/nav.ts.
+//
 // Plan §3.2 / §11 T8. Note: the notification bell is rendered
 // explicitly with `useNotifications({unreadOnly:true})` so the count
 // is honest - it reads from the live query, never a hard-coded value.
@@ -31,7 +35,7 @@ import {
 import { LuBell, LuCheckCheck, LuLogOut, LuSettings, LuUserRound } from '@paalstack/react-icons/lu';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SidebarToggleButton } from '@/components/app-shell';
@@ -41,7 +45,7 @@ import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
-import { orgHref, projectHref } from '@/lib/nav';
+import { ADMIN_LAUNCHER, adminLauncherHrefFor, orgHref, projectHref } from '@/lib/nav';
 import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import {
@@ -57,6 +61,7 @@ export function AppHeader() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   // Resolved org slug for the account menu's Settings link (org-scoped route).
   const orgSlug = useOrgSlug();
   const [mounted, setMounted] = useState(false);
@@ -167,6 +172,11 @@ export function AppHeader() {
             // Settings is org-scoped (`/[orgSlug]/settings`); the href needs the
             // resolved slug (which useOrgSlug falls back to from the URL).
             settingsHref={orgSlug !== null ? orgHref(orgSlug, '/settings') : null}
+            // 2026-11-09: "Switch Admin" row - owner decision to move the
+            // admin entry out of the sidebar Work group. Null hides it; the
+            // gate (role, /admin/*, unresolved slug) lives in
+            // adminLauncherHrefFor so both menus agree.
+            adminHref={adminLauncherHrefFor(user!.role, pathname, orgSlug)}
             onSignOut={() => void signOut()}
           />
         ) : (
@@ -362,14 +372,22 @@ function UserMenu({
   name,
   role,
   settingsHref,
+  adminHref,
   onSignOut,
 }: {
   name: string;
   role: string;
   /** Resolved org-scoped Settings URL; null while the slug is unresolved. */
   settingsHref: string | null;
+  /**
+   * Resolved org-scoped "Switch Admin" URL, or null to hide the row: null for
+   * non-admin roles, while the slug is unresolved, and on /admin/* itself
+   * (where the sidebar's "Go to Work" is the matching switch).
+   */
+  adminHref: string | null;
   onSignOut: () => void;
 }) {
+  const AdminIcon = ADMIN_LAUNCHER.icon;
   return (
     <PopoverRoot>
       <PopoverTrigger
@@ -397,6 +415,19 @@ function UserMenu({
           <p className="text-muted-foreground text-xs">{role.replace('_', ' ')}</p>
         </div>
         <Separator />
+        {/* Admin mode switch - ABOVE Settings (owner order, 2026-11-09). It is
+            a switch between namespaces, so it leads the actions block; Settings
+            and Sign out stay at the bottom where they were. */}
+        {adminHref !== null ? (
+          <Link
+            href={adminHref}
+            className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
+            data-qa="account-menu-admin"
+          >
+            <AdminIcon className="size-4 shrink-0" />
+            {ADMIN_LAUNCHER.label}
+          </Link>
+        ) : null}
         {settingsHref !== null ? (
           <Link
             href={settingsHref}
