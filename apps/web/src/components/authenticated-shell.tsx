@@ -18,7 +18,8 @@ import { AppHeader } from '@/components/app-header';
 import { PushEnablePrompt } from '@/components/push-enable-prompt';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageLoading } from '@/components/shared/PageLoading';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { isFullBleedPath } from '@/lib/nav';
 import { redirectForArea } from '@/lib/portal-routing';
 import { useSessionUser } from '@/lib/session';
 
@@ -44,6 +45,9 @@ function useIsDesktop(): boolean {
 export function AuthenticatedShell({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
   const router = useRouter();
+  const pathname = usePathname();
+  // The site capture screen owns its header + safe-area; render it full-bleed.
+  const fullBleed = isFullBleedPath(pathname ?? '');
   const { user } = useSessionUser();
   // Issue #8 (D6/D7): the staff shell never renders for a CUSTOMER. Bounce to
   // the portal and render nothing staff-shaped in the meantime.
@@ -59,10 +63,18 @@ export function AuthenticatedShell({ children }: { children: ReactNode }) {
     <SidebarProvider defaultOpen={isDesktop}>
       <AppShell />
       <SidebarInset className='md:peer-data-[variant=inset]:mt-0'>
-        <Suspense fallback={<Skeleton variant="text" count={1} className="h-14 w-full" />}>
-          <AppHeader />
-        </Suspense>
-        <main className="w-full flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
+        {fullBleed ? null : (
+          <Suspense fallback={<Skeleton variant="text" count={1} className="h-14 w-full" />}>
+            <AppHeader />
+          </Suspense>
+        )}
+        <main
+          className={
+            fullBleed
+              ? 'w-full flex-1'
+              : 'w-full flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6'
+          }
+        >
           {children}
         </main>
       </SidebarInset>

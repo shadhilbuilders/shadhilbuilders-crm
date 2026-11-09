@@ -24,6 +24,11 @@ import {
   FACT_BANDS,
   FACT_STATUSES,
   factBandBadgeVariant,
+  CONSTRUCTION_STAGES,
+  CONSTRUCTION_STAGE_ORDER,
+  constructionStageBadgeVariant,
+  constructionStageLabel,
+  constructionStageOrUnset,
   type LeadStatus,
   type VisitOutcome,
   type VisitStatus,
@@ -332,6 +337,53 @@ describe('lib/labels', () => {
       expect(factBandBadgeVariant('PROBABLE')).toBe('warning');
       expect(factBandBadgeVariant('POSSIBLE')).toBe('info');
       expect(factBandBadgeVariant('SOMETHING_NEW')).toBe('muted');
+    });
+  });
+
+  // 2026-11-08: the construction stage reaches the capture header, the home
+  // rows and the buyer's stepper. Same source-of-truth rule as every other
+  // enum: a new Prisma value cannot land without a label.
+  describe('CONSTRUCTION_STAGES - every value has a friendly label', () => {
+    it.each(CONSTRUCTION_STAGES)('%s renders a non-empty, non-raw label', (stage) => {
+      const label = labelFor('constructionStage', stage);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(stage);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+      expect(constructionStageLabel(stage)).toBe(label);
+    });
+
+    it('covers all nine values, in progress order', () => {
+      expect([...CONSTRUCTION_STAGES]).toEqual([
+        'NOT_STARTED',
+        'FOUNDATION',
+        'STRUCTURE',
+        'MASONRY',
+        'PLASTERING',
+        'WATERPROOFING',
+        'FLOORING',
+        'FINISHING',
+        'READY',
+      ]);
+      // The stepper imports this exact constant; a re-sort would silently
+      // reverse the buyer's progress bar.
+      expect(CONSTRUCTION_STAGE_ORDER).toBe(CONSTRUCTION_STAGES);
+    });
+
+    it('names MASONRY "Brickwork", the word the site uses', () => {
+      expect(constructionStageLabel('MASONRY')).toBe('Brickwork');
+    });
+
+    it('says "Stage not set" for a null stage, never "Not started"', () => {
+      expect(constructionStageOrUnset(null)).toBe('Stage not set');
+      expect(constructionStageOrUnset('READY')).toBe('Ready');
+    });
+
+    it('keeps one neutral badge variant for every stage', () => {
+      // The four documentation states own the colour budget; the stage is text.
+      for (const stage of CONSTRUCTION_STAGES) {
+        expect(constructionStageBadgeVariant(stage)).toBe('muted');
+      }
+      expect(constructionStageBadgeVariant(null)).toBe('muted');
     });
   });
 });

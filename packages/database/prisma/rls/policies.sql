@@ -2085,3 +2085,43 @@ CREATE POLICY progress_photo_select_customer ON "ProgressPhoto"
     "organizationId" = current_setting('app.user_org_id', true)
     AND customer_can_read_unit("unitId")
   );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2026-11-08: staff recipients of a site-update notification.
+--
+-- WHO: every PHOTO_LEAD on the project, plus the manager of every team linked
+-- to it through ProjectTeam.
+--
+-- WHY A SECURITY DEFINER HELPER: recipient resolution must be independent of
+-- what the uploader can see. project_staff_role_select_own_or_admin admits own
+-- rows or ADMIN, and Team reads are scoped to the caller's own teams, so an
+-- engineer running the query directly would resolve an EMPTY recipient list on
+-- the very projects they photograph. The helper runs as the table owner (outside
+-- RLS) and returns ids only - it grants no read of the rows themselves.
+-- Same shape as unit_customer_user_ids() above.
+-- ────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION project_site_update_recipient_ids(p_project_id TEXT)
+  RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT DISTINCT u."id"
+    FROM "ProjectStaffRole" psr
+    JOIN "User" u ON u."id" = psr."userId"
+    WHERE psr."projectId" = p_project_id
+      AND psr."kind" = 'PHOTO_LEAD'
+      AND psr."organizationId" = current_setting('app.user_org_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."deletedAt" IS NULL
+    UNION
+    SELECT DISTINCT u."id"
+    FROM "ProjectTeam" pt
+    JOIN "Team" t ON t."id" = pt."teamId"
+    JOIN "User" u ON u."id" = t."managerId"
+    WHERE pt."projectId" = p_project_id
+      AND pt."organizationId" = current_setting('app.user_org_id', true)
+      AND t."deletedAt" IS NULL
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."deletedAt" IS NULL
+  $$;
+
+REVOKE ALL ON FUNCTION project_site_update_recipient_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION project_site_update_recipient_ids(TEXT) TO shadhil_app;

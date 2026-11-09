@@ -195,8 +195,34 @@ export function outranks(actor: Role | undefined, target: Role): boolean {
   return ROLE_RANK[actor] > ROLE_RANK[target];
 }
 
-/** Telecaller is the only role that schedules + confirms visits (Model C). */
-export function canScheduleVisits(role: Role | undefined): boolean {
+/**
+ * Site-staff surface (2026-11-08): these roles document construction progress
+ * and never see money or bookings.
+ *
+ * Drives: the `/site` home page and the `/site/[unitId]` capture route (both
+ * redirect everyone else to `/inventory`), the Nav entry swap, and the hidden
+ * money columns on the inventory grid. RLS is the wall - this is the courtesy
+ * that keeps the UI honest about where a role works.
+ */
+export function isSiteRole(role: Role | undefined): boolean {
+  return role === 'ENGINEER' || role === 'TELECALLER';
+}
+
+/**
+ * Site-ONLY roles (2026-11-08): `/site` is their whole product, so `/inventory`
+ * is not merely un-advertised for them - it is CLOSED.
+ *
+ * ENGINEER is the only site-only role: no lead work exists for it (DESIGN.md §1
+ * makes TELECALLER the first-touch lead owner, and they only GAIN the site
+ * surface). `isSiteRole` covers the surfaces a role GAINS; this covers the one
+ * they may not open at all, so the nav filter, the `/dashboard` guard and the
+ * `InventoryRouteGate` can never disagree about which role is which.
+ */
+export function isSiteOnlyRole(role: Role | undefined): boolean {
+  return role === 'ENGINEER';
+}
+
+/** Telecaller is the only role that schedules + confirms visits (Model C). */export function canScheduleVisits(role: Role | undefined): boolean {
   return (
     isAdminLike(role) || role === 'MANAGER' || role === 'TELECALLER'
   );

@@ -55,6 +55,36 @@ export function isAdminClass(role: Role): boolean {
   return role === 'ADMIN' || role === 'OWNER';
 }
 
+/**
+ * Roles whose work is entirely SITE documentation (2026-11-08).
+ *
+ * Mirrors `isSiteOnlyRole` in `apps/web/src/lib/session.ts` - kept in lockstep
+ * on purpose, exactly like `canUseWhatsappInbox`, because the web blocks
+ * `/inventory` for this role and the API must not hand it the data anyway.
+ * A UI block is a courtesy; the projection below is the wall.
+ *
+ * ENGINEER is the only member: it documents construction progress on site and
+ * has no CRM authority. TELECALLER is deliberately NOT included - they own
+ * leads from NEW through VISIT_SCHEDULED and read inventory as part of that
+ * job (with the rupee columns hidden in the UI).
+ */
+export function isSiteOnlyRole(role: Role): boolean {
+  return role === 'ENGINEER';
+}
+
+/**
+ * True when the actor may see villa MONEY: per-sq.ft price, total price, and
+ * the deal on a booking.
+ *
+ * This gates the API projection (`unitRowSelectFor` / `toUnitRow`), not just a
+ * column in the grid. A site engineer's browser is not a trusted place to hold
+ * a project's pricing: hiding a column still shipped the number, and a hidden
+ * element is one devtools panel away from being read.
+ */
+export function canSeeUnitMoney(role: Role): boolean {
+  return !isSiteOnlyRole(role);
+}
+
 /** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
 /**
  * T-WA-INBOX (2026-09-25): the WhatsApp chat system is manager-and-above.

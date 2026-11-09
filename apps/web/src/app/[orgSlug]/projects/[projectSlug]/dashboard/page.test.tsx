@@ -26,6 +26,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ROLE = { current: 'TELECALLER' as string };
 
+// Hoisted so the `next/navigation` mock factory (which is lifted above the
+// imports) can hand the page a router whose `replace` the redirect test inspects.
+const mocks = vi.hoisted(() => ({ replace: vi.fn() }));
+
 // Bookings keyed by the status the page asks for, so the TOKEN card and the HOLD
 // card can be given different rows in the same render.
 const BOOKINGS: { current: Record<string, unknown[]> } = { current: {} };
@@ -38,6 +42,8 @@ vi.mock('@/lib/session', () => ({
   // Real mirror of the server gates - these are the rules the page relies on to
   // decide what to offer, so they must not be stubbed to `true`.
   isAdminLike: vi.fn((role: string) => role === 'ADMIN' || role === 'OWNER'),
+  // 2026-11-08: the dashboard forwards site-ONLY roles (ENGINEER) to /site.
+  isSiteOnlyRole: vi.fn((role: string | undefined) => role === 'ENGINEER'),
   canApproveBookings: vi.fn(
     (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER'
   ),
@@ -119,9 +125,9 @@ vi.mock('@/lib/tenant-context', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: vi.fn(() => ({ projectId: 'proj-metro' })),
-  // ENGINEER redirection (workSurfaceForRole) is the only router use in the
-  // page; every non-engineer case below never fires it.
-  useRouter: vi.fn(() => ({ replace: vi.fn(), push: vi.fn() })),
+  // The ENGINEER redirect (workSurfaceForRole) is the only router use in the
+  // page; `replace` is hoisted so the redirect test can assert the destination.
+  useRouter: vi.fn(() => ({ replace: mocks.replace, push: vi.fn() })),
 }));
 
 // The real LeadVisitPanel pulls its own visit queries and session; this test is
@@ -224,16 +230,18 @@ describe('Work dashboard - one page, every action in place', () => {
     expect(out).toContain('Asha');
   });
 
-  // ENGINEER (site engineer) has no lead queue: their only Work surface is
-  // Inventory. A bookmark/deep link to /dashboard must forward there instead
-  // of rendering a shell of RLS-denied fetches.
-  it('redirects an ENGINEER to the project inventory instead of rendering the queue', async () => {
+  // ENGINEER (site engineer) has no lead queue: their only Work surface is the
+  // site capture home. A bookmark/deep link to /dashboard must forward there
+  // instead of rendering a shell of RLS-denied fetches.
+  it('redirects an ENGINEER to the site home instead of rendering the queue', async () => {
     ROLE.current = 'ENGINEER';
     LEADS.current = [lead({})];
     await mount();
     const out = html();
     expect(out).not.toContain('data-qa="work-queue"');
     expect(out).not.toContain('Asha');
+    // The destination is /site - the sales grid is not an engineer's surface.
+    expect(mocks.replace).toHaveBeenCalledWith(expect.stringContaining('/site'));
   });
 
   it('offers the next action as a real button on the collapsed row', async () => {

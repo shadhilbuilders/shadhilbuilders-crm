@@ -68,6 +68,7 @@ import {
   LuSettings,
   LuMessagesSquare,
   LuMap,
+  LuCamera,
 } from '@paalstack/react-icons/lu';
 
 import { usePathname } from 'next/navigation';
@@ -75,7 +76,7 @@ import { useEffect } from 'react';
 
 import { useSidebar } from '@paalstack/react-ui';
 
-import { canUseWhatsappInbox, isAdminLike } from '@/lib/session';
+import { canUseWhatsappInbox, isAdminLike, isSiteOnlyRole, isSiteRole } from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -153,6 +154,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/inventory',
     label: 'Inventory',
     icon: LuPackage,
+    group: 'work',
+  },
+  // Site staff (2026-11-08) get their own home: the engineer's real question is
+  // "which villa have I not photographed yet", and a rupee grid answers none of
+  // it. `/inventory` is hidden for those roles in isNavItemVisible, so no role
+  // ever sees two links to the same job.
+  {
+    href: '/site',
+    label: 'Site updates',
+    icon: LuCamera,
     group: 'work',
   },
   // Interactive CMDA plot layout. Visible to every authenticated role, like
@@ -341,11 +352,27 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
   // CUSTOMER (issue #8 slice 2) has no staff surface at all: the portal has
   // its own layout and nav. The staff shell must never list anything for them.
   if (role === 'CUSTOMER') return false;
-  if (role === 'ENGINEER') {
-    // Inventory only (the plot layout reads the same surface but the map
-    // link needs bookings context engineers don't have).
-    return item.href === '/inventory';
+  if (isSiteRole(role)) {
+    // Site staff work out of the site capture surface. `/inventory` is hidden
+    // here: the site home replaces it, and two links to the same job is a nav
+    // bug. The inventory ROUTE still resolves for them (the capture screen's
+    // back button and the plot map link into it) - it is just not advertised.
+    //
+    // ENGINEER (issue #7) is site-ONLY: no lead work exists for that role.
+    // TELECALLER is NOT site-only - DESIGN.md §1 makes them the first-touch lead
+    // owner from NEW through VISIT_SCHEDULED, so they keep the Lead Inbox and the
+    // dashboard queue and GAIN the site capture screen. Stripping their leads to
+    // match the engineer would remove the job they are hired to do.
+    // The flag comes from `isSiteOnlyRole` (not a hand-rolled string) so the
+    // nav filter and the `/inventory` route gate cannot disagree.
+    const siteOnly = isSiteOnlyRole(role);
+    if (item.href === '/site') return true;
+    if (siteOnly) return false;
+    if (item.href === '/inventory') return false;
   }
+  // The site home is the site staff's screen. For every other role it would be
+  // a second link to the same villas, without the money that role needs.
+  if (item.href === '/site') return false;
   // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE
   // the catch-all `group === 'work' => true` at the end of this function,
   // which would otherwise show it to every authenticated role.
@@ -399,7 +426,7 @@ export function useNavBadge(
     useNotifications: (params: { unreadOnly?: boolean }) => {
       data: { rows: unknown[]; total: number; unread: number };
     };
-    useChatConversations: (params: { limit?: number }) => {
+    useChatConversations: (params: { limit?: number; enabled?: boolean }) => {
       data: { totalUnread: number } | undefined;
     };
   };
@@ -408,7 +435,12 @@ export function useNavBadge(
   const notifications = useNotifications({ unreadOnly: true });
   // Hook order must be stable across renders, so this is called
   // unconditionally and only its VALUE is used for the chat badge.
-  const chats = useChatConversations({ limit: 1 });
+  //
+  // 2026-11-08: the chat counter is the ONLY badge that 403s for a role with no
+  // inbox (a site engineer). The request fired on every page the shell renders,
+  // including /site, and a failed request in the console reads as a broken page.
+  // Ask for it only when the page actually carries a chat badge.
+  const chats = useChatConversations({ limit: 1, enabled: key === 'unreadChats' });
 
   if (key === undefined) return FALLBACK_BADGE;
   if (key === 'leadCount') {
@@ -471,6 +503,7 @@ export const PROJECT_SCOPED_PATHS = new Set([
   '/visits',
   '/my-team',
   '/inventory',
+  '/site',
   '/plots',
   '/bookings',
   '/notifications',
@@ -561,6 +594,22 @@ export function activeProjectSlugFromPathname(pathname: string): string | null {
     return projectSlug;
   }
   return null;
+}
+
+/**
+ * True for the site capture route `/<org>/projects/<project>/site/<unitId>`
+ * (exactly one segment after `site`). That screen owns its own header and
+ * safe-area handling, so the shell renders it full-bleed: no AppHeader, no
+ * page padding. `/site` (the unit list) keeps the normal shell.
+ */
+export function isFullBleedPath(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean);
+  return (
+    segments.length === 5 &&
+    segments[1] === 'projects' &&
+    segments[3] === 'site' &&
+    (segments[4] ?? '').length > 0
+  );
 }
 
 /**

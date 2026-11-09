@@ -19,12 +19,13 @@ import {
 
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
+import { notificationTypeLabel } from '@/lib/notification-labels';
 import { useProjectId } from '@/lib/tenant-context';
 
 // T-F2: the filter tabs are all wired to backend query params now.
 // ALL/UNREAD use unreadOnly; LEADS/BOOKINGS/VISITS use typePrefix
 // (e.g. 'lead' matches lead.created, lead.transition, lead.reassigned).
-type Filter = 'ALL' | 'UNREAD' | 'LEADS' | 'BOOKINGS' | 'VISITS';
+type Filter = 'ALL' | 'UNREAD' | 'LEADS' | 'BOOKINGS' | 'VISITS' | 'SITE';
 
 const FILTERS: { value: Filter; label: string; typePrefix?: string }[] = [
   { value: 'ALL', label: 'All' },
@@ -32,7 +33,11 @@ const FILTERS: { value: Filter; label: string; typePrefix?: string }[] = [
   { value: 'LEADS', label: 'Leads', typePrefix: 'lead' },
   { value: 'BOOKINGS', label: 'Bookings', typePrefix: 'booking' },
   { value: 'VISITS', label: 'Visits', typePrefix: 'visit' },
+  // 2026-11-08: site-update notifications are typed 'progress.photo', which no
+  // other prefix matches. Without this tab they only ever appeared under All.
+  { value: 'SITE', label: 'Site', typePrefix: 'progress' },
 ];
+
 
 type NotificationRow = {
   id: string;
@@ -132,12 +137,16 @@ export default function NotificationsPage() {
                   <p className="text-muted-foreground text-xs">
                     {typeof row.body === 'string' ? row.body : ''}
                   </p>
-                  <p className="text-muted-foreground mt-1 text-[10px] tracking-wide uppercase">
+                  {/* 12px minimum, sentence case. This was 10px UPPERCASE with
+                      0.025em tracking: below the 12px legibility floor, shouting
+                      the least important line on the row, and 50 of those nodes
+                      were the single biggest detector hit on the page. */}
+                  <p className="text-muted-foreground mt-1 text-xs">
                     {typeof row.createdAt === 'string'
                       ? dateIntl.formatDateTime(row.createdAt)
                       : ''}
                     {typeof row.type === 'string' && row.type.length > 0
-                      ? ` · ${row.type}`
+                      ? ` · ${notificationTypeLabel(row.type)}`
                       : ''}
                   </p>
                 </div>

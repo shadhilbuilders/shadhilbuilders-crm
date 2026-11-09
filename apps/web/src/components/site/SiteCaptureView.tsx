@@ -1,0 +1,283 @@
+'use client';
+
+// SiteCaptureView (2026-11-08): the capture screen's whole surface, presentational.
+//
+// One column, phone first, thumb reachable:
+//   - sticky 56px header: back, unit title + project/phase, unit status badge and
+//     the recorded stage,
+//   - scrolling content: the summary line and the photo feed (or the empty hero),
+//   - sticky bottom bar: `Take photo` (camera) + `Gallery` (the library
+//     FileUpload surface).
+//
+// Every input arrives as a prop; `site/[unitId]/page.tsx` owns the queries, the
+// queue and the file inputs. That split is what makes every state here
+// renderable by `renderToStaticMarkup` in a test.
+import {
+  Badge,
+  Button,
+  FileUpload,
+  FileUploadDropzone,
+  FileUploadTrigger,
+  IconButton,
+  Spinner,
+} from '@paalstack/react-ui';
+import { LuCamera, LuChevronLeft } from '@paalstack/react-icons/lu';
+import Link from 'next/link';
+import type { RefObject } from 'react';
+
+import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
+import { constructionStageOrUnset, inventoryStatusBadgeVariant, labelFor } from '@/lib/labels';
+import {
+  photoSummaryLine,
+  unitPhotoState,
+  unitPhotoStateBadgeVariant,
+  unitPhotoStateSurface,
+} from '@/lib/site-photos';
+
+import { ProgressPhotoActions } from '@/components/inventory/ProgressPhotoActions';
+
+import { NoteDialog, type NoteDialogProps } from './NoteDialog';
+import { SiteEmptyHero } from './SiteEmptyHero';
+import { SitePhotoFeed, type UploadingState } from './SitePhotoFeed';
+import { SitePhotoViewer, type SitePhotoViewerProps } from './SitePhotoViewer';
+
+export type CaptureHeaderUnit = {
+  unitNumber: string;
+  projectName: string;
+  phaseName: string;
+  status: string;
+  /** Stage of the newest photo, or null. Rendered "Stage not set" when null. */
+  lastPhotoStage: string | null;
+  photoCount: number;
+  lastPhotoAt: string | null;
+};
+
+export type SiteCaptureViewProps = {
+  unit: CaptureHeaderUnit;
+  backHref: string;
+  photos: readonly TimelinePhoto[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
+  uploading: readonly UploadingState[];
+  onRetryUpload: (index: number) => void;
+  onDiscardUpload: (index: number) => void;
+  onOpenPhoto: (photoId: string) => void;
+  now: Date;
+  /** Hidden `<input type="file" capture="environment">` ref (camera path). */
+  cameraInputRef: RefObject<HTMLInputElement | null>;
+  onCameraChange: (file: File | null) => void;
+  onCameraClick: () => void;
+  /** Files from the library FileUpload surface (gallery / drop / empty panel). */
+  onGalleryFiles: (files: File[]) => void;
+  onFileReject: (file: File, message: string) => void;
+  /** True while a chosen file is being converted. */
+  isPreparing: boolean;
+  noteDialog: NoteDialogProps;
+  viewer: SitePhotoViewerProps;
+  /** Announcements: "Uploading photo..." / "Photo saved." */
+  announcement: string;
+};
+
+export function SiteCaptureView({
+  unit,
+  backHref,
+  photos,
+  isLoading,
+  isError,
+  onRetry,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
+  uploading,
+  onRetryUpload,
+  onDiscardUpload,
+  onOpenPhoto,
+  now,
+  cameraInputRef,
+  onCameraChange,
+  onCameraClick,
+  onGalleryFiles,
+  onFileReject,
+  isPreparing,
+  noteDialog,
+  viewer,
+  announcement,
+}: SiteCaptureViewProps) {
+  const state = unitPhotoState({ photoCount: unit.photoCount, lastPhotoAt: unit.lastPhotoAt }, now);
+  const summary = photoSummaryLine(photos, now);
+  const isEmpty = !isLoading && !isError && photos.length === 0 && uploading.length === 0;
+
+  // ONE FileUpload provider wraps both the empty panel and the Gallery trigger:
+  // two providers would mean two independent file states, and the dropzone would
+  // be a dead surface. Validation, rejection messages, multi-select and the
+  // per-file state live in the component, not in a hand-rolled guard.
+  return (
+    <FileUpload
+      accept="image/*"
+      maxFiles={8}
+      maxSize={10 * 1024 * 1024}
+      multiple
+      dir="ltr"
+      data-qa="site-file-upload"
+      onFileValidate={(file) =>
+        file.type.startsWith('image/') ? null : 'That file is not an image.'
+      }
+      onFileReject={(file, message) => onFileReject(file, message)}
+      onValueChange={(files) => {
+        if (files.length > 0) onGalleryFiles(files);
+      }}
+    >
+      <div className="bg-background flex min-h-dvh flex-col" data-qa="site-capture-screen">
+        {/* Sticky header: the back chevron is the only exit - no Close button. */}
+        {/* viewportFit 'cover': pad the top by the notch inset, as AppHeader does. */}
+        <header className="bg-background/95 border-border sticky top-0 z-20 border-b pt-[env(safe-area-inset-top)] backdrop-blur">
+          <div className="flex min-h-14 items-center gap-2 px-2">
+            <IconButton
+              as={Link}
+              href={backHref}
+              variant="ghost"
+              className="size-11 shrink-0"
+              icon={<LuChevronLeft className="size-5" aria-hidden="true" />}
+              aria-label="Back to site updates"
+              data-qa="site-back"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-semibold tabular-nums">{unit.unitNumber}</p>
+              <p className="text-muted-foreground truncate text-xs">
+                {unit.projectName} · {unit.phaseName}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <Badge variant={inventoryStatusBadgeVariant(unit.status)} data-qa="site-unit-status">
+                {labelFor('inventory', unit.status)}
+              </Badge>
+              <Badge
+                variant={unitPhotoStateBadgeVariant(state)}
+                className={unitPhotoStateSurface(state)}
+                data-qa="site-unit-stage"
+                data-state={state}
+              >
+                {constructionStageOrUnset(unit.lastPhotoStage)}
+              </Badge>
+            </div>
+          </div>
+        </header>
+
+        {/* `pb-28` so the sticky bar never covers the last card. */}
+        <main className="flex-1 space-y-4 px-4 py-4 pb-28">
+          {summary !== null ? (
+            <p className="text-muted-foreground text-sm" data-qa="site-summary-line">
+              {summary}
+            </p>
+          ) : null}
+
+          {isEmpty ? (
+            // The whole panel IS the FileUpload dropzone: a drop target on
+            // desktop, the picker on a phone, one affordance instead of a button
+            // above a dead dashed box.
+            // The dropzone is the behaviour; the HERO is the surface. The
+            // library's own dashed 2px border and padding are stripped because the
+            // design deliberately avoids a dashed drop zone (it reads as dead
+            // space, which is the state this panel replaced).
+            <FileUploadDropzone
+              data-qa="site-file-dropzone"
+              className="border-0! bg-transparent! p-0! hover:bg-transparent!"
+            >
+              <SiteEmptyHero unitNumber={unit.unitNumber} />
+            </FileUploadDropzone>
+          ) : null}
+
+          {isPreparing ? (
+            <div
+              className="text-muted-foreground flex items-center gap-2 text-sm"
+              data-qa="site-preparing-photo"
+              role="status"
+              aria-live="polite"
+            >
+              <Spinner className="size-4" aria-hidden="true" /> Preparing photo...
+            </div>
+          ) : null}
+
+          {photos.length > 0 || isLoading || isError || uploading.length > 0 ? (
+            <SitePhotoFeed
+              photos={photos}
+              isLoading={isLoading}
+              isError={isError}
+              onRetry={onRetry}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+              onLoadMore={onLoadMore}
+              onOpenPhoto={onOpenPhoto}
+              uploading={uploading}
+              onRetryUpload={onRetryUpload}
+              onDiscardUpload={onDiscardUpload}
+              now={now}
+              unitLabel={unit.unitNumber}
+              renderActions={(photo) => (
+                <ProgressPhotoActions photo={photo} unitId={photo.unitId} />
+              )}
+            />
+          ) : null}
+
+          {/* One polite live region for the upload states. Focus never moves. */}
+          <p className="sr-only" aria-live="polite" data-qa="site-live-region">
+            {announcement}
+          </p>
+        </main>
+
+        {/* Sticky bar, above the safe area. */}
+        <footer className="bg-background/95 border-border sticky bottom-0 z-20 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="flex items-center gap-2">
+            {/* The camera path is a PLAIN input: FileUploadProps does not expose
+              `capture`, and without capture="environment" an iPhone shows the
+              Library / Take Photo sheet and costs a tap on every photo. */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              data-qa="site-camera-input"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                event.target.value = ''; // allow re-picking the same file
+                onCameraChange(file);
+              }}
+            />
+            <Button
+              type="button"
+              // The library's primary variant only carries `[a]:hover:bg-primary/80`,
+              // so a <button> has NO hover state at all - measured identical at rest
+              // and on hover. This is the flow's main action, so it gets one.
+              className="hover:bg-primary/90 active:bg-primary/80 min-h-12 flex-1 text-base"
+              leftIcon={<LuCamera className="size-5" aria-hidden="true" />}
+              onClick={onCameraClick}
+              data-qa="site-take-photo"
+            >
+              Take photo
+            </Button>
+
+            {/* Same provider as the empty panel: one file state, one handler. */}
+            <FileUploadTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-12 text-base flex-1"
+                data-qa="site-gallery-trigger"
+              >
+                Gallery
+              </Button>
+            </FileUploadTrigger>
+          </div>
+        </footer>
+
+        <NoteDialog {...noteDialog} />
+        <SitePhotoViewer {...viewer} />
+      </div>
+    </FileUpload>
+  );
+}

@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/shared/PageLoading';
 import { PhotoLightbox } from '@/components/portal/photo-lightbox';
 import { PortalLock } from '@/components/portal/portal-lock';
 import { PortalPushPrompt } from '@/components/portal/portal-push-prompt';
+import { PortalStageStepper } from '@/components/portal/portal-stage-stepper';
 import { PortalTimeline } from '@/components/portal/portal-timeline';
 import { UnitSwitcher } from '@/components/portal/unit-switcher';
 import {
@@ -83,6 +84,9 @@ function PortalProgress() {
           notifier has no subscription to deliver to. Renders nothing when
           unsupported, already enabled, or previously dismissed. */}
       <PortalPushPrompt />
+      {/* The stage line sits ABOVE the feed: "where is my house up to" is the
+          buyer's first question, and the newest photo answers it. */}
+      <PortalStageStepper currentStage={photos[0]?.stage ?? null} />
       <PortalTimeline
         photos={photos}
         isLoading={timeline.isPending}

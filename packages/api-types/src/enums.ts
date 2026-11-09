@@ -137,6 +137,27 @@ export type ActiveBookingStatus = (typeof ACTIVE_BOOKING_STATUSES)[number];
 export const UnitStatusSchema = z.enum(['AVAILABLE', 'HOLD', 'TOKEN', 'SOLD']);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;
 
+/**
+ * Construction stage recorded with a progress capture (2026-11-08).
+ *
+ * DECLARATION ORDER IS THE PROGRESS ORDER. The buyer's stepper and the note
+ * sheet's stage picker render in exactly this order, so never re-sort it. The
+ * Prisma enum in packages/database/prisma/schema.prisma is the source of truth
+ * and mirrors this list value for value.
+ */
+export const ConstructionStageSchema = z.enum([
+  'NOT_STARTED',
+  'FOUNDATION',
+  'STRUCTURE',
+  'MASONRY',
+  'PLASTERING',
+  'WATERPROOFING',
+  'FLOORING',
+  'FINISHING',
+  'READY',
+]);
+export type ConstructionStage = z.infer<typeof ConstructionStageSchema>;
+
 /** Per-project option set discriminator (facing/BHK picker values). */
 export const ProjectOptionTypeSchema = z.enum(['FACING', 'BHK']);
 export type ProjectOptionType = z.infer<typeof ProjectOptionTypeSchema>;
@@ -246,6 +267,7 @@ export const ALL_ENUM_SCHEMAS = {
   MessageChannel: MessageChannelSchema,
   BookingStatus: BookingStatusSchema,
   UnitStatus: UnitStatusSchema,
+  ConstructionStage: ConstructionStageSchema,
   ReminderType: ReminderTypeSchema,
   ReminderStatus: ReminderStatusSchema,
   PushPlatform: PushPlatformSchema,

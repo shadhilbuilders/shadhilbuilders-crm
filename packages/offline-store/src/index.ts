@@ -11,7 +11,7 @@ export {
   createPhotoStore,
   type PhotoStore,
 } from './photo-store';
-export { normalizeToWebP, normalizeOnIdle } from './photo-normalize';
+export { normalizeToWebP, normalizeOnIdle, fitWithin } from './photo-normalize';
 export {
   mutationStore,
   photoStore,

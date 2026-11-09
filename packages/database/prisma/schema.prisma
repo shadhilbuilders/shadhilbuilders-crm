@@ -156,6 +156,29 @@ enum UnitStatus {
   SOLD
 }
 
+// Construction stage recorded with a progress photo (2026-11-08).
+//
+// DECLARATION ORDER IS THE PROGRESS ORDER and must never be re-sorted: the
+// buyer's stepper and the note sheet's stage picker render in this order, and
+// `CONSTRUCTION_STAGE_ORDER` in apps/web/src/lib/labels.ts mirrors it.
+//
+// It lives on ProgressPhoto, not on Unit: an engineer's write authority is the
+// photo row (progress_photo_insert/update are project-team scoped) while Unit
+// is read-only for them, and a column on Unit would lose the progression. The
+// unit's current stage is DERIVED from its newest photo and never denormalized.
+// A stage may go backwards (rework happens); nothing validates forward-only.
+enum ConstructionStage {
+  NOT_STARTED
+  FOUNDATION
+  STRUCTURE
+  MASONRY
+  PLASTERING
+  WATERPROOFING
+  FLOORING
+  FINISHING
+  READY
+}
+
 enum ProjectOptionType {
   FACING
   BHK
@@ -563,6 +586,11 @@ model ProgressPhoto {
   // Client-captured capture time (ISO 8601 with offset, normalized to UTC);
   // falls back to server now() when omitted.
   takenAt        DateTime
+  // Construction stage recorded WITH the capture (2026-11-08). Nullable
+  // forever: a NULL means "not recorded", never "not started" - every surface
+  // must say "Stage not set" rather than guess NOT_STARTED. Existing rows stay
+  // NULL; there is no backfill and no default.
+  stage          ConstructionStage?
   // Uploader. Nullable + SetNull so photos survive user deletion (audit
   // trail); the timeline renders "Unknown" for a NULL creator.
   createdBy      String?
@@ -1160,6 +1188,11 @@ model Notification {
   title          String
   body           String   @db.Text
   leadId         String?
+  // Site-update notifications (2026-11-08) belong to a UNIT, not a lead: the
+  // staff inbox narrows to the active project, and a notification with neither
+  // a lead nor a unit would be invisible under that filter. Deliberately no
+  // relation field, same as leadId - the inbox narrows by id set.
+  unitId         String?
   read           Boolean  @default(false)
   createdAt      DateTime @default(now())
 
@@ -1169,6 +1202,7 @@ model Notification {
   @@index([userId, read])
   @@index([organizationId])
   @@index([userId, createdAt])
+  @@index([unitId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

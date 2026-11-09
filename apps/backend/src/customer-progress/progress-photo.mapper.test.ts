@@ -67,6 +67,7 @@ describe('toTimelinePhotoDto canMutate wire shape', () => {
     filename: 'a.jpg',
     caption: 'Foundation October 2026',
     takenAt: new Date('2026-10-01T00:00:00Z'),
+    stage: null,
     createdAt: new Date('2026-10-01T00:00:00Z'),
     key: 'org/x/a.jpg',
     createdBy: CREATOR,

@@ -43,6 +43,8 @@ export const NotificationEventSchema = z.object({
   title: z.string(),
   body: z.string(),
   leadId: z.string().cuid2().nullable().optional(),
+  /** Site-update notifications anchor to a unit, not a lead (2026-11-08). */
+  unitId: z.string().nullable().optional(),
   read: z.boolean().default(false),
   createdAt: z.string().datetime({ offset: true }),
 });

@@ -762,12 +762,22 @@ export type ChatConversationFilter = {
   unreadOnly?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * Set false to skip the request entirely. The nav badge calls this hook
+   * unconditionally (stable hook order) but the counter is a MANAGER+ surface, so
+   * a site engineer's session would otherwise fire a 403 on every page and log a
+   * console error that reads as a broken screen (2026-11-08).
+   */
+  enabled?: boolean;
 };
 
 /** GET /api/chat/conversations - the inbox list (server-filtered). */
 export function useChatConversations(filter: ChatConversationFilter = {}) {
   return useQuery({
-    queryKey: ['chat-conversations', filter] as const,
+    // `enabled` is not part of the request, so it must not fragment the cache
+    // key: an enabled and a disabled call are the same data.
+    queryKey: ['chat-conversations', { ...filter, enabled: undefined }] as const,
+    enabled: filter.enabled !== false,
     queryFn: ({ signal }) =>
       api<ChatConversationsResult>(
         `/chat/conversations${qs({

@@ -18,6 +18,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api, qs } from '@/apis/client';
 
 import type {
+  ConstructionStage,
   CreatePhaseDto,
   CreateProjectOptionDto,
   CreateUnitDto,
@@ -56,10 +57,29 @@ export type UnitRow = {
   /** Plot sq.ft. */
   sqft: number | null;
   buildupSqft: string;
-  pricePerSqft: string;
-  /** Derived total = buildupSqft x pricePerSqft. */
-  price: string;
+  /**
+   * Per-sq.ft rate, or NULL when this caller may not see villa money.
+   *
+   * Money is gated server-side (2026-11-08): a site-only role (ENGINEER) gets
+   * null here and in `price` because the columns are never selected. Every
+   * renderer must treat null as "not yours to see" - NOT as zero.
+   */
+  pricePerSqft: string | null;
+  /** Derived total = buildupSqft x pricePerSqft. Null under the same rule. */
+  price: string | null;
   status: string;
+  /**
+   * Newest progress photo's capture time (ISO), or null when the unit has no
+   * photos. Drives the site home page's four-state map.
+   */
+  lastPhotoAt: string | null;
+  /** Progress photos on file for this unit. */
+  photoCount: number;
+  /**
+   * Construction stage of the newest photo, or null when that capture recorded
+   * none. Mirrors the `ConstructionStage` Prisma enum.
+   */
+  lastPhotoStage: ConstructionStage | null;
   createdAt: string;
 };
 

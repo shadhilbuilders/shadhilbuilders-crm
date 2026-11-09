@@ -1,11 +1,13 @@
-// ProgressPhotoActions (slice 4, 2026-11-07).
+// ProgressPhotoActions (slice 4, 2026-11-07; menu 2026-11-08).
 //
 // protects= the edit/delete controls appear only where the server's advisory
-//           `canMutate` says this session may act, the caption editor saves a
-//           trimmed caption, delete goes through a confirm, and a server error
-//           surfaces its message instead of failing silently;
-// fails_when= the controls render without canMutate, the confirm is skipped,
-//           an empty caption is submitted, or an error is swallowed;
+//           `canMutate` says this session may act, both actions are reachable
+//           from the row's 44px menu, the caption editor saves a trimmed
+//           caption, delete goes through a confirm, and a server error surfaces
+//           its message instead of failing silently;
+// fails_when= the controls render without canMutate, the menu renders without a
+//           menu, the confirm is skipped, an empty caption is submitted, or an
+//           error is swallowed;
 // no_claim= does NOT exercise authority. The server answers 404 for an actor
 //           who may not touch the row (RLS), proven in
 //           customer-progress.photo-mutation.test.ts and the DB suites.
@@ -32,6 +34,7 @@ vi.mock('@paalstack/react-ui', async (importOriginal) => {
   return { ...actual, toast: mocks.toast };
 });
 
+import { NOTE_MAX_LENGTH } from './EditNoteDialog';
 import { ProgressPhotoActions } from './ProgressPhotoActions';
 import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
 
@@ -44,6 +47,7 @@ const photo = (over: Partial<TimelinePhoto> = {}): TimelinePhoto => ({
   filename: 'site.jpg',
   caption: 'Foundation October 2026',
   takenAt: '2026-10-01T00:00:00.000Z',
+  stage: null,
   createdAt: '2026-10-01T00:00:00.000Z',
   creatorName: 'Ravi',
   creatorIsPhotoLead: false,
@@ -77,8 +81,36 @@ function unmount(): void {
   root = null;
 }
 
-const q = (el: HTMLElement, qa: string): HTMLButtonElement | null =>
-  el.querySelector<HTMLButtonElement>(`[data-qa="${qa}"]`);
+/** Every element in the document carrying a data-qa, including menu popups
+ *  (which render in a portal outside the mounted container). */
+const byQa = (qa: string): HTMLElement | null =>
+  document.querySelector<HTMLElement>(`[data-qa="${qa}"]`);
+
+/**
+ * Activate an element the way jsdom can, inside a synchronous `act`.
+ *
+ * Base UI's Menu opens on a click it can attribute to the trigger; a synthetic
+ * pointer SEQUENCE did not open it here (the popup mounts into a portal and
+ * never appeared), while a plain `.click()` does. Kept synchronous so the
+ * portal has flushed by the time the next query runs.
+ */
+function press(el: HTMLElement): void {
+  act(() => el.click());
+}
+
+/** Open the row's actions menu. Returns false when no trigger exists. */
+function openMenu(): boolean {
+  const trigger = byQa('progress-photo-menu-photo-1');
+  if (trigger === null) return false;
+  press(trigger);
+  return true;
+}
+
+function clickQa(qa: string): void {
+  const el = byQa(qa);
+  if (el === null) throw new Error(`no element with data-qa="${qa}"`);
+  press(el);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -93,15 +125,20 @@ beforeEach(() => {
 afterEach(() => unmount());
 
 describe('ProgressPhotoActions visibility', () => {
-  it('protects= renders both controls when the server says this session may act', () => {
+  it('protects= renders one 44px menu trigger when the server says this session may act', () => {
     const el = mount(photo({ canMutate: true }));
-    expect(q(el, 'progress-photo-edit-photo-1')).not.toBeNull();
-    expect(q(el, 'progress-photo-delete-photo-1')).not.toBeNull();
+    const trigger = byQa('progress-photo-menu-photo-1');
+    expect(trigger).not.toBeNull();
+    // 44x44 minimum touch target.
+    expect(trigger?.className).toContain('size-11');
+    // The two always-on icon buttons are gone.
+    expect(el.querySelector('[data-qa="progress-photo-edit-photo-1"]')).toBeNull();
   });
 
   it('fails_when= the controls render without server permission', () => {
     const el = mount(photo({ canMutate: false }));
     expect(el.innerHTML).toBe('');
+    expect(byQa('progress-photo-menu-photo-1')).toBeNull();
   });
 
   it('fails_when= a buyer response renders staff controls', () => {
@@ -111,19 +148,37 @@ describe('ProgressPhotoActions visibility', () => {
 });
 
 describe('ProgressPhotoActions behaviour', () => {
-  it('protects= editing saves the trimmed caption and closes the editor', () => {
-    const el = mount(photo({ canMutate: true }));
-    act(() => q(el, 'progress-photo-edit-photo-1')?.click());
+  it('protects= both actions live behind the menu, not on the row', () => {
+    mount(photo({ canMutate: true }));
+    expect(openMenu()).toBe(true);
+    expect(byQa('progress-photo-edit-photo-1')).not.toBeNull();
+    expect(byQa('progress-photo-delete-photo-1')).not.toBeNull();
+  });
 
-    const input = el.querySelector<HTMLInputElement>('[data-qa="progress-caption-input-photo-1"]');
+  async function typeNote(value: string): Promise<void> {
+    const input = byQa('edit-note-input') as HTMLTextAreaElement | null;
     expect(input).not.toBeNull();
-    act(() => {
-      // React tracks the native setter; assign through the property descriptor.
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(input, '  Plinth slab poured  ');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(input, value);
       input?.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    act(() => q(el, 'progress-caption-save-photo-1')?.click());
+  }
+
+  async function submit(): Promise<void> {
+    await act(async () => {
+      byQa('edit-note-save')?.click();
+    });
+  }
+
+  it('protects= Edit note opens a dialog and saves the trimmed caption', async () => {
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-edit-photo-1');
+
+    expect(document.body.textContent).toContain('Edit note');
+    await typeNote('  Plinth slab poured  ');
+    await submit();
 
     expect(mocks.updatePhoto).toHaveBeenCalledWith(
       { photoId: 'photo-1', caption: 'Plinth slab poured' },
@@ -132,50 +187,61 @@ describe('ProgressPhotoActions behaviour', () => {
     expect(mocks.toast.success).toHaveBeenCalled();
   });
 
-  it('fails_when= an empty caption is submitted', () => {
-    const el = mount(photo({ canMutate: true }));
-    act(() => q(el, 'progress-photo-edit-photo-1')?.click());
-    const input = el.querySelector<HTMLInputElement>('[data-qa="progress-caption-input-photo-1"]');
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(input, '   ');
-      input?.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    // The save control is disabled, so a click cannot dispatch a bad write.
-    expect(q(el, 'progress-caption-save-photo-1')?.hasAttribute('disabled')).toBe(true);
+  it('fails_when= a blank note reaches the server (zod must block it)', async () => {
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-edit-photo-1');
+    await typeNote('   ');
+    await submit();
+
+    expect(mocks.updatePhoto).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Write a note for this photo');
   });
 
-  it('protects= Escape abandons the edit without writing', () => {
-    const el = mount(photo({ canMutate: true }));
-    act(() => q(el, 'progress-photo-edit-photo-1')?.click());
-    const input = el.querySelector<HTMLInputElement>('[data-qa="progress-caption-input-photo-1"]');
-    act(() => {
-      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  it('fails_when= an over-long note reaches the server', async () => {
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-edit-photo-1');
+    await typeNote('x'.repeat(NOTE_MAX_LENGTH + 1));
+    await submit();
+
+    expect(mocks.updatePhoto).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Keep the note under');
+  });
+
+  it('protects= Cancel closes the dialog without writing', async () => {
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-edit-photo-1');
+    await act(async () => {
+      byQa('edit-note-cancel')?.click();
     });
     expect(mocks.updatePhoto).not.toHaveBeenCalled();
-    expect(q(el, 'progress-photo-edit-photo-1')).not.toBeNull();
+    expect(byQa('edit-note-input')).toBeNull();
   });
 
   it('fails_when= delete fires without a confirmation step', () => {
-    const el = mount(photo({ canMutate: true }));
-    act(() => q(el, 'progress-photo-delete-photo-1')?.click());
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-delete-photo-1');
 
-    // Clicking the icon opens the dialog; nothing is deleted yet.
+    // Choosing Delete opens the dialog; nothing is deleted yet.
     expect(mocks.deletePhoto).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('Delete this photo?');
     // The copy must say the buyer is affected, because a buyer may have seen it.
     expect(document.body.textContent).toContain('customer portal');
   });
 
-  it('fails_when= a server denial is swallowed (the message must surface)', () => {
+  it('fails_when= a server denial is swallowed (the message must surface)', async () => {
     mocks.updatePhoto.mockImplementation(
       (_v: unknown, opts?: { onError?: (e: unknown) => void }) => {
         opts?.onError?.(new Error('Photo not found.'));
       },
     );
-    const el = mount(photo({ canMutate: true }));
-    act(() => q(el, 'progress-photo-edit-photo-1')?.click());
-    act(() => q(el, 'progress-caption-save-photo-1')?.click());
+    mount(photo({ canMutate: true }));
+    openMenu();
+    clickQa('progress-photo-edit-photo-1');
+    await submit();
 
     expect(mocks.toast.error).toHaveBeenCalledWith('Photo not found.');
   });

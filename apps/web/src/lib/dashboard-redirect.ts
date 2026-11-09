@@ -18,14 +18,17 @@ import type { Role } from '@/apis/client';
 /**
  * The project work surface a role lands on when it enters Work.
  *
- * ENGINEER (site engineer, issue #7 slice 1) has exactly one work surface:
- * Inventory (`lib/nav.ts` filters every other Work item out for that role,
- * and RLS only grants progress-photo + unit reads). Sending them to
- * `/dashboard` would land them on a page whose nav item they cannot see, so
- * their landing surface is the inventory grid.
+ * ENGINEER lands on `/site`, the capture home that replaced Inventory for them
+ * (2026-11-08): the inventory grid is a sales surface full of rupees, and their
+ * real question is "which villa have I not photographed yet".
+ *
+ * TELECALLER deliberately does NOT: DESIGN.md §1 makes them the first-touch lead
+ * owner from NEW through VISIT_SCHEDULED, so `/dashboard` (their queue) is where
+ * their work starts. They gain the Site updates nav item; they do not lose the
+ * Lead Inbox.
  */
 export function workSurfaceForRole(role: Role | undefined): string {
-  return role === 'ENGINEER' ? '/inventory' : '/dashboard';
+  return role === 'ENGINEER' ? '/site' : '/dashboard';
 }
 
 /** The role's project work surface, or `/{orgSlug}/work` when the registry
@@ -53,7 +56,7 @@ export type RedirectTarget =
  * Decide the root `/` redirect target from the session + project registry.
  *   - user null (expired/errored) → /login
  *   - admin/owner                 → /{orgSlug}/admin (command center)
- *   - engineer + default project  → /{orgSlug}/projects/{slug}/inventory
+ *   - engineer + default project → /{orgSlug}/projects/{slug}/site
  *   - non-admin + default project → /{orgSlug}/projects/{slug}/dashboard
  *   - non-admin + empty registry  → /{orgSlug}/work (not the admin registry)
  */
@@ -74,7 +77,7 @@ export function rootRedirectTarget(
 /**
  * Decide the `/admin/overview` command-center guard target.
  *   - admin/owner                 → null (render the command center)
- *   - engineer + default project  → /{orgSlug}/projects/{slug}/inventory
+ *   - engineer + default project → /{orgSlug}/projects/{slug}/site
  *   - non-admin + default project → /{orgSlug}/projects/{slug}/dashboard
  *   - non-admin + empty registry  → /{orgSlug}/work (no loop into admin)
  */

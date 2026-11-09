@@ -83,7 +83,7 @@ export class InventoryController {
   @Get('units')
   @ApiOperation({
     summary:
-      'List inventory units (villa grid). Filters: projectId/phaseId/bhk/facing/status. Every authenticated role can read.',
+      'List inventory units (villa grid). Filters: projectId/phaseId/bhk/facing/status. Every authenticated role can read, but villa MONEY (pricePerSqft/price) is withheld from site-only roles (ENGINEER) - null, not zero.',
   })
   async list(
     @Req() req: AuthedRequest,
@@ -140,7 +140,7 @@ export class InventoryController {
   @Get('units/:id')
   @ApiOperation({
     summary:
-      'Get a single inventory unit (detail panel). Every authenticated role can read.',
+      'Get a single inventory unit (detail panel). Every authenticated role can read, with villa money nulled for site-only roles (ENGINEER).',
   })
   async findOne(
     @Req() req: AuthedRequest,

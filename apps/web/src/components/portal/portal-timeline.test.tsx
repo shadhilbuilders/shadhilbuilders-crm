@@ -14,7 +14,14 @@ import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 
 import { PortalTimeline, type PortalTimelineProps } from './portal-timeline';
 
-const photo = (id: string, phaseId: string, phaseName: string, takenAt: string, caption = `${phaseName} cap`): TimelinePhoto => ({
+const photo = (
+  id: string,
+  phaseId: string,
+  phaseName: string,
+  takenAt: string,
+  caption = `${phaseName} cap`,
+  stage: TimelinePhoto['stage'] = null,
+): TimelinePhoto => ({
   id,
   unitId: 'u1',
   phaseId,
@@ -23,6 +30,7 @@ const photo = (id: string, phaseId: string, phaseName: string, takenAt: string, 
   filename: `${id}.jpg`,
   caption,
   takenAt,
+  stage,
   createdAt: takenAt,
   creatorName: 'Ravi',
   creatorIsPhotoLead: false,
@@ -115,5 +123,42 @@ describe('PortalTimeline design contract', () => {
   it('the page uses no dashboard chrome: no search, filter or settings controls', () => {
     const html = render({ photos: DATA });
     expect(html).not.toMatch(/type="search"|aria-label="(Search|Filter|Settings)/i);
+  });
+
+  // 2026-11-08: the note was invisible unless the buyer tapped the photo (it
+  // only existed in the lightbox description). It is now the row's content, so
+  // this assertion fails the moment that column disappears again.
+  it('renders the note under the photo, without a tap', () => {
+    const html = render({
+      photos: [photo('p1', 'ph1', 'Foundation', '2026-11-05T08:00:00Z', 'Plinth poured, curing until Friday')],
+    });
+    expect(html).toContain('Plinth poured, curing until Friday');
+    expect(html).toContain('data-qa="portal-photo-caption"');
+    // The image comes first, then the caption: reading order is photo, note.
+    expect(html.indexOf('<img')).toBeLessThan(html.indexOf('Plinth poured'));
+  });
+
+  it('skips the caption line entirely when the note is empty', () => {
+    const html = render({
+      photos: [photo('p1', 'ph1', 'Foundation', '2026-11-05T08:00:00Z', '   ')],
+    });
+    expect(html).not.toContain('data-qa="portal-photo-caption"');
+  });
+
+  // 2026-11-08: each entry carries the stage recorded with that capture, and a
+  // null stage renders nothing on the row (the unit header owns "Stage not set";
+  // repeating it on every old photo would be noise).
+  it('shows the per-photo stage when one was recorded, and omits it when null', () => {
+    const staged = render({
+      photos: [photo('p1', 'ph1', 'Foundation', '2026-11-05T08:00:00Z', 'Slab', 'STRUCTURE')],
+    });
+    expect(staged).toContain('data-qa="portal-photo-stage"');
+    expect(staged).toContain('Structure');
+
+    const unstaged = render({
+      photos: [photo('p1', 'ph1', 'Foundation', '2026-11-05T08:00:00Z', 'Slab', null)],
+    });
+    expect(unstaged).not.toContain('data-qa="portal-photo-stage"');
+    expect(unstaged).not.toContain('Not started');
   });
 });

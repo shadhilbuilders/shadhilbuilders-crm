@@ -115,6 +115,11 @@ function unitRow(overrides: Record<string, unknown> = {}) {
       projectId: 'proj-1',
       project: { name: 'Metro Heights' },
     },
+    // Documentation state (2026-11-08): UNIT_ROW_SELECT now takes the newest
+    // photo's timestamp + stage and the photo count, so every fixture the mapper
+    // touches must carry them. No photos is the honest default.
+    progressPhotos: [],
+    _count: { progressPhotos: 0 },
     ...overrides,
   };
 }
@@ -183,6 +188,74 @@ describe('list - role-scoped grid with filters', () => {
       status: 'AVAILABLE',
     });
   });
+});
+
+// ─── list - money redaction (2026-11-08) ──────────────────────────────
+//
+// The UI blocks `/inventory` for ENGINEER, but a UI block is a courtesy: the
+// API used to send `price`/`pricePerSqft` on every unit read regardless of
+// role, so the number was one devtools panel away. These tests pin the WALL -
+// the money columns are not selected, so they cannot be serialised.
+describe('list - villa money is audience-gated', () => {
+  it('does not select money columns for an ENGINEER', async () => {
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValue([unitRow()]);
+    client.unit.count.mockResolvedValue(1);
+
+    await service.list(makeActor({ role: 'ENGINEER' }), { limit: 50, offset: 0 });
+
+    // The hydrating query is the SECOND findMany (the first reads sort keys).
+    const hydrateCall = client.unit.findMany.mock.calls[1]?.[0] as {
+      select: Record<string, unknown>;
+    };
+    expect(hydrateCall.select).not.toHaveProperty('price');
+    expect(hydrateCall.select).not.toHaveProperty('pricePerSqft');
+    // ...and the sort-key query never asked for money either.
+    const keyCall = client.unit.findMany.mock.calls[0]?.[0] as {
+      select: Record<string, unknown>;
+    };
+    expect(keyCall.select).not.toHaveProperty('price');
+  });
+
+  it('sends null money in the row an ENGINEER receives', async () => {
+    const { service, client } = makeService();
+    // A redacted row has no Decimal columns at all - the fixture must match
+    // what the redacted SELECT returns, or this test would prove nothing.
+    const redacted: Record<string, unknown> = { ...unitRow() };
+    delete redacted['price'];
+    delete redacted['pricePerSqft'];
+    client.unit.findMany.mockResolvedValue([redacted]);
+    client.unit.count.mockResolvedValue(1);
+
+    const result = await service.list(makeActor({ role: 'ENGINEER' }), {
+      limit: 50,
+      offset: 0,
+    });
+    expect(result.rows[0]?.price).toBeNull();
+    expect(result.rows[0]?.pricePerSqft).toBeNull();
+    // The engineer still gets everything the site screens need.
+    expect(result.rows[0]?.unitNumber).toBe('A-101');
+    expect(result.rows[0]?.status).toBe('AVAILABLE');
+  });
+
+  it.each(['TELECALLER', 'SALES_EXEC', 'MANAGER', 'ADMIN', 'OWNER'] as const)(
+    'still sends prices to %s',
+    async (role) => {
+      // TELECALLER is the line that matters: a SITE role, but not site-only.
+      // They read inventory as part of the lead job, so their numbers stay.
+      const { service, client } = makeService();
+      client.unit.findMany.mockResolvedValue([unitRow()]);
+      client.unit.count.mockResolvedValue(1);
+
+      const result = await service.list(makeActor({ role }), { limit: 50, offset: 0 });
+      expect(result.rows[0]?.price).toBe('5800000.00');
+      expect(result.rows[0]?.pricePerSqft).toBe('4000.00');
+      const hydrateCall = client.unit.findMany.mock.calls[1]?.[0] as {
+        select: Record<string, unknown>;
+      };
+      expect(hydrateCall.select).toHaveProperty('price');
+    },
+  );
 });
 
 // ─── list ordering (T-INV-SORT) ──────────────────────────────────────
@@ -690,8 +763,11 @@ describe('create - new unit (ADMIN/OWNER only)', () => {
       status: 'AVAILABLE',
       createdAt: new Date('2026-01-01T00:00:00Z'),
       // The service returns the row through the shared `toUnitRow` mapper, so
-      // the mock has to carry the relation that mapper reads.
+      // the mock has to carry every relation that mapper reads - including the
+      // newest-photo relation and the count added 2026-11-08.
       phase: { name: 'Phase A', projectId: 'proj-1', project: { name: 'Metro Heights' } },
+      progressPhotos: [],
+      _count: { progressPhotos: 0 },
     });
 
     const result = await service.create(makeActor(), {

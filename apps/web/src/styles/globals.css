@@ -65,6 +65,13 @@
   /* Map the brand's --link token (defined in @shadhil/ui-tokens/brand.css)
    * to Tailwind color utilities (text-link, bg-link, border-link). */
   --color-link: var(--link);
+  /* Site surface tints: the library maps `-soft` backgrounds but not the
+   * matching text colours, and has no muted-soft at all. */
+  --color-muted-soft: var(--muted-soft);
+  --color-success-soft-fg: var(--success-soft-fg);
+  --color-warning-soft-fg: var(--warning-soft-fg);
+  --color-destructive-soft-fg: var(--destructive-soft-fg);
+  --color-info-soft-fg: var(--info-soft-fg);
 }
 
 /* Project-specific container utility - not in the shadcn default but used

@@ -77,6 +77,10 @@ function unit(
     status,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     phase: { name: 'CMDA Plots', projectId: 'proj-1', project: { name: 'Demo Villas' } },
+    // Documentation state (2026-11-08): every unit surface sends these. A plot
+    // test is about availability, so "never photographed" is the honest default.
+    progressPhotos: [],
+    _count: { progressPhotos: 0 },
   };
 }
 
@@ -245,6 +249,70 @@ describe('plots - the records behind the plot', () => {
     expect(rows[0]?.units[0]?.unit.plotNumber).toBe(37);
     expect(rows[0]?.units[0]?.booking).toBeNull();
   });
+});
+
+// ─── plots - money + deal redaction (2026-11-08) ─────────────────────
+//
+// The map is not exempt from the villa-money rule. Its panel shows the unit's
+// total price AND the deal on it (amount, buyer name), so a site-only role must
+// receive neither. Withholding the booking also reuses the panel's existing
+// "not visible to you" line, which is the truthful statement.
+describe('plots - money and the deal are audience-gated', () => {
+  it('gives an ENGINEER the villa with null prices and no booking', async () => {
+    const { service, client } = makeService();
+    const redacted = { ...unit(37, 'SOLD') } as Record<string, unknown>;
+    delete redacted['price'];
+    delete redacted['pricePerSqft'];
+    client.unit.findMany.mockResolvedValue([redacted as unknown as UnitRowSource]);
+    client.booking.findMany.mockResolvedValue([booking('unit-37', 'APPROVED')]);
+
+    const { rows } = await service.plots(makeActor({ role: 'ENGINEER' }), 'proj-1');
+    expect(rows[0]?.units[0]?.unit.price).toBeNull();
+    expect(rows[0]?.units[0]?.unit.pricePerSqft).toBeNull();
+    // The deal - amount, buyer name - never reaches the payload.
+    expect(rows[0]?.units[0]?.booking).toBeNull();
+    // The plot still renders, so the map is not broken for that role.
+    expect(rows[0]?.status).toBe('booked');
+    expect(rows[0]?.units[0]?.unit.unitNumber).toBe('A-37');
+  });
+
+  it('does not even query bookings for a money-blind actor', async () => {
+    // Fetching then discarding would leave the amounts one logging statement
+    // away from escaping. Skip the query.
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValue([unit(37, 'SOLD')]);
+    client.booking.findMany.mockResolvedValue([]);
+
+    await service.plots(makeActor({ role: 'ENGINEER' }), 'proj-1');
+    expect(client.booking.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not select money columns for an ENGINEER', async () => {
+    const { service, client } = makeService();
+    client.unit.findMany.mockResolvedValue([unit(37, 'AVAILABLE')]);
+
+    await service.plots(makeActor({ role: 'ENGINEER' }), 'proj-1');
+    const call = client.unit.findMany.mock.calls[0]?.[0] as {
+      select: Record<string, unknown>;
+    };
+    expect(call.select).not.toHaveProperty('price');
+    expect(call.select).not.toHaveProperty('pricePerSqft');
+  });
+
+  it.each(['TELECALLER', 'MANAGER', 'ADMIN', 'OWNER'] as const)(
+    'keeps prices and the deal for %s',
+    async (role) => {
+      const { service, client } = makeService();
+      client.unit.findMany.mockResolvedValue([unit(37, 'SOLD')]);
+      client.booking.findMany.mockResolvedValue([booking('unit-37', 'APPROVED')]);
+
+      const { rows } = await service.plots(makeActor({ role }), 'proj-1');
+      // Prisma Decimal prints without trailing zeros, so "5800000", not
+      // "5800000.00" - the wire contract only requires a STRING.
+      expect(rows[0]?.units[0]?.unit.price).toBe('5800000');
+      expect(rows[0]?.units[0]?.booking?.leadName).toBe('Demo Vikram');
+    },
+  );
 });
 
 describe('plots - conflicts and ordering', () => {

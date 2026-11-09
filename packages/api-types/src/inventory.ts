@@ -14,7 +14,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
+import { ConstructionStageSchema, ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
 import { MAX_RATE_PER_SQFT, MAX_SQFT } from './pricing';
 import { PlotNumberSchema } from './plot-number';
 
@@ -43,10 +43,34 @@ export const UnitRowSchema = z.object({
   sqft: z.number().int().positive().nullable(),
   /** Built-up area. Decimal serialises to string. */
   buildupSqft: z.string(),
-  pricePerSqft: z.string(),
-  /** Derived unit total = buildupSqft x pricePerSqft. */
-  price: z.string(),
+  /**
+   * Per-sq.ft rate, or NULL when this caller may not see villa money.
+   *
+   * Money is audience-gated server-side (2026-11-08): a site-only role
+   * (ENGINEER) receives `null` here and in `price`, because the columns are not
+   * selected at all. Null is deliberate over 0 - a zero reads as "free villa",
+   * a missing key reads as "the API forgot", and both are worse than an honest
+   * "not yours to see". Every consumer must handle null; the forms that WRITE
+   * prices run for admin roles only, which never receive null.
+   */
+  pricePerSqft: z.string().nullable(),
+  /** Derived unit total = buildupSqft x pricePerSqft. Null under the same rule. */
+  price: z.string().nullable(),
   status: UnitStatusSchema,
+  /**
+   * When the unit's newest progress photo was taken, or null when it has none.
+   * Null is "never photographed", never a zero date: the site home page's
+   * four-state map treats "no photos" and "photographed long ago" differently.
+   */
+  lastPhotoAt: z.iso.datetime({ offset: true }).nullable(),
+  /** How many progress photos the unit has on file. */
+  photoCount: z.number().int().min(0),
+  /**
+   * The construction stage of the NEWEST photo (derived, never stored on the
+   * unit). Null means the newest capture recorded no stage - render
+   * "Stage not set", never "Not started".
+   */
+  lastPhotoStage: ConstructionStageSchema.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type UnitRow = z.infer<typeof UnitRowSchema>;

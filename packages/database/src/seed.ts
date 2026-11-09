@@ -431,7 +431,7 @@ async function main() {
     skipDuplicates: true,
   });
 
-  // (phaseId, unitNumber) → { bhk, facing, sqft, price }
+  // (phaseId, unitNumber) → { bhk, facing, sqft, price, plotNumber }
   //
   // T-INV-SYNC (2026-09-15): `status` is deliberately NOT part of the seeded
   // unit definition. Unit.status is DERIVED from the booking lifecycle (a
@@ -439,6 +439,15 @@ async function main() {
   // to plant units that no booking could ever clear - one of the two sources
   // of the inventory/bookings drift. Every unit is created AVAILABLE and only
   // a booking moves it.
+  //
+  // `plotNumber` (2026-11-08): the villa's position on the approved CMDA
+  // layout - the join key GET /inventory/plots uses to paint the map. This
+  // seed left it null for every unit while `scripts/setup-demo-user.ts` assigns
+  // one per demo villa, so the PRIMARY dev org's plot map rendered 125 plots as
+  // though nothing had been built on any of them. Each phase occupies its own
+  // block of the layout, and the numbers are unique WITHIN a phase (the
+  // `@@unique([phaseId, plotNumber])` constraint): two phases may each hold the
+  // same number, and `plots()` resolves that by the most binding claim.
   const unitDefs: Array<{
     phaseId: string;
     unitNumber: string;
@@ -446,29 +455,27 @@ async function main() {
     facing: string;
     sqft: number;
     price: number;
+    plotNumber: number;
   }> = [
-    // Phase A - 2 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000 },
-    // Phase A - 3 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000 },
-    // Phase B - 3 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000 },
-    // Phase B - 4 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000 },
-    // Phase C - 2 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000 },
-    // Phase C - 3 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000 },
+    // Phase A - plots 1-7 (2 BHK: 1-4, 3 BHK: 5-7)
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000, plotNumber: 1 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000, plotNumber: 2 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000, plotNumber: 3 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000, plotNumber: 4 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000, plotNumber: 5 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000, plotNumber: 6 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000, plotNumber: 7 },
+    // Phase B - plots 20-24 (3 BHK: 20-22, 4 BHK: 23-24)
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000, plotNumber: 20 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000, plotNumber: 21 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000, plotNumber: 22 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000, plotNumber: 23 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000, plotNumber: 24 },
+    // Phase C - plots 40-43 (2 BHK: 40-41, 3 BHK: 42-43)
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000, plotNumber: 40 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000, plotNumber: 41 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000, plotNumber: 42 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000, plotNumber: 43 },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
@@ -477,6 +484,7 @@ async function main() {
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
+        plotNumber: u.plotNumber,
         price: u.price.toFixed(2),
         // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
         buildupSqft: u.sqft.toFixed(2),
@@ -490,6 +498,7 @@ async function main() {
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
+        plotNumber: u.plotNumber,
         price: u.price.toFixed(2),
         // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
         buildupSqft: u.sqft.toFixed(2),

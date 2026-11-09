@@ -160,6 +160,11 @@ export const auth: any = betterAuth({
   trustedOrigins: [
     'http://localhost:3000', // Next.js web (dev)
     'http://localhost:8081', // Expo dev server
+    // Testing the app from a phone before deploying: the web dev server binds
+    // 0.0.0.0, so the phone reaches it on this host. The browser only ever
+    // talks to :3000 (BFF and SSE are proxied server-side), so one entry is
+    // enough. Without it better-auth rejects sign-in with 403 INVALID_ORIGIN.
+    'http://100.81.0.50:3000', // WSL tailnet IP (mobile testing)
     'https://crm.shadhilbuilders.in',           // user-facing app
     'https://api.crm.shadhilbuilders.in',       // backend API
   ],

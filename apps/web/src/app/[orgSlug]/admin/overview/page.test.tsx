@@ -28,15 +28,17 @@ describe('commandCenterRedirectTarget - /overview guard', () => {
     );
   });
 
+  // 2026-11-08: site roles (ENGINEER, TELECALLER) land on the site capture home,
+  // which replaced Inventory for them.
   it('TELECALLER: /[orgSlug]/projects/[projectSlug]/dashboard (not a dead-end)', () => {
     expect(commandCenterRedirectTarget('TELECALLER', PROJ, ORG_SLUG)).toBe(
       '/shadhil-builders/projects/shadhil-metro-heights/dashboard',
     );
   });
 
-  it('ENGINEER: /[orgSlug]/projects/[projectSlug]/inventory (their only Work surface)', () => {
+  it('ENGINEER: /[orgSlug]/projects/[projectSlug]/site (never the sales grid)', () => {
     expect(commandCenterRedirectTarget('ENGINEER', PROJ, ORG_SLUG)).toBe(
-      '/shadhil-builders/projects/shadhil-metro-heights/inventory',
+      '/shadhil-builders/projects/shadhil-metro-heights/site',
     );
   });
 

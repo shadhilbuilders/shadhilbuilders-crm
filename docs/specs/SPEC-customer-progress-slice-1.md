@@ -79,7 +79,7 @@ apps/web/src/app/[orgSlug]/...unit page...      → Progress tab (camera button 
                                                   mirroring lead-timeline states)
 apps/web/src/lib/labels.ts (or new helper)      → siteMemberLabel(member)
 apps/web/src/components/teams/project-team-list.tsx → "Progress lead" toggle, ADMIN/OWNER-only
-apps/web/src/app/[orgSlug]/admin/users/…        → ENGINEER option in role Select, ADMIN/OWNER-only
+apps/web/src/app/[orgSlug]/admin/users/...        → ENGINEER option in role Select, ADMIN/OWNER-only
 ```
 
 ## Code Style

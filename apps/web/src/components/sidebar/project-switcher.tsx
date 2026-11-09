@@ -74,9 +74,9 @@ export function ProjectSwitcher({
   /** ADMIN/OWNER only - shows the manage-projects dialog entry. */
   canManageProjects: boolean;
   /**
-   * Work surface to open when the current pathname carries none. Role-aware
-   * so an ENGINEER (site engineer) never gets sent to /dashboard - their only
-   * Work surface is /inventory. See workSurfaceForRole().
+   * Work surface to open when the current pathname carries none. Role-aware so
+   * site staff (ENGINEER, TELECALLER) never get sent to /dashboard - their Work
+   * surface is the site capture home. See workSurfaceForRole().
    */
   fallbackSurface?: string;
 }) {

@@ -33,6 +33,13 @@ vi.mock('@/lib/session', () => ({
     isPending: false,
   })),
   isAdminLike: vi.fn((role: string) => role === 'ADMIN' || role === 'OWNER'),
+  // 2026-11-08: the dashboard redirects site roles to /site using this helper.
+  // Without it the mocked module throws "No isSiteRole export", which is how
+  // these audits failed rather than reporting a design problem.
+  isSiteRole: vi.fn((role: string | undefined) => role === 'ENGINEER' || role === 'TELECALLER'),
+  // The narrower redirect gate the page actually reads: only ENGINEER is
+  // site-ONLY, so only ENGINEER is forwarded away from the queue.
+  isSiteOnlyRole: vi.fn((role: string | undefined) => role === 'ENGINEER'),
   canApproveBookings: vi.fn(
     (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER'
   ),

@@ -9,6 +9,7 @@
 // like "no photos yet", which is why the service check is the messaging
 // wall).
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional, forwardRef } from '@nestjs/common';
+import { ConstructionStageSchema } from '@shadhil/api-types';
 import { z } from 'zod';
 
 import { isAdminClass } from '../users/roles';
@@ -18,6 +19,7 @@ import { MAX_UPLOAD_BYTES } from '../storage/storage.limits';
 import { reconcileUploadMime } from '../storage/sniff-mime';
 import { PrismaService } from '../prisma/prisma.module';
 import { PortalNotifier } from '../customer-portal/portal-notifier.service';
+import { SiteUpdateNotifier } from './site-update-notifier.service';
 import { withRlsContext, rlsContextFrom, type PrismaClient, type RlsTx } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
@@ -47,6 +49,20 @@ export const UploadPhotoSchema = z.object({
     .refine((s) => !Number.isNaN(Date.parse(s)), 'invalid datetime')
     .refine((s) => /(?:Z|[+-]\d{2}:?\d{2})$/.test(s.trim()), 'takenAt must carry a UTC offset'),
   clientDeviceHint: z.enum(['camera', 'gallery']).optional(),
+  /**
+   * The engineer's own note (2026-11-08). Optional FOREVER: a client that omits
+   * it keeps the historical behaviour exactly (the server generates
+   * `buildCaption(...)`), which is what every pre-existing client does and what
+   * the flow must still do when the engineer types nothing.
+   *
+   * Trimmed, but NOT rejected when the trim empties it: an empty string is a
+   * caller that passed "" rather than omitting the key, and turning that into a
+   * 400 would make "no note" fail. `??` semantics apply - "" is falsy-ish for
+   * our purposes only if we normalise here, so see `upload()`.
+   */
+  caption: z.string().trim().min(1).max(200).optional(),
+  /** Construction stage recorded with this capture (2026-11-08). Optional. */
+  stage: ConstructionStageSchema.optional(),
 });
 export type UploadPhotoDto = z.infer<typeof UploadPhotoSchema>;
 
@@ -56,19 +72,32 @@ export const SetPhotoLeadSchema = z.object({
 export type SetPhotoLeadDto = z.infer<typeof SetPhotoLeadSchema>;
 
 /**
- * Photo correction (slice 4, 2026-11-07). CAPTION ONLY by design: phaseId is a
- * property of the unit, takenAt is evidence of when the site work happened, and
- * unitId would move a buyer's photo to another home. Trimming is rejected
- * rather than silently applied so a client sending " Foundation " gets the
- * caption it asked for, not a surprise.
+ * Photo correction (slice 4, 2026-11-07; stage added 2026-11-08).
+ *
+ * Phase is not here: `phaseId` is a property of the unit, `takenAt` is evidence
+ * of when the site work happened, and `unitId` would move a buyer's photo to
+ * another home. Trimming is rejected rather than silently applied so a client
+ * sending " Foundation " gets the caption it asked for, not a surprise.
+ *
+ * PARTIAL by design (2026-11-08): correcting a caption must never clear the
+ * stage, and correcting a stage must never clear the caption. Both fields are
+ * optional and at least one must be present - a stage-only correction used to
+ * 400 because `caption` was required.
  */
-export const UpdatePhotoSchema = z.object({
-  caption: z
-    .string()
-    .trim()
-    .min(1, 'caption cannot be empty')
-    .max(200, 'caption is too long (max 200 characters)'),
-});
+export const UpdatePhotoSchema = z
+  .object({
+    caption: z
+      .string()
+      .trim()
+      .min(1, 'caption cannot be empty')
+      .max(200, 'caption is too long (max 200 characters)')
+      .optional(),
+    stage: ConstructionStageSchema.optional(),
+  })
+  .refine((v) => v.caption !== undefined || v.stage !== undefined, {
+    message: 'send caption, stage, or both',
+    path: ['caption'],
+  });
 export type UpdatePhotoDto = z.infer<typeof UpdatePhotoSchema>;
 
 // Wire shapes + PAGE_SIZE + cursor codec live in progress-photo.mapper.ts so the
@@ -96,6 +125,10 @@ export class CustomerProgressService {
     // Issue #8: best-effort buyer push after a photo commits. Optional so the
     // staff upload path boots (and its tests construct the service) without it.
     @Optional() @Inject(PortalNotifier) private readonly portalNotifier?: PortalNotifier,
+    // 2026-11-08: the STAFF side of the same event (project photo lead + team
+    // managers). Optional for the same reason: existing tests build the service
+    // with fewer dependencies and the upload must not require a notifier.
+    @Optional() @Inject(SiteUpdateNotifier) private readonly siteUpdateNotifier?: SiteUpdateNotifier,
   ) {}
 
   private get client() {
@@ -201,6 +234,10 @@ export class CustomerProgressService {
 
     const takenAt = new Date(dto.takenAt);
 
+    // The engineer's note wins; the generated caption stays the fallback so an
+    // old client (and an engineer who types nothing) keeps today's behaviour.
+    const caption = dto.caption ?? buildCaption(phaseOk.name, takenAt);
+
     // Bytes exist before the row references them; the DB write failing after
     // save() is compensated by storage.delete() (failure is logged, never
     // surfaced - the request 500s regardless).
@@ -211,8 +248,20 @@ export class CustomerProgressService {
     });
 
     let created: TimelinePhotoDto;
+    /** True when this is the unit's FIRST photo today - the staff notification
+     *  is sent once per unit per day, not once per photo: an engineer shooting
+     *  six angles of one villa must not produce six pings. Read inside the
+     *  actor's own RLS context (they can see their own project's photos). */
+    let firstPhotoToday = false;
     try {
       created = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+        const startOfToday = new Date();
+        startOfToday.setUTCHours(0, 0, 0, 0);
+        const todayCount = await tx.progressPhoto.count({
+          where: { unitId, organizationId: actor.organizationId, takenAt: { gte: startOfToday } },
+        });
+        firstPhotoToday = todayCount === 0;
+
         const photo = await tx.progressPhoto.create({
           data: {
             unitId,
@@ -221,8 +270,9 @@ export class CustomerProgressService {
             key: stored.key,
             mimeType,
             filename: stored.filename,
-            caption: buildCaption(phaseOk.name, takenAt),
+            caption,
             takenAt,
+            stage: dto.stage ?? null,
             createdBy: actor.sub,
           },
           select: { id: true, createdAt: true },
@@ -234,8 +284,9 @@ export class CustomerProgressService {
           phaseName: phaseOk.name,
           mimeType,
           filename: stored.filename,
-          caption: buildCaption(phaseOk.name, takenAt),
+          caption,
           takenAt: takenAt.toISOString(),
+          stage: dto.stage ?? null,
           createdAt: photo.createdAt.toISOString(),
           creatorName: await this.userName(tx, actor.sub),
           creatorIsPhotoLead: null,
@@ -262,6 +313,19 @@ export class CustomerProgressService {
       photoId: created.id,
       caption: created.caption,
     });
+    // Same posture, staff direction, and gated to the first photo of the day.
+    if (firstPhotoToday && this.siteUpdateNotifier !== undefined) {
+      void this.siteUpdateNotifier.notifyNewPhoto({
+        organizationId: actor.organizationId,
+        projectId,
+        unitId,
+        unitNumber,
+        photoId: created.id,
+        caption: created.caption,
+        uploaderId: actor.sub,
+        uploaderName: created.creatorName,
+      });
+    }
     return created;
   }
 
@@ -394,10 +458,10 @@ export class CustomerProgressService {
   // ──────────────────────────────────────────────────────────────────────────
 
   /** Resolve a photo the caller may mutate, or throw 404 (RLS decides). */
-  private async assertPhotoMutable(tx: RlsTx, actor: JwtPayload, photoId: string): Promise<{ id: string; unitId: string; key: string; caption: string }> {
+  private async assertPhotoMutable(tx: RlsTx, actor: JwtPayload, photoId: string): Promise<{ id: string; unitId: string; key: string; caption: string; stage: string | null }> {
     const photo = await tx.progressPhoto.findFirst({
       where: { id: photoId, organizationId: actor.organizationId },
-      select: { id: true, unitId: true, key: true, caption: true },
+      select: { id: true, unitId: true, key: true, caption: true, stage: true },
     });
     // No row here means either "does not exist" or "the write policy hides it".
     // Both answer 404 - a 403 would confirm a row the caller may not know about.
@@ -408,20 +472,29 @@ export class CustomerProgressService {
   async updatePhoto(actor: JwtPayload, photoId: string, dto: UpdatePhotoDto): Promise<TimelinePhotoDto> {
     const updated = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const photo = await this.assertPhotoMutable(tx, actor, photoId);
+      // PARTIAL write: only the supplied fields move. A caption correction
+      // never clears the stage and a stage correction never clears the caption
+      // - that is the whole reason the schema is partial.
       await (tx as unknown as PrismaClient).progressPhoto.update({
         where: { id: photo.id },
-        data: { caption: dto.caption },
+        data: {
+          ...(dto.caption !== undefined ? { caption: dto.caption } : {}),
+          ...(dto.stage !== undefined ? { stage: dto.stage } : {}),
+        },
       });
       await tx.auditLog.create({
         data: {
           userId: actor.sub,
-          action: 'progress.photo_caption_updated',
+          // A stage-only correction is not a caption correction; the caption
+          // path keeps its historical action string so existing reports and
+          // audit filters do not silently stop matching.
+          action: dto.stage !== undefined ? 'progress.photo_updated' : 'progress.photo_caption_updated',
           organizationId: actor.organizationId,
           entityType: 'ProgressPhoto',
           entityId: photo.id,
-          before: { caption: photo.caption },
-          after: { caption: dto.caption },
-          reason: `photo caption corrected by ${actor.email} (${actor.role})`,
+          before: { caption: photo.caption, stage: photo.stage },
+          after: { caption: dto.caption ?? photo.caption, stage: dto.stage ?? photo.stage },
+          reason: `photo corrected by ${actor.email} (${actor.role})`,
         },
       });
       // Re-read through the shared mapper so the response is the SAME shape the

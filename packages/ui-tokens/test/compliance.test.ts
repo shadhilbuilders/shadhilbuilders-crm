@@ -136,7 +136,7 @@ const SHADHIL_AA_OVERRIDES = {
   'success-foreground':  { l: 0.99,  c: 0,     h: 0   },
   'warning':             { l: 0.72,  c: 0.17,  h: 70  },
   'warning-foreground':  { l: 0.25,  c: 0.04,  h: 70  },
-  'destructive':         { l: 0.585, c: 0.21,  h: 25  },
+  'destructive':         { l: 0.545, c: 0.21,  h: 25  },
   'destructive-foreground': { l: 0.99, c: 0,    h: 0   },
   'info':                { l: 0.560, c: 0.19,  h: 255 },
   'info-foreground':     { l: 0.99,  c: 0,     h: 0   },
@@ -145,6 +145,9 @@ const SHADHIL_AA_OVERRIDES = {
   // white text-foreground (CR ~1.1, essentially invisible). Override
   // the foregrounds with a darker variant of the same hue.
   'success-soft':         { l: 0.96,  c: 0.035, h: 160 },
+  // Muted surface pair: the library default missed AA at 12px (4.34:1).
+  'muted':                { l: 0.968, c: 0.007, h: 247.895 },
+  'muted-foreground':     { l: 0.525, c: 0.041, h: 257.44  },
   'success-soft-fg':      { l: 0.495, c: 0.16,  h: 160 },
   'warning-soft':         { l: 0.97,  c: 0.04,  h: 90  },
   'warning-soft-fg':      { l: 0.25,  c: 0.04,  h: 70  },
@@ -175,6 +178,21 @@ const STATUS_PAIRS: ReadonlyArray<{
   { name: 'warning-soft', surface: 'VISIT_REQUESTED / RESCHEDULED badge', fg: SHADHIL_AA_OVERRIDES['warning-soft-fg'], bg: SHADHIL_AA_OVERRIDES['warning-soft'] },
   { name: 'destructive-soft', surface: 'LOST-soft badge', fg: SHADHIL_AA_OVERRIDES['destructive-soft-fg'], bg: SHADHIL_AA_OVERRIDES['destructive-soft'] },
   { name: 'info-soft', surface: 'CONTACTED-soft badge', fg: SHADHIL_AA_OVERRIDES['info-soft-fg'], bg: SHADHIL_AA_OVERRIDES['info-soft'] },
+  // 2026-11-08: the site home's "No photos" badge and the stat-tile labels are
+  // muted text on the muted surface. The library pair measured 4.34:1.
+  { name: 'muted', surface: 'site state badge "No photos", stat-tile labels', fg: SHADHIL_AA_OVERRIDES['muted-foreground'], bg: SHADHIL_AA_OVERRIDES['muted'] },
+  // 2026-11-09: `bg-muted-soft` tint (state badges, empty hero, note chips).
+  { name: 'muted-soft', surface: 'site empty hero, note sheet chips', fg: SHADHIL_AA_OVERRIDES['muted-foreground'], bg: { l: 0.975, c: 0.010, h: 258 } },
+  // 2026-11-08: the Badge component's `destructive` variant is a 10% tint of
+  // --destructive behind --destructive text, NOT a solid fill. That pair
+  // measured 4.02:1 (the "Sold" status on the capture header) until the token
+  // moved to L 0.545. Modelled as the tinted surface it actually is.
+  {
+    name: 'destructive-badge',
+    surface: 'Badge variant="destructive" (unit status "Sold")',
+    fg: SHADHIL_AA_OVERRIDES['destructive'],
+    bg: { l: 0.955, c: 0.021, h: 25 },
+  },
 ];
 
 describe('T-D8 - WCAG AA status badge contrast', () => {
@@ -195,6 +213,20 @@ describe('T-D8 - WCAG AA status badge contrast', () => {
           '\nFix the oklch values in `packages/ui-tokens/src/brand.css` and the mirrored `SHADHIL_AA_OVERRIDES` map in `test/compliance.test.ts`, then re-run.',
       );
     }
+  });
+
+  it('dark mode: every *-soft-fg token passes AA on its dark tint', () => {
+    // Mirrors the `.dark` block in brand.css; tints are the library's dark values.
+    const DARK_PAIRS: ReadonlyArray<{ name: string; fg: Oklch; bg: Oklch }> = [
+      { name: 'success-soft', fg: { l: 0.86, c: 0.10, h: 160 }, bg: { l: 0.23, c: 0.055, h: 160 } },
+      { name: 'warning-soft', fg: { l: 0.90, c: 0.08, h: 70 }, bg: { l: 0.25, c: 0.055, h: 70 } },
+      { name: 'destructive-soft', fg: { l: 0.86, c: 0.10, h: 25 }, bg: { l: 0.25, c: 0.06, h: 25 } },
+      { name: 'info-soft', fg: { l: 0.86, c: 0.09, h: 255 }, bg: { l: 0.24, c: 0.055, h: 255 } },
+    ];
+    const failures = DARK_PAIRS.filter(
+      (p) => !evaluateContrast(p.fg, p.bg).passes['AA-normal'],
+    ).map((p) => p.name);
+    expect(failures).toEqual([]);
   });
 
   it('regression: the @paalstack/react-ui defaults FAIL AA on 6/9 pairs (proof the override is needed)', () => {

@@ -1,9 +1,37 @@
-// UnitProgressTab (2026-11-06): the phase Select was removed - the upload
-// payload's `phaseId` is the UNIT's phase, not a user choice. These tests pin
-// that rule (plus the MIME coercion and capture-time normalisation) without
-// mounting the tab or driving a real file input.
+// UnitProgressTab (2026-11-06, revised 2026-11-08).
+//
+// protects= the upload payload's `phaseId` is the UNIT's phase (not a user
+//           choice), the mimeType/filename come from the PREPARED bytes rather
+//           than the browser's guess from the filename, a typed note is trimmed
+//           onto the payload, an empty note is omitted so the server keeps its
+//           generated caption, an unset stage is omitted, and the four timeline
+//           states still render;
+// fails_when= the phase becomes caller-supplied again, a HEIC file keeps its
+//           declared type, a whitespace note becomes `caption: ''`, or a state
+//           silently disappears;
+// no_claim= no real file input, no real encoder: `prepareProgressPhoto` output
+//           is passed in directly (its own test owns the conversion).
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+
+// The tab now converts before uploading, and the conversion is Web/CANVAS only.
+// It is mocked here so these tests stay about the payload shape.
+vi.mock('@/lib/photo-prep', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    prepareProgressPhoto: vi.fn(async (file: File) => ({
+      base64: 'QUJD',
+      mimeType: 'image/webp',
+      filename: `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+      takenAt: new Date(file.lastModified).toISOString(),
+      source: 'camera',
+      byteLength: 3,
+      width: 1600,
+      height: 1200,
+    })),
+  };
+});
 
 vi.mock('@/hooks/queries/customer-progress', () => {
   const hooks = {
@@ -46,40 +74,95 @@ import { buildPhotoUpload, UnitProgressTabContent } from './UnitProgressTab';
 
 const UNIT = { id: 'unit-1', phaseId: 'phase-a', phaseName: 'Phase A' };
 
-const FILE = { type: 'image/jpeg', name: 'slab.jpg', lastModified: Date.UTC(2026, 9, 26, 10, 0, 0) };
+/** The shape `prepareProgressPhoto` returns: the bytes that will upload. */
+const PREPARED = {
+  base64: 'QUJD',
+  mimeType: 'image/webp' as const,
+  filename: 'slab.webp',
+  takenAt: '2026-10-26T10:00:00.000Z',
+  source: 'camera' as const,
+};
 
 describe('buildPhotoUpload - the phase comes from the unit', () => {
   it('uses the unit phase id, never a caller-supplied one', () => {
-    const payload = buildPhotoUpload({ phaseId: UNIT.phaseId, base64: 'QUJD', file: FILE });
+    const payload = buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: PREPARED });
     expect(payload.phaseId).toBe('phase-a');
   });
 
-  it('keeps the allowlisted MIME types as-is', () => {
-    for (const mime of ['image/jpeg', 'image/png', 'image/webp'] as const) {
-      expect(buildPhotoUpload({ phaseId: UNIT.phaseId, base64: 'x', file: { ...FILE, type: mime } }).mimeType).toBe(mime);
+  it('takes the MIME type from the PREPARED bytes, not a declared type', () => {
+    // The old build coerced the browser's declaration to image/jpeg. That was a
+    // lie the server's byte-sniffer then had to correct by rejecting the upload.
+    for (const mimeType of ['image/jpeg', 'image/png', 'image/webp'] as const) {
+      expect(
+        buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: { ...PREPARED, mimeType } }).mimeType,
+      ).toBe(mimeType);
     }
   });
 
-  // The server allowlist is JPEG/PNG/WebP only; HEIC and anything else would be
-  // refused there, so the client coerces rather than sending a doomed request.
-  it('coerces non-allowlisted types (HEIC) to image/jpeg', () => {
-    expect(buildPhotoUpload({ phaseId: UNIT.phaseId, base64: 'x', file: { ...FILE, type: 'image/heic' } }).mimeType).toBe('image/jpeg');
-    expect(buildPhotoUpload({ phaseId: UNIT.phaseId, base64: 'x', file: { ...FILE, type: '' } }).mimeType).toBe('image/jpeg');
+  it('keeps the prepared filename, which already matches the bytes', () => {
+    expect(
+      buildPhotoUpload({
+        phaseId: UNIT.phaseId,
+        prepared: { ...PREPARED, filename: 'IMG_2676.webp' },
+      }).filename,
+    ).toBe('IMG_2676.webp');
   });
 
-  it('sends takenAt with a UTC offset, derived from file.lastModified', () => {
-    const payload = buildPhotoUpload({ phaseId: UNIT.phaseId, base64: 'x', file: FILE });
+  it('sends takenAt with a UTC offset', () => {
+    const payload = buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: PREPARED });
     expect(payload.takenAt).toBe('2026-10-26T10:00:00.000Z');
     expect(payload.takenAt).toMatch(/(?:Z|[+-]\d{2}:?\d{2})$/);
+  });
+
+  it('carries the device hint from the entry point', () => {
+    expect(
+      buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: { ...PREPARED, source: 'gallery' } })
+        .clientDeviceHint,
+    ).toBe('gallery');
   });
 
   it('truncates an over-long filename to the server cap (180)', () => {
     const payload = buildPhotoUpload({
       phaseId: UNIT.phaseId,
-      base64: 'x',
-      file: { ...FILE, name: `${'a'.repeat(400)}.jpg` },
+      prepared: { ...PREPARED, filename: `${'a'.repeat(400)}.webp` },
     });
     expect(payload.filename).toHaveLength(180);
+  });
+});
+
+describe('buildPhotoUpload - the note and the stage travel with the photo', () => {
+  it('protects= a supplied note lands in the payload, trimmed', () => {
+    const payload = buildPhotoUpload({
+      phaseId: UNIT.phaseId,
+      prepared: PREPARED,
+      caption: '  Plinth poured, curing until Friday  ',
+    });
+    expect(payload.caption).toBe('Plinth poured, curing until Friday');
+  });
+
+  it('fails_when= an empty or whitespace note becomes a caption key', () => {
+    // The server rejects an empty caption; omitting the key is what lets it fall
+    // back to buildCaption(...) instead of 400ing on "no note".
+    const none = buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: PREPARED });
+    expect('caption' in none).toBe(false);
+    const blank = buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: PREPARED, caption: '   ' });
+    expect('caption' in blank).toBe(false);
+    expect(blank.caption).toBeUndefined();
+  });
+
+  it('carries a stage when one was chosen', () => {
+    const payload = buildPhotoUpload({
+      phaseId: UNIT.phaseId,
+      prepared: PREPARED,
+      stage: 'STRUCTURE',
+    });
+    expect(payload.stage).toBe('STRUCTURE');
+  });
+
+  it('omits the stage key entirely when none was chosen', () => {
+    // Never default to NOT_STARTED: that is a guess dressed as data.
+    const payload = buildPhotoUpload({ phaseId: UNIT.phaseId, prepared: PREPARED });
+    expect('stage' in payload).toBe(false);
   });
 });
 
@@ -128,6 +211,7 @@ type PhotoPage = {
     filename: string;
     caption: string;
     takenAt: string;
+    stage: string | null;
     createdAt: string;
     creatorName: string | null;
     creatorIsPhotoLead: boolean | null;
@@ -148,6 +232,7 @@ const photo = (id: string): PhotoPage['photos'][number] => ({
   createdAt: '2026-11-03T08:00:00.000Z',
   creatorName: 'Ravi',
   creatorIsPhotoLead: false,
+  stage: null,
   mediaUrl: `/api/bff/media/${id}`,
 });
 

@@ -13,6 +13,7 @@ import type { JwtPayload } from '@shadhil/auth';
 
 import {
   UploadPhotoSchema,
+  UpdatePhotoSchema,
   CustomerProgressService,
   buildCaption,
   decodeCursor,
@@ -146,6 +147,9 @@ function makeUploadService() {
     phase: { findFirst: vi.fn().mockResolvedValue({ name: 'Phase A' }) },
     progressPhoto: {
       create: vi.fn().mockResolvedValue({ id: 'photo-1', createdAt: new Date('2026-11-06T10:00:00Z') }),
+      // 2026-11-08: upload() counts today's photos for the unit so the staff
+      // notification fires once per unit per day, not once per photo.
+      count: vi.fn().mockResolvedValue(0),
     },
     user: { findUnique: vi.fn().mockResolvedValue({ name: 'Ravi' }) },
   };
@@ -153,6 +157,19 @@ function makeUploadService() {
   const storage = { save, read: vi.fn(), delete: vi.fn(), publicUrl: vi.fn() } as never;
   const service = new CustomerProgressService(prismaService, storage);
   return { service, client, save };
+}
+
+/** Same service with a SiteUpdateNotifier injected as the 4th arg. */
+function makeUploadServiceWithSiteNotifier(notifyNewPhoto: (n: unknown) => Promise<number>) {
+  const built = makeUploadService();
+  const siteUpdateNotifier = { notifyNewPhoto: vi.fn(notifyNewPhoto) };
+  const service = new CustomerProgressService(
+    { $client: built.client } as never,
+    { save: built.save, read: vi.fn(), delete: vi.fn(), publicUrl: vi.fn() } as never,
+    undefined,
+    siteUpdateNotifier as never,
+  );
+  return { ...built, service, siteUpdateNotifier };
 }
 
 const UPLOAD_DTO = {
@@ -297,6 +314,213 @@ describe('upload() - PortalNotifier is best effort (D8)', () => {
     ).rejects.toThrow(/db down/);
 
     expect(notifier.notifyNewPhoto).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upload() - the engineer's note travels with the photo (2026-11-08).
+//
+// The caption used to be generated AFTER the fact ("Phase A November 2026"),
+// and a client that sent one had it silently ignored. That is why the capture
+// flow could not put the engineer's sentence on the record without a second
+// visit to a pencil icon.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('UploadPhotoSchema - caption and stage', () => {
+  const valid = {
+    phaseId: 'cmw4n0zqn5yvpfhm3a5n3f9z',
+    base64: 'QUJD',
+    mimeType: 'image/jpeg',
+    filename: 'site.jpg',
+    takenAt: '2026-11-06T10:00:00+05:30',
+  };
+
+  it('accepts a supplied caption and trims it', () => {
+    const parsed = UploadPhotoSchema.safeParse({ ...valid, caption: '  Plinth poured  ' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success ? parsed.data.caption : null).toBe('Plinth poured');
+  });
+
+  it('accepts an omitted caption, which keeps the generated fallback', () => {
+    expect(UploadPhotoSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects an empty and a whitespace-only caption', () => {
+    expect(UploadPhotoSchema.safeParse({ ...valid, caption: '' }).success).toBe(false);
+    expect(UploadPhotoSchema.safeParse({ ...valid, caption: '   ' }).success).toBe(false);
+  });
+
+  it('rejects 201 characters and accepts exactly 200', () => {
+    expect(UploadPhotoSchema.safeParse({ ...valid, caption: 'x'.repeat(201) }).success).toBe(false);
+    expect(UploadPhotoSchema.safeParse({ ...valid, caption: 'x'.repeat(200) }).success).toBe(true);
+  });
+
+  it('accepts every construction stage and rejects an unknown string', () => {
+    for (const stage of [
+      'NOT_STARTED',
+      'FOUNDATION',
+      'STRUCTURE',
+      'MASONRY',
+      'PLASTERING',
+      'WATERPROOFING',
+      'FLOORING',
+      'FINISHING',
+      'READY',
+    ]) {
+      expect(UploadPhotoSchema.safeParse({ ...valid, stage }).success).toBe(true);
+    }
+    expect(UploadPhotoSchema.safeParse({ ...valid, stage: 'ROOFING' }).success).toBe(false);
+  });
+});
+
+describe('upload() - the caption', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('protects= a supplied caption is persisted and returned verbatim', async () => {
+    const { service, client } = makeUploadService();
+    const result = await service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+      caption: 'Plinth poured, curing until Friday',
+    });
+
+    expect(client.progressPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ caption: 'Plinth poured, curing until Friday' }),
+      }),
+    );
+    expect(result.caption).toBe('Plinth poured, curing until Friday');
+  });
+
+  it('fails_when= an omitted caption stops producing the generated one', async () => {
+    // Old clients (and an engineer who types nothing) must keep today's exact
+    // behaviour: buildCaption(phaseName, takenAt) -> "Phase A November 2026".
+    const { service, client } = makeUploadService();
+    const result = await service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
+
+    expect(result.caption).toBe('Phase A November 2026');
+    expect(client.progressPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ caption: 'Phase A November 2026' }),
+      }),
+    );
+  });
+
+  it('records the stage with the photo, and null when none was sent', async () => {
+    const { service, client } = makeUploadService();
+    await service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+      stage: 'STRUCTURE',
+    });
+    expect(client.progressPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stage: 'STRUCTURE' }) }),
+    );
+
+    vi.clearAllMocks();
+    const second = makeUploadService();
+    await second.service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
+    expect(second.client.progressPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stage: null }) }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upload() - the staff notification (2026-11-08).
+//
+// One notification per unit per DAY, not one per photo: an engineer shooting six
+// angles of one villa must not produce six pings. And a notifier fault must never
+// reach the engineer, nor trip the blob compensation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('upload() - SiteUpdateNotifier', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('protects= the first photo of the day notifies, and a later one does not', async () => {
+    const first = makeUploadServiceWithSiteNotifier(async () => 1);
+    await first.service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
+    expect(first.siteUpdateNotifier.notifyNewPhoto).toHaveBeenCalledTimes(1);
+
+    // Same unit, same day: the count is no longer zero.
+    const second = makeUploadServiceWithSiteNotifier(async () => 1);
+    second.client.progressPhoto.count.mockResolvedValue(3);
+    await second.service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
+    expect(second.siteUpdateNotifier.notifyNewPhoto).not.toHaveBeenCalled();
+  });
+
+  it('protects= the notice carries the unit, captions and the uploader identity', async () => {
+    const { service, siteUpdateNotifier } = makeUploadServiceWithSiteNotifier(async () => 1);
+    await service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+      caption: 'Slab poured',
+    });
+
+    expect(siteUpdateNotifier.notifyNewPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        unitId: 'unit-1',
+        unitNumber: 'A-101',
+        photoId: 'photo-1',
+        caption: 'Slab poured',
+        uploaderId: 'admin-1',
+        uploaderName: 'Ravi',
+      }),
+    );
+  });
+
+  it('fails_when= a notifier fault fails the upload or deletes the committed blob', async () => {
+    const built = makeUploadService();
+    const storageDelete = vi.fn();
+    const svc = new CustomerProgressService(
+      { $client: built.client } as never,
+      { save: built.save, read: vi.fn(), delete: storageDelete, publicUrl: vi.fn() } as never,
+      undefined,
+      {
+        notifyNewPhoto: vi.fn(async () => {
+          throw new Error('notifications down');
+        }),
+      } as never,
+    );
+
+    const result = await svc.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
+
+    expect(result.id).toBe('photo-1');
+    expect(storageDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('UpdatePhotoSchema - partial writes (stage and caption are independent)', () => {
+  it('accepts a caption-only correction', () => {
+    expect(UpdatePhotoSchema.safeParse({ caption: 'Corrected' }).success).toBe(true);
+  });
+
+  it('accepts a stage-only correction (the case that used to 400)', () => {
+    expect(UpdatePhotoSchema.safeParse({ stage: 'READY' }).success).toBe(true);
+  });
+
+  it('accepts both together', () => {
+    expect(UpdatePhotoSchema.safeParse({ caption: 'Corrected', stage: 'READY' }).success).toBe(true);
+  });
+
+  it('rejects neither, so a no-op PATCH is a caller bug, not a silent touch', () => {
+    expect(UpdatePhotoSchema.safeParse({}).success).toBe(false);
   });
 });
 

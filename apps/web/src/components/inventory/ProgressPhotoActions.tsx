@@ -1,12 +1,18 @@
 'use client';
 
-// ProgressPhotoActions (slice 4, 2026-11-07): inline edit + delete controls on a
-// staff timeline row.
+// ProgressPhotoActions (slice 4, 2026-11-07; menu 2026-11-08): the per-photo
+// edit-note and delete controls on the capture feed. Edit note opens
+// EditNoteDialog (zod-validated Form); delete goes through a confirm.
 //
-// WHY INLINE: the tab is a scanning surface on a phone. A sheet-in-a-sheet (the
-// Progress tab already lives inside UnitDetailSheet) buries the action and can
-// stack dialogs badly. Two icon buttons on the row, an inline caption editor,
-// and a confirm dialog for the destructive one.
+// WHY A MENU NOW: two ghost icon buttons sat on every row at icon scale, inside
+// a crowded row. On a phone those were hard to hit and easy to hit wrongly, and
+// they competed with the photo for attention. One 44x44 kebab holding both
+// actions keeps them reachable without putting a destructive control one
+// mis-tap away from the image.
+//
+// WHAT DID NOT CHANGE: the edit/delete mutations, the `canMutate` gate, and the
+// delete confirmation's copy - a buyer may already have seen this photo, and
+// that sentence is the reason the confirm exists.
 //
 // AUTHORITY IS NOT DECIDED HERE. Every mutation is re-checked against RLS on the
 // server (ADMIN, the photo's creator, or the project's photo lead), and a denied
@@ -16,10 +22,12 @@
 // display name.
 import { useState } from 'react';
 
-import { AlertDialog, Button, Input, toast } from '@paalstack/react-ui';
-import { LuCheck, LuPencil, LuTrash2, LuX } from '@paalstack/react-icons/lu';
+import { AlertDialog, Button, DropdownMenu, toast } from '@paalstack/react-ui';
+import { LuEllipsisVertical, LuPencil, LuTrash2 } from '@paalstack/react-icons/lu';
 
-import { useDeletePhoto, useUpdatePhoto, type TimelinePhoto } from '@/hooks/queries/customer-progress';
+import { useDeletePhoto, type TimelinePhoto } from '@/hooks/queries/customer-progress';
+
+import { EditNoteDialog } from './EditNoteDialog';
 
 export function ProgressPhotoActions({
   photo,
@@ -29,107 +37,71 @@ export function ProgressPhotoActions({
   unitId: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(photo.caption);
   const [confirming, setConfirming] = useState(false);
-  const update = useUpdatePhoto(unitId);
   const remove = useDeletePhoto(unitId);
 
   // The server answers whether this session may act on this row; a buyer gets
   // false on every row.
   if (photo.canMutate !== true) return null;
 
-  const save = (): void => {
-    const caption = draft.trim();
-    if (caption.length === 0) return;
-    update.mutate(
-      { photoId: photo.id, caption },
-      {
-        onSuccess: () => {
-          setEditing(false);
-          toast.success('Caption updated');
-        },
-        onError: (error: unknown) =>
-          toast.error(error instanceof Error ? error.message : 'Could not update the caption'),
-      },
-    );
-  };
-
-  if (editing) {
-    return (
-      <div className="mt-1 flex items-center gap-1" data-qa={`progress-edit-${photo.id}`}>
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={200}
-          aria-label="Photo caption"
-          data-qa={`progress-caption-input-${photo.id}`}
-          // Enter saves, Escape abandons: a phone keyboard has no room for a
-          // third button.
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              save();
-            }
-            if (e.key === 'Escape') {
-              setEditing(false);
-              setDraft(photo.caption);
-            }
-          }}
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Save caption"
-          onClick={save}
-          disabled={update.isPending || draft.trim().length === 0}
-          data-qa={`progress-caption-save-${photo.id}`}
-        >
-          <LuCheck className="size-4" aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Cancel editing"
-          onClick={() => {
-            setEditing(false);
-            setDraft(photo.caption);
-          }}
-          data-qa={`progress-caption-cancel-${photo.id}`}
-        >
-          <LuX className="size-4" aria-hidden="true" />
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="mt-1 flex items-center gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-label={`Edit the caption for ${photo.caption}`}
-        onClick={() => {
-          setDraft(photo.caption);
-          setEditing(true);
-        }}
-        data-qa={`progress-photo-edit-${photo.id}`}
-      >
-        <LuPencil className="size-4" aria-hidden="true" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-label={`Delete the photo ${photo.caption}`}
-        onClick={() => setConfirming(true)}
-        disabled={remove.isPending}
-        data-qa={`progress-photo-delete-${photo.id}`}
-      >
-        <LuTrash2 className="size-4" aria-hidden="true" />
-      </Button>
+    <>
+      <DropdownMenu
+        trigger={
+          // 44x44 touch target; the label names the date so a screen reader can
+          // tell two rows apart.
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="size-11 shrink-0"
+            aria-label={`Actions for the photo from ${new Date(photo.takenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+            data-qa={`progress-photo-menu-${photo.id}`}
+          >
+            <LuEllipsisVertical className="size-5" aria-hidden="true" />
+          </Button>
+        }
+        items={[
+          {
+            // The item TYPE does not accept a data-qa (it is a Base UI
+            // component prop), so the anchor lives on the label content. A click
+            // on it bubbles to the item, which is what the tests drive.
+            label: (
+              <span
+                className="flex items-center gap-2"
+                data-qa={`progress-photo-edit-${photo.id}`}
+              >
+                <LuPencil className="size-4" aria-hidden="true" /> Edit note
+              </span>
+            ),
+            onClick: () => setEditing(true),
+            id: `progress-photo-edit-${photo.id}`,
+          },
+          {
+            label: (
+              <span
+                className="flex items-center gap-2"
+                data-qa={`progress-photo-delete-${photo.id}`}
+              >
+                <LuTrash2 className="size-4" aria-hidden="true" /> Delete photo
+              </span>
+            ),
+            variant: 'destructive',
+            onClick: () => setConfirming(true),
+            disabled: remove.isPending,
+            id: `progress-photo-delete-${photo.id}`,
+          },
+        ]}
+      />
+
+      <EditNoteDialog
+        open={editing}
+        onOpenChange={setEditing}
+        photoId={photo.id}
+        unitId={unitId}
+        caption={photo.caption}
+        stage={photo.stage}
+      />
 
       <AlertDialog
         open={confirming}
@@ -161,6 +133,6 @@ export function ProgressPhotoActions({
         }
         onCancel={() => setConfirming(false)}
       />
-    </div>
+    </>
   );
 }

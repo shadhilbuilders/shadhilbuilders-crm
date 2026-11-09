@@ -370,7 +370,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await markDone.click();
 
     // The success toast is exactly "Visit completed". The lead timeline now
-    // starts with the same sentence ("Visit completed (visit on …)"). A
+    // starts with the same sentence ("Visit completed (visit on ...)"). A
     // substring match resolves to both at once, and Playwright strict mode
     // fails the step even though the outcome landed. Either surface is proof;
     // `.first()` is only here so both being visible is still a pass.

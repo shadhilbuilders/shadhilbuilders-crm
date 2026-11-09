@@ -16,6 +16,8 @@ import { LuCamera, LuRefreshCw } from '@paalstack/react-icons/lu';
 
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 
+import { constructionStageLabel } from '@/lib/labels';
+
 import { formatDay, groupByMonth, photoAlt } from './portal-format';
 
 /** The first two images load eagerly (above the fold); the rest lazily. */
@@ -88,7 +90,19 @@ function PhotoRow({
           data-qa="portal-photo-img"
         />
       </button>
-      <div className="mt-2 flex items-center gap-3">
+      {/* THE NOTE IS THE CONTENT (2026-11-08). It used to exist only inside the
+          lightbox's dialog description, so a buyer had to tap a photo to read
+          the one sentence the engineer wrote for them. Empty captions are
+          skipped entirely - a blank line is noise, not a note. */}
+      {photo.caption.trim().length > 0 ? (
+        <p
+          className="text-foreground mt-2 line-clamp-2 text-base"
+          data-qa="portal-photo-caption"
+        >
+          {photo.caption}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-3">
         {photo.phaseName !== null ? (
           <Badge
             variant={current ? 'success' : 'muted'}
@@ -102,6 +116,14 @@ function PhotoRow({
         <time dateTime={photo.takenAt} className="text-muted-foreground text-base" data-qa="portal-photo-date">
           {formatDay(photo.takenAt)}
         </time>
+        {/* Per-photo stage, small and muted. Omitted when the capture recorded
+            none - "Stage not set" belongs on the unit header, not repeated on
+            every row of an old feed. */}
+        {photo.stage !== null ? (
+          <span className="text-muted-foreground text-sm" data-qa="portal-photo-stage">
+            {constructionStageLabel(photo.stage)}
+          </span>
+        ) : null}
       </div>
     </li>
   );

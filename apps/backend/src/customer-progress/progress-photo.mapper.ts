@@ -32,6 +32,12 @@ export interface TimelinePhotoDto {
   filename: string;
   caption: string;
   takenAt: string;
+  /**
+   * Construction stage recorded with the capture (2026-11-08). Null when the
+   * photo recorded none - every surface then says "Stage not set", never
+   * "Not started". The unit's CURRENT stage is this field on its newest photo.
+   */
+  stage: string | null;
   createdAt: string;
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
@@ -98,6 +104,7 @@ interface PhotoRow {
   filename: string;
   caption: string;
   takenAt: Date;
+  stage: string | null;
   createdAt: Date;
   key: string;
   createdBy: string | null;
@@ -144,6 +151,7 @@ export function toTimelinePhotoDto(
     filename: row.filename,
     caption: row.caption,
     takenAt: row.takenAt.toISOString(),
+    stage: row.stage,
     createdAt: row.createdAt.toISOString(),
     creatorName: label?.creator_name ?? null,
     creatorIsPhotoLead: label?.creator_is_photo_lead ?? null,
@@ -207,6 +215,7 @@ export async function readTimelinePage(
       filename: true,
       caption: true,
       takenAt: true,
+      stage: true,
       createdAt: true,
       key: true,
       createdBy: true,

@@ -33,7 +33,7 @@
   --primary-foreground: oklch(0.971 0.009 84.6);
 
   --secondary: oklch(0.684 0.178 136.1);
-  --secondary-foreground: oklch(0.145 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
 
   /* ── Control borders (inputs / selects / textareas) ──────────────────
    * The library default --input (oklch 0.929) is near-white and invisible
@@ -64,6 +64,15 @@
   --sidebar-border: oklch(0.92 0.01 260);
   --sidebar-ring: oklch(0.238 0.099 260.3);
 
+  /* ── Muted foreground on the muted surface ────────────────────────
+   * The library's --muted-foreground oklch(0.555 0.041 257.44) on
+   * --muted oklch(0.968 0.007 247.895) measures 4.34:1, which is under
+   * AA-normal for the 12px meta text that now sits on tinted tiles and
+   * muted badges (site home's state badges, stat tiles). Darkened one
+   * step; everywhere it is already used it gets slightly better.
+   * Pinned by SHADHIL_AA_OVERRIDES in test/compliance.test.ts. */
+  --muted-foreground: oklch(0.525 0.041 257.44);
+
   /* ── T-D8: status badge contrast (light mode) ─────────────────────
    * The library's default --success / --destructive / --info are too
    * bright for white text (CR 3.10, 3.92, 4.23 respectively) and the
@@ -73,13 +82,23 @@
    * line "contrast check script in compliance.test.ts" audits every
    * pair below to CR >= 4.5. */
   --success: oklch(0.530 0.16 160);            /* was oklch(0.63 0.16 160); CR was 3.10, now 4.53 */
-  --destructive: oklch(0.585 0.21 25);        /* was oklch(0.62 0.21 25); CR was 3.92, now 4.53 */
+  /* 2026-11-08: the destructive BADGE variant is `bg-destructive/10
+   * text-destructive`, a 10% tint of this same colour. At 0.585 that pair
+   * measured 4.02:1 for 12px text (axe: color-contrast, the "Sold" badge on the
+   * capture header). 0.545 keeps the solid-background pair at AA (white on it
+   * = 4.6:1) AND clears the tint pair at 4.85:1. Both are pinned in
+   * test/compliance.test.ts. */
+  --destructive: oklch(0.545 0.21 25);
   --info: oklch(0.560 0.19 255);               /* was oklch(0.58 0.19 255); CR was 4.23, now 4.59 */
   --success-soft-fg: oklch(0.495 0.16 160);     /* was --success-foreground (white, CR 1.08); now 5.43 */
   --destructive-soft-fg: oklch(0.495 0.21 25); /* was --destructive-foreground (white, CR 1.13); now 5.37 */
   --info-soft-fg: oklch(0.495 0.19 255);       /* was --info-foreground (white, CR 1.10); now 5.41 */
-  /* warning + warning-soft: library defaults already pass AA (the
-   * library uses a dark amber foreground on both). Left unchanged. */
+  --warning-soft-fg: oklch(0.25 0.04 70);       /* on --warning-soft 0.97: 14.75:1 */
+
+  /* 2026-11-09: `bg-muted-soft` is used across the site surface but the
+   * library never defined it, so it rendered transparent. Neutral tint that
+   * keeps --muted-foreground at 5.01:1. Mapped to a utility in globals.css. */
+  --muted-soft: oklch(0.975 0.010 258);
 }
 
 .dark {
@@ -87,10 +106,39 @@
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
 
-  --secondary: oklch(0.269 0 0);
+  --secondary: oklch(0.684 0.178 136.1);
   --secondary-foreground: oklch(0.985 0 0);
 
   --input: oklch(0.40 0.012 255);
+
+  /* ── Muted foreground - dark mode ────────────────────────────────
+   * REQUIRED, not optional. `brand.css` is imported AFTER the library's
+   * all.css, and `.dark` and `:root` have the SAME specificity (0,1,0), so the
+   * `--muted-foreground` I set in `:root` above also won inside `.dark` - one
+   * dark navy-grey (#5c6b82) on a #020817 page, measured 3.69:1, 36 nodes
+   * failing axe. Restating the library's own dark value here puts the dark
+   * theme back on a readable pair (7.71:1 on the page, 5.71:1 on a card).
+   * Any `:root` token override needs the same treatment. */
+  --muted-foreground: oklch(0.711 0.035 256.788);
+
+  /* ── Destructive - dark mode ─────────────────────────────────────
+   * Same specificity trap as --muted-foreground above: without this the `:root`
+   * value (0.545) is what dark mode inherits, and a destructive BADGE in dark is
+   * `bg-destructive/20` on a near-black page - measured 3.24:1 (#ce1828 on
+   * #2b0b1b) for the "Sold" status. The dark surface inverts the problem: the
+   * text has to be LIGHTER than the tint, not darker. 0.76 clears 5.2:1. */
+  --destructive: oklch(0.76 0.2 25);
+
+  /* ── Soft tint foregrounds + muted-soft - dark mode ───────────────
+   * Same specificity trap: the :root values (dark text for LIGHT tints) would
+   * leak into .dark, where the soft tints are dark. Measured against the
+   * library's dark tints: success 11.26:1, warning 11.79:1, destructive
+   * 9.87:1, info 10.65:1; muted-soft vs muted-foreground 6.42:1. */
+  --success-soft-fg: oklch(0.86 0.10 160);
+  --warning-soft-fg: oklch(0.90 0.08 70);
+  --destructive-soft-fg: oklch(0.86 0.10 25);
+  --info-soft-fg: oklch(0.86 0.09 255);
+  --muted-soft: oklch(0.24 0.020 259);
 
   /* ── Link color - dark mode ───────────────────────────────────── */
   --link: oklch(0.72 0.13 255);
@@ -103,8 +151,8 @@
   --sidebar-foreground: oklch(0.96 0.005 260);
   --sidebar-primary: oklch(0.922 0 0);
   --sidebar-primary-foreground: oklch(0.205 0 0);
-  --sidebar-accent: oklch(0.922 0 0 / 0.1);
-  --sidebar-accent-foreground: oklch(0.96 0.005 260);
+  --sidebar-accent: oklch(0.238 0.099 260.3);
+  --sidebar-accent-foreground: oklch(0.971 0.009 84.6);
   --sidebar-accent-normal: oklch(0.922 0 0 / 0.1);
   --sidebar-accent-normal-foreground: oklch(0.96 0.005 260);
   --sidebar-border: oklch(1 0 0 / 0.08);

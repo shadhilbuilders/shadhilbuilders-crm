@@ -34,6 +34,8 @@ function makeService(): {
     };
     auditLog: { create: ReturnType<typeof vi.fn> };
     user: { findUnique: ReturnType<typeof vi.fn> };
+    lead: { findMany: ReturnType<typeof vi.fn> };
+    unit: { findMany: ReturnType<typeof vi.fn> };
   };
 } {
   const client = {
@@ -51,6 +53,10 @@ function makeService(): {
     user: {
       findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-of-recipient' }),
     },
+    // 2026-11-08: the active-project filter narrows by lead ids AND unit ids, so
+    // both reads must exist on the stub.
+    lead: { findMany: vi.fn().mockResolvedValue([]) },
+    unit: { findMany: vi.fn().mockResolvedValue([]) },
   };
   const prismaService = { $client: client } as never;
   const service = new NotificationsService(prismaService);
@@ -123,6 +129,85 @@ describe('list - current-user inbox', () => {
         }),
       }),
     );
+  });
+});
+
+describe('list - active-project narrowing (2026-11-08)', () => {
+  /** A notification row with neither a lead nor a unit. */
+  const bare = {
+    id: 'n-bare',
+    type: 'system.heartbeat',
+    title: 't',
+    body: 'b',
+    leadId: null,
+    unitId: null,
+    read: false,
+    createdAt: new Date('2026-11-01T00:00:00Z'),
+  };
+
+  it('protects= a site-update notification is visible under the active project', async () => {
+    // The notifications page always sends projectId. Before the unit arm existed,
+    // a photo notification (no lead) was inserted and then permanently invisible.
+    const { service, client } = makeService();
+    client.lead.findMany.mockResolvedValue([{ id: 'l-1' }]);
+    client.unit.findMany.mockResolvedValue([{ id: 'unit-1' }]);
+    client.notification.findMany.mockResolvedValue([
+      { ...bare, id: 'n-photo', type: 'progress.photo', unitId: 'unit-1' },
+    ]);
+    client.notification.count.mockResolvedValue(1);
+
+    await service.list(makeActor(), {
+      unreadOnly: false,
+      projectId: 'proj-1',
+      limit: 50,
+      offset: 0,
+    });
+
+    const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
+    // Both anchors are in the filter: a lead row OR a unit row of this project.
+    expect(where).toMatchObject({
+      OR: [
+        { leadId: { in: ['l-1'] } },
+        { unitId: { in: ['unit-1'] } },
+      ],
+    });
+    // Nothing else in the where is a top-level OR, so the arms cannot clobber.
+    expect(where).not.toHaveProperty('leadId');
+  });
+
+  it('fails_when= a notification with neither a lead nor a unit is pulled in', async () => {
+    // The documented behaviour: system events are not project work. This pins
+    // that the filter is an OR of two id sets, not "everything".
+    const { service, client } = makeService();
+    client.lead.findMany.mockResolvedValue([{ id: 'l-1' }]);
+    client.unit.findMany.mockResolvedValue([{ id: 'unit-1' }]);
+    client.notification.findMany.mockResolvedValue([]);
+    client.notification.count.mockResolvedValue(0);
+
+    await service.list(makeActor(), {
+      unreadOnly: false,
+      projectId: 'proj-1',
+      limit: 50,
+      offset: 0,
+    });
+
+    const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
+    // A bare row matches neither arm: `leadId IN (lead ids)` and
+    // `unitId IN (unit ids)` are both false for `null`.
+    expect(where).toEqual({
+      OR: [{ leadId: { in: ['l-1'] } }, { unitId: { in: ['unit-1'] } }],
+    });
+  });
+
+  it('does not resolve units when no project filter is active', async () => {
+    const { service, client } = makeService();
+    client.notification.findMany.mockResolvedValue([]);
+    client.notification.count.mockResolvedValue(0);
+
+    await service.list(makeActor(), { unreadOnly: false, limit: 50, offset: 0 });
+
+    expect(client.unit.findMany).not.toHaveBeenCalled();
+    expect(client.lead.findMany).not.toHaveBeenCalled();
   });
 });
 

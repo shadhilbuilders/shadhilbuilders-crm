@@ -101,15 +101,42 @@ describe('lib/nav', () => {
       '/notifications',
     ];
 
-    it('TELECALLER sees only the work group (no Admin launcher, no admin items)', () => {
-      const items = getVisibleNav('TELECALLER');
-      expect(items.map((i) => i.href)).toEqual(workHrefs);
-      expect(flattenNavHrefs(items)).not.toContain('/admin');
-      expect(flattenNavHrefs(items)).not.toContain('/admin/users');
+    it('TELECALLER sees their work group PLUS the site capture surface', () => {
+      // 2026-11-08: TELECALLER GAINS Site updates. They do NOT lose the Lead
+      // Inbox - DESIGN.md §1 makes them the first-touch lead owner - and they do
+      // NOT see Inventory, which the site home replaces for villa work.
+      // Position follows NAV_ITEMS declaration order: /site sits where
+      // /inventory used to, after /staff.
+      const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
+      expect(hrefs).toEqual([
+        '/dashboard',
+        '/leads',
+        '/visits',
+        '/staff',
+        '/site',
+        '/plots',
+        '/bookings',
+        '/notifications',
+      ]);
+      expect(hrefs).not.toContain('/inventory');
+    });
+
+    it('ENGINEER sees the site capture surface INSTEAD of Inventory', () => {
+      const hrefs = flattenNavHrefs(getVisibleNav('ENGINEER'));
+      expect(hrefs).toEqual(['/site']);
+      expect(hrefs).not.toContain('/inventory');
     });
 
     it('SALES_EXEC sees only the work group (no admin items)', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
+    });
+
+    it('no non-site role is offered the site surface', () => {
+      // It is a second link to the same villas for a sales role, without the
+      // money that role needs.
+      for (const role of ['OWNER', 'ADMIN', 'MANAGER', 'SALES_EXEC'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).not.toContain('/site');
+      }
     });
 
     it('MANAGER sees only the work group + My Team (Users / Projects / WA Unknown are admin-only)', () => {
@@ -153,6 +180,13 @@ describe('lib/nav', () => {
       expect(
         items.find((i) => i.href === '/admin/overview' && i.group === 'admin'),
       ).toBeUndefined();
+    });
+
+    it('TELECALLER never sees /inventory and /site at the same time', () => {
+      // The nav must not show two links to the same job.
+      const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
+      expect(hrefs).toContain('/site');
+      expect(hrefs).not.toContain('/inventory');
     });
 
     it('undefined role sees only the work group without Admin (safe default)', () => {

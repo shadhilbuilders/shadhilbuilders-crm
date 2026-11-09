@@ -106,28 +106,32 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              data-qa="sidebar-user-settings"
-              disabled={settingsHref === null}
-              className="cursor-pointer"
-            >
-              {settingsHref !== null ? (
-                <Link
-                  href={settingsHref}
-                  className="flex items-center gap-2 text-sm outline-none"
-                >
-                  <LuSettings className="size-4 shrink-0" />
-                  Settings
-                </Link>
-              ) : (
-                // Org slug not resolved yet: render the row without a target
-                // rather than linking to a bare `/settings` (which 404s).
-                <span className="text-muted-foreground flex items-center gap-2 text-sm">
-                  <LuSettings className="size-4 shrink-0" />
-                  Settings
-                </span>
-              )}
-            </DropdownMenuItem>
+            {settingsHref !== null ? (
+              // Use `render={<Link />}` so the menu item IS the link (same
+              // pattern as project-team-list). Nesting <Link> as a child of
+              // DropdownMenuItem swallows the navigation click.
+              <DropdownMenuItem
+                data-qa="sidebar-user-settings"
+                className="cursor-pointer gap-2"
+                render={
+                  <Link href={settingsHref}>
+                    <LuSettings className="size-4 shrink-0" />
+                    Settings
+                  </Link>
+                }
+              />
+            ) : (
+              // Org slug not resolved yet: render the row without a target
+              // rather than linking to a bare `/settings` (which 404s).
+              <DropdownMenuItem
+                data-qa="sidebar-user-settings"
+                disabled
+                className="gap-2"
+              >
+                <LuSettings className="size-4 shrink-0" />
+                Settings
+              </DropdownMenuItem>
+            )}
            
             <DropdownMenuSeparator />
             <DropdownMenuItem

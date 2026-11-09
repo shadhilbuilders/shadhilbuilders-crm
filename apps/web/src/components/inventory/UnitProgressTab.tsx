@@ -1,24 +1,31 @@
 'use client';
 
-// UnitProgressTab (issue #7 slice 1): photo upload + staff preview timeline
-// for one unit, rendered INSIDE UnitDetailSheet.
+// UnitProgressTab (issue #7 slice 1; 2026-11-08 revision): photo upload + staff
+// preview timeline for one unit, rendered INSIDE UnitDetailSheet.
 //
-// PHASE COMES FROM THE UNIT (2026-11-06). The upload used to render a phase
-// Select over the project's phases. That asked a question the app had already
-// answered when the unit was created: `Unit.phaseId` is REQUIRED (schema), so
-// every unit already belongs to exactly one phase. The Select was removed and
-// the upload now sends `unit.phaseId`; `unit.phaseName` is shown as context so
-// the uploader can see which phase the photo will be labelled with.
+// WHO USES THIS NOW: the sales roles. Site staff (ENGINEER/TELECALLER) no longer
+// open this sheet - they get `/site/[unitId]`, a real route whose state survives
+// a phone unloading a backgrounded tab and whose URL can be shared. This tab
+// stays exactly as it is for everyone else, because "what has been photographed
+// on this villa" is useful context while quoting it.
 //
-// States (adopted table): skeleton cards, warm empty, inline error banner +
-// retry, hasMore load-more. The tab visibility contract lives in the SHEET:
-// the timeline GET returning 2xx is the only thing that renders this tab
-// (a 403 non-member hides it entirely).
-import { Badge, Button } from '@paalstack/react-ui';
+// PHASE COMES FROM THE UNIT (2026-11-06): `Unit.phaseId` is required, so every
+// unit already belongs to exactly one phase and asking was a question the app
+// had already answered.
+//
+// HEIC IS FIXED AT THE SOURCE (2026-11-08): `normalizeMimeType` used to relabel
+// whatever the browser declared as image/jpeg while the server sniffed the BYTES
+// and refused HEIC - so the relabel cost a round trip and fixed nothing. The
+// photo is now converted client-side by `prepareProgressPhoto`, and the payload
+// carries the type of the bytes that actually upload.
+import { useRef, useState } from 'react';
+
+import { Badge, Button, toast } from '@paalstack/react-ui';
 import { LuCamera, LuRefreshCw } from '@paalstack/react-icons/lu';
-import { useRef } from 'react';
+import type { ConstructionStage } from '@shadhil/api-types';
 
 import { siteMemberLabel } from '@/lib/labels';
+import { prepareProgressPhoto, prepareErrorMessage, type PreparedPhoto } from '@/lib/photo-prep';
 import type { UnitRow } from '@/hooks/queries/inventory';
 import {
   useUnitPhotos,
@@ -33,57 +40,56 @@ import { ProgressPhotoActions } from './ProgressPhotoActions';
  *  phase every photo it uploads is labelled with. */
 export type ProgressUnit = Pick<UnitRow, 'id' | 'phaseId' | 'phaseName'>;
 
-/** Only these three MIME types are on the slice-1 server allowlist (HEIC is
- *  rejected there), so anything else is coerced to JPEG rather than sent to
- *  be refused. */
-function normalizeMimeType(type: string): UploadPhotoInput['mimeType'] {
-  return type === 'image/png' ? 'image/png' : type === 'image/webp' ? 'image/webp' : 'image/jpeg';
-}
-
 /**
  * Build the upload payload. Pure so the "phase comes from the unit" rule is
  * unit-testable without mounting the tab or driving a real file input.
+ *
+ * `prepared` is the output of `prepareProgressPhoto`: the mimeType and filename
+ * describe the BYTES that will be sent, never the browser's guess from the
+ * filename. `caption` and `stage` are omitted entirely when unset so the server
+ * keeps its generated-caption fallback.
  */
 export function buildPhotoUpload(input: {
   phaseId: string;
-  base64: string;
-  file: { type: string; name: string; lastModified: number };
+  prepared: Pick<PreparedPhoto, 'base64' | 'mimeType' | 'filename' | 'takenAt' | 'source'>;
+  caption?: string;
+  stage?: ConstructionStage;
 }): UploadPhotoInput {
+  const caption = input.caption?.trim();
   return {
     phaseId: input.phaseId,
-    base64: input.base64,
-    mimeType: normalizeMimeType(input.file.type),
-    filename: input.file.name.slice(0, 180),
+    base64: input.prepared.base64,
+    mimeType: input.prepared.mimeType,
+    filename: input.prepared.filename.slice(0, 180),
     // Client-captured capture time, WITH offset (toISOString is UTC:Z).
-    takenAt: new Date(input.file.lastModified).toISOString(),
-    clientDeviceHint: 'camera',
+    takenAt: input.prepared.takenAt,
+    clientDeviceHint: input.prepared.source,
+    // An empty note is valid: the server falls back to its generated caption,
+    // so the key is absent rather than an empty string it would have to reject.
+    ...(caption !== undefined && caption.length > 0 ? { caption } : {}),
+    ...(input.stage !== undefined ? { stage: input.stage } : {}),
   };
-}
-
-function readAsBase64(file: File): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      const comma = result.indexOf(',');
-      resolve(comma === -1 ? '' : result.slice(comma + 1));
-    };
-    reader.onerror = () => reject(new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const photosQuery = useUnitPhotos(unit.id);
   const upload = useUploadUnitPhoto(unit.id);
 
   const photos = (photosQuery.data?.pages ?? []).flatMap((page) => page.photos);
 
   async function handleFileChosen(file: File): Promise<void> {
-    const base64 = await readAsBase64(file);
-    if (!base64) return;
-    upload.mutate(buildPhotoUpload({ phaseId: unit.phaseId, base64, file }));
+    setPreparing(true);
+    try {
+      const prepared = await prepareProgressPhoto(file, { source: 'camera' });
+      upload.mutate(buildPhotoUpload({ phaseId: unit.phaseId, prepared }));
+    } catch (err) {
+      // One plain sentence, nothing uploaded: no row, no blob, no half state.
+      toast.error(prepareErrorMessage(err));
+    } finally {
+      setPreparing(false);
+    }
   }
 
   if (isForbidden(photosQuery.error)) return null;
@@ -109,7 +115,9 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
         <Button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={upload.isPending}
+          disabled={upload.isPending || preparing}
+          isLoading={preparing}
+          loadingText="Preparing photo..."
           leftIcon={<LuCamera className="size-4" />}
           data-qa="add-progress-photo"
         >

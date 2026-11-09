@@ -4,8 +4,9 @@
 // itself just calls router.replace with the helper's output, so the decision
 // logic is what matters and is unit-testable without rendering).
 //
-// ENGINEER (site engineer, issue #7 slice 1) has exactly one Work surface -
-// Inventory - so the root redirect must NOT send them to /dashboard.
+// ENGINEER and TELECALLER (site staff, issue #7 + 2026-11-08) have exactly one
+// Work surface - the site capture home at `/site` - so the root redirect must
+// NOT send them to /dashboard, and must not send them to the sales grid either.
 import { describe, expect, it } from 'vitest';
 
 import { rootRedirectTarget, workLandingHref, workSurfaceForRole } from '@/lib/dashboard-redirect';
@@ -18,8 +19,11 @@ const PROJ = [
 const ORG_USER = { role: 'MANAGER', organizationId: 'org-1' } as const;
 
 describe('workSurfaceForRole', () => {
-  it('ENGINEER lands on /inventory (their only Work surface)', () => {
-    expect(workSurfaceForRole('ENGINEER')).toBe('/inventory');
+  // 2026-11-08: ENGINEER and TELECALLER own the site capture surface, which
+  // REPLACES Inventory for them. Landing on /inventory would drop them on a
+  // page whose nav entry `lib/nav.ts` hides.
+  it('ENGINEER lands on /site (the capture home that replaced Inventory)', () => {
+    expect(workSurfaceForRole('ENGINEER')).toBe('/site');
   });
 
   it.each(['OWNER', 'ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER'])(
@@ -35,9 +39,15 @@ describe('workSurfaceForRole', () => {
 });
 
 describe('workLandingHref', () => {
-  it('ENGINEER: default project inventory', () => {
+  it('ENGINEER: default project SITE surface, not the sales grid', () => {
     expect(workLandingHref(ORG_SLUG, PROJ, 'ENGINEER')).toBe(
-      '/shadhil-builders/projects/shadhil-metro-heights/inventory',
+      '/shadhil-builders/projects/shadhil-metro-heights/site',
+    );
+  });
+
+  it('TELECALLER: still the dashboard queue - their lead work starts there', () => {
+    expect(workLandingHref(ORG_SLUG, PROJ, 'TELECALLER')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/dashboard',
     );
   });
 
@@ -91,10 +101,10 @@ describe('rootRedirectTarget - role-aware root redirect', () => {
     });
   });
 
-  it('ENGINEER: /[orgSlug]/projects/[projectSlug]/inventory (not dashboard)', () => {
+  it('ENGINEER: /[orgSlug]/projects/[projectSlug]/site (not dashboard, not the sales grid)', () => {
     expect(rootRedirectTarget({ role: 'ENGINEER' }, PROJ, ORG_SLUG)).toEqual({
       kind: 'project-work',
-      href: '/shadhil-builders/projects/shadhil-metro-heights/inventory',
+      href: '/shadhil-builders/projects/shadhil-metro-heights/site',
     });
   });
 

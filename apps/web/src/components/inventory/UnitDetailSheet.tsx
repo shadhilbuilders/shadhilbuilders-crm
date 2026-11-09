@@ -22,8 +22,16 @@ import { UnitProgressTabContent, type ProgressUnit } from './UnitProgressTab';
 
 import type { UnitRow } from '@/hooks/queries/inventory';
 
-function formatMoney(value: string | undefined): string {
-  if (value === undefined) return '-';
+/**
+ * Money as the wire sends it (a decimal string), or a dash when there is none.
+ *
+ * Null is a REAL case since 2026-11-08: a site-only role (ENGINEER) receives
+ * null money because the server never selects the columns. `Number(null)` is
+ * 0, so the naive version printed "₹0" - a claim that the villa is free. Both
+ * null and undefined must read as "not available", never as a number.
+ */
+function formatMoney(value: string | null | undefined): string {
+  if (value === null || value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   return currencyIntl.format(num);
@@ -194,8 +202,15 @@ function UnitDetailsPanel({ unit }: { unit: UnitRow }) {
         <DetailRow label="Facing" value={unit.facing ?? '-'} />
         <DetailRow label="Plot sq.ft" value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'} />
         <DetailRow label="Buildup sq.ft" value={numberIntl.format(Number(unit.buildupSqft))} />
-        <DetailRow label="Per sq.ft price" value={formatMoney(unit.pricePerSqft)} />
-        <DetailRow label="Total sq.ft price" value={formatMoney(unit.price)} />
+        {/* Money is withheld for site-only roles (2026-11-08). The rows are
+            omitted rather than shown as "-", which would read as a missing
+            value instead of a figure this role never receives. */}
+        {unit.pricePerSqft === null ? null : (
+          <DetailRow label="Per sq.ft price" value={formatMoney(unit.pricePerSqft)} />
+        )}
+        {unit.price === null ? null : (
+          <DetailRow label="Total sq.ft price" value={formatMoney(unit.price)} />
+        )}
         <DetailRow label="Phase" value={unit.phaseName} />
         <DetailRow label="Project" value={unit.projectName} />
       </div>

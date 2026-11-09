@@ -15,7 +15,7 @@ import { Badge, Button, DataTable, Select, TypographyP, AlertDialog, DataTableRo
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState, useEffect } from 'react';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { z } from 'zod';
@@ -36,7 +36,7 @@ import {
 import { inventoryStatusBadgeVariant, labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser, canManageProjectMembers, isAdminLike } from '@/lib/session';
+import { useSessionUser, canManageProjectMembers, isAdminLike, isSiteRole } from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -62,8 +62,11 @@ const unitRowSchema = z.object({
   createdAt: z.string(),
 }) as unknown as Parameters<typeof DataTableRowActions>[0]['rowSchema'];
 
-function formatMoney(value: string | undefined): string {
-  if (value === undefined) return '-';
+function formatMoney(value: string | null | undefined): string {
+  // Null money is real since 2026-11-08 (the server withholds villa pricing
+  // from site-only roles), and `Number(null)` is 0 - so a null must never be
+  // formatted as a rupee value.
+  if (value === null || value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   return currencyIntl.format(num);
@@ -75,6 +78,7 @@ function formatMoney(value: string | undefined): string {
  * and without it the page fails to prerender.
  */
 function InventoryGrid() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const linkedUnitId = searchParams.get('unit');
   const { user } = useSessionUser();
@@ -150,6 +154,30 @@ function InventoryGrid() {
   // an action the API answers 403 for.
   const canEdit = mounted && user !== null && isAdminLike(user.role);
 
+  // Site staff (2026-11-08) do not open the detail sheet: they get their own
+  // route, which is a URL they can share and that survives a phone unloading a
+  // backgrounded tab. Sales roles keep the sheet unchanged.
+  //
+  // NOTE: this is the TELECALLER branch. ENGINEER never reaches this render at
+  // all - `inventory/layout.tsx` blocks the segment above the page, so the
+  // grid's queries (and the rupee columns behind them) are never requested.
+  const siteRole = mounted && user !== null && isSiteRole(user.role);
+
+  /**
+   * One entry point for "open this villa", branched by role.
+   *
+   * Site staff are pushed to `/site/<id>` - a real route, so an interrupted
+   * engineer can come back to the same villa from history or a shared link.
+   * Everyone else keeps the sheet, including the booking flow inside it.
+   */
+  const openUnit = (row: UnitRow): void => {
+    if (siteRole) {
+      router.push(projectHref(orgSlug, projectSlug, `/site/${row.id}`));
+      return;
+    }
+    setDetailTarget(row);
+  };
+
   // Phase management (add/rename/delete) is MANAGER/ADMIN/OWNER; the
   // "Phases" header button is hidden for non-manager roles.
   const canManagePhases =
@@ -212,7 +240,7 @@ function InventoryGrid() {
         cell: ({ row }) => (
           <Button
             variant="link"
-            onClick={() => setDetailTarget(row.original)}
+            onClick={() => openUnit(row.original)}
             data-qa="unit-detail-trigger"
             className="text-link"
           >
@@ -271,22 +299,34 @@ function InventoryGrid() {
         ),
         enableSorting: false,
       },
-      {
-        accessorKey: 'pricePerSqft',
-        header: 'Per sq.ft price (₹)',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
-        ),
-        enableSorting: false,
-      },
-      {
-        accessorKey: 'price',
-        header: 'Total sq.ft price (₹)',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{formatMoney(row.original.price)}</span>
-        ),
-        enableSorting: false,
-      },
+      // Money (2026-11-08): hidden for site staff. An engineer never quotes a
+      // price, and a rupee column in their field of view is noise plus an
+      // unnecessary disclosure. Sales roles are untouched.
+      //
+      // NOTE: hiding the column is now the COURTESY, not the wall. ENGINEER is
+      // blocked from this route entirely (InventoryRouteGate) and the API does
+      // not select money columns for that role, so null reaches this cell at
+      // most. `formatMoney` renders null as '-' rather than "₹0".
+      ...(siteRole
+        ? []
+        : ([
+            {
+              accessorKey: 'pricePerSqft',
+              header: 'Per sq.ft price (₹)',
+              cell: ({ row }) => (
+                <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
+              ),
+              enableSorting: false,
+            },
+            {
+              accessorKey: 'price',
+              header: 'Total sq.ft price (₹)',
+              cell: ({ row }) => (
+                <span className="text-sm tabular-nums">{formatMoney(row.original.price)}</span>
+              ),
+              enableSorting: false,
+            },
+          ] satisfies DataTableColumnDef<UnitRow>[])),
       {
         accessorKey: 'status',
         header: 'Status',
@@ -338,7 +378,7 @@ function InventoryGrid() {
         enableHiding: false,
       },
     ],
-    [canEdit],
+    [canEdit, siteRole, openUnit],
   );
 
   return (
@@ -403,7 +443,7 @@ function InventoryGrid() {
               const target = event.target;
               if (!(target instanceof Element)) return;
               if (target.closest('a, button, [role="menuitem"]')) return;
-              setDetailTarget(row.original);
+              openUnit(row.original);
             },
           }}
           // Search is SERVER-side (onSearchValueChange -> API). The DataTable's
@@ -531,7 +571,15 @@ function InventoryGrid() {
       />
 
       <UnitEditDialog
-        unit={editTarget}
+        // The edit form WRITES prices, so it requires the privileged shape.
+        // Only ADMIN/OWNER reach this branch (`canEdit` gates the menu), and the
+        // server sends them real values - so a row without money cannot be
+        // edited here rather than silently opened with blank price fields.
+        unit={
+          editTarget !== null && editTarget.price !== null && editTarget.pricePerSqft !== null
+            ? { ...editTarget, price: editTarget.price, pricePerSqft: editTarget.pricePerSqft }
+            : null
+        }
         open={editTarget !== null}
         projectId={projectId}
         onOpenChange={(open) => {

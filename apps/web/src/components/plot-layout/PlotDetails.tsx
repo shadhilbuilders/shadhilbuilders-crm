@@ -26,6 +26,7 @@ import Link from 'next/link';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { bookingStatusBadgeVariant, inventoryStatusBadgeVariant, labelFor } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
+import { isSiteOnlyRole, useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PLOT_CATEGORY_LABEL, PLOT_STATUS_FILL, PLOT_STATUS_LABEL } from './plot-colors';
@@ -65,8 +66,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /** Money as the wire sends it (a decimal string), or a dash when there is none. */
-function formatMoney(value: string | undefined): string {
-  if (value === undefined) return '-';
+function formatMoney(value: string | null | undefined): string {
+  // Null is a real case (2026-11-08): the server withholds villa money from
+  // site-only roles, so `Number(null) === 0` must never become "₹0".
+  if (value === null || value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   return currencyIntl.format(num);
@@ -75,6 +78,11 @@ function formatMoney(value: string | undefined): string {
 export function PlotDetails({ plot, geometry, requestedPlotNumber }: PlotDetailsProps) {
   const orgSlug = useOrgSlug();
   const projectSlug = useProjectSlug();
+  // Site-only roles (ENGINEER) cannot open `/inventory` at all - the segment
+  // gate blocks it. Pointing their villa link at the sales grid would send them
+  // to a wall, so it goes to the villa's capture screen instead.
+  const { user } = useSessionUser();
+  const siteOnly = isSiteOnlyRole(user?.role);
 
   if (plot === null) {
     return (
@@ -178,7 +186,11 @@ export function PlotDetails({ plot, geometry, requestedPlotNumber }: PlotDetails
                   as={Link}
                   variant="link"
                   className="text-link h-auto p-0 justify-start"
-                  href={`${projectHref(orgSlug, projectSlug, '/inventory')}?unit=${encodeURIComponent(unit.id)}`}
+                  href={
+                    siteOnly
+                      ? projectHref(orgSlug, projectSlug, `/site/${unit.id}`)
+                      : `${projectHref(orgSlug, projectSlug, '/inventory')}?unit=${encodeURIComponent(unit.id)}`
+                  }
                   data-qa="plot-unit-link"
                 >
                   {unit.unitNumber}
@@ -196,7 +208,12 @@ export function PlotDetails({ plot, geometry, requestedPlotNumber }: PlotDetails
                 {unit.sqft === null ? '-' : numberIntl.format(unit.sqft)}
               </Field>
               <Field label="Buildup sq.ft">{numberIntl.format(Number(unit.buildupSqft))}</Field>
-              <Field label="Total price">{formatMoney(unit.price)}</Field>
+              {/* Money is withheld for site-only roles (2026-11-08). Rendering
+                  "Total price: -" would look like a data gap; the row simply is
+                  not part of their view of the villa. */}
+              {unit.price === null ? null : (
+                <Field label="Total price">{formatMoney(unit.price)}</Field>
+              )}
               <Field label="Phase">{unit.phaseName}</Field>
             </dl>
 

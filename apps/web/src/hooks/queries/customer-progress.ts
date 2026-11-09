@@ -4,6 +4,8 @@
 // The BFF catch-all proxies /api/bff/* (rule 7d: no per-route BFF files).
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+import type { ConstructionStage } from '@shadhil/api-types';
+
 import { api } from '@/apis/client';
 
 export type TimelinePhoto = {
@@ -15,6 +17,9 @@ export type TimelinePhoto = {
   filename: string;
   caption: string;
   takenAt: string;
+  /** Construction stage recorded with the capture, or null when unrecorded.
+   *  Null is "not recorded", never "not started". */
+  stage: ConstructionStage | null;
   createdAt: string;
   creatorName: string | null;
   creatorIsPhotoLead: boolean | null;
@@ -49,9 +54,24 @@ export type UploadPhotoInput = {
   filename: string;
   takenAt: string;
   clientDeviceHint?: 'camera' | 'gallery';
+  /** The engineer's one-line note (2026-11-08). Omitted when empty, so the
+   *  server falls back to its generated caption. */
+  caption?: string;
+  /** Construction stage recorded with this capture. Omitted when unset. */
+  stage?: ConstructionStage;
 };
 
 const PHOTOS_KEY = ['customer-progress', 'photos'] as const;
+
+/**
+ * A unit row carries `lastPhotoStage` / `lastPhotoAt` / `photoCount`, all derived
+ * from its newest photo. Any photo write must refresh the unit too (single and
+ * list keys), or the header badge keeps showing "Stage not set" until a reload.
+ */
+function invalidateUnitRows(qc: ReturnType<typeof useQueryClient>, unitId: string): void {
+  void qc.invalidateQueries({ queryKey: ['inventory', 'unit', unitId] });
+  void qc.invalidateQueries({ queryKey: ['inventory', 'units'] });
+}
 
 export function useUnitPhotos(unitId: string | null) {
   return useInfiniteQuery({
@@ -82,6 +102,7 @@ export function useUploadUnitPhoto(unitId: string) {
       // Refresh every page of this unit's timeline + the first page the tab
       // reads back with after success.
       void qc.invalidateQueries({ queryKey: PHOTOS_KEY });
+      invalidateUnitRows(qc, unitId);
     },
   });
 }
@@ -110,20 +131,23 @@ export function useSetPhotoLead(projectId: string) {
 // rather than guessing from the role - and a hidden control is a courtesy, not
 // the wall.
 
-/** PATCH /customer-progress/photos/:photoId - caption only. */
+/** PATCH /customer-progress/photos/:photoId - caption and/or stage, partial. */
 export function useUpdatePhoto(unitId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ photoId, caption }: { photoId: string; caption: string }) =>
+    // PARTIAL by design: a stage-only correction must not clear the caption,
+    // and a caption-only correction must not clear the stage.
+    mutationFn: ({ photoId, caption, stage }: { photoId: string; caption?: string; stage?: ConstructionStage }) =>
       api<TimelinePhoto>(`/customer-progress/photos/${photoId}`, {
         method: 'PATCH',
-        json: { caption },
+        json: { ...(caption !== undefined ? { caption } : {}), ...(stage !== undefined ? { stage } : {}) },
       }),
     onSuccess: () => {
       // The response carries the corrected DTO, but the row's place in the
       // month sections is derived from the whole loaded set, so a refetch is
       // the honest invalidation. gcTime is 0 on this query, so this is cheap.
       void qc.invalidateQueries({ queryKey: [...PHOTOS_KEY, unitId] });
+      invalidateUnitRows(qc, unitId);
     },
   });
 }
@@ -138,6 +162,7 @@ export function useDeletePhoto(unitId: string) {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [...PHOTOS_KEY, unitId] });
+      invalidateUnitRows(qc, unitId);
     },
   });
 }
