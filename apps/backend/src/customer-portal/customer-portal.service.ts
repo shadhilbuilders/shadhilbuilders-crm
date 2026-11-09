@@ -26,6 +26,18 @@ export interface PortalUnitDto {
   /** Phase of the newest photo; null until the first photo lands. */
   currentPhaseName: string | null;
   photoCount: number;
+  /** Staff-entered handover estimate (ISO), or null when not set. */
+  expectedHandoverDate: string | null;
+  /** The project's buyer-visible checkpoints, in staff-defined order. */
+  milestones: PortalMilestoneDto[];
+}
+
+export interface PortalMilestoneDto {
+  id: string;
+  name: string;
+  targetDate: string | null;
+  /** Null until staff mark the milestone reached. */
+  completedAt: string | null;
 }
 
 export interface PortalMeDto {
@@ -92,6 +104,7 @@ export class CustomerPortalService {
             select: {
               id: true,
               unitNumber: true,
+              expectedHandoverDate: true,
               phase: { select: { project: { select: { id: true, name: true } } } },
             },
           },
@@ -102,7 +115,8 @@ export class CustomerPortalService {
       const unitIds = [...byId.keys()];
       if (unitIds.length === 0) return { customerName: name, units: [] };
 
-      const [counts, newest] = await Promise.all([
+      const projectIds = [...new Set([...byId.values()].map((u) => u.phase.project.id))];
+      const [counts, newest, milestoneRows] = await Promise.all([
         tx.progressPhoto.groupBy({
           by: ['unitId'],
           where: { unitId: { in: unitIds }, organizationId: actor.organizationId },
@@ -114,7 +128,23 @@ export class CustomerPortalService {
           distinct: ['unitId'],
           select: { unitId: true, phase: { select: { name: true } } },
         }),
+        tx.projectMilestone.findMany({
+          where: { projectId: { in: projectIds }, organizationId: actor.organizationId },
+          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          select: { id: true, projectId: true, name: true, targetDate: true, completedAt: true },
+        }),
       ]);
+      const milestonesByProject = new Map<string, PortalMilestoneDto[]>();
+      for (const m of milestoneRows) {
+        const list = milestonesByProject.get(m.projectId) ?? [];
+        list.push({
+          id: m.id,
+          name: m.name,
+          targetDate: m.targetDate?.toISOString() ?? null,
+          completedAt: m.completedAt?.toISOString() ?? null,
+        });
+        milestonesByProject.set(m.projectId, list);
+      }
       const countByUnit = new Map(counts.map((c) => [c.unitId, c._count._all] as const));
       const phaseByUnit = new Map(newest.map((n) => [n.unitId, n.phase?.name ?? null] as const));
 
@@ -126,6 +156,8 @@ export class CustomerPortalService {
           projectId: u.phase.project.id,
           currentPhaseName: phaseByUnit.get(u.id) ?? null,
           photoCount: countByUnit.get(u.id) ?? 0,
+          expectedHandoverDate: u.expectedHandoverDate?.toISOString() ?? null,
+          milestones: milestonesByProject.get(u.phase.project.id) ?? [],
         }))
         .sort(compareUnits);
       return { customerName: name, units };

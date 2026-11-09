@@ -89,6 +89,13 @@ const unitEditSchema = z.object({
     }),
   // DERIVED display field (buildup x rate); never submitted.
   price: z.string().optional(),
+  // Buyer-visible handover estimate, a calendar day (YYYY-MM-DD). Blank clears it.
+  expectedHandoverDate: z
+    .string()
+    .optional()
+    .refine((v) => v === undefined || v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v), {
+      message: 'Pick a valid date',
+    }),
   // Status is a string in the form (the Select holds the raw enum value);
   // the payload casts it to InventoryManualStatus on submit. T-INV-SYNC:
   // only the off-pipeline marks are offered - HOLD/TOKEN are set by bookings,
@@ -110,6 +117,8 @@ export type UnitEditTarget = {
   pricePerSqft: string;
   price: string;
   status: string;
+  /** ISO instant of the buyer-visible handover estimate, or null when unset. */
+  expectedHandoverDate?: string | null;
 };
 
 export type UnitEditDialogProps = {
@@ -119,6 +128,16 @@ export type UnitEditDialogProps = {
   onSaved?: () => void;
   projectId: string | null;
 };
+
+/** ISO instant -> the `YYYY-MM-DD` a date input holds ('' when unset). */
+export function toDateInput(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 10) : '';
+}
+
+/** `YYYY-MM-DD` -> ISO instant at UTC midnight; blank clears (null). */
+export function fromDateInput(day: string | undefined): string | null {
+  return day && day.length > 0 ? `${day}T00:00:00.000Z` : null;
+}
 
 const STATUS_OPTIONS = INVENTORY_MANUAL_STATUSES.map((value) => ({
   value,
@@ -268,6 +287,14 @@ export function UnitEditFormBody({
             'data-qa': 'unit-edit-price',
           },
         },
+        {
+          type: 'input',
+          name: 'expectedHandoverDate',
+          label: 'Expected handover',
+          inputType: 'date',
+          description: 'Shown to the buyer in their portal. Leave blank if not decided.',
+          inputProps: { 'data-qa': 'unit-edit-handover' },
+        },
         // A booking-owned status cannot be chosen, so it is shown read-only
         // instead of as a picker pre-selected with a value it does not offer.
         derivedStatus
@@ -363,6 +390,7 @@ export function UnitEditDialog({
       buildupSqft: unit?.buildupSqft ?? '',
       pricePerSqft: unit?.pricePerSqft ?? '',
       price: unit?.price ?? '',
+      expectedHandoverDate: toDateInput(unit?.expectedHandoverDate),
       status: unit?.status ?? 'AVAILABLE',
     },
     mode: 'onSubmit',
@@ -381,6 +409,7 @@ export function UnitEditDialog({
         buildupSqft: unit.buildupSqft,
         pricePerSqft: unit.pricePerSqft,
         price: unit.price,
+        expectedHandoverDate: toDateInput(unit.expectedHandoverDate),
         status: unit.status,
       });
     }
@@ -430,6 +459,7 @@ export function UnitEditDialog({
       bhk,
       buildupSqft,
       pricePerSqft,
+      expectedHandoverDate: fromDateInput(values.expectedHandoverDate),
       ...(values.facing && values.facing.trim().length > 0
         ? { facing: values.facing.trim() }
         : { facing: null }),

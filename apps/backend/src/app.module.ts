@@ -32,6 +32,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { PublicLeadsModule } from './public-leads/public-leads.module';
 import { CustomerProgressModule } from './customer-progress/customer-progress.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
+import { MilestonesModule } from './milestones/milestones.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -113,6 +114,7 @@ import { StorageModule } from './storage/storage.module';
     // Customer portal (issue #8 slice 2): the buyer's read-only photo
     // timeline + the PortalNotifier push. Registers /api/customer-portal/*.
     CustomerPortalModule,
+    MilestonesModule,
     // T-E2b systematic-failure alert: Telegram channel send when
     // the outbound cron sees N consecutive all-failed ticks.
     // @Global() so WhatsappModule's OutboundCronService can inject

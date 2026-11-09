@@ -32,6 +32,7 @@ function source(overrides: Partial<Omit<UnitRowSource, 'plotNumber'>> = {}): Uni
     pricePerSqft: new Prisma.Decimal('4000.00'),
     price: new Prisma.Decimal('5800000.00'),
     status: 'SOLD',
+    expectedHandoverDate: null,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     phase: { name: 'CMDA Plots', projectId: 'proj-1', project: { name: 'Demo Villas' } },
     // No photos by default: the common case for a freshly created villa.
@@ -42,6 +43,14 @@ function source(overrides: Partial<Omit<UnitRowSource, 'plotNumber'>> = {}): Uni
 }
 
 describe('toUnitRow', () => {
+  it('maps the handover date to an ISO string, and null to null (never a guess)', () => {
+    expect(toUnitRow(source(), true).expectedHandoverDate).toBeNull();
+    const withDate = source({ expectedHandoverDate: new Date('2027-06-30T00:00:00.000Z') });
+    expect(toUnitRow(withDate, true).expectedHandoverDate).toBe('2027-06-30T00:00:00.000Z');
+    // The redacted (site-only) shape carries it too: it is not money.
+    expect(toUnitRow(withDate, false).expectedHandoverDate).toBe('2027-06-30T00:00:00.000Z');
+  });
+
   it('produces a row the shared wire schema accepts', () => {
     const row = toUnitRow(source(), true);
     expect(() => UnitRowSchema.parse(row)).not.toThrow();

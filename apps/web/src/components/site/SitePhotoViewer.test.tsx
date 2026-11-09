@@ -1,4 +1,4 @@
-// SitePhotoViewer + PortalStageStepper (2026-11-08).
+// SitePhotoViewer + PortalStageStepper (now PortalJourney) (2026-11-08).
 //
 // protects= the viewer renders nothing when closed, shows the note / full date /
 //           uploader when open, exposes 44px prev / next / close controls with
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import type { TimelinePhoto } from '@/hooks/queries/customer-progress';
 import { CONSTRUCTION_STAGE_ORDER } from '@/lib/labels';
 
-import { PortalStageStepper } from '@/components/portal/portal-stage-stepper';
+import { PortalJourney as PortalStageStepper } from '@/components/portal/portal-journey';
 import { fullCaptureTime, SitePhotoViewer, SitePhotoViewerPanel } from './SitePhotoViewer';
 
 const photo: TimelinePhoto = {

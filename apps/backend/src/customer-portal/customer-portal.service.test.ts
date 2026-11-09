@@ -76,6 +76,7 @@ function baseTx(overrides: Record<string, unknown> = {}) {
     },
     progressPhoto: { findMany, groupBy: vi.fn(async () => []) },
     unit: { findFirst: vi.fn(async () => ({ id: 'unit-1', unitNumber: 'A-1', phase: { projectId: 'p-1' } })) },
+    projectMilestone: { findMany: vi.fn(async () => []) },
     // The staff timeline reads PHOTO_LEAD to compute the advisory canMutate
     // flag (slice 4). A buyer's context has no ProjectStaffRole row, and the
     // parity test compares the two responses, so this must return null.
@@ -137,8 +138,13 @@ describe('CustomerPortalService authorization (4 exact assertions)', () => {
 });
 
 describe('me', () => {
-  const unitRow = (id: string, unitNumber: string, project: string) => ({
-    unit: { id, unitNumber, phase: { project: { id: `p-${project}`, name: project } } },
+  const unitRow = (id: string, unitNumber: string, project: string, handover: Date | null = null) => ({
+    unit: {
+      id,
+      unitNumber,
+      expectedHandoverDate: handover,
+      phase: { project: { id: `p-${project}`, name: project } },
+    },
   });
 
   it('sorts by project name then natural unit number, with count + current phase', async () => {
@@ -167,8 +173,46 @@ describe('me', () => {
       projectId: 'p-Metro Heights',
       currentPhaseName: 'Plinth',
       photoCount: 7,
+      expectedHandoverDate: null,
+      milestones: [],
     });
     expect(res.units[2]).toMatchObject({ currentPhaseName: null, photoCount: 0 });
+  });
+
+  it('carries the handover date and only the unit\'s own project milestones, in staff order', async () => {
+    const tx = baseTx({
+      booking: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(async () => [
+          unitRow('u1', 'A-1', 'Metro Heights', new Date(Date.UTC(2027, 5, 30))),
+          unitRow('u2', 'B-1', 'Aster Court'),
+        ]),
+      },
+      projectMilestone: {
+        findMany: vi.fn(async () => [
+          { id: 'm1', projectId: 'p-Metro Heights', name: 'Slab cast', targetDate: new Date(Date.UTC(2027, 0, 15)), completedAt: new Date(Date.UTC(2027, 0, 10)) },
+          { id: 'm2', projectId: 'p-Metro Heights', name: 'Handover', targetDate: null, completedAt: null },
+        ]),
+      },
+    });
+    setTx(tx);
+    const res = await new CustomerPortalService(prismaStub).me(actor('CUSTOMER'));
+    const metro = res.units.find((u) => u.unitId === 'u1')!;
+    expect(metro.expectedHandoverDate).toBe('2027-06-30T00:00:00.000Z');
+    expect(metro.milestones).toEqual([
+      { id: 'm1', name: 'Slab cast', targetDate: '2027-01-15T00:00:00.000Z', completedAt: '2027-01-10T00:00:00.000Z' },
+      { id: 'm2', name: 'Handover', targetDate: null, completedAt: null },
+    ]);
+    // Aster Court has no milestones and no handover date: both are empty, never guessed.
+    const aster = res.units.find((u) => u.unitId === 'u2')!;
+    expect(aster.expectedHandoverDate).toBeNull();
+    expect(aster.milestones).toEqual([]);
+    expect(tx.projectMilestone.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: { in: expect.arrayContaining(['p-Metro Heights', 'p-Aster Court']) }, organizationId: ORG },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      }),
+    );
   });
 
   it('returns an empty list (not an error) for a provisioned customer with no APPROVED booking', async () => {

@@ -15,6 +15,8 @@ const unit = (unitId: string, unitNumber: string): PortalUnit => ({
   projectName: 'Metro Heights',
   projectId: 'p1',
   currentPhaseName: null,
+  expectedHandoverDate: null,
+  milestones: [],
   photoCount: 0,
 });
 

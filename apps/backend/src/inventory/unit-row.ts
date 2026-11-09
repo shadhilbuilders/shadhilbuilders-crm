@@ -40,6 +40,7 @@ export const UNIT_ROW_SELECT = {
   pricePerSqft: true,
   price: true,
   status: true,
+  expectedHandoverDate: true,
   createdAt: true,
   phase: {
     select: { name: true, projectId: true, project: { select: { name: true } } },
@@ -74,6 +75,7 @@ export const UNIT_ROW_SELECT_NO_MONEY = {
   sqft: true,
   buildupSqft: true,
   status: true,
+  expectedHandoverDate: true,
   createdAt: true,
   phase: {
     select: { name: true, projectId: true, project: { select: { name: true } } },
@@ -145,6 +147,7 @@ export function toUnitRow(
     // Derived from the newest photo, never denormalized. Null means the newest
     // capture recorded no stage - every surface then says "Stage not set".
     lastPhotoStage: newestPhoto?.stage ?? null,
+    expectedHandoverDate: row.expectedHandoverDate?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 

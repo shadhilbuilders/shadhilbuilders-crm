@@ -58,6 +58,18 @@ const PHOTO_SELF_ID = 'cq9kvh1p2m7n3r8s4t5u6vwe'; // eng A's own photo
 const PHOTO_OTHER_ID = 'cq9kvh1p2m7n3r8s4t5u6vwf'; // eng B's photo (same unit - cross-project probe)
 const PHOTO_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vwg'; // photo createdBy eng-A, edited by photo-lead
 
+// DELETE-arm fixtures (2026-11-09). These MUST NOT share the `...vw*` namespace
+// the rest of this file reserves for users/photos/units: the values used to be
+// ...vwh/vwi/vwj/vwk, and `...vwi` is UNIT_A_ID while `...vwj` already had a
+// ProgressPhoto row from an earlier test in this very file. That collided on
+// ProgressPhoto_pkey in createMany below and failed the suite before it ever
+// reached the delete assertions. `...vx*` is reserved for this test only.
+const D_SELF_ID = 'cq9kvh1p2m7n3r8s4t5u6vwx';
+const D_LEAD_ID = 'cq9kvh1p2m7n3r8s4t5u6vwy';
+const D_NONE_ID = 'cq9kvh1p2m7n3r8s4t5u6vwz';
+const D_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vt0';
+const DELETE_TEST_PHOTO_IDS = [D_SELF_ID, D_LEAD_ID, D_NONE_ID, D_ADMIN_ID] as const;
+
 const UNIT_A_ID = 'cq9kvh1p2m7n3r8s4t5u6vwi'; // unit on project A (PA-ENG-001, fixture above)
 
 // ── Fixture ────────────────────────────────────────────────────────────────
@@ -223,8 +235,15 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
   afterAll(async () => {
     // Photos are the only rows this suite creates beyond the shared fixture
     // world's pre-existing rows (units/users/teams are shared and stay).
+    // DELETE_TEST_PHOTO_IDS is included (2026-11-09): those four rows used to
+    // leak, because the test that creates them deletes only three of the four
+    // (the non-owner case is a deliberate 0-row no-op) and afterAll did not
+    // list them. Left behind, they collided with the next run's createMany on
+    // ProgressPhoto_pkey.
     await adminPrisma.progressPhoto.deleteMany({
-      where: { id: { in: [PHOTO_SELF_ID, PHOTO_OTHER_ID, PHOTO_ADMIN_ID] } },
+      where: {
+        id: { in: [PHOTO_SELF_ID, PHOTO_OTHER_ID, PHOTO_ADMIN_ID, ...DELETE_TEST_PHOTO_IDS] },
+      },
     });
     await adminPrisma.projectStaffRole.deleteMany({
       where: { userId: { in: [PL_A_ID] } },
@@ -397,45 +416,44 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
       takenAt: new Date('2026-10-26T12:00:00Z'),
       createdBy,
     });
-    const D_SELF = 'cq9kvh1p2m7n3r8s4t5u6vwh';
-    const D_LEAD = 'cq9kvh1p2m7n3r8s4t5u6vwi';
-    const D_NONE = 'cq9kvh1p2m7n3r8s4t5u6vwj';
-    const D_ADMIN = 'cq9kvh1p2m7n3r8s4t5u6vwk';
+    // Ids come from the module constants above so they can never drift back
+    // into the `...vw*` namespace this file reserves for other fixtures, and so
+    // afterAll can clean exactly the rows this test creates.
     await adminPrisma.progressPhoto.createMany({
       data: [
-        mk(D_SELF, UNIT_A_ID, ENG_A_ID),
-        mk(D_LEAD, UNIT_A_ID, ENG_A_ID),
-        mk(D_NONE, UNIT_A_ID, ENG_A_ID),
-        mk(D_ADMIN, UNIT_A_ID, ENG_A_ID),
+        mk(D_SELF_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_LEAD_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_NONE_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_ADMIN_ID, UNIT_A_ID, ENG_A_ID),
       ],
     });
 
     // Creator arm.
     const own = await withRlsContext(prisma, engA, async (tx) =>
-      tx.progressPhoto.deleteMany({ where: { id: D_SELF } }),
+      tx.progressPhoto.deleteMany({ where: { id: D_SELF_ID } }),
     );
     expect(own.count).toBe(1);
 
     // Photo-lead arm (plA leads project A, did not create this photo).
     const asLead = await withRlsContext(prisma, plA, async (tx) =>
-      tx.progressPhoto.deleteMany({ where: { id: D_LEAD } }),
+      tx.progressPhoto.deleteMany({ where: { id: D_LEAD_ID } }),
     );
     expect(asLead.count).toBe(1);
 
     // Non-owner: 0 rows, no throw (deleteMany reports the count).
     const denied = await withRlsContext(prisma, engN, async (tx) =>
-      tx.progressPhoto.deleteMany({ where: { id: D_NONE } }),
+      tx.progressPhoto.deleteMany({ where: { id: D_NONE_ID } }),
     );
     expect(denied.count).toBe(0);
 
     // ADMIN org-wide.
     const asAdmin = await withRlsContext(prisma, admin, async (tx) =>
-      tx.progressPhoto.deleteMany({ where: { id: D_ADMIN } }),
+      tx.progressPhoto.deleteMany({ where: { id: D_ADMIN_ID } }),
     );
     expect(asAdmin.count).toBe(1);
 
     // The denied row survived.
-    const survivor = await adminPrisma.progressPhoto.findUnique({ where: { id: D_NONE } });
+    const survivor = await adminPrisma.progressPhoto.findUnique({ where: { id: D_NONE_ID } });
     expect(survivor).not.toBeNull();
   });
 

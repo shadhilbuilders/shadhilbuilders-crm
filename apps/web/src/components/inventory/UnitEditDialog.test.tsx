@@ -18,7 +18,7 @@ vi.mock('@/hooks/queries/inventory', () => ({
   })),
 }));
 
-import { UnitEditFormBody } from './UnitEditDialog';
+import { UnitEditFormBody, fromDateInput, toDateInput } from './UnitEditDialog';
 
 const UNIT = {
   id: 'unit-1',
@@ -141,5 +141,22 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     expect(html).toMatch(/data-qa="form-field-status"/);
     expect(html).not.toMatch(/data-qa="unit-edit-status-derived"/);
     expect(html).toMatch(/name="status"/);
+  });
+});
+
+describe('handover date field', () => {
+  it('renders the buyer-visible handover date input', () => {
+    const html = renderToStaticMarkup(<TestForm />);
+    expect(html).toContain('Expected handover');
+    expect(html).toMatch(/<input[^>]*type="date"[^>]*data-qa="unit-edit-handover"|<input[^>]*data-qa="unit-edit-handover"[^>]*type="date"/);
+  });
+
+  it('round-trips a calendar day without shifting it, and blank clears', () => {
+    expect(toDateInput('2027-06-30T00:00:00.000Z')).toBe('2027-06-30');
+    expect(toDateInput(null)).toBe('');
+    expect(toDateInput(undefined)).toBe('');
+    expect(fromDateInput('2027-06-30')).toBe('2027-06-30T00:00:00.000Z');
+    expect(fromDateInput('')).toBeNull();
+    expect(fromDateInput(undefined)).toBeNull();
   });
 });

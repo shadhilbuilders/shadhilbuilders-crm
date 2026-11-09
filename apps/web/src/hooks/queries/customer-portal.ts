@@ -9,6 +9,15 @@ import type { TimelinePhoto, TimelineResponse } from '@/hooks/queries/customer-p
 
 export type { TimelinePhoto, TimelineResponse };
 
+export type PortalMilestone = {
+  id: string;
+  name: string;
+  /** ISO datetime or null when no target was set. */
+  targetDate: string | null;
+  /** ISO datetime once reached; null while pending. */
+  completedAt: string | null;
+};
+
 export type PortalUnit = {
   unitId: string;
   unitNumber: string;
@@ -16,6 +25,9 @@ export type PortalUnit = {
   projectId: string;
   currentPhaseName: string | null;
   photoCount: number;
+  /** Staff-entered; null renders nothing (never an estimate). */
+  expectedHandoverDate: string | null;
+  milestones: PortalMilestone[];
 };
 
 export type PortalMe = {

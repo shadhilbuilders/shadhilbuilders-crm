@@ -1,8 +1,8 @@
-// PortalTimeline (issue #8 slice 2): the four states + the design contract.
+// PortalTimeline (phase-grouped story, 2026-11-09): the four states + the design contract.
 //
 // protects= loading/empty/error/data states render, rows are an ordered list
-//           inside month sections, ONLY the newest photo's phase chip is the
-//           green accent, a11y hooks exist (alt, chip aria-label, live region)
+//           inside phase sections, ONLY the newest photo's phase carries the
+//           "Current phase" badge, a11y hooks exist (alt, live region)
 //           and "load more" shows only when more exists;
 // fails_when= a state is missing, the accent leaks to older phases, alt text
 //           is empty, or load-more shows with no next page;
@@ -41,8 +41,6 @@ const photo = (
 const base: PortalTimelineProps = {
   photos: [],
   isLoading: false,
-  isError: false,
-  onRetry: () => undefined,
   hasMore: false,
   isLoadingMore: false,
   onLoadMore: () => undefined,
@@ -70,32 +68,36 @@ describe('PortalTimeline states', () => {
     expect(html).toContain("We&#x27;ll notify you when the first photo lands.");
   });
 
-  it('error: inline alert with a retry control', () => {
-    const html = render({ isError: true });
-    expect(html).toContain('role="alert"');
-    expect(html).toContain('data-qa="portal-load-retry"');
+  // 2026-11-09: the error state moved OUT of this component. A failed timeline
+  // means the hero photo and the journey ladder are both untrustworthy, so the
+  // page renders the shared PageError instead of this panel - rendering an error
+  // here left "First photos coming soon" sitting directly above a 500 screen.
+  it('owns no error state: a failed load is the page\u2019s job, not the list\u2019s', () => {
+    const html = render({ photos: [] });
+    expect(html).not.toContain('error-internal-server');
+    expect(html).not.toContain('portal-load-error');
+    expect(html).not.toContain('Internal Server Error');
   });
 
-  it('data: month sections each hold an ordered list of rows', () => {
+  it('data: phase sections each hold an ordered list of rows', () => {
     const html = render({ photos: DATA });
-    expect(html).toContain('November 2026');
-    expect(html).toContain('October 2026');
-    expect(html.match(/<section/g)).toHaveLength(2);
+    expect(html).toContain('Plinth');
+    expect(html).toContain('Foundation');
+    expect(html.match(/data-qa="portal-phase-group"/g)).toHaveLength(2);
     expect(html.match(/<ol/g)).toHaveLength(2);
     expect(html.match(/data-qa="portal-photo-row"/g)).toHaveLength(3);
-    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('2 photos');
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain('aria-live');
   });
 });
 
 describe('PortalTimeline design contract', () => {
-  it('only the newest photo phase is the success accent; older phases are muted', () => {
+  it('only the newest photo phase is badged "Current phase"', () => {
     const html = render({ photos: DATA });
-    const chips = html.match(/<[^>]*data-qa="portal-phase-chip"[^>]*>/g) ?? [];
-    expect(chips).toHaveLength(3);
-    expect(chips[0]).toContain('Phase: Plinth, current phase');
-    expect(chips[1]).toContain('aria-label="Phase: Foundation"');
-    expect(chips[2]).toContain('aria-label="Phase: Foundation"');
-    expect(html.match(/current phase/g)).toHaveLength(1);
+    expect(html.match(/data-qa="portal-current-chip"/g)).toHaveLength(1);
+    expect(html.match(/data-current="true"/g)).toHaveLength(1);
+    expect(html.indexOf('Current phase')).toBeLessThan(html.indexOf('Foundation'));
   });
 
   it('every image has non-empty alt; first two eager, the rest lazy', () => {
@@ -112,6 +114,19 @@ describe('PortalTimeline design contract', () => {
   it('shows "load more" only when another page exists', () => {
     expect(render({ photos: DATA, hasMore: true })).toContain('data-qa="portal-load-more"');
     expect(render({ photos: DATA, hasMore: false })).not.toContain('portal-load-more');
+  });
+
+  // 2026-11-09: the phase group now shows EVERY loaded photo. The page used to
+  // slice the newest one off to avoid repeating it, which also hid that photo
+  // from the record.
+  it('renders every photo it is given, with no cap per phase', () => {
+    const html = render({ photos: DATA });
+    expect(html.match(/data-qa="portal-photo-row"/g)).toHaveLength(3);
+
+    const many = Array.from({ length: 60 }, (_, i) =>
+      photo(`x${i}`, 'ph1', 'Foundation', `2026-10-${String((i % 28) + 1).padStart(2, '0')}T08:00:00Z`),
+    );
+    expect(render({ photos: many }).match(/data-qa="portal-photo-row"/g)).toHaveLength(60);
   });
 
   it('a deep-linked photo carries the single motion class; others do not', () => {

@@ -3,6 +3,11 @@
 // first-person-plural copy with a way to reach a human.
 //   not-linked : the login exists but no lead is attached (staff must link it)
 //   no-units   : linked, but no booking has been APPROVED yet
+//
+// REDESIGN (2026-11-09, second pass): the nested double-bezel frame is gone -
+// it was the same shape as the hero and every photo card, which is why the
+// page had no hierarchy. A ruled block on paper reads as a notice, which is
+// what these states are.
 import { Empty } from '@paalstack/react-ui';
 import { LuLock, LuPhone } from '@paalstack/react-icons/lu';
 
@@ -29,28 +34,30 @@ export function PortalLock({
   const copy = COPY[reason];
   const tel = officePhone ? officePhone.replace(/[^\d+]/g, '') : '';
   return (
-    <div data-qa="portal-lock" data-reason={reason} className="px-4 py-10">
-      <Empty
-        media={<LuLock className="size-full" />}
-        mediaVariant="icon"
-        title={copy.title}
-        description={copy.description}
-        content={
-          officePhone ? (
-            <a
-              href={`tel:${tel}`}
-              data-qa="portal-lock-phone"
-              className="border-border text-foreground inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-base font-medium"
-            >
-              <LuPhone className="size-4" aria-hidden="true" />
-              <span>Call the project office</span>
-              <span className="text-muted-foreground font-normal">{officePhone}</span>
-            </a>
-          ) : (
-            <p className="text-muted-foreground text-base">Please contact the project office.</p>
-          )
-        }
-      />
+    <div data-qa="portal-lock" data-reason={reason} className="mx-auto max-w-xl py-10 sm:py-16">
+      <div className="border-t-2 border-[var(--portal-navy)] pt-6">
+        <Empty
+          media={<LuLock className="size-full" />}
+          mediaVariant="icon"
+          title={copy.title}
+          description={copy.description}
+          content={
+            officePhone && tel.length > 0 ? (
+              <a
+                href={`tel:${tel}`}
+                data-qa="portal-lock-phone"
+                className="inline-flex min-h-11 flex-wrap items-center justify-center gap-2 rounded-full border border-[var(--portal-navy)] px-5 py-2 text-base font-medium text-[var(--portal-navy)] transition-colors duration-300 hover:bg-[var(--portal-navy)] hover:text-[var(--portal-paper)]"
+              >
+                <LuPhone className="size-4" aria-hidden="true" />
+                <span>Call the project office</span>
+                <span className="portal-figure font-normal opacity-70">{officePhone}</span>
+              </a>
+            ) : (
+              <p className="text-base text-[var(--portal-ink-2)]">Please contact the project office.</p>
+            )
+          }
+        />
+      </div>
     </div>
   );
 }

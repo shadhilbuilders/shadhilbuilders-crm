@@ -1,33 +1,38 @@
 'use client';
 
-// PortalTimeline (issue #8 slice 2): the buyer's construction-progress feed.
+// PortalTimeline: the buyer's photo record, grouped by construction phase.
 //
 // Presentational: state comes in as props so every state is renderable (and
-// testable) without a query client. Mirrors lead-timeline's four states:
-//   loading -> skeleton shaped like the list     error -> inline banner + retry
-//   empty   -> warm, forward-looking copy        data  -> rows (+ load more)
+// testable) without a query client:
+//   loading -> skeleton shaped like the ledger rows
+//   empty   -> warm, forward-looking copy
+//   data    -> phase sections of ledger rows (+ load more)
 //
-// Rows, not cards (design): one full-width photo, then phase chip + date.
-// ONE accent: green marks only the phase of the newest photo; every other
-// chip is neutral. Each month is a <section> with its own <h2> and <ol>, so
-// the page has a heading outline AND ordered-list semantics.
-import { Badge, Button, Empty } from '@paalstack/react-ui';
-import { LuCamera, LuRefreshCw } from '@paalstack/react-icons/lu';
+// NO ERROR STATE (2026-11-09, third pass). A failed timeline is not a failed
+// panel: the hero's photo and the journey ladder are BOTH derived from it, so
+// rendering an error here left the buyer reading "First photos coming soon"
+// directly above "Internal Server Error". The page now owns that case and
+// renders the shared PageError instead of this component at all, so the
+// `isError`/`error`/`onRetry` props were removed rather than left as dead code.
+//
+// SHOWS EVERY LOADED PHOTO (2026-11-09). The page no longer trims the newest
+// photo off the feed before handing it over - that slice existed to stop the
+// hero and the first row showing the same image, but it also hid that photo
+// from the record. The phase group is now the complete list of what has been
+// uploaded, and the duplicate concern is handled by the page (see its
+// `heroPhoto` comment). Pagination is UNCHANGED: `hasMore` / `onLoadMore`
+// still drive the explicit "Show earlier photos" control.
+import { Button, Empty } from '@paalstack/react-ui';
+import { LuCamera } from '@paalstack/react-icons/lu';
 
 import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 
-import { constructionStageLabel } from '@/lib/labels';
-
-import { formatDay, groupByMonth, photoAlt } from './portal-format';
-
-/** The first two images load eagerly (above the fold); the rest lazily. */
-const EAGER_IMAGES = 2;
+import { PortalPhaseGroup } from './portal-phase-group';
+import { groupByPhase } from './portal-progress';
 
 export type PortalTimelineProps = {
   photos: readonly TimelinePhoto[];
   isLoading: boolean;
-  isError: boolean;
-  onRetry: () => void;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
@@ -38,102 +43,26 @@ export type PortalTimelineProps = {
 
 function TimelineSkeleton() {
   return (
-    <div role="status" aria-busy="true" aria-label="Loading photos" data-qa="portal-skeleton" className="space-y-6">
+    <div role="status" aria-busy="true" aria-label="Loading photos" data-qa="portal-skeleton">
+      <div className="portal-rule-b pb-2.5">
+        <div className="h-5 w-40 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
+      </div>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="space-y-2">
-          <div className="bg-muted-soft aspect-[4/3] w-full animate-pulse rounded-lg" />
-          <div className="bg-muted-soft h-6 w-40 animate-pulse rounded-md" />
+        <div key={i} className="portal-hairline-b flex items-center gap-4 py-4">
+          <div className="size-[4.5rem] shrink-0 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-3/5 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
+            <div className="h-2.5 w-1/4 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function PhotoRow({
-  photo,
-  index,
-  current,
-  focused,
-  onOpen,
-}: {
-  photo: TimelinePhoto;
-  index: number;
-  current: boolean;
-  focused: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <li
-      id={`photo-${photo.id}`}
-      data-qa="portal-photo-row"
-      data-focused={focused ? 'true' : undefined}
-      className={focused ? 'animate-portal-focus' : undefined}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-haspopup="dialog"
-        data-qa="portal-photo-open"
-        className="bg-muted-soft block w-full overflow-hidden rounded-lg"
-      >
-        {/* Same-origin, cookie-authenticated BFF media URL: next/image's
-            optimizer would drop the session, so a plain <img> is correct
-            (same call as the staff Progress tab). */}
-        <img
-          src={photo.mediaUrl}
-          alt={photoAlt(photo)}
-          width={800}
-          height={600}
-          loading={index < EAGER_IMAGES ? 'eager' : 'lazy'}
-          decoding="async"
-          className="aspect-[4/3] w-full object-cover"
-          data-qa="portal-photo-img"
-        />
-      </button>
-      {/* THE NOTE IS THE CONTENT (2026-11-08). It used to exist only inside the
-          lightbox's dialog description, so a buyer had to tap a photo to read
-          the one sentence the engineer wrote for them. Empty captions are
-          skipped entirely - a blank line is noise, not a note. */}
-      {photo.caption.trim().length > 0 ? (
-        <p
-          className="text-foreground mt-2 line-clamp-2 text-base"
-          data-qa="portal-photo-caption"
-        >
-          {photo.caption}
-        </p>
-      ) : null}
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        {photo.phaseName !== null ? (
-          <Badge
-            variant={current ? 'success' : 'muted'}
-            size="lg"
-            aria-label={`Phase: ${photo.phaseName}${current ? ', current phase' : ''}`}
-            data-qa="portal-phase-chip"
-          >
-            {photo.phaseName}
-          </Badge>
-        ) : null}
-        <time dateTime={photo.takenAt} className="text-muted-foreground text-base" data-qa="portal-photo-date">
-          {formatDay(photo.takenAt)}
-        </time>
-        {/* Per-photo stage, small and muted. Omitted when the capture recorded
-            none - "Stage not set" belongs on the unit header, not repeated on
-            every row of an old feed. */}
-        {photo.stage !== null ? (
-          <span className="text-muted-foreground text-sm" data-qa="portal-photo-stage">
-            {constructionStageLabel(photo.stage)}
-          </span>
-        ) : null}
-      </div>
-    </li>
-  );
-}
-
 export function PortalTimeline({
   photos,
   isLoading,
-  isError,
-  onRetry,
   hasMore,
   isLoadingMore,
   onLoadMore,
@@ -141,21 +70,6 @@ export function PortalTimeline({
   focusedPhotoId = null,
 }: PortalTimelineProps) {
   if (isLoading) return <TimelineSkeleton />;
-
-  if (isError) {
-    return (
-      <div
-        role="alert"
-        data-qa="portal-load-error"
-        className="text-destructive bg-destructive-soft flex items-center gap-3 rounded-lg px-4 py-3 text-base"
-      >
-        <span className="flex-1">We could not load your photos.</span>
-        <Button type="button" variant="outline" size="lg" className="min-h-11" onClick={onRetry} data-qa="portal-load-retry">
-          <LuRefreshCw className="size-4" aria-hidden="true" /> Try again
-        </Button>
-      </div>
-    );
-  }
 
   if (photos.length === 0) {
     return (
@@ -170,42 +84,36 @@ export function PortalTimeline({
     );
   }
 
-  const newest = photos[0];
-  const currentPhaseId = newest?.phaseId ?? null;
-  const groups = groupByMonth(photos);
-  let index = 0;
+  const groups = groupByPhase(photos);
+  const newestPhaseId = photos[0]?.phaseId ?? null;
+  // Prefix sums: where each group's first photo sits in the whole feed.
+  const starts = groups.map((_, i) =>
+    groups.slice(0, i).reduce((sum, g) => sum + g.photos.length, 0),
+  );
 
   return (
-    <div aria-live="polite" data-qa="portal-timeline" className="space-y-8">
-      {groups.map((group) => (
-        <section key={group.key} aria-labelledby={`month-${group.key}`} data-qa="portal-month">
-          <h2 id={`month-${group.key}`} className="text-muted-foreground mb-3 text-base font-semibold">
-            {group.label}
-          </h2>
-          <ol className="space-y-6">
-            {group.photos.map((photo) => {
-              const row = (
-                <PhotoRow
-                  key={photo.id}
-                  photo={photo}
-                  index={index}
-                  current={currentPhaseId !== null && photo.phaseId === currentPhaseId}
-                  focused={photo.id === focusedPhotoId}
-                  onOpen={() => onOpenPhoto(photo.id)}
-                />
-              );
-              index += 1;
-              return row;
-            })}
-          </ol>
-        </section>
+    <div data-qa="portal-timeline">
+      {/* A short status, not the whole feed: a live region around every row
+          would read a full page of photos aloud on "Show earlier photos". */}
+      <p role="status" className="sr-only">
+        {photos.length} {photos.length === 1 ? 'photo' : 'photos'} shown
+      </p>
+      {groups.map((group, i) => (
+        <PortalPhaseGroup
+          key={group.key}
+          group={group}
+          current={i === 0 && newestPhaseId !== null}
+          startIndex={starts[i] ?? 0}
+          focusedPhotoId={focusedPhotoId}
+          onOpenPhoto={onOpenPhoto}
+        />
       ))}
       {hasMore ? (
         <Button
           type="button"
           variant="outline"
           size="lg"
-          className="min-h-11 w-full"
+          className="mt-5 min-h-11 w-full rounded-full"
           onClick={onLoadMore}
           disabled={isLoadingMore}
           data-qa="portal-load-more"

@@ -52,6 +52,7 @@
 @import '@paalstack/react-ui/all.css';
 @import '@shadhil/ui-tokens/brand.css';
 @import 'tailwindcss';
+@import './portal.css';
 
 @source '../../node_modules/@paalstack/react-ui';
 

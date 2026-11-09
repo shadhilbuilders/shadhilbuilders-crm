@@ -1,0 +1,308 @@
+/* Customer portal theme (redesign 2026-11-09, pass 3): "Site Record".
+ *
+ * Direction: an editorial site dossier laid out on a strict 12-column grid. It
+ * replaces the previous "editorial luxury" pass which nested four different
+ * double-bezel cards and repeated one shape everywhere.
+ *
+ * SCOPE: every rule is behind `.portal-theme`. The portal layout puts that
+ * class on its own wrapper AND on <html> while mounted, because the photo
+ * viewer and dialogs portal into <body>, outside any wrapper. The staff app
+ * never gets the class, so its tokens are untouched.
+ *
+ * BRAND (sampled from public/brand/logo.png):
+ *   navy  #011B4D  -> 16.60:1 on white, carries all type
+ *   green #63B233  ->  2.64:1 on white, FILL ONLY. Never text, never a
+ *                     hairline. Where green must be legible we use
+ *                     --portal-green-ink #3F7419 (5.20:1).
+ * Type: Space Grotesk (portal-fonts.ts). White paper, so the hierarchy has to
+ * be carried by rules, spacing and scale - not by a tinted background.
+ */
+.portal-theme,
+html.portal-theme {
+  --background: #ffffff;
+  --foreground: #14120e;
+  --card: #ffffff;
+  --card-foreground: #14120e;
+  --popover: #ffffff;
+  --popover-foreground: #14120e;
+  --primary: #011b4d;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f0;
+  --secondary-foreground: #011b4d;
+  --muted: #f4f4f2;
+  --muted-soft: #f4f4f2;
+  --muted-foreground: #5c5a55;
+  --accent: #f2f2f0;
+  --accent-foreground: #011b4d;
+  --border: #e2e1dd;
+  --input: #c8c7c2;
+  --ring: #011b4d;
+  --success: #3f7419;
+  --success-foreground: #ffffff;
+  --success-soft-fg: #3f7419;
+  --destructive: #96271a;
+  --destructive-soft-fg: #96271a;
+
+  --portal-navy: #011b4d;
+  --portal-green: #63b233;
+  --portal-green-ink: #3f7419;
+  --portal-green-wash: #f0f7ea;
+  --portal-paper: #ffffff;
+  --portal-surface: #ffffff;
+  --portal-tint: #f7f7f5;
+  --portal-ink-2: #5c5a55;
+  --portal-hair: #dcdbd6;
+  --portal-rule: #011b4d;
+  --portal-shadow: 0 1px 2px rgb(1 27 77 / 0.05);
+  --portal-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  color-scheme: light;
+}
+
+.dark .portal-theme,
+.dark.portal-theme,
+html.portal-theme.dark {
+  --background: #14130f;
+  --foreground: #f2efe9;
+  --card: #1c1a16;
+  --card-foreground: #f2efe9;
+  --popover: #1c1a16;
+  --popover-foreground: #f2efe9;
+  --primary: #f2efe9;
+  --primary-foreground: #14130f;
+  --secondary: #26231d;
+  --secondary-foreground: #f2efe9;
+  --muted: #26231d;
+  --muted-soft: #26231d;
+  --muted-foreground: #b4afa4;
+  --accent: #26231d;
+  --accent-foreground: #f2efe9;
+  --border: #34302a;
+  --input: #43403a;
+  --ring: #f2efe9;
+  --success: #9bd06e;
+  --success-foreground: #14130f;
+  --success-soft-fg: #9bd06e;
+  --destructive: #ef8d7c;
+  --destructive-soft-fg: #ef8d7c;
+
+  --portal-navy: #f2efe9;
+  --portal-green: #63b233;
+  --portal-green-ink: #9bd06e;
+  --portal-green-wash: #22301a;
+  --portal-paper: #14130f;
+  --portal-surface: #1c1a16;
+  --portal-tint: #26231d;
+  --portal-ink-2: #b4afa4;
+  --portal-hair: #34302a;
+  --portal-rule: rgb(242 239 233 / 0.55);
+  --portal-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+/* Fonts: set by the portal layout through next/font. Space Grotesk. */
+.portal-theme {
+  font-family: var(--font-portal-sans, var(--font-inter, system-ui)), system-ui, sans-serif;
+  font-feature-settings: 'ss01' 1, 'ss02' 1;
+}
+/* Root layout sets the staff font on <body>; dialogs portal into <body>, so the
+   portal font must be re-inherited there while the portal is mounted. */
+html.portal-theme body {
+  font-family: inherit;
+}
+
+/* Display type. Space Grotesk has no optical-size axis, so large sizes are
+   tightened by hand: negative tracking plus a heavier weight, which is what
+   keeps a 76px line looking drawn rather than blown up. */
+.portal-display {
+  font-family: var(--font-portal-sans, var(--font-inter, system-ui)), system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  font-feature-settings: 'ss01' 1, 'ss02' 1;
+}
+
+/* The one figure style: every stage count and date lines up in a column. */
+.portal-figure {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv05' 1;
+}
+
+/* Micro label: 10.5px, wide tracking, no shouting. Used at most twice a
+   screen, which is the budget the previous design blew. */
+.portal-eyebrow {
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--portal-ink-2);
+}
+
+/* Rules. On white the border does the work a tinted background used to do, so
+   there are exactly two weights: a hairline for rows and a rule for section
+   heads. No shadows, no rounded card borders. */
+.portal-hairline-b {
+  border-bottom: 1px solid var(--portal-hair);
+}
+.portal-rule-b {
+  border-bottom: 2px solid var(--portal-rule);
+}
+/* A band that needs to sit apart from the page without a border. */
+.portal-tint {
+  background: var(--portal-tint);
+}
+
+/* Film grain on ONE fixed, non-interactive layer (never on a scroller). */
+.portal-grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark .portal-grain::before {
+  opacity: 0.045;
+  mix-blend-mode: screen;
+}
+
+/* Scroll reveal: opacity/transform only. The hook marks an element `hidden`
+ * ONLY when it is below the fold on mount, so SSR output and above-the-fold
+ * content are never invisible. */
+.portal-reveal {
+  transition:
+    opacity 620ms var(--portal-ease, ease-out),
+    transform 620ms var(--portal-ease, ease-out);
+}
+.portal-reveal[data-reveal='hidden'] {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+/* Stage ladder: nine equal segments, the current one full height. Pure CSS
+ * geometry so the nine columns cannot drift out of alignment. */
+.portal-ladder {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+}
+.portal-ladder > li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.portal-ladder .bar-wrap {
+  display: flex;
+  height: 34px;
+  align-items: flex-end;
+}
+.portal-ladder .bar {
+  display: block;
+  width: 100%;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--portal-hair);
+  transition:
+    height 500ms var(--portal-ease, ease-out),
+    background-color 500ms var(--portal-ease, ease-out);
+}
+.portal-ladder > li[data-state='done'] .bar {
+  height: 13px;
+  background: var(--portal-navy);
+}
+.portal-ladder > li[data-state='current'] .bar {
+  height: 34px;
+  background: var(--portal-green);
+}
+.portal-ladder .name {
+  display: none;
+  margin-top: 9px;
+  overflow: hidden;
+  font-size: 9.5px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--portal-ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.portal-ladder > li[data-state='done'] .name {
+  color: var(--portal-navy);
+}
+.portal-ladder > li[data-state='current'] .name {
+  font-weight: 600;
+  color: var(--portal-green-ink);
+}
+@media (min-width: 640px) {
+  .portal-ladder .name {
+    display: block;
+  }
+}
+
+/* Journey strip on mobile: snap scroller with soft edge fades. */
+.portal-snap-x {
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.portal-snap-x::-webkit-scrollbar {
+  display: none;
+}
+.portal-snap-x > * {
+  scroll-snap-align: center;
+}
+.portal-fade-x {
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+@keyframes portal-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+.portal-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--portal-green);
+  animation: portal-pulse 2.4s var(--portal-ease, ease-out) infinite;
+}
+
+@keyframes portal-focus {
+  from {
+    transform: translateY(6px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-reveal {
+    transition: none;
+  }
+  .portal-reveal[data-reveal='hidden'] {
+    opacity: 1;
+    transform: none;
+  }
+  .portal-pulse::after {
+    animation: none;
+    opacity: 0;
+  }
+  .portal-snap-x {
+    scroll-behavior: auto;
+  }
+  .portal-ladder > i {
+    transition: none;
+  }
+}

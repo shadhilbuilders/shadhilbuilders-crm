@@ -957,6 +957,11 @@ export class InventoryService {
         if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
         if (dto.facing !== undefined) data['facing'] = dto.facing;
         if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
+        // Buyer-visible handover estimate; `null` clears it.
+        if (dto.expectedHandoverDate !== undefined) {
+          data['expectedHandoverDate'] =
+            dto.expectedHandoverDate === null ? null : new Date(dto.expectedHandoverDate);
+        }
         // The unit total is DERIVED: recompute from the effective buildup/rate
         // whenever either changes. A client `price` is not part of the DTO.
         if (dto.buildupSqft !== undefined || dto.pricePerSqft !== undefined) {
@@ -1044,6 +1049,7 @@ export class InventoryService {
               pricePerSqft: existing.pricePerSqft.toString(),
               price: existing.price.toString(),
               status: existing.status,
+              expectedHandoverDate: existing.expectedHandoverDate?.toISOString() ?? null,
             },
             after: {
               unitNumber: updated.unitNumber,
@@ -1055,6 +1061,7 @@ export class InventoryService {
               pricePerSqft: updated.pricePerSqft.toString(),
               price: updated.price.toString(),
               status: updated.status,
+              expectedHandoverDate: updated.expectedHandoverDate?.toISOString() ?? null,
             },
             reason: `Unit ${updated.unitNumber} updated by ${actor.email} (${actor.role})`,
           },

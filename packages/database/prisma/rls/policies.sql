@@ -1783,6 +1783,16 @@ CREATE POLICY project_staff_role_delete_admin ON "ProjectStaffRole"
 -- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
 -- (creator_name, creator_is_photo_lead) for a photo the caller can read -
 -- visibility-predicated and fail-closed without GUCs (search_path locked).
+--
+-- BATCHED VARIANT (2026-11-09, migration 20261109180000): the timeline read
+-- path calls progress_photo_creator_labels(TEXT[]) instead - one call per page
+-- rather than one per photo. 50 sequential calls measured 117ms against 4ms
+-- batched. The visibility predicate, the org gate and the fail-closed GUC guard
+-- are unchanged and applied PER PHOTO; the only behavioural difference is that
+-- a photo the caller cannot read contributes NO ROW instead of a (NULL, NULL)
+-- row, which the mapper resolves to the same "Unknown" label.
+-- The single-id function above stays: progress-rls.test.ts pins it, and it is
+-- the readable reference for the access shape.
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- LeadFact (T-LEAD-FACTS, 2026-11-05)
@@ -2125,3 +2135,52 @@ CREATE OR REPLACE FUNCTION project_site_update_recipient_ids(p_project_id TEXT)
 
 REVOKE ALL ON FUNCTION project_site_update_recipient_ids(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION project_site_update_recipient_ids(TEXT) TO shadhil_app;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2026-11-09 (migration 20261109120000_portal_handover_milestones):
+-- ProjectMilestone. Buyer-visible project checkpoints. SELECT for staff,
+-- ENGINEER (own projects) and CUSTOMER (customer_can_read_project). WRITE is
+-- ADMIN only. No write arm for CUSTOMER or ENGINEER.
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE "ProjectMilestone" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProjectMilestone" FORCE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "ProjectMilestone" TO shadhil_app;
+
+CREATE POLICY project_milestone_select_staff ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY project_milestone_select_engineer ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "ProjectMilestone"."projectId"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY project_milestone_select_customer ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_project("projectId")
+  );
+
+CREATE POLICY project_milestone_write_admin ON "ProjectMilestone"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );

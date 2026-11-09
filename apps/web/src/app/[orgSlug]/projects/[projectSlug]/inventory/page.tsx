@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { UnitDetailSheet } from '@/components/inventory/UnitDetailSheet';
 import { UnitEditDialog } from '@/components/inventory/UnitEditDialog';
+import { MilestonesDialog } from '@/components/milestones/MilestonesDialog';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import {
   useDeleteUnit,
@@ -138,6 +139,7 @@ function InventoryGrid() {
   const rows = Array.isArray(unitsQuery.data) ? (unitsQuery.data as UnitRow[]) : [];
 
   const [detailTarget, setDetailTarget] = useState<UnitRow | null>(null);
+  const [milestonesOpen, setMilestonesOpen] = useState(false);
   // Deep link from the plot map: `?unit=<id>` opens that villa's sheet. The map
   // knows a unit ID, not the whole row, so the row is fetched here.
   const linkedUnit = useUnit(linkedUnitId);
@@ -399,6 +401,11 @@ function InventoryGrid() {
                 Phases
               </Button>
             ) : null}
+            {canEdit && projectId !== null ? (
+              <Button variant="outline" onClick={() => setMilestonesOpen(true)} data-qa="milestones-button">
+                Milestones
+              </Button>
+            ) : null}
             {canEdit ? (
               <Button as={Link} href={projectHref(orgSlug, projectSlug, '/inventory/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-unit-button">
                 New unit
@@ -562,6 +569,10 @@ function InventoryGrid() {
           tableContainerClassName="rounded-lg"
         />
       )}
+
+      {canEdit && projectId !== null && milestonesOpen ? (
+        <MilestonesDialog projectId={projectId} open={milestonesOpen} onOpenChange={setMilestonesOpen} />
+      ) : null}
 
       <UnitDetailSheet
         unit={detailTarget}

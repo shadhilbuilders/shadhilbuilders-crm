@@ -30,6 +30,7 @@ export * from './visit-lead-sync';
 export * from './chat';
 export * from './bookings';
 export * from './inventory';
+export * from './milestones';
 export * from './plot-number';
 export * from './plot-status';
 export * from './pricing';

@@ -115,6 +115,11 @@ interface CreatorLabel {
   creator_is_photo_lead: boolean | null;
 }
 
+/** A row of progress_photo_creator_labels(): the label plus which photo it is for. */
+interface CreatorLabelRow extends CreatorLabel {
+  photo_id: string;
+}
+
 /**
  * Who is asking, for the advisory `canMutate` flag. Mirrors the RLS predicate
  * on progress_photo_update / _delete; see the file header for why this is a
@@ -225,14 +230,27 @@ export async function readTimelinePage(
   const hasMore = args.onlyPhotoId === undefined && rows.length > PAGE_SIZE;
   const page = rows.slice(0, PAGE_SIZE);
 
-  const labelRows = await Promise.all(
-    page.map(async (r) => {
-      const found = await tx.$queryRaw<CreatorLabel[]>`
-        SELECT creator_name, creator_is_photo_lead FROM progress_photo_creator_label(${r.id})`;
-      return [r.id, found[0] ?? null] as const;
-    }),
+  // ONE query for the whole page (2026-11-09). This used to call
+  // progress_photo_creator_label() once per photo inside Promise.all - but
+  // $queryRaw in an interactive transaction runs on one pinned connection, so
+  // those 50 promises queued rather than parallelised. Measured: 117ms for 50
+  // sequential calls vs 4ms for the batched helper, with byte-identical output
+  // (verified row-for-row against the dev DB, 0 differences both directions).
+  //
+  // The helper applies the visibility predicate PER PHOTO, so an unreadable
+  // photo simply has no row here and reads "Unknown", exactly as before.
+  const labelRows =
+    page.length === 0
+      ? []
+      : await tx.$queryRaw<CreatorLabelRow[]>`
+          SELECT photo_id, creator_name, creator_is_photo_lead
+          FROM progress_photo_creator_labels(${page.map((r) => r.id)}::text[])`;
+  const labelById = new Map<string, CreatorLabel>(
+    labelRows.map((l) => [
+      l.photo_id,
+      { creator_name: l.creator_name, creator_is_photo_lead: l.creator_is_photo_lead },
+    ]),
   );
-  const labelById = new Map(labelRows);
 
   const photos = page.map((r) =>
     toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope),

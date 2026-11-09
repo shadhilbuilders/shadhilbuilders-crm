@@ -71,6 +71,12 @@ export const UnitRowSchema = z.object({
    * "Stage not set", never "Not started".
    */
   lastPhotoStage: ConstructionStageSchema.nullable(),
+  /**
+   * Staff-entered handover estimate shown to the buyer in the portal. Null means
+   * "not set" (the portal then renders nothing). Optional on the wire so older
+   * fixtures and clients keep parsing; the API always sends it.
+   */
+  expectedHandoverDate: z.iso.datetime({ offset: true }).nullable().optional(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type UnitRow = z.infer<typeof UnitRowSchema>;
@@ -167,6 +173,8 @@ export const UpdateUnitDtoSchema = z.object({
   sqft: z.number().int().positive().max(100_000).nullable().optional(),
   buildupSqft: z.number().positive().max(MAX_SQFT).optional(),
   pricePerSqft: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
+  // ISO instant; `null` clears the estimate. Omitting keeps the current value.
+  expectedHandoverDate: z.iso.datetime({ offset: true }).nullable().optional(),
   status: UpdateUnitStatusSchema.optional(),
 });
 export type UpdateUnitDto = z.infer<typeof UpdateUnitDtoSchema>;

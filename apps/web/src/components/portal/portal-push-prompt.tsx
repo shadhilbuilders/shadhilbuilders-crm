@@ -112,24 +112,24 @@ export function PortalPushPrompt() {
   return (
     <div
       data-qa="portal-push-prompt"
-      className="border-border bg-muted-soft relative rounded-lg border p-4"
+      className="relative mb-6 border-t border-[var(--portal-hair)] bg-[var(--portal-tint)] px-4 py-3.5"
     >
       <button
         type="button"
         onClick={handleDismiss}
         aria-label="Dismiss notification prompt"
         data-qa="portal-push-dismiss"
-        className="text-muted-foreground absolute right-2 top-2 flex size-11 items-center justify-center"
+        className="absolute top-1 right-1 flex size-11 items-center justify-center text-[var(--portal-ink-2)] hover:text-[var(--portal-navy)]"
       >
         <LuX className="size-4" aria-hidden="true" />
       </button>
       <div className="flex items-start gap-3 pr-8">
-        <LuBell className="text-foreground mt-0.5 size-5 flex-none" aria-hidden="true" />
+        <LuBell className="mt-0.5 size-5 flex-none text-[var(--portal-navy)]" aria-hidden="true" />
         <div className="space-y-1">
-          <p className="text-foreground text-base font-medium" data-qa="portal-push-title">
+          <p className="text-base font-medium text-[var(--portal-navy)]" data-qa="portal-push-title">
             Get a notification when new photos arrive
           </p>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-[var(--portal-ink-2)]">
             {blocked
               ? 'Notifications are blocked for this site. Open your browser\u2019s site settings, allow notifications, then try again.'
               : 'We will send one when the site team posts progress on your home.'}
@@ -139,7 +139,7 @@ export function PortalPushPrompt() {
       <Button
         type="button"
         size="lg"
-        className="mt-3 min-h-11 w-full"
+        className="mt-3 min-h-11 w-full rounded-full bg-[var(--portal-navy)] text-[var(--portal-paper)]"
         onClick={() => void handleEnable()}
         disabled={pending}
         data-qa="portal-push-enable"
