@@ -215,6 +215,9 @@ export class InventoryService {
           where['phase'] = { projectId: dto.projectId, project: { deletedAt: null } };
         }
         if (dto.phaseId !== undefined) where['phaseId'] = dto.phaseId;
+        if (dto.assignedEngineerId !== undefined) {
+          where['assignedEngineerId'] = dto.assignedEngineerId;
+        }
         if (dto.bhk !== undefined) where['bhk'] = dto.bhk;
         if (dto.facing !== undefined) {
           where['facing'] = { equals: dto.facing, mode: 'insensitive' };

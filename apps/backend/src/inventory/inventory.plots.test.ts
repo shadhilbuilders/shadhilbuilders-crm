@@ -76,6 +76,8 @@ function unit(
     price: new Prisma.Decimal(overrides.price ?? '5800000.00'),
     status,
     expectedHandoverDate: null,
+    assignedEngineerId: null,
+    assignedEngineer: null,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     phase: { name: 'CMDA Plots', projectId: 'proj-1', project: { name: 'Demo Villas' } },
     // Documentation state (2026-11-08): every unit surface sends these. A plot

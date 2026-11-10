@@ -181,8 +181,34 @@ export const SITE_EMPTY_COPY = {
     title: 'No villas on the board yet',
     body: 'Units appear here once they are added to a phase of this project.',
   },
+  /** Engineer with no villas assigned yet (2026-11-10). */
+  noAssignments: {
+    title: 'No villas assigned to you yet',
+    body: 'Your admin assigns villas to you. They will show up here, and you will get a notification.',
+  },
+  /** Manager whose engineers hold no villas. */
+  noManaged: {
+    title: 'No villas assigned to your engineers yet',
+    body: 'Villas appear here once an admin assigns them to engineers on your teams.',
+  },
   filtered: {
     title: 'Nothing in this filter.',
     body: 'Try another filter, or clear the search.',
   },
 } as const;
+
+/** Subtitle under "Site updates", per scope: says whose villas these are. */
+export const SITE_SCOPE_COPY = {
+  ASSIGNED: 'Villas assigned to you',
+  MANAGED: 'Villas assigned to engineers on your teams (read-only)',
+  ALL: 'Every villa in this project (read-only)',
+} as const;
+
+/** The empty-state copy for a scope (admin/owner see the generic one). */
+export function siteEmptyCopyFor(
+  scope: 'ASSIGNED' | 'MANAGED' | 'ALL' | null | undefined,
+): { title: string; body: string } {
+  if (scope === 'ASSIGNED') return SITE_EMPTY_COPY.noAssignments;
+  if (scope === 'MANAGED') return SITE_EMPTY_COPY.noManaged;
+  return SITE_EMPTY_COPY.noUnits;
+}

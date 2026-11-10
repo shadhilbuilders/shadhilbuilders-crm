@@ -46,6 +46,8 @@ import {
 import Link from 'next/link';
 import type { ComponentType, SVGProps } from 'react';
 
+import type { SiteUnitScope } from '@shadhil/api-types';
+
 import type { UnitRow } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
 import {
@@ -60,6 +62,8 @@ import {
   phaseAccent,
   phaseAccentClass,
   SITE_EMPTY_COPY,
+  SITE_SCOPE_COPY,
+  siteEmptyCopyFor,
   siteCounts,
   siteRowMeta,
   siteUnits,
@@ -83,6 +87,10 @@ export type SiteHomeProps = {
   capped: boolean;
   /** Injected so every boundary below is deterministic in tests. */
   now: Date;
+  /** Whose villas these are (server-decided). Null/undefined = unknown yet. */
+  scope?: SiteUnitScope | null;
+  /** False for read-only viewers (manager/admin/owner). */
+  canCapture?: boolean;
 };
 
 const FILTER_OPTIONS: { value: SiteFilter; label: string }[] = [
@@ -147,10 +155,13 @@ function UnitRowItem({
   unit,
   href,
   now,
+  showEngineer,
 }: {
   unit: UnitRow;
   href: string;
   now: Date;
+  /** Read-only viewers see which engineer owns the villa. */
+  showEngineer: boolean;
 }) {
   const state = unitPhotoState(unit, now);
   return (
@@ -170,6 +181,7 @@ function UnitRowItem({
           <ItemTitle className="tabular-nums">{unit.unitNumber}</ItemTitle>
           <ItemDescription data-qa="site-unit-staleness">
             {siteRowMeta(unit, now)}
+            {showEngineer ? ` · ${unit.assignedEngineerName ?? 'Unassigned'}` : ''}
           </ItemDescription>
         </ItemContent>
         <ItemActions>
@@ -212,6 +224,7 @@ export function SiteHome({
   onSearchChange,
   capped,
   now,
+  scope = null,
 }: SiteHomeProps) {
   const counts = siteCounts(rows, now);
   const visible = siteUnits(rows, { filter, search, now });
@@ -222,6 +235,11 @@ export function SiteHome({
       <header>
         <h1 className="text-2xl font-semibold">Site updates</h1>
         <p className="text-muted-foreground text-sm">{projectName}</p>
+        {scope !== null ? (
+          <p className="text-muted-foreground text-xs" data-qa="site-scope-line">
+            {SITE_SCOPE_COPY[scope]}
+          </p>
+        ) : null}
       </header>
 
       {isLoading ? (
@@ -312,8 +330,8 @@ export function SiteHome({
               <Empty
                 media={<LuCamera className="size-full" />}
                 mediaVariant="icon"
-                title={SITE_EMPTY_COPY.noUnits.title}
-                description={SITE_EMPTY_COPY.noUnits.body}
+                title={siteEmptyCopyFor(scope).title}
+                description={siteEmptyCopyFor(scope).body}
               />
             </div>
           ) : visible.length === 0 ? (
@@ -365,6 +383,7 @@ export function SiteHome({
                             unit={unit}
                             href={projectHref(orgSlug, projectSlug, `/site/${unit.id}`)}
                             now={now}
+                            showEngineer={scope === 'MANAGED' || scope === 'ALL'}
                           />
                         </li>
                       ))}

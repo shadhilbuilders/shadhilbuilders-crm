@@ -37,6 +37,7 @@ import {
 import { inventoryStatusBadgeVariant, labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
+import { useUsers } from '@/hooks/queries/users';
 import { useSessionUser, canManageProjectMembers, isAdminLike, isSiteRole } from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
@@ -106,6 +107,7 @@ function InventoryGrid() {
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
   const [bhkFilter, setBhkFilter] = useState<string>('ALL');
   const [facingFilter, setFacingFilter] = useState<string>('ALL');
+  const [engineerFilter, setEngineerFilter] = useState<string>('ALL');
   // T-INV-SEARCH: villa-number search. Same contract as the leads/users grids
   // (`admin/users`, `UserLeadsCard`): debounce 300ms so typing does not fire a
   // request per keystroke, and require >= 2 chars so a single character does
@@ -129,6 +131,7 @@ function InventoryGrid() {
     bhk: bhkFilter !== 'ALL' ? Number(bhkFilter) : undefined,
     facing: facingFilter !== 'ALL' ? facingFilter : undefined,
     status: statusFilter !== 'ALL' ? [statusFilter] : undefined,
+    assignedEngineerId: engineerFilter !== 'ALL' ? engineerFilter : undefined,
     search: serverSearch,
     limit: pageSize,
     offset: (page - 1) * pageSize,
@@ -165,6 +168,23 @@ function InventoryGrid() {
   // grid's queries (and the rupee columns behind them) are never requested.
   const siteRole = mounted && user !== null && isSiteRole(user.role);
 
+  // Assigned-engineer column + filter (2026-11-10): MANAGER/ADMIN/OWNER only.
+  // The manager's engineer list is team-scoped server-side (useUsers).
+  const showAssignment =
+    mounted && user !== null && (user.role === 'MANAGER' || isAdminLike(user.role));
+  const engineersQuery = useUsers({
+    role: ['ENGINEER'],
+    projectId: projectId ?? undefined,
+    limit: 100,
+  });
+  const engineerOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'All engineers' },
+      ...(engineersQuery.data?.rows ?? []).map((u) => ({ value: u.id, label: u.name })),
+    ],
+    [engineersQuery.data],
+  );
+
   /**
    * One entry point for "open this villa", branched by role.
    *
@@ -190,6 +210,7 @@ function InventoryGrid() {
     phaseFilter !== 'ALL' ||
     bhkFilter !== 'ALL' ||
     facingFilter !== 'ALL' ||
+    engineerFilter !== 'ALL' ||
     serverSearch !== undefined;
 
   // T-INV-STATUS-SELECT: 'ALL' is the no-filter sentinel, matching the
@@ -342,6 +363,25 @@ function InventoryGrid() {
         },
         enableSorting: false,
       },
+      ...(showAssignment
+        ? ([
+            {
+              id: 'assignedEngineer',
+              header: 'Assigned engineer',
+              cell: ({ row }) =>
+                row.original.assignedEngineerId ? (
+                  <span className="text-sm" data-qa="unit-assigned-engineer-name">
+                    {row.original.assignedEngineerName ?? 'Engineer'}
+                  </span>
+                ) : (
+                  <Badge variant="secondary" data-qa="unit-unassigned-badge">
+                    Unassigned
+                  </Badge>
+                ),
+              enableSorting: false,
+            },
+          ] satisfies DataTableColumnDef<UnitRow>[])
+        : []),
       {
         id: 'actions',
         header: () => <span className="sr-only">Actions</span>,
@@ -380,7 +420,7 @@ function InventoryGrid() {
         enableHiding: false,
       },
     ],
-    [canEdit, siteRole, openUnit],
+    [canEdit, siteRole, showAssignment, openUnit],
   );
 
   return (
@@ -528,6 +568,19 @@ function InventoryGrid() {
                 className="w-36"
                 data-qa="inventory-facing-filter"
               />
+              {showAssignment ? (
+                <Select
+                  value={engineerFilter}
+                  onValueChange={(next) => {
+                    setEngineerFilter(next ?? 'ALL');
+                    setPage(1);
+                  }}
+                  options={engineerOptions}
+                  placeholder="All engineers"
+                  className="w-44"
+                  data-qa="inventory-engineer-filter"
+                />
+              ) : null}
             </div>
           }
           showPagination

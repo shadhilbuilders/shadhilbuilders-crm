@@ -10,6 +10,8 @@
 // build error waiting for typed routes to catch it.
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   'progress.photo': 'Site photo',
+  'progress.assigned': 'Villa assigned',
+  'progress.unassigned': 'Villa reassigned',
   'lead.created': 'New lead',
   'lead.transition': 'Lead update',
   'lead.reassigned': 'Lead handed over',

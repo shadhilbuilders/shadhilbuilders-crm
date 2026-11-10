@@ -171,6 +171,25 @@ test.describe('inventory role gate - an ENGINEER never sees villa money', () => 
     });
   });
 
+  test('an ENGINEER sees only the villas assigned to them (seed: A-101..A-103, A-201)', async ({
+    page,
+  }) => {
+    // 2026-11-10: RLS narrowed the engineer from "every villa of a team-linked
+    // project" to "villas assigned to me". seed.ts assigns four Metro Heights
+    // villas to the seeded engineer and leaves A-104 / B-101 unassigned.
+    await page.goto(SITE_PATH, NAV);
+
+    const body = await fetchAsEngineer(page, '/api/bff/inventory/units?limit=200');
+    const numbers = unitRows(body).map((row) => String(row.unitNumber));
+
+    for (const assigned of ['A-101', 'A-102', 'A-103', 'A-201']) {
+      expect(numbers, `${assigned} is assigned and must be visible`).toContain(assigned);
+    }
+    for (const unassigned of ['A-104', 'A-202', 'B-101', 'C-101']) {
+      expect(numbers, `${unassigned} is unassigned and must be hidden`).not.toContain(unassigned);
+    }
+  });
+
   test('the plot map carries no prices and no deal for an ENGINEER', async ({ page }) => {
     // Fetch the payload from the SITE home, not `/plots`: this assertion is
     // about the API projection, and navigating to the map would spend the test's

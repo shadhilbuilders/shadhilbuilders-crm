@@ -18,11 +18,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api, qs } from '@/apis/client';
 
 import type {
+  AssignUnitsDto,
   ConstructionStage,
   CreatePhaseDto,
   CreateProjectOptionDto,
   CreateUnitDto,
   PlotStatusListResult,
+  SiteUnitsResult,
   UpdatePhaseDto,
   UpdateUnitDto,
 } from '@shadhil/api-types';
@@ -80,6 +82,9 @@ export type UnitRow = {
    * none. Mirrors the `ConstructionStage` Prisma enum.
    */
   lastPhotoStage: ConstructionStage | null;
+  /** The single site engineer this villa is assigned to (null = unassigned). */
+  assignedEngineerId?: string | null;
+  assignedEngineerName?: string | null;
   createdAt: string;
 };
 
@@ -112,6 +117,8 @@ export type InventoryFilter = {
   status?: string[];
   /** T-INV-SEARCH: villa-number search, server-side. */
   search?: string;
+  /** Only villas assigned to this engineer (MANAGER/ADMIN/OWNER view). */
+  assignedEngineerId?: string;
   limit?: number;
   offset?: number;
 };
@@ -127,6 +134,7 @@ export function useInventoryUnits(filter: InventoryFilter = {}) {
           bhk: filter.bhk,
           facing: filter.facing,
           search: filter.search,
+          assignedEngineerId: filter.assignedEngineerId,
           status: filter.status?.join(','),
           limit: filter.limit,
           offset: filter.offset,
@@ -152,6 +160,7 @@ export function useInventoryUnitsEnvelope(filter: InventoryFilter = {}): number 
           bhk: filter.bhk,
           facing: filter.facing,
           search: filter.search,
+          assignedEngineerId: filter.assignedEngineerId,
           status: filter.status?.join(','),
           limit: filter.limit,
           offset: filter.offset,
@@ -238,6 +247,54 @@ export function useUpdateUnit() {
     onSuccess: () => {
       invalidateInventoryAndBookings(queryClient);
     },
+  });
+}
+
+/** Assign one villa to a site engineer, or unassign with `engineerId: null`. */
+export function useAssignUnitEngineer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { unitId: string; engineerId: string | null }) =>
+      api<UnitRow>(`/inventory/units/${args.unitId}/assignee`, {
+        method: 'PATCH',
+        json: { engineerId: args.engineerId },
+      }),
+    onSuccess: () => {
+      invalidateAssignments(queryClient);
+    },
+  });
+}
+
+/** Replace one engineer's villa set within a project (user page). */
+export function useAssignUserUnits() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AssignUnitsDto) =>
+      api<{ assigned: number; unassigned: number }>('/inventory/units/assign', {
+        method: 'PUT',
+        json: body,
+      }),
+    onSuccess: () => {
+      invalidateAssignments(queryClient);
+    },
+  });
+}
+
+function invalidateAssignments(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
+  void queryClient.invalidateQueries({ queryKey: ['inventory', 'site-units'] });
+  void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+}
+
+/** Site updates list, scoped server-side by role (engineer/manager/admin). */
+export function useSiteUnits(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['inventory', 'site-units', projectId ?? ''] as const,
+    queryFn: ({ signal }) =>
+      api<SiteUnitsResult>(`/customer-progress/site-units${qs({ projectId })}`, { signal }),
+    enabled: projectId !== undefined && projectId !== '',
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 

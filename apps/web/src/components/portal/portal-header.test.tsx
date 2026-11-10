@@ -39,8 +39,20 @@ describe('PortalHeader', () => {
     expect(html).toContain('sticky');
   });
 
-  it('optionally shows the signed-in first name as a quiet greeting target', () => {
+  it('optionally shows the signed-in full name as a quiet greeting target', () => {
     expect(renderToStaticMarkup(<PortalHeader />)).not.toContain('data-qa="portal-header-name"');
     expect(renderToStaticMarkup(<PortalHeader name="Anita" />)).toContain('Anita');
+  });
+
+  // The masthead names the signed-in buyer in full (2026-11-10), so a two-word
+  // name is not truncated to its first token, and stray internal whitespace in
+  // the stored name does not reach the bar.
+  it('shows the whole name, whitespace collapsed', () => {
+    const html = renderToStaticMarkup(<PortalHeader name="  Anita   Rao  " />);
+    expect(html).toContain('Anita Rao');
+    expect(html).not.toContain('Anita   Rao');
+    expect(html).not.toContain('>Anita<');
+    // The truncated bar keeps the full value reachable as a tooltip.
+    expect(html).toContain('title="Anita Rao"');
   });
 });

@@ -4,7 +4,7 @@
 // and the inventory money columns - so it is pinned here rather than trusted.
 import { describe, expect, it } from 'vitest';
 
-import { isSiteOnlyRole, isSiteRole } from './session';
+import { canCaptureSitePhotos, canViewSiteUpdates, isSiteOnlyRole, isSiteRole } from './session';
 
 describe('isSiteRole', () => {
   it('is true for the two site roles', () => {
@@ -43,5 +43,33 @@ describe('isSiteOnlyRole', () => {
       expect(isSiteOnlyRole(role)).toBe(false);
     }
     expect(isSiteOnlyRole(undefined)).toBe(false);
+  });
+});
+
+// 2026-11-10: Site updates is visible to the engineer and the three reviewers.
+// `isSiteRole` MUST stay ENGINEER|TELECALLER - the inventory page uses it to hide
+// money columns, which admins and managers must keep.
+describe('canViewSiteUpdates / canCaptureSitePhotos', () => {
+  it('lets ENGINEER, MANAGER, ADMIN and OWNER view; nobody else', () => {
+    for (const role of ['ENGINEER', 'MANAGER', 'ADMIN', 'OWNER'] as const) {
+      expect(canViewSiteUpdates(role)).toBe(true);
+    }
+    for (const role of ['TELECALLER', 'SALES_EXEC', 'CUSTOMER'] as const) {
+      expect(canViewSiteUpdates(role)).toBe(false);
+    }
+    expect(canViewSiteUpdates(undefined)).toBe(false);
+  });
+
+  it('lets only the ENGINEER capture; reviewers are read-only', () => {
+    expect(canCaptureSitePhotos('ENGINEER')).toBe(true);
+    for (const role of ['MANAGER', 'ADMIN', 'OWNER', 'TELECALLER'] as const) {
+      expect(canCaptureSitePhotos(role)).toBe(false);
+    }
+  });
+
+  it('did not widen isSiteRole (fails_when= admins lose the inventory money columns)', () => {
+    for (const role of ['MANAGER', 'ADMIN', 'OWNER'] as const) {
+      expect(isSiteRole(role)).toBe(false);
+    }
   });
 });

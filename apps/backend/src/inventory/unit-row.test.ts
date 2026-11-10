@@ -33,6 +33,8 @@ function source(overrides: Partial<Omit<UnitRowSource, 'plotNumber'>> = {}): Uni
     price: new Prisma.Decimal('5800000.00'),
     status: 'SOLD',
     expectedHandoverDate: null,
+    assignedEngineerId: null,
+    assignedEngineer: null,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     phase: { name: 'CMDA Plots', projectId: 'proj-1', project: { name: 'Demo Villas' } },
     // No photos by default: the common case for a freshly created villa.

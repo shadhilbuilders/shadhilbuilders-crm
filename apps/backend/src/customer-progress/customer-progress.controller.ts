@@ -24,6 +24,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { SiteUnitsService } from './site-units.service';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import {
   CustomerProgressService,
@@ -40,7 +41,23 @@ import {
 export class CustomerProgressController {
   constructor(
     @Inject(CustomerProgressService) private readonly service: CustomerProgressService,
+    @Inject(SiteUnitsService) private readonly siteUnits: SiteUnitsService,
   ) {}
+
+  @Get('site-units')
+  @ApiOperation({
+    summary:
+      'Villas on the Site updates page, scoped by role: ENGINEER assigned, MANAGER team-managed, ADMIN/OWNER all.',
+  })
+  async siteUnitsList(
+    @Req() req: AuthedRequest,
+    @Query('projectId') projectId?: string,
+  ): Promise<unknown> {
+    if (typeof projectId !== 'string' || projectId.length === 0) {
+      throw new BadRequestException('projectId is required');
+    }
+    return this.siteUnits.list(req.user!, projectId);
+  }
 
   @Post('units/:unitId/photos')
   @ApiOperation({ summary: 'Upload a site progress photo (staff; project membership required).' })

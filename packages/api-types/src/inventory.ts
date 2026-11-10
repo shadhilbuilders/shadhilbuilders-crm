@@ -77,6 +77,13 @@ export const UnitRowSchema = z.object({
    * fixtures and clients keep parsing; the API always sends it.
    */
   expectedHandoverDate: z.iso.datetime({ offset: true }).nullable().optional(),
+  /**
+   * The single site ENGINEER this villa is assigned to, or null when
+   * unassigned. Optional on the wire so older fixtures keep parsing; the API
+   * always sends both. Name is null when the caller cannot read the user row.
+   */
+  assignedEngineerId: z.string().nullable().optional(),
+  assignedEngineerName: z.string().nullable().optional(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type UnitRow = z.infer<typeof UnitRowSchema>;
@@ -111,6 +118,8 @@ export const UnitFilterDtoSchema = z.object({
    * keystroke does not fire a request).
    */
   search: z.string().trim().min(1).max(120).optional(),
+  /** Only villas assigned to this engineer user (MANAGER/ADMIN/OWNER view). */
+  assignedEngineerId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -247,3 +256,42 @@ export const CreateProjectOptionDtoSchema = z.object({
   value: z.string().trim().min(1, 'Value is required').max(40),
 });
 export type CreateProjectOptionDto = z.infer<typeof CreateProjectOptionDtoSchema>;
+
+/**
+ * PATCH /api/inventory/units/:id/assignee body. `engineerId: null` unassigns.
+ * ADMIN/OWNER only (service guard).
+ */
+export const AssignUnitDtoSchema = z.object({
+  engineerId: z.string().min(1).nullable(),
+});
+export type AssignUnitDto = z.infer<typeof AssignUnitDtoSchema>;
+
+/**
+ * PUT /api/inventory/units/assign body: replace-set semantics for one engineer
+ * within one project. `unitIds` is the COMPLETE set of that project's villas the
+ * engineer should hold afterwards (empty = unassign all). ADMIN/OWNER only.
+ */
+export const AssignUnitsDtoSchema = z.object({
+  projectId: z.string().min(1),
+  engineerId: z.string().min(1),
+  unitIds: z.array(z.string().min(1)).max(500),
+});
+export type AssignUnitsDto = z.infer<typeof AssignUnitsDtoSchema>;
+
+/**
+ * Whose villas a site-updates read returned: the engineer's own (`ASSIGNED`),
+ * the villas assigned to engineers on the manager's teams (`MANAGED`), or every
+ * villa of the project (`ALL`, admin/owner).
+ */
+export const SiteUnitScopeSchema = z.enum(['ASSIGNED', 'MANAGED', 'ALL']);
+export type SiteUnitScope = z.infer<typeof SiteUnitScopeSchema>;
+
+/** GET /api/customer-progress/site-units response. */
+export const SiteUnitsResultSchema = z.object({
+  scope: SiteUnitScopeSchema,
+  /** True only for the ENGINEER (the one role that captures photos). */
+  canCapture: z.boolean(),
+  total: z.number().int().min(0),
+  rows: z.array(UnitRowSchema),
+});
+export type SiteUnitsResult = z.infer<typeof SiteUnitsResultSchema>;

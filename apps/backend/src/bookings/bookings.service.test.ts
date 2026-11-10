@@ -164,6 +164,48 @@ describe('findOne - single booking', () => {
 // ─── create - happy path + 404s ──────────────────────────────────────
 
 describe('create - start a new booking in HOLD state', () => {
+  it('pins the 2026-11-10 decision: a MANAGER books a villa with NO assigned engineer', async () => {
+    // Engineer assignment narrows ENGINEER reads only. Booking reads units under
+    // the manager's RLS context, which must stay unchanged - narrowing manager
+    // unit reads would have broken the booking form's unit picker.
+    const { service, client } = makeService();
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      state: 'NEGOTIATION',
+      organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+    });
+    client.unit.findUnique.mockResolvedValue({
+      id: 'unit-1',
+      unitNumber: 'A-104',
+      status: 'AVAILABLE',
+      assignedEngineerId: null,
+      price: { toString: () => '5000000.00' },
+      buildupSqft: { toString: () => '1250.00' },
+    });
+    client.booking.create.mockResolvedValue({
+      id: 'b-1',
+      leadId: 'lead-1',
+      unitId: 'unit-1',
+      userId: 'mgr-1',
+      amount: { toString: () => '5000000.00' },
+      listAmount: { toString: () => '5000000.00' },
+      tokenAmount: null,
+      status: 'HOLD',
+      approvedById: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lead: { name: 'Lead 1' },
+      unit: { unitNumber: 'A-104' },
+      user: { name: 'Mgr 1' },
+      approvedBy: null,
+    });
+
+    const result = await service.create(makeActor(), { leadId: 'lead-1', unitId: 'unit-1' });
+
+    expect(result.status).toBe('HOLD');
+    expect(result.unitNumber).toBe('A-104');
+  });
+
   it('creates the booking with status=HOLD and writes an audit row', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue({

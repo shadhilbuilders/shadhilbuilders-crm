@@ -3,22 +3,23 @@
 // /site (2026-11-08): the site engineer's home. Replaces Inventory for the site
 // roles, which is a sales surface full of rupees.
 //
-// Data: ONE call for up to 200 units (the server's cap, `UnitFilterDto`). A
-// villa project fits inside it, so the counts are computed client-side; when the
-// list comes back at exactly 200 the page says "Showing the first 200 units"
-// instead of printing a number that lies.
+// Data: ONE scoped call (`GET /customer-progress/site-units`, capped at 200).
+// The SERVER decides whose villas come back: the engineer's assigned villas, the
+// villas assigned to engineers on a manager's teams, or every villa for
+// admin/owner. Counts are computed client-side; when the list is capped the page
+// says so instead of printing a number that lies.
 //
-// Role gate: a user without `isSiteRole` is redirected to `/inventory`, not
-// shown a 403. They are not forbidden, they are in the wrong place.
+// Role gate: a user without `canViewSiteUpdates` is redirected to `/dashboard`,
+// not shown a 403. They are not forbidden, they are in the wrong place.
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { SiteHome } from '@/components/site/SiteHome';
-import { useInventoryUnits } from '@/hooks/queries/inventory';
+import { useSiteUnits } from '@/hooks/queries/inventory';
 import { projectHref } from '@/lib/nav';
-import { isSiteRole, useSessionUser } from '@/lib/session';
+import { canViewSiteUpdates, useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectId, useProjectSlug, useProject } from '@/lib/tenant-context';
-import { defaultSiteFilter, isCapped, SITE_LIST_CAP, siteCounts, type SiteFilter } from '@/lib/site-units';
+import { defaultSiteFilter, isCapped, siteCounts, type SiteFilter } from '@/lib/site-units';
 
 export default function SiteHomePage() {
   const router = useRouter();
@@ -37,17 +38,15 @@ export default function SiteHomePage() {
   }, []);
 
   useEffect(() => {
-    if (mounted && !isPending && user !== null && !isSiteRole(user.role)) {
-      router.replace(projectHref(orgSlug, projectSlug, '/inventory'));
+    if (mounted && !isPending && user !== null && !canViewSiteUpdates(user.role)) {
+      router.replace(projectHref(orgSlug, projectSlug, '/dashboard'));
     }
   }, [mounted, isPending, user, router, orgSlug, projectSlug]);
 
-  const unitsQuery = useInventoryUnits({
-    projectId: projectId ?? undefined,
-    limit: SITE_LIST_CAP,
-  });
-  const rows = unitsQuery.data ?? [];
-  const capped = isCapped(rows.length);
+  const unitsQuery = useSiteUnits(projectId ?? undefined);
+  const rows = unitsQuery.data?.rows ?? [];
+  const scope = unitsQuery.data?.scope ?? null;
+  const capped = isCapped(rows.length) || (unitsQuery.data?.total ?? 0) > rows.length;
 
   // `now` is captured once per mount so the four-state map and the relative
   // phrases do not flicker between renders. A re-mount refreshes it.
@@ -74,6 +73,8 @@ export default function SiteHomePage() {
       search={search}
       onSearchChange={setSearch}
       capped={capped}
+      scope={scope}
+      canCapture={unitsQuery.data?.canCapture ?? false}
       now={now}
     />
   );

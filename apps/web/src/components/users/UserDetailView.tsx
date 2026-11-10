@@ -52,6 +52,7 @@ import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { UserLeadsCard } from '@/components/users/UserLeadsCard';
+import { UserUnitsCard } from '@/components/users/UserUnitsCard';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 
 /** "Reports to" rule lives in @shadhil/api-types (`reportingTargetFor`) so the
@@ -293,11 +294,20 @@ function UserDetailContent({
           ADMIN/OWNER-gated above, and the backend keeps ADMIN/OWNER
           filters un-narrowed by role scoping, so this shows the full set
           rather than only the admin's own lane. */}
-      <Card data-qa="user-leads-card-shell">
-        <CardContent className="pt-6">
-          <UserLeadsCard userId={detail.id} />
-        </CardContent>
-      </Card>
+      {/* 2026-11-10: an ENGINEER carries villas, not leads. */}
+      {detail.role === 'ENGINEER' ? (
+        <Card data-qa="user-units-card-shell">
+          <CardContent>
+            <UserUnitsCard engineerId={detail.id} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card data-qa="user-leads-card-shell">
+          <CardContent>
+            <UserLeadsCard userId={detail.id} />
+          </CardContent>
+        </Card>
+      )}
 
       <ResetPasswordDialog
         target={passwordOpen ? { id: detail.id, name: detail.name } : null}

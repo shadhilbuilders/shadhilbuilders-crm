@@ -82,7 +82,7 @@ import { useEffect } from 'react';
 
 import { useSidebar } from '@paalstack/react-ui';
 
-import { canUseWhatsappInbox, isAdminLike, isSiteOnlyRole, isSiteRole } from '@/lib/session';
+import { canUseWhatsappInbox, canViewSiteUpdates, isAdminLike, isSiteOnlyRole, isSiteRole } from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -412,6 +412,9 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
   // CUSTOMER (issue #8 slice 2) has no staff surface at all: the portal has
   // its own layout and nav. The staff shell must never list anything for them.
   if (role === 'CUSTOMER') return false;
+  // Site updates (2026-11-10): engineer (captures) + manager/admin/owner
+  // (read-only review). TELECALLER no longer gets it.
+  if (item.href === '/site') return canViewSiteUpdates(role);
   if (isSiteRole(role)) {
     // Site staff work out of the site capture surface. `/inventory` is hidden
     // here: the site home replaces it, and two links to the same job is a nav
@@ -421,18 +424,14 @@ function isNavItemVisible(item: Pick<NavItem, 'href' | 'group'>, role: Role | un
     // ENGINEER (issue #7) is site-ONLY: no lead work exists for that role.
     // TELECALLER is NOT site-only - DESIGN.md §1 makes them the first-touch lead
     // owner from NEW through VISIT_SCHEDULED, so they keep the Lead Inbox and the
-    // dashboard queue and GAIN the site capture screen. Stripping their leads to
-    // match the engineer would remove the job they are hired to do.
+    // dashboard queue (and no longer see /site - it is not their job).
     // The flag comes from `isSiteOnlyRole` (not a hand-rolled string) so the
     // nav filter and the `/inventory` route gate cannot disagree.
     const siteOnly = isSiteOnlyRole(role);
-    if (item.href === '/site') return true;
-    if (siteOnly) return false;
+    // The engineer's inbox: assignment / reassignment notifications land here.
+    if (siteOnly) return item.href === '/notifications';
     if (item.href === '/inventory') return false;
   }
-  // The site home is the site staff's screen. For every other role it would be
-  // a second link to the same villas, without the money that role needs.
-  if (item.href === '/site') return false;
   // T-WA-INBOX: the chat system is manager-and-above. This must come BEFORE
   // the catch-all `group === 'work' => true` at the end of this function,
   // which would otherwise show it to every authenticated role.

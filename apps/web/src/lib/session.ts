@@ -222,6 +222,21 @@ export function isSiteOnlyRole(role: Role | undefined): boolean {
   return role === 'ENGINEER';
 }
 
+/**
+ * Roles with a Site updates page (2026-11-10): the engineer (captures), plus
+ * MANAGER/ADMIN/OWNER (review, read-only). TELECALLER is deliberately out.
+ * Do NOT widen `isSiteRole` instead - the inventory page uses that to hide the
+ * money columns, which admins and managers must keep.
+ */
+export function canViewSiteUpdates(role: Role | undefined): boolean {
+  return role === 'ENGINEER' || role === 'MANAGER' || role === 'ADMIN' || role === 'OWNER';
+}
+
+/** Only the ENGINEER captures site photos; every other viewer is read-only. */
+export function canCaptureSitePhotos(role: Role | undefined): boolean {
+  return role === 'ENGINEER';
+}
+
 /** Telecaller is the only role that schedules + confirms visits (Model C). */export function canScheduleVisits(role: Role | undefined): boolean {
   return (
     isAdminLike(role) || role === 'MANAGER' || role === 'TELECALLER'

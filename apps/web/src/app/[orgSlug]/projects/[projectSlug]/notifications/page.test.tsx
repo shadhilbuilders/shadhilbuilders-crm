@@ -27,6 +27,7 @@ vi.mock('@/hooks/use-session-user-stub-not-used', () => ({}));
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: vi.fn(() => ({ user: null, isPending: false })),
+  isSiteOnlyRole: (role: string | undefined) => role === 'ENGINEER',
 }));
 
 import NotificationsPage from './page';

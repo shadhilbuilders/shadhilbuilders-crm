@@ -50,10 +50,18 @@ export type CaptureHeaderUnit = {
   lastPhotoStage: string | null;
   photoCount: number;
   lastPhotoAt: string | null;
+  /** Shown to read-only viewers (manager/admin/owner): who owns this villa. */
+  assignedEngineerName?: string | null;
 };
 
 export type SiteCaptureViewProps = {
   unit: CaptureHeaderUnit;
+  /**
+   * True for the ENGINEER (the only role that captures). Manager/admin/owner
+   * review the same screen read-only: no camera bar, no note dialog, no photo
+   * edit/delete actions. Defaults to true so existing callers are unchanged.
+   */
+  canCapture?: boolean;
   backHref: string;
   photos: readonly TimelinePhoto[];
   isLoading: boolean;
@@ -84,6 +92,7 @@ export type SiteCaptureViewProps = {
 
 export function SiteCaptureView({
   unit,
+  canCapture = true,
   backHref,
   photos,
   isLoading,
@@ -149,6 +158,7 @@ export function SiteCaptureView({
               <p className="truncate text-base font-semibold tabular-nums">{unit.unitNumber}</p>
               <p className="text-muted-foreground truncate text-xs">
                 {unit.projectName} · {unit.phaseName}
+                {!canCapture ? ` · ${unit.assignedEngineerName ?? 'Unassigned'}` : ''}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -175,7 +185,13 @@ export function SiteCaptureView({
             </p>
           ) : null}
 
-          {isEmpty ? (
+          {isEmpty && !canCapture ? (
+            <p className="text-muted-foreground text-sm" data-qa="site-readonly-empty">
+              No site updates have been posted for this villa yet.
+            </p>
+          ) : null}
+
+          {isEmpty && canCapture ? (
             // The whole panel IS the FileUpload dropzone: a drop target on
             // desktop, the picker on a phone, one affordance instead of a button
             // above a dead dashed box.
@@ -217,9 +233,11 @@ export function SiteCaptureView({
               onDiscardUpload={onDiscardUpload}
               now={now}
               unitLabel={unit.unitNumber}
-              renderActions={(photo) => (
-                <ProgressPhotoActions photo={photo} unitId={photo.unitId} />
-              )}
+              renderActions={
+                canCapture
+                  ? (photo) => <ProgressPhotoActions photo={photo} unitId={photo.unitId} />
+                  : undefined
+              }
             />
           ) : null}
 
@@ -229,53 +247,55 @@ export function SiteCaptureView({
           </p>
         </main>
 
-        {/* Sticky bar, above the safe area. */}
-        <footer className="bg-background/95 border-border sticky bottom-0 z-20 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-          <div className="flex items-center gap-2">
-            {/* The camera path is a PLAIN input: FileUploadProps does not expose
+        {/* Sticky bar, above the safe area. Read-only viewers get no capture bar. */}
+        {canCapture ? (
+          <footer className="bg-background/95 border-border sticky bottom-0 z-20 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-2">
+              {/* The camera path is a PLAIN input: FileUploadProps does not expose
               `capture`, and without capture="environment" an iPhone shows the
               Library / Take Photo sheet and costs a tap on every photo. */}
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              data-qa="site-camera-input"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                event.target.value = ''; // allow re-picking the same file
-                onCameraChange(file);
-              }}
-            />
-            <Button
-              type="button"
-              // The library's primary variant only carries `[a]:hover:bg-primary/80`,
-              // so a <button> has NO hover state at all - measured identical at rest
-              // and on hover. This is the flow's main action, so it gets one.
-              className="hover:bg-primary/90 active:bg-primary/80 min-h-12 flex-1 text-base"
-              leftIcon={<LuCamera className="size-5" aria-hidden="true" />}
-              onClick={onCameraClick}
-              data-qa="site-take-photo"
-            >
-              Take photo
-            </Button>
-
-            {/* Same provider as the empty panel: one file state, one handler. */}
-            <FileUploadTrigger asChild>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                data-qa="site-camera-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  event.target.value = ''; // allow re-picking the same file
+                  onCameraChange(file);
+                }}
+              />
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-12 text-base flex-1"
-                data-qa="site-gallery-trigger"
+                // The library's primary variant only carries `[a]:hover:bg-primary/80`,
+                // so a <button> has NO hover state at all - measured identical at rest
+                // and on hover. This is the flow's main action, so it gets one.
+                className="hover:bg-primary/90 active:bg-primary/80 min-h-12 flex-1 text-base"
+                leftIcon={<LuCamera className="size-5" aria-hidden="true" />}
+                onClick={onCameraClick}
+                data-qa="site-take-photo"
               >
-                Gallery
+                Take photo
               </Button>
-            </FileUploadTrigger>
-          </div>
-        </footer>
 
-        <NoteDialog {...noteDialog} />
+              {/* Same provider as the empty panel: one file state, one handler. */}
+              <FileUploadTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-12 flex-1 text-base"
+                  data-qa="site-gallery-trigger"
+                >
+                  Gallery
+                </Button>
+              </FileUploadTrigger>
+            </div>
+          </footer>
+        ) : null}
+
+        {canCapture ? <NoteDialog {...noteDialog} /> : null}
         <SitePhotoViewer {...viewer} />
       </div>
     </FileUpload>

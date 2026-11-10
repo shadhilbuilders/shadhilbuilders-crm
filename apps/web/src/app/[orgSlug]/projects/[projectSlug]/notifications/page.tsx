@@ -6,7 +6,8 @@
 // `{ total, unread, rows }` - useNotifications unwraps the rows + exposes
 // the counters (T-F1).
 import { Box, Button } from '@paalstack/react-ui';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -20,24 +21,20 @@ import {
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
 import { notificationTypeLabel } from '@/lib/notification-labels';
-import { useProjectId } from '@/lib/tenant-context';
+import {
+  defaultNotificationFilter,
+  notificationFilterDef,
+  notificationFiltersForRole,
+  notificationInboxCopy,
+  type NotificationFilter,
+  type NotificationInboxCopy,
+} from '@/lib/notification-inbox';
+import { notificationHref } from '@/lib/notification-links';
+import { useSessionUser } from '@/lib/session';
+import { useOrgSlug, useProjectId, useProjectSlug } from '@/lib/tenant-context';
 
-// T-F2: the filter tabs are all wired to backend query params now.
-// ALL/UNREAD use unreadOnly; LEADS/BOOKINGS/VISITS use typePrefix
-// (e.g. 'lead' matches lead.created, lead.transition, lead.reassigned).
-type Filter = 'ALL' | 'UNREAD' | 'LEADS' | 'BOOKINGS' | 'VISITS' | 'SITE';
-
-const FILTERS: { value: Filter; label: string; typePrefix?: string }[] = [
-  { value: 'ALL', label: 'All' },
-  { value: 'UNREAD', label: 'Unread' },
-  { value: 'LEADS', label: 'Leads', typePrefix: 'lead' },
-  { value: 'BOOKINGS', label: 'Bookings', typePrefix: 'booking' },
-  { value: 'VISITS', label: 'Visits', typePrefix: 'visit' },
-  // 2026-11-08: site-update notifications are typed 'progress.photo', which no
-  // other prefix matches. Without this tab they only ever appeared under All.
-  { value: 'SITE', label: 'Site', typePrefix: 'progress' },
-];
-
+// Filter tabs + role-specific copy live in lib/notification-inbox.ts: a site
+// engineer sees All + Unread only (the API clamps their inbox to progress.*).
 
 type NotificationRow = {
   id: string;
@@ -45,16 +42,31 @@ type NotificationRow = {
   title?: string;
   body?: string;
   leadId?: string | null;
+  unitId?: string | null;
   read?: boolean;
   createdAt?: string;
 };
 
 export default function NotificationsPage() {
-  const [filter, setFilter] = useState<Filter>('ALL');
+  const [selected, setSelected] = useState<NotificationFilter | null>(null);
+  // Hydration: the session role is client-only, so the server render and first
+  // client paint use role=undefined (full tab set); the engineer set lands
+  // after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   // T-ProjectSwitch: the inbox shows the active project's lead
   // notifications (server resolves through Notification.lead.projectId).
   const projectId = useProjectId() ?? undefined;
-  const activeFilter = FILTERS.find((f) => f.value === filter);
+  const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
+  const { user } = useSessionUser();
+  const role = mounted ? user?.role : undefined;
+  const filters = notificationFiltersForRole(role);
+  const copy = notificationInboxCopy(role);
+  const filter = selected ?? defaultNotificationFilter(role);
+  const activeFilter = notificationFilterDef(filter);
   const notificationsQuery = useNotifications({
     unreadOnly: filter === 'UNREAD',
     typePrefix: activeFilter?.typePrefix,
@@ -77,7 +89,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         breadcrumb={[{ label: 'Work' }, { label: 'Notifications' }]}
-        subtitle="In-app inbox. 90-day visibility."
+        subtitle={copy.pageSubtitle}
         action={
           <Button
             variant="outline"
@@ -92,11 +104,11 @@ export default function NotificationsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {FILTERS.map((item) => (
+        {filters.map((item) => (
           <Button
             key={item.value}
             variant={filter === item.value ? 'default' : 'outline'}
-            onClick={() => setFilter(item.value)}
+            onClick={() => setSelected(item.value)}
             data-qa={`notifications-filter-${item.value.toLowerCase()}`}
           >
             {item.label}
@@ -112,6 +124,11 @@ export default function NotificationsPage() {
             const row = raw as NotificationRow;
             const isRead = row.read === true;
             const id = typeof row.id === 'string' ? row.id : null;
+            const href = notificationHref(orgSlug, projectSlug, row);
+            const titleText =
+              typeof row.title === 'string' && row.title.length > 0
+                ? row.title
+                : 'Notification';
             return (
               <li
                 key={id ?? `n-${index}`}
@@ -130,9 +147,20 @@ export default function NotificationsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">
-                    {typeof row.title === 'string' && row.title.length > 0
-                      ? row.title
-                      : 'Notification'}
+                    {href === null ? (
+                      titleText
+                    ) : (
+                      <Link
+                        href={href}
+                        className="text-link hover:underline"
+                        data-qa="notification-link"
+                        onClick={() => {
+                          if (!isRead && id !== null) markRead.mutate([id]);
+                        }}
+                      >
+                        {titleText}
+                      </Link>
+                    )}
                   </p>
                   <p className="text-muted-foreground text-xs">
                     {typeof row.body === 'string' ? row.body : ''}
@@ -172,6 +200,7 @@ export default function NotificationsPage() {
           total={total}
           unread={unread}
           error={notificationsQuery.error}
+          copy={copy}
         />
       )}
     </div>
@@ -183,11 +212,13 @@ function NotificationsEmpty({
   total,
   unread,
   error,
+  copy,
 }: {
-  filter: Filter;
+  filter: NotificationFilter;
   total: number;
   unread: number;
   error: unknown;
+  copy: NotificationInboxCopy;
 }) {
   // If the backend returned rows=[] on the ALL filter, we render the
   // friendly "no notifications yet" empty state - the inbox genuinely
@@ -216,10 +247,10 @@ function NotificationsEmpty({
       </p>
       <p className="text-muted-foreground mt-1 text-sm">
         {filter === 'UNREAD'
-          ? 'New leads, handoffs, and reminders land here automatically.'
+          ? copy.emptyHintUnread
           : total === 0
-            ? 'Trigger events will appear here as soon as they happen.'
-            : 'Try switching to the All tab.'}
+            ? copy.emptyHintNoRows
+            : copy.emptyHintFiltered}
       </p>
     </Box>
   );

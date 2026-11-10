@@ -146,7 +146,7 @@ describe('PortalHero', () => {
     expect(html).toContain('data-qa="portal-unit-heading"');
     expect(html).toContain('A-101');
     expect(html).toContain('Green Valley');
-    expect(html).toContain('Hello, Anita');
+    expect(html).toContain('Hello, Anita Rao');
     expect(html).toContain('Updated today');
     expect(html).toContain('Plinth beam poured');
     expect(html).toContain('/api/bff/media/p1');
@@ -186,8 +186,19 @@ describe('PortalHero', () => {
   // is the coldest possible rendering of "Hello, <name>".
   it('greets in sentence case, not tracked uppercase', () => {
     const html = renderToStaticMarkup(<PortalHero {...base} latest={photo} />);
-    expect(html).toContain('Hello, Anita');
+    expect(html).toContain('Hello, Anita Rao');
     expect(html).not.toContain('HELLO, ANITA');
+  });
+
+  // The hero greets the buyer by FULL name (2026-11-10). The masthead already
+  // prints the short form, so the hero carries the whole name; stray whitespace
+  // in the stored name must not leak into the sentence.
+  it('greets with the full name, whitespace collapsed', () => {
+    const html = renderToStaticMarkup(
+      <PortalHero {...base} customerName="  Anita   Rao  " latest={photo} />,
+    );
+    expect(html).toContain('Hello, Anita Rao');
+    expect(html).not.toContain('Anita   Rao');
   });
 
   // Regression (2026-11-09): four components shared one double-bezel frame, so

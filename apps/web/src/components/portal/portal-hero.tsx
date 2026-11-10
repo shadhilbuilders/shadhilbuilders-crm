@@ -142,7 +142,10 @@ export function PortalHero({
   photoCount,
   children,
 }: PortalHeroProps) {
-  const firstName = customerName.trim().split(/\s+/)[0] ?? '';
+  // The hero greets the buyer by full name. The masthead also carries the full
+  // name, but it is hidden below `sm` and it is chrome, not a greeting - this is
+  // the line that opens the buyer's own record (2026-11-10).
+  const fullName = customerName.trim().replace(/\s+/g, ' ');
   const { position, total } = stagePosition(latest?.stage ?? null);
   const note = latest?.caption.trim() ?? '';
   const hasNote = note.length > 0 && latest !== null;
@@ -152,15 +155,15 @@ export function PortalHero({
       {/* ---- record head: title left, spec figures right ---- */}
       <div className={`portal-rule-b grid grid-cols-1 items-end gap-6 pt-7 pb-5 ${COLS}`}>
         <div className="lg:col-span-8">
-          {firstName.length > 0 ? (
-            <p className="mb-3 text-sm text-[var(--portal-ink-2)]" data-qa="portal-hero-greeting">
-              Hello, {firstName}
+          {fullName.length > 0 ? (
+            <p className="mb-3 text-sm text-(--portal-ink-2)" data-qa="portal-hero-greeting">
+              Hello, {fullName}
             </p>
           ) : null}
           <h1
             id="portal-hero-title"
             data-qa="portal-unit-heading"
-            className="portal-display text-[clamp(2.75rem,7vw,4.75rem)] leading-[0.92] text-[var(--portal-navy)]"
+            className="portal-display text-[clamp(2.75rem,7vw,4.75rem)] leading-[0.92] text-(--portal-navy)"
           >
             {unitNumber}
             <span className="mt-2 block text-[clamp(0.9375rem,1.6vw,1.1875rem)] font-normal tracking-[-0.01em] text-[var(--portal-ink-2)]">
@@ -168,28 +171,28 @@ export function PortalHero({
             </span>
           </h1>
         </div>
-        <dl className="grid grid-cols-2 gap-6 border-t border-[var(--portal-hair)] pt-4 lg:col-span-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+        <dl className="grid grid-cols-2 gap-6 border-t border-(--portal-hair) pt-4 lg:col-span-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
           <div>
             <dt className="portal-eyebrow mb-2">Last update</dt>
             <dd
               data-qa="portal-hero-updated"
-              className="text-[0.9375rem] leading-snug text-[var(--portal-navy)]"
+              className="text-[0.9375rem] leading-snug text-(--portal-navy)"
             >
               {latest !== null ? updatedLabel(latest.takenAt, now) : 'No updates yet'}
             </dd>
           </div>
           <div>
             <dt className="portal-eyebrow mb-2">Stage</dt>
-            <dd className="text-[0.9375rem] leading-snug text-[var(--portal-navy)]">
+            <dd className="text-[0.9375rem] leading-snug text-(--portal-navy)">
               {position !== null && latest !== null && latest.stage !== null ? (
                 <span data-qa="portal-hero-stage" className="portal-figure">
                   {position} of {total}
-                  <span className="mt-0.5 block text-[var(--portal-ink-2)]">
+                  <span className="mt-0.5 block text-(--portal-ink-2)">
                     {constructionStageLabel(latest.stage)}
                   </span>
                 </span>
               ) : (
-                <span className="text-[var(--portal-ink-2)]">Not recorded</span>
+                <span className="text-(--portal-ink-2)">Not recorded</span>
               )}
             </dd>
           </div>
@@ -208,7 +211,7 @@ export function PortalHero({
           {hasNote ? (
             <figure
               data-qa="portal-hero-note"
-              className="border-t-2 border-[var(--portal-navy)] pt-4 lg:flex lg:h-full lg:flex-col"
+              className="border-t-2 border-(--portal-navy) pt-4 lg:flex lg:h-full lg:flex-col"
             >
               <figcaption className="portal-eyebrow mb-3">Site team note</figcaption>
 

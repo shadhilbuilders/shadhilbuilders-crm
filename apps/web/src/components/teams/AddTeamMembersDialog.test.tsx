@@ -147,13 +147,13 @@ describe('AddTeamMembersDialog', () => {
     mocks.useUsers.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     await mount();
     const list = document.body.querySelector('[data-qa="team-add-members-list"]') as HTMLElement;
-    expect(list.className).toContain('min-h-80');
+    expect(list.className).toContain('min-h-40');
   });
 
   it('drops the reserved height once loaded', async () => {
     seed();
     await mount();
     const list = document.body.querySelector('[data-qa="team-add-members-list"]') as HTMLElement;
-    expect(list.className).not.toContain('min-h-80');
+    expect(list.className).not.toContain('min-h-40');
   });
 });

@@ -238,3 +238,33 @@ describe('SiteHome rows', () => {
     expect(html).toContain('placeholder="Find a villa number"');
   });
 });
+
+describe('SiteHome scope (2026-11-10)', () => {
+  it('an engineer with no villas sees the assignment copy, not the generic one', () => {
+    const html = render({ rows: [], scope: 'ASSIGNED' });
+    expect(html).toContain('No villas assigned to you yet');
+    expect(html).not.toContain('No villas on the board yet');
+  });
+
+  it('a manager with no managed villas sees the manager copy', () => {
+    expect(render({ rows: [], scope: 'MANAGED' })).toContain(
+      'No villas assigned to your engineers yet',
+    );
+  });
+
+  it('says whose villas these are, and names the engineer on review rows', () => {
+    const row = unit({
+      unitNumber: 'B-110',
+      assignedEngineerId: 'e1',
+      assignedEngineerName: 'Ravi Kumar',
+    });
+    const html = render({ rows: [row], scope: 'ALL' });
+    expect(html).toContain('Every villa in this project (read-only)');
+    expect(html).toContain('Ravi Kumar');
+  });
+
+  it('does not name an engineer on the engineer\'s own list', () => {
+    const row = unit({ unitNumber: 'B-111', assignedEngineerName: 'Ravi Kumar' });
+    expect(render({ rows: [row], scope: 'ASSIGNED' })).not.toContain('Ravi Kumar');
+  });
+});

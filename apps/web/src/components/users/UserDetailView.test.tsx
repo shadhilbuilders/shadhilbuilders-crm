@@ -64,6 +64,13 @@ vi.mock('@/components/users/UserLeadsCard', () => ({
   ),
 }));
 
+// 2026-11-10: an ENGINEER target mounts the villas card instead of the leads card.
+vi.mock('@/components/users/UserUnitsCard', () => ({
+  UserUnitsCard: ({ engineerId }: { engineerId: string }) => (
+    <div data-qa="user-units-card">villas for {engineerId}</div>
+  ),
+}));
+
 import { UserDetailView } from './UserDetailView';
 
 let container: HTMLDivElement | null = null;
@@ -334,6 +341,32 @@ describe('UserDetailView - state matrix', () => {
   // The reported bug: this page said "No manager assigned" for an engineer
   // whose team clearly had one, because the reporting rule was a positive
   // role union that excluded ENGINEER.
+  it('ENGINEER: shows the assigned-villas card and NOT the leads card', async () => {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },
+      isPending: false,
+    });
+    mocks.useUser.mockReturnValue({
+      data: {
+        id: 'eng-1',
+        email: 'arjun@example.com',
+        name: 'Arjun Site',
+        role: 'ENGINEER',
+        teamId: 'team-1',
+        teamName: "Ravi's Team",
+        teamIds: ['team-1'],
+        manager: null,
+        projects: [],
+      },
+      isLoading: false,
+      error: null,
+    });
+    await mount();
+    const html = container?.innerHTML ?? '';
+    expect(html).toContain('villas for eng-1');
+    expect(html).not.toContain('leads for eng-1');
+  });
+
   it('ENGINEER: shows manager + assign button (the reported bug)', async () => {
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', role: 'ADMIN', email: 'a@x', teamId: null },

@@ -70,6 +70,9 @@ const D_NONE_ID = 'cq9kvh1p2m7n3r8s4t5u6vwz';
 const D_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vt0';
 const DELETE_TEST_PHOTO_IDS = [D_SELF_ID, D_LEAD_ID, D_NONE_ID, D_ADMIN_ID] as const;
 
+const UNASSIGNED_UNIT_ID = 'cq9kvh1p2m7n3r8s4t5u6vt1'; // same project/team as UNIT_A, no engineer
+const UNASSIGNED_PHOTO_ID = 'cq9kvh1p2m7n3r8s4t5u6vt2';
+
 const UNIT_A_ID = 'cq9kvh1p2m7n3r8s4t5u6vwi'; // unit on project A (PA-ENG-001, fixture above)
 
 // ── Fixture ────────────────────────────────────────────────────────────────
@@ -135,16 +138,21 @@ async function buildFixture(): Promise<void> {
     update: {},
     create: { id: PHASE_B_ID, projectId: PROJ_B_ID, name: 'Phase B', organizationId: ORG_ID },
   });
-  for (const [unitId, phaseId, num] of [
-    ['cq9kvh1p2m7n3r8s4t5u6vwi', PHASE_A_ID, 'PA-ENG-001'],
-    ['cq9kvh1p2m7n3r8s4t5u6vwj', PHASE_B_ID, 'PB-ENG-001'],
+  // 2026-11-10: an ENGINEER reads only villas ASSIGNED to them. PA-ENG-001 is
+  // eng-A's; PA-ENG-002 (same project, same team) is deliberately unassigned;
+  // PB-ENG-001 belongs to nobody.
+  for (const [unitId, phaseId, num, assignee] of [
+    ['cq9kvh1p2m7n3r8s4t5u6vwi', PHASE_A_ID, 'PA-ENG-001', ENG_A_ID],
+    [UNASSIGNED_UNIT_ID, PHASE_A_ID, 'PA-ENG-002', null],
+    ['cq9kvh1p2m7n3r8s4t5u6vwj', PHASE_B_ID, 'PB-ENG-001', null],
   ] as const) {
     await adminPrisma.unit.upsert({
       where: { id: unitId },
-      update: {},
+      update: { assignedEngineerId: assignee },
       create: {
         id: unitId,
         phaseId,
+        assignedEngineerId: assignee,
         unitNumber: num,
         bhk: 3,
         buildupSqft: '1000.00',
@@ -587,5 +595,88 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
       }).team.findMany({ where: { id: TEAM_A_ID } }),
     );
     expect(nonMemberTeam).toHaveLength(0);
+  });
+
+  // ── 2026-11-10: assignment-scoped ENGINEER reads/writes ──────────────────
+
+  it('protects= an ENGINEER reads only villas assigned to them; fails_when= team membership alone exposes a villa', async () => {
+    const rows = await withRlsContext(prisma, engA, async (tx) =>
+      tx.unit.findMany({
+        where: { id: { in: [UNIT_A_ID, UNASSIGNED_UNIT_ID] } },
+        select: { id: true },
+      }),
+    );
+    expect(rows.map((r) => r.id)).toEqual([UNIT_A_ID]);
+  });
+
+  it('protects= photos on an unassigned villa are invisible and un-insertable for the engineer', async () => {
+    await adminPrisma.progressPhoto.create({
+      data: {
+        id: UNASSIGNED_PHOTO_ID,
+        unitId: UNASSIGNED_UNIT_ID,
+        phaseId: PHASE_A_ID,
+        organizationId: ORG_ID,
+        key: `progress/${UNASSIGNED_PHOTO_ID}.jpg`,
+        mimeType: 'image/jpeg',
+        filename: `${UNASSIGNED_PHOTO_ID}.jpg`,
+        caption: 'admin probe',
+        takenAt: new Date('2026-11-10T09:00:00Z'),
+        createdBy: ENG_A_ID,
+      },
+    });
+    try {
+      // Even the engineer's OWN photo disappears once the villa is not theirs.
+      const visible = await withRlsContext(prisma, engA, async (tx) =>
+        tx.progressPhoto.findMany({ where: { id: UNASSIGNED_PHOTO_ID } }),
+      );
+      expect(visible).toHaveLength(0);
+
+      await expect(
+        withRlsContext(prisma, engA, async (tx) =>
+          tx.progressPhoto.create({
+            data: {
+              id: 'cq9kvh1p2m7n3r8s4t5u6vt3',
+              unitId: UNASSIGNED_UNIT_ID,
+              phaseId: PHASE_A_ID,
+              organizationId: ORG_ID,
+              key: 'progress/unassigned-insert.jpg',
+              mimeType: 'image/jpeg',
+              filename: 'unassigned-insert.jpg',
+              caption: 'should be denied',
+              takenAt: new Date('2026-11-10T09:05:00Z'),
+              createdBy: ENG_A_ID,
+            },
+          }),
+        ),
+      ).rejects.toThrow();
+
+      // ADMIN still sees it (org-wide).
+      const admin = await withRlsContext(
+        prisma,
+        { userId: 'cq9kvh1p2m7n3r8s4t5u6vwd', role: 'ADMIN', organizationId: ORG_ID },
+        async (tx) => tx.progressPhoto.findMany({ where: { id: UNASSIGNED_PHOTO_ID } }),
+      );
+      expect(admin).toHaveLength(1);
+    } finally {
+      await adminPrisma.progressPhoto.deleteMany({ where: { id: UNASSIGNED_PHOTO_ID } });
+    }
+  });
+
+  it('protects= project_unit_ids() resolves a project\'s units even for an engineer who cannot read them', async () => {
+    const ids = await withRlsContext(prisma, engN, async (tx) =>
+      (tx as unknown as {
+        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<Array<{ project_unit_ids: string }>>;
+      }).$queryRaw`SELECT project_unit_ids(${PROJ_A_ID}) AS project_unit_ids`,
+    );
+    const set = ids.map((r) => r.project_unit_ids);
+    expect(set).toContain(UNIT_A_ID);
+    expect(set).toContain(UNASSIGNED_UNIT_ID);
+    // Org-scoped: a project of another org (or none) yields nothing.
+    const none = await withRlsContext(prisma, engN, async (tx) =>
+      (tx as unknown as {
+        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
+      }).$queryRaw`SELECT project_unit_ids('no-such-project') AS project_unit_ids`,
+    );
+    expect(none).toHaveLength(0);
   });
 });

@@ -18,6 +18,7 @@ import {
   useUnitPhotos,
   isForbidden,
 } from '@/hooks/queries/customer-progress';
+import { AssignedEngineerRow } from './AssignedEngineerRow';
 import { UnitProgressTabContent, type ProgressUnit } from './UnitProgressTab';
 
 import type { UnitRow } from '@/hooks/queries/inventory';
@@ -214,6 +215,7 @@ function UnitDetailsPanel({ unit }: { unit: UnitRow }) {
         )}
         <DetailRow label="Phase" value={unit.phaseName} />
         <DetailRow label="Project" value={unit.projectName} />
+        <AssignedEngineerRow unit={unit} />
       </div>
 
       {!canBook ? (

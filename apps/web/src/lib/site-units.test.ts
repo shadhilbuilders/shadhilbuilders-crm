@@ -8,6 +8,8 @@ import {
   isCapped,
   phaseAccent,
   siteCounts,
+  siteEmptyCopyFor,
+  SITE_SCOPE_COPY,
   siteRowMeta,
   SITE_EMPTY_COPY,
   SITE_LIST_CAP,
@@ -192,5 +194,20 @@ describe('SITE_EMPTY_COPY', () => {
     expect(SITE_EMPTY_COPY.noUnits.title).not.toBe(SITE_EMPTY_COPY.filtered.title);
     expect(SITE_EMPTY_COPY.noUnits.body).not.toBe(SITE_EMPTY_COPY.filtered.body);
     expect(SITE_EMPTY_COPY.filtered.title).toBe('Nothing in this filter.');
+  });
+});
+
+describe('siteEmptyCopyFor / SITE_SCOPE_COPY (2026-11-10)', () => {
+  it('gives each scope its own empty copy, with the generic one as the fallback', () => {
+    expect(siteEmptyCopyFor('ASSIGNED')).toBe(SITE_EMPTY_COPY.noAssignments);
+    expect(siteEmptyCopyFor('MANAGED')).toBe(SITE_EMPTY_COPY.noManaged);
+    expect(siteEmptyCopyFor('ALL')).toBe(SITE_EMPTY_COPY.noUnits);
+    expect(siteEmptyCopyFor(null)).toBe(SITE_EMPTY_COPY.noUnits);
+  });
+
+  it('labels read-only scopes as read-only', () => {
+    expect(SITE_SCOPE_COPY.MANAGED).toContain('read-only');
+    expect(SITE_SCOPE_COPY.ALL).toContain('read-only');
+    expect(SITE_SCOPE_COPY.ASSIGNED).not.toContain('read-only');
   });
 });

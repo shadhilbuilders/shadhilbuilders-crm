@@ -151,9 +151,15 @@ export class CustomerProgressService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const unit = await tx.unit.findFirst({
         where: { id: unitId, organizationId: actor.organizationId },
-        select: { id: true, unitNumber: true, phase: { select: { projectId: true } } },
+        select: { id: true, unitNumber: true, assignedEngineerId: true, phase: { select: { projectId: true } } },
       });
       if (unit === null) throw new NotFoundException(`Unit not found.`);
+
+      // 2026-11-10: an ENGINEER acts only on villas assigned to them. RLS already
+      // hides other villas (404 above); this is the explicit second wall.
+      if (actor.role === 'ENGINEER' && unit.assignedEngineerId !== actor.sub) {
+        throw new ForbiddenException('This villa is not assigned to you.');
+      }
 
       if (isAdminClass(actor.role)) return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
       if (actor.role === 'ENGINEER' || actor.role === 'MANAGER' || actor.role === 'SALES_EXEC' || actor.role === 'TELECALLER') {

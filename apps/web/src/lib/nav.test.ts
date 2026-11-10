@@ -99,35 +99,34 @@ describe('lib/nav', () => {
       '/my-team',
       '/staff',
       '/inventory',
+      '/site',
       '/plots',
       '/bookings',
       '/whatsapp-chat',
       '/notifications',
     ];
 
-    it('TELECALLER sees their work group PLUS the site capture surface', () => {
-      // 2026-11-08: TELECALLER GAINS Site updates. They do NOT lose the Lead
-      // Inbox - DESIGN.md §1 makes them the first-touch lead owner - and they do
-      // NOT see Inventory, which the site home replaces for villa work.
-      // Position follows NAV_ITEMS declaration order: /site sits where
-      // /inventory used to, after /staff.
+    it('TELECALLER sees their work group but NOT the site surface', () => {
+      // 2026-11-10: /site is for ENGINEER (capture) and MANAGER/ADMIN/OWNER
+      // (review). TELECALLER keeps the Lead Inbox (DESIGN.md §1) and sees no
+      // Inventory (hidden for site roles) and no Site updates.
       const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
       expect(hrefs).toEqual([
         '/dashboard',
         '/leads',
         '/visits',
         '/staff',
-        '/site',
         '/plots',
         '/bookings',
         '/notifications',
       ]);
       expect(hrefs).not.toContain('/inventory');
+      expect(hrefs).not.toContain('/site');
     });
 
-    it('ENGINEER sees the site capture surface INSTEAD of Inventory', () => {
+    it('ENGINEER sees Site updates + Notifications INSTEAD of Inventory', () => {
       const hrefs = flattenNavHrefs(getVisibleNav('ENGINEER'));
-      expect(hrefs).toEqual(['/site']);
+      expect(hrefs).toEqual(['/site', '/notifications']);
       expect(hrefs).not.toContain('/inventory');
     });
 
@@ -135,10 +134,14 @@ describe('lib/nav', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
     });
 
-    it('no non-site role is offered the site surface', () => {
-      // It is a second link to the same villas for a sales role, without the
-      // money that role needs.
-      for (const role of ['OWNER', 'ADMIN', 'MANAGER', 'SALES_EXEC'] as const) {
+    it('MANAGER, ADMIN and OWNER are offered Site updates (read-only review)', () => {
+      for (const role of ['OWNER', 'ADMIN', 'MANAGER'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).toContain('/site');
+      }
+    });
+
+    it('SALES_EXEC and TELECALLER are not offered Site updates', () => {
+      for (const role of ['SALES_EXEC', 'TELECALLER'] as const) {
         expect(flattenNavHrefs(getVisibleNav(role))).not.toContain('/site');
       }
     });
@@ -188,10 +191,9 @@ describe('lib/nav', () => {
       ).toBeUndefined();
     });
 
-    it('TELECALLER never sees /inventory and /site at the same time', () => {
-      // The nav must not show two links to the same job.
+    it('TELECALLER sees neither /inventory nor /site', () => {
       const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
-      expect(hrefs).toContain('/site');
+      expect(hrefs).not.toContain('/site');
       expect(hrefs).not.toContain('/inventory');
     });
 

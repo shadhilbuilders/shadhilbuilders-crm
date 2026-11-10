@@ -54,6 +54,7 @@ import {
   useNotificationsRealtime,
 } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
+import { notificationInboxCopy } from '@/lib/notification-inbox';
 
 import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 
@@ -225,12 +226,16 @@ function NotificationBell() {
   // full notifications page).
   useNotificationsRealtime();
   const markRead = useMarkNotificationsRead();
+  const { user } = useSessionUser();
 
   const rows = (query.data?.rows ?? []) as NotificationRow[];
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
+  // Role-specific words (site engineers see site-update copy). Gated on
+  // `mounted` like every other client-only value that lands in markup.
+  const copy = notificationInboxCopy(mounted ? user?.role : undefined);
 
   // Mounted gate (hydration): see AppHeader above. projectHref needs the
   // resolved org + project slugs; until mounted we render a stable
@@ -274,7 +279,7 @@ function NotificationBell() {
       />
       <PopoverContent className="w-80" align="end">
         <div className="flex items-center justify-between px-1 pb-1">
-          <p className="text-sm font-semibold">Notifications</p>
+          <p className="text-sm font-semibold">{copy.popoverTitle}</p>
           {/* Mark all as read - same mutation as the full page ([] = all). */}
           <Button
             variant="ghost"
@@ -351,7 +356,7 @@ function NotificationBell() {
           <div className="px-1 py-6 text-center" data-qa="notifications-popover-empty">
             <p className="text-sm font-medium">No unread notifications.</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              New leads, handoffs, and reminders land here automatically.
+              {copy.emptyHintUnread}
             </p>
           </div>
         )}

@@ -1633,6 +1633,10 @@ CREATE POLICY progress_photo_select_member ON "ProgressPhoto"
           JOIN "Phase" ph ON ph."id" = u."phaseId"
           JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
           WHERE u."id" = "ProgressPhoto"."unitId"
+          AND (
+            current_setting('app.user_role', true) <> 'ENGINEER'
+            OR u."assignedEngineerId" = current_setting('app.user_id', true)
+          )
             AND pt."organizationId" = current_setting('app.user_org_id', true)
             AND (
               EXISTS (
@@ -1666,6 +1670,10 @@ CREATE POLICY progress_photo_insert_member ON "ProgressPhoto"
           JOIN "Phase" ph ON ph."id" = u."phaseId"
           JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
           WHERE u."id" = "ProgressPhoto"."unitId"
+          AND (
+            current_setting('app.user_role', true) <> 'ENGINEER'
+            OR u."assignedEngineerId" = current_setting('app.user_id', true)
+          )
             AND pt."organizationId" = current_setting('app.user_org_id', true)
             AND (
               EXISTS (
@@ -1695,7 +1703,17 @@ CREATE POLICY progress_photo_update ON "ProgressPhoto"
     "organizationId" = current_setting('app.user_org_id', true)
     AND (
       current_setting('app.user_role', true) = 'ADMIN'
-      OR "createdBy" = current_setting('app.user_id', true)
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
       OR EXISTS (
         SELECT 1 FROM "Unit" u
         JOIN "Phase" ph ON ph."id" = u."phaseId"
@@ -1711,7 +1729,17 @@ CREATE POLICY progress_photo_update ON "ProgressPhoto"
     "organizationId" = current_setting('app.user_org_id', true)
     AND (
       current_setting('app.user_role', true) = 'ADMIN'
-      OR "createdBy" = current_setting('app.user_id', true)
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
       OR EXISTS (
         SELECT 1 FROM "Unit" u
         JOIN "Phase" ph ON ph."id" = u."phaseId"
@@ -1730,7 +1758,17 @@ CREATE POLICY progress_photo_delete ON "ProgressPhoto"
     "organizationId" = current_setting('app.user_org_id', true)
     AND (
       current_setting('app.user_role', true) = 'ADMIN'
-      OR "createdBy" = current_setting('app.user_id', true)
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
       OR EXISTS (
         SELECT 1 FROM "Unit" u
         JOIN "Phase" ph ON ph."id" = u."phaseId"
@@ -1955,19 +1993,30 @@ CREATE POLICY project_team_select_engineer ON "ProjectTeam"
     AND team_member_exists("ProjectTeam"."teamId", current_setting('app.user_id', true))
   );
 
-CREATE POLICY unit_select_team_member ON "Unit"
+-- Narrowed 2026-11-10: an ENGINEER sees only the units assigned to them.
+-- Replaces unit_select_team_member (any unit of a team-linked project).
+CREATE POLICY unit_select_assigned_engineer ON "Unit"
   FOR SELECT
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
     AND current_setting('app.user_role', true) = 'ENGINEER'
-    AND EXISTS (
-      SELECT 1 FROM "Phase" ph
-      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
-      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
-      WHERE ph."id" = "Unit"."phaseId"
-        AND tm."userId" = current_setting('app.user_id', true)
-    )
+    AND "assignedEngineerId" = current_setting('app.user_id', true)
   );
+
+-- All unit ids of a project, visibility-independent (SECURITY DEFINER): the
+-- notification inbox must still resolve the project's units for an engineer
+-- who has just been unassigned (they can no longer read the Unit row).
+CREATE OR REPLACE FUNCTION project_unit_ids(p_project_id TEXT)
+  RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT u."id"
+    FROM "Unit" u
+    JOIN "Phase" ph ON ph."id" = u."phaseId"
+    WHERE ph."projectId" = p_project_id
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+  $$;
+REVOKE ALL ON FUNCTION project_unit_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION project_unit_ids(TEXT) TO shadhil_app;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- Slice 2: CUSTOMER portal (migration 20261106160000_customer_portal_slice2)

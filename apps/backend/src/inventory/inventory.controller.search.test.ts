@@ -15,11 +15,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { InventoryController } from './inventory.controller';
 import type { InventoryService } from './inventory.service';
+import type { UnitAssignmentService } from './unit-assignment.service';
 
 function makeController() {
   const list = vi.fn().mockResolvedValue({ total: 0, rows: [] });
   const service = { list } as unknown as InventoryService;
-  const controller = new InventoryController(service);
+  const controller = new InventoryController(service, {} as unknown as UnitAssignmentService);
   const req = {
     user: {
       sub: 'admin-1',

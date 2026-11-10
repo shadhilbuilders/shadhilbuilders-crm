@@ -41,6 +41,8 @@ export const UNIT_ROW_SELECT = {
   price: true,
   status: true,
   expectedHandoverDate: true,
+  assignedEngineerId: true,
+  assignedEngineer: { select: { name: true } },
   createdAt: true,
   phase: {
     select: { name: true, projectId: true, project: { select: { name: true } } },
@@ -76,6 +78,8 @@ export const UNIT_ROW_SELECT_NO_MONEY = {
   buildupSqft: true,
   status: true,
   expectedHandoverDate: true,
+  assignedEngineerId: true,
+  assignedEngineer: { select: { name: true } },
   createdAt: true,
   phase: {
     select: { name: true, projectId: true, project: { select: { name: true } } },
@@ -148,6 +152,8 @@ export function toUnitRow(
     // capture recorded no stage - every surface then says "Stage not set".
     lastPhotoStage: newestPhoto?.stage ?? null,
     expectedHandoverDate: row.expectedHandoverDate?.toISOString() ?? null,
+    assignedEngineerId: row.assignedEngineerId,
+    assignedEngineerName: row.assignedEngineer?.name ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 

@@ -54,6 +54,11 @@ vi.mock('@/lib/session', () => ({
   isSiteOnlyRole: (role: string | undefined) => role === 'ENGINEER',
 }));
 
+// 2026-11-10: the grid lists engineers for the assigned-engineer filter.
+vi.mock('@/hooks/queries/users', () => ({
+  useUsers: () => ({ data: { rows: [], total: 0 }, isLoading: false, error: null }),
+}));
+
 vi.mock('@/hooks/use-online-status', () => ({
   useOnlineStatus: () => true,
 }));

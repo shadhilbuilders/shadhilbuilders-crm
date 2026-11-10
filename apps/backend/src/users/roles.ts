@@ -85,6 +85,20 @@ export function canSeeUnitMoney(role: Role): boolean {
   return !isSiteOnlyRole(role);
 }
 
+/**
+ * Roles with a Site updates page (2026-11-10): the engineer who captures, plus
+ * MANAGER/ADMIN/OWNER who review (read-only). TELECALLER is deliberately out.
+ * Mirrors `canViewSiteUpdates` in apps/web/src/lib/session.ts.
+ */
+export function canViewSiteUpdates(role: Role): boolean {
+  return role === 'ENGINEER' || role === 'MANAGER' || isAdminClass(role);
+}
+
+/** Only the ENGINEER captures site photos; the other viewers are read-only. */
+export function canCaptureSitePhotos(role: Role): boolean {
+  return role === 'ENGINEER';
+}
+
 /** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
 /**
  * T-WA-INBOX (2026-09-25): the WhatsApp chat system is manager-and-above.

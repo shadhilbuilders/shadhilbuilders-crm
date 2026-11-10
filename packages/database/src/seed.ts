@@ -507,6 +507,21 @@ async function main() {
       },
     });
   }
+  // Site-engineer assignment (2026-11-10): the seeded engineer only sees villas
+  // assigned to them. Phase A's A-101..A-103 and A-201 are theirs; every other
+  // villa stays unassigned so e2e can prove an engineer does not see them.
+  const ENGINEER_SEED_UNITS = ['A-101', 'A-102', 'A-103', 'A-201'] as const;
+  await prisma.unit.updateMany({
+    where: {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: { in: [...ENGINEER_SEED_UNITS] },
+    },
+    data: {
+      assignedEngineerId: SEED_ENGINEER_ID,
+      assignedById: SEED_ADMIN_ID,
+      assignedAt: new Date(),
+    },
+  });
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`);
 

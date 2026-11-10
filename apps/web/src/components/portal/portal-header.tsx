@@ -17,7 +17,9 @@ import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 export function PortalHeader({ name }: { name?: string | null }) {
-  const firstName = name?.trim().split(/\s+/)[0] ?? '';
+  // Full name, whitespace-collapsed: the masthead is the only place the buyer
+  // sees who the portal is signed in as, so it must not be a partial identity.
+  const fullName = name?.trim().replace(/\s+/g, ' ') ?? '';
   return (
     <header
       data-qa="portal-header"
@@ -31,7 +33,7 @@ export function PortalHeader({ name }: { name?: string | null }) {
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3">
         <Link
           href="/portal"
-          className="inline-flex min-h-11 items-center rounded-sm bg-(--portal-tint) px-3 py-1 focus-visible:ring-2 focus-visible:ring-[var(--portal-navy)] focus-visible:ring-offset-2 focus-visible:outline-none dark:bg-white"
+          className="inline-flex min-h-11 items-center rounded-sm bg-(--portal-tint) px-3 py-1 focus-visible:ring-2 focus-visible:ring-(--portal-navy) focus-visible:ring-offset-2 focus-visible:outline-none dark:bg-white"
         >
           <Image
             src="/brand/logo.png"
@@ -45,12 +47,13 @@ export function PortalHeader({ name }: { name?: string | null }) {
           />
         </Link>
         <div className="flex items-center gap-3">
-          {firstName.length > 0 ? (
+          {fullName.length > 0 ? (
             <span
               data-qa="portal-header-name"
-              className="hidden max-w-48 truncate text-sm text-(--portal-ink-2) sm:block"
+              title={fullName}
+              className="hidden max-w-56 truncate text-sm text-(--portal-ink-2) sm:block"
             >
-              {firstName}
+              {fullName}
             </span>
           ) : null}
           <ThemeToggle className="size-9 min-h-9 min-w-9 rounded-full p-0 sm:size-11 sm:min-h-11 sm:min-w-11" />

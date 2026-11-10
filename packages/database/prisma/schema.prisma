@@ -365,6 +365,8 @@ model User {
   staffRoles                ProjectStaffRole[] @relation("ProjectStaffRoleUser")
   staffRolesAssignedBy      ProjectStaffRole[] @relation("ProjectStaffRoleAssignedBy")
   createdProgressPhotos     ProgressPhoto[]    @relation("ProgressPhotoCreator")
+  assignedUnits             Unit[]             @relation("UnitAssignee")
+  unitsAssignedBy           Unit[]             @relation("UnitAssignedBy")
   managedTeams              Team[]             @relation("TeamManager")
   defaultAssigneeOf         Team[]             @relation("TeamDefaultAssignee")
   ownedLeads                Lead[]             @relation("LeadOwner")
@@ -796,8 +798,16 @@ model Unit {
   // Staff-entered handover estimate shown to the buyer in the portal (2026-11-09).
   // Nullable forever: NULL means "not set", and the portal renders nothing for it.
   expectedHandoverDate DateTime?
+  // Site-engineer assignment (2026-11-10): the single ENGINEER who photographs
+  // this unit. NULL = unassigned (invisible to every engineer). SetNull on
+  // user delete so the unit survives; assignedAt/assignedById are the who/when.
+  assignedEngineerId String?
+  assignedAt         DateTime?
+  assignedById       String?
   createdAt      DateTime   @default(now())
 
+  assignedEngineer User?          @relation("UnitAssignee", fields: [assignedEngineerId], references: [id], onDelete: SetNull)
+  assignedBy       User?          @relation("UnitAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
   phase          Phase           @relation(fields: [phaseId], references: [id], onDelete: Cascade)
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bookings       Booking[]
@@ -811,6 +821,7 @@ model Unit {
   @@index([phaseId])
   @@index([organizationId])
   @@index([status])
+  @@index([assignedEngineerId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

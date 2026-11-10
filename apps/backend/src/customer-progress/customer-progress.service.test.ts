@@ -549,7 +549,44 @@ const STAFF_ROLES = ['ENGINEER', 'MANAGER', 'SALES_EXEC', 'TELECALLER'] as const
 const actorAs = (role: JwtPayload['role']): JwtPayload => ({ ...makeUploadActor(), role });
 
 describe('assertUnitAccess - the service returns a typed status, not a silent empty set', () => {
-  const UNIT = { id: 'unit-1', unitNumber: 'A-101', phase: { projectId: 'proj-1' } };
+  // The actor's sub is 'admin-1' for every role here, so an ENGINEER passes the
+  // 2026-11-10 assignment check only when the unit is assigned to that sub.
+  const UNIT = {
+    id: 'unit-1',
+    unitNumber: 'A-101',
+    assignedEngineerId: 'admin-1',
+    phase: { projectId: 'proj-1' },
+  };
+
+  it('protects= an ENGINEER cannot act on a villa assigned to someone else (403)', async () => {
+    const { service } = makeAccessService({
+      unit: { ...UNIT, assignedEngineerId: 'someone-else' },
+      member: { projectId: 'proj-1' },
+    });
+    await expect(
+      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('protects= an ENGINEER cannot act on an UNASSIGNED villa even on their own team (403)', async () => {
+    const { service } = makeAccessService({
+      unit: { ...UNIT, assignedEngineerId: null },
+      member: { projectId: 'proj-1' },
+    });
+    await expect(
+      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('fails_when= the assignment check leaks onto MANAGER (they review via team membership)', async () => {
+    const { service } = makeAccessService({
+      unit: { ...UNIT, assignedEngineerId: null },
+      member: { projectId: 'proj-1' },
+    });
+    await expect(
+      service.upload(actorAs('MANAGER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+    ).resolves.toBeDefined();
+  });
 
   it('ADMIN reaches any org unit without a project-team lookup', async () => {
     const { service, projectTeamFindFirst } = makeAccessService({ unit: UNIT });

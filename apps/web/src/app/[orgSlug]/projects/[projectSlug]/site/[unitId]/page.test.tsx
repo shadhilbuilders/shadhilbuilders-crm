@@ -45,6 +45,8 @@ vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
   isSiteRole: () => true,
   isSiteOnlyRole: () => true,
+  canViewSiteUpdates: () => true,
+  canCaptureSitePhotos: () => true,
 }));
 
 vi.mock('@/hooks/use-online-status', () => ({

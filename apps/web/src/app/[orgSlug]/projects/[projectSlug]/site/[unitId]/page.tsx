@@ -33,7 +33,7 @@ import {
 } from '@/hooks/queries/customer-progress';
 import { projectHref } from '@/lib/nav';
 import { prepareProgressPhoto, prepareErrorMessage, type PreparedPhoto } from '@/lib/photo-prep';
-import { isSiteRole, useSessionUser } from '@/lib/session';
+import { canCaptureSitePhotos, canViewSiteUpdates, useSessionUser } from '@/lib/session';
 import { QUICK_NOTE_LABELS, toggleNoteLine } from '@/lib/site-photos';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
@@ -105,10 +105,12 @@ export default function SiteCapturePage() {
   const [openPhotoId, setOpenPhotoId] = useState<string | null>(null);
 
   // ── Redirects ────────────────────────────────────────────────────────────
-  // Wrong role: they are not forbidden, they are in the wrong place.
+  // Wrong role: they are not forbidden, they are in the wrong place. Viewers
+  // are ENGINEER (captures) + MANAGER/ADMIN/OWNER (read-only); everyone else
+  // goes to the dashboard (the sales grid is not their destination either).
   useEffect(() => {
-    if (mounted && !sessionPending && user !== null && !isSiteRole(user.role)) {
-      router.replace(projectHref(orgSlug, projectSlug, '/inventory'));
+    if (mounted && !sessionPending && user !== null && !canViewSiteUpdates(user.role)) {
+      router.replace(projectHref(orgSlug, projectSlug, '/dashboard'));
     }
   }, [mounted, sessionPending, user, router, orgSlug, projectSlug]);
 
@@ -334,7 +336,9 @@ export default function SiteCapturePage() {
         lastPhotoStage: unit.lastPhotoStage,
         photoCount: unit.photoCount,
         lastPhotoAt: unit.lastPhotoAt,
+        assignedEngineerName: unit.assignedEngineerName ?? null,
       }}
+      canCapture={canCaptureSitePhotos(user?.role)}
       backHref={projectHref(orgSlug, projectSlug, '/site')}
       photos={photos}
       isLoading={photosQuery.isLoading}
