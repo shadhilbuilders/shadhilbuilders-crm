@@ -18,6 +18,17 @@ vi.mock('@/components/theme-toggle', () => ({
     </button>
   ),
 }));
+// PortalSignOut pulls in useSignOut (better-auth) and the library AlertDialog;
+// stub it to a marker - the control's own contract is covered in
+// portal-sign-out.test.tsx, and this file only cares that the masthead mounts
+// it.
+vi.mock('./portal-sign-out', () => ({
+  PortalSignOut: () => (
+    <button type="button" data-qa="portal-sign-out">
+      sign out
+    </button>
+  ),
+}));
 
 import { PortalHeader } from './portal-header';
 
@@ -42,6 +53,19 @@ describe('PortalHeader', () => {
   it('optionally shows the signed-in full name as a quiet greeting target', () => {
     expect(renderToStaticMarkup(<PortalHeader />)).not.toContain('data-qa="portal-header-name"');
     expect(renderToStaticMarkup(<PortalHeader name="Anita" />)).toContain('Anita');
+  });
+
+  // 2026-11-10: the masthead is the buyer's only exit from the product (a
+  // CUSTOMER is bounced out of every staff surface, and the bottom bar holds a
+  // single Refresh action). It must therefore be mounted here, and it must sit
+  // AFTER the theme toggle so the exit is the rightmost control in the row.
+  it('mounts sign out after the theme toggle', () => {
+    const html = renderToStaticMarkup(<PortalHeader name="Anita" />);
+    expect(html).toContain('data-qa="portal-sign-out"');
+    const themeAt = html.indexOf('data-qa="theme-toggle"');
+    const signOutAt = html.indexOf('data-qa="portal-sign-out"');
+    expect(themeAt).toBeGreaterThan(-1);
+    expect(signOutAt).toBeGreaterThan(themeAt);
   });
 
   // The masthead names the signed-in buyer in full (2026-11-10), so a two-word

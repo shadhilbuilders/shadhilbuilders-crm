@@ -1,16 +1,27 @@
-// Portal role routing (issue #8 slice 2, D6/D7).
+// Portal role routing (issue #8 slice 2, D6/D7) + the first-login password
+// gate (D3).
 //
 // protects= a buyer never lands in the staff shell and staff never land in the
-//           portal (no staff preview); an anonymous visitor is sent to login.
+//           portal (no staff preview); an anonymous visitor is sent to login;
+//           a buyer holding a temporary password is pinned to the rotation
+//           screen and a rotated buyer is sent back out of it.
 // fails_when= CUSTOMER is allowed into the staff area, a staff role is allowed
-//           into the portal, or an unknown/anonymous session gets through.
+//           into the portal, an unknown/anonymous session gets through, a gated
+//           buyer is allowed to render the portal, or a rotated buyer is left
+//           parked on the rotation screen (a dead end).
 // no_claim= courtesy routing only; RLS and the API 403s are the real wall, and
 //           this does not exercise the layout components that call it.
 import { describe, expect, it } from 'vitest';
 
 import type { Role } from '@/apis/client';
 
-import { PORTAL_HOME, isPortalRole, redirectForArea } from './portal-routing';
+import {
+  PORTAL_CHANGE_PASSWORD,
+  PORTAL_HOME,
+  isPortalRole,
+  portalGateFor,
+  redirectForArea,
+} from './portal-routing';
 
 const STAFF: Role[] = ['OWNER', 'ADMIN', 'MANAGER', 'SALES_EXEC', 'TELECALLER', 'ENGINEER'];
 
@@ -25,6 +36,68 @@ describe('portal layout guard', () => {
 
   it('CUSTOMER stays in the portal', () => {
     expect(redirectForArea('portal', 'CUSTOMER')).toBeNull();
+  });
+});
+
+// redirectForArea is the STAFF shell's guard (area only). The portal answers
+// area AND password in one call - see portalGateFor.
+describe('portalGateFor - area', () => {
+  it('no session is sent to login, remembering the portal', () => {
+    expect(
+      portalGateFor({ role: undefined, mustChangePassword: false, pathname: '/portal' }),
+    ).toBe('/login?next=/portal');
+  });
+
+  it.each(STAFF)('%s is sent out of the portal regardless of the flag', (role) => {
+    // Precedence: the area bounce runs BEFORE the password gate, so an armed
+    // staff account is never dropped into a customer rotation screen.
+    expect(
+      portalGateFor({ role, mustChangePassword: true, pathname: PORTAL_CHANGE_PASSWORD }),
+    ).toBe('/');
+  });
+
+  it('a rotated CUSTOMER on the portal page stays put', () => {
+    expect(
+      portalGateFor({ role: 'CUSTOMER', mustChangePassword: false, pathname: PORTAL_HOME }),
+    ).toBeNull();
+  });
+});
+
+describe('portalGateFor - first-login rotation (D3)', () => {
+  it('a gated buyer is pinned to the rotation screen from the portal home', () => {
+    expect(
+      portalGateFor({ role: 'CUSTOMER', mustChangePassword: true, pathname: PORTAL_HOME }),
+    ).toBe(PORTAL_CHANGE_PASSWORD);
+  });
+
+  it('a gated buyer is not bounced off the rotation screen itself', () => {
+    // The loop guard: without this the gate would redirect to the page the
+    // buyer is already on, forever.
+    expect(
+      portalGateFor({
+        role: 'CUSTOMER',
+        mustChangePassword: true,
+        pathname: PORTAL_CHANGE_PASSWORD,
+      }),
+    ).toBeNull();
+  });
+
+  it('a gated buyer is pulled back from any other portal route', () => {
+    expect(
+      portalGateFor({ role: 'CUSTOMER', mustChangePassword: true, pathname: '/portal/anything' }),
+    ).toBe(PORTAL_CHANGE_PASSWORD);
+  });
+
+  it('a rotated buyer is sent home rather than left on the rotation screen', () => {
+    // Dead end otherwise: the page has no Cancel, so a stale tab or a back
+    // button would strand them on a form they can no longer submit.
+    expect(
+      portalGateFor({
+        role: 'CUSTOMER',
+        mustChangePassword: false,
+        pathname: PORTAL_CHANGE_PASSWORD,
+      }),
+    ).toBe(PORTAL_HOME);
   });
 });
 

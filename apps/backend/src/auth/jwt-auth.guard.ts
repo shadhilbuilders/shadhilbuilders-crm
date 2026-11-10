@@ -100,6 +100,13 @@ export class JwtAuthGuard implements CanActivate {
       select: { mustChangePassword: true },
     });
     if (user?.mustChangePassword === true) {
+      // 2026-11-10: `redirect` is INFORMATIONAL ONLY. The web client owns the
+      // destination because it is the only layer that knows which shell issued
+      // the request: a CUSTOMER rotates at /portal/change-password (inside the
+      // portal, with the masthead's Sign out and no Cancel), staff at
+      // /change-password. The backend cannot tell those apart from the JWT
+      // alone in a way the URL contract should depend on, so it states the code
+      // and lets the client decide. See apps/web/src/apis/client.ts.
       throw new HttpException(
         {
           code: 'PASSWORD_CHANGE_REQUIRED',

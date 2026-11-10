@@ -11,9 +11,17 @@
 // The real asset is public/brand/logo.png (transparent RGBA, navy #011B4D +
 // green #63B233). It keeps a white plate because the navy letters are
 // hard-coded and dark mode would swallow them (same rule as GuestTopBar).
+//
+// RIGHT-HAND CLUSTER (2026-11-10): name (sm+ only), theme toggle, sign out.
+// Sign out belongs HERE rather than in the bottom PortalNav because that bar
+// keeps a single primary action (Refresh) and an exit is not a peer of it -
+// and because this masthead is the only chrome the rotation screen
+// (/portal/change-password) keeps, so the exit has to live where both screens
+// have it.
 import Image from 'next/image';
 import Link from 'next/link';
 
+import { PortalSignOut } from '@/components/portal/portal-sign-out';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 export function PortalHeader({ name }: { name?: string | null }) {
@@ -57,6 +65,7 @@ export function PortalHeader({ name }: { name?: string | null }) {
             </span>
           ) : null}
           <ThemeToggle className="size-9 min-h-9 min-w-9 rounded-full p-0 sm:size-11 sm:min-h-11 sm:min-w-11" />
+          <PortalSignOut />
         </div>
       </div>
     </header>

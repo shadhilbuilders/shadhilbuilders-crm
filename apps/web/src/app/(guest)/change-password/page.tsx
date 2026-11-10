@@ -43,6 +43,7 @@ import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { api } from '@/apis/client';
+import { PORTAL_CHANGE_PASSWORD } from '@/lib/portal-routing';
 import { useSessionUser } from '@/lib/session';
 
 type ChangePasswordResponse = { ok: true; mustChangePassword: false };
@@ -98,6 +99,17 @@ export default function ChangePasswordPage() {
     if (typeof window !== 'undefined') {
       window.location.href = `/login?next=${encodeURIComponent('/change-password')}`;
     }
+    return null;
+  }
+
+  // A CUSTOMER belongs on the portal's own rotation screen (2026-11-10), not
+  // here: this page's Cancel routes to `/`, which a gated buyer gets bounced
+  // back from - a loop. Bookmarked URLs and the legacy 403 redirect both land
+  // here, so the audience check has to happen on this page too. Hard
+  // navigation for the same reason as the sign-out path: the target owns a
+  // different layout, and a cached authenticated tree must not be re-entered.
+  if (user.role === 'CUSTOMER' && typeof window !== 'undefined') {
+    window.location.replace(PORTAL_CHANGE_PASSWORD);
     return null;
   }
 

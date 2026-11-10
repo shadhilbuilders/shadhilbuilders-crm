@@ -40,7 +40,7 @@ describe('PortalNav', () => {
   it('styles the action as a filled primary button with a 44px target', () => {
     const html = render(<PortalNav />);
     expect(html).toContain('min-h-11');
-    // `variant` is the STYLE (solid/surface/outline/…) and `color` is the hue.
+    // `variant` is the STYLE (solid/surface/outline/...) and `color` is the hue.
     // variant="primary" silently yields no fill because that key does not exist
     // in BUTTON_COLOR_VARIANT_MAPPING; solid+primary is the filled primary.
     expect(html).toContain('bg-primary');
