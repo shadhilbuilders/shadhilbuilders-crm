@@ -18,6 +18,7 @@ import {
   ADMIN_LAUNCHER,
   adminLauncherHref,
   adminLauncherHrefFor,
+  employeeLauncherHrefFor,
   getVisibleNav,
   isNavItemActive,
   navItemHref,
@@ -236,6 +237,21 @@ describe('lib/nav', () => {
 
     // 2026-11-09: the launcher is an exported constant consumed by the account
     // menus (topbar UserMenu + sidebar NavUser) instead of a NAV_ITEMS entry.
+    describe('employeeLauncherHrefFor - the "Switch Employee" row', () => {
+      const work = '/shadhil-builders/projects/metro-heights/dashboard';
+      it('shows only inside /admin/* for OWNER/ADMIN', () => {
+        for (const role of ['OWNER', 'ADMIN'] as const) {
+          expect(employeeLauncherHrefFor(role, '/shadhil-builders/admin/users', 'shadhil-builders', work)).toBe(work);
+          expect(employeeLauncherHrefFor(role, '/shadhil-builders/projects/x/leads', 'shadhil-builders', work)).toBeNull();
+        }
+      });
+      it('hides for non-admin roles and unresolved slug', () => {
+        expect(employeeLauncherHrefFor('MANAGER', '/shadhil-builders/admin', 'shadhil-builders', work)).toBeNull();
+        expect(employeeLauncherHrefFor(undefined, '/shadhil-builders/admin', 'shadhil-builders', work)).toBeNull();
+        expect(employeeLauncherHrefFor('OWNER', '/admin', null, work)).toBeNull();
+      });
+    });
+
     describe('ADMIN_LAUNCHER - the account-menu "Switch Admin" row', () => {
       it('carries the label the owner asked for', () => {
         expect(ADMIN_LAUNCHER.label).toBe('Switch Admin');
@@ -269,7 +285,7 @@ describe('lib/nav', () => {
         expect(adminLauncherHrefFor(undefined, '/shadhil-builders', 'shadhil-builders')).toBeNull();
       });
 
-      it('hides the row inside /admin/* - the sidebar carries "Go to Work" there', () => {
+      it('hides the row inside /admin/* - "Switch Employee" is the matching switch there', () => {
         expect(adminLauncherHrefFor('OWNER', '/shadhil-builders/admin', 'shadhil-builders')).toBeNull();
         expect(
           adminLauncherHrefFor('OWNER', '/shadhil-builders/admin/users', 'shadhil-builders'),

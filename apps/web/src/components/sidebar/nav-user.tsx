@@ -32,7 +32,7 @@ import {
 import { LuLogOut, LuSettings } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 
-import { ADMIN_LAUNCHER } from '@/lib/nav';
+import { ADMIN_LAUNCHER, EMPLOYEE_LAUNCHER } from '@/lib/nav';
 
 function initials(name: string): string {
   return name
@@ -49,6 +49,7 @@ export function NavUser({
   role,
   settingsHref,
   adminHref,
+  employeeHref = null,
   onSignOut,
 }: {
   name: string;
@@ -63,12 +64,15 @@ export function NavUser({
   /**
    * Resolved org-prefixed "Switch Admin" URL, or null to hide the row: null
    * for non-admin roles, while the slug is unresolved, and on /admin/* (where
-   * the sidebar's own "Go to Work" is the matching switch).
+   * "Switch Employee" is the matching switch).
    */
   adminHref: string | null;
+  /** "Switch Employee" URL (work landing), only resolved inside /admin/*; null hides it. */
+  employeeHref?: string | null;
   onSignOut: () => void;
 }) {
   const AdminIcon = ADMIN_LAUNCHER.icon;
+  const EmployeeIcon = EMPLOYEE_LAUNCHER.icon;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -128,6 +132,18 @@ export function NavUser({
                   <Link href={adminHref}>
                     <AdminIcon className="size-4 shrink-0" />
                     {ADMIN_LAUNCHER.label}
+                  </Link>
+                }
+              />
+            ) : null}
+            {employeeHref !== null ? (
+              <DropdownMenuItem
+                data-qa="sidebar-user-employee"
+                className="cursor-pointer gap-2"
+                render={
+                  <Link href={employeeHref}>
+                    <EmployeeIcon className="size-4 shrink-0" />
+                    {EMPLOYEE_LAUNCHER.label}
                   </Link>
                 }
               />

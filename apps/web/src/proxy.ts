@@ -35,6 +35,7 @@ const PUBLIC_PATHS = [
   '/api/auth',
   '/api/health',
   '/icons',         // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
+  '/cmda-plan.svg', // approved plot-layout artwork: the SW precaches it from /login with no session, so it must never redirect to /login
   '/brand',         // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)
   '/manifest.webmanifest',
   '/manifest.json',
@@ -84,6 +85,6 @@ export const config = {
   // inside the lookahead, so `/icons/icon-192.png`, `/sw.js`, and other
   // public PWA paths never reach the proxy function.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon\\.ico|icons|brand|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
+    '/((?!api|_next/static|_next/image|favicon\\.ico|icons|brand|cmda-plan\\.svg|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
   ],
 };

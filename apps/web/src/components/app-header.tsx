@@ -45,7 +45,14 @@ import { SseStatusPill } from '@/components/shared/SseStatusPill';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
-import { ADMIN_LAUNCHER, adminLauncherHrefFor, orgHref, projectHref } from '@/lib/nav';
+import {
+  ADMIN_LAUNCHER,
+  EMPLOYEE_LAUNCHER,
+  adminLauncherHrefFor,
+  employeeLauncherHrefFor,
+  orgHref, projectHref,
+} from '@/lib/nav';
+import { workLandingHref } from '@/lib/dashboard-redirect';
 import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import {
@@ -65,6 +72,7 @@ export function AppHeader() {
   const pathname = usePathname();
   // Resolved org slug for the account menu's Settings link (org-scoped route).
   const orgSlug = useOrgSlug();
+  const { data: projects } = useProjects();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -178,6 +186,12 @@ export function AppHeader() {
             // gate (role, /admin/*, unresolved slug) lives in
             // adminLauncherHrefFor so both menus agree.
             adminHref={adminLauncherHrefFor(user!.role, pathname, orgSlug)}
+            employeeHref={employeeLauncherHrefFor(
+              user!.role,
+              pathname,
+              orgSlug,
+              workLandingHref(orgSlug, projects ?? [], user!.role),
+            )}
             onSignOut={() => void signOut()}
           />
         ) : (
@@ -378,6 +392,7 @@ function UserMenu({
   role,
   settingsHref,
   adminHref,
+  employeeHref,
   onSignOut,
 }: {
   name: string;
@@ -387,12 +402,15 @@ function UserMenu({
   /**
    * Resolved org-scoped "Switch Admin" URL, or null to hide the row: null for
    * non-admin roles, while the slug is unresolved, and on /admin/* itself
-   * (where the sidebar's "Go to Work" is the matching switch).
+   * (where "Switch Employee" is the matching switch).
    */
   adminHref: string | null;
+  /** "Switch Employee" URL, resolved only inside /admin/*; null hides the row. */
+  employeeHref: string | null;
   onSignOut: () => void;
 }) {
   const AdminIcon = ADMIN_LAUNCHER.icon;
+  const EmployeeIcon = EMPLOYEE_LAUNCHER.icon;
   return (
     <PopoverRoot>
       <PopoverTrigger
@@ -431,6 +449,16 @@ function UserMenu({
           >
             <AdminIcon className="size-4 shrink-0" />
             {ADMIN_LAUNCHER.label}
+          </Link>
+        ) : null}
+        {employeeHref !== null ? (
+          <Link
+            href={employeeHref}
+            className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
+            data-qa="account-menu-employee"
+          >
+            <EmployeeIcon className="size-4 shrink-0" />
+            {EMPLOYEE_LAUNCHER.label}
           </Link>
         ) : null}
         {settingsHref !== null ? (

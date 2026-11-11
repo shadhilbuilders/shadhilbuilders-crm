@@ -62,6 +62,7 @@ import {
   LuCalendarDays,
   LuPackage,
   LuBell,
+  LuArrowLeftRight,
   LuShieldCheck,
   LuUserCog,
   LuUsersRound,
@@ -319,9 +320,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
 // contract - both consumer menus import the same shape, and both read the
 // role gate from `isAdminLike` via `adminLauncherHrefFor`.
 //
-// The exit direction ("Go to Work") is still rendered by `AdminNavGroup` in
-// `app-shell.tsx`, because inside /admin/* the sidebar is already the admin
-// nav and needs its own way back.
+// The exit direction is the "Switch Employee" row (EMPLOYEE_LAUNCHER below),
+// shown in the same account menus inside /admin/*.
 
 /** Label + icon + route for the account menu's "Switch Admin" row. */
 export const ADMIN_LAUNCHER = {
@@ -349,7 +349,7 @@ export function adminLauncherHref(orgSlug: string | null): string {
  *   - the role is not admin-class (the namespace 403s for everyone else), or
  *   - the org slug has not resolved (a bare `/admin` matches no route), or
  *   - the pathname is already under `/admin/*` - there the sidebar's own
- *     "Go to Work" is the matching switch, and this row would link to the page
+ *     "Switch Employee" is the matching switch, and this row would link to the page
  *     in view.
  */
 export function adminLauncherHrefFor(
@@ -361,6 +361,30 @@ export function adminLauncherHrefFor(
   if (isAdminPathname(pathname)) return null;
   if (orgSlug === null) return null;
   return adminLauncherHref(orgSlug);
+}
+
+/** Label + icon for the account menu's "Switch Employee" row (the way back out of /admin/*). */
+export const EMPLOYEE_LAUNCHER = {
+  label: 'Switch Employee',
+  icon: LuArrowLeftRight,
+} as const;
+
+/**
+ * The ONE gate for the "Switch Employee" row - the mirror of
+ * `adminLauncherHrefFor`. Shown only INSIDE `/admin/*` for admin-class roles;
+ * `workHref` is the resolved work landing page (see `workLandingHref`).
+ * Replaces the sidebar's old "Go to Work" link.
+ */
+export function employeeLauncherHrefFor(
+  role: Role | undefined,
+  pathname: string,
+  orgSlug: string | null,
+  workHref: string,
+): string | null {
+  if (!isAdminLike(role)) return null;
+  if (!isAdminPathname(pathname)) return null;
+  if (orgSlug === null) return null;
+  return workHref;
 }
 
 /**

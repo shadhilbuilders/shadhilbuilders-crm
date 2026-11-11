@@ -37,6 +37,13 @@ describe('proxy session gate', () => {
     );
   });
 
+  it('serves the plot-layout artwork to anonymous requests (SW precache)', () => {
+    // The service worker precaches this from /login with no session; a redirect
+    // there caches login HTML under the SVG URL and breaks the plot map in prod.
+    const res = proxy(req('/cmda-plan.svg'));
+    expect(res.headers.get('location')).toBeNull();
+  });
+
   it('passes an authenticated protected path through', () => {
     const res = proxy(
       req('/shadhil-builders/admin', '__Secure-better-auth.session_token=t'),

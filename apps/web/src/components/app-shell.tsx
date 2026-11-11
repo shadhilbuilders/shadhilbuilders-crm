@@ -69,11 +69,11 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@paalstack/react-ui';
-import { LuArrowLeft, LuChevronRight, LuPanelLeft } from '@paalstack/react-icons/lu';
+import { LuChevronRight, LuPanelLeft } from '@paalstack/react-icons/lu';
 
 import { NavUser } from '@/components/sidebar/nav-user';
 import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
-import { pickDefaultProject, useProjects, type ProjectListItem } from '@/hooks/queries';
+import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { workLandingHref, workSurfaceForRole } from '@/lib/dashboard-redirect';
@@ -81,6 +81,7 @@ import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
   adminLauncherHrefFor,
+  employeeLauncherHrefFor,
   getVisibleNav,
   isAdminPathname,
   isNavItemActive,
@@ -165,8 +166,7 @@ export function AppShell() {
           </Link>
         </div>
         {/* Separator between the brand chip and whatever follows it -
-            the project switcher on work routes, or the "Go to Work" link
-            (top of AdminNavGroup) on /admin/* - so the two header
+            the project switcher on work routes, or nothing on /admin/* - so the two header
             sections always read as distinct groups. */}
         <SidebarSeparator />
         {!inAdmin ? (
@@ -182,8 +182,6 @@ export function AppShell() {
             activeProjectId={activeProjectId}
             activeProjectSlug={activeProjectSlug}
             activeOrgSlug={activeOrgSlug}
-            workHref={workLandingHref(activeOrgSlug, projects ?? [])}
-            projects={projects ?? []}
           />
         ) : (
           <WorkNavGroup
@@ -362,14 +360,10 @@ function AdminNavGroup({
   activeProjectId,
   activeProjectSlug,
   activeOrgSlug,
-  workHref,
-  projects,
 }: {
   activeProjectId: string | null;
   activeProjectSlug: string | null;
   activeOrgSlug: string | null;
-  workHref: string;
-  projects: ProjectListItem[];
 }) {
   const pathname = usePathname();
   const { user, isPending } = useSessionUser();
@@ -396,20 +390,6 @@ function AdminNavGroup({
   if (!mounted || isPending) {
     return (
       <SidebarGroup>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Go to Work">
-              <Link
-                href={workHref}
-                data-qa="sidebar-go-to-work"
-                className="min-h-11 pointer-fine:min-h-8"
-              >
-                <LuArrowLeft className="size-4 shrink-0" />
-                <span className="min-w-0 truncate">Go to Work</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
         <SidebarGroupLabel>Admin</SidebarGroupLabel>
         <Skeleton variant="navItems" count={6} />
       </SidebarGroup>
@@ -422,27 +402,8 @@ function AdminNavGroup({
   // has resolved and the user genuinely has no admin items.
   if (items.length === 0) return null;
 
-  // Only show "Go to Work" if there are projects to go back to
-  const hasProjects = projects.length > 0;
-
   return (
     <SidebarGroup>
-      {/* Exit-admin affordance: a standalone link, NOT a NAV_ITEMS entry
-          (it isn't a page inside /admin/*, so getVisibleNav shouldn't walk
-          it). Sits above the "Admin" label so it reads as leaving the
-          section, not as one more admin page. */}
-      {hasProjects && (
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Go to Work">
-              <Link href={workHref} data-qa="sidebar-go-to-work">
-                <LuArrowLeft className="size-4 shrink-0" />
-                <span className="min-w-0 truncate">Go to Work</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      )}
       <SidebarGroupLabel>Admin</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
@@ -618,6 +579,7 @@ function UserMenuFooter() {
   const signOut = useSignOut();
   const orgSlug = useOrgSlug();
   const pathname = usePathname();
+  const { data: projects } = useProjects();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -655,6 +617,12 @@ function UserMenuFooter() {
       // The gate (OWNER/ADMIN, off /admin/*, resolved slug) lives in
       // adminLauncherHrefFor so the topbar and this menu cannot disagree.
       adminHref={adminLauncherHrefFor(user.role, pathname, orgSlug)}
+      employeeHref={employeeLauncherHrefFor(
+        user.role,
+        pathname,
+        orgSlug,
+        workLandingHref(orgSlug, projects ?? [], user.role),
+      )}
       onSignOut={() => void signOut()}
     />
   );

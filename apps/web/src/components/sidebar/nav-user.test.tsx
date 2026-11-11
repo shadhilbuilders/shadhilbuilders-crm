@@ -46,6 +46,7 @@ let root: Root | null = null;
 async function mountOpen(props: {
   settingsHref?: string | null;
   adminHref?: string | null;
+  employeeHref?: string | null;
 }): Promise<void> {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -62,6 +63,7 @@ async function mountOpen(props: {
           settingsHref={
             props.settingsHref === undefined ? '/shadhil-builders/settings' : props.settingsHref
           }
+          employeeHref={props.employeeHref ?? null}
           adminHref={
             props.adminHref === undefined ? '/shadhil-builders/admin' : props.adminHref
           }
@@ -121,6 +123,20 @@ describe('NavUser account menu', () => {
     expect(qa('sidebar-user-admin')).toBeNull();
     // Settings must still be there - the hide is per-row, not a blank menu.
     expect(qa('sidebar-user-settings')).not.toBeNull();
+  });
+
+  it('shows "Switch Employee" above Settings when an employee href is resolved', async () => {
+    await mountOpen({ adminHref: null, employeeHref: '/shadhil-builders/projects/p/dashboard' });
+    const row = qa('sidebar-user-employee');
+    expect(row?.textContent).toContain('Switch Employee');
+    expect(
+      row!.compareDocumentPosition(qa('sidebar-user-settings')!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('hides "Switch Employee" by default', async () => {
+    await mountOpen({});
+    expect(qa('sidebar-user-employee')).toBeNull();
   });
 
   it('keeps Settings and Sign out in place', async () => {

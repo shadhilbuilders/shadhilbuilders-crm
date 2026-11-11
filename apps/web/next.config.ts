@@ -178,7 +178,15 @@ export default withSerwistInit({
       manifest: entries.map((e) => ({
         ...e,
         // Add build ID as revision for the SW entry itself
-        revision: e.url === '/sw.js' ? process.env.BUILD_ID ?? 'local' : e.revision,
+        // cmda-plan.svg: earlier builds precached the /login redirect HTML under
+        // this URL (proxy gated it). Same file hash = same revision = browsers
+        // keep the poisoned entry, so salt the revision to force a re-fetch.
+        revision:
+          e.url === '/sw.js'
+            ? process.env.BUILD_ID ?? 'local'
+            : e.url === '/cmda-plan.svg'
+              ? `${e.revision ?? ''}-public-v2`
+              : e.revision,
       })),
     }),
   ],
