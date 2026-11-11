@@ -55,32 +55,31 @@ describe('PortalSignOut', () => {
     expect(html).toContain('data-qa="portal-sign-out"');
   });
 
-  // Owner direction (2026-11-10): the BUTTON takes the library's IconButton
-  // default - buttonVariants({ size: "icon", rounded: "md" }) = size-8 (32px)
-  // with rounded-md - so it matches every other icon button in the product.
-  it('uses the library default icon-button size on the button itself', () => {
+  // The trigger is a round ghost icon button: 36px on phones, growing to a
+  // 44px tap target from `sm` up.
+  it('renders a round icon button, 36px growing to 44px from sm', () => {
     mocks.alertDialogProps.length = 0;
     const html = renderToStaticMarkup(<PortalSignOut />);
-    expect(html).toContain('size-8');
-    expect(html).toContain('rounded-md');
-    // No bespoke sizing / 44px / pill classes on the trigger.
-    expect(html).not.toContain('min-h-11');
-    expect(html).not.toContain('min-w-11');
-    expect(html).not.toContain('sm:size-11');
-    expect(html).not.toContain('rounded-full');
+    const button = /<button[^>]*class="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(button).toContain('size-9');
+    expect(button).toContain('min-h-9');
+    expect(button).toContain('min-w-9');
+    expect(button).toContain('sm:size-11');
+    expect(button).toContain('sm:min-h-11');
+    expect(button).toContain('sm:min-w-11');
+    expect(button).toContain('rounded-full');
   });
 
-  // The GLYPH is the one thing sized by hand. The library's base rule is
+  // The GLYPH is sized separately from the button. The library's base rule is
   // `[&_svg:not([class*='size-'])]:size-4`, so a `size-5` class opts the svg out
-  // of that 16px fallback and renders it at 20px inside the 32px box.
-  it('sizes only the glyph, not the button', () => {
+  // of that 16px fallback and renders it at 20px.
+  it('sizes the glyph separately from the button', () => {
     mocks.alertDialogProps.length = 0;
     const html = renderToStaticMarkup(<PortalSignOut />);
     const svg = /<svg[^>]*class="([^"]*)"/.exec(html)?.[1] ?? '';
     expect(svg).toContain('size-5');
-    // The button stays at the library default: no size-5 leaking onto it.
+    // size-5 sizes the glyph only; it must not leak onto the button.
     const button = /<button[^>]*class="([^"]*)"/.exec(html)?.[1] ?? '';
-    expect(button).toContain('size-8');
     expect(button).not.toContain('size-5');
   });
 
