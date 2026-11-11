@@ -15,8 +15,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { useOrgSlugForId } from '@/hooks/queries/organizations';
+import { useOrgSlugForId, shouldResolveOrgSlug } from '@/hooks/queries/organizations';
 import { useSessionUser } from '@/lib/session';
+import { PORTAL_HOME, isPortalRole } from '@/lib/portal-routing';
 import { PageLoading } from '@/components/shared/PageLoading';
 import { PageError } from '@/components/shared/PageError';
 
@@ -25,10 +26,30 @@ export default function OrgRootRedirectPage() {
   const { user, isPending } = useSessionUser();
   const { orgSlug, isPending: orgsPending, error: orgsError } = useOrgSlugForId(
     user?.organizationId ?? null,
+    {
+      // 2026-11-10: do NOT even ask for the org list until we have a resolved,
+      // non-buyer session. This is the fix for the 403 on the portal landing
+      // path: a CUSTOMER's `/organizations` call is refused by the
+      // mustChangePassword gate, so the old unconditional query produced a
+      // guaranteed 403 (and a console error) on every buyer visit to `/`.
+      // Buyers never need the answer - they are redirected to the portal below.
+      enabled: shouldResolveOrgSlug({
+        role: user?.role,
+        isPending,
+        organizationId: user?.organizationId,
+      }),
+    },
   );
 
   useEffect(() => {
-    if (isPending || orgsPending) return;
+    if (isPending) return;
+    // Issue #8: a buyer has no staff org home; send them to the portal before
+    // the (staff) org lookup, which they have no reason to wait on or fail on.
+    if (user !== null && isPortalRole(user.role)) {
+      router.replace(PORTAL_HOME);
+      return;
+    }
+    if (orgsPending) return;
     if (orgsError !== null) return; // error UI takes over below
     if (user === null || !user.organizationId) {
       router.replace('/login');
@@ -41,8 +62,9 @@ export default function OrgRootRedirectPage() {
   // Session still resolving → skeleton.
   if (isPending) return <PageLoading content="Loading workspace..." />;
 
-  // Orgs lookup failed → real error state with retry.
-  if (orgsError !== null) {
+  // Orgs lookup failed → real error state with retry (staff only: a buyer is
+  // already being redirected and must not see a staff error).
+  if (orgsError !== null && !isPortalRole(user?.role)) {
     const message =
       orgsError instanceof Error ? orgsError.message : 'Could not load your organization';
     return (

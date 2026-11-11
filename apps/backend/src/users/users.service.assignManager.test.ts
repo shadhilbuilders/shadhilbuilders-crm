@@ -12,6 +12,8 @@
 //   8. MANAGER assigning into ANOTHER manager's team → 403 ForbiddenException
 //   9. happy path replaces the target's TeamMember row and returns the
 //      updated CreatedUser shape + writes an audit row
+//  10. (2026-11-07) ENGINEER targets are ADDITIVE - other memberships are
+//      never deleted - and are gated to ADMIN/OWNER despite outranking.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,6 +69,12 @@ function makeService(opts: {
     managerId: string | null;
     deletedAt?: Date | null;
   } | null;
+  /** 2026-11-07: override the target's TeamMember rows. `findMany` is called
+   *  up to twice (pre-check, then the post-condition), so a two-element array
+   *  models "before" and "after" exactly. Defaults to the move-mode fixture
+   *  (already in the destination team, which is only reachable for
+   *  TELECALLER/SALES_EXEC). */
+  memberships?: Array<Array<{ teamId: string }>>;
 }) {
   const userFindUnique = vi.fn().mockResolvedValue(opts.user);
   // assignManager() treats a soft-deleted team as absent, so default the
@@ -89,10 +97,15 @@ function makeService(opts: {
   // settled to exactly one team. These mocks model the happy path: the target
   // is already in the destination's manager's team, delete removes it, and the
   // create puts it back - so `findMany` returns [] after the delete.
-  const teamMemberFindMany = vi
-    .fn()
-    .mockResolvedValueOnce([{ teamId: opts.team?.id ?? 'team-2' }]) // pre-check
-    .mockResolvedValue([{ teamId: opts.team?.id ?? 'team-2' }]); // post-check
+  const teamMemberFindMany = vi.fn();
+  if (opts.memberships !== undefined && opts.memberships.length > 0) {
+    for (const row of opts.memberships) teamMemberFindMany.mockResolvedValueOnce(row);
+    teamMemberFindMany.mockResolvedValue(opts.memberships[opts.memberships.length - 1]);
+  } else {
+    teamMemberFindMany
+      .mockResolvedValueOnce([{ teamId: opts.team?.id ?? 'team-2' }]) // pre-check
+      .mockResolvedValue([{ teamId: opts.team?.id ?? 'team-2' }]); // post-check
+  }
   const teamFindMany = vi.fn().mockResolvedValue([{ id: opts.team?.id ?? 'team-2' }]);
   // T-TEAM-AUTHORITATIVE (2026-09-13): assignManager() runs entirely inside
   // ONE withRlsContext transaction, so every model accessor the method
@@ -157,7 +170,7 @@ describe('assignManager - role gate', () => {
       service.assignManager(adminActor, managerTarget.id, { teamId: 'team-2' }),
     ).rejects.toMatchObject({
       name: 'BadRequestException',
-      message: 'Only TELECALLER/SALES_EXEC report to a manager',
+      message: 'Only TELECALLER/SALES_EXEC/ENGINEER report to a manager',
     });
   });
 });
@@ -263,5 +276,120 @@ describe('assignManager - MANAGER scope', () => {
       message: 'Managers can only assign staff into their own team',
     });
     expect(mocks.teamMemberCreate).not.toHaveBeenCalled();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// ENGINEER (2026-11-07): additive + admin-only.
+// ────────────────────────────────────────────────────────────────────────────
+// An engineer's ENTIRE RLS surface (units, phases, progress photos) hangs off
+// TeamMember -> ProjectTeam, so "move them to another team" silently revokes
+// access to every project staffed by the old team. These tests pin the
+// additive contract and the admin-class gate.
+describe('assignManager - ENGINEER is ADDITIVE', () => {
+  const engineerTarget = {
+    id: 'eng-1',
+    email: 'eng@x',
+    name: 'Arjun Site',
+    role: 'ENGINEER',
+    teamId: 'team-a',
+  };
+
+  it('ADMIN adds the team WITHOUT deleting the engineer\u2019s other memberships', async () => {
+    const { service, mocks } = makeService({
+      user: engineerTarget,
+      team: { id: 'team-b', name: "Asha's Team", managerId: 'mgr-2' },
+      // before: team-a only; after: both.
+      memberships: [[{ teamId: 'team-a' }], [{ teamId: 'team-a' }, { teamId: 'team-b' }]],
+    });
+
+    const result = await service.assignManager(adminActor, engineerTarget.id, {
+      teamId: 'team-b',
+    });
+
+    // The critical assertion: NO membership was removed.
+    expect(mocks.teamMemberDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.teamMemberCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: engineerTarget.id,
+          teamId: 'team-b',
+          organizationId: ORG,
+          assignedById: adminActor.sub,
+        }),
+      }),
+    );
+    expect(result.teamId).toBe('team-b');
+  });
+
+  it('audits the full membership set (before/after teamIds), not a single pair', async () => {
+    const { service, mocks } = makeService({
+      user: engineerTarget,
+      team: { id: 'team-b', name: "Asha's Team", managerId: 'mgr-2' },
+      memberships: [[{ teamId: 'team-a' }], [{ teamId: 'team-a' }, { teamId: 'team-b' }]],
+    });
+
+    await service.assignManager(adminActor, engineerTarget.id, { teamId: 'team-b' });
+
+    // A single before/after teamId pair cannot express "kept both" - the
+    // engineer's project access is the thing being changed, so the audit row
+    // must show the whole set.
+    expect(mocks.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'user.assignManager',
+          entityId: engineerTarget.id,
+          before: { teamIds: ['team-a'] },
+          after: { teamIds: ['team-a', 'team-b'] },
+        }),
+      }),
+    );
+  });
+
+  it('MANAGER cannot change an ENGINEER\u2019s team (team membership grants site access)', async () => {
+    const { service, mocks } = makeService({
+      user: engineerTarget,
+      team: { id: 'team-mgr1', name: "Manager 1's Team", managerId: managerActor.sub },
+      memberships: [[{ teamId: 'team-a' }]],
+    });
+
+    // MANAGER (rank 2) outranks ENGINEER (rank 1), so the generic outranks()
+    // check alone would allow this - which would let a manager hand out
+    // project access, contradicting roles.ts's admin-only rule for ENGINEER.
+    await expect(
+      service.assignManager(managerActor, engineerTarget.id, { teamId: 'team-mgr1' }),
+    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+
+    expect(mocks.teamMemberCreate).not.toHaveBeenCalled();
+    expect(mocks.teamMemberDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a team the engineer is already on, with no writes and no audit row', async () => {
+    const { service, mocks } = makeService({
+      user: engineerTarget,
+      team: { id: 'team-a', name: 'Team A', managerId: 'mgr-1' },
+      memberships: [[{ teamId: 'team-a' }]],
+    });
+
+    await expect(
+      service.assignManager(adminActor, engineerTarget.id, { teamId: 'team-a' }),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
+
+    // A no-op must not look like a change.
+    expect(mocks.teamMemberCreate).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('rolls back when the additive invariant breaks (a membership went missing)', async () => {
+    const { service } = makeService({
+      user: engineerTarget,
+      team: { id: 'team-b', name: "Asha's Team", managerId: 'mgr-2' },
+      // Simulates a partial write: team-a vanished after the insert.
+      memberships: [[{ teamId: 'team-a' }], [{ teamId: 'team-b' }]],
+    });
+
+    await expect(
+      service.assignManager(adminActor, engineerTarget.id, { teamId: 'team-b' }),
+    ).rejects.toMatchObject({ name: 'ConflictException' });
   });
 });

@@ -10,8 +10,10 @@
 //                       (proxied through the BFF).
 //
 // Auth: global JwtAuthGuard (not @Public). Upload and read both require a
-// logged-in staff session. The key is org-namespaced by the provider, so a
-// cross-tenant key simply doesn't exist.
+// logged-in session. Upload writes into the CALLER's org namespace; read
+// refuses any key whose first path segment is not the caller's org
+// (media-key-scope.ts). The key namespace is the tenant wall, because the
+// stored bytes carry no RLS of their own.
 import {
   BadRequestException,
   Body,
@@ -29,7 +31,9 @@ import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
+import { MediaAccessService } from './media-access.service';
 import { MAX_UPLOAD_BYTES } from './storage.limits';
+import { sniffMime, reconcileUploadMime } from './sniff-mime';
 import { STORAGE_PROVIDER } from './storage.tokens';
 import type { StorageProvider } from './storage.provider';
 
@@ -53,6 +57,7 @@ const UploadSchema = z.object({
 export class MediaController {
   constructor(
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    @Inject(MediaAccessService) private readonly mediaAccess: MediaAccessService,
   ) {}
 
   @Post()
@@ -65,10 +70,13 @@ export class MediaController {
     if (!parsed.success) {
       throw new BadRequestException('Invalid upload payload');
     }
-    const { filename, mimeType, base64 } = parsed.data;
+    const { filename, base64 } = parsed.data;
+    // The declared type is only checked against the broad prefix allowlist
+    // below; the STORED type comes from the bytes (see reconcileUploadMime).
+    const declaredMimeType = parsed.data.mimeType;
 
-    if (!ALLOWED_MIME_PREFIXES.some((p) => mimeType.startsWith(p))) {
-      throw new BadRequestException(`Unsupported media type: ${mimeType}`);
+    if (!ALLOWED_MIME_PREFIXES.some((p) => declaredMimeType.startsWith(p))) {
+      throw new BadRequestException(`Unsupported media type: ${declaredMimeType}`);
     }
 
     let buf: Buffer;
@@ -81,6 +89,12 @@ export class MediaController {
     if (buf.length > MAX_UPLOAD_BYTES) {
       throw new BadRequestException(`File too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB)`);
     }
+
+    // Same rule as the progress-photo upload: record what the BYTES are, not
+    // what the filename implied. Falls back to the client's declaration when
+    // the format is one we cannot identify (office documents, archives) - the
+    // controller-wide prefix allowlist already vetted it.
+    const mimeType = reconcileUploadMime(buf, declaredMimeType)?.mimeType ?? declaredMimeType;
 
     const stored = await this.storage.save(buf, {
       organizationId: req.user!.organizationId,
@@ -98,6 +112,7 @@ export class MediaController {
   @Get(':key')
   @ApiOperation({ summary: 'Read a stored chat attachment by key.' })
   async read(
+    @Req() req: AuthedRequest,
     @Param('key') key: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -110,11 +125,26 @@ export class MediaController {
     } catch {
       throw new NotFoundException('Media not found');
     }
+    // TENANT + ROW WALL (2026-11-07). Two checks, in this order:
+    //   1. the key's org segment must be the caller's org (cheap, no query);
+    //   2. an owning row must be VISIBLE under the caller's RLS context.
+    // Row RLS protects the row; these protect the BYTES it points at. Without
+    // (2) a session could read a photo hidden from them just by holding the
+    // key. 404 either way - a 403 would confirm the key exists.
+    await this.mediaAccess.assertReadable(req.user!, decoded);
     const data = await this.storage.read(decoded);
     if (data === null) throw new NotFoundException('Media not found');
     // Write the raw bytes directly to the response (no StreamableFile envelope,
     // no JSON serialization) so <img>/<a> load the exact file bytes.
-    res.setHeader('Content-Type', guessMime(decoded));
+    //
+    // CONTENT-TYPE COMES FROM THE BYTES, NOT THE FILENAME (2026-11-06). The
+    // key's extension is user-supplied and frequently lies: a phone's camera
+    // roll names a JPEG `IMG_2676.PNG`, and serving that as `image/png` makes
+    // the browser drop it outright under `X-Content-Type-Options: nosniff`
+    // (set in apps/web/next.config.ts) - the image renders as nothing. Sniff
+    // the magic number first and only fall back to the extension for formats
+    // we cannot identify (documents, archives).
+    res.setHeader('Content-Type', sniffMime(data) ?? guessMime(decoded));
     res.setHeader('Content-Length', String(data.length));
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.end(data);

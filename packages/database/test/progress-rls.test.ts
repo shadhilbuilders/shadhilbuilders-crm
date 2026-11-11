@@ -58,6 +58,21 @@ const PHOTO_SELF_ID = 'cq9kvh1p2m7n3r8s4t5u6vwe'; // eng A's own photo
 const PHOTO_OTHER_ID = 'cq9kvh1p2m7n3r8s4t5u6vwf'; // eng B's photo (same unit - cross-project probe)
 const PHOTO_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vwg'; // photo createdBy eng-A, edited by photo-lead
 
+// DELETE-arm fixtures (2026-11-09). These MUST NOT share the `...vw*` namespace
+// the rest of this file reserves for users/photos/units: the values used to be
+// ...vwh/vwi/vwj/vwk, and `...vwi` is UNIT_A_ID while `...vwj` already had a
+// ProgressPhoto row from an earlier test in this very file. That collided on
+// ProgressPhoto_pkey in createMany below and failed the suite before it ever
+// reached the delete assertions. `...vx*` is reserved for this test only.
+const D_SELF_ID = 'cq9kvh1p2m7n3r8s4t5u6vwx';
+const D_LEAD_ID = 'cq9kvh1p2m7n3r8s4t5u6vwy';
+const D_NONE_ID = 'cq9kvh1p2m7n3r8s4t5u6vwz';
+const D_ADMIN_ID = 'cq9kvh1p2m7n3r8s4t5u6vt0';
+const DELETE_TEST_PHOTO_IDS = [D_SELF_ID, D_LEAD_ID, D_NONE_ID, D_ADMIN_ID] as const;
+
+const UNASSIGNED_UNIT_ID = 'cq9kvh1p2m7n3r8s4t5u6vt1'; // same project/team as UNIT_A, no engineer
+const UNASSIGNED_PHOTO_ID = 'cq9kvh1p2m7n3r8s4t5u6vt2';
+
 const UNIT_A_ID = 'cq9kvh1p2m7n3r8s4t5u6vwi'; // unit on project A (PA-ENG-001, fixture above)
 
 // ── Fixture ────────────────────────────────────────────────────────────────
@@ -123,16 +138,21 @@ async function buildFixture(): Promise<void> {
     update: {},
     create: { id: PHASE_B_ID, projectId: PROJ_B_ID, name: 'Phase B', organizationId: ORG_ID },
   });
-  for (const [unitId, phaseId, num] of [
-    ['cq9kvh1p2m7n3r8s4t5u6vwi', PHASE_A_ID, 'PA-ENG-001'],
-    ['cq9kvh1p2m7n3r8s4t5u6vwj', PHASE_B_ID, 'PB-ENG-001'],
+  // 2026-11-10: an ENGINEER reads only villas ASSIGNED to them. PA-ENG-001 is
+  // eng-A's; PA-ENG-002 (same project, same team) is deliberately unassigned;
+  // PB-ENG-001 belongs to nobody.
+  for (const [unitId, phaseId, num, assignee] of [
+    ['cq9kvh1p2m7n3r8s4t5u6vwi', PHASE_A_ID, 'PA-ENG-001', ENG_A_ID],
+    [UNASSIGNED_UNIT_ID, PHASE_A_ID, 'PA-ENG-002', null],
+    ['cq9kvh1p2m7n3r8s4t5u6vwj', PHASE_B_ID, 'PB-ENG-001', null],
   ] as const) {
     await adminPrisma.unit.upsert({
       where: { id: unitId },
-      update: {},
+      update: { assignedEngineerId: assignee },
       create: {
         id: unitId,
         phaseId,
+        assignedEngineerId: assignee,
         unitNumber: num,
         bhk: 3,
         buildupSqft: '1000.00',
@@ -223,8 +243,15 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
   afterAll(async () => {
     // Photos are the only rows this suite creates beyond the shared fixture
     // world's pre-existing rows (units/users/teams are shared and stay).
+    // DELETE_TEST_PHOTO_IDS is included (2026-11-09): those four rows used to
+    // leak, because the test that creates them deletes only three of the four
+    // (the non-owner case is a deliberate 0-row no-op) and afterAll did not
+    // list them. Left behind, they collided with the next run's createMany on
+    // ProgressPhoto_pkey.
     await adminPrisma.progressPhoto.deleteMany({
-      where: { id: { in: [PHOTO_SELF_ID, PHOTO_OTHER_ID, PHOTO_ADMIN_ID] } },
+      where: {
+        id: { in: [PHOTO_SELF_ID, PHOTO_OTHER_ID, PHOTO_ADMIN_ID, ...DELETE_TEST_PHOTO_IDS] },
+      },
     });
     await adminPrisma.projectStaffRole.deleteMany({
       where: { userId: { in: [PL_A_ID] } },
@@ -373,6 +400,71 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     ).rejects.toThrow();
   });
 
+  // ── DELETE arm (slice 4, 2026-11-07) ───────────────────────────────────
+  // The delete route shipped with the slice-1/2 completion pass, so the policy
+  // it relies on is now load-bearing. Until this test there was no proof that
+  // progress_photo_delete grants the creator and the photo lead while denying
+  // everyone else - only the UPDATE arm was exercised.
+  // protects= DELETE is allowed for the creator, the project photo lead and
+  //           ADMIN, and a non-owner's deleteMany removes 0 rows;
+  // fails_when= a non-member or sibling-project lead can remove a photo;
+  // no_claim= does not prove the service's 404 mapping (that is
+  //           customer-progress.photo-mutation.test.ts).
+  it('protects= DELETE: creator + photo lead + ADMIN may delete; fails_when= a non-owner removes rows', async () => {
+    // Seed three throwaway photos so the cases do not interfere.
+    const mk = (id: string, unitId: string, createdBy: string) => ({
+      id,
+      unitId,
+      phaseId: PHASE_A_ID,
+      organizationId: ORG_ID,
+      key: `progress/delete-${id}.jpg`,
+      mimeType: 'image/jpeg',
+      filename: `delete-${id}.jpg`,
+      caption: `delete test ${id}`,
+      takenAt: new Date('2026-10-26T12:00:00Z'),
+      createdBy,
+    });
+    // Ids come from the module constants above so they can never drift back
+    // into the `...vw*` namespace this file reserves for other fixtures, and so
+    // afterAll can clean exactly the rows this test creates.
+    await adminPrisma.progressPhoto.createMany({
+      data: [
+        mk(D_SELF_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_LEAD_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_NONE_ID, UNIT_A_ID, ENG_A_ID),
+        mk(D_ADMIN_ID, UNIT_A_ID, ENG_A_ID),
+      ],
+    });
+
+    // Creator arm.
+    const own = await withRlsContext(prisma, engA, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_SELF_ID } }),
+    );
+    expect(own.count).toBe(1);
+
+    // Photo-lead arm (plA leads project A, did not create this photo).
+    const asLead = await withRlsContext(prisma, plA, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_LEAD_ID } }),
+    );
+    expect(asLead.count).toBe(1);
+
+    // Non-owner: 0 rows, no throw (deleteMany reports the count).
+    const denied = await withRlsContext(prisma, engN, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_NONE_ID } }),
+    );
+    expect(denied.count).toBe(0);
+
+    // ADMIN org-wide.
+    const asAdmin = await withRlsContext(prisma, admin, async (tx) =>
+      tx.progressPhoto.deleteMany({ where: { id: D_ADMIN_ID } }),
+    );
+    expect(asAdmin.count).toBe(1);
+
+    // The denied row survived.
+    const survivor = await adminPrisma.progressPhoto.findUnique({ where: { id: D_NONE_ID } });
+    expect(survivor).not.toBeNull();
+  });
+
   it('protects= creator label helper; fails_when= cross-org or no-context reads', async () => {
     // Member context: label resolves + photo-lead flag false (eng-A has no
     // PHOTO_LEAD row on project A).
@@ -503,5 +595,88 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
       }).team.findMany({ where: { id: TEAM_A_ID } }),
     );
     expect(nonMemberTeam).toHaveLength(0);
+  });
+
+  // ── 2026-11-10: assignment-scoped ENGINEER reads/writes ──────────────────
+
+  it('protects= an ENGINEER reads only villas assigned to them; fails_when= team membership alone exposes a villa', async () => {
+    const rows = await withRlsContext(prisma, engA, async (tx) =>
+      tx.unit.findMany({
+        where: { id: { in: [UNIT_A_ID, UNASSIGNED_UNIT_ID] } },
+        select: { id: true },
+      }),
+    );
+    expect(rows.map((r) => r.id)).toEqual([UNIT_A_ID]);
+  });
+
+  it('protects= photos on an unassigned villa are invisible and un-insertable for the engineer', async () => {
+    await adminPrisma.progressPhoto.create({
+      data: {
+        id: UNASSIGNED_PHOTO_ID,
+        unitId: UNASSIGNED_UNIT_ID,
+        phaseId: PHASE_A_ID,
+        organizationId: ORG_ID,
+        key: `progress/${UNASSIGNED_PHOTO_ID}.jpg`,
+        mimeType: 'image/jpeg',
+        filename: `${UNASSIGNED_PHOTO_ID}.jpg`,
+        caption: 'admin probe',
+        takenAt: new Date('2026-11-10T09:00:00Z'),
+        createdBy: ENG_A_ID,
+      },
+    });
+    try {
+      // Even the engineer's OWN photo disappears once the villa is not theirs.
+      const visible = await withRlsContext(prisma, engA, async (tx) =>
+        tx.progressPhoto.findMany({ where: { id: UNASSIGNED_PHOTO_ID } }),
+      );
+      expect(visible).toHaveLength(0);
+
+      await expect(
+        withRlsContext(prisma, engA, async (tx) =>
+          tx.progressPhoto.create({
+            data: {
+              id: 'cq9kvh1p2m7n3r8s4t5u6vt3',
+              unitId: UNASSIGNED_UNIT_ID,
+              phaseId: PHASE_A_ID,
+              organizationId: ORG_ID,
+              key: 'progress/unassigned-insert.jpg',
+              mimeType: 'image/jpeg',
+              filename: 'unassigned-insert.jpg',
+              caption: 'should be denied',
+              takenAt: new Date('2026-11-10T09:05:00Z'),
+              createdBy: ENG_A_ID,
+            },
+          }),
+        ),
+      ).rejects.toThrow();
+
+      // ADMIN still sees it (org-wide).
+      const admin = await withRlsContext(
+        prisma,
+        { userId: 'cq9kvh1p2m7n3r8s4t5u6vwd', role: 'ADMIN', organizationId: ORG_ID },
+        async (tx) => tx.progressPhoto.findMany({ where: { id: UNASSIGNED_PHOTO_ID } }),
+      );
+      expect(admin).toHaveLength(1);
+    } finally {
+      await adminPrisma.progressPhoto.deleteMany({ where: { id: UNASSIGNED_PHOTO_ID } });
+    }
+  });
+
+  it('protects= project_unit_ids() resolves a project\'s units even for an engineer who cannot read them', async () => {
+    const ids = await withRlsContext(prisma, engN, async (tx) =>
+      (tx as unknown as {
+        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<Array<{ project_unit_ids: string }>>;
+      }).$queryRaw`SELECT project_unit_ids(${PROJ_A_ID}) AS project_unit_ids`,
+    );
+    const set = ids.map((r) => r.project_unit_ids);
+    expect(set).toContain(UNIT_A_ID);
+    expect(set).toContain(UNASSIGNED_UNIT_ID);
+    // Org-scoped: a project of another org (or none) yields nothing.
+    const none = await withRlsContext(prisma, engN, async (tx) =>
+      (tx as unknown as {
+        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
+      }).$queryRaw`SELECT project_unit_ids('no-such-project') AS project_unit_ids`,
+    );
+    expect(none).toHaveLength(0);
   });
 });

@@ -18,7 +18,7 @@ vi.mock('@/hooks/queries/inventory', () => ({
   })),
 }));
 
-import { UnitEditFormBody } from './UnitEditDialog';
+import { UnitEditFormBody, fromDateInput, toDateInput } from './UnitEditDialog';
 
 const UNIT = {
   id: 'unit-1',
@@ -103,6 +103,17 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     expect(rate).not.toMatch(/readonly/i);
   });
 
+  // The dialog caps its own height and pins header/footer, so the form is the
+  // scroll container for the field list. Without it the lower fields (and the
+  // footer's Save button) fall below the fold on short viewports.
+  it('makes the field list the dialog scroll container', () => {
+    const html = renderToStaticMarkup(<TestForm />);
+    const form = html.match(/<form[^>]*data-qa="form"[^>]*>/)?.[0] ?? '';
+
+    expect(form).toMatch(/overflow-y-auto/);
+    expect(form).toMatch(/min-h-0/);
+  });
+
   // T-INV-SYNC follow-up: a held/token unit must NOT render the status picker.
   // It used to render a SELECT pre-selected with 'HOLD' - a value its options
   // (AVAILABLE|SOLD) cannot contain - and always submitted it, so the server
@@ -130,5 +141,22 @@ describe('UnitEditFormBody - props-API Form surface', () => {
     expect(html).toMatch(/data-qa="form-field-status"/);
     expect(html).not.toMatch(/data-qa="unit-edit-status-derived"/);
     expect(html).toMatch(/name="status"/);
+  });
+});
+
+describe('handover date field', () => {
+  it('renders the buyer-visible handover date input', () => {
+    const html = renderToStaticMarkup(<TestForm />);
+    expect(html).toContain('Expected handover');
+    expect(html).toMatch(/<input[^>]*type="date"[^>]*data-qa="unit-edit-handover"|<input[^>]*data-qa="unit-edit-handover"[^>]*type="date"/);
+  });
+
+  it('round-trips a calendar day without shifting it, and blank clears', () => {
+    expect(toDateInput('2027-06-30T00:00:00.000Z')).toBe('2027-06-30');
+    expect(toDateInput(null)).toBe('');
+    expect(toDateInput(undefined)).toBe('');
+    expect(fromDateInput('2027-06-30')).toBe('2027-06-30T00:00:00.000Z');
+    expect(fromDateInput('')).toBeNull();
+    expect(fromDateInput(undefined)).toBeNull();
   });
 });

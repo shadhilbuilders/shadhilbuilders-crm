@@ -15,7 +15,7 @@ import { Badge, Button, DataTable, Select, TypographyP, AlertDialog, DataTableRo
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState, useEffect } from 'react';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { UnitDetailSheet } from '@/components/inventory/UnitDetailSheet';
 import { UnitEditDialog } from '@/components/inventory/UnitEditDialog';
+import { MilestonesDialog } from '@/components/milestones/MilestonesDialog';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import {
   useDeleteUnit,
@@ -36,7 +37,8 @@ import {
 import { inventoryStatusBadgeVariant, labelFor, INVENTORY_STATUSES } from '@/lib/labels';
 import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
-import { useSessionUser, canManageProjectMembers } from '@/lib/session';
+import { useUsers } from '@/hooks/queries/users';
+import { useSessionUser, canManageProjectMembers, isAdminLike, isSiteRole } from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -62,8 +64,11 @@ const unitRowSchema = z.object({
   createdAt: z.string(),
 }) as unknown as Parameters<typeof DataTableRowActions>[0]['rowSchema'];
 
-function formatMoney(value: string | undefined): string {
-  if (value === undefined) return '-';
+function formatMoney(value: string | null | undefined): string {
+  // Null money is real since 2026-11-08 (the server withholds villa pricing
+  // from site-only roles), and `Number(null)` is 0 - so a null must never be
+  // formatted as a rupee value.
+  if (value === null || value === undefined) return '-';
   const num = Number(value);
   if (!Number.isFinite(num)) return value;
   return currencyIntl.format(num);
@@ -75,6 +80,7 @@ function formatMoney(value: string | undefined): string {
  * and without it the page fails to prerender.
  */
 function InventoryGrid() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const linkedUnitId = searchParams.get('unit');
   const { user } = useSessionUser();
@@ -101,6 +107,7 @@ function InventoryGrid() {
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
   const [bhkFilter, setBhkFilter] = useState<string>('ALL');
   const [facingFilter, setFacingFilter] = useState<string>('ALL');
+  const [engineerFilter, setEngineerFilter] = useState<string>('ALL');
   // T-INV-SEARCH: villa-number search. Same contract as the leads/users grids
   // (`admin/users`, `UserLeadsCard`): debounce 300ms so typing does not fire a
   // request per keystroke, and require >= 2 chars so a single character does
@@ -124,6 +131,7 @@ function InventoryGrid() {
     bhk: bhkFilter !== 'ALL' ? Number(bhkFilter) : undefined,
     facing: facingFilter !== 'ALL' ? facingFilter : undefined,
     status: statusFilter !== 'ALL' ? [statusFilter] : undefined,
+    assignedEngineerId: engineerFilter !== 'ALL' ? engineerFilter : undefined,
     search: serverSearch,
     limit: pageSize,
     offset: (page - 1) * pageSize,
@@ -134,6 +142,7 @@ function InventoryGrid() {
   const rows = Array.isArray(unitsQuery.data) ? (unitsQuery.data as UnitRow[]) : [];
 
   const [detailTarget, setDetailTarget] = useState<UnitRow | null>(null);
+  const [milestonesOpen, setMilestonesOpen] = useState(false);
   // Deep link from the plot map: `?unit=<id>` opens that villa's sheet. The map
   // knows a unit ID, not the whole row, so the row is fetched here.
   const linkedUnit = useUnit(linkedUnitId);
@@ -144,8 +153,52 @@ function InventoryGrid() {
   const [deleteTarget, setDeleteTarget] = useState<UnitRow | null>(null);
   const deleteUnit = useDeleteUnit();
 
-  const canEdit =
-    mounted && user !== null && (user.role === 'ADMIN' || user.role === 'OWNER');
+  // Unit WRITES (create/edit/delete) are ADMIN/OWNER only - mirrors the
+  // service gates in InventoryService.create/update/delete and the RLS
+  // policies. Every role may READ the grid, so the row menu must not offer
+  // an action the API answers 403 for.
+  const canEdit = mounted && user !== null && isAdminLike(user.role);
+
+  // Site staff (2026-11-08) do not open the detail sheet: they get their own
+  // route, which is a URL they can share and that survives a phone unloading a
+  // backgrounded tab. Sales roles keep the sheet unchanged.
+  //
+  // NOTE: this is the TELECALLER branch. ENGINEER never reaches this render at
+  // all - `inventory/layout.tsx` blocks the segment above the page, so the
+  // grid's queries (and the rupee columns behind them) are never requested.
+  const siteRole = mounted && user !== null && isSiteRole(user.role);
+
+  // Assigned-engineer column + filter (2026-11-10): MANAGER/ADMIN/OWNER only.
+  // The manager's engineer list is team-scoped server-side (useUsers).
+  const showAssignment =
+    mounted && user !== null && (user.role === 'MANAGER' || isAdminLike(user.role));
+  const engineersQuery = useUsers({
+    role: ['ENGINEER'],
+    projectId: projectId ?? undefined,
+    limit: 100,
+  });
+  const engineerOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'All engineers' },
+      ...(engineersQuery.data?.rows ?? []).map((u) => ({ value: u.id, label: u.name })),
+    ],
+    [engineersQuery.data],
+  );
+
+  /**
+   * One entry point for "open this villa", branched by role.
+   *
+   * Site staff are pushed to `/site/<id>` - a real route, so an interrupted
+   * engineer can come back to the same villa from history or a shared link.
+   * Everyone else keeps the sheet, including the booking flow inside it.
+   */
+  const openUnit = (row: UnitRow): void => {
+    if (siteRole) {
+      router.push(projectHref(orgSlug, projectSlug, `/site/${row.id}`));
+      return;
+    }
+    setDetailTarget(row);
+  };
 
   // Phase management (add/rename/delete) is MANAGER/ADMIN/OWNER; the
   // "Phases" header button is hidden for non-manager roles.
@@ -157,6 +210,7 @@ function InventoryGrid() {
     phaseFilter !== 'ALL' ||
     bhkFilter !== 'ALL' ||
     facingFilter !== 'ALL' ||
+    engineerFilter !== 'ALL' ||
     serverSearch !== undefined;
 
   // T-INV-STATUS-SELECT: 'ALL' is the no-filter sentinel, matching the
@@ -209,7 +263,7 @@ function InventoryGrid() {
         cell: ({ row }) => (
           <Button
             variant="link"
-            onClick={() => setDetailTarget(row.original)}
+            onClick={() => openUnit(row.original)}
             data-qa="unit-detail-trigger"
             className="text-link"
           >
@@ -268,22 +322,34 @@ function InventoryGrid() {
         ),
         enableSorting: false,
       },
-      {
-        accessorKey: 'pricePerSqft',
-        header: 'Per sq.ft price (₹)',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
-        ),
-        enableSorting: false,
-      },
-      {
-        accessorKey: 'price',
-        header: 'Total sq.ft price (₹)',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{formatMoney(row.original.price)}</span>
-        ),
-        enableSorting: false,
-      },
+      // Money (2026-11-08): hidden for site staff. An engineer never quotes a
+      // price, and a rupee column in their field of view is noise plus an
+      // unnecessary disclosure. Sales roles are untouched.
+      //
+      // NOTE: hiding the column is now the COURTESY, not the wall. ENGINEER is
+      // blocked from this route entirely (InventoryRouteGate) and the API does
+      // not select money columns for that role, so null reaches this cell at
+      // most. `formatMoney` renders null as '-' rather than "₹0".
+      ...(siteRole
+        ? []
+        : ([
+            {
+              accessorKey: 'pricePerSqft',
+              header: 'Per sq.ft price (₹)',
+              cell: ({ row }) => (
+                <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
+              ),
+              enableSorting: false,
+            },
+            {
+              accessorKey: 'price',
+              header: 'Total sq.ft price (₹)',
+              cell: ({ row }) => (
+                <span className="text-sm tabular-nums">{formatMoney(row.original.price)}</span>
+              ),
+              enableSorting: false,
+            },
+          ] satisfies DataTableColumnDef<UnitRow>[])),
       {
         accessorKey: 'status',
         header: 'Status',
@@ -297,26 +363,64 @@ function InventoryGrid() {
         },
         enableSorting: false,
       },
+      ...(showAssignment
+        ? ([
+            {
+              id: 'assignedEngineer',
+              header: 'Assigned engineer',
+              cell: ({ row }) =>
+                row.original.assignedEngineerId ? (
+                  <span className="text-sm" data-qa="unit-assigned-engineer-name">
+                    {row.original.assignedEngineerName ?? 'Engineer'}
+                  </span>
+                ) : (
+                  <Badge variant="secondary" data-qa="unit-unassigned-badge">
+                    Unassigned
+                  </Badge>
+                ),
+              enableSorting: false,
+            },
+          ] satisfies DataTableColumnDef<UnitRow>[])
+        : []),
       {
         id: 'actions',
         header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row }) => (
-          <div className="text-right">
-            <DataTableRowActions
-              row={row}
-              rowSchema={unitRowSchema}
-              actionItems={[
-                { label: 'Edit', value: 'edit', icon: LuPencil, onClick: () => setEditTarget(row.original) },
-                { label: 'Delete', value: 'delete', icon: LuTrash2, onClick: () => setDeleteTarget(row.original) },
-              ].filter((item) => item.value !== 'delete' || canEdit)}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          // Non-admin roles (MANAGER/TELECALLER/SALES_EXEC/ENGINEER) can read
+          // the grid but not write a unit, so they get NO actions menu at all -
+          // an empty kebab that opens a blank popup is worse than no trigger.
+          const actionItems = canEdit
+            ? [
+                {
+                  label: 'Edit',
+                  value: 'edit',
+                  icon: LuPencil,
+                  onClick: () => setEditTarget(row.original),
+                },
+                {
+                  label: 'Delete',
+                  value: 'delete',
+                  icon: LuTrash2,
+                  onClick: () => setDeleteTarget(row.original),
+                },
+              ]
+            : [];
+          if (actionItems.length === 0) return null;
+          return (
+            <div className="text-right">
+              <DataTableRowActions
+                row={row}
+                rowSchema={unitRowSchema}
+                actionItems={actionItems}
+              />
+            </div>
+          );
+        },
         enableSorting: false,
         enableHiding: false,
       },
     ],
-    [canEdit],
+    [canEdit, siteRole, showAssignment, openUnit],
   );
 
   return (
@@ -335,6 +439,11 @@ function InventoryGrid() {
                 data-qa="phases-link-button"
               >
                 Phases
+              </Button>
+            ) : null}
+            {canEdit && projectId !== null ? (
+              <Button variant="outline" onClick={() => setMilestonesOpen(true)} data-qa="milestones-button">
+                Milestones
               </Button>
             ) : null}
             {canEdit ? (
@@ -381,7 +490,7 @@ function InventoryGrid() {
               const target = event.target;
               if (!(target instanceof Element)) return;
               if (target.closest('a, button, [role="menuitem"]')) return;
-              setDetailTarget(row.original);
+              openUnit(row.original);
             },
           }}
           // Search is SERVER-side (onSearchValueChange -> API). The DataTable's
@@ -459,6 +568,19 @@ function InventoryGrid() {
                 className="w-36"
                 data-qa="inventory-facing-filter"
               />
+              {showAssignment ? (
+                <Select
+                  value={engineerFilter}
+                  onValueChange={(next) => {
+                    setEngineerFilter(next ?? 'ALL');
+                    setPage(1);
+                  }}
+                  options={engineerOptions}
+                  placeholder="All engineers"
+                  className="w-44"
+                  data-qa="inventory-engineer-filter"
+                />
+              ) : null}
             </div>
           }
           showPagination
@@ -501,6 +623,10 @@ function InventoryGrid() {
         />
       )}
 
+      {canEdit && projectId !== null && milestonesOpen ? (
+        <MilestonesDialog projectId={projectId} open={milestonesOpen} onOpenChange={setMilestonesOpen} />
+      ) : null}
+
       <UnitDetailSheet
         unit={detailTarget}
         onOpenChange={(open) => {
@@ -509,7 +635,15 @@ function InventoryGrid() {
       />
 
       <UnitEditDialog
-        unit={editTarget}
+        // The edit form WRITES prices, so it requires the privileged shape.
+        // Only ADMIN/OWNER reach this branch (`canEdit` gates the menu), and the
+        // server sends them real values - so a row without money cannot be
+        // edited here rather than silently opened with blank price fields.
+        unit={
+          editTarget !== null && editTarget.price !== null && editTarget.pricePerSqft !== null
+            ? { ...editTarget, price: editTarget.price, pricePerSqft: editTarget.pricePerSqft }
+            : null
+        }
         open={editTarget !== null}
         projectId={projectId}
         onOpenChange={(open) => {

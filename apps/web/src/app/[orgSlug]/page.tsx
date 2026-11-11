@@ -5,6 +5,7 @@
 // `/[orgSlug]/projects/[projectSlug]/...`. Bounce to the role-appropriate
 // dashboard (decision in lib/dashboard-redirect.ts):
 //   - Admin/owner → /{orgSlug}/admin (cross-project command center)
+//   - Engineer (site engineer) → /{orgSlug}/projects/{projectSlug}/inventory
 //   - Everyone else → /{orgSlug}/projects/{projectSlug}/dashboard
 //   - Empty project registry → /{orgSlug}/work
 import { useEffect } from 'react';
@@ -32,7 +33,7 @@ export default function AppHomePage() {
       case 'command-center':
         router.replace(orgSlug ? `/${orgSlug}/admin` : '/admin');
         break;
-      case 'project-dashboard':
+      case 'project-work':
         router.replace(target.href);
         break;
       case 'work':

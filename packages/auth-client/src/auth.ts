@@ -122,6 +122,26 @@ export const auth: any = betterAuth({
         required: false,
         input: true,
       },
+      // First-login password rotation (issue #8 slice 2, spec D3). The Prisma
+      // column already drives the server gate (JwtAuthGuard returns 403
+      // PASSWORD_CHANGE_REQUIRED while it is true), but the browser could not
+      // see it - so the portal painted its masthead and ran a query before the
+      // 403 bounced the buyer. Exposing it on the session lets the portal gate
+      // BEFORE rendering, which is what the spec promises ("we always show the
+      // change-password page").
+      //
+      // input:false is load-bearing: only UsersService.create (CUSTOMER), the
+      // seed and changePassword() may write it. A signup payload must never be
+      // able to claim it is already rotated.
+      //
+      // Not a security boundary - it is a snapshot read from the session. A
+      // flag armed by an admin mid-session still lands on the 403 backstop.
+      mustChangePassword: {
+        type: 'boolean',
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
     },
   },
 
@@ -160,6 +180,11 @@ export const auth: any = betterAuth({
   trustedOrigins: [
     'http://localhost:3000', // Next.js web (dev)
     'http://localhost:8081', // Expo dev server
+    // Testing the app from a phone before deploying: the web dev server binds
+    // 0.0.0.0, so the phone reaches it on this host. The browser only ever
+    // talks to :3000 (BFF and SSE are proxied server-side), so one entry is
+    // enough. Without it better-auth rejects sign-in with 403 INVALID_ORIGIN.
+    'http://100.81.0.50:3000', // WSL tailnet IP (mobile testing)
     'https://crm.shadhilbuilders.in',           // user-facing app
     'https://api.crm.shadhilbuilders.in',       // backend API
   ],

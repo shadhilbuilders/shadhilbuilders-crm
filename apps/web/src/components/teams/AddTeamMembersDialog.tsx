@@ -21,6 +21,7 @@ import {
   toast,
   TypographyP,
 } from '@paalstack/react-ui';
+import { cn } from '@paalstack/react-ui/lib';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 
 import { useAddTeamMembers, useTeam, type TeamListItem } from '@/hooks/queries/teams';
@@ -60,6 +61,21 @@ export function AddTeamMembersDialog({
   // rows are rendered as returned.
   const rows = usersQuery.data?.rows ?? [];
   const total = usersQuery.data?.total ?? 0;
+
+  // Pickable people (not yet on the team) come first, people already on the
+  // team sink to the bottom where they stay visible but disabled. Stable
+  // partition - server order is preserved inside each group.
+  const sortedRows = useMemo(() => {
+    if (memberIds.size === 0) return rows;
+    const pickable: typeof rows = [];
+    const alreadyMembers: typeof rows = [];
+    for (const row of rows) {
+      (memberIds.has(row.id) ? alreadyMembers : pickable).push(row);
+    }
+    return [...pickable, ...alreadyMembers];
+  }, [rows, memberIds]);
+
+  const isLoading = usersQuery.isLoading || teamQuery.isLoading;
 
   function reset() {
     setSearch('');
@@ -144,17 +160,25 @@ export function AddTeamMembersDialog({
           aria-label="Search staff"
           data-qa="team-add-members-search"
         />
-        <Box className="max-h-80 space-y-1 overflow-y-auto pr-1" data-qa="team-add-members-list">
-          {usersQuery.isLoading || teamQuery.isLoading ? (
+        <Box
+          className={cn(
+            'max-h-80 space-y-1 overflow-y-auto pr-1',
+            // Hold the list at the loaded height while the first fetch is in
+            // flight so the dialog (and the page scrollbar) don't jump.
+            isLoading && 'min-h-40',
+          )}
+          data-qa="team-add-members-list"
+        >
+          {isLoading ? (
             <Loading content="Loading staff..." />
           ) : usersQuery.isError ? (
             <TypographyP className="text-sm">Couldn&apos;t load staff.</TypographyP>
-          ) : rows.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <TypographyP className="text-muted-foreground text-sm">
               {serverSearch ? 'No staff match your search.' : 'No telecallers or sales execs found.'}
             </TypographyP>
           ) : (
-            rows.map((u) => {
+            sortedRows.map((u) => {
               const isMember = memberIds.has(u.id);
               return (
                 <Box

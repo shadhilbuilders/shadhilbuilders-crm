@@ -93,7 +93,15 @@ function makeTx(overrides: Partial<{
   users: Record<string, { id: string; role: string; name?: string } | null>;
   managerLedTeam: { id: string; name: string } | null;
   memberCount: number;
-  members: Array<{ userId: string; teamId: string; organizationId: string }>;
+  members: Array<{
+    userId: string;
+    teamId: string;
+    organizationId: string;
+    /** 2026-11-07: reassignMembers() now reads the member's ROLE (via the
+     *  user relation) to refuse moving an ENGINEER. Defaults to TELECALLER so
+     *  pre-existing move tests keep their meaning. */
+    user?: { role: string };
+  }>;
 }> = {}): TxMock {
   const teams = overrides.teams ?? {};
   const users = overrides.users ?? {};
@@ -102,13 +110,14 @@ function makeTx(overrides: Partial<{
   // User.teamId. `members` defaults to a count matching `memberCount` so
   // existing "N members" tests keep the same shape without listing every
   // row explicitly, unless a test needs specific rows (reassignMembers).
-  const members =
+  const members = (
     overrides.members ??
     Array.from({ length: overrides.memberCount ?? 0 }, (_, i) => ({
       userId: `member-${i}`,
       teamId: 'team-1',
       organizationId: ORG,
-    }));
+    }))
+  ).map((m) => ({ user: { role: 'TELECALLER' }, ...m }));
   const tx: TxMock = {
     team: {
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -464,5 +473,82 @@ describe('TeamsService.reassignMembers', () => {
       where: { userId: { in: ['u-x'] }, teamId: 'team-1' },
     });
     expect(tx.teamMember.createMany).toHaveBeenCalled();
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ENGINEER guard (2026-11-07)
+  // ──────────────────────────────────────────────────────────────────────────
+  // `users.assignManager` closes this hazard with an additive branch; this
+  // endpoint is the OTHER door into it, reachable from the roster's per-member
+  // "Move to team" and the bulk "Reassign all members". A move deletes the
+  // TeamMember row, which is the ONLY thing granting an engineer access to this
+  // team's projects under RLS.
+  describe('ENGINEER members', () => {
+    const bothTeams = {
+      'team-1': { id: 'team-1', deletedAt: null },
+      'team-2': { id: 'team-2', deletedAt: null },
+    };
+
+    it('refuses a BULK move when any member is an ENGINEER, and deletes nothing', async () => {
+      const tx = makeTx({
+        teams: bothTeams,
+        members: [
+          { userId: 'tc-1', teamId: 'team-1', organizationId: ORG, user: { role: 'TELECALLER' } },
+          { userId: 'eng-1', teamId: 'team-1', organizationId: ORG, user: { role: 'ENGINEER' } },
+        ],
+      });
+      const svc = new TeamsService({ $client: {} } as never);
+
+      await expect(
+        svc.reassignMembers(adminActor, 'team-1', { targetTeamId: 'team-2' }),
+      ).rejects.toMatchObject({
+        name: 'BadRequestException',
+        // The offending member is NAMED so the operator knows who to handle.
+        message: expect.stringContaining('eng-1'),
+      });
+
+      // The whole request is refused - not silently reduced to the telecaller.
+      // A partial move reporting count=1 would look like success.
+      expect(tx.teamMember.deleteMany).not.toHaveBeenCalled();
+      expect(tx.teamMember.createMany).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a SINGLE move of an ENGINEER', async () => {
+      const tx = makeTx({
+        teams: bothTeams,
+        members: [
+          { userId: 'eng-1', teamId: 'team-1', organizationId: ORG, user: { role: 'ENGINEER' } },
+        ],
+      });
+      const svc = new TeamsService({ $client: {} } as never);
+
+      await expect(
+        svc.reassignMembers(ownerActor, 'team-1', {
+          targetTeamId: 'team-2',
+          userIds: ['eng-1'],
+        }),
+      ).rejects.toMatchObject({ name: 'BadRequestException' });
+
+      expect(tx.teamMember.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('still moves TELECALLER/SALES_EXEC members normally (guard is ENGINEER-only)', async () => {
+      const tx = makeTx({
+        teams: bothTeams,
+        members: [
+          { userId: 'tc-1', teamId: 'team-1', organizationId: ORG, user: { role: 'TELECALLER' } },
+          { userId: 'se-1', teamId: 'team-1', organizationId: ORG, user: { role: 'SALES_EXEC' } },
+        ],
+      });
+      const svc = new TeamsService({ $client: {} } as never);
+
+      const result = await svc.reassignMembers(adminActor, 'team-1', {
+        targetTeamId: 'team-2',
+      });
+
+      expect(result).toEqual({ count: 2 });
+      expect(tx.teamMember.deleteMany).toHaveBeenCalled();
+    });
   });
 });

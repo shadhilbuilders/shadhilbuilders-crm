@@ -243,8 +243,8 @@ const HOST_ALIASES = new Map([
  * Compare a stored value to an offered one. The STORED value is always what
  * the source said; only the comparison normalises.
  *
- * Byte comparison is the bug this exists to prevent: `…/in/ramesh/` and
- * `…/in/ramesh` are the same profile, so a suggestion that offers back the
+ * Byte comparison is the bug this exists to prevent: `.../in/ramesh/` and
+ * `.../in/ramesh` are the same profile, so a suggestion that offers back the
  * value already in the field is a click that can only say yes.
  */
 export function sameValue(a: string, b: string): boolean {

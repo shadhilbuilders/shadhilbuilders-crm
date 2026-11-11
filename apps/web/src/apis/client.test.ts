@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { api, ApiError } from './client';
+import { api, ApiError, sessionUserFromSession } from './client';
 
 function mockFetchOnce(response: {
   status: number;
@@ -111,5 +111,67 @@ describe('api() error envelope parsing', () => {
     mockFetchOnce({ status: 200, body: { ok: true } });
     const result = await api<{ ok: boolean }>('/projects/proj-1/teams');
     expect(result).toEqual({ ok: true });
+  });
+
+  // Issue #8 slice 2 / D3 (2026-11-10): a buyer must rotate INSIDE the portal
+  // shell (masthead + Sign out, no Cancel), while staff keep the guest page.
+  // The backend does not know which shell issued the request, so the path the
+  // browser is on is the signal.
+  it('sends a portal 403 PASSWORD_CHANGE_REQUIRED to the portal rotation screen', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { href: '', pathname: '/portal' },
+      writable: true,
+    });
+    mockFetchOnce({
+      status: 403,
+      body: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'change it', redirect: '/change-password' },
+    });
+
+    await expect(api('/customer-portal/me')).rejects.toBeInstanceOf(ApiError);
+    expect(window.location.href).toBe('/portal/change-password');
+  });
+
+  it('sends a staff 403 PASSWORD_CHANGE_REQUIRED to the guest page', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { href: '', pathname: '/demo/admin/users' },
+      writable: true,
+    });
+    mockFetchOnce({
+      status: 403,
+      body: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'change it', redirect: '/change-password' },
+    });
+
+    await expect(api('/users')).rejects.toBeInstanceOf(ApiError);
+    expect(window.location.href).toBe('/change-password');
+  });
+});
+
+// The rotation flag rides on the session as an additionalField. It must read
+// STRICTLY as boolean true: a missing/null/string value means "already
+// rotated", so an older session row degrades to the 403 backstop instead of
+// locking a buyer out of a portal they are entitled to.
+describe('sessionUserFromSession - mustChangePassword', () => {
+  const base = {
+    user: { id: 'u-1', name: 'Anita', email: 'a@x.in', role: 'CUSTOMER', organizationId: 'org-1' },
+  };
+
+  it('reads a true flag', () => {
+    const user = sessionUserFromSession({
+      ...base,
+      user: { ...base.user, mustChangePassword: true },
+    });
+    expect(user?.mustChangePassword).toBe(true);
+  });
+
+  it('defaults to false when the field is absent or not a boolean', () => {
+    expect(sessionUserFromSession(base)?.mustChangePassword).toBe(false);
+    expect(
+      sessionUserFromSession({ ...base, user: { ...base.user, mustChangePassword: null } })
+        ?.mustChangePassword,
+    ).toBe(false);
+    expect(
+      sessionUserFromSession({ ...base, user: { ...base.user, mustChangePassword: 'true' } })
+        ?.mustChangePassword,
+    ).toBe(false);
   });
 });

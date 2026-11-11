@@ -46,10 +46,11 @@ import type {
 } from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
-import { UNIT_ROW_SELECT, toUnitRow } from './unit-row';
+import { UNIT_ROW_SELECT, unitRowSelectFor, toUnitRow } from './unit-row';
 import { unitStatusRank } from './unit-status-rank';
 import {
   canManageProjectMembers,
+  canSeeUnitMoney,
   isAdminClass,
 } from '../users/roles';
 
@@ -194,6 +195,12 @@ export class InventoryService {
     actor: JwtPayload,
     dto: UnitFilterDto,
   ): Promise<UnitListResult> {
+    // Money audience (2026-11-08): a site-only role reads these villas for
+    // documentation and never receives a rupee figure. The redaction happens in
+    // the SELECT, not in the grid's columns - hiding a column still shipped
+    // the number in the JSON.
+    const canSeeMoney = canSeeUnitMoney(actor.role);
+    const select = unitRowSelectFor(canSeeMoney);
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
@@ -208,6 +215,9 @@ export class InventoryService {
           where['phase'] = { projectId: dto.projectId, project: { deletedAt: null } };
         }
         if (dto.phaseId !== undefined) where['phaseId'] = dto.phaseId;
+        if (dto.assignedEngineerId !== undefined) {
+          where['assignedEngineerId'] = dto.assignedEngineerId;
+        }
         if (dto.bhk !== undefined) where['bhk'] = dto.bhk;
         if (dto.facing !== undefined) {
           where['facing'] = { equals: dto.facing, mode: 'insensitive' };
@@ -268,7 +278,7 @@ export class InventoryService {
                 // Re-assert `where`: the ids are already scoped, and keeping
                 // the filters makes this read safe on its own.
                 where: { ...where, id: { in: pageIds } },
-                select: UNIT_ROW_SELECT,
+                select,
               }),
           (tx as unknown as PrismaClient).unit.count({ where }),
         ]);
@@ -282,7 +292,7 @@ export class InventoryService {
 
         return {
           total,
-          rows: orderedRows.map((r) => toUnitRow(r)),
+          rows: orderedRows.map((r) => toUnitRow(r, canSeeMoney)),
         };
       },
     );
@@ -293,6 +303,9 @@ export class InventoryService {
    * Every authenticated role can read, inside the ACTOR's organization only.
    */
   async findOne(actor: JwtPayload, unitId: string): Promise<UnitRow> {
+    // Same audience rule as `list`: the detail panel's money rows are fed by
+    // this projection, so an engineer gets nulls, not a hidden DOM node.
+    const canSeeMoney = canSeeUnitMoney(actor.role);
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
@@ -303,12 +316,12 @@ export class InventoryService {
         // the ROLE only, so the query is the only thing holding that line.
         const unit = await (tx as unknown as PrismaClient).unit.findFirst({
           where: { id: unitId, organizationId: actor.organizationId },
-          select: UNIT_ROW_SELECT,
+          select: unitRowSelectFor(canSeeMoney),
         });
         if (unit === null) {
           throw new NotFoundException(`Unit ${unitId} not found`);
         }
-        return toUnitRow(unit);
+        return toUnitRow(unit, canSeeMoney);
       },
     );
   }
@@ -361,6 +374,14 @@ export class InventoryService {
    * Vikram" and link to both. Two queries total, never one per plot.
    */
   async plots(actor: JwtPayload, projectId?: string): Promise<PlotStatusListResult> {
+    // Money/prose audience (2026-11-08). The plot panel shows the villa's total
+    // price AND the deal on it (amount + the buyer's name), so both are gated:
+    // a site-only role gets null prices and NO booking at all. Withholding the
+    // booking is also the truthful reading of the existing contract - the panel
+    // already renders "a booking is holding this villa, and it is not visible
+    // to you" - and it skips a query that could only return data we must not
+    // send.
+    const canSeeMoney = canSeeUnitMoney(actor.role);
     return withRlsContext(
       this.client,
       rlsContextFrom(actor),
@@ -384,14 +405,20 @@ export class InventoryService {
 
         const units = await client.unit.findMany({
           where,
-          select: UNIT_ROW_SELECT,
+          select: unitRowSelectFor(canSeeMoney),
           orderBy: { plotNumber: 'asc' },
         });
 
         // Every live booking for those units in ONE query. A per-unit lookup
         // would be up to 125 round trips on a fully plot-numbered project.
+        //
+        // Skipped entirely for a money-blind actor: the booking ref carries the
+        // deal amount and the buyer's name, so there is nothing in it we could
+        // send. `booking: null` then renders the panel's existing "not visible
+        // to you" line, which is the honest statement rather than a second
+        // vocabulary for the same thing.
         const bookings: ClaimBookingSource[] =
-          units.length === 0
+          units.length === 0 || !canSeeMoney
             ? []
             : await client.booking.findMany({
                 where: {
@@ -426,7 +453,7 @@ export class InventoryService {
           if (plotNumber === null) continue;
           const claims = byPlot.get(plotNumber) ?? [];
           claims.push({
-            unit: toUnitRow(unit),
+            unit: toUnitRow(unit, canSeeMoney),
             booking: pickClaimBooking(bookingsByUnit.get(unit.id) ?? []),
           });
           byPlot.set(plotNumber, claims);
@@ -892,7 +919,9 @@ export class InventoryService {
           },
         });
 
-        return toUnitRow(created);
+        // ADMIN/OWNER only above, so this actor always sees money; the flag is
+        // passed explicitly rather than assumed so the mapper has one contract.
+        return toUnitRow(created, canSeeUnitMoney(actor.role));
       },
     );
   }
@@ -931,6 +960,11 @@ export class InventoryService {
         if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
         if (dto.facing !== undefined) data['facing'] = dto.facing;
         if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
+        // Buyer-visible handover estimate; `null` clears it.
+        if (dto.expectedHandoverDate !== undefined) {
+          data['expectedHandoverDate'] =
+            dto.expectedHandoverDate === null ? null : new Date(dto.expectedHandoverDate);
+        }
         // The unit total is DERIVED: recompute from the effective buildup/rate
         // whenever either changes. A client `price` is not part of the DTO.
         if (dto.buildupSqft !== undefined || dto.pricePerSqft !== undefined) {
@@ -1018,6 +1052,7 @@ export class InventoryService {
               pricePerSqft: existing.pricePerSqft.toString(),
               price: existing.price.toString(),
               status: existing.status,
+              expectedHandoverDate: existing.expectedHandoverDate?.toISOString() ?? null,
             },
             after: {
               unitNumber: updated.unitNumber,
@@ -1029,12 +1064,14 @@ export class InventoryService {
               pricePerSqft: updated.pricePerSqft.toString(),
               price: updated.price.toString(),
               status: updated.status,
+              expectedHandoverDate: updated.expectedHandoverDate?.toISOString() ?? null,
             },
             reason: `Unit ${updated.unitNumber} updated by ${actor.email} (${actor.role})`,
           },
         });
 
-        return toUnitRow(updated);
+        // ADMIN/OWNER only above - see the note on `create`.
+        return toUnitRow(updated, canSeeUnitMoney(actor.role));
       },
     );
   }

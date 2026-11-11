@@ -242,6 +242,68 @@ const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
   SOLD: 'Sold',
 };
 
+/**
+ * Construction-stage values per the Prisma `ConstructionStage` enum
+ * (2026-11-08). DECLARATION ORDER IS THE PROGRESS ORDER - the buyer's stepper
+ * and the note sheet's stage picker render from `CONSTRUCTION_STAGE_ORDER`
+ * below, never from an alphabetical sort and never from a hand-written list in
+ * a component. Mirrors packages/database/prisma/schema.prisma + the shared
+ * `ConstructionStageSchema` in @shadhil/api-types.
+ */
+export const CONSTRUCTION_STAGES = [
+  'NOT_STARTED',
+  'FOUNDATION',
+  'STRUCTURE',
+  'MASONRY',
+  'PLASTERING',
+  'WATERPROOFING',
+  'FLOORING',
+  'FINISHING',
+  'READY',
+] as const;
+export type ConstructionStageLabel = (typeof CONSTRUCTION_STAGES)[number];
+
+const CONSTRUCTION_STAGE_LABELS: Record<ConstructionStageLabel, string> = {
+  NOT_STARTED: 'Not started',
+  FOUNDATION: 'Foundation',
+  STRUCTURE: 'Structure',
+  // The enum is MASONRY, the trade word on site (and in the quick-note chips)
+  // is Brickwork. Same stage, two vocabularies, and the engineer reads this one.
+  MASONRY: 'Brickwork',
+  PLASTERING: 'Plastering',
+  WATERPROOFING: 'Waterproofing',
+  FLOORING: 'Flooring',
+  FINISHING: 'Finishing',
+  READY: 'Ready',
+};
+
+/** The enum order, for the stepper and the picker. Do not sort this. */
+export const CONSTRUCTION_STAGE_ORDER = CONSTRUCTION_STAGES;
+
+/** Friendly label for one stage; unknown values fall back to `humanize()`. */
+export function constructionStageLabel(value: string): string {
+  const mapped = (CONSTRUCTION_STAGE_LABELS as Record<string, string>)[value];
+  return mapped ?? humanize(value);
+}
+
+/**
+ * Badge variant for a recorded stage. Deliberately ONE neutral hue for every
+ * stage: the stage is text, not another colour. The four-state map already
+ * spends the page's colour budget on "which villa needs a photo", and a second
+ * hue system on the same row would make neither legible.
+ */
+export function constructionStageBadgeVariant(
+  value: string | null,
+): 'muted' {
+  void value;
+  return 'muted';
+}
+
+/** "Stage not set" for a null stage. NEVER "Not started" - that is a guess. */
+export function constructionStageOrUnset(value: string | null): string {
+  return value === null ? 'Stage not set' : constructionStageLabel(value);
+}
+
 const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   HOLD: 'On hold',
   TOKEN: 'Token received',
@@ -284,6 +346,7 @@ export const ROLES = [
   'SALES_EXEC',
   'TELECALLER',
   'ENGINEER',
+  'CUSTOMER',
 ] as const;
 export type RoleLabel = (typeof ROLES)[number];
 
@@ -294,6 +357,7 @@ const ROLE_LABELS: Record<RoleLabel, string> = {
   SALES_EXEC: 'Sales Executive',
   TELECALLER: 'Telecaller',
   ENGINEER: 'Site Engineer',
+  CUSTOMER: 'Customer',
 };
 
 /**
@@ -447,7 +511,8 @@ export function labelFor(
     | 'role'
     | 'feedback'
     | 'factBand'
-    | 'factStatus',
+    | 'factStatus'
+    | 'constructionStage',
   value: string,
 ): string {
   if (kind === 'lead') {
@@ -481,6 +546,9 @@ export function labelFor(
     if (mapped !== undefined) return mapped;
   } else if (kind === 'factStatus') {
     const mapped = (FACT_STATUS_LABELS as Record<string, string>)[value];
+    if (mapped !== undefined) return mapped;
+  } else if (kind === 'constructionStage') {
+    const mapped = (CONSTRUCTION_STAGE_LABELS as Record<string, string>)[value];
     if (mapped !== undefined) return mapped;
   } else {
     const mapped = (BOOKING_STATUS_LABELS as Record<string, string>)[value];

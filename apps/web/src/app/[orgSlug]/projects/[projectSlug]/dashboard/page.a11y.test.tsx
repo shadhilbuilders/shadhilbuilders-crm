@@ -33,6 +33,13 @@ vi.mock('@/lib/session', () => ({
     isPending: false,
   })),
   isAdminLike: vi.fn((role: string) => role === 'ADMIN' || role === 'OWNER'),
+  // 2026-11-08: the dashboard redirects site roles to /site using this helper.
+  // Without it the mocked module throws "No isSiteRole export", which is how
+  // these audits failed rather than reporting a design problem.
+  isSiteRole: vi.fn((role: string | undefined) => role === 'ENGINEER' || role === 'TELECALLER'),
+  // The narrower redirect gate the page actually reads: only ENGINEER is
+  // site-ONLY, so only ENGINEER is forwarded away from the queue.
+  isSiteOnlyRole: vi.fn((role: string | undefined) => role === 'ENGINEER'),
   canApproveBookings: vi.fn(
     (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER'
   ),
@@ -95,6 +102,18 @@ vi.mock('@/lib/tenant-context', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: vi.fn(() => ({ projectId: 'proj-metro' })),
+  // The dashboard page resolves the project from useRouter().params (slice-2
+  // change); the mock must expose it or every audit case dies on import with
+  // `No "useRouter" export is defined on the "next/navigation" mock`.
+  useRouter: vi.fn(() => ({
+    params: { projectId: 'proj-metro', projectSlug: 'metro', orgSlug: 'shadhil' },
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  })),
 }));
 
 import DashboardPage from './page';

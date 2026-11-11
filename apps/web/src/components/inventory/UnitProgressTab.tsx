@@ -1,82 +1,105 @@
 'use client';
 
-// UnitProgressTab (issue #7 slice 1): photo upload + staff preview timeline
-// for one unit, rendered INSIDE UnitDetailSheet.
+// UnitProgressTab (issue #7 slice 1; 2026-11-08 revision): photo upload + staff
+// preview timeline for one unit, rendered INSIDE UnitDetailSheet.
 //
-// States (adopted table): skeleton cards, warm empty, inline error banner +
-// retry, hasMore load-more. The tab visibility contract lives in the SHEET:
-// the timeline GET returning 2xx is the only thing that renders this tab
-// (a 403 non-member hides it entirely).
-import { Badge, Button, Select } from '@paalstack/react-ui';
-import { LuCamera, LuRefreshCw } from '@paalstack/react-icons/lu';
+// WHO USES THIS NOW: the sales roles. Site staff (ENGINEER/TELECALLER) no longer
+// open this sheet - they get `/site/[unitId]`, a real route whose state survives
+// a phone unloading a backgrounded tab and whose URL can be shared. This tab
+// stays exactly as it is for everyone else, because "what has been photographed
+// on this villa" is useful context while quoting it.
+//
+// PHASE COMES FROM THE UNIT (2026-11-06): `Unit.phaseId` is required, so every
+// unit already belongs to exactly one phase and asking was a question the app
+// had already answered.
+//
+// HEIC IS FIXED AT THE SOURCE (2026-11-08): `normalizeMimeType` used to relabel
+// whatever the browser declared as image/jpeg while the server sniffed the BYTES
+// and refused HEIC - so the relabel cost a round trip and fixed nothing. The
+// photo is now converted client-side by `prepareProgressPhoto`, and the payload
+// carries the type of the bytes that actually upload.
 import { useRef, useState } from 'react';
 
+import { Badge, Button, toast } from '@paalstack/react-ui';
+import { LuCamera, LuRefreshCw } from '@paalstack/react-icons/lu';
+import type { ConstructionStage } from '@shadhil/api-types';
+
 import { siteMemberLabel } from '@/lib/labels';
-import type { PhaseRow } from '@/hooks/queries/inventory';
+import { prepareProgressPhoto, prepareErrorMessage, type PreparedPhoto } from '@/lib/photo-prep';
+import type { UnitRow } from '@/hooks/queries/inventory';
 import {
   useUnitPhotos,
   useUploadUnitPhoto,
   isForbidden,
-  type TimelinePhoto,
+  type UploadPhotoInput,
 } from '@/hooks/queries/customer-progress';
 
-/** The chip is green on the phase of the unit's MOST RECENT photo in the
- *  loaded set (spec: "green where current"); otherwise neutral. */
-function latestPhaseId(photos: TimelinePhoto[]): string | null {
-  return photos.length > 0 ? (photos[0]?.phaseId ?? null) : null;
+import { ProgressPhotoActions } from './ProgressPhotoActions';
+
+/** The unit fields this tab needs: its id (the timeline route key) and the
+ *  phase every photo it uploads is labelled with. */
+export type ProgressUnit = Pick<UnitRow, 'id' | 'phaseId' | 'phaseName'>;
+
+/**
+ * Build the upload payload. Pure so the "phase comes from the unit" rule is
+ * unit-testable without mounting the tab or driving a real file input.
+ *
+ * `prepared` is the output of `prepareProgressPhoto`: the mimeType and filename
+ * describe the BYTES that will be sent, never the browser's guess from the
+ * filename. `caption` and `stage` are omitted entirely when unset so the server
+ * keeps its generated-caption fallback.
+ */
+export function buildPhotoUpload(input: {
+  phaseId: string;
+  prepared: Pick<PreparedPhoto, 'base64' | 'mimeType' | 'filename' | 'takenAt' | 'source'>;
+  caption?: string;
+  stage?: ConstructionStage;
+}): UploadPhotoInput {
+  const caption = input.caption?.trim();
+  return {
+    phaseId: input.phaseId,
+    base64: input.prepared.base64,
+    mimeType: input.prepared.mimeType,
+    filename: input.prepared.filename.slice(0, 180),
+    // Client-captured capture time, WITH offset (toISOString is UTC:Z).
+    takenAt: input.prepared.takenAt,
+    clientDeviceHint: input.prepared.source,
+    // An empty note is valid: the server falls back to its generated caption,
+    // so the key is absent rather than an empty string it would have to reject.
+    ...(caption !== undefined && caption.length > 0 ? { caption } : {}),
+    ...(input.stage !== undefined ? { stage: input.stage } : {}),
+  };
 }
 
-export function UnitProgressTabContent({ unitId, phases }: { unitId: string; phases: PhaseRow[] }) {
+export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [pendingPhaseId, setPendingPhaseId] = useState<string>('');
-  const photosQuery = useUnitPhotos(unitId);
-  const upload = useUploadUnitPhoto(unitId);
+  const [preparing, setPreparing] = useState(false);
+  const photosQuery = useUnitPhotos(unit.id);
+  const upload = useUploadUnitPhoto(unit.id);
 
   const photos = (photosQuery.data?.pages ?? []).flatMap((page) => page.photos);
-  const greenPhaseId = latestPhaseId(photos);
 
   async function handleFileChosen(file: File): Promise<void> {
-    if (!pendingPhaseId) {
-      upload.reset();
-      // toast surfaces via the mutation error path (inline banner below).
-      return;
+    setPreparing(true);
+    try {
+      const prepared = await prepareProgressPhoto(file, { source: 'camera' });
+      upload.mutate(buildPhotoUpload({ phaseId: unit.phaseId, prepared }));
+    } catch (err) {
+      // One plain sentence, nothing uploaded: no row, no blob, no half state.
+      toast.error(prepareErrorMessage(err));
+    } finally {
+      setPreparing(false);
     }
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = typeof reader.result === 'string' ? reader.result : '';
-        const comma = result.indexOf(',');
-        resolve(comma === -1 ? '' : result.slice(comma + 1));
-      };
-      reader.onerror = () => reject(new Error('read failed'));
-      reader.readAsDataURL(file);
-    });
-    if (!base64) return;
-    upload.mutate({
-      phaseId: pendingPhaseId,
-      base64,
-      mimeType: file.type === 'image/png' ? 'image/png' : file.type === 'image/webp' ? 'image/webp' : 'image/jpeg',
-      filename: file.name.slice(0, 180),
-      // Client-captured capture time, WITH offset (toISOString is UTC:Z).
-      takenAt: new Date(file.lastModified).toISOString(),
-      clientDeviceHint: 'camera',
-    });
-    setPendingPhaseId('');
   }
 
   if (isForbidden(photosQuery.error)) return null;
 
   return (
     <div className="space-y-4" data-qa="unit-progress-tab">
-      {/* Upload CTA: camera-first. Hidden file input + visible button. */}
+      {/* Upload CTA: camera-first. Hidden file input + visible button. The
+          phase is no longer a choice - it is the unit's own phase, named
+          below so the uploader knows how the photo will be labelled. */}
       <div className="space-y-2">
-        <Select
-          value={pendingPhaseId}
-          onValueChange={(v) => setPendingPhaseId(v ?? '')}
-          options={phases.map((p) => ({ value: p.id, label: p.name }))}
-          placeholder={phases.length > 0 ? 'Phase for this photo' : 'No phases yet'}
-          data-qa="progress-phase-select"
-        />
         <input
           ref={fileInputRef}
           type="file"
@@ -92,15 +115,17 @@ export function UnitProgressTabContent({ unitId, phases }: { unitId: string; pha
         <Button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={upload.isPending || phases.length === 0}
+          disabled={upload.isPending || preparing}
+          isLoading={preparing}
+          loadingText="Preparing photo..."
           leftIcon={<LuCamera className="size-4" />}
           data-qa="add-progress-photo"
         >
           {photos.length === 0 && !photosQuery.isLoading ? 'Add first photo' : 'Add photo'}
         </Button>
-        {phases.length === 0 ? (
-          <p className="text-muted-foreground text-xs">This project has no phases yet - add one before uploading photos.</p>
-        ) : null}
+        <p className="text-muted-foreground text-xs" data-qa="progress-phase-hint">
+          Photos are labelled <span className="text-foreground font-medium">{unit.phaseName}</span>.
+        </p>
       </div>
 
       {upload.isError ? (
@@ -143,42 +168,48 @@ export function UnitProgressTabContent({ unitId, phases }: { unitId: string; pha
       ) : (
         <>
           <ol className="space-y-3" data-qa="progress-timeline">
-            {photos.map((p, idx) => {
-              const green = p.phaseId !== null && p.phaseId === greenPhaseId;
-              return (
-                <li key={p.id} className="border-border rounded-lg border" data-qa="progress-photo-row">
-                  <div className="flex items-start gap-3 p-3">
-                    {/* Same-origin BFF media URL — cookie-authenticated, so
-                        next/image's optimizer would drop the session. Plain
-                        <img> is the correct render here (same call as
-                        LeadChatPane). */}
-                    <img
-                      src={p.mediaUrl}
-                      alt={p.caption}
-                      className="bg-muted-soft size-16 flex-none rounded-md object-cover"
-                      loading={idx < 6 ? 'eager' : 'lazy'}
-                      data-qa="progress-photo-thumb"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        {p.phaseName !== null ? (
-                          <Badge variant={green ? 'success' : 'muted'} data-qa="progress-phase-chip">
-                            {p.phaseName}
-                          </Badge>
-                        ) : null}
-                        <span className="text-muted-foreground text-xs" data-qa="progress-date">
-                          {new Date(p.takenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-sm" data-qa="progress-caption">{p.caption}</p>
-                      <p className="text-muted-foreground text-xs" data-qa="progress-uploader">
-                        {siteMemberLabel(p.creatorName, p.creatorIsPhotoLead)}
-                      </p>
+            {photos.map((p, idx) => (
+              <li key={p.id} className="border-border rounded-lg border" data-qa="progress-photo-row">
+                <div className="flex items-start gap-3 p-3">
+                  {/* Same-origin BFF media URL — cookie-authenticated, so
+                      next/image's optimizer would drop the session. Plain
+                      <img> is the correct render here (same call as
+                      LeadChatPane). */}
+                  <img
+                    src={p.mediaUrl}
+                    alt={p.caption}
+                    className="bg-muted-soft size-16 flex-none rounded-md object-cover"
+                    loading={idx < 6 ? 'eager' : 'lazy'}
+                    data-qa="progress-photo-thumb"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {/* Neutral chip: the phase is now a property of the
+                          UNIT, so it is the same on every row and cannot
+                          discriminate "current" from "past" any more. Rows
+                          uploaded before 2026-11-06 may still carry another
+                          phase, which this label reports truthfully. */}
+                      {p.phaseName !== null ? (
+                        <Badge variant="muted" data-qa="progress-phase-chip">
+                          {p.phaseName}
+                        </Badge>
+                      ) : null}
+                      <span className="text-muted-foreground text-xs" data-qa="progress-date">
+                        {new Date(p.takenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
                     </div>
+                    <p className="mt-1 truncate text-sm" data-qa="progress-caption">{p.caption}</p>
+                    <p className="text-muted-foreground text-xs" data-qa="progress-uploader">
+                      {siteMemberLabel(p.creatorName, p.creatorIsPhotoLead)}
+                    </p>
+                    {/* Slice 4: correction controls, offered only where the
+                        server's advisory flag says this session may act. The
+                        mutation routes re-check against RLS regardless. */}
+                    <ProgressPhotoActions photo={p} unitId={unit.id} />
                   </div>
-                </li>
-              );
-            })}
+                </div>
+              </li>
+            ))}
           </ol>
           {photosQuery.data && photosQuery.data.pages[photosQuery.data.pages.length - 1]?.nextCursor ? (
             <Button

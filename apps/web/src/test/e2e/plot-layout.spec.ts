@@ -176,7 +176,18 @@ test.describe('plot layout', () => {
     await page.locator('[data-plot-number="114"] polygon[role="button"]').click();
     await page.locator('[data-qa="plot-unit-link"]').click();
 
-    await page.waitForURL(/\/inventory\?unit=/, { timeout: 15_000 });
+    // `waitUntil` is REQUIRED here, not cosmetic. `waitForURL` defaults to
+    // waiting for `load`, and these authenticated pages hold an open SSE stream
+    // (`/api/sse/notifications`), so `load` may never fire - the wait dies at
+    // its 15s timeout while the navigation has in fact succeeded, which reads as
+    // a broken link. Same rule as `NAV` in helpers.ts. This test failed
+    // intermittently that way (2026-11-08) and passed on retry, the classic
+    // signature of a load-event race rather than a real defect.
+    // `...NAV` supplies BOTH the `waitUntil` (the app shell holds an SSE stream
+    // open, so `load` may never fire) and the 45s ceiling. The explicit 15s this
+    // used to carry overrode that ceiling and was itself the bug: compiling a
+    // cold route on `next dev` routinely takes longer than 15s.
+    await page.waitForURL(/\/inventory\?unit=/, NAV);
     // The sheet for the REAL villa, fetched by id - D-202, which is SOLD.
     await expect(page.locator('[data-qa="unit-detail-status"]')).toContainText('Sold');
     await expect(page.getByText('D-202').first()).toBeVisible();

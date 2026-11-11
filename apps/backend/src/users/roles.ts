@@ -23,6 +23,10 @@ const RANK: Record<Role, number> = {
   TELECALLER: 1,
   SALES_EXEC: 1,
   ENGINEER: 1,
+  // Issue #8 slice 2: buyer login. Rank 1 like the other non-managers, but
+  // assertCanCreateRole/assertCanChangeRole pin CUSTOMER to the admin class
+  // and MANAGER may never touch a CUSTOMER row.
+  CUSTOMER: 1,
 };
 
 export const OWNER: Role = 'OWNER';
@@ -49,6 +53,50 @@ export async function findOrgOwner(
 /** ADMIN or OWNER (the "admin class"). Soft-deletes + project deletes use this. */
 export function isAdminClass(role: Role): boolean {
   return role === 'ADMIN' || role === 'OWNER';
+}
+
+/**
+ * Roles whose work is entirely SITE documentation (2026-11-08).
+ *
+ * Mirrors `isSiteOnlyRole` in `apps/web/src/lib/session.ts` - kept in lockstep
+ * on purpose, exactly like `canUseWhatsappInbox`, because the web blocks
+ * `/inventory` for this role and the API must not hand it the data anyway.
+ * A UI block is a courtesy; the projection below is the wall.
+ *
+ * ENGINEER is the only member: it documents construction progress on site and
+ * has no CRM authority. TELECALLER is deliberately NOT included - they own
+ * leads from NEW through VISIT_SCHEDULED and read inventory as part of that
+ * job (with the rupee columns hidden in the UI).
+ */
+export function isSiteOnlyRole(role: Role): boolean {
+  return role === 'ENGINEER';
+}
+
+/**
+ * True when the actor may see villa MONEY: per-sq.ft price, total price, and
+ * the deal on a booking.
+ *
+ * This gates the API projection (`unitRowSelectFor` / `toUnitRow`), not just a
+ * column in the grid. A site engineer's browser is not a trusted place to hold
+ * a project's pricing: hiding a column still shipped the number, and a hidden
+ * element is one devtools panel away from being read.
+ */
+export function canSeeUnitMoney(role: Role): boolean {
+  return !isSiteOnlyRole(role);
+}
+
+/**
+ * Roles with a Site updates page (2026-11-10): the engineer who captures, plus
+ * MANAGER/ADMIN/OWNER who review (read-only). TELECALLER is deliberately out.
+ * Mirrors `canViewSiteUpdates` in apps/web/src/lib/session.ts.
+ */
+export function canViewSiteUpdates(role: Role): boolean {
+  return role === 'ENGINEER' || role === 'MANAGER' || isAdminClass(role);
+}
+
+/** Only the ENGINEER captures site photos; the other viewers are read-only. */
+export function canCaptureSitePhotos(role: Role): boolean {
+  return role === 'ENGINEER';
 }
 
 /** MANAGER, ADMIN, or OWNER - can manage a project's staff members. */
@@ -93,6 +141,11 @@ export function assertCanCreateRole(actor: Role, targetRole: Role): void {
       `${actor} cannot create ${targetRole} users - ENGINEER provisioning is OWNER/ADMIN only`,
     );
   }
+  if (targetRole === 'CUSTOMER' && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot create ${targetRole} users - CUSTOMER provisioning is OWNER/ADMIN only`,
+    );
+  }
   if (RANK[actor] <= RANK[targetRole]) {
     throw new ForbiddenException(`${actor} cannot create ${targetRole} users`);
   }
@@ -122,6 +175,13 @@ export function assertCanChangeRole(
   if (newRole === 'ENGINEER' && !isAdminClass(actor)) {
     throw new ForbiddenException(
       `${actor} cannot assign the ${newRole} role - ENGINEER provisioning is OWNER/ADMIN only`,
+    );
+  }
+  // Guard 0c (issue #8): CUSTOMER is an admin-class act in BOTH directions -
+  // assigning the role, and moving a CUSTOMER row to any other role.
+  if ((newRole === 'CUSTOMER' || targetRole === 'CUSTOMER') && !isAdminClass(actor)) {
+    throw new ForbiddenException(
+      `${actor} cannot change CUSTOMER roles - CUSTOMER provisioning is OWNER/ADMIN only`,
     );
   }
   // Guard 1: nobody changes their own role.

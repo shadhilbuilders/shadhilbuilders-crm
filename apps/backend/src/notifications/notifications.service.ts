@@ -30,6 +30,10 @@ import type { MarkReadDto, NotificationFilterDto } from '@shadhil/api-types';
 import { cronContextFor } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
 import { PushService } from '../push/push.service';
+import { isSiteOnlyRole } from '../users/roles';
+
+/** Site-update notification types are all `progress.*` (photo / assigned / unassigned). */
+const SITE_ONLY_TYPE_PREFIX = 'progress';
 
 /**
  * Wire shape returned by every endpoint. Matches the
@@ -43,6 +47,12 @@ export interface NotificationRow {
   title: string;
   body: string;
   leadId: string | null;
+  /**
+   * Site-update notifications (2026-11-08) anchor to a UNIT, not a lead: the
+   * inbox's project filter must be able to see them or they are inserted and
+   * immediately invisible.
+   */
+  unitId: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -78,31 +88,59 @@ export class NotificationsService {
   async list(actor: JwtPayload, dto: NotificationFilterDto): Promise<NotificationListResult> {
     const baseWhere: Record<string, unknown> = {};
     if (dto.unreadOnly) baseWhere['read'] = false;
-    if (dto.type !== undefined) baseWhere['type'] = dto.type;
-    // Prefix filter (e.g. 'lead' → lead.created, lead.transition).
-    // Enables the Leads/Bookings/Visits tabs, which each span multiple
-    // concrete notification types.
-    if (dto.typePrefix !== undefined && dto.typePrefix.length > 0) {
-      baseWhere['type'] = { startsWith: dto.typePrefix };
+    // ENGINEER is site-only (issue #7): their inbox carries progress.* rows
+    // (photo / assigned / unassigned) and nothing else, whatever filter they
+    // send. Mirrors isSiteOnlyRole in apps/web/src/lib/session.ts. A UI filter
+    // is a courtesy; this is the wall.
+    const siteOnly = isSiteOnlyRole(actor.role);
+    if (siteOnly) {
+      baseWhere['type'] = { startsWith: SITE_ONLY_TYPE_PREFIX };
+    } else {
+      if (dto.type !== undefined) baseWhere['type'] = dto.type;
+      // Prefix filter (e.g. 'lead' → lead.created, lead.transition).
+      // Enables the Leads/Bookings/Visits tabs, which each span multiple
+      // concrete notification types.
+      if (dto.typePrefix !== undefined && dto.typePrefix.length > 0) {
+        baseWhere['type'] = { startsWith: dto.typePrefix };
+      }
     }
     // T-ProjectSwitch: scope the inbox to the active project via the related
     // lead. Notification has NO `lead` relation field (only leadId), so
     // resolve the project's lead ids first (RLS-filtered) and narrow with
-    // leadId IN. Notifications without a lead (system events) are hidden under
-    // a project filter - not project work.
+    // leadId IN.
+    //
+    // 2026-11-08: a site-update notification has NO lead - it anchors to the
+    // unit that was photographed - so the narrowing is
+    // `leadId IN (...) OR unitId IN (project's unit ids)`. Without the second
+    // arm those rows are inserted and then permanently invisible under the
+    // active-project filter the notifications page always sends. Nothing else
+    // in this `where` uses a top-level OR, so there is no clobber risk.
+    // A notification with NEITHER a lead nor a unit stays hidden under a
+    // project filter (system events are not project work) - pinned by test.
     if (dto.projectId !== undefined) {
-      const projectLeads = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
-        (tx as unknown as PrismaClient).lead.findMany({
-          // T-SOFT-DELETE (2026-10-01): the project filter is expressed as
-          // "notifications for this project's leads", so a lead on a
-          // soft-deleted project must not pull its notifications back in.
-          where: { projectId: dto.projectId, ...LEAD_IN_ACTIVE_PROJECT },
-          select: { id: true },
-        }),
-      );
-      baseWhere['leadId'] = {
-        in: projectLeads.map((l: { id: string }) => l.id),
-      };
+      const [projectLeads, projectUnits] = await Promise.all([
+        withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+          (tx as unknown as PrismaClient).lead.findMany({
+            // T-SOFT-DELETE (2026-10-01): the project filter is expressed as
+            // "notifications for this project's leads", so a lead on a
+            // soft-deleted project must not pull its notifications back in.
+            where: { projectId: dto.projectId, ...LEAD_IN_ACTIVE_PROJECT },
+            select: { id: true },
+          }),
+        ),
+        // project_unit_ids() is SECURITY DEFINER: an engineer who was just
+        // unassigned can no longer read the Unit row (RLS), but must still see
+        // the "villa reassigned" notification anchored to it.
+        withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+          (tx as unknown as PrismaClient).$queryRaw<{ project_unit_ids: string }[]>`
+            SELECT project_unit_ids(${dto.projectId}) AS project_unit_ids
+          `,
+        ),
+      ]);
+      baseWhere['OR'] = [
+        { leadId: { in: projectLeads.map((l: { id: string }) => l.id) } },
+        { unitId: { in: projectUnits.map((u) => u.project_unit_ids) } },
+      ];
     }
 
     const where = baseWhere;
@@ -127,6 +165,7 @@ export class NotificationsService {
             title: true,
             body: true,
             leadId: true,
+            unitId: true,
             read: true,
             createdAt: true,
           },
@@ -137,7 +176,11 @@ export class NotificationsService {
       ),
       withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
         (tx as unknown as PrismaClient).notification.count({
-          where: { read: false },
+          // Same type clamp as the list, or the bell badge would count rows
+          // the list refuses to show.
+          where: siteOnly
+            ? { read: false, type: { startsWith: SITE_ONLY_TYPE_PREFIX } }
+            : { read: false },
         }),
       ),
     ]);
@@ -151,6 +194,7 @@ export class NotificationsService {
         title: r.title,
         body: r.body,
         leadId: r.leadId,
+        unitId: r.unitId,
         read: r.read,
         createdAt: r.createdAt.toISOString(),
       })),
@@ -172,6 +216,9 @@ export class NotificationsService {
       // ids (the IN clause also serves as the audit boundary).
       if (dto.notificationIds.length > 0) {
         where['id'] = { in: dto.notificationIds };
+      } else if (isSiteOnlyRole(actor.role)) {
+        // "Mark all" for an engineer covers only the rows they can see.
+        where['type'] = { startsWith: SITE_ONLY_TYPE_PREFIX };
       }
 
       const result = await (tx as unknown as PrismaClient).notification.updateMany({
@@ -222,6 +269,9 @@ export class NotificationsService {
       title: string;
       body: string;
       leadId?: string;
+      /** Site-update notifications (2026-11-08) anchor to a unit instead of a
+       *  lead: an engineer photographs a villa, not a buyer's enquiry. */
+      unitId?: string;
       /** Present for booking notifications so the push deep-links to the
        *  booking page (`/bookings/{bookingId}`) rather than the lead's. */
       bookingId?: string;
@@ -246,6 +296,7 @@ export class NotificationsService {
             title: payload.title,
             body: payload.body,
             ...(payload.leadId !== undefined ? { leadId: payload.leadId } : {}),
+            ...(payload.unitId !== undefined ? { unitId: payload.unitId } : {}),
             read: false,
           },
           select: {
@@ -254,6 +305,7 @@ export class NotificationsService {
             title: true,
             body: true,
             leadId: true,
+            unitId: true,
             read: true,
             createdAt: true,
           },
@@ -269,6 +321,7 @@ export class NotificationsService {
             after: {
               type: created.type,
               leadId: created.leadId,
+              unitId: created.unitId,
             },
             reason: `Notification "${created.type}" emitted to user ${recipientSub}`,
           },
@@ -279,6 +332,7 @@ export class NotificationsService {
           title: created.title,
           body: created.body,
           leadId: created.leadId ?? undefined,
+          unitId: created.unitId ?? undefined,
           bookingId: payload.bookingId,
           organizationId,
         });
@@ -289,6 +343,7 @@ export class NotificationsService {
           title: created.title,
           body: created.body,
           leadId: created.leadId,
+          unitId: created.unitId,
           read: created.read,
           createdAt: created.createdAt.toISOString(),
         };
@@ -331,6 +386,7 @@ export class NotificationsService {
       title: string;
       body: string;
       leadId?: string;
+      unitId?: string;
       bookingId?: string;
       organizationId: string;
     },
@@ -347,7 +403,9 @@ export class NotificationsService {
               )
             : payload.leadId !== undefined
               ? await this.resolveLeadDeepLink(payload.organizationId, payload.leadId)
-              : undefined;
+              : payload.unitId !== undefined
+                ? await this.resolveUnitDeepLink(payload.organizationId, payload.unitId)
+                : undefined;
         await this.push
           ?.sendToUser(
             recipientSub,
@@ -358,6 +416,27 @@ export class NotificationsService {
       })().catch(() => undefined);
     } catch {
       // swallow - best-effort
+    }
+  }
+
+  /** Resolve the site page deep-link for a unit, or '/' if unresolvable. */
+  private async resolveUnitDeepLink(organizationId: string, unitId: string): Promise<string> {
+    try {
+      const unit = await withRlsContext(this.client, cronContextFor(organizationId), (tx) =>
+        (tx as unknown as PrismaClient).unit.findUnique({
+          where: { id: unitId },
+          select: {
+            phase: { select: { project: { select: { slug: true } } } },
+            organization: { select: { slug: true } },
+          },
+        }),
+      );
+      const orgSlug = unit?.organization?.slug;
+      const projectSlug = unit?.phase?.project?.slug;
+      if (orgSlug === undefined || projectSlug === undefined) return '/';
+      return `/${orgSlug}/projects/${projectSlug}/site/${unitId}`;
+    } catch {
+      return '/';
     }
   }
 

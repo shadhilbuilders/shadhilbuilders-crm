@@ -45,6 +45,7 @@
 import { Button, TypographyP, toast } from '@paalstack/react-ui';
 import { LuCalendarCheck, LuListChecks, LuPhoneMissed, LuUserPlus } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -77,9 +78,15 @@ import {
 } from '@/hooks/queries/crm';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
 import { dateIntl } from '@/lib/format';
+import { workSurfaceForRole } from '@/lib/dashboard-redirect';
 import { labelFor } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
-import { canApproveBookings, canInitiateBookings, useSessionUser } from '@/lib/session';
+import {
+  canApproveBookings,
+  canInitiateBookings,
+  isSiteOnlyRole,
+  useSessionUser,
+} from '@/lib/session';
 import { QUEUE_STATES_BY_ROLE, queueActionsFor } from '@/lib/queue-actions';
 import { useOrgSlug, useProjectId, useProjectSlug } from '@/lib/tenant-context';
 import { orderQueue } from '@/lib/work-queue';
@@ -117,7 +124,10 @@ type VisitQueueRow = {
 // the states shown and the actions offered cannot drift apart.
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { user, isPending: sessionPending } = useSessionUser();
+  const orgSlug = useOrgSlug();
+  const projectSlug = useProjectSlug();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -129,6 +139,22 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // ENGINEER has no dashboard: their Work surface is the site capture home
+  // (lib/nav.ts hides every other Work item, and the queue's lead data is
+  // RLS-denied to them). A bookmark or deep link to /dashboard must forward to
+  // `/site` instead of rendering a shell full of failed requests.
+  //
+  // TELECALLER is deliberately NOT redirected: DESIGN.md §1 makes them the
+  // first-touch lead owner, and this queue is their work.
+  //
+  // `isSiteOnlyRole` (not a bare 'ENGINEER' string) so this gate, the nav filter
+  // and the `/inventory` redirect share one definition of "site-only".
+  const isSiteOnly = isSiteOnlyRole(user?.role);
+  useEffect(() => {
+    if (!mounted || sessionPending || !isSiteOnly) return;
+    router.replace(projectHref(orgSlug, projectSlug, workSurfaceForRole('ENGINEER')));
+  }, [mounted, sessionPending, isSiteOnly, orgSlug, projectSlug, router]);
 
   if (!mounted || sessionPending) {
     return <Skeleton variant="overview" className="py-4" />;
@@ -146,6 +172,12 @@ export default function DashboardPage() {
         .
       </div>
     );
+  }
+
+  if (isSiteOnly) {
+    // Redirect in flight: keep the skeleton rather than flashing a work queue
+    // this role cannot read.
+    return <Skeleton variant="overview" className="py-4" />;
   }
 
   return <WorkQueue role={user.role as Role} userName={user.name ?? ''} />;

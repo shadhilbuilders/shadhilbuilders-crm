@@ -7,6 +7,12 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api, qs, type Role } from '@/apis/client';
 
+export type ReportsToLine = {
+  teamId: string;
+  teamName: string;
+  manager: { id: string; name: string; email: string } | null;
+};
+
 export type BackendCreatedUser = {
   id: string;
   email: string;
@@ -15,10 +21,17 @@ export type BackendCreatedUser = {
   teamId: string | null;
   /** Project names the user is a member of (via ProjectMember). */
   projects: string[];
-  /** "Reports to" - present on GET /users rows only (staff -> team manager,
-   *  MANAGER/ADMIN -> org OWNER, OWNER -> null). Absent on create/update
-   *  responses, hence optional. */
-  reportsTo?: { id: string; name: string; email: string } | null;
+  /**
+   * "Reports to" - present on GET /users rows only. One entry per team the
+   * user belongs to, newest first, each with that team's manager (null when the
+   * team is unled). MANAGER/ADMIN get a single org-OWNER entry; OWNER/CUSTOMER
+   * get an empty array. Rule: reportingTargetFor in @shadhil/api-types.
+   *
+   * Absent on create/update responses, hence optional.
+   */
+  reportsTo?: ReportsToLine[];
+  /** @deprecated Use `reportsTo`. First entry's manager, kept one release. */
+  reportsToPrimary?: { id: string; name: string; email: string } | null;
 };
 
 export type CreateUserInput = {
@@ -27,6 +40,8 @@ export type CreateUserInput = {
   password: string;
   role: Role;
   teamId?: string;
+  /** Issue #8: required for CUSTOMER, rejected for every other role. */
+  customerLeadId?: string;
 };
 
 const USERS_KEY = ['users'] as const;
@@ -123,8 +138,18 @@ export type BackendUserDetail = {
   role: Role;
   teamId: string | null;
   teamName: string | null;
-  /** Populated only for TELECALLER/SALES_EXEC whose team has a manager. */
+  /** Populated for TELECALLER/SALES_EXEC/ENGINEER whose team has a manager. */
   manager: { id: string; name: string; email: string } | null;
+  /**
+   * Every reporting line (2026-11-07): one entry per team the user belongs to,
+   * newest first, with that team's manager. `manager` above stays as the
+   * single-value view the assign button reads. Optional so a cached response
+   * from an older API still parses.
+   */
+  reportsTo?: ReportsToLine[];
+  /** Every team the user belongs to, newest first (2026-11-07). Lets the
+   *  assign-manager picker exclude teams they are already on. */
+  teamIds?: string[];
   projects: UserDetailProject[];
 };
 
@@ -229,8 +254,11 @@ export function useUpdateProfile() {
 }
 
 /**
- * PATCH /api/users/:id/manager - assign/reassign a TELECALLER/SALES_EXEC's
- * manager (autoplan 2026-09-13), by moving them into the manager's team.
+ * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+ * TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07).
+ * TELECALLER/SALES_EXEC are MOVED into the manager's team; ENGINEER is ADDED
+ * to it (existing memberships are kept - team membership grants project
+ * access) and only ADMIN/OWNER may do it.
  * Invalidates the user-detail query too (not just the list) so the
  * detail page's manager/team panel refreshes immediately.
  */

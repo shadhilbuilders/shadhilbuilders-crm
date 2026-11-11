@@ -65,7 +65,7 @@ export function ThemeToggleButton({
       type="button"
       variant="ghost"
       size="sm"
-      className={className ?? 'my-1.5 min-h-12 min-w-12 px-2.5'}
+      className={className ?? 'my-1.5 min-w-12 px-2.5'}
       onClick={onClick}
       aria-label={label}
       data-qa="theme-toggle"
@@ -77,7 +77,7 @@ export function ThemeToggleButton({
 }
 
 /** Public component - subscribes to the next-themes context. */
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
   const { resolvedTheme, setTheme } = useNextTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -99,6 +99,7 @@ export function ThemeToggle() {
       label={label}
       mode={mounted ? (isDark ? 'dark' : 'light') : 'unknown'}
       onClick={() => setTheme(nextTheme)}
+      className={className}
     />
   );
 }

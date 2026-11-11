@@ -89,6 +89,13 @@ const unitEditSchema = z.object({
     }),
   // DERIVED display field (buildup x rate); never submitted.
   price: z.string().optional(),
+  // Buyer-visible handover estimate, a calendar day (YYYY-MM-DD). Blank clears it.
+  expectedHandoverDate: z
+    .string()
+    .optional()
+    .refine((v) => v === undefined || v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v), {
+      message: 'Pick a valid date',
+    }),
   // Status is a string in the form (the Select holds the raw enum value);
   // the payload casts it to InventoryManualStatus on submit. T-INV-SYNC:
   // only the off-pipeline marks are offered - HOLD/TOKEN are set by bookings,
@@ -110,6 +117,8 @@ export type UnitEditTarget = {
   pricePerSqft: string;
   price: string;
   status: string;
+  /** ISO instant of the buyer-visible handover estimate, or null when unset. */
+  expectedHandoverDate?: string | null;
 };
 
 export type UnitEditDialogProps = {
@@ -119,6 +128,16 @@ export type UnitEditDialogProps = {
   onSaved?: () => void;
   projectId: string | null;
 };
+
+/** ISO instant -> the `YYYY-MM-DD` a date input holds ('' when unset). */
+export function toDateInput(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 10) : '';
+}
+
+/** `YYYY-MM-DD` -> ISO instant at UTC midnight; blank clears (null). */
+export function fromDateInput(day: string | undefined): string | null {
+  return day && day.length > 0 ? `${day}T00:00:00.000Z` : null;
+}
 
 const STATUS_OPTIONS = INVENTORY_MANUAL_STATUSES.map((value) => ({
   value,
@@ -160,6 +179,11 @@ export function UnitEditFormBody({
       id={FORM_ID}
       form={form}
       onSubmit={onSubmit}
+      // The dialog shell caps the height and pins the header/footer, so this
+      // element is the scroll container for the field list (min-h-0 lets it
+      // shrink inside the grid row instead of overflowing). The negative
+      // margin keeps focus rings from being clipped at the edges.
+      className='-mx-1 min-h-0 overflow-y-auto px-1'
       // The Save action lives in the Dialog footer (linked via
       // form={FORM_ID} + type="submit" on the footer button); hide the
       // Form's own action buttons so the submit isn't duplicated.
@@ -263,6 +287,14 @@ export function UnitEditFormBody({
             'data-qa': 'unit-edit-price',
           },
         },
+        {
+          type: 'input',
+          name: 'expectedHandoverDate',
+          label: 'Expected handover',
+          inputType: 'date',
+          description: 'Shown to the buyer in their portal. Leave blank if not decided.',
+          inputProps: { 'data-qa': 'unit-edit-handover' },
+        },
         // A booking-owned status cannot be chosen, so it is shown read-only
         // instead of as a picker pre-selected with a value it does not offer.
         derivedStatus
@@ -358,6 +390,7 @@ export function UnitEditDialog({
       buildupSqft: unit?.buildupSqft ?? '',
       pricePerSqft: unit?.pricePerSqft ?? '',
       price: unit?.price ?? '',
+      expectedHandoverDate: toDateInput(unit?.expectedHandoverDate),
       status: unit?.status ?? 'AVAILABLE',
     },
     mode: 'onSubmit',
@@ -376,6 +409,7 @@ export function UnitEditDialog({
         buildupSqft: unit.buildupSqft,
         pricePerSqft: unit.pricePerSqft,
         price: unit.price,
+        expectedHandoverDate: toDateInput(unit.expectedHandoverDate),
         status: unit.status,
       });
     }
@@ -425,6 +459,7 @@ export function UnitEditDialog({
       bhk,
       buildupSqft,
       pricePerSqft,
+      expectedHandoverDate: fromDateInput(values.expectedHandoverDate),
       ...(values.facing && values.facing.trim().length > 0
         ? { facing: values.facing.trim() }
         : { facing: null }),
@@ -452,7 +487,13 @@ export function UnitEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName='sm:max-w-lg'
+      // Height cap + scrollable body: the dialog stacks 8 fields, so on a
+      // short viewport (landscape phone, small laptop) the footer's Save
+      // button used to sit below the fold with nothing scrollable. The fixed
+      // rows keep the header and the Cancel/Save footer pinned while only the
+      // field list scrolls (`minmax(0,1fr)` lets the middle row shrink instead
+      // of overflowing).
+      contentClassName='grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg'
       header={{ title: `Edit unit ${target.unitNumber}`, description: 'Update the unit details.' }}
       footer={
         <div className="flex w-full justify-end gap-2">

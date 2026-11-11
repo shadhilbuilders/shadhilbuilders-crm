@@ -87,6 +87,14 @@ const ROLE_LANES: Readonly<
     NO_SHOW: [],
     CANCELLED: [],
   },
+  // Issue #8 slice 2: buyers are read-only; every transition denies.
+  CUSTOMER: {
+    SCHEDULED: [],
+    RESCHEDULED: [],
+    COMPLETED: [],
+    NO_SHOW: [],
+    CANCELLED: [],
+  },
 };
 
 function canRoleTransition(

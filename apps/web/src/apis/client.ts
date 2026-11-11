@@ -5,6 +5,12 @@
 // bridges to NestJS. Nothing in the browser ever handles a raw JWT.
 //
 // Role/session lookups use better-auth's useSession (react bindings).
+//
+// Import direction note: portal-routing.ts imports ONLY `type { Role }` from
+// this file, which is erased at compile time - so importing its route
+// constants here is not a runtime cycle.
+import { PORTAL_CHANGE_PASSWORD } from '@/lib/portal-routing';
+
 export class ApiError extends Error {
   readonly status: number;
   /**
@@ -34,7 +40,8 @@ export type Role =
   | 'MANAGER'
   | 'SALES_EXEC'
   | 'TELECALLER'
-  | 'ENGINEER';
+  | 'ENGINEER'
+  | 'CUSTOMER';
 
 export const STAFF_ROLES: readonly Role[] = [
   'OWNER',
@@ -43,6 +50,10 @@ export const STAFF_ROLES: readonly Role[] = [
   'SALES_EXEC',
   'TELECALLER',
   'ENGINEER', // issue #7 slice 1: site-staff, upload progress photos
+  // Issue #8 slice 2: NOT staff, but it must be a KNOWN role: normalizeRole
+  // throws on anything else, so a buyer's session would 500 without it.
+  // Staff surfaces gate on nav/RLS, never on this list.
+  'CUSTOMER',
 ];
 
 const ROLE_VALUES: readonly string[] = STAFF_ROLES;
@@ -62,6 +73,19 @@ export type SessionUser = {
   email: string;
   role: Role;
   organizationId: string | null;
+  /**
+   * First-login rotation still pending (issue #8 slice 2, spec D3). True only
+   * while the account holds a staff-issued temporary password - the portal
+   * refuses to render its record until it is false.
+   *
+   * A COURTESY snapshot from the session (@shadhil/auth additionalFields), not
+   * the wall: JwtAuthGuard answers 403 PASSWORD_CHANGE_REQUIRED for every
+   * business request until the flag clears, and `api()` routes that 403 to the
+   * rotation screen. Defaults to false when the session omits the field, so a
+   * stale session degrades to the 403 backstop instead of locking a buyer out
+   * of a portal they are entitled to.
+   */
+  mustChangePassword: boolean;
 };
 
 /**
@@ -84,6 +108,10 @@ export function sessionUserFromSession(session: unknown): SessionUser | null {
     email: typeof user.email === 'string' ? user.email : '',
     role: normalizeRole(user.role),
     organizationId: typeof nestedOrg === 'string' ? nestedOrg : null,
+    // Strict `=== true`: anything other than a real boolean true (missing
+    // field, null from an older session row, a string) reads as "rotated".
+    // Failing OPEN here is deliberate - see the type comment above.
+    mustChangePassword: user.mustChangePassword === true,
   };
 }
 
@@ -145,7 +173,15 @@ export async function api<T>(
       'code' in body &&
       (body as { code?: unknown }).code === 'PASSWORD_CHANGE_REQUIRED'
     ) {
-      window.location.href = '/change-password';
+      // Audience-specific destination (2026-11-10). A CUSTOMER must rotate
+      // inside the portal shell (masthead + Sign out, no Cancel), while staff
+      // use the guest page. The backend cannot decide this for us - it does not
+      // know which shell the request came from - so the path we are on is the
+      // signal: a portal request can only belong to a buyer.
+      const target = window.location.pathname.startsWith('/portal')
+        ? PORTAL_CHANGE_PASSWORD
+        : '/change-password';
+      window.location.href = target;
       throw new ApiError('Password change required', 403);
     }
   }

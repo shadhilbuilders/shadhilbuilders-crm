@@ -4,11 +4,15 @@
 // projects, leads). Rendered on /admin/users/[userId] - the specific-user
 // page the Users table opens.
 //
-// Reports-to rules (T-REPORTS-TO-OWNER, 2026-10-06):
-//   - TELECALLER/SALES_EXEC: their team's manager (assignable via
-//     PATCH /api/users/:id/manager, gated by `canManageUsers`).
+// Reports-to rules (T-REPORTS-TO-OWNER, 2026-10-06) - the rule itself is the
+// exhaustive map `reportingTargetFor` in @shadhil/api-types, shared with the
+// NestJS users service so the two surfaces cannot drift:
+//   - TELECALLER/SALES_EXEC/ENGINEER: their team's manager (assignable via
+//     PATCH /api/users/:id/manager, gated by `canManageUsers`). ENGINEER
+//     added 2026-11-07 - it was missing from every positive role union, so
+//     this page showed "No manager assigned" while the team roster showed one.
 //   - MANAGER/ADMIN: the org OWNER (fixed, read-only - never assignable).
-//   - OWNER: the row is omitted (reports to nobody).
+//   - OWNER/CUSTOMER: the row is omitted (they report to nobody).
 // T-USER-LEADS (2026-09-24): the Leads table lists every lead linked to the
 // user (owner OR co-owner). Projects are read-only (T-TEAM-AUTHORITATIVE).
 //
@@ -36,6 +40,7 @@ import {
   type BackendUserDetail,
 } from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
+import { hasReportingLine, reportsToTeamManager } from '@shadhil/api-types';
 import {
   canManageUsers,
   isAdminLike,
@@ -47,10 +52,12 @@ import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { UserLeadsCard } from '@/components/users/UserLeadsCard';
+import { UserUnitsCard } from '@/components/users/UserUnitsCard';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 
-/** Roles whose "Reports to" person is an ASSIGNABLE team manager. */
-const REPORTS_TO_MANAGER = new Set(['TELECALLER', 'SALES_EXEC']);
+/** "Reports to" rule lives in @shadhil/api-types (`reportingTargetFor`) so the
+ *  web and the NestJS users service cannot drift - the previous local Set of
+ *  two roles is how ENGINEER went missing. */
 
 export function UserDetailView({ userId }: { userId: string }) {
   // Hooks run unconditionally before any early return (rules of hooks).
@@ -136,12 +143,16 @@ function UserDetailContent({
    *  succeeds (both mutations live outside `useUser`'s own cache key). */
   onChanged: () => void;
 }) {
-  // T-REPORTS-TO-OWNER: every role except OWNER reports to someone on this
-  // surface - TELECALLER/SALES_EXEC to their team's manager (assignable),
-  // MANAGER/ADMIN to the org OWNER (fixed). OWNER reports to nobody, so the
-  // row is omitted for them.
-  const showReportsTo = detail.role !== 'OWNER';
-  const canAssignManager = REPORTS_TO_MANAGER.has(detail.role);
+  // T-REPORTS-TO-OWNER: reporting lines are decided by role in ONE exhaustive
+  // map (@shadhil/api-types reportingTargetFor):
+  //   TELECALLER/SALES_EXEC/ENGINEER -> their team's manager (assignable)
+  //   MANAGER/ADMIN                  -> the org OWNER (fixed, read-only)
+  //   OWNER / CUSTOMER               -> nobody, row omitted
+  // Was `detail.role !== 'OWNER'`, which gave CUSTOMER buyers a bogus
+  // "No manager assigned" row, and a local Set of two roles for the button,
+  // which silently omitted ENGINEER.
+  const showReportsTo = hasReportingLine(detail.role);
+  const canAssignManager = reportsToTeamManager(detail.role);
   // Server enforces the same rule: strictly outrank the target, not self.
   const canResetPassword =
     isAdminLike(actorRole) &&
@@ -193,19 +204,50 @@ function UserDetailContent({
                   <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Reports to
                   </p>
-                  {detail.manager ? (
-                    <>
-                      <p className="text-sm font-medium">{detail.manager.name}</p>
-                      <p className="text-muted-foreground text-xs">{detail.manager.email}</p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No manager assigned</p>
-                  )}
+                  {/* One line per team (2026-11-07). A two-team engineer has
+                      two managers; showing only the newest hid a real line.
+                      Falls back to `manager` if an older API omits the list. */}
+                  {(() => {
+                    const lines =
+                      detail.reportsTo ??
+                      (detail.manager
+                        ? [{ teamId: '', teamName: detail.teamName ?? '', manager: detail.manager }]
+                        : []);
+                    if (lines.length === 0) {
+                      return <p className="text-muted-foreground text-sm">No manager assigned</p>;
+                    }
+                    return (
+                      <ul className="space-y-0.5" data-qa="user-reports-to-list">
+                        {lines.map((line) => (
+                          <li key={line.teamId === '' ? 'org-owner' : line.teamId} data-qa="user-reports-to-line">
+                            {line.manager ? (
+                              <>
+                                <p className="text-sm font-medium">{line.manager.name}</p>
+                                <p className="text-muted-foreground text-xs">
+                                  {line.manager.email}
+                                  {line.teamName !== '' ? ` · ${line.teamName}` : ''}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-muted-foreground text-sm">
+                                {line.teamName} has no manager yet
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
                 </div>
               </div>
               {/* T-REPORTS-TO-OWNER: a MANAGER/ADMIN's "Reports to" is the
                   org OWNER - fixed, never assignable, so no button renders
-                  for them even for an actor who canManageUsers. */}
+                  for them even for an actor who canManageUsers.
+
+                  Reaching this component already requires isAdminLike (see the
+                  guard above), which satisfies the endpoint's ENGINEER
+                  admin-class rule too - so no extra role branch is needed
+                  here. */}
               {canAssignManager && canManageUsers(actorRole) ? (
                 <AssignManagerButton detail={detail} onAssigned={onChanged} />
               ) : null}
@@ -252,11 +294,20 @@ function UserDetailContent({
           ADMIN/OWNER-gated above, and the backend keeps ADMIN/OWNER
           filters un-narrowed by role scoping, so this shows the full set
           rather than only the admin's own lane. */}
-      <Card data-qa="user-leads-card-shell">
-        <CardContent className="pt-6">
-          <UserLeadsCard userId={detail.id} />
-        </CardContent>
-      </Card>
+      {/* 2026-11-10: an ENGINEER carries villas, not leads. */}
+      {detail.role === 'ENGINEER' ? (
+        <Card data-qa="user-units-card-shell">
+          <CardContent>
+            <UserUnitsCard engineerId={detail.id} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card data-qa="user-leads-card-shell">
+          <CardContent>
+            <UserLeadsCard userId={detail.id} />
+          </CardContent>
+        </Card>
+      )}
 
       <ResetPasswordDialog
         target={passwordOpen ? { id: detail.id, name: detail.name } : null}
@@ -291,9 +342,17 @@ function AssignManagerButton({
   const candidates = useMemo(
     () =>
       (teamsQuery.data ?? [])
-        .filter((t) => t.managerName !== null && t.id !== detail.teamId)
+        // 2026-11-07: exclude EVERY team the user already belongs to, not just
+        // the display team. Otherwise a two-team engineer could "assign" to a
+        // team they are already on; the server now rejects that as a no-op but
+        // the picker should never offer it.
+        .filter(
+          (t) =>
+            t.managerName !== null &&
+            !(detail.teamIds ?? [detail.teamId]).includes(t.id),
+        )
         .map((t) => ({ value: t.id, label: `${t.managerName} · ${t.name}` })),
-    [teamsQuery.data, detail.teamId],
+    [teamsQuery.data, detail.teamId, detail.teamIds],
   );
 
   function handleAssign() {

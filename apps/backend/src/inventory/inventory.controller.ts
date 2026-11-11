@@ -25,11 +25,14 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  AssignUnitDtoSchema,
+  AssignUnitsDtoSchema,
   CreatePhaseDtoSchema,
   CreateProjectOptionDtoSchema,
   CreateUnitDtoSchema,
@@ -54,6 +57,7 @@ import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
 import { InventoryService } from './inventory.service';
+import { UnitAssignmentService, type AssignUnitsResult } from './unit-assignment.service';
 
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
@@ -78,12 +82,13 @@ const CUID_RE = z.cuid2();
 export class InventoryController {
   constructor(
     @Inject(InventoryService) private readonly inventory: InventoryService,
+    @Inject(UnitAssignmentService) private readonly assignment: UnitAssignmentService,
   ) {}
 
   @Get('units')
   @ApiOperation({
     summary:
-      'List inventory units (villa grid). Filters: projectId/phaseId/bhk/facing/status. Every authenticated role can read.',
+      'List inventory units (villa grid). Filters: projectId/phaseId/bhk/facing/status. Every authenticated role can read, but villa MONEY (pricePerSqft/price) is withheld from site-only roles (ENGINEER) - null, not zero.',
   })
   async list(
     @Req() req: AuthedRequest,
@@ -130,6 +135,10 @@ export class InventoryController {
       // query param).
       search:
         typeof query['search'] === 'string' ? query['search'] : undefined,
+      assignedEngineerId:
+        typeof query['assignedEngineerId'] === 'string'
+          ? query['assignedEngineerId']
+          : undefined,
       limit,
       offset,
     };
@@ -137,10 +146,39 @@ export class InventoryController {
     return this.inventory.list(req.user!, dto);
   }
 
+  @Put('units/assign')
+  @ApiOperation({
+    summary:
+      "Replace one engineer's villa set within a project. ADMIN/OWNER only. Audit rows + notifications.",
+  })
+  async assignUnits(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<AssignUnitsResult> {
+    return this.assignment.assignUnits(req.user!, parseBody(AssignUnitsDtoSchema, body));
+  }
+
+  @Patch('units/:id/assignee')
+  @ApiOperation({
+    summary:
+      'Assign one villa to a site ENGINEER, or unassign with engineerId null. ADMIN/OWNER only.',
+  })
+  async assignEngineer(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<UnitRow> {
+    if (!CUID_RE.safeParse(id).success) {
+      throw new BadRequestException(`Invalid unit id: ${id}`);
+    }
+    const dto = parseBody(AssignUnitDtoSchema, body);
+    return this.assignment.assignEngineer(req.user!, id, dto.engineerId);
+  }
+
   @Get('units/:id')
   @ApiOperation({
     summary:
-      'Get a single inventory unit (detail panel). Every authenticated role can read.',
+      'Get a single inventory unit (detail panel). Every authenticated role can read, with villa money nulled for site-only roles (ENGINEER).',
   })
   async findOne(
     @Req() req: AuthedRequest,

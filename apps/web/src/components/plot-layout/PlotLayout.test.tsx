@@ -44,8 +44,10 @@ const mockPlotStatuses = vi.hoisted(() => ({
         facing: string | null;
         sqft: number | null;
         buildupSqft: string;
-        pricePerSqft: string;
-        price: string;
+        // Nullable: the server withholds villa money from site-only roles
+        // (2026-11-08), so a fixture and the panel must both model null.
+        pricePerSqft: string | null;
+        price: string | null;
         status: string;
         createdAt: string;
       };
@@ -106,6 +108,20 @@ vi.mock('@/hooks/queries/inventory', () => ({
     error: mockPlotStatuses.error,
     refetch: mockPlotStatuses.refetch,
   }),
+}));
+
+// The details panel's villa link is role-aware (2026-11-08): a site-only role
+// may not open `/inventory`, so the link goes to the villa's capture screen.
+// The role is controllable so both branches are exercised.
+const mockRole = vi.hoisted(() => ({ current: 'SALES_EXEC' as string }));
+
+vi.mock('@/lib/session', () => ({
+  useSessionUser: () => ({
+    user: { id: 'u-1', name: 'Actor', email: 'a@x', role: mockRole.current, teamId: null },
+    isPending: false,
+    error: null,
+  }),
+  isSiteOnlyRole: (role: string | undefined) => role === 'ENGINEER',
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -215,6 +231,7 @@ beforeEach(() => {
   mockPlotStatuses.isPending = false;
   mockPlotStatuses.isError = false;
   mockPlotStatuses.error = null;
+  mockRole.current = 'SALES_EXEC';
 });
 
 afterEach(async () => {
@@ -383,6 +400,69 @@ describe('PlotLayout', () => {
     expect(
       details?.querySelector('[data-qa="plot-booking-lead-link"]')?.getAttribute('href'),
     ).toContain('/leads/lead-1');
+  });
+
+  it('points an ENGINEER at the villa capture screen, never the closed inventory grid', async () => {
+    // `/inventory` is hard-blocked for ENGINEER (the segment gate). Leaving this
+    // link on `/inventory?unit=` would send them to a wall from a surface they
+    // CAN use, which is the one dead end the block is meant to avoid creating.
+    mockRole.current = 'ENGINEER';
+    mockPlotStatuses.rows = [
+      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
+    ];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+
+    const href = container
+      ?.querySelector('[data-qa="plot-unit-link"]')
+      ?.getAttribute('href');
+    expect(href).toContain('/site/unit-a101');
+    expect(href).not.toContain('/inventory');
+  });
+
+  it('omits the price row entirely when the server withholds money', async () => {
+    // Money is gated server-side for site-only roles (2026-11-08): the API
+    // sends `price: null`, never a number. The panel must not print "-" (which
+    // reads as a missing value) and must NEVER print "₹0" (`Number(null)` is 0,
+    // i.e. a free villa). The row is simply absent.
+    mockRole.current = 'ENGINEER';
+    const claim = claimFixture();
+    mockPlotStatuses.rows = [
+      {
+        plotNumber: 20,
+        status: 'booked',
+        units: [{ ...claim, unit: { ...claim.unit, price: null, pricePerSqft: null } }],
+      },
+    ];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+
+    const details = container?.querySelector('[data-qa="plot-details"]');
+    expect(details?.textContent).not.toContain('Total price');
+    // The zero-formatting failure mode this guards against.
+    expect(details?.textContent).not.toContain('₹0');
+    // Everything non-monetary still renders, so the map is not broken.
+    expect(details?.textContent).toContain('A-101');
+    expect(details?.textContent).toContain('3 BHK');
+  });
+
+  it('still shows the price row when the server sends a figure', async () => {
+    // Positive control for the test above: the row is CONDITIONAL, not gone.
+    mockRole.current = 'SALES_EXEC';
+    mockPlotStatuses.rows = [
+      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
+    ];
+    await mount();
+    await typeInto(searchInput(), '20');
+    click('[data-qa="plot-search-match-20"]');
+    await act(async () => {});
+
+    const details = container?.querySelector('[data-qa="plot-details"]');
+    expect(details?.textContent).toContain('Total price');
   });
 
   it('does not claim "no booking" when a held villa hides its booking', async () => {

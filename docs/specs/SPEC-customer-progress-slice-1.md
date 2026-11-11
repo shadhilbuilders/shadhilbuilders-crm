@@ -1,5 +1,11 @@
 # Spec: Customer Progress Photos — Slice 1 (upload + staff preview)
 
+Shipped in slice 1 (PR #8). Corrected 2026-11-07: this spec said "Jest" (the repo runs
+Vitest), pointed the RLS test at `packages/database/src/` (it lives in `test/`),
+described a phase picker the upload no longer has (the phase comes from the unit), and
+implied the service tests covered authorization (they cover the guards; the status
+codes needed their own cases, added 2026-11-07).
+
 Spec-driven development, slice 1 of the Customer Progress Portal initiative.
 Source of truth for scope: `docs/designs/customer-progress-portal.md`
 (APPROVED, amended with the Site-staff model; eng review CLEARED, design
@@ -62,18 +68,18 @@ packages/database/prisma/migrations/            → migration 1: ENGINEER + phot
 packages/database/src/rls.ts                    → ROLES list gains 'ENGINEER'
 packages/auth-client/src/auth.ts                → role additional-field (no change needed if
                                                   it passes through enum; verify at impl)
-packages/database/src/progress-rls.test.ts      → DB-first RLS isolation tests
+packages/database/test/progress-rls.test.ts      → DB-first RLS isolation tests
 apps/backend/src/customer-progress/
   customer-progress.module.ts                   → NestJS feature module, registered in app.module.ts
   customer-progress.controller.ts               → POST /api/customer-progress/units/:unitId/photos
                                                   + GET timeline endpoints (staff roles only)
   customer-progress.service.ts                  → all writes/reads inside withRlsContext
   customer-progress.service.test.ts             → upload guards, authorization, pagination
-apps/web/src/app/[orgSlug]/...unit page...      → Progress tab (upload button + phase picker +
-                                                  preview timeline mirroring lead-timeline states)
+apps/web/src/app/[orgSlug]/...unit page...      → Progress tab (camera button + preview timeline
+                                                  mirroring lead-timeline states)
 apps/web/src/lib/labels.ts (or new helper)      → siteMemberLabel(member)
 apps/web/src/components/teams/project-team-list.tsx → "Progress lead" toggle, ADMIN/OWNER-only
-apps/web/src/app/[orgSlug]/admin/users/…        → ENGINEER option in role Select, ADMIN/OWNER-only
+apps/web/src/app/[orgSlug]/admin/users/...        → ENGINEER option in role Select, ADMIN/OWNER-only
 ```
 
 ## Code Style
@@ -104,9 +110,12 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
 
 ## Testing Strategy
 
-- Framework: Jest, colocated `*.test.ts` next to source (repo convention).
+- Framework: Vitest, `*.test.ts` colocated beside source (backend/web) or in the
+  package's `test/` dir (database) — the repo convention. Note: this line said
+  "Jest" when the spec was written; the repo has always run Vitest.
 - DB-first RLS isolation tests (REQUIRED before ship, per the 2026-09-12
-  binding decision) in packages/database, following the existing pattern:
+  binding decision) in `packages/database/test/progress-rls.test.ts`, following
+  the existing pattern:
   - customer bridge is out of scope; in this slice: ENGINEER isolation
     (engineer can read/upload only own-project units' photos; engineer can
     NOT select from lead/chat/booking tables — expect the RLS deny),
@@ -114,9 +123,11 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
     DELETE another member's photo; photoLead member can), cross-project
     engineer denied.
 - Service tests: upload guards (MIME allowlist, size cap MAX_UPLOAD_BYTES,
-  empty file, unit-not-in-actor's-project → 403/404), pagination
-  (LIMIT 50 + cursor), phase validation (phase must belong to the unit's
-  project).
+  empty file), pagination (LIMIT 50 + cursor), phase validation (phase must
+  belong to the unit's project). Plus `assertUnitAccess` directly — the
+  unit-not-in-actor's-project case returns 403 and an unknown unit returns 404;
+  RLS returning an empty set is indistinguishable from "no photos" to a
+  caller, so the STATUS CODE needs its own test.
 - Web: mirroring states tested like lead-timeline.test.tsx (skeleton, empty,
   error, hasMore).
 - Manual verify: phone camera flow under 30s; upload visible in timeline
@@ -156,11 +167,48 @@ service ("Scoping (per JWT): every read/write flows through withRlsContext").
 ## Out of scope (slice 1)
 
 - CUSTOMER role, login, portal routes, push (slice 2 — separate spec).
-- Photo correction/delete UI (slice 4) — column + policies ship now to avoid
-  a destructive migration later.
+- ~~Photo correction/delete UI (slice 4) — column + policies ship now to avoid
+  a destructive migration later.~~ **Shipped early on 2026-11-07** — see
+  "Photo correction" below. The column + policies landed in slice 1 as planned;
+  the consuming routes followed once the grant turned out to be inert.
 - Payment/doc/message views (slice 3).
 - Caption editing in v1 (captions auto-fill "{phase} {month}" server-side;
   editing is part of slice 4 supervision work).
+
+## Photo correction (shipped 2026-11-07, was slice 4)
+
+The `ProjectStaffRole(kind='PHOTO_LEAD')` grant existed from slice 1 and
+authorized nothing: `progress_photo_update` and `progress_photo_delete` granted
+ADMIN, the creator and the photo lead, but no route consumed them. An admin
+could flip the "Photo lead" switch, get a success toast, and change behaviour for
+nobody.
+
+```
+PATCH  /api/customer-progress/photos/:photoId   { caption }   -> TimelinePhotoDto
+DELETE /api/customer-progress/photos/:photoId                 -> { id, unitId }
+```
+
+- **Authority is RLS's.** Both methods read the row inside the caller's
+  `withRlsContext`; a denied actor gets 404, never 403 (a 403 would confirm the
+  row exists). There is no second copy of the rule in the service.
+- **Caption is the only editable field.** `phaseId` belongs to the unit (the
+  upload stops asking), `takenAt` is evidence of when site work happened, and
+  `unitId` would move a buyer's photo to another home. zod strips the rest.
+- **Delete is row-then-bytes.** The audit row is written inside the transaction,
+  before the bytes go. A storage failure logs WARN and still returns success:
+  the record survives and the key is on the audit row, so the orphan is
+  findable. The reverse would leave a row pointing at bytes that are gone.
+- **The timeline DTO carries `canMutate`**, computed server-side from the same
+  predicate (`ADMIN | creator | photo lead`). It is advisory - the routes
+  re-check - and it is `false` for every CUSTOMER, so the buyer and staff
+  responses keep one wire shape.
+- **UI**: inline controls on each staff timeline row (`ProgressPhotoActions.tsx`)
+  with a confirm dialog whose copy names the customer portal, because a buyer may
+  already have seen the photo.
+
+Tests: 14 service cases, 8 UI cases, 10 mapper cases, and a DB case proving the
+DELETE arm (creator + photo lead + ADMIN allowed; a non-owner's `deleteMany`
+removes 0 rows).
 
 ## Open Questions
 

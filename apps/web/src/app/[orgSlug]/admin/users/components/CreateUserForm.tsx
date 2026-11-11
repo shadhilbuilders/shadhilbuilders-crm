@@ -20,10 +20,20 @@ import { useCreateUser } from '@/hooks/queries/users';
 import type { Role } from '@/apis/client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { labelFor } from '@/lib/labels';
+import { CustomerLeadField } from './CustomerLeadField';
 
 /** Roles that cannot exist without a team (the service rejects them without
  *  one). MANAGER auto-creates its own team, so it is deliberately absent. */
 const ROLES_REQUIRING_TEAM: readonly Role[] = ['TELECALLER', 'SALES_EXEC', 'ENGINEER'];
+
+/** Issue #8 slice 2: a CUSTOMER login must point at a Lead (and belongs to no
+ *  team). Mirrors UsersService.create, which requires customerLeadId for
+ *  CUSTOMER and rejects it for every other role. */
+const ROLES_REQUIRING_LEAD: readonly Role[] = ['CUSTOMER'];
+
+function roleNeedsLead(role: Role | undefined): boolean {
+  return role !== undefined && ROLES_REQUIRING_LEAD.includes(role);
+}
 
 function roleNeedsTeam(role: Role | undefined): boolean {
   return role !== undefined && ROLES_REQUIRING_TEAM.includes(role);
@@ -52,6 +62,13 @@ const CreateUserFormSchema = CreateUserDtoSchema.superRefine((values, ctx) => {
       code: 'custom',
       path: ['teamId'],
       message: 'Select a team for this user',
+    });
+  }
+  if (roleNeedsLead(values.role) && !values.customerLeadId) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['customerLeadId'],
+      message: 'Select the lead this customer belongs to',
     });
   }
 });
@@ -114,6 +131,7 @@ export function CreateUserForm({
       password: string;
       role: Role;
       teamId?: string;
+      customerLeadId?: string;
     } = {
       name: values.name,
       email: values.email,
@@ -130,6 +148,11 @@ export function CreateUserForm({
         return;
       }
       payload.teamId = values.teamId;
+    }
+    // Customers carry a lead pointer instead of a team; the schema above
+    // already rejected a missing one, this keeps the payload honest.
+    if (roleNeedsLead(values.role) && values.customerLeadId) {
+      payload.customerLeadId = values.customerLeadId;
     }
     createUser.mutate(payload, {
       onSuccess: () => {
@@ -206,24 +229,36 @@ export function CreateUserForm({
       label: 'Team',
       required: true,
       render: ({ field, fieldState }) => (
-        // `isInvalid` + `errorMessage` make the Combobox render the message
-        // INLINE under the picker (react-ui's Combobox shows
-        // ErrorMessage when isInvalid, and marks the control aria-invalid).
-        // Passing them is what replaces the old "Please select a team" toast:
-        // the error now sits next to the field it is about, and clears itself
-        // as soon as a team is chosen.
+        // `isInvalid` only marks the control (aria-invalid + red border). The
+        // MESSAGE is rendered once by react-ui's Form (`form-error-message-
+        // <name>`) for every non-`field` item, so passing `errorMessage` here
+        // as well printed the same sentence twice under the picker.
         <Combobox
           {...field}
           value={field.value ?? ''}
           options={teams.map((team) => ({ value: team.id, label: team.name }))}
           placeholder={teamsLoading ? 'Loading teams...' : 'Search and select a team...'}
           data-qa="create-user-team"
-          selectOptionAsValue
           isInvalid={fieldState.invalid}
-          errorMessage={fieldState.error?.message}
           onValueChange={(value) => {
             field.onChange(value ?? undefined);
           }}
+        />
+      ),
+    });
+  }
+
+  if (roleNeedsLead(selectedRole)) {
+    fields.push({
+      type: 'custom',
+      name: 'customerLeadId',
+      label: 'Customer (lead)',
+      required: true,
+      render: ({ field, fieldState }) => (
+        <CustomerLeadField
+          value={field.value}
+          onChange={field.onChange}
+          isInvalid={fieldState.invalid}
         />
       ),
     });

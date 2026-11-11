@@ -26,9 +26,13 @@
 //   5. Every write path is subject to the actor's RLS context: a MANAGER
 //      cannot write into another manager's team, and the failure is a
 //      typed 403 - not a silent no-op.
+//   6. (2026-11-07) The ENGINEER additive branch: adding an engineer to a
+//      team keeps every existing membership (a move would silently revoke
+//      project access through TeamMember -> ProjectTeam RLS), and a MANAGER
+//      cannot do it at all.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import type { JwtPayload } from '@shadhil/auth';
 import {
@@ -54,6 +58,9 @@ const TEAM_A_ID = createId();
 const TEAM_B_ID = createId();
 const TEAM_DEAD_ID = createId();
 const TELECALLER_ID = createId();
+// 2026-11-07: ENGINEER additive-branch fixtures.
+const ENGINEER_ID = createId();
+const TEAM_C_ID = createId();
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -97,6 +104,7 @@ beforeAll(async () => {
       [MANAGER_A_ID, 'MANAGER', 'RLS Test Manager A'],
       [MANAGER_B_ID, 'MANAGER', 'RLS Test Manager B'],
       [TELECALLER_ID, 'TELECALLER', 'RLS Test Telecaller'],
+      [ENGINEER_ID, 'ENGINEER', 'RLS Test Engineer'],
     ] as const) {
       await db.user.upsert({
         where: { id },
@@ -115,6 +123,9 @@ beforeAll(async () => {
       [TEAM_A_ID, `RLS Test Team A ${TEAM_A_ID.slice(0, 6)}`, MANAGER_A_ID, false],
       [TEAM_B_ID, `RLS Test Team B ${TEAM_B_ID.slice(0, 6)}`, MANAGER_B_ID, false],
       [TEAM_DEAD_ID, `RLS Test Team Dead ${TEAM_DEAD_ID.slice(0, 6)}`, MANAGER_A_ID, true],
+      // Third live team, led by manager A, used only by the ENGINEER
+      // additive test (needs a destination distinct from team A and B).
+      [TEAM_C_ID, `RLS Test Team C ${TEAM_C_ID.slice(0, 6)}`, MANAGER_A_ID, false],
     ] as const) {
       await db.team.upsert({
         where: { id },
@@ -145,11 +156,13 @@ afterAll(async () => {
   if (prisma === null) return;
   await adminSeed(async (db) => {
     await db.auditLog.deleteMany({ where: { entityId: TELECALLER_ID } });
+    await db.auditLog.deleteMany({ where: { entityId: ENGINEER_ID } });
     await db.teamMember.deleteMany({ where: { userId: TELECALLER_ID } });
-    await db.teamMember.deleteMany({ where: { teamId: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID] } } });
-    await db.team.deleteMany({ where: { id: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID] } } });
+    await db.teamMember.deleteMany({ where: { userId: ENGINEER_ID } });
+    await db.teamMember.deleteMany({ where: { teamId: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } } });
+    await db.team.deleteMany({ where: { id: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } } });
     await db.user.deleteMany({
-      where: { id: { in: [ADMIN_ID, MANAGER_A_ID, MANAGER_B_ID, TELECALLER_ID] } },
+      where: { id: { in: [ADMIN_ID, MANAGER_A_ID, MANAGER_B_ID, TELECALLER_ID, ENGINEER_ID] } },
     });
   });
 }, 30_000);
@@ -162,6 +175,16 @@ beforeEach(async () => {
     await db.teamMember.deleteMany({ where: { userId: TELECALLER_ID } });
     await db.teamMember.create({
       data: { userId: TELECALLER_ID, teamId: TEAM_A_ID, organizationId: ORG },
+    });
+    // The engineer starts on TWO teams - the exact shape the additive branch
+    // exists to protect.
+    await db.auditLog.deleteMany({ where: { entityId: ENGINEER_ID } });
+    await db.teamMember.deleteMany({ where: { userId: ENGINEER_ID } });
+    await db.teamMember.create({
+      data: { userId: ENGINEER_ID, teamId: TEAM_A_ID, organizationId: ORG, assignedAt: new Date(Date.now() - 60_000) },
+    });
+    await db.teamMember.create({
+      data: { userId: ENGINEER_ID, teamId: TEAM_B_ID, organizationId: ORG, assignedAt: new Date(Date.now() - 30_000) },
     });
   });
 });
@@ -303,12 +326,92 @@ describe.skipIf(!HAS_DB)('UsersService.assignManager - real DB / RLS', () => {
     expect(after[0]!.teamId).toBe(TEAM_A_ID);
   }, 30_000);
 
-  it('rejects a non-staff target (only TELECALLER/SALES_EXEC report to a manager) → 400', async () => {
+  it('rejects a non-staff target (only team-manager roles report to a manager) → 400', async () => {
     const users = makeService();
     await expect(
       users.assignManager(adminActor, MANAGER_B_ID, { teamId: TEAM_A_ID }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  // ── ENGINEER additive branch (2026-11-07) ────────────────────────────────
+  // These MUST hit a real DB: the whole risk is that a `deleteMany` under RLS
+  // silently removes rows the actor cannot see, which a mocked client can
+  // never demonstrate. The engineer is seeded on teams A and B in beforeEach.
+  it('ADMIN adds an ENGINEER to a third team and KEEPS both existing memberships', async () => {
+    const users = makeService();
+
+    const result = await users.assignManager(adminActor, ENGINEER_ID, {
+      teamId: TEAM_C_ID,
+    });
+    expect(result.teamId).toBe(TEAM_C_ID);
+
+    const after = await adminSeed(async (db) =>
+      db.teamMember.findMany({
+        where: { userId: ENGINEER_ID },
+        select: { teamId: true },
+        orderBy: { teamId: 'asc' },
+      }),
+    );
+    // THE assertion: three rows, nothing lost. A move-semantics regression
+    // here means an engineer silently loses access to two projects.
+    expect(after.map((m) => m.teamId).sort()).toEqual(
+      [TEAM_A_ID, TEAM_B_ID, TEAM_C_ID].sort(),
+    );
+  }, 30_000);
+
+  it('audits the full membership set for an ENGINEER add (before/after teamIds)', async () => {
+    const users = makeService();
+    await users.assignManager(adminActor, ENGINEER_ID, { teamId: TEAM_C_ID });
+
+    const audit = await adminSeed(async (db) =>
+      db.auditLog.findFirst({
+        where: { entityId: ENGINEER_ID, action: 'user.assignManager' },
+      }),
+    );
+    expect(audit).not.toBeNull();
+    const before = (audit!.before as { teamIds: string[] }).teamIds;
+    const after = (audit!.after as { teamIds: string[] }).teamIds;
+    expect(before.sort()).toEqual([TEAM_A_ID, TEAM_B_ID].sort());
+    expect(after.sort()).toEqual([TEAM_A_ID, TEAM_B_ID, TEAM_C_ID].sort());
+  }, 30_000);
+
+  it('rejects adding an ENGINEER to a team they are already on → 409, no audit row', async () => {
+    const users = makeService();
+    // AuditLog is append-only (RLS has no DELETE policy), so "no audit row"
+    // must be measured as a DELTA, not by absence - a sibling test in this
+    // file legitimately writes rows for the same entity.
+    const auditsBefore = await adminSeed(async (db) =>
+      db.auditLog.count({ where: { entityId: ENGINEER_ID, action: 'user.assignManager' } }),
+    );
+
+    await expect(
+      users.assignManager(adminActor, ENGINEER_ID, { teamId: TEAM_B_ID }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const auditsAfter = await adminSeed(async (db) =>
+      db.auditLog.count({ where: { entityId: ENGINEER_ID, action: 'user.assignManager' } }),
+    );
+    expect(auditsAfter).toBe(auditsBefore);
+    // Still exactly the two original memberships.
+    const after = await adminSeed(async (db) =>
+      db.teamMember.count({ where: { userId: ENGINEER_ID } }),
+    );
+    expect(after).toBe(2);
+  }, 30_000);
+
+  it('a MANAGER cannot change an ENGINEER\u2019s teams → 403 (membership grants site access)', async () => {
+    const users = makeService();
+    // MANAGER A leads both team A and team C, so the team-ownership check
+    // would pass - the ENGINEER admin-class gate is what must stop this.
+    await expect(
+      users.assignManager(managerAActor, ENGINEER_ID, { teamId: TEAM_C_ID }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const after = await adminSeed(async (db) =>
+      db.teamMember.findMany({ where: { userId: ENGINEER_ID }, select: { teamId: true } }),
+    );
+    expect(after).toHaveLength(2);
+  }, 30_000);
 });
 
 describe.skipIf(!HAS_DB)('UsersService.getUser - real DB / RLS', () => {

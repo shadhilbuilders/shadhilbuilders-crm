@@ -150,6 +150,12 @@ describe('wire schemas', () => {
     pricePerSqft: '4000.00',
     price: '5800000.00',
     status: 'SOLD',
+    // Documentation state (2026-11-08): a unit row now carries when it was last
+    // photographed and the stage of that newest capture. Null means "never" /
+    // "not recorded", never a zero date or a guessed stage.
+    lastPhotoAt: null,
+    photoCount: 0,
+    lastPhotoStage: null,
     createdAt: '2026-10-01T09:00:00.000Z',
   };
 

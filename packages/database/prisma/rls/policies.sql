@@ -1603,8 +1603,15 @@ CREATE POLICY projectteam_write_admin ON "ProjectTeam"
 --     Unit.phaseId → Phase.projectId → ProjectTeam → TeamMember, plus the
 --     Team.managerId arm so a team manager keeps the access of their team),
 --   * ADMIN + OWNER org-wide (OWNER travels as ADMIN at the GUC layer).
--- ENGINEER INSERT/UPDATE/DELETE are member-scoped AND creator-bound
--- (progress_photo_write_member: createdBy = app.user_id).
+-- Writes are three-armed (progress_photo_update / _delete): ADMIN org-wide;
+-- the CREATOR on their own photo (createdBy = app.user_id, any staff role);
+-- or the project's PHOTO_LEAD on any photo of that project.
+-- 2026-11-07: this catalog previously described a DIFFERENT set of policies
+-- (progress_photo_write_member / _creator_update / _creator_delete /
+-- _lead_write) that were never created in the database, and omitted the
+-- Team.managerId arm from SELECT - so a fresh DB rebuilt from this file gave
+-- a team manager an empty photo timeline with no error. Resynced verbatim
+-- against migration 20261026160800; a diff of the two was empty afterwards.
 -- PHOTO_LEAD is per-project (ProjectStaffRole.kind='PHOTO_LEAD') - never
 -- per-team, because a team linked to multiple projects must not carry the
 -- authority to sibling projects. Admin-only writes on the authority table.
@@ -1617,100 +1624,188 @@ ALTER TABLE "ProgressPhoto" FORCE ROW LEVEL SECURITY;
 CREATE POLICY progress_photo_select_member ON "ProgressPhoto"
   FOR SELECT
   USING (
-    ("organizationId" = current_setting('app.user_org_id', true)
-     AND current_setting('app.user_role', true) = 'ADMIN')
-    OR
-    ("organizationId" = current_setting('app.user_org_id', true)
-     AND EXISTS (
-       SELECT 1 FROM "Unit" u
-       JOIN "Phase" ph ON ph."id" = u."phaseId"
-       JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
-       JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
-       WHERE u."id" = "ProgressPhoto"."unitId"
-         AND tm."userId" = current_setting('app.user_id', true)
-     ))
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        EXISTS (
+          SELECT 1 FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "ProgressPhoto"."unitId"
+          AND (
+            current_setting('app.user_role', true) <> 'ENGINEER'
+            OR u."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
+    )
   );
 
-CREATE POLICY progress_photo_write_member ON "ProgressPhoto"
-  FOR ALL
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  )
-  WITH CHECK (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  );
-
+-- INSERT (WITH CHECK mirrors SELECT's member arm, plus creator binding:
+-- a member can only create rows they own; ADMIN may insert org-wide).
 CREATE POLICY progress_photo_insert_member ON "ProgressPhoto"
   FOR INSERT
   WITH CHECK (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND EXISTS (
-      SELECT 1 FROM "Unit" u
-      JOIN "Phase" ph ON ph."id" = u."phaseId"
-      JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
-      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
-      WHERE u."id" = "ProgressPhoto"."unitId"
-        AND tm."userId" = current_setting('app.user_id', true)
-        AND "ProgressPhoto"."createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND EXISTS (
+          SELECT 1 FROM "Unit" u
+          JOIN "Phase" ph ON ph."id" = u."phaseId"
+          JOIN "ProjectTeam" pt ON pt."projectId" = ph."projectId"
+          WHERE u."id" = "ProgressPhoto"."unitId"
+          AND (
+            current_setting('app.user_role', true) <> 'ENGINEER'
+            OR u."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+            AND pt."organizationId" = current_setting('app.user_org_id', true)
+            AND (
+              EXISTS (
+                SELECT 1 FROM "TeamMember" tm
+                WHERE tm."teamId" = pt."teamId"
+                  AND tm."userId" = current_setting('app.user_id', true)
+              )
+              OR EXISTS (
+                SELECT 1 FROM "Team" t
+                WHERE t."id" = pt."teamId"
+                  AND t."managerId" = current_setting('app.user_id', true)
+              )
+            )
+        )
+      )
     )
   );
 
-CREATE POLICY progress_photo_creator_update ON "ProgressPhoto"
+-- UPDATE / DELETE (shipped shape, migration 20261026160800): three arms -
+-- ADMIN org-wide, the CREATOR on their own photo, or the project's PHOTO_LEAD
+-- on any photo in that project. Mirrored verbatim; the canonical file had
+-- split this into progress_photo_creator_update / _creator_delete /
+-- progress_photo_lead_write, none of which exist in the database.
+CREATE POLICY progress_photo_update ON "ProgressPhoto"
   FOR UPDATE
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
+    )
   )
   WITH CHECK (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
+    )
   );
 
-CREATE POLICY progress_photo_creator_delete ON "ProgressPhoto"
+CREATE POLICY progress_photo_delete ON "ProgressPhoto"
   FOR DELETE
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND "createdBy" = current_setting('app.user_id', true)
-  );
-
-CREATE POLICY progress_photo_lead_write ON "ProgressPhoto"
-  FOR UPDATE
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND EXISTS (
-      SELECT 1 FROM "ProjectStaffRole" psr
-      WHERE psr."projectId" = (
-            SELECT ph."projectId" FROM "Unit" u
-            JOIN "Phase" ph ON ph."id" = u."phaseId"
-            WHERE u."id" = "ProgressPhoto"."unitId")
-        AND psr."userId" = current_setting('app.user_id', true)
-        AND psr."kind" = 'PHOTO_LEAD'
+    AND (
+      current_setting('app.user_role', true) = 'ADMIN'
+      OR (
+        "createdBy" = current_setting('app.user_id', true)
+        AND (
+          current_setting('app.user_role', true) <> 'ENGINEER'
+          OR EXISTS (
+            SELECT 1 FROM "Unit" au
+            WHERE au."id" = "ProgressPhoto"."unitId"
+              AND au."assignedEngineerId" = current_setting('app.user_id', true)
+          )
+        )
+      )
+      OR EXISTS (
+        SELECT 1 FROM "Unit" u
+        JOIN "Phase" ph ON ph."id" = u."phaseId"
+        JOIN "ProjectStaffRole" psr
+          ON psr."projectId" = ph."projectId"
+         AND psr."userId" = current_setting('app.user_id', true)
+         AND psr."kind" = 'PHOTO_LEAD'
+        WHERE u."id" = "ProgressPhoto"."unitId"
+      )
     )
-  )
-  WITH CHECK (true);
+  );
 
 ALTER TABLE "ProjectStaffRole" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ProjectStaffRole" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY project_staff_role_select_admin ON "ProjectStaffRole"
+CREATE POLICY project_staff_role_select_own_or_admin ON "ProjectStaffRole"
   FOR SELECT
   USING (
     "organizationId" = current_setting('app.user_org_id', true)
-    AND (current_setting('app.user_role', true) = 'ADMIN'
-         OR "userId" = current_setting('app.user_id', true))
+    AND (
+      "userId" = current_setting('app.user_id', true)
+      OR current_setting('app.user_role', true) = 'ADMIN'
+    )
   );
 
 CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
-  FOR ALL
-  USING (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
-  )
+  FOR INSERT
   WITH CHECK (
-    "organizationId" = current_setting('app.user_org_id', true)
-    AND current_setting('app.user_role', true) = 'ADMIN'
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY project_staff_role_delete_admin ON "ProjectStaffRole"
+  FOR DELETE
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
   );
 
 -- ENGINEER reads on the dependency surfaces (member-scoped, never org-wide):
@@ -1726,6 +1821,16 @@ CREATE POLICY project_staff_role_write_admin ON "ProjectStaffRole"
 -- Helper: progress_photo_creator_label(photo_id) SECURITY DEFINER resolves
 -- (creator_name, creator_is_photo_lead) for a photo the caller can read -
 -- visibility-predicated and fail-closed without GUCs (search_path locked).
+--
+-- BATCHED VARIANT (2026-11-09, migration 20261109180000): the timeline read
+-- path calls progress_photo_creator_labels(TEXT[]) instead - one call per page
+-- rather than one per photo. 50 sequential calls measured 117ms against 4ms
+-- batched. The visibility predicate, the org gate and the fail-closed GUC guard
+-- are unchanged and applied PER PHOTO; the only behavioural difference is that
+-- a photo the caller cannot read contributes NO ROW instead of a (NULL, NULL)
+-- row, which the mapper resolves to the same "Unknown" label.
+-- The single-id function above stays: progress-rls.test.ts pins it, and it is
+-- the readable reference for the access shape.
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- LeadFact (T-LEAD-FACTS, 2026-11-05)
@@ -1845,6 +1950,286 @@ CREATE POLICY lead_fact_update_admin ON "LeadFact"
 CREATE POLICY lead_fact_delete_admin ON "LeadFact"
   FOR DELETE
   USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Slice-1 ENGINEER policies (mirror of migration 20261026160800 +
+-- 20261027160000). These were deployed but missing from this canonical file;
+-- mirrored verbatim in the slice-2 change so the file matches the database.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE POLICY project_select_team_member ON "Project"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "Project"."id"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY phase_select_team_member ON "Phase"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "Phase"."projectId"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY project_team_select_engineer ON "ProjectTeam"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND team_member_exists("ProjectTeam"."teamId", current_setting('app.user_id', true))
+  );
+
+-- Narrowed 2026-11-10: an ENGINEER sees only the units assigned to them.
+-- Replaces unit_select_team_member (any unit of a team-linked project).
+CREATE POLICY unit_select_assigned_engineer ON "Unit"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND "assignedEngineerId" = current_setting('app.user_id', true)
+  );
+
+-- All unit ids of a project, visibility-independent (SECURITY DEFINER): the
+-- notification inbox must still resolve the project's units for an engineer
+-- who has just been unassigned (they can no longer read the Unit row).
+CREATE OR REPLACE FUNCTION project_unit_ids(p_project_id TEXT)
+  RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT u."id"
+    FROM "Unit" u
+    JOIN "Phase" ph ON ph."id" = u."phaseId"
+    WHERE ph."projectId" = p_project_id
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+  $$;
+REVOKE ALL ON FUNCTION project_unit_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION project_unit_ids(TEXT) TO shadhil_app;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Slice 2: CUSTOMER portal (migration 20261106160000_customer_portal_slice2)
+--
+-- READ-ONLY. No INSERT/UPDATE/DELETE policy exists for CUSTOMER anywhere.
+-- Permissive-OR: every policy is FOR SELECT, org-gated, and gated on a
+-- CUSTOMER-only predicate, so it cannot widen any staff role's reads.
+-- Helpers are SECURITY DEFINER (RLS recursion, see team_member_exists above);
+-- they compare u."role"::text because the migration adds the enum value in
+-- the same transaction (55P04).
+-- progress_photo_creator_label() gains a customer arm in the same migration
+-- (CREATE OR REPLACE; the function body lives in that migration).
+-- The spec's push_*_portal_service policies are intentionally NOT created:
+-- PortalNotifier delivers under each recipient's own context.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION customer_lead_id() RETURNS TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT u."customerLeadId"
+    FROM "User" u
+    WHERE u."id" = current_setting('app.user_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."role"::text = 'CUSTOMER'
+      AND u."deletedAt" IS NULL
+      AND u."customerLeadId" IS NOT NULL
+  $$;
+REVOKE ALL ON FUNCTION customer_lead_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_lead_id() TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION customer_can_read_unit(p_unit_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Booking" b
+      JOIN "Lead" l ON l."id" = b."leadId"
+      WHERE b."unitId" = p_unit_id
+        AND b."status" = 'APPROVED'
+        AND b."organizationId" = current_setting('app.user_org_id', true)
+        AND l."organizationId" = current_setting('app.user_org_id', true)
+        AND b."leadId" = customer_lead_id()
+    )
+  $$;
+REVOKE ALL ON FUNCTION customer_can_read_unit(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_unit(TEXT) TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION unit_customer_user_ids(p_unit_id TEXT) RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT DISTINCT u."id"
+    FROM "Booking" b
+    JOIN "Lead" l ON l."id" = b."leadId"
+    JOIN "User" u ON u."customerLeadId" = l."id"
+    WHERE b."unitId" = p_unit_id
+      AND b."status" = 'APPROVED'
+      AND b."organizationId" = current_setting('app.user_org_id', true)
+      AND l."organizationId" = current_setting('app.user_org_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."role"::text = 'CUSTOMER'
+      AND u."deletedAt" IS NULL
+  $$;
+REVOKE ALL ON FUNCTION unit_customer_user_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION unit_customer_user_ids(TEXT) TO shadhil_app;
+
+-- True when the caller can read some unit in this phase / project (APPROVED
+-- booking on their lead). Needed as helpers, not inline subqueries: Unit's
+-- engineer policy already subqueries Phase, so a Phase policy that subqueried
+-- Unit would form a policy cycle (42P17 "infinite recursion detected in
+-- policy for relation Unit"). Found by the slice-1 progress-rls suite going
+-- red the first time the customer policies were applied.
+CREATE OR REPLACE FUNCTION customer_can_read_phase(p_phase_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Unit" u
+      WHERE u."phaseId" = p_phase_id
+        AND u."organizationId" = current_setting('app.user_org_id', true)
+        AND customer_can_read_unit(u."id")
+    )
+  $$;
+
+REVOKE ALL ON FUNCTION customer_can_read_phase(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_phase(TEXT) TO shadhil_app;
+
+CREATE OR REPLACE FUNCTION customer_can_read_project(p_project_id TEXT) RETURNS BOOLEAN
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT EXISTS (
+      SELECT 1
+      FROM "Phase" ph
+      JOIN "Unit" u ON u."phaseId" = ph."id"
+      WHERE ph."projectId" = p_project_id
+        AND u."organizationId" = current_setting('app.user_org_id', true)
+        AND customer_can_read_unit(u."id")
+    )
+  $$;
+
+REVOKE ALL ON FUNCTION customer_can_read_project(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION customer_can_read_project(TEXT) TO shadhil_app;
+
+CREATE POLICY booking_select_customer ON "Booking"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'CUSTOMER'
+    AND "status" = 'APPROVED'
+    AND "leadId" = customer_lead_id()
+  );
+
+CREATE POLICY unit_select_customer ON "Unit"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_unit("id")
+  );
+
+CREATE POLICY phase_select_customer ON "Phase"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_phase("id")
+  );
+
+CREATE POLICY project_select_customer ON "Project"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_project("id")
+  );
+
+CREATE POLICY progress_photo_select_customer ON "ProgressPhoto"
+  FOR SELECT USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_unit("unitId")
+  );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2026-11-08: staff recipients of a site-update notification.
+--
+-- WHO: every PHOTO_LEAD on the project, plus the manager of every team linked
+-- to it through ProjectTeam.
+--
+-- WHY A SECURITY DEFINER HELPER: recipient resolution must be independent of
+-- what the uploader can see. project_staff_role_select_own_or_admin admits own
+-- rows or ADMIN, and Team reads are scoped to the caller's own teams, so an
+-- engineer running the query directly would resolve an EMPTY recipient list on
+-- the very projects they photograph. The helper runs as the table owner (outside
+-- RLS) and returns ids only - it grants no read of the rows themselves.
+-- Same shape as unit_customer_user_ids() above.
+-- ────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION project_site_update_recipient_ids(p_project_id TEXT)
+  RETURNS SETOF TEXT
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT DISTINCT u."id"
+    FROM "ProjectStaffRole" psr
+    JOIN "User" u ON u."id" = psr."userId"
+    WHERE psr."projectId" = p_project_id
+      AND psr."kind" = 'PHOTO_LEAD'
+      AND psr."organizationId" = current_setting('app.user_org_id', true)
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."deletedAt" IS NULL
+    UNION
+    SELECT DISTINCT u."id"
+    FROM "ProjectTeam" pt
+    JOIN "Team" t ON t."id" = pt."teamId"
+    JOIN "User" u ON u."id" = t."managerId"
+    WHERE pt."projectId" = p_project_id
+      AND pt."organizationId" = current_setting('app.user_org_id', true)
+      AND t."deletedAt" IS NULL
+      AND u."organizationId" = current_setting('app.user_org_id', true)
+      AND u."deletedAt" IS NULL
+  $$;
+
+REVOKE ALL ON FUNCTION project_site_update_recipient_ids(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION project_site_update_recipient_ids(TEXT) TO shadhil_app;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2026-11-09 (migration 20261109120000_portal_handover_milestones):
+-- ProjectMilestone. Buyer-visible project checkpoints. SELECT for staff,
+-- ENGINEER (own projects) and CUSTOMER (customer_can_read_project). WRITE is
+-- ADMIN only. No write arm for CUSTOMER or ENGINEER.
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE "ProjectMilestone" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ProjectMilestone" FORCE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "ProjectMilestone" TO shadhil_app;
+
+CREATE POLICY project_milestone_select_staff ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    current_setting('app.user_role', true) IN
+      ('ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'CRON_SERVICE')
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+CREATE POLICY project_milestone_select_engineer ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'ENGINEER'
+    AND EXISTS (
+      SELECT 1 FROM "ProjectTeam" pt
+      JOIN "TeamMember" tm ON tm."teamId" = pt."teamId"
+      WHERE pt."projectId" = "ProjectMilestone"."projectId"
+        AND tm."userId" = current_setting('app.user_id', true)
+    )
+  );
+
+CREATE POLICY project_milestone_select_customer ON "ProjectMilestone"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND customer_can_read_project("projectId")
+  );
+
+CREATE POLICY project_milestone_write_admin ON "ProjectMilestone"
+  FOR ALL
+  USING (
+    current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  )
+  WITH CHECK (
     current_setting('app.user_role', true) = 'ADMIN'
     AND "organizationId" = current_setting('app.user_org_id', true)
   );

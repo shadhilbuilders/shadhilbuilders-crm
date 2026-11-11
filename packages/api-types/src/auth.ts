@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { RoleSchema } from './enums';
+import { TeamReportingLineSchema } from './reporting';
 
 /**
  * Email format - strict enough to reject obvious typos, lenient enough to
@@ -96,6 +97,10 @@ export type SignupDto = z.infer<typeof SignupDtoSchema>;
  */
 export const CreateUserDtoSchema = SignupDtoSchema.extend({
   role: RoleSchema, // explicit - no default on the admin/manager surface
+  // Issue #8 slice 2: the Lead a CUSTOMER login belongs to. The service
+  // requires it for CUSTOMER and rejects it for every other role; shape is
+  // checked here, existence + same-org in UsersService.create.
+  customerLeadId: z.string().min(1).max(64).optional(),
 });
 export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
 
@@ -142,12 +147,20 @@ export const UserListResultSchema = z.object({
       // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
-      // "Reports to" for the Users table (2026-10-08), same rule as
-      // UserDetail.manager: staff -> their team's manager (null when
-      // unled), MANAGER/ADMIN -> the org OWNER, OWNER -> null.
-      reportsTo: z
+      // "Reports to" for the Users table (2026-10-08), now a LIST (2026-11-07).
+      // Staff on several teams report to several managers and their RLS access
+      // covers all those teams, so the single-object form was lossy. Every team
+      // the user belongs to appears here, newest first, with that team's
+      // manager (null when the team is unled). MANAGER/ADMIN still resolve to
+      // the single org OWNER; OWNER/CUSTOMER get an empty array.
+      reportsTo: z.array(TeamReportingLineSchema),
+      /** @deprecated Use `reportsTo`. First entry's manager, kept for one
+       *  release so an older client keeps rendering. Remove once no client
+       *  reads it. */
+      reportsToPrimary: z
         .object({ id: z.string(), name: z.string(), email: z.string() })
-        .nullable(),
+        .nullable()
+        .optional(),
     }),
   ),
   total: z.number().int().nonnegative(),
@@ -156,12 +169,12 @@ export type UserListResult = z.infer<typeof UserListResultSchema>;
 
 /**
  * GET /api/users/:id - the user detail page (users/[userId], autoplan
- * 2026-09-13). `manager` ("Reports to") depends on the target's role
- * (T-REPORTS-TO-OWNER):
- *   - TELECALLER/SALES_EXEC: their resolved team's manager - assignable,
- *     null when unassigned/unmanaged.
+ * 2026-09-13). `manager` ("Reports to") depends on the target's role - the
+ * rule is the exhaustive map in ./reporting:
+ *   - TELECALLER/SALES_EXEC/ENGINEER: their team's manager - assignable,
+ *     null when unassigned/unmanaged. ENGINEER included 2026-11-07.
  *   - MANAGER/ADMIN: the org OWNER - fixed, never assignable.
- *   - OWNER: null (reports to nobody).
+ *   - OWNER/CUSTOMER: null (reports to nobody).
  * `projects` are the projects linked to the target's team via ProjectTeam.
  */
 export const UserDetailSchema = z.object({
@@ -169,8 +182,16 @@ export const UserDetailSchema = z.object({
   email: z.string(),
   name: z.string(),
   role: RoleSchema,
+  /** The "display team" (see resolveDisplayTeamId): newest membership for
+   *  ordinary staff, the led team for a MANAGER. Null when none. */
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
+  /** EVERY team the user belongs to (TeamMember rows), newest first.
+   *  Added 2026-11-07 so the "assign manager" picker can exclude teams the
+   *  user is already on - `teamId` alone only excludes the display team, so an
+   *  engineer on two teams could "assign" to a team they already belonged to
+   *  and get a success toast for a no-op. */
+  teamIds: z.array(z.string()).optional(),
   manager: z
     .object({
       id: z.string(),
@@ -178,6 +199,12 @@ export const UserDetailSchema = z.object({
       email: z.string(),
     })
     .nullable(),
+  /**
+   * Every team this user belongs to and its manager (2026-11-07). The list form
+   * of `manager`: a two-team engineer reports to two managers, and collapsing
+   * to one hid a real line. Empty for roles with no team membership.
+   */
+  reportsTo: z.array(TeamReportingLineSchema).optional(),
   projects: z.array(
     z.object({
       id: z.string(),
@@ -237,13 +264,19 @@ export const UpdateProfileDtoSchema = z.object({
 export type UpdateProfileDto = z.infer<typeof UpdateProfileDtoSchema>;
 
 /**
- * PATCH /api/users/:id/manager - assign/reassign the manager for a
- * TELECALLER/SALES_EXEC (autoplan 2026-09-13). A user's "manager" is
- * derived from `Team.managerId` via `User.teamId`, so this DTO sets
- * `teamId` to an existing team (which must have a manager for the UI's
- * concept of "manager" to mean anything, but the server only requires the
- * team to exist - an unled team is rejected server-side with a clear
- * message rather than silently no-oping).
+ * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+ * TELECALLER / SALES_EXEC / ENGINEER (autoplan 2026-09-13; ENGINEER
+ * 2026-11-07). A user's "manager" is derived from `Team.managerId` via their
+ * TeamMember row(s), so this DTO names the team to link them to. The team must
+ * have a manager for the UI's concept of "manager" to mean anything, and the
+ * server rejects an unled team with a clear message rather than silently
+ * no-oping.
+ *
+ * Write mode depends on the TARGET's role:
+ *   - TELECALLER / SALES_EXEC: MOVE - other memberships in the org are removed.
+ *   - ENGINEER: ADDITIVE - existing memberships are kept (team membership is
+ *     the engineer's project-access grant, so a move would revoke access).
+ *     ADMIN/OWNER actors only.
  */
 export const AssignManagerDtoSchema = z.object({
   teamId: z.string().cuid2(),

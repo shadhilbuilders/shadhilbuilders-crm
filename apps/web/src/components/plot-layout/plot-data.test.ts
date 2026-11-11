@@ -41,6 +41,12 @@ function claim(unitNumber: string, plotNumber: number, status = 'SOLD'): PlotUni
       pricePerSqft: '4000',
       price: '5800000',
       status: status as PlotUnitClaim['unit']['status'],
+      // Documentation state (2026-11-08): the map's claim row carries the same
+      // unit shape, so the plot tests must too. No photos is the honest default
+      // for a fixture about availability.
+      lastPhotoAt: null,
+      photoCount: 0,
+      lastPhotoStage: null,
       createdAt: '2026-10-01T09:00:00.000Z',
     },
     booking: null,

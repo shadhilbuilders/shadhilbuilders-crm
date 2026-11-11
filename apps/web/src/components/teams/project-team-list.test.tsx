@@ -300,3 +300,90 @@ describe('ProjectTeamList', () => {
     expect(container?.querySelector('[data-qa="project-team-actions-team-a"]')).toBeNull();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Photo-lead switch visibility (2026-11-07).
+//
+// The switch used to render only on ENGINEER rows while the endpoint and the
+// RLS policy accepted ANY staffed member. The seeded demo data grants
+// PHOTO_LEAD to a MANAGER, whose row therefore showed no switch - so that
+// grant could not be revoked from the UI at all. The switch now follows the
+// endpoint's authority; these pin that it appears for every member row an
+// admin can see and for nobody else.
+// ────────────────────────────────────────────────────────────────────────────
+
+function rosterWith(members: Array<{ userId: string; name: string; role: string; photoLead: boolean; isManagerSlot?: boolean }>) {
+  baseMocks();
+  mocks.useProjectTeams.mockReturnValue({
+    isLoading: false,
+    error: null,
+    data: {
+      projectId: 'proj-1',
+      teams: [
+        {
+          teamId: 'team-a',
+          teamName: 'Metro Sales',
+          manager: { id: 'mgr-a', name: 'Meera' },
+          memberCount: members.length,
+          leadCount: 0,
+          canUnlink: true,
+          members: members.map((m) => ({
+            teamId: 'team-a',
+            email: `${m.userId}@x.in`,
+            assignedAt: new Date().toISOString(),
+            isManagerSlot: m.isManagerSlot ?? false,
+            ...m,
+          })),
+        },
+      ],
+    },
+  });
+}
+
+describe('ProjectTeamList - photo-lead switch visibility', () => {
+  it('protects= a MANAGER row shows the switch (the seeded Metro Heights grant is revocable)', async () => {
+    rosterWith([
+      { userId: 'eng-1', name: 'Ravi', role: 'ENGINEER', photoLead: false },
+      { userId: 'mgr-b', name: 'Suresh', role: 'MANAGER', photoLead: true },
+    ]);
+    await mount({ canManage: true });
+
+    expect(container?.querySelector('[data-qa="photo-lead-toggle-eng-1"]')).not.toBeNull();
+    expect(container?.querySelector('[data-qa="photo-lead-toggle-mgr-b"]')).not.toBeNull();
+  });
+
+  it('fails_when= a grant exists but its row renders no switch (the one-way door)', async () => {
+    rosterWith([{ userId: 'mgr-b', name: 'Suresh', role: 'MANAGER', photoLead: true }]);
+    await mount({ canManage: true });
+
+    const toggle = container?.querySelector('[data-qa="photo-lead-toggle-mgr-b"]');
+    expect(toggle).not.toBeNull();
+    // The switch must reflect the server truth, or revoke is impossible:
+    // a hardwired unchecked switch sends photoLead:true on every click.
+    const checkbox = toggle?.querySelector('[role="switch"]');
+    expect(checkbox?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('every non-manager member row carries the switch, regardless of role', async () => {
+    rosterWith([
+      { userId: 'eng-1', name: 'Ravi', role: 'ENGINEER', photoLead: false },
+      { userId: 'tc-1', name: 'Priya', role: 'TELECALLER', photoLead: false },
+      { userId: 'se-1', name: 'Anil', role: 'SALES_EXEC', photoLead: false },
+    ]);
+    await mount({ canManage: true });
+
+    for (const id of ['eng-1', 'tc-1', 'se-1']) {
+      expect(container?.querySelector(`[data-qa="photo-lead-toggle-${id}"]`)).not.toBeNull();
+    }
+  });
+
+  it('fails_when= a non-admin sees the switch (canManage=false renders none)', async () => {
+    rosterWith([
+      { userId: 'eng-1', name: 'Ravi', role: 'ENGINEER', photoLead: false },
+      { userId: 'mgr-b', name: 'Suresh', role: 'MANAGER', photoLead: true },
+    ]);
+    await mount({ canManage: false });
+
+    expect(container?.querySelector('[data-qa^="photo-lead-toggle-"]')).toBeNull();
+  });
+});

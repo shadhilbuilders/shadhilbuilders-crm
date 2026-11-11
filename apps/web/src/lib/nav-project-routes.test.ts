@@ -7,6 +7,7 @@ import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
   isAdminPathname,
+  isFullBleedPath,
   isNavItemActive,
   isProjectScopedNavPath,
   navItemHref,
@@ -36,6 +37,16 @@ describe('isProjectScopedNavPath', () => {
   it('treats nested work-surface paths as scoped', () => {
     expect(isProjectScopedNavPath('/leads/abc')).toBe(true);
     expect(isProjectScopedNavPath('/bookings/new')).toBe(true);
+  });
+
+  // 2026-11-08: the capture route lives under the project. Without this entry
+  // `projectHref` returned a bare `/site/abc` and every link 404'd.
+  it('scopes the site capture routes under the project', () => {
+    expect(isProjectScopedNavPath('/site')).toBe(true);
+    expect(isProjectScopedNavPath('/site/abc')).toBe(true);
+    expect(projectHref(ORG, PROJ, '/site/abc')).toBe(
+      '/shadhil-builders/projects/shadhil-metro-heights/site/abc',
+    );
   });
 
   it('keeps org-level pages unscoped', () => {
@@ -215,5 +226,17 @@ describe('isAdminPathname', () => {
     expect(
       isAdminPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
     ).toBe(false);
+  });
+});
+
+describe('isFullBleedPath', () => {
+  it('is true only for the single-unit capture route', () => {
+    expect(isFullBleedPath(`/${ORG}/projects/${PROJ}/site/unit-1`)).toBe(true);
+  });
+  it('is false for the site list and other surfaces', () => {
+    expect(isFullBleedPath(`/${ORG}/projects/${PROJ}/site`)).toBe(false);
+    expect(isFullBleedPath(`/${ORG}/projects/${PROJ}/leads/abc`)).toBe(false);
+    expect(isFullBleedPath(`/${ORG}/projects/${PROJ}/site/unit-1/extra`)).toBe(false);
+    expect(isFullBleedPath('/')).toBe(false);
   });
 });

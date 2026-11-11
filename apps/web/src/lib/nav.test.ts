@@ -15,12 +15,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_LAUNCHER,
+  adminLauncherHref,
+  adminLauncherHrefFor,
   getVisibleNav,
   isNavItemActive,
   navItemHref,
   NAV_ITEMS,
   type NavItem,
 } from '@/lib/nav';
+import { isAdminLike } from '@/lib/session';
 
 /**
  * Flatten a getVisibleNav() result into all hrefs, descending into any
@@ -95,21 +99,51 @@ describe('lib/nav', () => {
       '/my-team',
       '/staff',
       '/inventory',
+      '/site',
       '/plots',
       '/bookings',
       '/whatsapp-chat',
       '/notifications',
     ];
 
-    it('TELECALLER sees only the work group (no Admin launcher, no admin items)', () => {
-      const items = getVisibleNav('TELECALLER');
-      expect(items.map((i) => i.href)).toEqual(workHrefs);
-      expect(flattenNavHrefs(items)).not.toContain('/admin');
-      expect(flattenNavHrefs(items)).not.toContain('/admin/users');
+    it('TELECALLER sees their work group but NOT the site surface', () => {
+      // 2026-11-10: /site is for ENGINEER (capture) and MANAGER/ADMIN/OWNER
+      // (review). TELECALLER keeps the Lead Inbox (DESIGN.md §1) and sees no
+      // Inventory (hidden for site roles) and no Site updates.
+      const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
+      expect(hrefs).toEqual([
+        '/dashboard',
+        '/leads',
+        '/visits',
+        '/staff',
+        '/plots',
+        '/bookings',
+        '/notifications',
+      ]);
+      expect(hrefs).not.toContain('/inventory');
+      expect(hrefs).not.toContain('/site');
+    });
+
+    it('ENGINEER sees Site updates + Notifications INSTEAD of Inventory', () => {
+      const hrefs = flattenNavHrefs(getVisibleNav('ENGINEER'));
+      expect(hrefs).toEqual(['/site', '/notifications']);
+      expect(hrefs).not.toContain('/inventory');
     });
 
     it('SALES_EXEC sees only the work group (no admin items)', () => {
       expect(getVisibleNav('SALES_EXEC').map((i) => i.href)).toEqual(workHrefs);
+    });
+
+    it('MANAGER, ADMIN and OWNER are offered Site updates (read-only review)', () => {
+      for (const role of ['OWNER', 'ADMIN', 'MANAGER'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).toContain('/site');
+      }
+    });
+
+    it('SALES_EXEC and TELECALLER are not offered Site updates', () => {
+      for (const role of ['SALES_EXEC', 'TELECALLER'] as const) {
+        expect(flattenNavHrefs(getVisibleNav(role))).not.toContain('/site');
+      }
     });
 
     it('MANAGER sees only the work group + My Team (Users / Projects / WA Unknown are admin-only)', () => {
@@ -123,10 +157,12 @@ describe('lib/nav', () => {
       expect(hrefs).not.toContain('/admin/feedback');
     });
 
-    it('ADMIN sees the Admin launcher on the work group plus the admin namespace', () => {
+    it('ADMIN sees the admin namespace, and the /admin launcher is NOT a nav item (it is the account-menu switch)', () => {
       const items = getVisibleNav('ADMIN');
       const hrefs = flattenNavHrefs(items);
-      expect(hrefs).toContain('/admin');
+      // 2026-11-09: entering admin moved to the account menu ("Switch Admin").
+      // If `/admin` ever reappears here it also reappears in the sidebar.
+      expect(hrefs).not.toContain('/admin');
       expect(hrefs).toContain('/admin/overview');
       expect(hrefs).toContain('/admin/users');
       expect(hrefs).toContain('/admin/projects');
@@ -140,9 +176,9 @@ describe('lib/nav', () => {
       expect(overview?.scoped).toBe(false);
     });
 
-    it('OWNER sees the Admin launcher and admin namespace (admin-class)', () => {
+    it('OWNER sees the admin namespace (admin-class) without an /admin nav item', () => {
       const hrefs = flattenNavHrefs(getVisibleNav('OWNER'));
-      expect(hrefs).toContain('/admin');
+      expect(hrefs).not.toContain('/admin');
       expect(hrefs).toContain('/admin/overview');
       expect(hrefs).toContain('/admin/users');
       expect(hrefs).toContain('/admin/audit');
@@ -153,6 +189,12 @@ describe('lib/nav', () => {
       expect(
         items.find((i) => i.href === '/admin/overview' && i.group === 'admin'),
       ).toBeUndefined();
+    });
+
+    it('TELECALLER sees neither /inventory nor /site', () => {
+      const hrefs = flattenNavHrefs(getVisibleNav('TELECALLER'));
+      expect(hrefs).not.toContain('/site');
+      expect(hrefs).not.toContain('/inventory');
     });
 
     it('undefined role sees only the work group without Admin (safe default)', () => {
@@ -190,6 +232,70 @@ describe('lib/nav', () => {
     it('Admin launcher (`/admin`) is exact-only so `/admin/users` does not highlight it', () => {
       expect(isNavItemActive('/admin', '/admin')).toBe(true);
       expect(isNavItemActive('/admin', '/admin/users')).toBe(false);
+    });
+
+    // 2026-11-09: the launcher is an exported constant consumed by the account
+    // menus (topbar UserMenu + sidebar NavUser) instead of a NAV_ITEMS entry.
+    describe('ADMIN_LAUNCHER - the account-menu "Switch Admin" row', () => {
+      it('carries the label the owner asked for', () => {
+        expect(ADMIN_LAUNCHER.label).toBe('Switch Admin');
+      });
+
+      it('is not in NAV_ITEMS (that array is sidebar pages only)', () => {
+        expect(NAV_ITEMS.map((i) => i.href)).not.toContain(ADMIN_LAUNCHER.href);
+      });
+
+      it('resolves under the org slug, and stays a template path without one', () => {
+        expect(adminLauncherHref('shadhil-builders')).toBe('/shadhil-builders/admin');
+        // null: callers hide the row rather than linking to a route-less /admin.
+        expect(adminLauncherHref(null)).toBe('/admin');
+      });
+
+      it('shows the row for OWNER/ADMIN on a work route with a resolved slug', () => {
+        for (const role of ['OWNER', 'ADMIN'] as const) {
+          expect(
+            adminLauncherHrefFor(role, '/shadhil-builders/projects/metro-heights/leads', 'shadhil-builders'),
+          ).toBe('/shadhil-builders/admin');
+        }
+      });
+
+      it('hides the row for every non-admin role', () => {
+        for (const role of ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const) {
+          expect(
+            adminLauncherHrefFor(role, '/shadhil-builders/projects/metro-heights/leads', 'shadhil-builders'),
+          ).toBeNull();
+        }
+        // No session yet: no row (same fail-closed default as the nav).
+        expect(adminLauncherHrefFor(undefined, '/shadhil-builders', 'shadhil-builders')).toBeNull();
+      });
+
+      it('hides the row inside /admin/* - the sidebar carries "Go to Work" there', () => {
+        expect(adminLauncherHrefFor('OWNER', '/shadhil-builders/admin', 'shadhil-builders')).toBeNull();
+        expect(
+          adminLauncherHrefFor('OWNER', '/shadhil-builders/admin/users', 'shadhil-builders'),
+        ).toBeNull();
+      });
+
+      it('hides the row while the org slug is unresolved', () => {
+        // A bare `/admin` matches no route - same reason Settings goes inert.
+        expect(adminLauncherHrefFor('OWNER', '/', null)).toBeNull();
+      });
+
+      it('is OWNER/ADMIN only - the same gate the sidebar used', () => {
+        for (const role of ['OWNER', 'ADMIN'] as const) {
+          expect(isAdminLike(role)).toBe(true);
+        }
+        for (const role of [
+          'MANAGER',
+          'TELECALLER',
+          'SALES_EXEC',
+          'ENGINEER',
+          'CUSTOMER',
+        ] as const) {
+          expect(isAdminLike(role)).toBe(false);
+        }
+        expect(isAdminLike(undefined)).toBe(false);
+      });
     });
 
     it('WhatsApp Chats (`/whatsapp-chat`) is active on the page and nested paths', () => {

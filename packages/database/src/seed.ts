@@ -50,7 +50,7 @@ interface SeedUser {
 }
 
 function readSeedUser(
-  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER',
+  prefix: 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER' | 'CUSTOMER',
 ): SeedUser {
   // Plan §17 Input #5: fall back to documented placeholder users so a fresh
   // clone can seed before the client roster arrives. Placeholders MUST be
@@ -65,6 +65,8 @@ function readSeedUser(
   //   TELECALLER  → telecaller@shadhilbuilders.in
   //   SALES_EXEC  → sales_exec@shadhilbuilders.in
   //   ENGINEER    → engineer@shadhilbuilders.in (issue #7 slice 1 site staff)
+  //   CUSTOMER    → customer@shadhilbuilders.in (issue #8 slice 2 buyer; linked
+  //                 to a demo lead with an APPROVED booking, see below)
   // Each email mirrors the role name - Round 23 swap from
   // admin@/admin2@ → owner@/admin@.
   const FALLBACK_EMAIL: Record<typeof prefix, string> = {
@@ -74,6 +76,7 @@ function readSeedUser(
     TELECALLER: 'telecaller@shadhilbuilders.in',
     SALES_EXEC: 'sales_exec@shadhilbuilders.in',
     ENGINEER: 'engineer@shadhilbuilders.in',
+    CUSTOMER: 'customer@shadhilbuilders.in',
   };
   const FALLBACK_NAME: Record<typeof prefix, string> = {
     OWNER: 'Owner',
@@ -82,6 +85,7 @@ function readSeedUser(
     TELECALLER: 'Telecaller',
     SALES_EXEC: 'Sales Exec',
     ENGINEER: 'Site Engineer',
+    CUSTOMER: 'Demo Customer',
   };
   const FALLBACK_PASSWORD: Record<typeof prefix, string> = {
     OWNER: 'owner_placeholder_pw',
@@ -90,6 +94,7 @@ function readSeedUser(
     TELECALLER: 'telecaller_placeholder_pw',
     SALES_EXEC: 'sales_exec_placeholder_pw',
     ENGINEER: 'engineer_placeholder_pw',
+    CUSTOMER: 'customer_placeholder_pw',
   };
 
   const email = process.env[`SEED_${prefix}_EMAIL`] ?? FALLBACK_EMAIL[prefix];
@@ -105,7 +110,7 @@ function readSeedUser(
   return { email, name, password };
 }
 
-type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER';
+type Role = 'OWNER' | 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC' | 'ENGINEER' | 'CUSTOMER';
 
 // Fixed cuid2 ids for the seeded projects. Generated once with
 // `createId()` from @paralleldrive/cuid2 and validated against
@@ -145,6 +150,13 @@ export const SEED_SALES_EXEC_ID = 'b7ucheo93987ss7oldrzlazd';
 // to every demo project, so this engineer gets Progress-tab access to all of
 // them out of the box).
 export const SEED_ENGINEER_ID = 'c1mg1xq8xv2xkq0n1rd5t8ea';
+// Issue #8 slice 2: a seeded buyer login, so the portal can be exercised
+// with no manual setup. Linked to the demo lead below (Vikram Singh, WON)
+// whose booking on unit A-101 is APPROVED.
+export const SEED_CUSTOMER_ID = 'c1mg1xq8xv2xkq0n1rd5t8eb';
+export const SEED_CUSTOMER_BOOKING_ID = 'c1mg1xq8xv2xkq0n1rd5t8ec';
+const SEED_CUSTOMER_LEAD_PHONE = '9876500008';
+const SEED_CUSTOMER_UNIT = { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101' } as const;
 
 /**
  * Upsert user, then upsert the credential account keyed on user.id (the
@@ -158,20 +170,22 @@ async function upsertUser(
   user: SeedUser,
   role: Role,
   teamId?: string,
+  customerLeadId?: string,
 ) {
   const dbUser = await prisma.user.upsert({
     where: { id },
-    update: { role },
+    update: { role, ...(customerLeadId !== undefined ? { customerLeadId } : {}) },
     create: {
       id,
       email: user.email,
       name: user.name,
       role,
+      ...(customerLeadId !== undefined ? { customerLeadId } : {}),
       organizationId: SEED_ORG_ID,
       emailVerified: true,
       // Placeholder-password gate (T-S hardening, 2026-09-04, re-scoped
-      // 2026-09-15): ONLY the OWNER is forced through /change-password on
-      // first sign-in. Every other role starts ungated.
+      // 2026-09-15): the OWNER is forced through /change-password on first
+      // sign-in. Every other STAFF role starts ungated.
       //
       // OWNER-only because it is the single highest-privilege account and the
       // only one that cannot be created through the API
@@ -183,7 +197,14 @@ async function upsertUser(
       // Set on CREATE only, matching the previous behaviour: a re-seed must not
       // re-arm the gate after the OWNER has legitimately rotated their
       // password (which flips this to false).
-      mustChangePassword: role === 'OWNER',
+      //
+      // CUSTOMER is GATED TOO (issue #8 slice 2, 2026-11-07). Staff accounts
+      // created through the API arm the gate (UsersService.create), but the
+      // seeded buyer is written HERE, so without this arm the one account the
+      // manual portal test uses would be the only customer in the system
+      // sitting on the placeholder password - and the test would never
+      // exercise the forced-rotation path it is meant to verify.
+      mustChangePassword: role === 'OWNER' || role === 'CUSTOMER',
     },
   });
 
@@ -410,7 +431,7 @@ async function main() {
     skipDuplicates: true,
   });
 
-  // (phaseId, unitNumber) → { bhk, facing, sqft, price }
+  // (phaseId, unitNumber) → { bhk, facing, sqft, price, plotNumber }
   //
   // T-INV-SYNC (2026-09-15): `status` is deliberately NOT part of the seeded
   // unit definition. Unit.status is DERIVED from the booking lifecycle (a
@@ -418,6 +439,15 @@ async function main() {
   // to plant units that no booking could ever clear - one of the two sources
   // of the inventory/bookings drift. Every unit is created AVAILABLE and only
   // a booking moves it.
+  //
+  // `plotNumber` (2026-11-08): the villa's position on the approved CMDA
+  // layout - the join key GET /inventory/plots uses to paint the map. This
+  // seed left it null for every unit while `scripts/setup-demo-user.ts` assigns
+  // one per demo villa, so the PRIMARY dev org's plot map rendered 125 plots as
+  // though nothing had been built on any of them. Each phase occupies its own
+  // block of the layout, and the numbers are unique WITHIN a phase (the
+  // `@@unique([phaseId, plotNumber])` constraint): two phases may each hold the
+  // same number, and `plots()` resolves that by the most binding claim.
   const unitDefs: Array<{
     phaseId: string;
     unitNumber: string;
@@ -425,29 +455,27 @@ async function main() {
     facing: string;
     sqft: number;
     price: number;
+    plotNumber: number;
   }> = [
-    // Phase A - 2 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000 },
-    // Phase A - 3 BHK
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000 },
-    // Phase B - 3 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000 },
-    // Phase B - 4 BHK
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000 },
-    // Phase C - 2 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000 },
-    // Phase C - 3 BHK
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000 },
+    // Phase A - plots 1-7 (2 BHK: 1-4, 3 BHK: 5-7)
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000, plotNumber: 1 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000, plotNumber: 2 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000, plotNumber: 3 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000, plotNumber: 4 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000, plotNumber: 5 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000, plotNumber: 6 },
+    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000, plotNumber: 7 },
+    // Phase B - plots 20-24 (3 BHK: 20-22, 4 BHK: 23-24)
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000, plotNumber: 20 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000, plotNumber: 21 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000, plotNumber: 22 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000, plotNumber: 23 },
+    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000, plotNumber: 24 },
+    // Phase C - plots 40-43 (2 BHK: 40-41, 3 BHK: 42-43)
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000, plotNumber: 40 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000, plotNumber: 41 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000, plotNumber: 42 },
+    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000, plotNumber: 43 },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
@@ -456,6 +484,7 @@ async function main() {
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
+        plotNumber: u.plotNumber,
         price: u.price.toFixed(2),
         // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
         buildupSqft: u.sqft.toFixed(2),
@@ -469,6 +498,7 @@ async function main() {
         bhk: u.bhk,
         facing: u.facing,
         sqft: u.sqft,
+        plotNumber: u.plotNumber,
         price: u.price.toFixed(2),
         // Buildup defaults to the plot sq.ft for seed data; price/sqft is the derived rate.
         buildupSqft: u.sqft.toFixed(2),
@@ -477,6 +507,21 @@ async function main() {
       },
     });
   }
+  // Site-engineer assignment (2026-11-10): the seeded engineer only sees villas
+  // assigned to them. Phase A's A-101..A-103 and A-201 are theirs; every other
+  // villa stays unassigned so e2e can prove an engineer does not see them.
+  const ENGINEER_SEED_UNITS = ['A-101', 'A-102', 'A-103', 'A-201'] as const;
+  await prisma.unit.updateMany({
+    where: {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: { in: [...ENGINEER_SEED_UNITS] },
+    },
+    data: {
+      assignedEngineerId: SEED_ENGINEER_ID,
+      assignedById: SEED_ADMIN_ID,
+      assignedAt: new Date(),
+    },
+  });
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`);
 
@@ -529,6 +574,44 @@ async function main() {
   }
   // eslint-disable-next-line no-console
   console.log(`[seed] ✓ ${demoLeads.length} demo leads created/updated across all LeadStates`);
+
+  // ── Customer portal demo (issue #8 slice 2) ─────────────────────────────
+  // One buyer login on a lead with an APPROVED booking, plus the office phone
+  // the portal's lock screen shows. The booking is created APPROVED directly
+  // (seed bypasses the HOLD -> TOKEN -> APPROVED workflow on purpose); the
+  // Booking trigger derives Unit.status as for any other booking.
+  const customerLead = await prisma.lead.findUniqueOrThrow({
+    where: { phone: SEED_CUSTOMER_LEAD_PHONE },
+    select: { id: true },
+  });
+  const customerUnit = await prisma.unit.findUniqueOrThrow({
+    where: { phaseId_unitNumber: SEED_CUSTOMER_UNIT },
+    select: { id: true, price: true },
+  });
+  await prisma.booking.upsert({
+    where: { id: SEED_CUSTOMER_BOOKING_ID },
+    update: { status: 'APPROVED', leadId: customerLead.id, unitId: customerUnit.id },
+    create: {
+      id: SEED_CUSTOMER_BOOKING_ID,
+      leadId: customerLead.id,
+      unitId: customerUnit.id,
+      organizationId: SEED_ORG_ID,
+      userId: SEED_MANAGER_ID,
+      approvedById: SEED_ADMIN_ID,
+      amount: customerUnit.price,
+      listAmount: customerUnit.price,
+      status: 'APPROVED',
+    },
+  });
+  await upsertUser(SEED_CUSTOMER_ID, readSeedUser('CUSTOMER'), 'CUSTOMER', undefined, customerLead.id);
+  await prisma.organization.update({
+    where: { id: SEED_ORG_ID },
+    data: { contactPhone: process.env.SEED_ORG_CONTACT_PHONE ?? '+91 98765 00000' },
+  });
+  // eslint-disable-next-line no-console
+  console.log(
+    `[seed] ✓ customer ${readSeedUser('CUSTOMER').email} -> lead ${SEED_CUSTOMER_LEAD_PHONE}, APPROVED booking on ${SEED_CUSTOMER_UNIT.unitNumber}`,
+  );
 
   // ── Demo ManagerAssignmentRule rows (T-ARM-SCHEMA, 2026-09-04) ────────
   // Three rules demonstrating the priority + criteria engine:

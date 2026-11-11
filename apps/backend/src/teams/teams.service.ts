@@ -435,12 +435,41 @@ export class TeamsService {
           dto.userIds !== undefined
             ? { userId: { in: dto.userIds }, teamId: id }
             : { teamId: id };
-        const members = await tx.teamMember.findMany({ where: memberWhere });
+        const members = await tx.teamMember.findMany({
+          where: memberWhere,
+          // The role decides whether a MOVE is safe (below), so it has to be
+          // read before anything is deleted.
+          select: { userId: true, organizationId: true, user: { select: { role: true } } },
+        });
         if (members.length === 0) {
           throw new BadRequestException(
             'No matching members found on this team to reassign.',
           );
         }
+
+        // ENGINEER GUARD (2026-11-07): a move is DESTRUCTIVE for an engineer.
+        // Their entire RLS surface (units, phases, progress photos) is derived
+        // from TeamMember -> ProjectTeam, so deleting their row here silently
+        // revokes access to every project staffed by this team. That is the
+        // same hazard `users.assignManager` closes with an additive branch;
+        // this endpoint is the other door into it, and it is reachable from
+        // the roster's per-member "Move to team" AND the bulk "Reassign all".
+        //
+        // Refuse the whole request rather than silently skipping the engineers:
+        // a partial move that reports `count` would leave the operator
+        // believing everyone moved. Name them so the fix is obvious - use
+        // POST /teams/:id/members (additive) or remove them from the roster.
+        const engineerIds = members
+          .filter((m) => m.user.role === 'ENGINEER')
+          .map((m) => m.userId);
+        if (engineerIds.length > 0) {
+          throw new BadRequestException(
+            `Cannot move team member(s) with role ENGINEER (${engineerIds.join(', ')}): ` +
+              'moving them off this team would revoke their access to the projects it is linked to. ' +
+              'Add them to the other team instead (Teams -> Add members), or remove them from this team deliberately.',
+          );
+        }
+
         const count = members.length;
         await tx.teamMember.deleteMany({ where: memberWhere });
         await tx.teamMember.createMany({
@@ -452,6 +481,8 @@ export class TeamsService {
           })),
           skipDuplicates: true,
         });
+        // members[] is the select-typed shape (userId/organizationId/user);
+        // the audit only needs the count, which is already captured above.
         await tx.auditLog.create({
           data: {
             userId: actor.sub,

@@ -14,7 +14,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
+import { ConstructionStageSchema, ProjectOptionTypeSchema, UnitStatusSchema } from './enums';
 import { MAX_RATE_PER_SQFT, MAX_SQFT } from './pricing';
 import { PlotNumberSchema } from './plot-number';
 
@@ -43,10 +43,47 @@ export const UnitRowSchema = z.object({
   sqft: z.number().int().positive().nullable(),
   /** Built-up area. Decimal serialises to string. */
   buildupSqft: z.string(),
-  pricePerSqft: z.string(),
-  /** Derived unit total = buildupSqft x pricePerSqft. */
-  price: z.string(),
+  /**
+   * Per-sq.ft rate, or NULL when this caller may not see villa money.
+   *
+   * Money is audience-gated server-side (2026-11-08): a site-only role
+   * (ENGINEER) receives `null` here and in `price`, because the columns are not
+   * selected at all. Null is deliberate over 0 - a zero reads as "free villa",
+   * a missing key reads as "the API forgot", and both are worse than an honest
+   * "not yours to see". Every consumer must handle null; the forms that WRITE
+   * prices run for admin roles only, which never receive null.
+   */
+  pricePerSqft: z.string().nullable(),
+  /** Derived unit total = buildupSqft x pricePerSqft. Null under the same rule. */
+  price: z.string().nullable(),
   status: UnitStatusSchema,
+  /**
+   * When the unit's newest progress photo was taken, or null when it has none.
+   * Null is "never photographed", never a zero date: the site home page's
+   * four-state map treats "no photos" and "photographed long ago" differently.
+   */
+  lastPhotoAt: z.iso.datetime({ offset: true }).nullable(),
+  /** How many progress photos the unit has on file. */
+  photoCount: z.number().int().min(0),
+  /**
+   * The construction stage of the NEWEST photo (derived, never stored on the
+   * unit). Null means the newest capture recorded no stage - render
+   * "Stage not set", never "Not started".
+   */
+  lastPhotoStage: ConstructionStageSchema.nullable(),
+  /**
+   * Staff-entered handover estimate shown to the buyer in the portal. Null means
+   * "not set" (the portal then renders nothing). Optional on the wire so older
+   * fixtures and clients keep parsing; the API always sends it.
+   */
+  expectedHandoverDate: z.iso.datetime({ offset: true }).nullable().optional(),
+  /**
+   * The single site ENGINEER this villa is assigned to, or null when
+   * unassigned. Optional on the wire so older fixtures keep parsing; the API
+   * always sends both. Name is null when the caller cannot read the user row.
+   */
+  assignedEngineerId: z.string().nullable().optional(),
+  assignedEngineerName: z.string().nullable().optional(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type UnitRow = z.infer<typeof UnitRowSchema>;
@@ -81,6 +118,8 @@ export const UnitFilterDtoSchema = z.object({
    * keystroke does not fire a request).
    */
   search: z.string().trim().min(1).max(120).optional(),
+  /** Only villas assigned to this engineer user (MANAGER/ADMIN/OWNER view). */
+  assignedEngineerId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -143,6 +182,8 @@ export const UpdateUnitDtoSchema = z.object({
   sqft: z.number().int().positive().max(100_000).nullable().optional(),
   buildupSqft: z.number().positive().max(MAX_SQFT).optional(),
   pricePerSqft: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
+  // ISO instant; `null` clears the estimate. Omitting keeps the current value.
+  expectedHandoverDate: z.iso.datetime({ offset: true }).nullable().optional(),
   status: UpdateUnitStatusSchema.optional(),
 });
 export type UpdateUnitDto = z.infer<typeof UpdateUnitDtoSchema>;
@@ -215,3 +256,42 @@ export const CreateProjectOptionDtoSchema = z.object({
   value: z.string().trim().min(1, 'Value is required').max(40),
 });
 export type CreateProjectOptionDto = z.infer<typeof CreateProjectOptionDtoSchema>;
+
+/**
+ * PATCH /api/inventory/units/:id/assignee body. `engineerId: null` unassigns.
+ * ADMIN/OWNER only (service guard).
+ */
+export const AssignUnitDtoSchema = z.object({
+  engineerId: z.string().min(1).nullable(),
+});
+export type AssignUnitDto = z.infer<typeof AssignUnitDtoSchema>;
+
+/**
+ * PUT /api/inventory/units/assign body: replace-set semantics for one engineer
+ * within one project. `unitIds` is the COMPLETE set of that project's villas the
+ * engineer should hold afterwards (empty = unassign all). ADMIN/OWNER only.
+ */
+export const AssignUnitsDtoSchema = z.object({
+  projectId: z.string().min(1),
+  engineerId: z.string().min(1),
+  unitIds: z.array(z.string().min(1)).max(500),
+});
+export type AssignUnitsDto = z.infer<typeof AssignUnitsDtoSchema>;
+
+/**
+ * Whose villas a site-updates read returned: the engineer's own (`ASSIGNED`),
+ * the villas assigned to engineers on the manager's teams (`MANAGED`), or every
+ * villa of the project (`ALL`, admin/owner).
+ */
+export const SiteUnitScopeSchema = z.enum(['ASSIGNED', 'MANAGED', 'ALL']);
+export type SiteUnitScope = z.infer<typeof SiteUnitScopeSchema>;
+
+/** GET /api/customer-progress/site-units response. */
+export const SiteUnitsResultSchema = z.object({
+  scope: SiteUnitScopeSchema,
+  /** True only for the ENGINEER (the one role that captures photos). */
+  canCapture: z.boolean(),
+  total: z.number().int().min(0),
+  rows: z.array(UnitRowSchema),
+});
+export type SiteUnitsResult = z.infer<typeof SiteUnitsResultSchema>;

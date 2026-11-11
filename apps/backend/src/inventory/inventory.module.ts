@@ -5,10 +5,11 @@ import { Module } from '@nestjs/common';
 
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
+import { UnitAssignmentService } from './unit-assignment.service';
 
 @Module({
   controllers: [InventoryController],
-  providers: [InventoryService],
+  providers: [InventoryService, UnitAssignmentService],
   exports: [InventoryService],
 })
 export class InventoryModule {}

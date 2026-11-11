@@ -130,4 +130,30 @@ describe('AddTeamMembersDialog', () => {
       expect.stringContaining('1 member added to Construction Desk'),
     );
   });
+
+  it('lists people not yet on the team first, current members last', async () => {
+    seed();
+    await mount();
+    // The server returns u-in (already a member) before u-new; the dialog
+    // re-partitions so the pickable row is on top.
+    const order = Array.from(
+      document.body.querySelectorAll('[data-qa^="team-add-member-row-"]'),
+    ).map((el) => el.getAttribute('data-qa'));
+    expect(order).toEqual(['team-add-member-row-u-new', 'team-add-member-row-u-in']);
+  });
+
+  it('holds the list height while the first load is in flight', async () => {
+    seed();
+    mocks.useUsers.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    await mount();
+    const list = document.body.querySelector('[data-qa="team-add-members-list"]') as HTMLElement;
+    expect(list.className).toContain('min-h-40');
+  });
+
+  it('drops the reserved height once loaded', async () => {
+    seed();
+    await mount();
+    const list = document.body.querySelector('[data-qa="team-add-members-list"]') as HTMLElement;
+    expect(list.className).not.toContain('min-h-40');
+  });
 });

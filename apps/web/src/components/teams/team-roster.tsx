@@ -29,6 +29,7 @@ import type { ReactNode } from 'react';
 import { Badge, Button, toast } from '@paalstack/react-ui';
 
 import type { TeamMemberRow } from '@/hooks/queries/teams';
+import { reportingTargetForRole } from '@shadhil/api-types';
 import { labelFor } from '@/lib/labels';
 import { useUpdateTeamMemberCap, useUpdateTeamMemberWeight } from '@/hooks/queries/teams';
 import { TeamMemberRemovalDialog } from './TeamMemberRemovalDialog';
@@ -98,11 +99,18 @@ export function TeamRosterMemberRow({
   // the org OWNER even when shown as an ordinary member row on a team
   // they don't lead (file header: "Ordinary memberships held by a
   // manager in another team remain normal removable member rows").
-  // TELECALLER/SALES_EXEC report to THIS team's manager.
+  //
+  // 2026-11-07: shared exhaustive rule instead of a negative
+  // `role === 'MANAGER'` check. The negative form was accidentally RIGHT for
+  // ENGINEER (which is why this roster showed the manager while the Users
+  // table showed a dash) but would have given a CUSTOMER row a manager too.
+  const reportingTarget = reportingTargetForRole(member.role);
   const reportsToLabel =
-    member.role === 'MANAGER'
+    reportingTarget === 'ORG_OWNER'
       ? (ownerName ?? null)
-      : (managerName ?? null);
+      : reportingTarget === 'TEAM_MANAGER'
+        ? (managerName ?? null)
+        : null;
 
   async function commitWeight(next: string) {
     const parsed = Number(next);

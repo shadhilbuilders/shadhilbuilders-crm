@@ -30,6 +30,11 @@
 //   │   └── Group "Admin"            [role-gated]
 //   │       ├── Users                [canManageUsers]
 //   │       └── Audit                [canViewAudit]
+//   │
+//   │   NOTE (2026-11-09): the Work group no longer carries an "Admin"
+//   │   launcher - entering /admin is the account menu's "Switch Admin" row
+//   │   (topbar UserMenu + this footer's NavUser), above Settings.
+//   │
 //   └── <SidebarFooter>
 //       ├── <UserMenu /> popover
 //       └── Sign out button (uses useSignOut)
@@ -71,10 +76,11 @@ import { ProjectSwitcher } from '@/components/sidebar/project-switcher';
 import { pickDefaultProject, useProjects, type ProjectListItem } from '@/hooks/queries';
 import { useSignOut } from '@/lib/auth-actions';
 import { useOrgSlug } from '@/lib/tenant-context';
-import { workLandingHref } from '@/lib/dashboard-redirect';
+import { workLandingHref, workSurfaceForRole } from '@/lib/dashboard-redirect';
 import {
   activeOrgSlugFromPathname,
   activeProjectSlugFromPathname,
+  adminLauncherHrefFor,
   getVisibleNav,
   isAdminPathname,
   isNavItemActive,
@@ -254,6 +260,9 @@ function SidebarSwitcherSlot({
       activeProjectSlug={activeProjectSlug}
       activeOrgSlug={activeOrgSlug}
       canManageProjects={canManageProjects}
+      // ENGINEER's only Work surface is Inventory - switching projects must
+      // not drop them on a dashboard they have no nav entry for.
+      fallbackSurface={workSurfaceForRole(user.role)}
     />
   );
 }
@@ -608,6 +617,7 @@ function UserMenuFooter() {
   const { user, isPending } = useSessionUser();
   const signOut = useSignOut();
   const orgSlug = useOrgSlug();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -641,6 +651,10 @@ function UserMenuFooter() {
       // segment when the context isn't mounted, and returns null off-app - in
       // which case NavUser renders the row inert instead of linking to a 404.
       settingsHref={orgSlug !== null ? orgHref(orgSlug, '/settings') : null}
+      // 2026-11-09: "Switch Admin" (was the sidebar Work-group launcher).
+      // The gate (OWNER/ADMIN, off /admin/*, resolved slug) lives in
+      // adminLauncherHrefFor so the topbar and this menu cannot disagree.
+      adminHref={adminLauncherHrefFor(user.role, pathname, orgSlug)}
       onSignOut={() => void signOut()}
     />
   );

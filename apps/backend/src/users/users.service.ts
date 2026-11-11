@@ -36,6 +36,7 @@ import {
 } from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
 import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
+import { reportingTargetFor, reportsToTeamManager, type TeamReportingLine } from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
 import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
@@ -106,11 +107,17 @@ export class UsersService {
    * T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolves the single
    * "display team" for a user's `CreatedUser.teamId`/`UserDetail.teamId`
    * response field, now that `User.teamId` is gone. A MANAGER's team is
-   * the one they lead (Team.managerId); everyone else's is their first
-   * (oldest-assigned) ordinary TeamMember row, or null if they have none.
+   * the one they lead (Team.managerId); everyone else's is their most
+   * recently assigned ordinary TeamMember row, or null if they have none.
    * This preserves the pre-cutover single-team-per-user CONTRACT for
    * these legacy response shapes even though the underlying model now
    * supports multiple TeamMember rows per user.
+   *
+   * 2026-11-07 (D8): "oldest" became "newest". "Reports to" is derived from
+   * this row, so an additive team link (assignManager's ENGINEER branch, or
+   * POST /teams/:id/members) must change the display. With oldest-first the
+   * new membership was invisible: the endpoint returned the new teamId while
+   * the detail page kept showing the original manager.
    *
    * The caller MUST pass a client bound to an open `withRlsContext`
    * transaction: both `Team` and `TeamMember` are FORCE ROW LEVEL SECURITY,
@@ -137,9 +144,89 @@ export class UsersService {
     }
     const membership = await client.teamMember.findFirst({
       where: { userId, organizationId },
-      orderBy: { assignedAt: 'asc' },
+      // 2026-11-07 (D8): NEWEST membership wins, not oldest. "Reports to" is
+      // derived from this row, so when an admin adds a user to a team
+      // (assignManager's additive ENGINEER branch, or the team roster) the
+      // change has to be visible immediately. With `asc` the display kept
+      // pointing at the first team joined while the endpoint reported success.
+      // This applies to every non-manager role - a SALES_EXEC on two teams now
+      // shows their most recently assigned team's manager.
+      //
+      // The `teamId` tie-break is NOT cosmetic: `assignedAt` defaults to
+      // now(), which Postgres evaluates once per TRANSACTION, not per row. The
+      // bulk "reassign all members" path inserts every row in one statement, so
+      // a page of memberships can share a timestamp - and with a single sort
+      // key the display team would flip arbitrarily between reads. Ordering by
+      // id breaks the tie deterministically.
+      orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
     });
     return membership?.teamId ?? null;
+  }
+
+  /**
+   * Every reporting line for one user: each team they belong to, newest first,
+   * with that team's manager.
+   *
+   * WHY THIS EXISTS (2026-11-07 product decision): a staff member may hold
+   * several TeamMember rows and their RLS access covers ALL of them, but the
+   * surface reported only one manager - the newest team's - so an engineer on
+   * Team A (Ramesh) and Team B (Suresh) showed only Suresh, and which name
+   * appeared silently flipped when D8 changed the resolver from oldest to
+   * newest. An admin had no way to learn the other line existed.
+   *
+   * MANAGER/ADMIN keep the fixed org-OWNER line (they lead rather than sit in a
+   * team); OWNER/CUSTOMER get an empty list (`NONE`). Only `TEAM_MANAGER` roles
+   * get team entries, matching every other reporting surface.
+   *
+   * MUST run inside the caller's `withRlsContext` transaction: Team and
+   * TeamMember are FORCE RLS, so on the bare client every row is invisible and
+   * this would return [] instead of failing loudly.
+   */
+  private async resolveReportingLines(
+    client: PrismaClient,
+    userId: string,
+    role: string,
+    organizationId: string,
+  ): Promise<TeamReportingLine[]> {
+    const target = reportingTargetFor(role as Role);
+
+    if (target === 'NONE') return [];
+
+    if (target === 'ORG_OWNER') {
+      const owner = await findOrgOwner(client, organizationId);
+      return owner === null
+        ? []
+        : [{ teamId: '', teamName: 'Organisation', manager: owner }];
+    }
+
+    // TEAM_MANAGER: one entry per membership, newest first. Same tie-break as
+    // resolveDisplayTeamId - `assignedAt` is evaluated once per transaction, so
+    // a bulk insert can produce identical timestamps and the order would
+    // otherwise flip between reads.
+    const memberships = await client.teamMember.findMany({
+      where: { userId, organizationId },
+      orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+      select: {
+        teamId: true,
+        team: {
+          select: {
+            name: true,
+            deletedAt: true,
+            manager: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    // A soft-deleted team grants no access, so it is not a reporting line the
+    // admin should see advertised.
+    return memberships
+      .filter((m) => m.team.deletedAt === null)
+      .map((m) => ({
+        teamId: m.teamId,
+        teamName: m.team.name,
+        manager: m.team.manager,
+      }));
   }
 
   async create(actor: JwtPayload, dto: CreateUserDto): Promise<CreatedUser> {
@@ -151,6 +238,19 @@ export class UsersService {
 
     // 1. Role hierarchy gate (fails closed for any staff role).
     assertCanCreateRole(actorRole, dto.role);
+
+    // 1b. Issue #8 slice 2: customerLeadId <-> CUSTOMER is a strict pairing,
+    //     and a customer belongs to no team. Shape rules fail before any I/O.
+    if (dto.role === 'CUSTOMER') {
+      if (dto.customerLeadId === undefined) {
+        throw new BadRequestException('customerLeadId is required when creating a CUSTOMER user');
+      }
+      if (dto.teamId !== undefined) {
+        throw new BadRequestException('A CUSTOMER user belongs to no team - omit teamId');
+      }
+    } else if (dto.customerLeadId !== undefined) {
+      throw new BadRequestException('customerLeadId is only valid for CUSTOMER users');
+    }
 
     // Everything below runs in ONE RLS transaction: the Team reads are
     // FORCE ROW LEVEL SECURITY (unreadable on the bare client), and the
@@ -187,7 +287,7 @@ export class UsersService {
         } else {
           teamId = managedTeams[0]!.id;
         }
-      } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && !dto.teamId) {
+      } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && dto.role !== 'CUSTOMER' && !dto.teamId) {
         // Admin creating a manager WITHOUT teamId: auto-create the team.
         // Admin creating a STAFF user without teamId: reject - ambiguous.
         if (dto.role === 'MANAGER') {
@@ -209,6 +309,19 @@ export class UsersService {
         }
       }
 
+      // 3b. The lead a CUSTOMER points at must exist IN THIS ORG. Read under
+      //     the actor's context (admin class sees the org's leads); a lead in
+      //     another org reads as absent, which is the answer we want.
+      if (dto.role === 'CUSTOMER') {
+        const lead = await client.lead.findFirst({
+          where: { id: dto.customerLeadId, organizationId: actor.organizationId },
+          select: { id: true },
+        });
+        if (lead === null) {
+          throw new NotFoundException(`Lead ${dto.customerLeadId} not found`);
+        }
+      }
+
       // 4. Create user + credential + (team for new managers) + TeamMember
       //    row + audit row.
       //
@@ -227,6 +340,20 @@ export class UsersService {
             role: dto.role,
             emailVerified: false,
             organizationId: actor.organizationId,
+            ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
+            // issue #8 slice 2 (D3): a buyer's login is PROVISIONED by staff
+            // with a temporary password that was read out over WhatsApp and
+            // typed by somebody else. Spec D3 promises the existing gate
+            // forces a rotation on first login, but the column defaults to
+            // false and nothing outside the seed's OWNER arm ever set it - so
+            // a customer would have sat on `customer_placeholder_pw`
+            // indefinitely. Arm it here, for CUSTOMER only: staff roles keep
+            // the ungated default chosen in migration 20260915160000.
+            //
+            // The gate is enforced by JwtAuthGuard (403 PASSWORD_CHANGE_REQUIRED,
+            // which the BFF routes to /change-password) and cleared by
+            // changePassword() in this same service.
+            ...(dto.role === 'CUSTOMER' ? { mustChangePassword: true } : {}),
           },
         })
         .catch(rethrowAsEmailConflict);
@@ -271,6 +398,7 @@ export class UsersService {
             email: created.email,
             role: created.role,
             createdBy: actor.sub,
+            ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
           },
           reason: `user.create by ${actor.email} (${actor.role})`,
         },
@@ -317,6 +445,15 @@ export class UsersService {
       //    the target's current role and the new role).
       assertCanChangeRole(actor.role, target.role as Role, dto.role);
 
+      // 3b. Issue #8: a CUSTOMER cannot be minted by a role change - it needs a
+      //     lead pointer, which only create() collects. Provision a new
+      //     customer account instead.
+      if (dto.role === 'CUSTOMER' && target.role !== 'CUSTOMER') {
+        throw new BadRequestException(
+          'A user cannot be changed into a CUSTOMER - create a customer account with a linked lead instead',
+        );
+      }
+
       // 4. Demotion guard: a manager still leading a team cannot be demoted.
       if (target.role === 'MANAGER' && dto.role !== 'MANAGER') {
         const ledTeam = await client.team.findFirst({
@@ -348,7 +485,13 @@ export class UsersService {
 
       const updated = await client.user.update({
         where: { id: target.id },
-        data: { role: dto.role },
+        // A role change away from CUSTOMER clears the lead pointer in the SAME
+        // write (spec): a stale pointer on a staff row would be dead data that
+        // the customer helpers must never be trusted to ignore.
+        data: {
+          role: dto.role,
+          ...(target.role === 'CUSTOMER' && dto.role !== 'CUSTOMER' ? { customerLeadId: null } : {}),
+        },
       });
       const teamId = await this.resolveDisplayTeamId(
         client,
@@ -681,11 +824,49 @@ export class UsersService {
 
       // T-REPORTS-TO-OWNER: "manager" is this user's reporting-line
       // superior, and WHO that is depends on the target's own role, not a
-      // single rule. TELECALLER/SALES_EXEC report to their team's manager
-      // (assignable); MANAGER/ADMIN report to the org OWNER (fixed); OWNER
-      // reports to nobody.
-      const reportsToManager = target.role === 'TELECALLER' || target.role === 'SALES_EXEC';
-      const reportsToOwner = target.role === 'MANAGER' || target.role === 'ADMIN';
+      // single rule. TELECALLER/SALES_EXEC/ENGINEER report to their team's
+      // manager (assignable); MANAGER/ADMIN report to the org OWNER (fixed);
+      // OWNER/CUSTOMER report to nobody.
+      //
+      // 2026-11-07: the role check is a shared, EXHAUSTIVE map
+      // (@shadhil/api-types reportingTargetFor) rather than an inline union.
+      // ENGINEER was missing here for three weeks because the union was not
+      // exhaustive and TypeScript had no way to object.
+      const reportsToManager = reportsToTeamManager(target.role as Role);
+      const reportsToOwner = reportingTargetFor(target.role as Role) === 'ORG_OWNER';
+
+      // The full list of lines (2026-11-07): every team this user is on, with
+      // that team's manager, newest first.
+      const reportsTo = await this.resolveReportingLines(
+        client,
+        target.id,
+        target.role,
+        actor.organizationId,
+      );
+
+      // `manager` is the single-value view the existing card and the assign
+      // button read, DERIVED from the list rather than fetched separately.
+      //
+      // Deriving matters beyond tidiness: before this, MANAGER/ADMIN rows hit
+      // findOrgOwner twice per getUser (once here, once in the resolver), which
+      // is a wasted round trip on every user detail view and made the two
+      // values free to disagree if the org's OWNER changed between the calls.
+      //
+      // Null for OWNER/CUSTOMER: resolveReportingLines returns [] for NONE, and
+      // for a team with no manager the first line's manager is null - both of
+      // which are the answers this field already gave.
+      const primaryManager = reportsTo[0]?.manager ?? null;
+
+      // Every team this user belongs to, newest first - the "assign manager"
+      // picker excludes them all. `teamId` above is only the DISPLAY team, so
+      // a two-team engineer could otherwise "assign" to a team they are
+      // already on and get a success toast for a no-op (2026-11-07).
+      const allMemberships = await client.teamMember.findMany({
+        where: { userId: target.id, organizationId: actor.organizationId },
+        select: { teamId: true },
+        // Same tie-break as resolveDisplayTeamId (see the note there).
+        orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+      });
 
       return {
         id: target.id,
@@ -694,16 +875,9 @@ export class UsersService {
         role: target.role,
         teamId,
         teamName: team?.name ?? null,
-        manager:
-          reportsToManager && team?.manager
-            ? {
-                id: team.manager.id,
-                name: team.manager.name,
-                email: team.manager.email,
-              }
-            : reportsToOwner
-              ? await findOrgOwner(client, actor.organizationId)
-              : null,
+        teamIds: allMemberships.map((m) => m.teamId),
+        manager: primaryManager,
+        reportsTo,
         // T-ORG-OWNER-ACCESS (2026-09-17): OWNER/ADMIN see every project in
         // the org; staff see the projects linked to their resolved team.
         projects:
@@ -729,10 +903,23 @@ export class UsersService {
   }
 
   /**
-   * PATCH /api/users/:id/manager - assign/reassign the manager for a
-   * TELECALLER/SALES_EXEC (autoplan 2026-09-13). "Manager" is a
-   * reporting-line concept derived from `Team.managerId`, so this replaces
-   * the target's ordinary TeamMember row(s) with one for the chosen team.
+   * PATCH /api/users/:id/manager - assign/reassign the reporting line for a
+   * TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07).
+   * "Manager" is a reporting-line concept derived from `Team.managerId`, so
+   * this sets the target's membership in the chosen team.
+   *
+   * TWO WRITE MODES, chosen by the TARGET's role:
+   *
+   *   - TELECALLER / SALES_EXEC -> MOVE. Replaces the target's ordinary
+   *     TeamMember row(s) with one for the chosen team. Safe for these roles:
+   *     their work comes from lead ownership, not team membership.
+   *
+   *   - ENGINEER -> ADDITIVE. Never deletes. An engineer's ENTIRE RLS surface
+   *     (units, phases, progress photos) is derived from TeamMember ->
+   *     ProjectTeam joins, so a move would silently revoke access to every
+   *     project staffed by their previous team(s). Adding them to a second
+   *     team is the normal way to give an engineer another project.
+   *
    * Scope:
    *   - OWNER/ADMIN: assign to any existing (led) team.
    *   - MANAGER: only into their OWN team - they can't poach staff into
@@ -740,7 +927,8 @@ export class UsersService {
    *     already means a MANAGER only reaches this for a user already in
    *     their own team, but the team-ownership check here is the actual
    *     gate (belt-and-braces, same pattern as `list()`'s where-clause
-   *     comment).
+   *     comment). ENGINEER targets are further restricted to the admin class
+   *     (below) - team membership IS the project-access grant.
    *   - staff: never - `outranks()` fails closed (RANK[staff] never
    *     exceeds RANK[staff]).
    */
@@ -763,10 +951,25 @@ export class UsersService {
         throw new NotFoundException(`User ${targetUserId} not found`);
       }
 
-      // 1. Only TELECALLER/SALES_EXEC report to a manager on this surface.
-      if (target.role !== 'TELECALLER' && target.role !== 'SALES_EXEC') {
+      // 1. Only team-linked staff report to a manager on this surface.
+      //    2026-11-07: shared exhaustive rule - ENGINEER included.
+      if (!reportsToTeamManager(target.role as Role)) {
         throw new BadRequestException(
-          'Only TELECALLER/SALES_EXEC report to a manager',
+          'Only TELECALLER/SALES_EXEC/ENGINEER report to a manager',
+        );
+      }
+
+      // 1b. ENGINEER targets are admin-class only. Team membership IS the
+      //     project-access grant for an engineer (TeamMember -> ProjectTeam
+      //     under RLS), so letting a MANAGER use this endpoint would let them
+      //     hand out site access - contradicting roles.ts's rule that ENGINEER
+      //     provisioning is an admin act (assertCanCreateRole /
+      //     assertCanChangeRole). The general outranks() check below would
+      //     otherwise pass, because MANAGER (rank 2) outranks ENGINEER (1).
+      const isEngineerTarget = target.role === 'ENGINEER';
+      if (isEngineerTarget && !isAdminClass(actor.role)) {
+        throw new ForbiddenException(
+          `${actor.role} cannot change an ENGINEER's team - team membership grants site access, so this is OWNER/ADMIN only`,
         );
       }
 
@@ -804,9 +1007,9 @@ export class UsersService {
       }
 
       // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "assign into this
-      // team" now means "move them into the chosen team" - this endpoint
-      // models a single-team move for TELECALLER/SALES_EXEC, mirroring
-      // reassignMembers()'s move semantics.
+      // team" means "move them into the chosen team" for TELECALLER/
+      // SALES_EXEC - this endpoint models a single-team move for those roles,
+      // mirroring reassignMembers()'s move semantics.
       //
       // SCOPED MOVE (2026-09-13, partial-move fix): the delete is scoped to
       // the memberships the ACTOR can actually mutate, and the end state is
@@ -831,7 +1034,75 @@ export class UsersService {
         where: { userId: target.id, organizationId: actor.organizationId },
         select: { teamId: true },
       });
+      const beforeTeamIds = currentMemberships.map((m) => m.teamId).sort();
 
+      if (isEngineerTarget) {
+        // ── ENGINEER: ADDITIVE ────────────────────────────────────────────
+        // Never delete. An engineer's whole RLS surface is TeamMember ->
+        // ProjectTeam, so removing a membership revokes project access. Adding
+        // a second team is how an engineer gets another project, and this
+        // endpoint must not be able to take one away.
+        if (beforeTeamIds.includes(dto.teamId)) {
+          // Fail loudly instead of writing an audit row for a no-op.
+          throw new ConflictException(
+            `User ${target.id} is already a member of team ${dto.teamId}. Nothing was changed.`,
+          );
+        }
+
+        await client.teamMember.create({
+          data: {
+            userId: target.id,
+            teamId: dto.teamId,
+            organizationId: actor.organizationId,
+            assignedById: actor.sub,
+          },
+        });
+
+        // Additive invariant, same transaction: every membership that existed
+        // before must still exist, and the destination must now be present.
+        // This replaces the move-only "settled to exactly one" assertion -
+        // without it the additive branch would be enforced by tests alone.
+        const additiveAfter = await client.teamMember.findMany({
+          where: { userId: target.id, organizationId: actor.organizationId },
+          select: { teamId: true },
+        });
+        const afterTeamIds = additiveAfter.map((m) => m.teamId);
+        const lost = beforeTeamIds.filter((id) => !afterTeamIds.includes(id));
+        if (lost.length > 0 || !afterTeamIds.includes(dto.teamId)) {
+          throw new ConflictException(
+            `Could not add user ${target.id} to team ${dto.teamId} without disturbing their other teams (${lost.join(', ') || 'destination missing'}). No change was applied.`,
+          );
+        }
+
+        await client.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'user.assignManager',
+            organizationId: actor.organizationId,
+            entityType: 'User',
+            entityId: target.id,
+            // teamIds (plural) so the ADDED membership is visible - the
+            // previous before/after teamId pair could not express "kept both".
+            before: { teamIds: beforeTeamIds },
+            after: { teamIds: [...afterTeamIds].sort() },
+            reason: `engineer added to team by ${actor.email} (${actor.role})`,
+          },
+        });
+
+        return {
+          id: target.id,
+          email: target.email,
+          name: target.name,
+          role: target.role,
+          // Newest membership wins in resolveDisplayTeamId, so the team just
+          // added is the one the response reports.
+          teamId: dto.teamId,
+        };
+      }
+
+      // ── TELECALLER / SALES_EXEC: MOVE (unchanged) ───────────────────────
+      // Safe for these roles: their workload comes from lead ownership, not
+      // from team membership.
       if (actor.role === 'MANAGER') {
         const managed = await client.team.findMany({
           where: {
@@ -1208,13 +1479,17 @@ export class UsersService {
             email: true,
             name: true,
             role: true,
-            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+            // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): the NEWEST
             // TeamMember row is this row's "display team" for non-managers
             // (resolveDisplayTeamId's rule) - a MANAGER's team is resolved
             // separately below via Team.managerId.
+            // 2026-11-07 (D8): was 'asc'; flipped so a newly added membership
+            // is visible in the table instead of the first team ever joined.
+            // teamId tie-break: identical assignedAt is possible within one
+            // transaction (see resolveDisplayTeamId).
             teamMemberships: {
               select: { teamId: true },
-              orderBy: { assignedAt: 'asc' },
+              orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
               take: 1,
             },
           },
@@ -1269,28 +1544,58 @@ export class UsersService {
         projectNamesByTeamId.set(pt.teamId, list);
       }
 
-      // "Reports to" column (2026-10-08) - same rule as getUser():
-      // TELECALLER/SALES_EXEC -> their resolved team's manager (one batched
-      // team lookup); MANAGER/ADMIN -> the org OWNER (one lookup for the whole
-      // page, only when such a row is present); OWNER -> nobody.
-      type ReportsTo = { id: string; name: string; email: string };
-      const staffTeamIds = Array.from(
-        new Set(
-          rows
-            .map((r, i) => (r.role === 'TELECALLER' || r.role === 'SALES_EXEC' ? resolvedTeamIds[i] : null))
-            .filter((id): id is string => id !== null && id !== undefined),
-        ),
-      );
-      const managerByTeamId = new Map<string, ReportsTo | null>();
-      if (staffTeamIds.length > 0) {
-        const managedTeams = await client.team.findMany({
-          where: { id: { in: staffTeamIds }, deletedAt: null },
-          select: { id: true, manager: { select: { id: true, name: true, email: true } } },
-        });
-        for (const t of managedTeams) managerByTeamId.set(t.id, t.manager ?? null);
-      }
-      const needsOwner = rows.some((r) => r.role === 'MANAGER' || r.role === 'ADMIN');
+      // "Reports to" (2026-10-08, pluralised 2026-11-07). The per-team
+      // single-manager batch that used to live here was replaced by the
+      // multi-line builder below, which needs the membership rows anyway (the
+      // old code derived teams from `resolvedTeamIds[i]`, i.e. only the DISPLAY
+      // team, which is exactly the lossiness this decision fixes).
+      //
+      // 2026-11-07: shared rule (was an inline MANAGER/ADMIN union).
+      const needsOwner = rows.some((r) => reportingTargetFor(r.role as Role) === 'ORG_OWNER');
       const orgOwner = needsOwner ? await findOrgOwner(client, actor.organizationId) : null;
+
+      // ── Multi-line "Reports to" (2026-11-07 product decision) ─────────────
+      // A staff member on two teams reports to two managers. The single
+      // `reportsTo` collapsed that to the newest team's manager, so an admin
+      // had no way to learn the other line existed. Built here with ONE batched
+      // membership query for the whole page (not per row) plus ONE team query,
+      // so paging 50 users costs the same two round trips as before.
+      const reportingLineUserIds = rows
+        .filter((r) => reportsToTeamManager(r.role as Role))
+        .map((r) => r.id);
+      const reportingLinesByUserId = new Map<string, TeamReportingLine[]>();
+      if (reportingLineUserIds.length > 0) {
+        const membershipRows = await client.teamMember.findMany({
+          where: { userId: { in: reportingLineUserIds }, organizationId: actor.organizationId },
+          // Same tie-break as resolveDisplayTeamId: `assignedAt` defaults to
+          // now(), evaluated once per transaction, so bulk inserts can share a
+          // timestamp and a single sort key would flip between reads.
+          orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
+          select: {
+            userId: true,
+            teamId: true,
+            team: {
+              select: {
+                name: true,
+                deletedAt: true,
+                manager: { select: { id: true, name: true, email: true } },
+              },
+            },
+          },
+        });
+        for (const m of membershipRows) {
+          // A soft-deleted team grants no access, so it is not a line to show.
+          if (m.team.deletedAt !== null) continue;
+          const list = reportingLinesByUserId.get(m.userId) ?? [];
+          list.push({ teamId: m.teamId, teamName: m.team.name, manager: m.team.manager });
+          reportingLinesByUserId.set(m.userId, list);
+        }
+      }
+      // ORG_OWNER roles get the fixed single line; NONE gets an empty array.
+      const ownerLine: TeamReportingLine[] =
+        orgOwner === null
+          ? []
+          : [{ teamId: '', teamName: 'Organisation', manager: orgOwner }];
 
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
       // the org, not just the (empty) set linked to their team. OWNER/ADMIN
@@ -1327,12 +1632,23 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
-          reportsTo:
-            r.role === 'MANAGER' || r.role === 'ADMIN'
-              ? orgOwner
-              : r.role === 'OWNER'
-                ? null
-                : managerByTeamId.get(resolvedTeamIds[i] ?? '') ?? null,
+          // 2026-11-07: exhaustive reporting map. MANAGER/ADMIN -> org OWNER;
+          // OWNER/CUSTOMER -> nobody; everyone else -> one line per team.
+          reportsTo: (() => {
+            const target = reportingTargetFor(r.role as Role);
+            if (target === 'NONE') return [];
+            if (target === 'ORG_OWNER') return ownerLine;
+            return reportingLinesByUserId.get(r.id) ?? [];
+          })(),
+          // Deprecated single-value companion (one release). The first entry's
+          // manager keeps any client still reading the old field working; the
+          // new UI reads `reportsTo`.
+          reportsToPrimary: (() => {
+            const target = reportingTargetFor(r.role as Role);
+            if (target === 'NONE') return null;
+            if (target === 'ORG_OWNER') return orgOwner;
+            return (reportingLinesByUserId.get(r.id) ?? [])[0]?.manager ?? null;
+          })(),
           // Admin-class rows expose the full org project set; everyone else
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)
@@ -1488,12 +1804,13 @@ export class UsersService {
           email: true,
           name: true,
           role: true,
-          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): oldest
+          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): newest
           // TeamMember row (SALES_EXEC is never a manager, so no
           // Team.managerId branch needed - see resolveDisplayTeamId).
+          // 2026-11-07 (D8): was 'asc' - see resolveDisplayTeamId.
           teamMemberships: {
             select: { teamId: true },
-            orderBy: { assignedAt: 'asc' },
+            orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
             take: 1,
           },
         },
@@ -1651,7 +1968,9 @@ export class UsersService {
           role: true,
           teamMemberships: {
             select: { teamId: true },
-            orderBy: { assignedAt: 'asc' },
+            // 2026-11-07 (D8): was 'asc' - newest membership is the display
+            // team, matching resolveDisplayTeamId.
+            orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
             take: 1,
           },
         },
@@ -1659,7 +1978,7 @@ export class UsersService {
         take: 200,
       });
       // Managers resolve their display teamId via Team.managerId (see
-      // resolveDisplayTeamId); everyone else uses their oldest TeamMember row.
+      // resolveDisplayTeamId); everyone else uses their newest TeamMember row.
       const managerRows = users.filter((u) => u.role === 'MANAGER');
       const ledTeams =
         managerRows.length > 0

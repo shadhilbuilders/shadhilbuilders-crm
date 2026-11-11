@@ -101,6 +101,33 @@ describe('ImageKitStorage', () => {
     expect(s.publicUrl('/org/a/b.png')).toBe('https://ik.imagekit.io/org/org/a/b.png');
   });
 
+  // REGRESSION (2026-11-06). A LocalDisk-format key has NO leading slash
+  // (`<org>/<cuid>/<name>`). `endpoint + key` glued them together into
+  // `https://ik.imagekit.io/orgorg/...`, which 404s with no hint why. Rows
+  // written under MEDIA_STORAGE=local are read through THIS adapter after a
+  // provider switch, so both key shapes must produce a valid URL.
+  it('inserts the separator for a slashless (LocalDisk-shaped) key', () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    const s = new ImageKitStorage();
+    expect(s.publicUrl('org/a/b.png')).toBe('https://ik.imagekit.io/org/org/a/b.png');
+    // The glued form must never appear.
+    expect(s.publicUrl('org/a/b.png')).not.toContain('orgorg');
+  });
+
+  it('tolerates a trailing slash on the endpoint without doubling it', () => {
+    process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
+    process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
+    process.env.IMAGEKIT_URL_ENDPOINT = 'https://ik.imagekit.io/org///';
+    try {
+      const s = new ImageKitStorage();
+      expect(s.publicUrl('/org/a/b.png')).toBe('https://ik.imagekit.io/org/org/a/b.png');
+      expect(s.publicUrl('org/a/b.png')).toBe('https://ik.imagekit.io/org/org/a/b.png');
+    } finally {
+      process.env.IMAGEKIT_URL_ENDPOINT = 'https://ik.imagekit.io/org';
+    }
+  });
+
   it('returns null from read() when the fetch fails', async () => {
     process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
     process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
@@ -139,21 +166,25 @@ describe('ImageKitStorage', () => {
     expect(fetchSpy).toHaveBeenCalledWith('https://ik.imagekit.io/org/org/a/b.txt?tr=orig-true');
   });
 
-  it('refuses to serve a re-encoded JPEG when the key says PNG', async () => {
-    // Guards the failure mode above from regressing silently: if ImageKit ever
-    // stops honouring orig-true, fail loud (null -> 404) rather than handing
-    // the customer a mutated file.
+  it('serves JPEG bytes stored under a .png key instead of refusing', async () => {
+    // REGRESSION GUARD (2026-11-06). The adapter used to return null here,
+    // reasoning that "JPEG bytes under a .png key" proved ?tr=orig-true was
+    // being ignored. It is not: phones name a JPEG `IMG_2676.PNG`, and
+    // ImageKit faithfully stores those bytes. Verified against the live CDN -
+    // orig-true returned the stored 27,711-byte JPEG while the bare URL
+    // returned a 16,473-byte derivative, so the parameter IS honoured. The
+    // filename is a label; the bytes are the truth.
     process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
     process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
     const s = new ImageKitStorage();
-    // JPEG magic (FF D8 FF) under a .png key.
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       status: 200,
-      arrayBuffer: () => Promise.resolve(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]).buffer),
+      arrayBuffer: () => Promise.resolve(jpeg.buffer),
     } as unknown as Response);
 
-    expect(await s.read('/org/a/photo.png')).toBeNull();
+    expect(await s.read('/org/a/photo.png')).toEqual(Buffer.from(jpeg));
   });
 
   it('serves genuine PNG bytes for a .png key', async () => {

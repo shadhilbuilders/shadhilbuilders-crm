@@ -64,6 +64,7 @@ export function ProjectSwitcher({
   activeProjectSlug,
   activeOrgSlug,
   canManageProjects,
+  fallbackSurface = '/dashboard',
 }: {
   projects: ProjectListItem[];
   /** The active project slug from the URL's /projects/<slug> segment. */
@@ -72,6 +73,12 @@ export function ProjectSwitcher({
   activeOrgSlug: string | null;
   /** ADMIN/OWNER only - shows the manage-projects dialog entry. */
   canManageProjects: boolean;
+  /**
+   * Work surface to open when the current pathname carries none. Role-aware so
+   * site staff (ENGINEER, TELECALLER) never get sent to /dashboard - their Work
+   * surface is the site capture home. See workSurfaceForRole().
+   */
+  fallbackSurface?: string;
 }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
@@ -82,16 +89,17 @@ export function ProjectSwitcher({
 
   // Determine the current work surface from the pathname.
   // Slug scheme: /[orgSlug]/projects/[projectSlug]/<surface>. The work
-  // surface is segment 3 (/.../leads/abc -> /leads). Fall back to /dashboard.
+  // surface is segment 3 (/.../leads/abc -> /leads). Fall back to the
+  // role's own landing surface.
   const currentWorkSurface = (() => {
     const segments = pathname.split('/').filter(Boolean);
-    if (segments.length === 0) return '/dashboard';
+    if (segments.length === 0) return fallbackSurface;
     // A project work surface: segments = [orgSlug, 'projects', projectSlug, surface, ...]
     if (segments.length >= 3 && segments[1] === 'projects') {
-      return `/${segments[3] ?? 'dashboard'}`;
+      return `/${segments[3] ?? fallbackSurface.slice(1)}`;
     }
-    // On an org-level page without a project, stay on dashboard.
-    return '/dashboard';
+    // On an org-level page without a project, use the role's landing surface.
+    return fallbackSurface;
   })();
 
   return (
