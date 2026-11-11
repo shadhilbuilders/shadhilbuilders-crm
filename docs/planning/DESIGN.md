@@ -416,7 +416,8 @@ action, not a rebuild.
 - Numbers: TBD (provision fresh India DID, e.g., +91 90250 12344).
 - **Send:** Templated messages via existing Meta setup. Both
   sides of the conversation go through the CRM number.
-- **Receive:** Webhook to `https://api.crm.shadhilbuilders.in/webhooks/whatsapp`.
+- **Receive:** Webhook to `https://api.crm.shadhilbuilders.in/api/webhooks/whatsapp`
+  (the `/api` prefix is global — `main.ts` calls `setGlobalPrefix('api')`).
   Inbound message → log as `Message` row → push via SSE + push notification + inbox.
 - **Templates needed:**
   - `customer_enquiry_confirmation` (existing)
@@ -441,7 +442,7 @@ action, not a rebuild.
   real but not needed at Shadhil's current scale.
 - **Features:** virtual India number, click-to-call, auto-
   recording, AI call transcription, real-time webhooks.
-- **Webhook URL:** `https://api.crm.shadhilbuilders.in/webhooks/frejun`
+- **Webhook URL:** `https://api.crm.shadhilbuilders.in/api/webhooks/frejun`
 - **Events:** `call.initiated`, `call.answered`, `call.ended`,
   `recording.ready`, `transcription.ready`
 

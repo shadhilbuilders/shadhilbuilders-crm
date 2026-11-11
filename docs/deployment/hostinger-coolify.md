@@ -415,7 +415,10 @@ curl -i https://crm.shadhilbuilders.in/api/sse/healthz
 
 # 9. WhatsApp webhook
 # Meta Business Suite -> WhatsApp -> Configuration -> Webhook:
-#   URL: https://api.crm.shadhilbuilders.in/api/webhook/whatsapp
+#   URL: https://api.crm.shadhilbuilders.in/api/webhooks/whatsapp
+#        (plural "webhooks", and the /api global prefix — a singular
+#        /api/webhook/whatsapp 404s and Meta reports it as a verify-token
+#        failure, which sends you chasing the wrong thing.)
 #   Verify token: <WA_WEBHOOK_VERIFY_TOKEN>
 # Send a test message from your test number, then watch the Delivery column in
 # the chat UI: sent -> delivered -> read.
