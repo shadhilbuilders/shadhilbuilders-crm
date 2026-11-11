@@ -23,7 +23,7 @@ export function UnitSwitcher({
       role="group"
       aria-label="Choose a unit"
       data-qa="unit-switcher"
-      className="portal-snap-x -mx-4 flex gap-1 overflow-x-auto border-b border-[var(--portal-hair)] px-4 sm:mx-0 sm:flex-wrap sm:px-0"
+      className="portal-snap-x -mx-4 flex gap-1 overflow-x-auto border-b border-(--portal-hair) px-4 sm:mx-0 sm:flex-wrap sm:px-0"
     >
       {units.map((unit) => {
         const selected = unit.unitId === selectedUnitId;
@@ -37,8 +37,8 @@ export function UnitSwitcher({
             className={
               'relative min-h-11 shrink-0 px-3 text-[0.9375rem] font-medium transition-colors duration-300 ' +
               (selected
-                ? 'text-[var(--portal-navy)]'
-                : 'text-[var(--portal-ink-2)] hover:text-[var(--portal-navy)]')
+                ? 'text-(--portal-navy)'
+                : 'text-(--portal-ink-2) hover:text-(--portal-navy)')
             }
           >
             {unit.unitNumber}
@@ -46,7 +46,7 @@ export function UnitSwitcher({
             {selected ? (
               <span
                 aria-hidden="true"
-                className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--portal-green)]"
+                className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-(--portal-green)"
               />
             ) : null}
           </button>

@@ -1,10 +1,13 @@
-// PortalJourney + PortalHandoverCard + PortalHero (redesign 2026-11-09, pass 2).
+// PortalJourney + PortalHandoverCard + PortalMilestones + PortalHero.
 // protects= "Stage N of 9" is stated in words, states are marked by text +
 //           aria-current (not colour), an unrecorded stage says so and fills
-//           nothing, no percentage is ever printed, and the handover card is
-//           absent when staff entered nothing;
-// fails_when= an unset stage reads as stage 1, a "%" appears, or empty handover
-//           data renders an empty card; no_claim= static markup, not visual QA.
+//           nothing, no percentage is ever printed, the handover band is absent
+//           when staff entered no date, and EVERY milestone reaches the buyer
+//           in staff order (2026-11-10 - the card used to print only the next
+//           one while the admin dialog promised "buyers see these, in order");
+// fails_when= an unset stage reads as stage 1, a "%" appears, empty handover
+//           data renders an empty card, or a milestone is hidden/ re-sorted;
+// no_claim= static markup, not visual QA.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -13,6 +16,7 @@ import type { TimelinePhoto } from '@/hooks/queries/customer-portal';
 import { PortalHandoverCard } from './portal-handover-card';
 import { PortalHero } from './portal-hero';
 import { PortalJourney } from './portal-journey';
+import { PortalMilestones, metaCopy } from './portal-milestones';
 
 const NOW = new Date('2026-11-09T10:00:00Z').getTime();
 
@@ -79,38 +83,145 @@ describe('PortalJourney', () => {
 });
 
 describe('PortalHandoverCard', () => {
-  it('renders nothing when there is no date and no milestones', () => {
-    expect(renderToStaticMarkup(<PortalHandoverCard expectedHandoverDate={null} milestones={[]} now={NOW} />)).toBe('');
-  });
-
-  it('shows the date, a countdown, and the next unfinished milestone', () => {
+  it('shows the date and a countdown', () => {
     const html = renderToStaticMarkup(
-      <PortalHandoverCard
-        expectedHandoverDate="2027-06-15T00:00:00Z"
-        milestones={[
-          { id: 'a', name: 'Foundation complete', targetDate: null, completedAt: '2026-10-01T00:00:00Z' },
-          { id: 'b', name: 'Slab casting', targetDate: '2026-12-20T00:00:00Z', completedAt: null },
-        ]}
-        now={NOW}
-      />,
+      <PortalHandoverCard expectedHandoverDate="2027-06-15T00:00:00Z" now={NOW} />,
     );
     expect(html).toContain('data-qa="portal-handover"');
     expect(html).toContain('15 Jun 2027');
     expect(html).toContain('about 7 months to go');
-    expect(html).toContain('Slab casting');
-    expect(html).toContain('1 of 2');
+    // Milestones are NOT printed here any more (2026-11-10): PortalMilestones
+    // owns them, so the same checkpoint cannot appear twice on one screen.
+    expect(html).not.toContain('data-qa="portal-milestone');
   });
 
-  it('milestones alone still render (no handover date)', () => {
+  it('has no countdown once the date has passed, and says nothing else', () => {
     const html = renderToStaticMarkup(
-      <PortalHandoverCard
-        expectedHandoverDate={null}
-        milestones={[{ id: 'a', name: 'Roof', targetDate: null, completedAt: null }]}
+      <PortalHandoverCard expectedHandoverDate="2026-10-01T00:00:00Z" now={NOW} />,
+    );
+    expect(html).toContain('1 Oct 2026');
+    expect(html).not.toContain('to go');
+  });
+});
+
+describe('PortalMilestones', () => {
+  const three = [
+    { id: 'a', name: 'Foundation complete', targetDate: null, completedAt: '2026-10-01T00:00:00Z' },
+    { id: 'b', name: 'Slab casting', targetDate: '2026-12-20T00:00:00Z', completedAt: null },
+    { id: 'c', name: 'Handover', targetDate: '2027-06-15T00:00:00Z', completedAt: null },
+  ];
+
+  it('renders nothing when staff entered no milestones', () => {
+    expect(renderToStaticMarkup(<PortalMilestones milestones={[]} now={NOW} />)).toBe('');
+  });
+
+  // The dialog tells the admin "buyers see these, in this order". Every row
+  // must therefore reach the buyer - the old card printed only the next one.
+  it('lists EVERY milestone in staff order, not just the next one', () => {
+    const html = renderToStaticMarkup(<PortalMilestones milestones={three} now={NOW} />);
+    expect(html.match(/data-qa="portal-milestone"/g)).toHaveLength(3);
+    expect(html.indexOf('Foundation complete')).toBeLessThan(html.indexOf('Slab casting'));
+    expect(html.indexOf('Slab casting')).toBeLessThan(html.indexOf('Handover'));
+  });
+
+  it('marks exactly one row as the next step, and states each state in words', () => {
+    const html = renderToStaticMarkup(<PortalMilestones milestones={three} now={NOW} />);
+    expect(html.match(/aria-current="step"/g)).toHaveLength(1);
+    expect(html).toContain('data-state="reached"');
+    expect(html).toContain('data-state="next"');
+    expect(html).toContain('data-state="upcoming"');
+    expect(html).toContain('Reached 1 Oct 2026');
+    expect(html).toContain('Next');
+    expect(html).toContain('Target 15 Jun 2027');
+  });
+
+  it('states the count of reached checkpoints', () => {
+    const html = renderToStaticMarkup(<PortalMilestones milestones={three} now={NOW} />);
+    expect(html).toContain('1 of 3 reached');
+  });
+
+  // A passed target date is a FACT ("was due"), never an "overdue" verdict -
+  // the product has no basis for that grade (decision #116).
+  it('says "was due" for a passed target and never the word overdue', () => {
+    const html = renderToStaticMarkup(
+      <PortalMilestones
+        milestones={[{ id: 'x', name: 'Roof', targetDate: '2026-10-01T00:00:00Z', completedAt: null }]}
         now={NOW}
       />,
     );
-    expect(html).toContain('Roof');
-    expect(html).not.toContain('Expected handover');
+    expect(html).toContain('Was due');
+    expect(html.toLowerCase()).not.toContain('overdue');
+  });
+
+  it('states every row\'s date status, including a missing target', () => {
+    const html = renderToStaticMarkup(
+      <PortalMilestones
+        milestones={[{ id: 'x', name: 'Roof', targetDate: null, completedAt: null }]}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain('0 of 1 reached');
+    expect(html).toContain('Target not set');
+  });
+
+  // Mobile (2026-11-11): a long milestone name and a long meta line must wrap,
+  // not clip. `min-w-0` on the text column is what allows the wrap inside a
+  // grid track; without it the track refuses to shrink and the text overflows.
+  it('lets long names and meta lines wrap on a narrow screen', () => {
+    const html = renderToStaticMarkup(
+      <PortalMilestones
+        milestones={[
+          {
+            id: 'x',
+            name: 'Brickwork to terrace level including parapet and coping',
+            targetDate: '2026-12-20T00:00:00Z',
+            completedAt: null,
+          },
+        ]}
+        now={NOW}
+      />,
+    );
+    // The grid declares a shrinkable middle track and the text column opts in.
+    expect(html).toContain('minmax(0,1fr)');
+    expect(html).toContain('min-w-0');
+    // No truncation utilities, which would hide part of the name outright.
+    expect(html).not.toContain('truncate');
+    expect(html).not.toContain('line-clamp');
+    expect(html).not.toContain('overflow-hidden');
+  });
+
+  // The trailing date duplicate is a desktop affordance; on a phone it would
+  // repeat the line directly above it on a 320px-wide row.
+  it('hides the duplicate trailing date below sm', () => {
+    const html = renderToStaticMarkup(<PortalMilestones milestones={three} now={NOW} />);
+    const timeTag = html.match(/<time[^>]*>/)?.[0] ?? '';
+    expect(timeTag).toContain('hidden');
+    expect(timeTag).toContain('sm:block');
+  });
+});
+
+describe('metaCopy', () => {
+  const base = { id: 'x', name: 'Roof' };
+  it('states reached with its date', () => {
+    expect(
+      metaCopy('reached', { ...base, targetDate: null, completedAt: '2026-10-01T00:00:00Z' }, false),
+    ).toBe('Reached 1 Oct 2026');
+  });
+  it('leads the next row with "Next", and names the target', () => {
+    expect(metaCopy('next', { ...base, targetDate: '2026-12-20T00:00:00Z', completedAt: null }, false)).toBe(
+      'Next · Target 20 Dec 2026',
+    );
+  });
+  it('states a passed target as "Was due", not overdue', () => {
+    expect(metaCopy('upcoming', { ...base, targetDate: '2026-10-01T00:00:00Z', completedAt: null }, true)).toBe(
+      'Was due 1 Oct 2026',
+    );
+  });
+  it('says the target is unset rather than printing a dash', () => {
+    expect(metaCopy('next', { ...base, targetDate: null, completedAt: null }, false)).toBe(
+      'Next · Target not set',
+    );
+    expect(metaCopy('upcoming', { ...base, targetDate: null, completedAt: null }, false)).toBe('Target not set');
   });
 });
 

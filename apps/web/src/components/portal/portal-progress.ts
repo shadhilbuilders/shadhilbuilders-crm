@@ -79,6 +79,42 @@ export function nextMilestone<M extends MilestoneLike>(
   };
 }
 
+/** Whole IST days from `now` to the given day; negative once it has passed. */
+export function daysUntilDay(iso: string, now: number): number {
+  return istDayNumber(new Date(iso).getTime()) - istDayNumber(now);
+}
+
+export type MilestoneState = 'reached' | 'next' | 'upcoming';
+
+export type MilestoneEntry<M extends MilestoneLike> = {
+  milestone: M;
+  state: MilestoneState;
+};
+
+/**
+ * The buyer's milestone list, each row tagged with where it stands.
+ *
+ * The list arrives in STAFF ORDER, which is the order the buyer reads - so this
+ * never sorts. "Next" is the FIRST unfinished row, not the earliest target
+ * date: an admin who drags "Handover" above "Fit-out" means it, and re-sorting
+ * by date would silently overrule them.
+ *
+ * Everything before `next` is reached and everything after is upcoming, even if
+ * the data is odd (a reached row sitting after an unfinished one). Marking by
+ * position keeps the ladder monotonic: a buyer never sees "upcoming" above
+ * "next" with no explanation.
+ */
+export function milestoneEntries<M extends MilestoneLike>(
+  milestones: readonly M[],
+): MilestoneEntry<M>[] {
+  const nextIndex = milestones.findIndex((m) => m.completedAt === null);
+  return milestones.map((milestone, index) => {
+    if (milestone.completedAt !== null) return { milestone, state: 'reached' };
+    if (index === nextIndex) return { milestone, state: 'next' };
+    return { milestone, state: 'upcoming' };
+  });
+}
+
 export function handoverSummary(iso: string, now: number): { dateLabel: string; countdown: string | null } {
   const days = Math.ceil((new Date(iso).getTime() - now) / DAY_MS);
   let countdown: string | null = null;

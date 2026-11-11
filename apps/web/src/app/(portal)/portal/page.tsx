@@ -24,6 +24,7 @@ import { PortalHandoverCard } from '@/components/portal/portal-handover-card';
 import { PortalHero } from '@/components/portal/portal-hero';
 import { PortalJourney } from '@/components/portal/portal-journey';
 import { PortalLock } from '@/components/portal/portal-lock';
+import { PortalMilestones } from '@/components/portal/portal-milestones';
 import { PortalPageSkeleton } from '@/components/portal/portal-skeleton';
 import { PortalPushPrompt } from '@/components/portal/portal-push-prompt';
 import { PortalTimeline } from '@/components/portal/portal-timeline';
@@ -154,15 +155,20 @@ function PortalProgress() {
         </div>
       ) : null}
 
-      {/* Handover figures: a full-width band of spec figures under the record,
-          on the same edges as every other rule on the page. */}
-      {selectedUnit !== null ? (
-        <div className="py-6">
-          <PortalHandoverCard
-            expectedHandoverDate={selectedUnit.expectedHandoverDate}
-            milestones={selectedUnit.milestones}
-            now={now}
-          />
+      {/* Handover date, then the milestone ladder (2026-11-10). Two bands, in
+          reading order: "when do I get the keys", then "what is between now and
+          then". The date band renders nothing without a date; the ladder
+          renders nothing without milestones, so an empty project shows neither
+          and the page never opens a gap. */}
+      {selectedUnit !== null && selectedUnit.expectedHandoverDate !== null ? (
+        <div className="pt-6">
+          <PortalHandoverCard expectedHandoverDate={selectedUnit.expectedHandoverDate} now={now} />
+        </div>
+      ) : null}
+
+      {selectedUnit !== null && selectedUnit.milestones.length > 0 ? (
+        <div className="pb-6">
+          <PortalMilestones milestones={selectedUnit.milestones} now={now} />
         </div>
       ) : null}
 

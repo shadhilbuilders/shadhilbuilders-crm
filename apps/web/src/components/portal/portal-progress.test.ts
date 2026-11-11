@@ -9,8 +9,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  daysUntilDay,
   groupByPhase,
   handoverSummary,
+  milestoneEntries,
   nextMilestone,
   stagePosition,
   updatedLabel,
@@ -94,5 +96,49 @@ describe('handoverSummary', () => {
   });
   it('has no countdown once the date has passed', () => {
     expect(handoverSummary('2026-10-01T00:00:00Z', now).countdown).toBeNull();
+  });
+});
+
+describe('daysUntilDay', () => {
+  const now = new Date('2026-11-09T10:00:00Z').getTime(); // 9 Nov IST
+  it('counts whole IST days forward and backward', () => {
+    expect(daysUntilDay('2026-11-14T00:00:00Z', now)).toBe(5);
+    expect(daysUntilDay('2026-10-30T00:00:00Z', now)).toBe(-10);
+  });
+  it('is 0 for today even at the end of the IST day', () => {
+    expect(daysUntilDay('2026-11-09T00:00:00Z', now)).toBe(0);
+    // 18:29Z is 23:59 IST on 9 Nov - still today. (18:30Z is 00:00 IST on the
+    // 10th, which is genuinely tomorrow; that boundary is covered above.)
+    expect(daysUntilDay('2026-11-09T18:29:00Z', now)).toBe(0);
+    expect(daysUntilDay('2026-11-09T18:30:00Z', now)).toBe(1);
+  });
+});
+
+describe('milestoneEntries', () => {
+  const m = (id: string, completedAt: string | null) => ({ id, name: id, targetDate: null, completedAt });
+
+  it('marks the first unfinished row "next" and everything after it upcoming', () => {
+    const states = milestoneEntries([m('a', '2026-10-01T00:00:00Z'), m('b', null), m('c', null)]).map(
+      (e) => [e.milestone.id, e.state],
+    );
+    expect(states).toEqual([
+      ['a', 'reached'],
+      ['b', 'next'],
+      ['c', 'upcoming'],
+    ]);
+  });
+
+  it('preserves staff order - never re-sorts by date', () => {
+    const ids = milestoneEntries([m('z', null), m('a', null)]).map((e) => e.milestone.id);
+    expect(ids).toEqual(['z', 'a']);
+  });
+
+  it('marks nothing next when every row is reached', () => {
+    const entries = milestoneEntries([m('a', '2026-10-01T00:00:00Z')]);
+    expect(entries[0]?.state).toBe('reached');
+  });
+
+  it('is empty for no milestones', () => {
+    expect(milestoneEntries([])).toEqual([]);
   });
 });
