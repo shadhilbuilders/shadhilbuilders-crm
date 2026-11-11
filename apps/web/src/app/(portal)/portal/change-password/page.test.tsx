@@ -24,7 +24,8 @@ vi.mock('@hookform/resolvers/zod', () => ({
   zodResolver: () => () => Promise.resolve({ values: {}, errors: {} }),
 }));
 
-import PortalChangePasswordPage, { PortalChangePasswordForm } from './page';
+import PortalChangePasswordPage from './page';
+import { PortalChangePasswordForm } from '@/components/portal/portal-change-password';
 
 describe('PortalChangePasswordPage - session pending', () => {
   it('renders an accessible skeleton before the session resolves', () => {
