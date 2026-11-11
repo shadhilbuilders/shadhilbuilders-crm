@@ -1,16 +1,23 @@
-# Welcome WhatsApp template — needs creating in Meta (T-WA-WINDOW, 2026-09-29)
+# Welcome WhatsApp template (T-WA-WINDOW, created 2026-11-11)
 
 The "Welcome Message" button sends an **approved Meta template**. It has to be
 created by a human in WhatsApp Manager — the code cannot submit it, and until it
 exists every send fails with `132001 template does not exist`.
 
-## Create it
+## Status
+
+Created in WhatsApp Manager on 2026-11-11 as `shadhil_welcome_enquiry`, and
+`WA_TEMPLATE_WELCOME=shadhil_welcome_enquiry` is set in `.env` (and documented in
+`.env.example`). The button path in `ChatService.sendWelcome` now resolves a real
+template name instead of throwing the "not configured" 400.
+
+## The submission that was used
 
 WhatsApp Manager → Message Templates → Create template.
 
 | field | value |
 |---|---|
-| Name | the value you set in `WA_TEMPLATE_WELCOME` (suggested: `shadhil_welcome_enquiry`) |
+| Name | `shadhil_welcome_enquiry` (`WA_TEMPLATE_WELCOME`) |
 | Category | **UTILITY** — this is a transactional follow-up to the customer's own enquiry, not marketing. A MARKETING template from a test sender is accepted by the API and silently dropped (see the state file), and it also needs no re-engagement opt-in. |
 | Language | `en` |
 | Header | None (or a text header) |
@@ -34,15 +41,16 @@ Rules this body satisfies (Meta rejects violations with terse errors):
 - body under 1024 chars, footer under 60 and text-only
 - no promotional language (keeps it eligible for UTILITY)
 
-## Then set
+## Where the name is configured
 
 ```
-WA_TEMPLATE_WELCOME=<the name you created>
+WA_TEMPLATE_WELCOME=shadhil_welcome_enquiry
 ```
 
-in the backend's environment. Not a literal in code — a hardcoded name Meta has
-not approved is exactly how `shadhil_chat_reply` came to be referenced in the
-codebase while never existing in Meta, failing every send with `132001`.
+in the backend's environment (`.env` locally, the Coolify env vars on the VPS).
+Not a literal in code — a hardcoded name Meta has not approved is exactly how
+`shadhil_chat_reply` came to be referenced in the codebase while never existing
+in Meta, failing every send with `132001`.
 
 ## While it is unset
 
@@ -69,3 +77,21 @@ So for a lead who has never replied:
 
 The reply window still opens only when they answer — the button does not unlock
 the composer, and the UI says so rather than pretending otherwise.
+
+## Removed: the CRM's internal-notify path (2026-11-11)
+
+`internal_enquiry_notification` no longer exists in this repo. The pieces —
+`whatsapp/internal-notify.config.ts`, `internal-notify.service.ts`,
+`whatsapp.internal-notify.controller.ts`, the `WA_RECIPIENT` and
+`WA_INTERNAL_TEMPLATE_NAME` env vars — are gone.
+
+Two reasons. That template belongs to the landing page's WABA
+(`shadhilbuilders.in`), and a Meta template is scoped to one WhatsApp Business
+Account, so the CRM could never have used the landing page's approval. And the
+trigger endpoint was `@Public()` with no auth: an unauthenticated "send a
+WhatsApp message" surface with nothing behind it.
+
+The landing page still uses it, unchanged, in `lib/whatsapp.ts` there. If this
+repo ever needs ops alerting over WhatsApp again, it needs its own approved
+template on the CRM's WABA plus an authenticated trigger — not a resurrected
+copy of that endpoint.

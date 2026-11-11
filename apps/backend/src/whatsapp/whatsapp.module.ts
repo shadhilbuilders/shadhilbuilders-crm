@@ -6,20 +6,24 @@
 // + lease + sendOne), and `outbound.cron.ts` (5-second tick that
 // claims and dispatches). This module is for DI + the chat service's
 // `enqueue()` call.
+//
+// The old internal-notify path (config + service + public
+// POST /api/whatsapp/internal-notify) was removed 2026-11-11: it existed
+// only to fire `internal_enquiry_notification` at a fixed ops number, and
+// that template belongs to the landing page's WABA, not this CRM's. An
+// unauthenticated endpoint that sends WhatsApp on demand is a liability
+// with nothing behind it.
 import { Global, Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
-import { InternalNotifyService } from './internal-notify.service';
 import { OutboundCronService } from './outbound.cron';
 import { OutboundService } from './outbound.service';
 import { WhatsAppClient } from './whatsapp.client';
-import { WhatsappInternalNotifyController } from './whatsapp.internal-notify.controller';
 
 @Global()
 @Module({
   imports: [PrismaModule, RedisModule],
-  controllers: [WhatsappInternalNotifyController],
   providers: [
     // WhatsAppClient is constructed once at module init from env vars
     // (loud failure if creds missing - fail-fast, per skill rule).
@@ -28,12 +32,11 @@ import { WhatsappInternalNotifyController } from './whatsapp.internal-notify.con
       useFactory: () => WhatsAppClient.fromEnv(),
     },
     OutboundService,
-    InternalNotifyService,
     // T-E2b: cron processor that drains the outbox. The @Cron
     // decorator fires every 5s in production. Tests drive
     // `runOnce()` directly to avoid waiting on the schedule.
     OutboundCronService,
   ],
-  exports: [OutboundService, WhatsAppClient, InternalNotifyService],
+  exports: [OutboundService, WhatsAppClient],
 })
 export class WhatsappModule {}
