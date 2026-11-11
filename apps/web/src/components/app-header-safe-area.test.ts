@@ -16,7 +16,7 @@
 //      `env(safe-area-inset-top)` itself; nothing above it can pad for it.
 //   2. the reserved inset must ALSO appear in the box height. box-sizing is
 //      border-box, so the inset is otherwise taken OUT of the content band.
-//   3. the extra `min(1rem, env(safe-area-inset-top))` term is the breathing room
+//   3. the extra `min(1.5rem, env(safe-area-inset-top))` term is the breathing room
 //      requested from a real device. min() clamps it to 0 where there is no
 //      inset, which is what keeps desktop, Android and Safari tabs unchanged.
 //      Both halves of that are asserted below, because dropping either the clamp
@@ -48,12 +48,12 @@ describe('iOS top-bar safe area', () => {
 
   it('the app header keeps a 4rem band below the inset, plus one clamped rem of air', () => {
     expect(header).toContain(
-      'min-h-[calc(4rem+env(safe-area-inset-top)+min(1rem,env(safe-area-inset-top)))]',
+      'min-h-[calc(4rem+env(safe-area-inset-top)+min(1.5rem,env(safe-area-inset-top)))]',
     );
   });
 
   it('the guest bar carries the same clamp in its own units', () => {
-    expect(guestBar).toContain('h-[calc(4.75rem+min(0.25rem,env(safe-area-inset-top)))]');
+    expect(guestBar).toContain('h-[calc(4.75rem+min(1.5rem,env(safe-area-inset-top)))]');
   });
 
   it('the inset is in the HEIGHT of both bars, not only in their padding', () => {

@@ -43,7 +43,7 @@ export function GuestTopBar() {
       // (not a margin, so the sticky position math still anchors at the
       // true viewport top) by env(safe-area-inset-top) - same fix already
       // applied to AppHeader for the authenticated shell.
-      className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 border-b pt-[max(0px,env(safe-area-inset-top))] backdrop-blur"
+      className="border-border bg-background sticky top-0 z-40 border-b pt-[max(0px,env(safe-area-inset-top))]"
     >
       {/* T-SafeArea: the row below the inset is the guest bar's CONTENT BAND.
           h-19 (4.75rem) gave the brand lockup 8px of air either side, less than
@@ -53,7 +53,7 @@ export function GuestTopBar() {
           4.75rem with no inset (desktop and Safari tabs unchanged), 5rem at a
           59px inset, which lifts the lockup from 8px of air either side to 10px,
           matching AppHeader's controls. */}
-      <div className="container mx-auto flex h-[calc(4.75rem+min(0.25rem,env(safe-area-inset-top)))] w-full max-w-7xl items-center justify-between gap-3 px-4">
+      <div className="container mx-auto flex h-[calc(4.75rem+min(1.5rem,env(safe-area-inset-top)))] w-full max-w-7xl items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 items-center gap-2 h-15" data-qa="guest-brand">
           {/* Transparent lockup (logo.png - tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are

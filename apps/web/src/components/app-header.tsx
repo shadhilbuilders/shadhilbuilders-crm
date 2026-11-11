@@ -109,13 +109,13 @@ export function AppHeader() {
     //     against both the cutout and the bottom border. Growing the box by the
     //     inset keeps the band a constant 64px on every device.
     //
-    //   +min(1rem,env(safe-area-inset-top)) is the breathing room asked for from
-    //     a real device: one extra rem of band, but ONLY where a top inset
+    //   +min(1.5rem,env(safe-area-inset-top)) is the breathing room asked for from
+    //     a real device: one and a half extra rem of band, but ONLY where a top inset
     //     exists. min() clamps that term to 0 when there is no inset (desktop,
     //     Android, Safari tab), so the header is byte-identical there and the
     //     calc still resolves to exactly 4rem. GuestTopBar carries the same
     //     clamp in its own units.
-    <header className="border-border bg-background/95 supports-backdrop-filter:bg-background/75 sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top)+min(1rem,env(safe-area-inset-top)))] items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))] backdrop-blur">
+    <header className="border-border bg-background sticky top-0 z-40 flex min-h-[calc(4rem+env(safe-area-inset-top)+min(1.5rem,env(safe-area-inset-top)))] items-center justify-between gap-3 border-b px-4 pt-[max(0px,env(safe-area-inset-top))]">
       <div className="flex min-w-0 items-center gap-2">
         {/* T-Sidebar07: the expand/collapse affordance lives here (canonical
             shadcn sidebar-07 position) - beside the welcome message, visible
