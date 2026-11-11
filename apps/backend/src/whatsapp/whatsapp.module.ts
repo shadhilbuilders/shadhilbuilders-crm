@@ -8,11 +8,16 @@
 // `enqueue()` call.
 //
 // The old internal-notify path (config + service + public
-// POST /api/whatsapp/internal-notify) was removed 2026-11-11: it existed
-// only to fire `internal_enquiry_notification` at a fixed ops number, and
-// that template belongs to the landing page's WABA, not this CRM's. An
-// unauthenticated endpoint that sends WhatsApp on demand is a liability
-// with nothing behind it.
+// POST /api/whatsapp/internal-notify) was removed 2026-11-11. It was an
+// unauthenticated "send a WhatsApp template" surface built on a template that
+// belongs to the LANDING PAGE (`internal_enquiry_notification`), and its
+// parameter contract never matched that approved body: the CRM passed
+// `project` into {{3}} and the free-text message into {{4}}, where the body
+// reads "interested in: {{3}}" and "Enquiry reference: {{4}}", so every alert
+// rendered "Enquiry reference: <customer's message>".
+//
+// Ops alerting for this app, if it comes back, needs its own template and a
+// parameter contract that matches it — behind an authenticated trigger.
 import { Global, Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';

@@ -557,8 +557,11 @@ export class ChatService {
           // number AND the chat is the customer thread - regardless of the
           // display channel. The pane sends channel='IN_APP' (the row renders
           // in the panel), but the customer should still receive the reply on
-          // WhatsApp within the 24h window (shadhil_chat_reply is a UTILITY
-          // template; this is a true reply to the customer's inbound, compliant).
+          // WhatsApp within the 24h window. This is FREEFORM text, not a
+          // template: a true reply inside the customer-service window needs no
+          // approved template, and `shadhil_chat_reply` is MARKETING anyway
+          // (Meta's category call, 2026-11-11) so it would cost more and be
+          // dropped from a test sender.
           // INTERNAL is hard-excluded above (staff-only note, never leaks to
           // the phone). Enqueueing is inside withRlsContext so the
           // OutboundMessage INSERT has app.user_id (outbound_insert_authenticated)

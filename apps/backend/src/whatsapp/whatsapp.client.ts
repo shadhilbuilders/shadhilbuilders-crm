@@ -29,11 +29,13 @@
 // submitted and approved before any business can send it. The
 // three templates below cover T-E2b's outbound paths:
 //
-// 1. shadhil_chat_reply  (UTILITY, en)  ← env: WA_TEMPLATE_CHAT_REPLY
-//    Category:  Utility (customer-initiated reply window - must be sent
-//                within 24h of the lead's last inbound message)
+// 1. shadhil_chat_reply  (MARKETING, en)  ← env: WA_TEMPLATE_CHAT_REPLY
+//    Category:  Marketing, and that was META'S call, not ours: WhatsApp
+//                Manager recommended the move off Utility for this copy and
+//                the operator accepted it (2026-11-11). Do not "correct" it
+//                back without reading the consequence below.
 //    Header:    none
-//    Body:      "Hi {{1}}, {{2}}"
+//    Body:      "Hi {{1}}, {{2}}. Reply here if you have any questions."
 //    Buttons:   none
 //    Sample:
 //                Hi Aarav, thanks for the enquiry about the 3BHK
@@ -45,10 +47,12 @@
 //    When sent: chat service → outbound.send() with
 //               templateName: 'shadhil_chat_reply', sendType: TEMPLATE
 //
-// 2. shadhil_visit_followup  (UTILITY, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
-//    Category:  Utility (proactive - must respect 24h+ window after
-//                last inbound; this is for follow-ups to leads whose
-//                last inbound was > 24h ago)
+// 2. shadhil_visit_followup  (MARKETING, en)  ← env: WA_TEMPLATE_VISIT_FOLLOWUP
+//    Category:  Marketing, on Meta's recommendation (2026-11-11). A
+//                MARKETING template is ACCEPTED by the API and then SILENTLY
+//                DROPPED when the sender is still a Meta test number - see
+//                the state file's Sep 1 incident. It starts delivering once a
+//                real, business-verified sender is registered.
 //    Header:    none
 //    Body:      "Hi {{1}}, just following up on your site visit for {{2}}.
 //                Are you still interested? Reply YES to chat."

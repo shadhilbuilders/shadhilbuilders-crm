@@ -85,13 +85,18 @@ the composer, and the UI says so rather than pretending otherwise.
 `whatsapp.internal-notify.controller.ts`, the `WA_RECIPIENT` and
 `WA_INTERNAL_TEMPLATE_NAME` env vars — are gone.
 
-Two reasons. That template belongs to the landing page's WABA
-(`shadhilbuilders.in`), and a Meta template is scoped to one WhatsApp Business
-Account, so the CRM could never have used the landing page's approval. And the
-trigger endpoint was `@Public()` with no auth: an unauthenticated "send a
-WhatsApp message" surface with nothing behind it.
+Two reasons. `internal_enquiry_notification` is the LANDING PAGE's template —
+it renders the shadhilbuilders.in enquiry alert, and this app is not that
+surface. And the trigger was `@Public()` with no auth: an unauthenticated "send
+a WhatsApp message" surface with nothing behind it.
+
+It would also have been wrong in content, not just in ownership: the CRM passed
+its own parameters into it — `project` into `{{3}}` and the free-text message
+into `{{4}}` — while the approved body reads "interested in: {{3}}" and
+"Enquiry reference: {{4}}". Every internal alert would have shown a customer's
+message where the reference belongs.
 
 The landing page still uses it, unchanged, in `lib/whatsapp.ts` there. If this
-repo ever needs ops alerting over WhatsApp again, it needs its own approved
-template on the CRM's WABA plus an authenticated trigger — not a resurrected
-copy of that endpoint.
+repo ever needs ops alerting over WhatsApp again, it needs its own template and
+a parameter contract that matches its body, behind an authenticated trigger —
+not a resurrected copy of the old endpoint.

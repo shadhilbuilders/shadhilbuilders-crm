@@ -189,7 +189,12 @@ change and removes the false promise immediately:
 - `shadhil_visit_reminder`: "Your site visit for {{1}} is on {{2}}. Reply YES and
   our team will confirm, or RESCHEDULE if you need another time."
 
-Still 2 parameters each, still starts and ends on static text, still UTILITY.
+Still 2 parameters each and still starts and ends on static text, so neither
+edit needs a code change. Category is Meta's to advise on, and the operator
+accepted Marketing for both (`shadhil_visit_followup` and `shadhil_chat_reply`
+are Marketing as of 2026-11-11); the consequence is delivery, not approval —
+from a Meta test sender a Marketing template is accepted and then dropped, so
+expect nothing to arrive until a real sender is registered.
 Both are honest whether or not this ticket ships.
 
 ## 9. Tests (acceptance)
