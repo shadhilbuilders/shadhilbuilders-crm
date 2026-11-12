@@ -1,5 +1,13 @@
 'use client';
 
+// impeccable-disable side-tab -- the phase card's 4px rail is the one flagged
+// shape in this file: it is a FUNCTIONAL phase marker, pinned by
+// docs/designs/2026-11-08-site-capture-redesign.prompt.md and by the accent table
+// in lib/site-units.ts. A 1px hairline was rendered against the real cards and
+// merged into the neutral frame, so the weight stays and the rule is waived here
+// rather than in the shared detector config. Any other side-tab in this file is a
+// defect and belongs in review.
+
 // SiteHome (2026-11-08): the site engineer's first screen.
 //
 // WHY IT EXISTS: the engineer used to land on `/inventory` - a sales grid of

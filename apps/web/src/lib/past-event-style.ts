@@ -31,6 +31,16 @@
 // owner is calibrating by eye, and the next reader should not have to re-derive
 // why the fill is a light tint while the accent is a strong stripe.
 //
+// STEP 7 (2026-11-12): THE ACCENT STAYS 4px, WITH A DOCUMENTED WAIVER. The
+// design detector now in CI (`pnpm design:detect`) reports a thick coloured left
+// edge as `side-tab`, and this stripe is exactly that shape. A 1px hairline was
+// tried first and rendered against the real `-50` fills: it merged into the frame
+// on white and nearly disappeared on the tinted rows, which is the one job the
+// stripe has. So the width the owner asked for stays, and the detector is told
+// why in a `impeccable-disable` marker above PAST_ACCENT_WIDTH_CLASS. The rule is
+// right about decorative stripes and wrong about this one, which is what waivers
+// exist for.
+//
 // SO THE HISTORY CARD IS: LIGHT `-50` FILL + STRONG 4px LEFT ACCENT + DARK TEXT.
 // Three things follow, and each is MEASURED rather than assumed
 // (`past-event-style.test.ts` re-computes the WCAG contrast from the palette):
@@ -99,7 +109,12 @@ const PAST_TONE_SURFACE: Readonly<Record<TEventColor, string>> = {
 
 /**
  * The 4px left accent - the "previously used border left" the owner asked to
- * restore. Width only; the colour is per-tone in {@link PAST_TONE_SURFACE}.
+ * restore (step 5 of the history above). Width only; the colour is per-tone in
+ * {@link PAST_TONE_SURFACE}.
+ *
+ * impeccable-disable side-tab -- the owner asked for this accent, and the 4px
+ * weight is what still reads against a `-50` fill (a 1px hairline was rendered and
+ * vanished on the tinted rows). Width is not the variable here; the shade is.
  */
 export const PAST_ACCENT_WIDTH_CLASS = 'border-l-4';
 

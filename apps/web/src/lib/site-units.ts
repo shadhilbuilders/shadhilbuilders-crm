@@ -134,6 +134,10 @@ export function groupByPhase(units: readonly UnitRow[]): SitePhaseGroup[] {
  * The phase rail accent, cycling by phase index. This is the ONLY decorative
  * colour in the product: it is stable per phase (the same rail on every visit)
  * and it stays on the rail and the phase heading.
+ *
+ * The rail is 4px by design (`docs/designs/2026-11-08-site-capture-redesign.prompt.md`).
+ * The design detector's `side-tab` rule flags that shape; the waiver and the
+ * reason live at the call site in `SiteHome.tsx`, next to the class string.
  */
 const PHASE_ACCENTS = ['sky', 'violet', 'teal', 'amber'] as const;
 export type PhaseAccent = (typeof PHASE_ACCENTS)[number];
