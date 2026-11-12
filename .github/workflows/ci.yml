@@ -89,6 +89,11 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Formatting gate, first because it is the cheapest check here (~15s) and
+      # because the repo spent months with a `format` script that could not resolve
+      # its own plugin while `--check` still exited 0. A formatter nobody can run is
+      # not a convention; this step is what makes it one.
+      - run: pnpm format:check
       - run: pnpm --filter @shadhil/database generate
       - run: pnpm lint
 
