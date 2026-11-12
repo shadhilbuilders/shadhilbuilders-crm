@@ -76,7 +76,6 @@
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.0.1",
     "prettier": "^3.4.2",
-    "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
