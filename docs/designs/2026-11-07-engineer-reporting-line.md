@@ -16,7 +16,7 @@
 
 So nothing was "missed" on the write path. `POST /teams/:id/members` already
 creates the very link the manager is derived from. What was missed is the
-**read predicate**: the derivation is written as a *positive* role union
+**read predicate**: the derivation is written as a _positive_ role union
 
 ```
 role === 'TELECALLER' || role === 'SALES_EXEC'
@@ -35,11 +35,11 @@ silently. That is the defect class, not the single omission.
 
 ### 1.2 Two surfaces already disagreed
 
-| Surface | Predicate | ENGINEER result |
-|---|---|---|
-| `teams/team-roster.tsx:102` | negative (`MANAGER ? owner : managerName`) | **"Reports to Maya"** |
-| `users.service.ts:730` (`getUser`) | positive union | `null` |
-| `users.service.ts:1323` (`list`) | positive union | `null` |
+| Surface                            | Predicate                                  | ENGINEER result       |
+| ---------------------------------- | ------------------------------------------ | --------------------- |
+| `teams/team-roster.tsx:102`        | negative (`MANAGER ? owner : managerName`) | **"Reports to Maya"** |
+| `users.service.ts:730` (`getUser`) | positive union                             | `null`                |
+| `users.service.ts:1323` (`list`)   | positive union                             | `null`                |
 
 Same user, two answers, depending which page you open.
 
@@ -63,14 +63,14 @@ Same user, two answers, depending which page you open.
 
 ## 2. Decisions (all user-approved during review)
 
-| ID | Decision | Rationale |
-|---|---|---|
-| **D2** | Derive from the linked team's manager. No `User.reportsToId` column, no migration, no backfill. | The team link already *is* the link. |
-| **D3+D7** | `assignManager` accepts ENGINEER, **gated to ADMIN/OWNER only**. | Managers must not grant site access (`roles.ts:95`). |
-| **D4** | One pure shared predicate, consumed by both apps. | Kills the copy-paste class of bug. |
-| **D5+D8** | `assignManager` is **additive** for ENGINEER, and the resolve order prefers the **most recent** membership so the change is visible. | Additive alone is invisible: `resolveDisplayTeamId` returned the OLDEST row. |
-| **D9** | `reassignMembers` **refuses** any request that would move an ENGINEER, naming them. UI hides "Move to team" on engineer rows. | Found while reviewing the implementation: this is the *other* door into the same data loss D5 closed. |
-| **D10** | `orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }]` at all four resolve sites. | `assignedAt` defaults to `now()`, which Postgres evaluates once per TRANSACTION - bulk inserts share a timestamp, so one sort key is nondeterministic. |
+| ID        | Decision                                                                                                                             | Rationale                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **D2**    | Derive from the linked team's manager. No `User.reportsToId` column, no migration, no backfill.                                      | The team link already _is_ the link.                                                                                                                   |
+| **D3+D7** | `assignManager` accepts ENGINEER, **gated to ADMIN/OWNER only**.                                                                     | Managers must not grant site access (`roles.ts:95`).                                                                                                   |
+| **D4**    | One pure shared predicate, consumed by both apps.                                                                                    | Kills the copy-paste class of bug.                                                                                                                     |
+| **D5+D8** | `assignManager` is **additive** for ENGINEER, and the resolve order prefers the **most recent** membership so the change is visible. | Additive alone is invisible: `resolveDisplayTeamId` returned the OLDEST row.                                                                           |
+| **D9**    | `reassignMembers` **refuses** any request that would move an ENGINEER, naming them. UI hides "Move to team" on engineer rows.        | Found while reviewing the implementation: this is the _other_ door into the same data loss D5 closed.                                                  |
+| **D10**   | `orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }]` at all four resolve sites.                                                    | `assignedAt` defaults to `now()`, which Postgres evaluates once per TRANSACTION - bulk inserts share a timestamp, so one sort key is nondeterministic. |
 
 ---
 
@@ -143,7 +143,7 @@ picks the **oldest** membership:
     return membership?.teamId ?? null;
 ```
 
-An additive insert of a *newer* team is therefore invisible — the endpoint
+An additive insert of a _newer_ team is therefore invisible — the endpoint
 returns the new `teamId`, the toast reports success, and a refetch shows the old
 manager. D8 fixes this: order by `assignedAt: 'desc'` so the newly-added
 membership wins.
@@ -170,11 +170,11 @@ imports), which makes it the only correct home for a rule both apps apply.
 reportingTargetFor(role: Role): 'TEAM_MANAGER' | 'ORG_OWNER' | 'NONE'
 ```
 
-| Role | Result |
-|---|---|
+| Role                             | Result         |
+| -------------------------------- | -------------- |
 | TELECALLER, SALES_EXEC, ENGINEER | `TEAM_MANAGER` |
-| MANAGER, ADMIN | `ORG_OWNER` |
-| OWNER, CUSTOMER | `NONE` |
+| MANAGER, ADMIN                   | `ORG_OWNER`    |
+| OWNER, CUSTOMER                  | `NONE`         |
 
 Returning a three-value target (not a boolean) also fixes `showReportsTo =
 detail.role !== 'OWNER'` (`UserDetailView.tsx:143`), which today gives
@@ -235,18 +235,18 @@ Export from `packages/api-types/src/index.ts`.
 
 ## 5. Tests
 
-| # | Where | Assertion |
-|---|---|---|
-| T1 | `packages/api-types` | Table-driven over **every** `RoleSchema` value → expected target. Adding a role without a rule fails this test. This is the D4 guard. |
-| T2 | `users.service.test.ts` (`reportsTo` block) | ENGINEER row resolves to team manager in `list()`. |
-| T3 | `users.service.getUser.test.ts` | ENGINEER `manager` = team manager; CUSTOMER `manager` = null. |
-| T4 | `users.service.assignManager.test.ts` | MANAGER actor + ENGINEER target → 403. ADMIN actor + ENGINEER target → 200. |
-| T5 | `users.service.assignManager.test.ts` | ENGINEER already on destination team → `ConflictException`, no audit row. |
-| T6 | `users.service.rls.test.ts` (**real DB**) | Two-team ENGINEER + additive assign: both rows survive, destination present, audit before/after lists both. Mocked tests cannot see RLS behaviour. |
-| T7 | `users.service.test.ts` | **D8 regression:** two memberships `assignedAt` asc/desc → the newer team's manager is returned. Covers the SALES_EXEC behaviour change. |
-| T8 | `UserDetailView.test.tsx` | ENGINEER shows "Reports to" + assign button; CUSTOMER shows neither. |
-| T9 | `team-roster.test.tsx` | ENGINEER row shows the team manager. |
-| T10 | `users.service.assignManager.test.ts` | Existing TELECALLER/SALES_EXEC move tests stay green — proves the destructive branch is untouched. |
+| #   | Where                                       | Assertion                                                                                                                                          |
+| --- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | `packages/api-types`                        | Table-driven over **every** `RoleSchema` value → expected target. Adding a role without a rule fails this test. This is the D4 guard.              |
+| T2  | `users.service.test.ts` (`reportsTo` block) | ENGINEER row resolves to team manager in `list()`.                                                                                                 |
+| T3  | `users.service.getUser.test.ts`             | ENGINEER `manager` = team manager; CUSTOMER `manager` = null.                                                                                      |
+| T4  | `users.service.assignManager.test.ts`       | MANAGER actor + ENGINEER target → 403. ADMIN actor + ENGINEER target → 200.                                                                        |
+| T5  | `users.service.assignManager.test.ts`       | ENGINEER already on destination team → `ConflictException`, no audit row.                                                                          |
+| T6  | `users.service.rls.test.ts` (**real DB**)   | Two-team ENGINEER + additive assign: both rows survive, destination present, audit before/after lists both. Mocked tests cannot see RLS behaviour. |
+| T7  | `users.service.test.ts`                     | **D8 regression:** two memberships `assignedAt` asc/desc → the newer team's manager is returned. Covers the SALES_EXEC behaviour change.           |
+| T8  | `UserDetailView.test.tsx`                   | ENGINEER shows "Reports to" + assign button; CUSTOMER shows neither.                                                                               |
+| T9  | `team-roster.test.tsx`                      | ENGINEER row shows the team manager.                                                                                                               |
+| T10 | `users.service.assignManager.test.ts`       | Existing TELECALLER/SALES_EXEC move tests stay green — proves the destructive branch is untouched.                                                 |
 
 **Iron rule:** T7 is a regression test for changed existing behaviour and cannot
 be deferred.
@@ -280,7 +280,8 @@ be deferred.
 ## 7. Delivery
 
 Single PR, no migration. Order: T1 (helper + test) → T2/T3 (read sites) → T4/T5/T6
-+ 4.3 (assignManager) → T7 (D8 order) → 4.4 (web) → 4.5 (docs).
+
+- 4.3 (assignManager) → T7 (D8 order) → 4.4 (web) → 4.5 (docs).
 
 **Parallelizable:** backend read sites (4.2) and web (4.4) are independent once
 the helper exists. `assignManager` (4.3) touches the same file as 4.2, so keep
@@ -291,12 +292,12 @@ surface depended on "oldest team wins", it moves. There are **four** membership
 ordering sites in `users.service.ts`, not two — they must move together or the
 surfaces re-diverge:
 
-| Line | Method | What it resolves |
-|---|---|---|
-| 140 | `resolveDisplayTeamId` | `getUser` / `changeRole` display team |
-| 1260 | `list` | Users table `teamId` + `reportsTo` |
-| 1539 | `projectSalesExecs` | visit picker row `teamId` |
-| 1697 | `teamMembers` | chat @mention picker `teamId` |
+| Line | Method                 | What it resolves                      |
+| ---- | ---------------------- | ------------------------------------- |
+| 140  | `resolveDisplayTeamId` | `getUser` / `changeRole` display team |
+| 1260 | `list`                 | Users table `teamId` + `reportsTo`    |
+| 1539 | `projectSalesExecs`    | visit picker row `teamId`             |
+| 1697 | `teamMembers`          | chat @mention picker `teamId`         |
 
 The `asc` orderings in `leads.service.ts` (810, 1417) and
 `project-teams.service.ts` (75, 269) are different concepts (lead co-owner
@@ -304,11 +305,11 @@ ordering, project-team listing) and must NOT be touched.
 
 ## 8. Failure modes
 
-| Path | Failure | Covered? |
-|---|---|---|
-| Additive ENGINEER assign | loses other memberships | T6 (real DB) + invariant in tx |
-| Additive ENGINEER assign | succeeds but display unchanged | D8 order + T7 |
-| assignManager | MANAGER grants site access | D7 gate + T4 |
-| assignManager | no-op write + audit row for non-change | T5 |
-| read sites | new role silently null again | T1 enum walk |
-| Customer row | bogus "No manager assigned" | `reportingTargetFor` + T8 |
+| Path                     | Failure                                | Covered?                       |
+| ------------------------ | -------------------------------------- | ------------------------------ |
+| Additive ENGINEER assign | loses other memberships                | T6 (real DB) + invariant in tx |
+| Additive ENGINEER assign | succeeds but display unchanged         | D8 order + T7                  |
+| assignManager            | MANAGER grants site access             | D7 gate + T4                   |
+| assignManager            | no-op write + audit row for non-change | T5                             |
+| read sites               | new role silently null again           | T1 enum walk                   |
+| Customer row             | bogus "No manager assigned"            | `reportingTargetFor` + T8      |

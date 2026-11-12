@@ -46,16 +46,16 @@ The auth gate is `src/proxy.ts` (Next 16's renamed middleware): cookieless
 visitors bounce to `/login?next=...`; everything under `(app)/` requires a
 better-auth session cookie.
 
-| Route | What it is | Data source |
-|---|---|---|
-| `/` | Role-aware home - Admin cross-team view, Manager KPI strip + pipeline (KPIs are numbers in a row, NOT cards - locked Decision 0.4), Telecaller/Exec inbox-first home | session only |
-| `/leads` | Lead Inbox - state filter chips, search, overdue-first sort (Decision 0.2), semantic status badges | leads module (pending) |
-| `/leads/[id]` | Lead Detail - two-column layout, embedded chat pane, timeline | leads/chat (pending) |
-| `/visits` | Site Visits week calendar (Mon-start) + schedule dialog | visits module (pending) |
-| `/inventory` | Unit grid shell + status legend | units module (not built) |
-| `/notifications` | Inbox with All/Unread/Leads/Bookings/Visits tabs + mark-all-read | notifications (pending) |
-| `/users` | User management - create + role change + list. **LIVE.** | users module (implemented) |
-| `/audit` | Audit log - admin-only table + export buttons | audit module (pending) |
+| Route            | What it is                                                                                                                                                           | Data source                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `/`              | Role-aware home - Admin cross-team view, Manager KPI strip + pipeline (KPIs are numbers in a row, NOT cards - locked Decision 0.4), Telecaller/Exec inbox-first home | session only               |
+| `/leads`         | Lead Inbox - state filter chips, search, overdue-first sort (Decision 0.2), semantic status badges                                                                   | leads module (pending)     |
+| `/leads/[id]`    | Lead Detail - two-column layout, embedded chat pane, timeline                                                                                                        | leads/chat (pending)       |
+| `/visits`        | Site Visits week calendar (Mon-start) + schedule dialog                                                                                                              | visits module (pending)    |
+| `/inventory`     | Unit grid shell + status legend                                                                                                                                      | units module (not built)   |
+| `/notifications` | Inbox with All/Unread/Leads/Bookings/Visits tabs + mark-all-read                                                                                                     | notifications (pending)    |
+| `/users`         | User management - create + role change + list. **LIVE.**                                                                                                             | users module (implemented) |
+| `/audit`         | Audit log - admin-only table + export buttons                                                                                                                        | audit module (pending)     |
 
 Roles come from `useSessionUser()` (`src/lib/session.ts`): the header shows
 Users for admin-class + managers and Audit for admin-class only; page-level
@@ -206,6 +206,7 @@ pnpm --filter apps/web dev
 ```
 
 The web app expects:
+
 - **`apps/web/.env.local`** - symlink to `../../.env` at the monorepo
   root. Contains `BETTER_AUTH_SECRET`, `JWT_SECRET`,
   `DIRECT_DATABASE_URL`, `BACKEND_API_URL`, the `NEXT_PUBLIC_*` block,
@@ -227,27 +228,28 @@ All variables are validated at startup via `@t3-oss/env-nextjs` + Zod. Add
 new vars to `src/lib/env/env.ts` (server-side block for `process.env`
 reads; `client` block for `NEXT_PUBLIC_*`).
 
-| Variable | Where | Required | Default | Purpose |
-|---|---|---|---|---|
-| `NODE_ENV` | server | no | `development` | Set automatically by Next.js (`development` / `test` / `production`) |
-| `BETTER_AUTH_SECRET` | server | yes | - | Shared better-auth secret (≥32 chars) |
-| `BETTER_AUTH_URL` | server | yes | - | Public URL of the web app (for auth callbacks) |
-| `JWT_SECRET` | server | yes | - | Shared with NestJS JwtStrategy (≥32 chars) |
-| `JWT_ISSUER` | server | no | `shadhil-crm` | JWT `iss` claim |
-| `DIRECT_DATABASE_URL` | server | yes | - | Admin DB URL - bypasses PgBouncer (migrations + RLS writes) |
-| `BACKEND_API_URL` | server | no | `http://localhost:8080` | NestJS BFF proxy target |
-| `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | server | no | - | Sentry error monitoring (optional) |
-| `NEXT_PUBLIC_API_BASE_URL` | client | no | `http://localhost:8080` | What the browser hits for the BFF |
-| `NEXT_PUBLIC_APP_NAME` | client | no | `Shadhil Builders CRM` | `<title>` + brand text |
-| `NEXT_PUBLIC_APP_URL` | client | no | `http://localhost:3000` | Public URL of the web app |
-| `NEXT_PUBLIC_DEBUG_MODE` | client | no | `false` | Verbose client logs |
-| `NEXT_PUBLIC_RERA_NUMBER`, `NEXT_PUBLIC_CMDA_NUMBER`, `NEXT_PUBLIC_RERA_VALID_FROM`, `NEXT_PUBLIC_RERA_VALID_UNTIL` | client | no | placeholders | Regulatory footer (RERA / CMDA) |
-| `NEXT_PUBLIC_MODEL_C_ENABLED` | client | no | `true` | Feature flag |
+| Variable                                                                                                            | Where  | Required | Default                 | Purpose                                                              |
+| ------------------------------------------------------------------------------------------------------------------- | ------ | -------- | ----------------------- | -------------------------------------------------------------------- |
+| `NODE_ENV`                                                                                                          | server | no       | `development`           | Set automatically by Next.js (`development` / `test` / `production`) |
+| `BETTER_AUTH_SECRET`                                                                                                | server | yes      | -                       | Shared better-auth secret (≥32 chars)                                |
+| `BETTER_AUTH_URL`                                                                                                   | server | yes      | -                       | Public URL of the web app (for auth callbacks)                       |
+| `JWT_SECRET`                                                                                                        | server | yes      | -                       | Shared with NestJS JwtStrategy (≥32 chars)                           |
+| `JWT_ISSUER`                                                                                                        | server | no       | `shadhil-crm`           | JWT `iss` claim                                                      |
+| `DIRECT_DATABASE_URL`                                                                                               | server | yes      | -                       | Admin DB URL - bypasses PgBouncer (migrations + RLS writes)          |
+| `BACKEND_API_URL`                                                                                                   | server | no       | `http://localhost:8080` | NestJS BFF proxy target                                              |
+| `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN`                                                | server | no       | -                       | Sentry error monitoring (optional)                                   |
+| `NEXT_PUBLIC_API_BASE_URL`                                                                                          | client | no       | `http://localhost:8080` | What the browser hits for the BFF                                    |
+| `NEXT_PUBLIC_APP_NAME`                                                                                              | client | no       | `Shadhil Builders CRM`  | `<title>` + brand text                                               |
+| `NEXT_PUBLIC_APP_URL`                                                                                               | client | no       | `http://localhost:3000` | Public URL of the web app                                            |
+| `NEXT_PUBLIC_DEBUG_MODE`                                                                                            | client | no       | `false`                 | Verbose client logs                                                  |
+| `NEXT_PUBLIC_RERA_NUMBER`, `NEXT_PUBLIC_CMDA_NUMBER`, `NEXT_PUBLIC_RERA_VALID_FROM`, `NEXT_PUBLIC_RERA_VALID_UNTIL` | client | no       | placeholders            | Regulatory footer (RERA / CMDA)                                      |
+| `NEXT_PUBLIC_MODEL_C_ENABLED`                                                                                       | client | no       | `true`                  | Feature flag                                                         |
 
 `BETTER_AUTH_SECRET` and `JWT_SECRET` are shared with the NestJS backend
+
 - they must match the values in `apps/backend/.env` or auth will fail at
-boot. The shared `@shadhil/auth` workspace package depends on these being
-in sync; both apps read from the same `.env` at the monorepo root.
+  boot. The shared `@shadhil/auth` workspace package depends on these being
+  in sync; both apps read from the same `.env` at the monorepo root.
 
 ---
 
@@ -289,8 +291,8 @@ The order matters - each layer's context is inherited by everything below it:
 The order is intentional - last `:root` in source wins for CSS variables:
 
 ```css
-@import '@paalstack/react-ui/all.css';    /* shadcn defaults + theme + utilities + toast */
-@import '@shadhil/ui-tokens/brand.css';   /* shadhil-crm brand overrides */
+@import '@paalstack/react-ui/all.css'; /* shadcn defaults + theme + utilities + toast */
+@import '@shadhil/ui-tokens/brand.css'; /* shadhil-crm brand overrides */
 @import 'tailwindcss';
 
 @source '../../node_modules/@paalstack/react-ui';
@@ -301,7 +303,9 @@ The order is intentional - last `:root` in source wins for CSS variables:
 
 @utility container {
   @apply mx-auto px-4;
-  @variant lg { @apply max-w-7xl; }
+  @variant lg {
+    @apply max-w-7xl;
+  }
 }
 ```
 

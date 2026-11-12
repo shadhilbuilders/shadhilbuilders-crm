@@ -16,12 +16,7 @@ export type LeadFactField = z.infer<typeof LeadFactFieldSchema>;
 export const FactBandSchema = z.enum(['VERIFIED', 'PROBABLE', 'POSSIBLE']);
 export type FactBand = z.infer<typeof FactBandSchema>;
 
-export const FactStatusSchema = z.enum([
-  'APPLIED',
-  'PROPOSED',
-  'DISMISSED',
-  'SUPERSEDED',
-]);
+export const FactStatusSchema = z.enum(['APPLIED', 'PROPOSED', 'DISMISSED', 'SUPERSEDED']);
 export type FactStatus = z.infer<typeof FactStatusSchema>;
 
 /**

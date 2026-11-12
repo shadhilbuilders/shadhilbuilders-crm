@@ -25,12 +25,12 @@ insert a `Message` row (`direction='IN'`, `userId=NULL`), or upsert
 
 Consequences, all verified by reading the code, not assumed:
 
-| Expected | Actual |
-|---|---|
-| Visit confirmed | `SiteVisit.status` stays `SCHEDULED`; nothing writes it |
-| Customer gets an ack | Inbound path sends nothing at all |
-| Someone is told | Webhook never calls `NotificationsService.emit`, never publishes realtime — no badge, no push |
-| Lead moves to RESCHEDULED | `leads.state-machine.ts` only runs from staff/visit writes |
+| Expected                      | Actual                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Visit confirmed               | `SiteVisit.status` stays `SCHEDULED`; nothing writes it                                                                     |
+| Customer gets an ack          | Inbound path sends nothing at all                                                                                           |
+| Someone is told               | Webhook never calls `NotificationsService.emit`, never publishes realtime — no badge, no push                               |
+| Lead moves to RESCHEDULED     | `leads.state-machine.ts` only runs from staff/visit writes                                                                  |
 | Freeform reply possible after | **This one works** — the inbound IN row opens Meta's 24h window, `threadState` recomputes `lastInboundAt`, composer unlocks |
 
 So the only automatic effect of a customer reply is unlocking the composer for
@@ -112,11 +112,11 @@ for the messages that matter.
 Only act when the lead has exactly **one** open visit (`status = 'SCHEDULED'`)
 with `scheduledFor >= now`. Three cases:
 
-| Situation | Behavior |
-|---|---|
-| Exactly one open future visit | act on it |
-| No open visit | ignore the keyword; the reply is still a Message (visible in the thread). Do not notify — this is the ordinary "customer replies mid-thread" case |
-| Two or more open visits | **do not guess.** Notify the owner: "customer replied YES but has N open visits — confirm by hand" |
+| Situation                     | Behavior                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exactly one open future visit | act on it                                                                                                                                         |
+| No open visit                 | ignore the keyword; the reply is still a Message (visible in the thread). Do not notify — this is the ordinary "customer replies mid-thread" case |
+| Two or more open visits       | **do not guess.** Notify the owner: "customer replied YES but has N open visits — confirm by hand"                                                |
 
 Meta's retry dedupe already prevents the same `wamid` being handled twice.
 Additionally, if `confirmedAt` is already set, a second `CONFIRM` is a no-op that
@@ -152,7 +152,7 @@ is a routing action, not an automated one.
    `RESCHEDULED` (`visit-lead-sync.ts:81`), which is the existing, tested path.
 2. Actor for the transition: the webhook has no JWT. Build a synthetic
    `JwtPayload` — note the real shape is `{ sub, role, organizationId, email,
-   iat, exp, iss }` (`packages/auth-client/src/jwt.ts:36`), not the four-field
+iat, exp, iss }` (`packages/auth-client/src/jwt.ts:36`), not the four-field
    schema in `packages/api-types/src/auth.ts`, and the audit `reason` strings
    interpolate `actor.email` and `actor.role`. So read the visit's assignee
    (`SiteVisit.userId`) once to get `email` and `organizationId`, and use role
@@ -167,16 +167,16 @@ is a routing action, not an automated one.
 
 ## 7. Files
 
-| File | Change |
-|---|---|
-| `packages/database/prisma/schema.prisma` | two columns on `SiteVisit` |
-| `packages/database/prisma/migrations/<ts>_t_wa_visit_reply/migration.sql` | `ALTER TABLE "SiteVisit" ADD COLUMN ...` |
-| `apps/backend/src/whatsapp/visit-reply.ts` (new) | pure parser |
-| `apps/backend/src/whatsapp/visit-reply.test.ts` (new) | table-driven cases incl. "yes I will come by 5" → null, "YES!!" → CONFIRM |
-| `apps/backend/src/webhooks/webhooks.controller.ts` | collect intent in tx, act after; call parser only for `type === 'text'` and known-lead branch |
-| `apps/backend/src/webhooks/webhooks.controller.test.ts` | new cases (below) |
-| `apps/web/src/...` visits surface | show a "confirmed by customer" marker where the visit row renders; keep it a `Badge` (`success`) per standing rule 4b |
-| `docs/planning/STATE-MATRIX.md` | record that CONFIRM does not move lead state and RESCHEDULE does |
+| File                                                                      | Change                                                                                                                |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `packages/database/prisma/schema.prisma`                                  | two columns on `SiteVisit`                                                                                            |
+| `packages/database/prisma/migrations/<ts>_t_wa_visit_reply/migration.sql` | `ALTER TABLE "SiteVisit" ADD COLUMN ...`                                                                              |
+| `apps/backend/src/whatsapp/visit-reply.ts` (new)                          | pure parser                                                                                                           |
+| `apps/backend/src/whatsapp/visit-reply.test.ts` (new)                     | table-driven cases incl. "yes I will come by 5" → null, "YES!!" → CONFIRM                                             |
+| `apps/backend/src/webhooks/webhooks.controller.ts`                        | collect intent in tx, act after; call parser only for `type === 'text'` and known-lead branch                         |
+| `apps/backend/src/webhooks/webhooks.controller.test.ts`                   | new cases (below)                                                                                                     |
+| `apps/web/src/...` visits surface                                         | show a "confirmed by customer" marker where the visit row renders; keep it a `Badge` (`success`) per standing rule 4b |
+| `docs/planning/STATE-MATRIX.md`                                           | record that CONFIRM does not move lead state and RESCHEDULE does                                                      |
 
 ## 8. Copy fix (independent, do this first)
 

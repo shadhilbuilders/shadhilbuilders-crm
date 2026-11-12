@@ -63,7 +63,10 @@ export class MilestonesService {
     }
     return withRlsContext(this.client, rlsContextFrom(actor), async (rawTx) => {
       const tx = rawTx as unknown as PrismaClient;
-      const project = await tx.project.findUnique({ where: { id: projectId }, select: { id: true } });
+      const project = await tx.project.findUnique({
+        where: { id: projectId },
+        select: { id: true },
+      });
       if (project === null) throw new NotFoundException(`Project ${projectId} not found.`);
 
       const where = { projectId, organizationId: actor.organizationId };

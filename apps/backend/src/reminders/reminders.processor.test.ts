@@ -61,9 +61,7 @@ const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // T-TEAM-AUTHORITATIVE cutover). The reminder INSERT policy gates on
 // userId = app.user_id, so the seeded reminder's userId matches the
 // admin actor's userId.
-async function adminSeed<T>(
-  fn: (db: PrismaClient) => Promise<T>,
-): Promise<T> {
+async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
@@ -116,7 +114,12 @@ async function seedDueReminder(label: string): Promise<string> {
     await db.team.upsert({
       where: { id: 'yxt9evh7y5x9pkpxl61ywbyl' },
       update: {},
-      create: { id: 'yxt9evh7y5x9pkpxl61ywbyl', name: 'Test Team', managerId: 'dyamh3gezek1ag5wh8xn9ib5', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: 'yxt9evh7y5x9pkpxl61ywbyl',
+        name: 'Test Team',
+        managerId: 'dyamh3gezek1ag5wh8xn9ib5',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     const project = await db.project.upsert({
       where: { id: 'wqvswgk5n0ucvq8l1ydva3d7' },
@@ -132,7 +135,12 @@ async function seedDueReminder(label: string): Promise<string> {
     const phase = await db.phase.upsert({
       where: { id: 'otvkiihv4ai322i63rhfek4z' },
       update: {},
-      create: { id: 'otvkiihv4ai322i63rhfek4z', projectId: project.id, name: 'Test Phase', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: 'otvkiihv4ai322i63rhfek4z',
+        projectId: project.id,
+        name: 'Test Phase',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     await db.unit.upsert({
       where: { phaseId_unitNumber: { phaseId: phase.id, unitNumber: 'T-001' } },
@@ -264,185 +272,170 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
   }
 }
 
-describe.skipIf(!HAS_DB || !HAS_REDIS)(
-  'T-G4 reminder cron - lease + status-claim',
-  () => {
-    let stubRedis: StubRedis;
-    let prismaService: PrismaService;
-    let reminders: RemindersService;
+describe.skipIf(!HAS_DB || !HAS_REDIS)('T-G4 reminder cron - lease + status-claim', () => {
+  let stubRedis: StubRedis;
+  let prismaService: PrismaService;
+  let reminders: RemindersService;
 
-    beforeAll(async () => {
-      // Seed one due reminder that the happy-path tick can claim.
-      await seedDueReminder('happy');
-    }, 30_000);
+  beforeAll(async () => {
+    // Seed one due reminder that the happy-path tick can claim.
+    await seedDueReminder('happy');
+  }, 30_000);
 
-    afterAll(async () => {
-      await cleanupTestReminders();
-    }, 30_000);
+  afterAll(async () => {
+    await cleanupTestReminders();
+  }, 30_000);
 
-    beforeEach(() => {
-      stubRedis = new StubRedis();
-      prismaService = {
-        $client: prisma as unknown as PrismaClient,
-      } as PrismaService;
-      // Construct with the stub redis. The RedisService type accepts
-      // any object with the three methods we use.
-      reminders = new RemindersService(prismaService, stubRedis as unknown as RedisService);
-      stubRedis.reset();
-    });
+  beforeEach(() => {
+    stubRedis = new StubRedis();
+    prismaService = {
+      $client: prisma as unknown as PrismaClient,
+    } as PrismaService;
+    // Construct with the stub redis. The RedisService type accepts
+    // any object with the three methods we use.
+    reminders = new RemindersService(prismaService, stubRedis as unknown as RedisService);
+    stubRedis.reset();
+  });
 
-    it('happy path: tick claims + delivers the due reminder', async () => {
-      const tickResult = await reminders.tick();
-      expect(tickResult).toBeUndefined();
-      const last = reminders.getLastTick();
-      expect(last).not.toBeNull();
-      expect(last?.lockHeld).toBe(true);
-      // T-CRONS (2026-09-07): the reminder_cron_service RLS policy
-      // lets the CRON_SERVICE actor claim any reminder row regardless
-      // of owner, so updateMany(SCHEDULED → PROCESSING) now returns
-      // >0. The claim count depends on the test fixture state, so we
-      // assert >=1 (we seeded one due reminder in beforeAll). The
-      // delivery adapter is still a no-op until Week 7, so `sent`
-      // stays at 0.
-      expect(last?.claimed).toBeGreaterThan(0);
-      expect(last?.finishedAt).toBeInstanceOf(Date);
-    });
+  it('happy path: tick claims + delivers the due reminder', async () => {
+    const tickResult = await reminders.tick();
+    expect(tickResult).toBeUndefined();
+    const last = reminders.getLastTick();
+    expect(last).not.toBeNull();
+    expect(last?.lockHeld).toBe(true);
+    // T-CRONS (2026-09-07): the reminder_cron_service RLS policy
+    // lets the CRON_SERVICE actor claim any reminder row regardless
+    // of owner, so updateMany(SCHEDULED → PROCESSING) now returns
+    // >0. The claim count depends on the test fixture state, so we
+    // assert >=1 (we seeded one due reminder in beforeAll). The
+    // delivery adapter is still a no-op until Week 7, so `sent`
+    // stays at 0.
+    expect(last?.claimed).toBeGreaterThan(0);
+    expect(last?.finishedAt).toBeInstanceOf(Date);
+  });
 
-    it('lock contention: a second replica is rejected when first holds the lock', async () => {
-      // Manually grab the lock with replica-A's token BEFORE the
-      // service tries to acquire - this simulates the case where
-      // another replica is mid-tick. The service's tick() will then
-      // fail to acquire and return cleanly with lockHeld=false.
-      const REPLICA_A = 'replica-a-test';
-      const acquired = await stubRedis.acquireLock(
-        REMINDER_LOCK_KEY,
-        50,
-        REPLICA_A,
-      );
-      expect(acquired).toBe(true);
+  it('lock contention: a second replica is rejected when first holds the lock', async () => {
+    // Manually grab the lock with replica-A's token BEFORE the
+    // service tries to acquire - this simulates the case where
+    // another replica is mid-tick. The service's tick() will then
+    // fail to acquire and return cleanly with lockHeld=false.
+    const REPLICA_A = 'replica-a-test';
+    const acquired = await stubRedis.acquireLock(REMINDER_LOCK_KEY, 50, REPLICA_A);
+    expect(acquired).toBe(true);
 
-      await reminders.tick();
-      const last = reminders.getLastTick();
-      expect(last?.lockHeld).toBe(false);
-      expect(last?.claimed).toBe(0);
-      expect(last?.sent).toBe(0);
+    await reminders.tick();
+    const last = reminders.getLastTick();
+    expect(last?.lockHeld).toBe(false);
+    expect(last?.claimed).toBe(0);
+    expect(last?.sent).toBe(0);
 
-      // Cleanup: release the manually-acquired lock so the next test
-      // starts clean.
-      await stubRedis.releaseLock(REMINDER_LOCK_KEY, REPLICA_A);
-    });
+    // Cleanup: release the manually-acquired lock so the next test
+    // starts clean.
+    await stubRedis.releaseLock(REMINDER_LOCK_KEY, REPLICA_A);
+  });
 
-    it('lease expiry + status-claim: tick > 60s does not double-fire', async () => {
-      // Simulate the race: replica A claims rows as PROCESSING,
-      // holds the lock past the TTL, replica B acquires after expiry.
-      // B's tick should see zero SCHEDULED rows (A already flipped
-      // them) and exit with claimed=0.
-      //
-      // We exercise the same code path as the real cron tick (the
-      // service.tick() method calls updateMany with the same where
-      // clause). We seed one extra due reminder for this test
-      // (separate from the happy-path one) so the count assertions
-      // don't leak across tests.
-      const seedId = await seedDueReminder('lease');
-      const REPLICA_A = 'replica-a-lease';
-      const REPLICA_B = 'replica-b-lease';
+  it('lease expiry + status-claim: tick > 60s does not double-fire', async () => {
+    // Simulate the race: replica A claims rows as PROCESSING,
+    // holds the lock past the TTL, replica B acquires after expiry.
+    // B's tick should see zero SCHEDULED rows (A already flipped
+    // them) and exit with claimed=0.
+    //
+    // We exercise the same code path as the real cron tick (the
+    // service.tick() method calls updateMany with the same where
+    // clause). We seed one extra due reminder for this test
+    // (separate from the happy-path one) so the count assertions
+    // don't leak across tests.
+    const seedId = await seedDueReminder('lease');
+    const REPLICA_A = 'replica-a-lease';
+    const REPLICA_B = 'replica-b-lease';
 
-      // 1. Replica A acquires the lock (TTL 10s - short so the
-      // same advanceTime that triggers expiry also lets B acquire).
-      const acquired = await stubRedis.acquireLock(
-        REMINDER_LOCK_KEY,
-        10,
-        REPLICA_A,
-      );
-      expect(acquired).toBe(true);
+    // 1. Replica A acquires the lock (TTL 10s - short so the
+    // same advanceTime that triggers expiry also lets B acquire).
+    const acquired = await stubRedis.acquireLock(REMINDER_LOCK_KEY, 10, REPLICA_A);
+    expect(acquired).toBe(true);
 
-      // 2. Replica A's updateMany claims the rows. We call this
-      // directly rather than going through tick() because we want
-      // to skip the renew/release logic - we're simulating a
-      // replica that crashes mid-batch. Wrap in adminSeed so the
-      // claim (an admin-actor UPDATE) succeeds - keeps this test
-      // independent of the CRON_SERVICE code path that the cron
-      // tick uses in production.
-      await adminSeed(async (db) => {
-        const dueBeforeClaim = await db.reminder.count({
-          where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
-        });
-        expect(dueBeforeClaim).toBeGreaterThan(0);
-        const claimResult = await db.reminder.updateMany({
-          where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
-          data: {
-            status: 'PROCESSING',
-            claimedAt: new Date(),
-            claimedBy: REPLICA_A,
-          },
-        });
-        expect(claimResult.count).toBe(dueBeforeClaim);
+    // 2. Replica A's updateMany claims the rows. We call this
+    // directly rather than going through tick() because we want
+    // to skip the renew/release logic - we're simulating a
+    // replica that crashes mid-batch. Wrap in adminSeed so the
+    // claim (an admin-actor UPDATE) succeeds - keeps this test
+    // independent of the CRON_SERVICE code path that the cron
+    // tick uses in production.
+    await adminSeed(async (db) => {
+      const dueBeforeClaim = await db.reminder.count({
+        where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
       });
-
-      // 3. Fast-forward past the lock TTL - Redis would have expired
-      // the key. Our stub mimics that with advanceTime.
-      stubRedis.advanceTime(11_000);
-
-      // 4. Replica B acquires the lock (TTL 10s - short so the
-      // next advanceTime also covers the new TTL window).
-      const reacquired = await stubRedis.acquireLock(
-        REMINDER_LOCK_KEY,
-        10,
-        REPLICA_B,
-      );
-      expect(reacquired).toBe(true);
-
-      // 5. Fast-forward past B's TTL too, so the next acquireLock
-      // (replicaB.tick inside the cron) starts fresh.
-      stubRedis.advanceTime(11_000);
-
-      // 6. Run B's full tick. Its updateMany should find zero
-      // SCHEDULED rows (A already flipped them) - status-claim
-      // catches the race, no duplicate fire.
-      //
-      // Use withReplicaId so replica B uses REPLICA_B as its lock
-      // token (matching the manual acquireLock we did above). The
-      // tick's acquireLock will succeed because we advanced the
-      // fake clock past the TTL - Redis would have expired the key.
-      const replicaB = RemindersService.withReplicaId(
-        prismaService,
-        stubRedis as unknown as RedisService,
-        REPLICA_B,
-      );
-      await replicaB.tick();
-      const lastB = replicaB.getLastTick();
-      expect(lastB?.lockHeld).toBe(true); // B got the lock
-      expect(lastB?.claimed).toBe(0); // status-claim caught the race
-      expect(lastB?.sent).toBe(0); // no fires
-      expect(lastB?.failed).toBe(0);
-
-      // Verify the original row is still PROCESSING (A claimed it,
-      // B did NOT touch it - exactly what we want). Wrap in adminSeed
-      // so the runtime shadhil_app client can bypass the
-      // owner-only reminder_select_owner policy for the assertion.
-      expect(seedId).toBeDefined();
-      const rows = await adminSeed(async (db) =>
-        db.reminder.findMany({
-          where: { id: seedId! },
-          select: { id: true, status: true, claimedBy: true },
-        }),
-      );
-      const afterB = rows[0];
-      expect(afterB?.status).toBe('PROCESSING');
-      expect(afterB?.claimedBy).toBe(REPLICA_A);
-
-      // Cleanup: flip the row back to SCHEDULED + release the lock
-      // so the next test starts clean. Use adminSeed so the
-      // PROCESSING → SCHEDULED update succeeds - the lease-expiry
-      // scenario asserts on admin-driven state changes, not the
-      // CRON_SERVICE code path.
-      await adminSeed(async (db) => {
-        await db.reminder.updateMany({
-          where: { claimedBy: REPLICA_A },
-          data: { status: 'SCHEDULED', claimedAt: null, claimedBy: null },
-        });
+      expect(dueBeforeClaim).toBeGreaterThan(0);
+      const claimResult = await db.reminder.updateMany({
+        where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
+        data: {
+          status: 'PROCESSING',
+          claimedAt: new Date(),
+          claimedBy: REPLICA_A,
+        },
       });
-      await stubRedis.releaseLock(REMINDER_LOCK_KEY, REPLICA_B);
+      expect(claimResult.count).toBe(dueBeforeClaim);
     });
-  },
-);
+
+    // 3. Fast-forward past the lock TTL - Redis would have expired
+    // the key. Our stub mimics that with advanceTime.
+    stubRedis.advanceTime(11_000);
+
+    // 4. Replica B acquires the lock (TTL 10s - short so the
+    // next advanceTime also covers the new TTL window).
+    const reacquired = await stubRedis.acquireLock(REMINDER_LOCK_KEY, 10, REPLICA_B);
+    expect(reacquired).toBe(true);
+
+    // 5. Fast-forward past B's TTL too, so the next acquireLock
+    // (replicaB.tick inside the cron) starts fresh.
+    stubRedis.advanceTime(11_000);
+
+    // 6. Run B's full tick. Its updateMany should find zero
+    // SCHEDULED rows (A already flipped them) - status-claim
+    // catches the race, no duplicate fire.
+    //
+    // Use withReplicaId so replica B uses REPLICA_B as its lock
+    // token (matching the manual acquireLock we did above). The
+    // tick's acquireLock will succeed because we advanced the
+    // fake clock past the TTL - Redis would have expired the key.
+    const replicaB = RemindersService.withReplicaId(
+      prismaService,
+      stubRedis as unknown as RedisService,
+      REPLICA_B,
+    );
+    await replicaB.tick();
+    const lastB = replicaB.getLastTick();
+    expect(lastB?.lockHeld).toBe(true); // B got the lock
+    expect(lastB?.claimed).toBe(0); // status-claim caught the race
+    expect(lastB?.sent).toBe(0); // no fires
+    expect(lastB?.failed).toBe(0);
+
+    // Verify the original row is still PROCESSING (A claimed it,
+    // B did NOT touch it - exactly what we want). Wrap in adminSeed
+    // so the runtime shadhil_app client can bypass the
+    // owner-only reminder_select_owner policy for the assertion.
+    expect(seedId).toBeDefined();
+    const rows = await adminSeed(async (db) =>
+      db.reminder.findMany({
+        where: { id: seedId! },
+        select: { id: true, status: true, claimedBy: true },
+      }),
+    );
+    const afterB = rows[0];
+    expect(afterB?.status).toBe('PROCESSING');
+    expect(afterB?.claimedBy).toBe(REPLICA_A);
+
+    // Cleanup: flip the row back to SCHEDULED + release the lock
+    // so the next test starts clean. Use adminSeed so the
+    // PROCESSING → SCHEDULED update succeeds - the lease-expiry
+    // scenario asserts on admin-driven state changes, not the
+    // CRON_SERVICE code path.
+    await adminSeed(async (db) => {
+      await db.reminder.updateMany({
+        where: { claimedBy: REPLICA_A },
+        data: { status: 'SCHEDULED', claimedAt: null, claimedBy: null },
+      });
+    });
+    await stubRedis.releaseLock(REMINDER_LOCK_KEY, REPLICA_B);
+  });
+});

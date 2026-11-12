@@ -22,7 +22,14 @@
 //
 // Every write emits an AuditLog row inside the same withRlsContext
 // transaction (mirrors leads.service.ts createInTransaction).
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 
@@ -61,9 +68,7 @@ export class ProjectsService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined
   // (same as teams.service.ts / leads.service.ts).
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -78,10 +83,7 @@ export class ProjectsService {
    * users list). When omitted, returns the FULL registry (backward-compatible;
    * the sidebar switcher calls with no params).
    */
-  async list(
-    actor: JwtPayload,
-    filter: ProjectFilterDto = {},
-  ): Promise<ProjectListResult> {
+  async list(actor: JwtPayload, filter: ProjectFilterDto = {}): Promise<ProjectListResult> {
     if (filter.limit === undefined || filter.offset === undefined) {
       // Backward-compatible full-registry path (switcher, no params).
       return this.listAll(actor);
@@ -98,28 +100,25 @@ export class ProjectsService {
       ];
     }
     // Server-source pagination: skip/take from limit/offset (T-PROJ-SRVPG).
-    const [rows, total] = await withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      (tx) =>
-        Promise.all([
-          tx.project.findMany({
-            where,
-            orderBy: { createdAt: 'asc' },
-            select: {
-              id: true,
-              slug: true,
-              name: true,
-              address: true,
-              reraNumber: true,
-              cmdaNumber: true,
-              createdAt: true,
-            },
-            skip: filter.offset,
-            take: filter.limit,
-          }),
-          tx.project.count({ where }),
-        ]),
+    const [rows, total] = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+      Promise.all([
+        tx.project.findMany({
+          where,
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            address: true,
+            reraNumber: true,
+            cmdaNumber: true,
+            createdAt: true,
+          },
+          skip: filter.offset,
+          take: filter.limit,
+        }),
+        tx.project.count({ where }),
+      ]),
     );
     return {
       total,
@@ -137,41 +136,37 @@ export class ProjectsService {
 
   /** Full-registry path (no filter): every active project, oldest first. */
   private async listAll(actor: JwtPayload): Promise<ProjectListResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const [rows, total] = await Promise.all([
-          tx.project.findMany({
-            // T-SOFT-DELETE: only active projects appear in the registry/switcher.
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            select: {
-              id: true,
-              slug: true,
-              name: true,
-              address: true,
-              reraNumber: true,
-              cmdaNumber: true,
-              createdAt: true,
-            },
-          }),
-          tx.project.count({ where: { deletedAt: null } }),
-        ]);
-        return {
-          total,
-          projects: rows.map((r) => ({
-            id: r.id,
-            slug: r.slug,
-            name: r.name,
-            address: r.address,
-            reraNumber: r.reraNumber,
-            cmdaNumber: r.cmdaNumber,
-            createdAt: r.createdAt.toISOString(),
-          })),
-        };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const [rows, total] = await Promise.all([
+        tx.project.findMany({
+          // T-SOFT-DELETE: only active projects appear in the registry/switcher.
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            address: true,
+            reraNumber: true,
+            cmdaNumber: true,
+            createdAt: true,
+          },
+        }),
+        tx.project.count({ where: { deletedAt: null } }),
+      ]);
+      return {
+        total,
+        projects: rows.map((r) => ({
+          id: r.id,
+          slug: r.slug,
+          name: r.name,
+          address: r.address,
+          reraNumber: r.reraNumber,
+          cmdaNumber: r.cmdaNumber,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    });
   }
 
   /**
@@ -202,16 +197,15 @@ export class ProjectsService {
         throw new NotFoundException(`Project ${id} not found.`);
       }
 
-      const [phases, units, options, teams, teamMembers, leads, bookings] =
-        await Promise.all([
-          tx.phase.count({ where: { projectId: id } }),
-          tx.unit.count({ where: { phase: { projectId: id } } }),
-          tx.projectOption.count({ where: { projectId: id } }),
-          tx.projectTeam.count({ where: { projectId: id } }),
-          tx.teamMember.count({ where: { team: { projectTeams: { some: { projectId: id } } } } }),
-          tx.lead.count({ where: { projectId: id } }),
-          tx.booking.count({ where: { unit: { phase: { projectId: id } } } }),
-        ]);
+      const [phases, units, options, teams, teamMembers, leads, bookings] = await Promise.all([
+        tx.phase.count({ where: { projectId: id } }),
+        tx.unit.count({ where: { phase: { projectId: id } } }),
+        tx.projectOption.count({ where: { projectId: id } }),
+        tx.projectTeam.count({ where: { projectId: id } }),
+        tx.teamMember.count({ where: { team: { projectTeams: { some: { projectId: id } } } } }),
+        tx.lead.count({ where: { projectId: id } }),
+        tx.booking.count({ where: { unit: { phase: { projectId: id } } } }),
+      ]);
 
       return {
         id: project.id,
@@ -264,128 +258,128 @@ export class ProjectsService {
   /** Create a project. ADMIN/OWNER only. Slug derived from name. */
   async create(actor: JwtPayload, dto: CreateProjectDto): Promise<ProjectRow> {
     if (!isAdminClass(actor.role)) {
-      throw new ForbiddenException(
-        'Only ADMIN or OWNER can create projects.',
-      );
+      throw new ForbiddenException('Only ADMIN or OWNER can create projects.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const slug = await this.uniqueSlug(
-          tx as unknown as PrismaClient,
-          slugifyProjectName(dto.name),
-          actor.organizationId,
-        );
-        const created = await tx.project.create({
-          data: {
-            name: dto.name,
-            slug,
-            address: dto.address ?? null,
-            reraNumber: dto.reraNumber ?? null,
-            cmdaNumber: dto.cmdaNumber ?? null,
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const slug = await this.uniqueSlug(
+        tx as unknown as PrismaClient,
+        slugifyProjectName(dto.name),
+        actor.organizationId,
+      );
+      const created = await tx.project.create({
+        data: {
+          name: dto.name,
+          slug,
+          address: dto.address ?? null,
+          reraNumber: dto.reraNumber ?? null,
+          cmdaNumber: dto.cmdaNumber ?? null,
+          organizationId: actor.organizationId,
+        },
+      });
+      // Auto-seed the default facing/BHK option sets so a new project's
+      // inventory pickers are immediately usable (the values are still
+      // editable/removable later on the phases page).
+      await tx.projectOption.createMany({
+        data: [
+          {
+            projectId: created.id,
+            type: 'FACING',
+            value: 'North',
             organizationId: actor.organizationId,
           },
-        });
-        // Auto-seed the default facing/BHK option sets so a new project's
-        // inventory pickers are immediately usable (the values are still
-        // editable/removable later on the phases page).
-        await tx.projectOption.createMany({
-          data: [
-            { projectId: created.id, type: 'FACING', value: 'North', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'FACING', value: 'South', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'FACING', value: 'East', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'FACING', value: 'West', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'BHK', value: '1', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'BHK', value: '2', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'BHK', value: '3', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'BHK', value: '4', organizationId: actor.organizationId },
-            { projectId: created.id, type: 'BHK', value: '5', organizationId: actor.organizationId },
-          ],
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'project.create',
+          {
+            projectId: created.id,
+            type: 'FACING',
+            value: 'South',
             organizationId: actor.organizationId,
-            entityType: 'Project',
-            entityId: created.id,
-            after: {
-              name: created.name,
-              slug: created.slug,
-              reraNumber: created.reraNumber,
-              cmdaNumber: created.cmdaNumber,
-            },
-            reason: `project.create by ${actor.email} (${actor.role})`,
           },
-        });
-        return this.toRow(created);
-      },
-    );
+          {
+            projectId: created.id,
+            type: 'FACING',
+            value: 'East',
+            organizationId: actor.organizationId,
+          },
+          {
+            projectId: created.id,
+            type: 'FACING',
+            value: 'West',
+            organizationId: actor.organizationId,
+          },
+          { projectId: created.id, type: 'BHK', value: '1', organizationId: actor.organizationId },
+          { projectId: created.id, type: 'BHK', value: '2', organizationId: actor.organizationId },
+          { projectId: created.id, type: 'BHK', value: '3', organizationId: actor.organizationId },
+          { projectId: created.id, type: 'BHK', value: '4', organizationId: actor.organizationId },
+          { projectId: created.id, type: 'BHK', value: '5', organizationId: actor.organizationId },
+        ],
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'project.create',
+          organizationId: actor.organizationId,
+          entityType: 'Project',
+          entityId: created.id,
+          after: {
+            name: created.name,
+            slug: created.slug,
+            reraNumber: created.reraNumber,
+            cmdaNumber: created.cmdaNumber,
+          },
+          reason: `project.create by ${actor.email} (${actor.role})`,
+        },
+      });
+      return this.toRow(created);
+    });
   }
 
   /**
    * Update name / compliance fields. ADMIN/OWNER only. Slug is immutable
    * (stable identity for the [projectId] route segment).
    */
-  async update(
-    actor: JwtPayload,
-    id: string,
-    dto: UpdateProjectDto,
-  ): Promise<ProjectRow> {
+  async update(actor: JwtPayload, id: string, dto: UpdateProjectDto): Promise<ProjectRow> {
     if (!isAdminClass(actor.role)) {
-      throw new ForbiddenException(
-        'Only ADMIN or OWNER can edit projects.',
-      );
+      throw new ForbiddenException('Only ADMIN or OWNER can edit projects.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // T-SOFT-DELETE (2026-10-01): a soft-deleted project is gone as far as
-        // every read surface is concerned, so it must not be editable either.
-        const existing = await tx.project.findUnique({ where: { id } });
-        if (existing === null || isSoftDeleted(existing)) {
-          throw new NotFoundException(`Project ${id} not found.`);
-        }
-        const updated = await tx.project.update({
-          where: { id },
-          data: {
-            ...(dto.name !== undefined ? { name: dto.name } : {}),
-            ...(dto.address !== undefined ? { address: dto.address ?? null } : {}),
-            ...(dto.reraNumber !== undefined
-              ? { reraNumber: dto.reraNumber ?? null }
-              : {}),
-            ...(dto.cmdaNumber !== undefined
-              ? { cmdaNumber: dto.cmdaNumber ?? null }
-              : {}),
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // T-SOFT-DELETE (2026-10-01): a soft-deleted project is gone as far as
+      // every read surface is concerned, so it must not be editable either.
+      const existing = await tx.project.findUnique({ where: { id } });
+      if (existing === null || isSoftDeleted(existing)) {
+        throw new NotFoundException(`Project ${id} not found.`);
+      }
+      const updated = await tx.project.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.address !== undefined ? { address: dto.address ?? null } : {}),
+          ...(dto.reraNumber !== undefined ? { reraNumber: dto.reraNumber ?? null } : {}),
+          ...(dto.cmdaNumber !== undefined ? { cmdaNumber: dto.cmdaNumber ?? null } : {}),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'project.update',
+          organizationId: actor.organizationId,
+          entityType: 'Project',
+          entityId: id,
+          before: {
+            name: existing.name,
+            address: existing.address,
+            reraNumber: existing.reraNumber,
+            cmdaNumber: existing.cmdaNumber,
           },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'project.update',
-            organizationId: actor.organizationId,
-            entityType: 'Project',
-            entityId: id,
-            before: {
-              name: existing.name,
-              address: existing.address,
-              reraNumber: existing.reraNumber,
-              cmdaNumber: existing.cmdaNumber,
-            },
-            after: {
-              name: updated.name,
-              address: updated.address,
-              reraNumber: updated.reraNumber,
-              cmdaNumber: updated.cmdaNumber,
-            },
-            reason: `project.update by ${actor.email} (${actor.role})`,
+          after: {
+            name: updated.name,
+            address: updated.address,
+            reraNumber: updated.reraNumber,
+            cmdaNumber: updated.cmdaNumber,
           },
-        });
-        return this.toRow(updated);
-      },
-    );
+          reason: `project.update by ${actor.email} (${actor.role})`,
+        },
+      });
+      return this.toRow(updated);
+    });
   }
 
   /**
@@ -399,63 +393,56 @@ export class ProjectsService {
     if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
       throw new ForbiddenException('Only ADMIN or OWNER can delete projects.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await tx.project.findUnique({
-          where: { id },
-          include: { _count: { select: { leads: true } } },
-        });
-        // T-SOFT-DELETE (2026-10-01): re-deleting an already-deleted project
-        // would restamp deletedAt (moving it later) and write a second
-        // project.delete audit row. Reads already 404 it; the write must too.
-        if (existing === null || isSoftDeleted(existing)) {
-          throw new NotFoundException(`Project ${id} not found.`);
-        }
-        // Booking count via the project → phases → units → bookings path.
-        const bookingCount = await tx.booking.count({
-          where: { unit: { phase: { projectId: id } } },
-        });
-        if (bookingCount > 0) {
-          throw new ConflictException(
-            `Project "${existing.name}" still has ${bookingCount} booking(s). ` +
-              'Move or delete the bookings before deleting the project.',
-          );
-        }
-        // Soft delete: stamp deletedAt (keep phases/units/leads in the DB).
-        await tx.project.update({
-          where: { id },
-          data: { deletedAt: new Date() },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'project.delete',
-            organizationId: actor.organizationId,
-            entityType: 'Project',
-            entityId: id,
-            before: {
-              name: existing.name,
-              slug: existing.slug,
-              leadCount: existing._count.leads,
-            },
-            reason: `project.delete (soft) by ${actor.email} (${actor.role})`,
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await tx.project.findUnique({
+        where: { id },
+        include: { _count: { select: { leads: true } } },
+      });
+      // T-SOFT-DELETE (2026-10-01): re-deleting an already-deleted project
+      // would restamp deletedAt (moving it later) and write a second
+      // project.delete audit row. Reads already 404 it; the write must too.
+      if (existing === null || isSoftDeleted(existing)) {
+        throw new NotFoundException(`Project ${id} not found.`);
+      }
+      // Booking count via the project → phases → units → bookings path.
+      const bookingCount = await tx.booking.count({
+        where: { unit: { phase: { projectId: id } } },
+      });
+      if (bookingCount > 0) {
+        throw new ConflictException(
+          `Project "${existing.name}" still has ${bookingCount} booking(s). ` +
+            'Move or delete the bookings before deleting the project.',
+        );
+      }
+      // Soft delete: stamp deletedAt (keep phases/units/leads in the DB).
+      await tx.project.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'project.delete',
+          organizationId: actor.organizationId,
+          entityType: 'Project',
+          entityId: id,
+          before: {
+            name: existing.name,
+            slug: existing.slug,
+            leadCount: existing._count.leads,
           },
-        });
-        return { id };
-      },
-    );
+          reason: `project.delete (soft) by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id };
+    });
   }
 
   /** Slug uniqueness with a -2 / -3 suffix on collision (create only). */
   private async uniqueSlug(
     // The withRlsContext tx is the Omit<>ed client (no lifecycle
     // methods) - the accepted shape per the leads.service.ts convention.
-    tx: Omit<
-      PrismaClient,
-      '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
-    >,
+    tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$use' | '$extends'>,
     base: string,
     organizationId: string,
   ): Promise<string> {
@@ -474,9 +461,7 @@ export class ProjectsService {
       n += 1;
       candidate = `${base}-${n}`;
     }
-    throw new BadRequestException(
-      `Could not derive a unique slug for "${base}".`,
-    );
+    throw new BadRequestException(`Could not derive a unique slug for "${base}".`);
   }
 
   private toRow(row: {

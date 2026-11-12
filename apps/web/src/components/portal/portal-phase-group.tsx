@@ -90,7 +90,7 @@ function EntryRow({
 
       {/* Meta: one line on mobile, two grid columns from sm. */}
       <span className="col-span-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] tracking-[0.1em] text-[var(--portal-ink-2)] uppercase sm:[display:contents]">
-        <span className="sm:col-span-3 sm:order-2 sm:text-right">
+        <span className="sm:order-2 sm:col-span-3 sm:text-right">
           <time dateTime={photo.takenAt} className="portal-figure" data-qa="portal-photo-date">
             {formatDay(photo.takenAt)}
           </time>
@@ -98,11 +98,11 @@ function EntryRow({
         {/* Omitted when the capture recorded none: "Stage not set" belongs on
             the journey, not repeated on every old photo. */}
         {photo.stage !== null ? (
-          <span data-qa="portal-photo-stage" className="sm:col-span-1 sm:order-1">
+          <span data-qa="portal-photo-stage" className="sm:order-1 sm:col-span-1">
             {constructionStageLabel(photo.stage)}
           </span>
         ) : (
-          <span className="hidden sm:col-span-1 sm:order-1 sm:block" aria-hidden="true" />
+          <span className="hidden sm:order-1 sm:col-span-1 sm:block" aria-hidden="true" />
         )}
       </span>
     </Reveal>

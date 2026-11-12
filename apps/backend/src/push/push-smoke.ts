@@ -29,7 +29,9 @@ async function signIn(): Promise<string> {
     body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
   });
   if (!res.ok) {
-    throw new Error(`sign-in failed: ${res.status} ${res.statusText} (is the web app up at ${WEB_ORIGIN}?)`);
+    throw new Error(
+      `sign-in failed: ${res.status} ${res.statusText} (is the web app up at ${WEB_ORIGIN}?)`,
+    );
   }
   const setCookie = res.headers.get('set-cookie');
   const match = setCookie?.match(/better-auth\.session_token=[^;]+/);
@@ -43,7 +45,8 @@ async function registerFakeSubscription(cookie: string): Promise<void> {
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     body: JSON.stringify({
       endpoint: `https://fcm.googleapis.com/fcm/send/test-${randomUUID()}`,
-      p256dh: 'BFlIf_-gP5kDVhtkp14XMxQ4ShmZp8nj6y9xpkTt_JDLC6n-AmWl7j4w9O_axA7xYBrQMNp-UCTx65vcpOv_nLg',
+      p256dh:
+        'BFlIf_-gP5kDVhtkp14XMxQ4ShmZp8nj6y9xpkTt_JDLC6n-AmWl7j4w9O_axA7xYBrQMNp-UCTx65vcpOv_nLg',
       auth: 'bG2NPNJ1VRvzDq5yG13WEmrcHhxAgjQPJuS4FJdXASQ',
       platform: 'WEB',
     }),

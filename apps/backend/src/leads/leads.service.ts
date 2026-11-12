@@ -31,7 +31,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext, rlsContextFrom,
+  withRlsContext,
+  rlsContextFrom,
   Prisma,
   type PrismaClient,
   type Role,
@@ -74,10 +75,7 @@ import {
   recordLeadActivity,
   withDetail,
 } from './lead-activity';
-import {
-  canRoleOwnState,
-  canTransition,
-} from './leads.state-machine';
+import { canRoleOwnState, canTransition } from './leads.state-machine';
 import {
   canUserBeAssignedTo,
   type AssignmentMode,
@@ -107,7 +105,10 @@ export type AutoAssignRouting = {
     | 'creating-team-fallback'; // no team could take it -> creating team's manager / rule chain
   chosenTeamId: string | null;
   previousLastAssignedAt: string | null;
-  skipped: Array<{ teamId: string; reason: 'no-telecallers' | 'at-capacity' | 'no-manager' | 'invalid-manager' }>;
+  skipped: Array<{
+    teamId: string;
+    reason: 'no-telecallers' | 'at-capacity' | 'no-manager' | 'invalid-manager';
+  }>;
 };
 
 type AutoAssignOutcome =
@@ -227,10 +228,7 @@ export class LeadsService {
    * ADMIN/OWNER (their lane is role-based, not team-based - RLS/service
    * checks for those roles never consult this).
    */
-  private async managerTeamIds(
-    tx: PrismaClient,
-    actor: JwtPayload,
-  ): Promise<string[]> {
+  private async managerTeamIds(tx: PrismaClient, actor: JwtPayload): Promise<string[]> {
     if (actor.role !== 'MANAGER') return [];
     return this.teamAccess.getManagedTeamIds(tx as never, actor.sub, actor.organizationId);
   }
@@ -248,9 +246,7 @@ export class LeadsService {
     const where: Record<string, unknown> = {};
 
     if (dto.state !== undefined) {
-      where['state'] = Array.isArray(dto.state)
-        ? { in: dto.state }
-        : dto.state;
+      where['state'] = Array.isArray(dto.state) ? { in: dto.state } : dto.state;
     }
     if (dto.ownerId !== undefined) where['ownerId'] = dto.ownerId;
     if (dto.teamId !== undefined) where['teamId'] = dto.teamId;
@@ -259,10 +255,7 @@ export class LeadsService {
     // search predicate below), because two assignments to the same key
     // silently clobber one another.
     if (dto.linkedUserId !== undefined) {
-      where['OR'] = [
-        { ownerId: dto.linkedUserId },
-        { coOwnerId: dto.linkedUserId },
-      ];
+      where['OR'] = [{ ownerId: dto.linkedUserId }, { coOwnerId: dto.linkedUserId }];
     }
     // T-ProjectSwitch: filter by the active project (sidebar switcher
     // navigates via /[projectId]/... and every list page passes the id).
@@ -419,22 +412,15 @@ export class LeadsService {
    * server-side so pagination returns a consistent order (T-SRVPG).
    */
   async list(actor: JwtPayload, dto: LeadFilterDto): Promise<LeadListResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const conditions = await this.listConditions(
-          tx as unknown as PrismaClient,
-          actor,
-          dto,
-        );
-        const whereSql =
-          conditions.length > 0
-            ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
-            : Prisma.empty;
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const conditions = await this.listConditions(tx as unknown as PrismaClient, actor, dto);
+      const whereSql =
+        conditions.length > 0
+          ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+          : Prisma.empty;
 
-        const [rows, total, overdueCount, newTodayCount] = await Promise.all([
-          tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      const [rows, total, overdueCount, newTodayCount] = await Promise.all([
+        tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
             SELECT "id", "name", "phone", "state", "source", "ownerId",
               "createdAt", "updatedAt", "projectId",
               (SELECT "name" FROM "User" u WHERE u."id" = "Lead"."ownerId") AS "ownerName",
@@ -449,47 +435,46 @@ export class LeadsService {
               ${this.sortOrderSql(dto)}
             LIMIT ${dto.limit} OFFSET ${dto.offset}
           `),
-          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+        tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
             SELECT COUNT(*) AS c FROM "Lead" ${whereSql}
           `),
-          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+        tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
             SELECT COUNT(*) AS c FROM "Lead"
             ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
               "state"='NEW' AND "createdAt" <= now() - interval '30 minutes'
           `),
-          // newTodayCount: created since local midnight AND still NEW - the
-          // SAME definition as the dashboard KPI and `isNewToday()`
-          // (T-STATUS-ONE-TRUTH, 2026-09-28). Was a rolling 24h window, which
-          // meant this line and the dashboard's "New today" counted different
-          // populations for the same words.
-          tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+        // newTodayCount: created since local midnight AND still NEW - the
+        // SAME definition as the dashboard KPI and `isNewToday()`
+        // (T-STATUS-ONE-TRUTH, 2026-09-28). Was a rolling 24h window, which
+        // meant this line and the dashboard's "New today" counted different
+        // populations for the same words.
+        tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
             SELECT COUNT(*) AS c FROM "Lead"
             ${conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')} AND` : Prisma.sql`WHERE`}
               "state"='NEW' AND "createdAt" >= date_trunc('day', now())
           `),
-        ]);
+      ]);
 
-        return {
-          total: Number(total[0]?.c ?? 0),
-          overdueCount: Number(overdueCount[0]?.c ?? 0),
-          newTodayCount: Number(newTodayCount[0]?.c ?? 0),
-          rows: rows.map((r) => ({
-            id: r.id as string,
-            name: r.name as string,
-            phone: r.phone as string,
-            status: r.state as string,
-            source: (r.source as string | null) ?? null,
-            ownerId: r.ownerId as string,
-            ownerName: (r.ownerName as string | null) ?? null,
-            projectId: (r.projectId as string | null) ?? null,
-            projectName: (r.projectName as string | null) ?? null,
-            projectSlug: (r.projectSlug as string | null) ?? null,
-            createdAt: (r.createdAt as Date).toISOString(),
-            updatedAt: (r.updatedAt as Date).toISOString(),
-          })),
-        };
-      },
-    );
+      return {
+        total: Number(total[0]?.c ?? 0),
+        overdueCount: Number(overdueCount[0]?.c ?? 0),
+        newTodayCount: Number(newTodayCount[0]?.c ?? 0),
+        rows: rows.map((r) => ({
+          id: r.id as string,
+          name: r.name as string,
+          phone: r.phone as string,
+          status: r.state as string,
+          source: (r.source as string | null) ?? null,
+          ownerId: r.ownerId as string,
+          ownerName: (r.ownerName as string | null) ?? null,
+          projectId: (r.projectId as string | null) ?? null,
+          projectName: (r.projectName as string | null) ?? null,
+          projectSlug: (r.projectSlug as string | null) ?? null,
+          createdAt: (r.createdAt as Date).toISOString(),
+          updatedAt: (r.updatedAt as Date).toISOString(),
+        })),
+      };
+    });
   }
 
   /**
@@ -508,27 +493,21 @@ export class LeadsService {
     actor: JwtPayload,
     projectId: string | undefined,
   ): Promise<{ newLeads: number }> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const conditions = await this.listConditions(
-          tx as unknown as PrismaClient,
-          actor,
-          { projectId } as LeadFilterDto,
-        );
-        conditions.push(Prisma.sql`"state" = 'NEW'`);
-        const whereSql =
-          conditions.length > 0
-            ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
-            : Prisma.empty;
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const conditions = await this.listConditions(tx as unknown as PrismaClient, actor, {
+        projectId,
+      } as LeadFilterDto);
+      conditions.push(Prisma.sql`"state" = 'NEW'`);
+      const whereSql =
+        conditions.length > 0
+          ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+          : Prisma.empty;
 
-        const [count] = await tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
+      const [count] = await tx.$queryRaw<Array<{ c: bigint }>>(Prisma.sql`
           SELECT COUNT(*) AS c FROM "Lead" ${whereSql}
         `);
-        return { newLeads: Number(count?.c ?? 0) };
-      },
-    );
+      return { newLeads: Number(count?.c ?? 0) };
+    });
   }
 
   /**
@@ -541,52 +520,48 @@ export class LeadsService {
    * found" for this actor).
    */
   async findOne(actor: JwtPayload, leadId: string): Promise<LeadDetail> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const row = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            source: true,
-            state: true,
-            ownerId: true,
-            ownerType: true,
-            coOwnerId: true,
-            teamId: true,
-            projectId: true,
-            createdAt: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-            coOwner: { select: { name: true } },
-          },
-        });
-        if (row === null) {
-          throw new NotFoundException(`Lead ${leadId} not found`);
-        }
-        return {
-          id: row.id,
-          name: row.name,
-          phone: row.phone,
-          email: row.email,
-          source: row.source,
-          status: row.state,
-          ownerId: row.ownerId,
-          ownerName: row.owner?.name ?? null,
-          ownerType: row.ownerType,
-          coOwnerId: row.coOwnerId,
-          coOwnerName: row.coOwner?.name ?? null,
-          teamId: row.teamId,
-          projectId: row.projectId,
-          createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString(),
-        };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const row = await tx.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          source: true,
+          state: true,
+          ownerId: true,
+          ownerType: true,
+          coOwnerId: true,
+          teamId: true,
+          projectId: true,
+          createdAt: true,
+          updatedAt: true,
+          owner: { select: { name: true } },
+          coOwner: { select: { name: true } },
+        },
+      });
+      if (row === null) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        source: row.source,
+        status: row.state,
+        ownerId: row.ownerId,
+        ownerName: row.owner?.name ?? null,
+        ownerType: row.ownerType,
+        coOwnerId: row.coOwnerId,
+        coOwnerName: row.coOwner?.name ?? null,
+        teamId: row.teamId,
+        projectId: row.projectId,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -604,56 +579,52 @@ export class LeadsService {
   ): Promise<LeadActivitiesResponse> {
     const limit = opts.limit ?? LEAD_ACTIVITIES_PAGE_SIZE;
     const before = opts.cursor === undefined ? null : decodeActivityCursor(opts.cursor);
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const lead = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: { id: true },
-        });
-        if (lead === null) {
-          throw new NotFoundException(`Lead ${leadId} not found`);
-        }
-        const rows = await tx.activity.findMany({
-          where:
-            before === null
-              ? { leadId }
-              : {
-                  leadId,
-                  OR: [
-                    { createdAt: { lt: before.createdAt } },
-                    { createdAt: before.createdAt, id: { lt: before.id } },
-                  ],
-                },
-          // Newest first so `take` keeps the newest page; one extra row detects
-          // whether anything older exists. Flipped to oldest-first below.
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: limit + 1,
-          select: {
-            id: true,
-            type: true,
-            body: true,
-            createdAt: true,
-            user: { select: { name: true } },
-          },
-        });
-        const page = rows.slice(0, limit);
-        const oldest = page[page.length - 1];
-        const nextCursor =
-          rows.length > limit && oldest !== undefined
-            ? encodeActivityCursor(oldest.createdAt, oldest.id)
-            : null;
-        const items = page.reverse().map((a) => ({
-          id: a.id,
-          type: a.type,
-          body: a.body,
-          createdAt: a.createdAt.toISOString(),
-          userName: a.user?.name ?? null,
-        }));
-        return { items, nextCursor };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const lead = await tx.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
+      const rows = await tx.activity.findMany({
+        where:
+          before === null
+            ? { leadId }
+            : {
+                leadId,
+                OR: [
+                  { createdAt: { lt: before.createdAt } },
+                  { createdAt: before.createdAt, id: { lt: before.id } },
+                ],
+              },
+        // Newest first so `take` keeps the newest page; one extra row detects
+        // whether anything older exists. Flipped to oldest-first below.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        select: {
+          id: true,
+          type: true,
+          body: true,
+          createdAt: true,
+          user: { select: { name: true } },
+        },
+      });
+      const page = rows.slice(0, limit);
+      const oldest = page[page.length - 1];
+      const nextCursor =
+        rows.length > limit && oldest !== undefined
+          ? encodeActivityCursor(oldest.createdAt, oldest.id)
+          : null;
+      const items = page.reverse().map((a) => ({
+        id: a.id,
+        type: a.type,
+        body: a.body,
+        createdAt: a.createdAt.toISOString(),
+        userName: a.user?.name ?? null,
+      }));
+      return { items, nextCursor };
+    });
   }
 
   /**
@@ -682,10 +653,8 @@ export class LeadsService {
   async create(actor: JwtPayload, dto: CreateLeadDto): Promise<LeadRow> {
     // Public path: open the RLS transaction ourselves, then run the
     // create logic. Returns LeadRow (the list-page projection).
-    const created = await withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      (tx) => this._createWithClient(actor, dto, tx as unknown as PrismaClient),
+    const created = await withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
+      this._createWithClient(actor, dto, tx as unknown as PrismaClient),
     );
     // Notify the assigned owner that a new lead landed in their queue.
     this.emitBestEffort(created.ownerId, {
@@ -841,9 +810,7 @@ export class LeadsService {
       // follow-up scope (not part of this cutover).
       const managedTeamIds = await this.managerTeamIds(client, actor);
       if (managedTeamIds.length === 0) {
-        throw new ForbiddenException(
-          'You do not manage any team - cannot create lead',
-        );
+        throw new ForbiddenException('You do not manage any team - cannot create lead');
       }
       if (dto.teamId !== undefined) {
         if (!managedTeamIds.includes(dto.teamId)) {
@@ -904,9 +871,7 @@ export class LeadsService {
         select: { id: true },
       });
       if (defaultTeam === null) {
-        throw new BadRequestException(
-          'No team exists - create a team before creating leads',
-        );
+        throw new BadRequestException('No team exists - create a team before creating leads');
       }
       teamId = defaultTeam.id;
     }
@@ -983,13 +948,9 @@ export class LeadsService {
         : null;
     const autoRouting: AutoAssignRouting | null = autoAssign?.routing ?? null;
     const autoOwner =
-      autoAssign !== null && autoAssign.kind !== 'fallback-to-engine'
-        ? autoAssign
-        : null;
+      autoAssign !== null && autoAssign.kind !== 'fallback-to-engine' ? autoAssign : null;
 
-    const resolveTarget = async (
-      userId: string,
-    ): Promise<TargetUser | null> => {
+    const resolveTarget = async (userId: string): Promise<TargetUser | null> => {
       // T-ORG-EXPLICIT: `User` has no RLS and the id comes from a
       // ManagerAssignmentRule / Team.defaultAssigneeId - neither of which is
       // org-checked here. Scope the lookup so a stale or cross-org id can never
@@ -1014,8 +975,7 @@ export class LeadsService {
     // the assignedOwnerId branch intentionally sets it null (forced-override),
     // so there is no need for (and no read of) a null initializer here.
     let resolution: ResolverResult | null;
-    const isStaffSelfAssign =
-      actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC';
+    const isStaffSelfAssign = actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC';
 
     if (isStaffSelfAssign) {
       // Hard self-assign: ignore any client-supplied owner override.
@@ -1074,9 +1034,7 @@ export class LeadsService {
       select: { id: true },
     });
     if (existing) {
-      throw new BadRequestException(
-        `Lead with phone ${dto.phone} already exists`,
-      );
+      throw new BadRequestException(`Lead with phone ${dto.phone} already exists`);
     }
 
     // T-LEAD-PROJECT-REQUIRED (2026-09-16): validate the project BEFORE the
@@ -1090,9 +1048,7 @@ export class LeadsService {
       select: { id: true },
     });
     if (project === null) {
-      throw new BadRequestException(
-        `Project ${dto.projectId} not found in your organization`,
-      );
+      throw new BadRequestException(`Project ${dto.projectId} not found in your organization`);
     }
 
     const created = await client.lead.create({
@@ -1108,8 +1064,7 @@ export class LeadsService {
         // empty. toE164 mirrors the webhook's normalization (digits only,
         // leading '+' stripped) so lookup and insert agree.
         phoneE164: toE164(dto.phone),
-        email:
-          dto.email && dto.email.trim().length > 0 ? dto.email : null,
+        email: dto.email && dto.email.trim().length > 0 ? dto.email : null,
         source: dto.source,
         // T-LEAD-PROJECT-REQUIRED (2026-09-16): this was `dto.projectId ?? null`,
         // which is exactly how project-less leads were created. The DTO requires
@@ -1302,10 +1257,7 @@ export class LeadsService {
   }
 
   /** Mirror of the engine's criterion-match logic. */
-  private ruleMatchesCriteria(
-    rule: ManagerAssignmentRule,
-    lead: LeadAttributes,
-  ): boolean {
+  private ruleMatchesCriteria(rule: ManagerAssignmentRule, lead: LeadAttributes): boolean {
     return (
       this.criterionMatches(rule.projectId, lead.projectId) &&
       this.criterionMatches(rule.phaseId, lead.phaseId) &&
@@ -1353,228 +1305,219 @@ export class LeadsService {
    * are follow-ups (T-DOC scope, not in this commit). The audit
    * row IS the durable signal a downstream consumer can replay.
    */
-  async reassign(
-    actor: JwtPayload,
-    dto: ReassignLeadDto,
-  ): Promise<LeadRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // 1. Fetch the lead WITH its current owner + team so the
-        //    role/team checks don't have to be re-issued in tx.
-        const existing = await tx.lead.findUnique({
-          where: { id: dto.leadId },
-          select: {
-            id: true,
-            ownerId: true,
-            ownerType: true,
-            teamId: true,
-            state: true,
-            coOwnerId: true,
-            name: true,
-            phone: true,
-            source: true,
-            project: { select: { id: true, slug: true, name: true } },
-            createdAt: true,
-            owner: { select: { name: true } },
-          },
-        });
-        if (existing === null) {
-          throw new NotFoundException(`Lead ${dto.leadId} not found`);
-        }
+  async reassign(actor: JwtPayload, dto: ReassignLeadDto): Promise<LeadRow> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // 1. Fetch the lead WITH its current owner + team so the
+      //    role/team checks don't have to be re-issued in tx.
+      const existing = await tx.lead.findUnique({
+        where: { id: dto.leadId },
+        select: {
+          id: true,
+          ownerId: true,
+          ownerType: true,
+          teamId: true,
+          state: true,
+          coOwnerId: true,
+          name: true,
+          phone: true,
+          source: true,
+          project: { select: { id: true, slug: true, name: true } },
+          createdAt: true,
+          owner: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Lead ${dto.leadId} not found`);
+      }
 
-        // 2. Actor can reassign this lead at all? Same shape as
-        //    assertCanEditLead (TELECALLER/SALES_EXEC cannot move
-        //    sideways; MANAGER must manage this lead's team; ADMIN/OWNER
-        //    always). T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a
-        //    manager may lead multiple teams, checked via the FULL
-        //    DB-backed managed-team set (Team.managerId) - the legacy
-        //    `actor.teamId` equality fallback is gone (User.teamId no
-        //    longer exists).
-        const managesLeadTeam = async (teamId: string): Promise<boolean> => {
-          if (actor.role !== 'MANAGER') return false;
-          const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
-          return managedTeamIds.includes(teamId);
+      // 2. Actor can reassign this lead at all? Same shape as
+      //    assertCanEditLead (TELECALLER/SALES_EXEC cannot move
+      //    sideways; MANAGER must manage this lead's team; ADMIN/OWNER
+      //    always). T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): a
+      //    manager may lead multiple teams, checked via the FULL
+      //    DB-backed managed-team set (Team.managerId) - the legacy
+      //    `actor.teamId` equality fallback is gone (User.teamId no
+      //    longer exists).
+      const managesLeadTeam = async (teamId: string): Promise<boolean> => {
+        if (actor.role !== 'MANAGER') return false;
+        const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
+        return managedTeamIds.includes(teamId);
+      };
+      if (
+        actor.role !== 'ADMIN' &&
+        actor.role !== 'OWNER' &&
+        !(actor.role === 'MANAGER' && (await managesLeadTeam(existing.teamId)))
+      ) {
+        throw new ForbiddenException('You cannot reassign this lead');
+      }
+
+      // 3. Target user exists + is in the right team? ADMIN can
+      //    move to any user; MANAGER must match one of their teams.
+      //    T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "the right
+      //    team" is resolved via the target's TeamMember rows now
+      //    (User.teamId is gone) - a target can be on multiple teams,
+      //    so a MANAGER's check looks for ANY overlap with their
+      //    managed-team set, and that overlapping team becomes the
+      //    lead's new teamId (below).
+      const [target, targetMemberships] = await Promise.all([
+        // T-ORG-EXPLICIT: a User has `organizationId`, but `User` has no RLS,
+        // so an id-only lookup resolves a user in ANOTHER ORG. Scope it.
+        tx.user.findFirst({
+          where: { id: dto.targetUserId, organizationId: actor.organizationId },
+          select: { id: true, role: true, name: true },
+        }),
+        tx.teamMember.findMany({
+          where: { userId: dto.targetUserId },
+          orderBy: { assignedAt: 'asc' },
+          select: { teamId: true },
+        }),
+      ]);
+      if (target === null) {
+        throw new NotFoundException(`Target user ${dto.targetUserId} not found`);
+      }
+      const targetTeamIds = targetMemberships.map((m) => m.teamId);
+      let targetTeamId: string | null = targetTeamIds[0] ?? null;
+      if (actor.role === 'MANAGER') {
+        const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
+        const overlap = targetTeamIds.find((id) => managedTeamIds.includes(id));
+        if (overlap === undefined) {
+          throw new ForbiddenException(
+            'Manager can only reassign to a user in one of their own teams',
+          );
+        }
+        targetTeamId = overlap;
+      }
+
+      // 4. Target user's role can own the lead at its current
+      //    state? Mirrors the lane rules in the state machine.
+      //    OWNER is treated as ADMIN for this check (OWNER doesn't
+      //    have a lead lane - it can own anything).
+      if (!canRoleOwnState(existing.state, target.role as Role)) {
+        throw new BadRequestException(
+          `Target user's role ${target.role} cannot own a lead in state ${existing.state}`,
+        );
+      }
+
+      // 5. Same-owner reassign is a no-op; return the current row.
+      //    We still want the audit row though - the reason is
+      //    captured in the body and the operation is logically
+      //    a "no-op write" the caller might want to record.
+      const newOwnerType = this.ownerTypeForRole(target.role as Role);
+      const isNoOp = existing.ownerId === target.id;
+
+      if (isNoOp) {
+        return {
+          id: existing.id,
+          name: existing.name,
+          phone: existing.phone,
+          status: existing.state,
+          source: existing.source,
+          ownerId: existing.ownerId,
+          // Same-owner reassign: the owner hasn't changed, so
+          // existing.owner.name is the right value to return.
+          ownerName: existing.owner?.name ?? target.name,
+          projectId: existing.project?.id ?? null,
+          projectName: existing.project?.name ?? null,
+          projectSlug: existing.project?.slug ?? null,
+          createdAt: existing.createdAt.toISOString(),
+          updatedAt: new Date().toISOString(),
         };
-        if (
-          actor.role !== 'ADMIN' &&
-          actor.role !== 'OWNER' &&
-          !(actor.role === 'MANAGER' && (await managesLeadTeam(existing.teamId)))
-        ) {
-          throw new ForbiddenException('You cannot reassign this lead');
-        }
+      }
 
-        // 3. Target user exists + is in the right team? ADMIN can
-        //    move to any user; MANAGER must match one of their teams.
-        //    T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "the right
-        //    team" is resolved via the target's TeamMember rows now
-        //    (User.teamId is gone) - a target can be on multiple teams,
-        //    so a MANAGER's check looks for ANY overlap with their
-        //    managed-team set, and that overlapping team becomes the
-        //    lead's new teamId (below).
-        const [target, targetMemberships] = await Promise.all([
-          // T-ORG-EXPLICIT: a User has `organizationId`, but `User` has no RLS,
-          // so an id-only lookup resolves a user in ANOTHER ORG. Scope it.
-          tx.user.findFirst({
-            where: { id: dto.targetUserId, organizationId: actor.organizationId },
-            select: { id: true, role: true, name: true },
-          }),
-          tx.teamMember.findMany({
-            where: { userId: dto.targetUserId },
-            orderBy: { assignedAt: 'asc' },
-            select: { teamId: true },
-          }),
-        ]);
-        if (target === null) {
-          throw new NotFoundException(
-            `Target user ${dto.targetUserId} not found`,
-          );
-        }
-        const targetTeamIds = targetMemberships.map((m) => m.teamId);
-        let targetTeamId: string | null = targetTeamIds[0] ?? null;
-        if (actor.role === 'MANAGER') {
-          const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
-          const overlap = targetTeamIds.find((id) => managedTeamIds.includes(id));
-          if (overlap === undefined) {
-            throw new ForbiddenException(
-              'Manager can only reassign to a user in one of their own teams',
-            );
-          }
-          targetTeamId = overlap;
-        }
+      // 6. Update the lead + the audit row, in one transaction.
+      //    coOwnerId is omitted (not set to null) - the Prisma
+      //    client treats undefined as "skip this field". We don't
+      //    want to write to the column at all in the same-owner
+      //    no-op branch above; here, where we ARE writing, we
+      //    intentionally preserve the previous coOwnerId value
+      //    for now (the plan's "coOwnerId cleanup" is a follow-up
+      //    once we have a dedicated coOwner endpoint). (See the
+      //    "reassign" TODO below for the cleanup pass.)
+      //
+      //    teamId: Lead.teamId is NOT NULL. If the target user has
+      //    a team, the lead follows them (for a MANAGER this is
+      //    specifically the OVERLAPPING team resolved above; for
+      //    ADMIN/OWNER, the target's first team). If the target has no
+      //    team (rare - only OWNER, in current data), the lead
+      //    keeps its existing teamId. ADMIN is the only role that
+      //    can assign to a team-less user (MANAGER is gated by
+      //    the team-mismatch check above).
+      const newTeamId = targetTeamId ?? existing.teamId;
+      const updated = await tx.lead.update({
+        where: { id: existing.id },
+        data: {
+          ownerId: target.id,
+          ownerType: newOwnerType,
+          teamId: newTeamId,
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          state: true,
+          source: true,
+          ownerId: true,
+          createdAt: true,
+          updatedAt: true,
+          project: { select: { id: true, slug: true, name: true } },
+        },
+      });
 
-        // 4. Target user's role can own the lead at its current
-        //    state? Mirrors the lane rules in the state machine.
-        //    OWNER is treated as ADMIN for this check (OWNER doesn't
-        //    have a lead lane - it can own anything).
-        if (!canRoleOwnState(existing.state, target.role as Role)) {
-          throw new BadRequestException(
-            `Target user's role ${target.role} cannot own a lead in state ${existing.state}`,
-          );
-        }
-
-        // 5. Same-owner reassign is a no-op; return the current row.
-        //    We still want the audit row though - the reason is
-        //    captured in the body and the operation is logically
-        //    a "no-op write" the caller might want to record.
-        const newOwnerType = this.ownerTypeForRole(target.role as Role);
-        const isNoOp = existing.ownerId === target.id;
-
-        if (isNoOp) {
-          return {
-            id: existing.id,
-            name: existing.name,
-            phone: existing.phone,
-            status: existing.state,
-            source: existing.source,
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'lead.reassign',
+          entityType: 'Lead',
+          entityId: updated.id,
+          before: {
             ownerId: existing.ownerId,
-            // Same-owner reassign: the owner hasn't changed, so
-            // existing.owner.name is the right value to return.
-            ownerName: existing.owner?.name ?? target.name,
-            projectId: existing.project?.id ?? null,
-            projectName: existing.project?.name ?? null,
-            projectSlug: existing.project?.slug ?? null,
-            createdAt: existing.createdAt.toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-
-        // 6. Update the lead + the audit row, in one transaction.
-        //    coOwnerId is omitted (not set to null) - the Prisma
-        //    client treats undefined as "skip this field". We don't
-        //    want to write to the column at all in the same-owner
-        //    no-op branch above; here, where we ARE writing, we
-        //    intentionally preserve the previous coOwnerId value
-        //    for now (the plan's "coOwnerId cleanup" is a follow-up
-        //    once we have a dedicated coOwner endpoint). (See the
-        //    "reassign" TODO below for the cleanup pass.)
-        //
-        //    teamId: Lead.teamId is NOT NULL. If the target user has
-        //    a team, the lead follows them (for a MANAGER this is
-        //    specifically the OVERLAPPING team resolved above; for
-        //    ADMIN/OWNER, the target's first team). If the target has no
-        //    team (rare - only OWNER, in current data), the lead
-        //    keeps its existing teamId. ADMIN is the only role that
-        //    can assign to a team-less user (MANAGER is gated by
-        //    the team-mismatch check above).
-        const newTeamId = targetTeamId ?? existing.teamId;
-        const updated = await tx.lead.update({
-          where: { id: existing.id },
-          data: {
-            ownerId: target.id,
+            ownerType: existing.ownerType,
+            teamId: existing.teamId,
+            coOwnerId: existing.coOwnerId,
+          },
+          after: {
+            ownerId: updated.ownerId,
             ownerType: newOwnerType,
             teamId: newTeamId,
+            coOwnerId: existing.coOwnerId,
           },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            state: true,
-            source: true,
-            ownerId: true,
-            createdAt: true,
-            updatedAt: true,
-            project: { select: { id: true, slug: true, name: true } },
-          },
-        });
+          reason: dto.reason,
+        },
+      });
 
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'lead.reassign',
-            entityType: 'Lead',
-            entityId: updated.id,
-            before: {
-              ownerId: existing.ownerId,
-              ownerType: existing.ownerType,
-              teamId: existing.teamId,
-              coOwnerId: existing.coOwnerId,
-            },
-            after: {
-              ownerId: updated.ownerId,
-              ownerType: newOwnerType,
-              teamId: newTeamId,
-              coOwnerId: existing.coOwnerId,
-            },
-            reason: dto.reason,
-          },
-        });
+      await recordLeadActivity(tx, actor, {
+        leadId: updated.id,
+        type: 'ASSIGNMENT',
+        body: withDetail(
+          `Reassigned from ${existing.owner?.name ?? 'nobody'} to ${target.name}`,
+          dto.reason,
+        ),
+      });
 
-        await recordLeadActivity(tx, actor, {
-          leadId: updated.id,
-          type: 'ASSIGNMENT',
-          body: withDetail(
-            `Reassigned from ${existing.owner?.name ?? 'nobody'} to ${target.name}`,
-            dto.reason,
-          ),
-        });
+      // Notify the new owner that the lead was handed to them.
+      this.emitBestEffort(target.id, {
+        type: 'lead.reassigned',
+        title: 'Lead reassigned to you',
+        body: `${updated.name} was assigned to you.`,
+        leadId: updated.id,
+      });
 
-        // Notify the new owner that the lead was handed to them.
-        this.emitBestEffort(target.id, {
-          type: 'lead.reassigned',
-          title: 'Lead reassigned to you',
-          body: `${updated.name} was assigned to you.`,
-          leadId: updated.id,
-        });
-
-        return {
-          id: updated.id,
-          name: updated.name,
-          phone: updated.phone,
-          status: updated.state,
-          source: updated.source,
-          ownerId: updated.ownerId,
-          ownerName: target.name,
-          projectId: updated.project?.id ?? null,
-          projectName: updated.project?.name ?? null,
-          projectSlug: updated.project?.slug ?? null,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
-    );
+      return {
+        id: updated.id,
+        name: updated.name,
+        phone: updated.phone,
+        status: updated.state,
+        source: updated.source,
+        ownerId: updated.ownerId,
+        ownerName: target.name,
+        projectId: updated.project?.id ?? null,
+        projectName: updated.project?.name ?? null,
+        projectSlug: updated.project?.slug ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -1587,172 +1530,157 @@ export class LeadsService {
    *   - The co-owner must be an assignable role (TELECALLER/SALES_EXEC/
    *     MANAGER) and cannot be the lead's owner.
    */
-  async setCoOwner(
-    actor: JwtPayload,
-    dto: SetLeadCoOwnerDto,
-  ): Promise<LeadRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // 1. Fetch the lead + current owner/team.
-        const existing = await tx.lead.findUnique({
-          where: { id: dto.leadId },
-          select: {
-            id: true,
-            ownerId: true,
-            ownerType: true,
-            teamId: true,
-            state: true,
-            coOwnerId: true,
-            name: true,
-            phone: true,
-            source: true,
-            project: { select: { id: true, slug: true, name: true } },
-            createdAt: true,
-            owner: { select: { name: true } },
-            coOwner: { select: { name: true } },
-          },
+  async setCoOwner(actor: JwtPayload, dto: SetLeadCoOwnerDto): Promise<LeadRow> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // 1. Fetch the lead + current owner/team.
+      const existing = await tx.lead.findUnique({
+        where: { id: dto.leadId },
+        select: {
+          id: true,
+          ownerId: true,
+          ownerType: true,
+          teamId: true,
+          state: true,
+          coOwnerId: true,
+          name: true,
+          phone: true,
+          source: true,
+          project: { select: { id: true, slug: true, name: true } },
+          createdAt: true,
+          owner: { select: { name: true } },
+          coOwner: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Lead ${dto.leadId} not found`);
+      }
+
+      // 2. Actor can set a co-owner on this lead at all? T-TEAM-
+      //    AUTHORITATIVE (2026-09-13 clean cutover): checks membership
+      //    in the actor's FULL DB-backed managed-team set (a manager
+      //    may lead multiple teams) - the legacy `actor.teamId`
+      //    equality fallback is gone (User.teamId no longer exists).
+      const managesLeadTeam = async (teamId: string): Promise<boolean> => {
+        if (actor.role !== 'MANAGER') return false;
+        const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
+        return managedTeamIds.includes(teamId);
+      };
+      if (
+        actor.role !== 'ADMIN' &&
+        actor.role !== 'OWNER' &&
+        !(actor.role === 'MANAGER' && (await managesLeadTeam(existing.teamId)))
+      ) {
+        throw new ForbiddenException('You cannot assign a co-owner to this lead');
+      }
+
+      // 3. Resolve + validate the target (or clear).
+      let newCoOwnerId: string | null = null;
+      let newCoOwnerName: string | null = null;
+      if (dto.coOwnerId !== null) {
+        // T-ORG-EXPLICIT: scope the co-owner lookup to the actor's org.
+        const target = await tx.user.findFirst({
+          where: { id: dto.coOwnerId, organizationId: actor.organizationId },
+          select: { id: true, role: true, name: true },
         });
-        if (existing === null) {
-          throw new NotFoundException(`Lead ${dto.leadId} not found`);
+        if (target === null) {
+          throw new NotFoundException(`Co-owner user ${dto.coOwnerId} not found`);
         }
-
-        // 2. Actor can set a co-owner on this lead at all? T-TEAM-
-        //    AUTHORITATIVE (2026-09-13 clean cutover): checks membership
-        //    in the actor's FULL DB-backed managed-team set (a manager
-        //    may lead multiple teams) - the legacy `actor.teamId`
-        //    equality fallback is gone (User.teamId no longer exists).
-        const managesLeadTeam = async (teamId: string): Promise<boolean> => {
-          if (actor.role !== 'MANAGER') return false;
-          const managedTeamIds = await this.managerTeamIds(tx as unknown as PrismaClient, actor);
-          return managedTeamIds.includes(teamId);
-        };
-        if (
-          actor.role !== 'ADMIN' &&
-          actor.role !== 'OWNER' &&
-          !(actor.role === 'MANAGER' && (await managesLeadTeam(existing.teamId)))
-        ) {
-          throw new ForbiddenException(
-            'You cannot assign a co-owner to this lead',
-          );
-        }
-
-        // 3. Resolve + validate the target (or clear).
-        let newCoOwnerId: string | null = null;
-        let newCoOwnerName: string | null = null;
-        if (dto.coOwnerId !== null) {
-          // T-ORG-EXPLICIT: scope the co-owner lookup to the actor's org.
-          const target = await tx.user.findFirst({
-            where: { id: dto.coOwnerId, organizationId: actor.organizationId },
-            select: { id: true, role: true, name: true },
-          });
-          if (target === null) {
-            throw new NotFoundException(
-              `Co-owner user ${dto.coOwnerId} not found`,
+        // MANAGER may only co-own within one of their own teams.
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via
+        // the target's TeamMember rows (User.teamId is gone) - any
+        // overlap with the manager's managed-team set qualifies.
+        if (actor.role === 'MANAGER') {
+          const [managedTeamIds, targetMemberships] = await Promise.all([
+            this.managerTeamIds(tx as unknown as PrismaClient, actor),
+            tx.teamMember.findMany({
+              where: { userId: target.id, organizationId: actor.organizationId },
+              select: { teamId: true },
+            }),
+          ]);
+          const hasOverlap = targetMemberships.some((m) => managedTeamIds.includes(m.teamId));
+          if (!hasOverlap) {
+            throw new ForbiddenException(
+              'Manager can only assign a co-owner in one of their own teams',
             );
           }
-          // MANAGER may only co-own within one of their own teams.
-          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via
-          // the target's TeamMember rows (User.teamId is gone) - any
-          // overlap with the manager's managed-team set qualifies.
-          if (actor.role === 'MANAGER') {
-            const [managedTeamIds, targetMemberships] = await Promise.all([
-              this.managerTeamIds(tx as unknown as PrismaClient, actor),
-              tx.teamMember.findMany({
-                where: { userId: target.id, organizationId: actor.organizationId },
-                select: { teamId: true },
-              }),
-            ]);
-            const hasOverlap = targetMemberships.some((m) => managedTeamIds.includes(m.teamId));
-            if (!hasOverlap) {
-              throw new ForbiddenException(
-                'Manager can only assign a co-owner in one of their own teams',
-              );
-            }
-          }
-          // Co-owner must be an assignable role (can work the lead). The
-          // owner + manager lane both hold here for co-ownership.
-          if (!canUserBeAssignedTo(target) && target.role !== 'MANAGER') {
-            throw new BadRequestException(
-              `User's role ${target.role} cannot be a lead co-owner`,
-            );
-          }
-          // Cannot co-own your own lead.
-          if (target.id === existing.ownerId) {
-            throw new BadRequestException(
-              'The lead owner cannot also be the co-owner',
-            );
-          }
-          newCoOwnerId = target.id;
-          newCoOwnerName = target.name;
         }
-
-        // 4. Update + audit in one transaction. A no-op (unchanged
-        //    co-owner) is still recorded for the audit trail.
-        const isNoOp = existing.coOwnerId === newCoOwnerId;
-
-        const updated = await tx.lead.update({
-          where: { id: existing.id },
-          data: { coOwnerId: newCoOwnerId },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            state: true,
-            source: true,
-            ownerId: true,
-            coOwnerId: true,
-            createdAt: true,
-            updatedAt: true,
-            project: { select: { id: true, slug: true, name: true } },
-          },
-        });
-
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: isNoOp ? 'lead.co_owner.noop' : 'lead.co_owner',
-            entityType: 'Lead',
-            entityId: updated.id,
-            before: { coOwnerId: existing.coOwnerId },
-            after: { coOwnerId: updated.coOwnerId },
-            reason: dto.reason,
-          },
-        });
-
-        // An unchanged co-owner leaves an audit row but nothing worth showing
-        // on the timeline.
-        if (!isNoOp) {
-          await recordLeadActivity(tx, actor, {
-            leadId: updated.id,
-            type: 'ASSIGNMENT',
-            body: withDetail(
-              newCoOwnerName !== null
-                ? `Co-owner set: ${newCoOwnerName}`
-                : `Co-owner cleared: ${existing.coOwner?.name ?? 'none'}`,
-              dto.reason,
-            ),
-          });
+        // Co-owner must be an assignable role (can work the lead). The
+        // owner + manager lane both hold here for co-ownership.
+        if (!canUserBeAssignedTo(target) && target.role !== 'MANAGER') {
+          throw new BadRequestException(`User's role ${target.role} cannot be a lead co-owner`);
         }
+        // Cannot co-own your own lead.
+        if (target.id === existing.ownerId) {
+          throw new BadRequestException('The lead owner cannot also be the co-owner');
+        }
+        newCoOwnerId = target.id;
+        newCoOwnerName = target.name;
+      }
 
-        return {
-          id: updated.id,
-          name: updated.name,
-          phone: updated.phone,
-          status: updated.state,
-          source: updated.source,
-          ownerId: updated.ownerId,
-          ownerName: existing.owner?.name ?? null,
-          projectId: updated.project?.id ?? null,
-          projectName: updated.project?.name ?? null,
-          projectSlug: updated.project?.slug ?? null,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
-    );
+      // 4. Update + audit in one transaction. A no-op (unchanged
+      //    co-owner) is still recorded for the audit trail.
+      const isNoOp = existing.coOwnerId === newCoOwnerId;
+
+      const updated = await tx.lead.update({
+        where: { id: existing.id },
+        data: { coOwnerId: newCoOwnerId },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          state: true,
+          source: true,
+          ownerId: true,
+          coOwnerId: true,
+          createdAt: true,
+          updatedAt: true,
+          project: { select: { id: true, slug: true, name: true } },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: isNoOp ? 'lead.co_owner.noop' : 'lead.co_owner',
+          entityType: 'Lead',
+          entityId: updated.id,
+          before: { coOwnerId: existing.coOwnerId },
+          after: { coOwnerId: updated.coOwnerId },
+          reason: dto.reason,
+        },
+      });
+
+      // An unchanged co-owner leaves an audit row but nothing worth showing
+      // on the timeline.
+      if (!isNoOp) {
+        await recordLeadActivity(tx, actor, {
+          leadId: updated.id,
+          type: 'ASSIGNMENT',
+          body: withDetail(
+            newCoOwnerName !== null
+              ? `Co-owner set: ${newCoOwnerName}`
+              : `Co-owner cleared: ${existing.coOwner?.name ?? 'none'}`,
+            dto.reason,
+          ),
+        });
+      }
+
+      return {
+        id: updated.id,
+        name: updated.name,
+        phone: updated.phone,
+        status: updated.state,
+        source: updated.source,
+        ownerId: updated.ownerId,
+        ownerName: existing.owner?.name ?? null,
+        projectId: updated.project?.id ?? null,
+        projectName: updated.project?.name ?? null,
+        projectSlug: updated.project?.slug ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -1760,99 +1688,99 @@ export class LeadsService {
    * through the dedicated transition endpoint so the state-machine guard
    * always runs.
    */
-  async update(
-    actor: JwtPayload,
-    leadId: string,
-    dto: UpdateLeadDto,
-  ): Promise<LeadRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: {
-            id: true,
-            ownerId: true,
-            coOwnerId: true,
-            teamId: true,
-            name: true,
-            email: true,
-            phone: true,
-            state: true,
-            source: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-            project: { select: { id: true, slug: true, name: true } },
-          },
-        });
-        if (!existing) {
-          throw new NotFoundException(`Lead ${leadId} not found`);
-        }
+  async update(actor: JwtPayload, leadId: string, dto: UpdateLeadDto): Promise<LeadRow> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await tx.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          id: true,
+          ownerId: true,
+          coOwnerId: true,
+          teamId: true,
+          name: true,
+          email: true,
+          phone: true,
+          state: true,
+          source: true,
+          updatedAt: true,
+          owner: { select: { name: true } },
+          project: { select: { id: true, slug: true, name: true } },
+        },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
 
-        // Role lane: staff can only edit their own leads (or ones they
-        // co-own); manager can edit any lead in a team they lead; admin/owner
-        // can edit any.
-        await this.assertCanEditLead(tx as unknown as PrismaClient, actor, existing.ownerId, existing.coOwnerId, existing.teamId);
+      // Role lane: staff can only edit their own leads (or ones they
+      // co-own); manager can edit any lead in a team they lead; admin/owner
+      // can edit any.
+      await this.assertCanEditLead(
+        tx as unknown as PrismaClient,
+        actor,
+        existing.ownerId,
+        existing.coOwnerId,
+        existing.teamId,
+      );
 
-        const updated = await tx.lead.update({
-          where: { id: leadId },
-          data: {
-            ...(dto.name !== undefined ? { name: dto.name } : {}),
-            ...(dto.email !== undefined ? { email: dto.email && dto.email.trim().length > 0 ? dto.email : null } : {}),
-            ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-          },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            state: true,
-            source: true,
-            ownerId: true,
-            createdAt: true,
-            updatedAt: true,
-            owner: { select: { name: true } },
-            project: { select: { id: true, slug: true, name: true } },
-          },
-        });
+      const updated = await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.email !== undefined
+            ? { email: dto.email && dto.email.trim().length > 0 ? dto.email : null }
+            : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          state: true,
+          source: true,
+          ownerId: true,
+          createdAt: true,
+          updatedAt: true,
+          owner: { select: { name: true } },
+          project: { select: { id: true, slug: true, name: true } },
+        },
+      });
 
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'lead.update',
-            entityType: 'Lead',
-            entityId: updated.id,
-            before: {
-              name: existing.name,
-              email: existing.email,
-              phone: existing.phone,
-            },
-            after: {
-              name: updated.name,
-              email: dto.email,
-              phone: updated.phone,
-            },
-            reason: `lead.update by ${actor.email} (${actor.role})`,
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'lead.update',
+          entityType: 'Lead',
+          entityId: updated.id,
+          before: {
+            name: existing.name,
+            email: existing.email,
+            phone: existing.phone,
           },
-        });
+          after: {
+            name: updated.name,
+            email: dto.email,
+            phone: updated.phone,
+          },
+          reason: `lead.update by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        return {
-          id: updated.id,
-          name: updated.name,
-          phone: updated.phone,
-          status: updated.state,
-          source: updated.source,
-          ownerId: updated.ownerId,
-          ownerName: updated.owner?.name ?? null,
-          projectId: updated.project?.id ?? null,
-          projectName: updated.project?.name ?? null,
-          projectSlug: updated.project?.slug ?? null,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
-    );
+      return {
+        id: updated.id,
+        name: updated.name,
+        phone: updated.phone,
+        status: updated.state,
+        source: updated.source,
+        ownerId: updated.ownerId,
+        ownerName: updated.owner?.name ?? null,
+        projectId: updated.project?.id ?? null,
+        projectName: updated.project?.name ?? null,
+        projectSlug: updated.project?.slug ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -1860,15 +1788,9 @@ export class LeadsService {
    * Re-reads the lead inside the RLS transaction so the state-machine
    * guard sees the ACTUAL current state, not the client's stale view.
    */
-  async transition(
-    actor: JwtPayload,
-    dto: LeadStateTransitionDto,
-  ): Promise<LeadRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) =>
-        this.applyTransition(actor, dto, tx as unknown as PrismaClient, 'auto'),
+  async transition(actor: JwtPayload, dto: LeadStateTransitionDto): Promise<LeadRow> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) =>
+      this.applyTransition(actor, dto, tx as unknown as PrismaClient, 'auto'),
     );
   }
 
@@ -2055,12 +1977,7 @@ export class LeadsService {
     // @shadhil/api-types; this REPLACES the old dead-lead-only close, which let a
     // lead walk to WON while its visit stayed SCHEDULED in "Today's visits".
     if (existing.state !== updated.state) {
-      await syncVisitsToLeadState(
-        tx as unknown as PrismaClient,
-        actor,
-        updated.id,
-        updated.state,
-      );
+      await syncVisitsToLeadState(tx as unknown as PrismaClient, actor, updated.id, updated.state);
     }
 
     // Notify the lead's owner that its state changed (e.g. a visit was
@@ -2119,99 +2036,93 @@ export class LeadsService {
    */
   async delete(actor: JwtPayload, leadId: string): Promise<{ id: string }> {
     if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
-      throw new ForbiddenException(
-        'Only admins and managers (owner/admin) can delete leads',
-      );
+      throw new ForbiddenException('Only admins and managers (owner/admin) can delete leads');
     }
 
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // Full row first: it becomes the audit before-snapshot AND the
-        // 0-rows classifier (was it ever there? was it blocked?).
-        const existing = await tx.lead.findUnique({
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Full row first: it becomes the audit before-snapshot AND the
+      // 0-rows classifier (was it ever there? was it blocked?).
+      const existing = await tx.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          phoneE164: true,
+          email: true,
+          source: true,
+          state: true,
+          ownerId: true,
+          ownerType: true,
+          coOwnerId: true,
+          teamId: true,
+          projectId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
+
+      // Atomic guarded delete: only removes the row when it is safe
+      // to remove (not WON, no bookings of any status). RLS additionally
+      // scopes this to rows the admin can see.
+      const deleted = await tx.lead.deleteMany({
+        where: {
+          id: leadId,
+          state: { not: 'WON' },
+          bookings: { none: {} },
+        },
+      });
+
+      if (deleted.count === 0) {
+        // The row existed when we read it but the guard refused it -
+        // name the blocker for the operator (re-read is same-tx, so
+        // the state we report is the state the delete saw).
+        const blocker = await tx.lead.findUnique({
           where: { id: leadId },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            phoneE164: true,
-            email: true,
-            source: true,
-            state: true,
-            ownerId: true,
-            ownerType: true,
-            coOwnerId: true,
-            teamId: true,
-            projectId: true,
-            createdAt: true,
-            updatedAt: true,
-          },
+          select: { state: true, bookings: { select: { id: true } } },
         });
-        if (existing === null) {
+        if (blocker === null) {
+          // Vanished between our read and the delete: a concurrent
+          // admin won the race. Typed 404 (not P2025-as-500).
           throw new NotFoundException(`Lead ${leadId} not found`);
         }
-
-        // Atomic guarded delete: only removes the row when it is safe
-        // to remove (not WON, no bookings of any status). RLS additionally
-        // scopes this to rows the admin can see.
-        const deleted = await tx.lead.deleteMany({
-          where: {
-            id: leadId,
-            state: { not: 'WON' },
-            bookings: { none: {} },
-          },
-        });
-
-        if (deleted.count === 0) {
-          // The row existed when we read it but the guard refused it -
-          // name the blocker for the operator (re-read is same-tx, so
-          // the state we report is the state the delete saw).
-          const blocker = await tx.lead.findUnique({
-            where: { id: leadId },
-            select: { state: true, bookings: { select: { id: true } } },
-          });
-          if (blocker === null) {
-            // Vanished between our read and the delete: a concurrent
-            // admin won the race. Typed 404 (not P2025-as-500).
-            throw new NotFoundException(`Lead ${leadId} not found`);
-          }
-          if (blocker.state === 'WON') {
-            throw new ConflictException(
-              'This lead is WON - it cannot be deleted. Close it as LOST instead if the deal fell through.',
-            );
-          }
+        if (blocker.state === 'WON') {
           throw new ConflictException(
-            'This lead has bookings. Deleting it would erase booking history - cancel the booking or close the lead as LOST instead.',
+            'This lead is WON - it cannot be deleted. Close it as LOST instead if the deal fell through.',
           );
         }
+        throw new ConflictException(
+          'This lead has bookings. Deleting it would erase booking history - cancel the booking or close the lead as LOST instead.',
+        );
+      }
 
-        // D19: WhatsappUnknownContact.convertedToLeadId is a bare unique
-        // string (no FK) - the cascade never nulls it. Same tx keeps the
-        // convert-flow accounting consistent with the delete.
-        await tx.whatsappUnknownContact.updateMany({
-          where: { convertedToLeadId: leadId },
-          data: { convertedToLeadId: null },
-        });
+      // D19: WhatsappUnknownContact.convertedToLeadId is a bare unique
+      // string (no FK) - the cascade never nulls it. Same tx keeps the
+      // convert-flow accounting consistent with the delete.
+      await tx.whatsappUnknownContact.updateMany({
+        where: { convertedToLeadId: leadId },
+        data: { convertedToLeadId: null },
+      });
 
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'lead.delete',
-            entityType: 'Lead',
-            entityId: leadId,
-            // The lead row is GONE after this tx - this JSON snapshot is
-            // the only remaining record of what was deleted.
-            before: { ...existing },
-            reason: `lead.delete by ${actor.email} (${actor.role})`,
-          },
-        });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'lead.delete',
+          entityType: 'Lead',
+          entityId: leadId,
+          // The lead row is GONE after this tx - this JSON snapshot is
+          // the only remaining record of what was deleted.
+          before: { ...existing },
+          reason: `lead.delete by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        return { id: leadId };
-      },
-    );
+      return { id: leadId };
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -2291,7 +2202,12 @@ export class LeadsService {
   private async resolveAutoAssign(
     client: PrismaClient,
     actor: JwtPayload,
-    teamRow: { id: string; managerId: string | null; autoAssignLeads: boolean; defaultAssigneeId: string | null },
+    teamRow: {
+      id: string;
+      managerId: string | null;
+      autoAssignLeads: boolean;
+      defaultAssigneeId: string | null;
+    },
     dto: CreateLeadDto,
   ): Promise<AutoAssignOutcome> {
     const skipped: AutoAssignRouting['skipped'] = [];
@@ -2313,9 +2229,7 @@ export class LeadsService {
     if (teamRow.managerId !== null && !creatingManagerOk) {
       skipped.push({ teamId: teamRow.id, reason: 'invalid-manager' });
     }
-    const creatingTeamManager = (
-      branch: AutoAssignRouting['branch'],
-    ): AutoAssignOutcome => {
+    const creatingTeamManager = (branch: AutoAssignRouting['branch']): AutoAssignOutcome => {
       const routing: AutoAssignRouting = {
         branch,
         chosenTeamId: creatingManagerOk ? teamRow.id : null,
@@ -2342,9 +2256,7 @@ export class LeadsService {
 
     // Serialize routing per project. Held until the surrounding transaction
     // commits/rolls back, so the cursor and load reads below cannot go stale.
-    await client.$executeRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${dto.projectId}))`,
-    );
+    await client.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${dto.projectId}))`);
 
     const projectTeams = await client.projectTeam.findMany({
       where: { projectId: dto.projectId, organizationId: actor.organizationId },
@@ -2483,9 +2395,7 @@ export class LeadsService {
     actor: JwtPayload,
     projectId: string,
   ): Promise<string | null> {
-    await client.$executeRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`,
-    );
+    await client.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`);
     const projectTeams = await client.projectTeam.findMany({
       where: { projectId, organizationId: actor.organizationId },
       select: {

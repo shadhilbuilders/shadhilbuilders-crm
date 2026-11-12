@@ -22,14 +22,7 @@
 // docs/planning/IMPLEMENTATION-PLAN-v1.md calls for an "integration
 // test" for reassign specifically.
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 import { createId } from '@paralleldrive/cuid2';
@@ -288,7 +281,11 @@ afterAll(async () => {
       where: {
         OR: [
           { entityType: 'Lead', entityId: { in: TEST_LEAD_IDS } },
-          { userId: { in: [TC_A_ID, TC_A2_ID, TC_B_ID, SE_A_ID, SE_OWNER_ID, SE_A2_ID, MGR_A_ID, ADMIN_ID] } },
+          {
+            userId: {
+              in: [TC_A_ID, TC_A2_ID, TC_B_ID, SE_A_ID, SE_OWNER_ID, SE_A2_ID, MGR_A_ID, ADMIN_ID],
+            },
+          },
         ],
       },
     });
@@ -328,21 +325,21 @@ function makeLeadsService(): LeadsService {
 describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
   it('ADMIN reassigns to a target in a different team (cross-team happy path)', async () => {
     const leads = makeLeadsService();
-    const result = await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-      {
-        leadId: LEAD_ID,
-        targetUserId: TC_B_ID,
-        reason: 'Test: cross-team reassign',
-      },
-    );
+    const result = await leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+      leadId: LEAD_ID,
+      targetUserId: TC_B_ID,
+      reason: 'Test: cross-team reassign',
+    });
     expect(result.id).toBe(LEAD_ID);
     expect(result.ownerId).toBe(TC_B_ID);
     // The lead's team follows the new owner.
     expect((result as unknown as { teamId?: string }).teamId).toBeUndefined(); // LeadRow doesn't expose teamId
     // Re-read the row to verify the teamId flipped.
     const row = await adminSeed(async (db) =>
-      db.lead.findUnique({ where: { id: LEAD_ID }, select: { ownerId: true, teamId: true, ownerType: true } }),
+      db.lead.findUnique({
+        where: { id: LEAD_ID },
+        select: { ownerId: true, teamId: true, ownerType: true },
+      }),
     );
     expect(row?.ownerId).toBe(TC_B_ID);
     expect(row?.teamId).toBe(TEAM_B_ID);
@@ -360,14 +357,11 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     });
 
     const leads = makeLeadsService();
-    const result = await leads.reassign(
-      actorFor({ sub: MGR_A_ID, role: 'MANAGER'}),
-      {
-        leadId: LEAD_ID,
-        targetUserId: TC_A2_ID,
-        reason: 'Test: same-team reassign',
-      },
-    );
+    const result = await leads.reassign(actorFor({ sub: MGR_A_ID, role: 'MANAGER' }), {
+      leadId: LEAD_ID,
+      targetUserId: TC_A2_ID,
+      reason: 'Test: same-team reassign',
+    });
     expect(result.ownerId).toBe(TC_A2_ID);
     TEST_AUDIT_KEYS.push(LEAD_ID);
   });
@@ -375,28 +369,22 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
   it('MANAGER CANNOT reassign to a target in a different team (403)', async () => {
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: MGR_A_ID, role: 'MANAGER'}),
-        {
-          leadId: LEAD_ID,
-          targetUserId: TC_B_ID, // in team B
-          reason: 'Test: cross-team attempt',
-        },
-      ),
+      leads.reassign(actorFor({ sub: MGR_A_ID, role: 'MANAGER' }), {
+        leadId: LEAD_ID,
+        targetUserId: TC_B_ID, // in team B
+        reason: 'Test: cross-team attempt',
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('TELECALLER cannot reassign (403 - only ADMIN/MANAGER)', async () => {
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: TC_A_ID, role: 'TELECALLER'}),
-        {
-          leadId: LEAD_ID,
-          targetUserId: TC_A2_ID,
-          reason: 'Test: telecaller attempt',
-        },
-      ),
+      leads.reassign(actorFor({ sub: TC_A_ID, role: 'TELECALLER' }), {
+        leadId: LEAD_ID,
+        targetUserId: TC_A2_ID,
+        reason: 'Test: telecaller attempt',
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -427,14 +415,11 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
 
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: SE_A_ID, role: 'SALES_EXEC'}),
-        {
-          leadId: LEAD_ID,
-          targetUserId: TC_A2_ID,
-          reason: 'Test: sales exec attempt',
-        },
-      ),
+      leads.reassign(actorFor({ sub: SE_A_ID, role: 'SALES_EXEC' }), {
+        leadId: LEAD_ID,
+        targetUserId: TC_A2_ID,
+        reason: 'Test: sales exec attempt',
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -443,14 +428,11 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // so assigning a NEW lead to a SALES_EXEC is invalid.
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-        {
-          leadId: LEAD_ID,
-          targetUserId: SE_A_ID, // SALES_EXEC, lane starts at VISITED
-          reason: 'Test: bad lane',
-        },
-      ),
+      leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+        leadId: LEAD_ID,
+        targetUserId: SE_A_ID, // SALES_EXEC, lane starts at VISITED
+        reason: 'Test: bad lane',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -459,7 +441,7 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // directly to VISITED - must go NEW → CONTACTED →
     // VISIT_REQUESTED → VISIT_SCHEDULED → VISITED.
     const leads = makeLeadsService();
-    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
+    const admin = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'CONTACTED' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISIT_REQUESTED' });
     await leads.transition(admin, { leadId: LEAD_ID, toState: 'VISIT_SCHEDULED' });
@@ -491,14 +473,11 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
 
     const leads = makeLeadsService();
     const reason = `Test: audit verification ${LEAD_ID.slice(0, 8)}`;
-    await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-      {
-        leadId: LEAD_ID,
-        targetUserId: TC_A2_ID,
-        reason,
-      },
-    );
+    await leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+      leadId: LEAD_ID,
+      targetUserId: TC_A2_ID,
+      reason,
+    });
 
     // Filter on the unique reason so we don't pick up audit rows
     // from previous tests in the same run.
@@ -529,14 +508,11 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
     // {ownerId: TC_A_ID, state: NEW}. Reassign to the SAME owner.
     const leads = makeLeadsService();
     const reason = `Test: same-owner no-op ${LEAD_ID.slice(0, 8)}`;
-    const result = await leads.reassign(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-      {
-        leadId: LEAD_ID,
-        targetUserId: TC_A_ID, // same owner (beforeEach reset it to this)
-        reason,
-      },
-    );
+    const result = await leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+      leadId: LEAD_ID,
+      targetUserId: TC_A_ID, // same owner (beforeEach reset it to this)
+      reason,
+    });
     expect(result.ownerId).toBe(TC_A_ID);
 
     // No new audit row should have been created (the no-op branch
@@ -558,28 +534,22 @@ describe.skipIf(!HAS_DB)('T-G1 LeadsService.reassign', () => {
   it('Unknown lead id → 404', async () => {
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-        {
-          leadId: 'this-lead-does-not-exist',
-          targetUserId: TC_A_ID,
-          reason: 'Test: 404',
-        },
-      ),
+      leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+        leadId: 'this-lead-does-not-exist',
+        targetUserId: TC_A_ID,
+        reason: 'Test: 404',
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('Unknown target user id → 404', async () => {
     const leads = makeLeadsService();
     await expect(
-      leads.reassign(
-        actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-        {
-          leadId: LEAD_ID,
-          targetUserId: 'this-user-does-not-exist',
-          reason: 'Test: 404 user',
-        },
-      ),
+      leads.reassign(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+        leadId: LEAD_ID,
+        targetUserId: 'this-user-does-not-exist',
+        reason: 'Test: 404 user',
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

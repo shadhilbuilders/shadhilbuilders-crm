@@ -12,9 +12,10 @@ Use one finding per distinct obligation. An exact duplicate shares a finding; a 
 ## Severity
 
 Give every finding a severity. Only blocking findings send the design back for another round; minor findings are recorded for the user and never require another round on their own.
+
 - **blocking**: a contradiction; a safety or correctness risk; an unsupported claim the recommendation depends on; missing behavior the committed approach needs; or a persisting blocking prior obligation. Example: the design promises the roster is never stored, yet its sync step saves it nightly.
 - **minor**: clarity, wording, or polish that does not change a decision or behavior. Example: the Recommended Approach repeats the problem statement's wording and could be shorter.
-When unsure whether a gap changes a decision or behavior, it is blocking.
+  When unsure whether a gap changes a decision or behavior, it is blocking.
 
 ## Delta re-review scope
 

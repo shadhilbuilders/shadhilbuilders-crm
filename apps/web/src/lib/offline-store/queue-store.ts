@@ -46,8 +46,7 @@ export const useQueueStore = create<QueueState>((set) => ({
   items: [],
   phase: 'idle',
   lastChangeAt: Date.now(),
-  setStatus: (phase, items) =>
-    set({ phase, items, lastChangeAt: Date.now() }),
+  setStatus: (phase, items) => set({ phase, items, lastChangeAt: Date.now() }),
   refresh: async () => {
     const items = await queue.all();
     set({ items, lastChangeAt: Date.now() });

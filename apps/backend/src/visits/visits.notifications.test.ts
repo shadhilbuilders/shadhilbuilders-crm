@@ -94,15 +94,12 @@ async function notificationsFor(
   role: JwtPayload['role'] = 'TELECALLER',
 ): Promise<{ type: string; title: string }[]> {
   if (prisma === null) return [];
-  return withRlsContext(
-    prisma,
-    { userId, role, organizationId: ORG_ID },
-    async (tx) =>
-      (tx as unknown as PrismaClient).notification.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        select: { type: true, title: true },
-      }),
+  return withRlsContext(prisma, { userId, role, organizationId: ORG_ID }, async (tx) =>
+    (tx as unknown as PrismaClient).notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { type: true, title: true },
+    }),
   ) as Promise<{ type: string; title: string }[]>;
 }
 

@@ -81,7 +81,7 @@ type RootLayoutProps = {
 const RootLayout = ({ children }: RootLayoutProps) => {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(inter.variable, 'antialiased font-sans')}>
+      <body className={cn(inter.variable, 'font-sans antialiased')}>
         <NextTopLoader showSpinner={false} height={5} color="#62b132" />
         <Providers>
           {children}

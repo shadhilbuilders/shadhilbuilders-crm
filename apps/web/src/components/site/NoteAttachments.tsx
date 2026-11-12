@@ -97,7 +97,9 @@ export function PhotoAttachmentTile({
       data-qa="site-note-attachment"
       data-status={attachment.status}
       data-attachment-id={attachment.id}
-      className={isFocused ? 'ring-primary! ring-offset-background! ring-2! ring-offset-1!' : undefined}
+      className={
+        isFocused ? 'ring-primary! ring-offset-background! ring-2! ring-offset-1!' : undefined
+      }
     >
       <AttachmentMedia variant="image">
         {/* Decorative: the filename and state are the tile's text. */}

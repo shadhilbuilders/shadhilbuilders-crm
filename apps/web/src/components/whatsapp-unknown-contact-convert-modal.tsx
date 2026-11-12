@@ -51,10 +51,7 @@ import type { FormFieldItemType } from '@paalstack/react-ui';
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 
 import { useConvertWaUnknownContact } from '@/hooks/queries/whatsapp-unknown-contacts';
-import {
-  pickDefaultProject,
-  useProjects,
-} from '@/hooks/queries';
+import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { projectHref } from '@/lib/nav';
 
 import {
@@ -92,9 +89,7 @@ type ConvertFormValues = z.infer<typeof ConvertFormSchema>;
 // undefined, not empty string. So we accept '' as "not provided" via a
 // union with z.literal(''); buildConvertBody omits empty values.
 const ConvertFormSchema = CreateLeadDtoSchema.pick({ name: true, notes: true }).extend({
-  email: z
-    .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
-    .optional(),
+  email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -174,11 +169,7 @@ export type ConvertFormBodyProps = {
  * contact id so defaultValues (notably the pre-filled notes) reflect
  * the currently-selected row without leaking the previous one.
  */
-export function ConvertFormBody({
-  contact,
-  onSubmit,
-  projectId,
-}: ConvertFormBodyProps) {
+export function ConvertFormBody({ contact, onSubmit, projectId }: ConvertFormBodyProps) {
   const handleSubmit = onSubmit ?? (() => undefined);
 
   const form = useForm<ConvertFormValues>({
@@ -207,8 +198,7 @@ export function ConvertFormBody({
       type: 'input',
       name: 'name',
       label: 'Full name',
-      placeholder:
-        contact.phoneE164.length > 0 ? contact.phoneE164 : 'Customer name',
+      placeholder: contact.phoneE164.length > 0 ? contact.phoneE164 : 'Customer name',
       required: true,
       inputProps: {
         maxLength: 120,
@@ -237,8 +227,7 @@ export function ConvertFormBody({
       name: 'notes',
       label: 'Notes',
       placeholder: "First message: <the contact's first message>",
-      description:
-        "Pre-filled from the contact's first message. Edit freely; saved on the Lead.",
+      description: "Pre-filled from the contact's first message. Edit freely; saved on the Lead.",
       textareaProps: {
         rows: 4,
         maxLength: NOTES_MAX,
@@ -283,10 +272,7 @@ export function WhatsappUnknownContactConvertModal({
   const defaultProject = pickDefaultProject(projects ?? []);
   const defaultProjectSlug = pickDefaultProject(projects ?? [])?.slug ?? null;
 
-  function handleSubmit(
-    values: ConvertFormValues,
-    body: ConvertUnknownContactDto,
-  ) {
+  function handleSubmit(values: ConvertFormValues, body: ConvertUnknownContactDto) {
     const name = values.name.trim();
     if (name.length === 0) {
       toast.error('Name is required');
@@ -301,9 +287,7 @@ export function WhatsappUnknownContactConvertModal({
           toast.success(`Lead "${name}" created from WhatsApp contact`);
           onOpenChange(false);
           if (typeof newLeadId === 'string' && newLeadId.length > 0) {
-            void router.push(
-              projectHref(orgId, defaultProjectSlug, `/leads/${newLeadId}`),
-            );
+            void router.push(projectHref(orgId, defaultProjectSlug, `/leads/${newLeadId}`));
           }
         },
         onError: (error) => {
@@ -326,7 +310,7 @@ export function WhatsappUnknownContactConvertModal({
       trigger={null}
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       header={{ title: 'Convert to lead', description }}
       footer={
         <div className="flex w-full justify-end gap-2">
@@ -352,11 +336,7 @@ export function WhatsappUnknownContactConvertModal({
       }
     >
       {contact !== null ? (
-        <ConvertFormBody
-          contact={contact}
-          onSubmit={handleSubmit}
-          projectId={defaultProject?.id}
-        />
+        <ConvertFormBody contact={contact} onSubmit={handleSubmit} projectId={defaultProject?.id} />
       ) : null}
     </Dialog>
   );

@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest';
 import { draftsFromRows, moveDraft, newDraft, toPayload, validateDrafts } from './milestone-draft';
 
 const rows = [
-  { id: 'a', name: 'Slab cast', targetDate: '2027-01-15T00:00:00.000Z', completedAt: '2027-01-10T00:00:00.000Z' },
+  {
+    id: 'a',
+    name: 'Slab cast',
+    targetDate: '2027-01-15T00:00:00.000Z',
+    completedAt: '2027-01-10T00:00:00.000Z',
+  },
   { id: 'b', name: 'Handover', targetDate: null, completedAt: null },
 ];
 
@@ -16,7 +21,11 @@ describe('milestone drafts', () => {
     const payload = toPayload(draftsFromRows(rows));
     expect(payload).toEqual({
       milestones: [
-        { name: 'Slab cast', targetDate: '2027-01-15T00:00:00.000Z', completedAt: '2027-01-10T00:00:00.000Z' },
+        {
+          name: 'Slab cast',
+          targetDate: '2027-01-15T00:00:00.000Z',
+          completedAt: '2027-01-10T00:00:00.000Z',
+        },
         { name: 'Handover', targetDate: null, completedAt: null },
       ],
     });
@@ -36,7 +45,9 @@ describe('milestone drafts', () => {
   });
 
   it('rejects a blank name by position, and too many rows', () => {
-    expect(validateDrafts([...draftsFromRows(rows), newDraft('n')])).toBe('Milestone 3 needs a name.');
+    expect(validateDrafts([...draftsFromRows(rows), newDraft('n')])).toBe(
+      'Milestone 3 needs a name.',
+    );
     expect(validateDrafts(draftsFromRows(rows))).toBeNull();
     const many = Array.from({ length: 31 }, (_, i) => ({ ...newDraft(String(i)), name: `m${i}` }));
     expect(validateDrafts(many)).toMatch(/at most 30/);

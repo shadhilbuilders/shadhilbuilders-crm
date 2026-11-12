@@ -7,8 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
@@ -80,7 +79,12 @@ async function unmount(): Promise<void> {
 }
 
 function baseMocks(): void {
-  mocks.useRemovalPreview.mockReturnValue({ isLoading: false, error: null, data: undefined, refetch: vi.fn() });
+  mocks.useRemovalPreview.mockReturnValue({
+    isLoading: false,
+    error: null,
+    data: undefined,
+    refetch: vi.fn(),
+  });
   mocks.useReassignAndRemove.mockReturnValue({ mutate: vi.fn(), isPending: false });
   mocks.useUpdateTeamMemberWeight.mockReturnValue({ mutate: vi.fn(), isPending: false });
 }
@@ -90,13 +94,27 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-const managerUser = { id: 'mgr-1', name: 'Meera', email: 'meera@x', role: 'MANAGER', teamId: 'team-a', organizationId: 'org-1' };
+const managerUser = {
+  id: 'mgr-1',
+  name: 'Meera',
+  email: 'meera@x',
+  role: 'MANAGER',
+  teamId: 'team-a',
+  organizationId: 'org-1',
+};
 
 describe('MyTeamRosterPage', () => {
   it('non-MANAGER/admin-class roles see "Not authorized"', async () => {
     baseMocks();
     mocks.useSessionUser.mockReturnValue({
-      user: { id: 'tc-1', name: 'Priya', email: 'p@x', role: 'TELECALLER', teamId: 'team-a', organizationId: 'org-1' },
+      user: {
+        id: 'tc-1',
+        name: 'Priya',
+        email: 'p@x',
+        role: 'TELECALLER',
+        teamId: 'team-a',
+        organizationId: 'org-1',
+      },
       isPending: false,
       error: null,
     });

@@ -210,9 +210,7 @@ export function ChatThreadPanel({
     const body = draft.trim();
     if (body.length === 0) return;
     try {
-      let media:
-        | { mediaKey: string; mediaMimeType: string; mediaFilename: string }
-        | undefined;
+      let media: { mediaKey: string; mediaMimeType: string; mediaFilename: string } | undefined;
       if (pending !== null) {
         setUploading(true);
         media = await uploadChatMedia(pending.file);
@@ -224,9 +222,7 @@ export function ChatThreadPanel({
       if (textareaRef.current !== null) textareaRef.current.style.height = 'auto';
     } catch (error) {
       setUploading(false);
-      toast.error(
-        error instanceof Error ? error.message : 'Could not send the message.',
-      );
+      toast.error(error instanceof Error ? error.message : 'Could not send the message.');
     }
   }
 
@@ -303,11 +299,9 @@ export function ChatThreadPanel({
       </div>
 
       {/* ── Messages ────────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-hidden bg-muted/20" data-qa="chat-messages">
+      <div className="bg-muted/20 min-h-0 flex-1 overflow-hidden" data-qa="chat-messages">
         {query.isLoading ? (
-          <p className="text-muted-foreground p-4 text-center text-xs">
-            Loading messages...
-          </p>
+          <p className="text-muted-foreground p-4 text-center text-xs">Loading messages...</p>
         ) : query.error !== null && query.error !== undefined ? (
           <p className="text-muted-foreground p-4 text-center text-xs">
             Could not load this conversation. Try selecting it again.
@@ -430,7 +424,9 @@ export function ChatThreadPanel({
             </InputGroup>
             {pending !== null ? null : (
               <p className="text-muted-foreground mt-1 text-[10px]">
-                {uploading ? 'Uploading attachment...' : 'Enter to send, Shift+Enter for a new line'}
+                {uploading
+                  ? 'Uploading attachment...'
+                  : 'Enter to send, Shift+Enter for a new line'}
               </p>
             )}
           </form>

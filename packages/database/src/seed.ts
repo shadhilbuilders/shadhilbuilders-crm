@@ -39,7 +39,12 @@ const prisma: PrismaClient = new PrismaClient({
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
   const normalized = password.normalize('NFKC');
-  const hash = scryptSync(normalized, salt, 64, { N: 16384, r: 16, p: 1, maxmem: 128 * 16384 * 16 * 2 }).toString('hex');
+  const hash = scryptSync(normalized, salt, 64, {
+    N: 16384,
+    r: 16,
+    p: 1,
+    maxmem: 128 * 16384 * 16 * 2,
+  }).toString('hex');
   return `${salt}:${hash}`;
 }
 
@@ -458,24 +463,152 @@ async function main() {
     plotNumber: number;
   }> = [
     // Phase A - plots 1-7 (2 BHK: 1-4, 3 BHK: 5-7)
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-101', bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000, plotNumber: 1 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-102', bhk: 2, facing: 'East', sqft: 1080, price: 4_350_000, plotNumber: 2 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-103', bhk: 2, facing: 'South', sqft: 1020, price: 4_100_000, plotNumber: 3 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-104', bhk: 2, facing: 'West', sqft: 1100, price: 4_400_000, plotNumber: 4 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-201', bhk: 3, facing: 'North', sqft: 1450, price: 5_800_000, plotNumber: 5 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-202', bhk: 3, facing: 'East', sqft: 1480, price: 5_950_000, plotNumber: 6 },
-    { phaseId: 'zpn4utpch0ncq4esh46cl4ug', unitNumber: 'A-203', bhk: 3, facing: 'South', sqft: 1420, price: 5_700_000, plotNumber: 7 },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-101',
+      bhk: 2,
+      facing: 'North',
+      sqft: 1050,
+      price: 4_200_000,
+      plotNumber: 1,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-102',
+      bhk: 2,
+      facing: 'East',
+      sqft: 1080,
+      price: 4_350_000,
+      plotNumber: 2,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-103',
+      bhk: 2,
+      facing: 'South',
+      sqft: 1020,
+      price: 4_100_000,
+      plotNumber: 3,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-104',
+      bhk: 2,
+      facing: 'West',
+      sqft: 1100,
+      price: 4_400_000,
+      plotNumber: 4,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-201',
+      bhk: 3,
+      facing: 'North',
+      sqft: 1450,
+      price: 5_800_000,
+      plotNumber: 5,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-202',
+      bhk: 3,
+      facing: 'East',
+      sqft: 1480,
+      price: 5_950_000,
+      plotNumber: 6,
+    },
+    {
+      phaseId: 'zpn4utpch0ncq4esh46cl4ug',
+      unitNumber: 'A-203',
+      bhk: 3,
+      facing: 'South',
+      sqft: 1420,
+      price: 5_700_000,
+      plotNumber: 7,
+    },
     // Phase B - plots 20-24 (3 BHK: 20-22, 4 BHK: 23-24)
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-101', bhk: 3, facing: 'North', sqft: 1500, price: 6_100_000, plotNumber: 20 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-102', bhk: 3, facing: 'East', sqft: 1520, price: 6_250_000, plotNumber: 21 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-103', bhk: 3, facing: 'West', sqft: 1490, price: 6_050_000, plotNumber: 22 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-201', bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000, plotNumber: 23 },
-    { phaseId: 's4pd095o2ll58e8ujhe7yfap', unitNumber: 'B-202', bhk: 4, facing: 'South', sqft: 1850, price: 8_200_000, plotNumber: 24 },
+    {
+      phaseId: 's4pd095o2ll58e8ujhe7yfap',
+      unitNumber: 'B-101',
+      bhk: 3,
+      facing: 'North',
+      sqft: 1500,
+      price: 6_100_000,
+      plotNumber: 20,
+    },
+    {
+      phaseId: 's4pd095o2ll58e8ujhe7yfap',
+      unitNumber: 'B-102',
+      bhk: 3,
+      facing: 'East',
+      sqft: 1520,
+      price: 6_250_000,
+      plotNumber: 21,
+    },
+    {
+      phaseId: 's4pd095o2ll58e8ujhe7yfap',
+      unitNumber: 'B-103',
+      bhk: 3,
+      facing: 'West',
+      sqft: 1490,
+      price: 6_050_000,
+      plotNumber: 22,
+    },
+    {
+      phaseId: 's4pd095o2ll58e8ujhe7yfap',
+      unitNumber: 'B-201',
+      bhk: 4,
+      facing: 'North',
+      sqft: 1900,
+      price: 8_400_000,
+      plotNumber: 23,
+    },
+    {
+      phaseId: 's4pd095o2ll58e8ujhe7yfap',
+      unitNumber: 'B-202',
+      bhk: 4,
+      facing: 'South',
+      sqft: 1850,
+      price: 8_200_000,
+      plotNumber: 24,
+    },
     // Phase C - plots 40-43 (2 BHK: 40-41, 3 BHK: 42-43)
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-101', bhk: 2, facing: 'East', sqft: 1060, price: 4_300_000, plotNumber: 40 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-102', bhk: 2, facing: 'North', sqft: 1090, price: 4_380_000, plotNumber: 41 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-201', bhk: 3, facing: 'South', sqft: 1440, price: 5_750_000, plotNumber: 42 },
-    { phaseId: 'dkegmcasqq0ts5mzw6vjxpq1', unitNumber: 'C-202', bhk: 3, facing: 'West', sqft: 1460, price: 5_850_000, plotNumber: 43 },
+    {
+      phaseId: 'dkegmcasqq0ts5mzw6vjxpq1',
+      unitNumber: 'C-101',
+      bhk: 2,
+      facing: 'East',
+      sqft: 1060,
+      price: 4_300_000,
+      plotNumber: 40,
+    },
+    {
+      phaseId: 'dkegmcasqq0ts5mzw6vjxpq1',
+      unitNumber: 'C-102',
+      bhk: 2,
+      facing: 'North',
+      sqft: 1090,
+      price: 4_380_000,
+      plotNumber: 41,
+    },
+    {
+      phaseId: 'dkegmcasqq0ts5mzw6vjxpq1',
+      unitNumber: 'C-201',
+      bhk: 3,
+      facing: 'South',
+      sqft: 1440,
+      price: 5_750_000,
+      plotNumber: 42,
+    },
+    {
+      phaseId: 'dkegmcasqq0ts5mzw6vjxpq1',
+      unitNumber: 'C-202',
+      bhk: 3,
+      facing: 'West',
+      sqft: 1460,
+      price: 5_850_000,
+      plotNumber: 43,
+    },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
@@ -523,7 +656,9 @@ async function main() {
     },
   });
   // eslint-disable-next-line no-console
-  console.log(`[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`);
+  console.log(
+    `[seed] ✓ ${phases.length} phases + ${unitDefs.length} units for ${metroHeights.name}`,
+  );
 
   // eslint-disable-next-line no-console
   console.log('[seed] ✓ owner, admin, manager, telecaller, sales exec, engineer created/updated');
@@ -536,16 +671,76 @@ async function main() {
   // is idempotent (upsert on phone) so re-running is safe. Owner is the
   // telecaller (the most common assignment in production).
   const demoLeads = [
-    { name: 'Priya Sharma',   phone: '9876500001', email: 'priya.sharma@example.in',  source: 'META_AD',     state: 'NEW' },
-    { name: 'Arjun Reddy',    phone: '9876500002', email: 'arjun.reddy@example.in',   source: 'LANDING',    state: 'CONTACTED' },
-    { name: 'Kavya Iyer',     phone: '9876500003', email: 'kavya.iyer@example.in',    source: 'REFERRAL',   state: 'VISIT_REQUESTED' },
-    { name: 'Rahul Verma',    phone: '9876500004', email: 'rahul.verma@example.in',   source: 'META_AD',    state: 'VISIT_SCHEDULED' },
-    { name: 'Anita Krishnan', phone: '9876500005', email: 'anita.k@example.in',       source: 'WALK_IN',    state: 'VISITED' },
-    { name: 'Sanjay Patel',   phone: '9876500006', email: 'sanjay.patel@example.in',  source: 'REFERRAL',   state: 'NEGOTIATION' },
-    { name: 'Deepa Nair',     phone: '9876500007', email: 'deepa.nair@example.in',    source: 'META_AD',    state: 'BOOKING_INITIATED' },
-    { name: 'Vikram Singh',   phone: '9876500008', email: 'vikram.singh@example.in',  source: 'LANDING',    state: 'WON' },
-    { name: 'Meera Joshi',    phone: '9876500009', email: 'meera.joshi@example.in',   source: 'WALK_IN',    state: 'LOST' },
-    { name: 'Rohan Gupta',    phone: '9876500010', email: 'rohan.gupta@example.in',   source: 'REFERRAL',   state: 'RNR' },
+    {
+      name: 'Priya Sharma',
+      phone: '9876500001',
+      email: 'priya.sharma@example.in',
+      source: 'META_AD',
+      state: 'NEW',
+    },
+    {
+      name: 'Arjun Reddy',
+      phone: '9876500002',
+      email: 'arjun.reddy@example.in',
+      source: 'LANDING',
+      state: 'CONTACTED',
+    },
+    {
+      name: 'Kavya Iyer',
+      phone: '9876500003',
+      email: 'kavya.iyer@example.in',
+      source: 'REFERRAL',
+      state: 'VISIT_REQUESTED',
+    },
+    {
+      name: 'Rahul Verma',
+      phone: '9876500004',
+      email: 'rahul.verma@example.in',
+      source: 'META_AD',
+      state: 'VISIT_SCHEDULED',
+    },
+    {
+      name: 'Anita Krishnan',
+      phone: '9876500005',
+      email: 'anita.k@example.in',
+      source: 'WALK_IN',
+      state: 'VISITED',
+    },
+    {
+      name: 'Sanjay Patel',
+      phone: '9876500006',
+      email: 'sanjay.patel@example.in',
+      source: 'REFERRAL',
+      state: 'NEGOTIATION',
+    },
+    {
+      name: 'Deepa Nair',
+      phone: '9876500007',
+      email: 'deepa.nair@example.in',
+      source: 'META_AD',
+      state: 'BOOKING_INITIATED',
+    },
+    {
+      name: 'Vikram Singh',
+      phone: '9876500008',
+      email: 'vikram.singh@example.in',
+      source: 'LANDING',
+      state: 'WON',
+    },
+    {
+      name: 'Meera Joshi',
+      phone: '9876500009',
+      email: 'meera.joshi@example.in',
+      source: 'WALK_IN',
+      state: 'LOST',
+    },
+    {
+      name: 'Rohan Gupta',
+      phone: '9876500010',
+      email: 'rohan.gupta@example.in',
+      source: 'REFERRAL',
+      state: 'RNR',
+    },
   ] as const;
 
   for (const lead of demoLeads) {
@@ -603,7 +798,13 @@ async function main() {
       status: 'APPROVED',
     },
   });
-  await upsertUser(SEED_CUSTOMER_ID, readSeedUser('CUSTOMER'), 'CUSTOMER', undefined, customerLead.id);
+  await upsertUser(
+    SEED_CUSTOMER_ID,
+    readSeedUser('CUSTOMER'),
+    'CUSTOMER',
+    undefined,
+    customerLead.id,
+  );
   await prisma.organization.update({
     where: { id: SEED_ORG_ID },
     data: { contactPhone: process.env.SEED_ORG_CONTACT_PHONE ?? '+91 98765 00000' },

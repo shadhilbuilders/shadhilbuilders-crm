@@ -17,11 +17,13 @@ Until October 2026 the map had no plot number to work with, so it inferred one. 
 ## Alternatives Considered
 
 ### Keep inferring the plot from the unit number
+
 - **Pros**: no schema change, no backfill, nothing to keep in sync.
 - **Cons**: correctness depended on the shape of a marketing string. Any project that numbered its doors properly lost its entire map.
 - **Why not**: it was already broken by the time door numbers shipped.
 
 ### Use a single identifier for both
+
 - **Pros**: one number to print, quote, and draw.
 - **Cons**: the two numbers come from different authorities. The door number is the company's own naming; the plot number is fixed by the approved layout. A project with no traced layout has no plot numbers at all.
 - **Why not**: one field would either block projects that have no layout, or put a drawing position onto a door sign.
@@ -29,14 +31,17 @@ Until October 2026 the map had no plot number to work with, so it inferred one. 
 ## Consequences
 
 ### Positive
+
 - A project with no traced layout can exist, and its units simply carry no plot number.
 - The map reads a column instead of parsing a string, so renaming a door number cannot empty the map.
 - Both numbers stay quotable to the right audience: sales by door number, the site team by plot number.
 
 ### Negative
+
 - Two fields to maintain, and a unit without a plot number sits off the layout until someone assigns one.
 - Putting a new unit onto a traced layout is a second step that can be forgotten.
 
 ### Risks
+
 - A project may be traced only after its units exist, leaving every plot number NULL. Mitigation: the column is nullable by design, and the map must read NULL as "not on the layout", never as available.
 - A later backfill that derives plot numbers from unit numbers would restore the original conflation. That is why GLOSSARY.md lists each term as the other's _Avoid_.

@@ -58,7 +58,11 @@ export default function TeamRosterPage() {
       <PageHeader
         title={team?.name ?? 'Team'}
         breadcrumb={[
-          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          {
+            label: 'Work',
+            href:
+              orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work',
+          },
           { label: 'My Team', href: `${baseHref}/my-team` },
           { label: team?.name ?? 'Team' },
         ]}
@@ -74,7 +78,10 @@ export default function TeamRosterPage() {
       {teamQuery.isLoading ? (
         <Skeleton variant="table" />
       ) : teamQuery.error !== null && teamQuery.error !== undefined ? (
-        <div role="alert" className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center">
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
+        >
           <p className="text-sm font-medium">Couldn&apos;t load this team.</p>
           <p className="text-muted-foreground mt-1 text-xs">
             {teamQuery.error instanceof Error ? teamQuery.error.message : 'Unexpected error.'}

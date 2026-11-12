@@ -42,13 +42,13 @@ keeps the current password (safe re-run).
 
 Override identity/org via env (defaults shown):
 
-| Env | Default | What |
-|---|---|---|
-| `SEED_OWNER_EMAIL` | `owner@shadhilbuilders.in` | owner sign-in email |
-| `SEED_OWNER_NAME` | `Owner` | display name |
-| `SEED_OWNER_PASSWORD` | (required on first run) | rotate-on-first-login |
-| `SEED_ORG_NAME` | `Shadhil Builders` | organization name |
-| `SEED_ORG_SLUG` | `shadhil-builders` | organization slug (unique) |
+| Env                   | Default                    | What                       |
+| --------------------- | -------------------------- | -------------------------- |
+| `SEED_OWNER_EMAIL`    | `owner@shadhilbuilders.in` | owner sign-in email        |
+| `SEED_OWNER_NAME`     | `Owner`                    | display name               |
+| `SEED_OWNER_PASSWORD` | (required on first run)    | rotate-on-first-login      |
+| `SEED_ORG_NAME`       | `Shadhil Builders`         | organization name          |
+| `SEED_ORG_SLUG`       | `shadhil-builders`         | organization slug (unique) |
 
 The five-account placeholder table above is retired: the full demo seed
 (`pnpm --filter @shadhil/database seed`) still exists for DEV demo data,
@@ -79,21 +79,21 @@ PLANNING-MASTER.md  Index to every planning document
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `pnpm docker:up` | Start postgres/pgbouncer/redis only (edoburu pgbouncer; ini is authoritative) - use when you want the data services without the api container |
-| `pnpm docker:stack` | Start the full stack: postgres + pgbouncer + redis + api (the compiled-CJS container). Runs on the same ports as `pnpm dev` (3000 / 8080) - convenient for verifying the production image locally |
-| `pnpm docker:down` | Stop and remove containers (volumes preserved) |
-| `pnpm docker:logs` | Tail logs from all services (`-f` follow) |
-| `pnpm docker:restart` | Restart containers - useful after `.env` changes |
-| `pnpm dev` | `turbo run dev` - fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first |
-| `pnpm --filter @shadhil/database generate` | Generate the Prisma client (gitignored - required after install) |
-| `pnpm --filter @shadhil/database migrate` | Apply schema + RLS (prisma migrate) |
-| `pnpm --filter @shadhil/database seed:owner` | PROD bootstrap: one OWNER user + org, nothing else (password required on first run) |
-| `pnpm --filter @shadhil/database seed` | DEV demo data: 5 placeholder users + teams + projects + leads + inventory (never in prod) |
-| `pnpm db:policies` | Re-apply policies.sql directly (idempotent) |
-| `pnpm test` | All package tests (unit runs anywhere; DB suite needs live Postgres) |
-| `pnpm type-check` / `pnpm lint` | Gates that must stay green |
+| Command                                      | What it does                                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm docker:up`                             | Start postgres/pgbouncer/redis only (edoburu pgbouncer; ini is authoritative) - use when you want the data services without the api container                                                     |
+| `pnpm docker:stack`                          | Start the full stack: postgres + pgbouncer + redis + api (the compiled-CJS container). Runs on the same ports as `pnpm dev` (3000 / 8080) - convenient for verifying the production image locally |
+| `pnpm docker:down`                           | Stop and remove containers (volumes preserved)                                                                                                                                                    |
+| `pnpm docker:logs`                           | Tail logs from all services (`-f` follow)                                                                                                                                                         |
+| `pnpm docker:restart`                        | Restart containers - useful after `.env` changes                                                                                                                                                  |
+| `pnpm dev`                                   | `turbo run dev` - fans out to web + api + workspace `tsc --watch`. Will fail with `EADDRINUSE: 8080` if the api container is still up; run `pnpm docker:down` first                               |
+| `pnpm --filter @shadhil/database generate`   | Generate the Prisma client (gitignored - required after install)                                                                                                                                  |
+| `pnpm --filter @shadhil/database migrate`    | Apply schema + RLS (prisma migrate)                                                                                                                                                               |
+| `pnpm --filter @shadhil/database seed:owner` | PROD bootstrap: one OWNER user + org, nothing else (password required on first run)                                                                                                               |
+| `pnpm --filter @shadhil/database seed`       | DEV demo data: 5 placeholder users + teams + projects + leads + inventory (never in prod)                                                                                                         |
+| `pnpm db:policies`                           | Re-apply policies.sql directly (idempotent)                                                                                                                                                       |
+| `pnpm test`                                  | All package tests (unit runs anywhere; DB suite needs live Postgres)                                                                                                                              |
+| `pnpm type-check` / `pnpm lint`              | Gates that must stay green                                                                                                                                                                        |
 
 ### Dev vs Docker stack
 
@@ -121,7 +121,7 @@ Switching: `pnpm docker:down` (or `pnpm docker:stack` to come back).
   client reads `DATABASE_URL` (pooled); SQLite-free CI note: keep the
   adapter constructor connection-free.
 - Roles are the Prisma `Role` enum (UPPERCASE): `OWNER | ADMIN |
-  MANAGER | SALES_EXEC | TELECALLER`. JWT claims are normalized/validated in
+MANAGER | SALES_EXEC | TELECALLER`. JWT claims are normalized/validated in
   `packages/auth-client/src/jwt.ts` - a token without a valid role claim is
   rejected. Exactly one OWNER exists (partial unique index
   `one_owner`); it cannot be created or assigned through the API.

@@ -322,15 +322,12 @@ describe('lib/labels', () => {
       expect(label).not.toMatch(/^[A-Z_]+$/);
     });
 
-    it.each(FACT_STATUSES)(
-      '%s renders a non-empty, non-raw status label',
-      (status) => {
-        const label = labelFor('factStatus', status);
-        expect(label.length).toBeGreaterThan(0);
-        expect(label).not.toBe(status);
-        expect(label).not.toMatch(/^[A-Z_]+$/);
-      },
-    );
+    it.each(FACT_STATUSES)('%s renders a non-empty, non-raw status label', (status) => {
+      const label = labelFor('factStatus', status);
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toBe(status);
+      expect(label).not.toMatch(/^[A-Z_]+$/);
+    });
 
     it('maps a band to a badge variant', () => {
       expect(factBandBadgeVariant('VERIFIED')).toBe('success');

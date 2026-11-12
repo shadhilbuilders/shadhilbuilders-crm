@@ -76,12 +76,7 @@ function transition(to: string, label: string): QueueActionSpec {
  * so this module stays dependency-free and unit-testable; the two lists are
  * pinned against each other by test.
  */
-const CAN_SCHEDULE_VISIT: ReadonlyArray<QueueRole> = [
-  'TELECALLER',
-  'MANAGER',
-  'ADMIN',
-  'OWNER',
-];
+const CAN_SCHEDULE_VISIT: ReadonlyArray<QueueRole> = ['TELECALLER', 'MANAGER', 'ADMIN', 'OWNER'];
 
 function canScheduleVisit(role: QueueRole): boolean {
   return CAN_SCHEDULE_VISIT.includes(role);
@@ -185,14 +180,7 @@ export const TERMINAL_LEAD_STATES: readonly string[] = ['WON', 'LOST', 'RNR'];
  * confirm today, and bookings to close. ADMIN/OWNER share it.
  */
 export const QUEUE_STATES_BY_ROLE = {
-  TELECALLER: [
-    'NEW',
-    'CONTACTED',
-    'VISIT_REQUESTED',
-    'VISIT_SCHEDULED',
-    'RESCHEDULED',
-    'NO_SHOW',
-  ],
+  TELECALLER: ['NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RESCHEDULED', 'NO_SHOW'],
   // NOTE: BOOKING_INITIATED is deliberately NOT here. An exec could not act on
   // it - closing to WON is MANAGER/ADMIN/OWNER only - so it was a row in the
   // exec's queue with no button, exactly the defect this scoping exists to

@@ -5,10 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import {
-  ChangePasswordFormSchema,
-  type ChangePasswordFormValues,
-} from '@shadhil/api-types';
+import { ChangePasswordFormSchema, type ChangePasswordFormValues } from '@shadhil/api-types';
 import { Form, Heading, toast } from '@paalstack/react-ui';
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
@@ -102,8 +99,8 @@ export function PortalChangePasswordForm({ userId }: { userId: string }) {
           Choose a new password
         </Heading>
         <p className="mt-3 text-[0.9375rem] leading-relaxed text-[var(--portal-ink-2)]">
-          Your portal was opened with a temporary password issued by the project
-          office. Replace it now and you will be taken to your home.
+          Your portal was opened with a temporary password issued by the project office. Replace it
+          now and you will be taken to your home.
         </p>
       </div>
 

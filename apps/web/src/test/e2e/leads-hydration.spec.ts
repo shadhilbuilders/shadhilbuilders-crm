@@ -46,8 +46,5 @@ test('leads inbox: no hydration mismatch on load', async ({ page }) => {
   // in app-header.tsx with a mounted-gate). With that gone, assert NO
   // hydration error fires on the leads load.
   console.log('LEADS hydration errors:', hydrationErrors.length);
-  expect(
-    hydrationErrors.length,
-    `leads hydration errors: ${hydrationErrors.join(' | ')}`,
-  ).toBe(0);
+  expect(hydrationErrors.length, `leads hydration errors: ${hydrationErrors.join(' | ')}`).toBe(0);
 });

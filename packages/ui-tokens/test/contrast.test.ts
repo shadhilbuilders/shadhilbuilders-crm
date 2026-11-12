@@ -85,10 +85,7 @@ describe('contrastRatio - known reference values', () => {
   });
 
   it('same color on itself = 1:1 (idempotent)', () => {
-    const c = contrastRatio(
-      { l: 0.5, c: 0.1, h: 200 },
-      { l: 0.5, c: 0.1, h: 200 },
-    );
+    const c = contrastRatio({ l: 0.5, c: 0.1, h: 200 }, { l: 0.5, c: 0.1, h: 200 });
     expect(c).toBeCloseTo(1, 4);
   });
 
@@ -110,10 +107,7 @@ describe('WCAG_AA constants match the spec', () => {
 
 describe('evaluateContrast - verdict shape', () => {
   it('passes both thresholds when CR is high enough', () => {
-    const out = evaluateContrast(
-      { l: 0, c: 0, h: 0 },
-      { l: 1, c: 0, h: 0 },
-    );
+    const out = evaluateContrast({ l: 0, c: 0, h: 0 }, { l: 1, c: 0, h: 0 });
     expect(out.ratio).toBeGreaterThan(WCAG_AA_NORMAL);
     expect(out.passes['AA-normal']).toBe(true);
     expect(out.passes['AA-large']).toBe(true);
@@ -125,10 +119,7 @@ describe('evaluateContrast - verdict shape', () => {
     // AA-normal=false.
     // White vs oklch(0.55 0 0): luminance is ~(0.55*1.13-ish) ≈ 0.246;
     // CR = (1+0.05)/(0.246+0.05) ≈ 3.55. In the 3-4.5 band.
-    const out = evaluateContrast(
-      { l: 0, c: 0, h: 0 },
-      { l: 0.55, c: 0, h: 0 },
-    );
+    const out = evaluateContrast({ l: 0, c: 0, h: 0 }, { l: 0.55, c: 0, h: 0 });
     expect(out.ratio).toBeGreaterThanOrEqual(WCAG_AA_LARGE);
     expect(out.ratio).toBeLessThan(WCAG_AA_NORMAL);
     expect(out.passes['AA-large']).toBe(true);

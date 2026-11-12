@@ -52,48 +52,50 @@ import { currencyIntl, formatMoneyInput } from '@/lib/format';
 // Numeric fields are kept as strings in the form and coerced on submit
 // (the codebase pattern - avoids the z.coerce type issue). The server
 // re-validates with the canonical DTO.
-const createBookingSchema = z.object({
-  leadId: z.string().min(1, 'Pick a lead'),
-  unitId: z.string().min(1, 'Pick a unit'),
-  amount: z
-    .string()
-    .min(1, 'Amount is required')
-    .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
-      message: 'Amount must be a positive number',
-    })
-    .refine((v) => Number(v) <= 1_000_000_000, {
-      message: 'Amount too large (cap ₹100 Cr)',
-    }),
-  // DERIVED display field: the unit's list total. Never submitted.
-  listAmount: z.string().optional(),
-  // Negotiated per-sq.ft rate the buyer agreed to (optional). The server derives
-  // the negotiated total as buildup sq.ft x this rate.
-  negotiatedRate: z
-    .string()
-    .optional()
-    .refine(
-      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
-      { message: 'Negotiated rate must be a positive number' },
-    )
-    .refine((v) => v === undefined || v === '' || Number(v) <= MAX_RATE_PER_SQFT, {
-      message: 'Negotiated rate too large',
-    }),
-  // DERIVED display field: buildup sq.ft x negotiated rate. Never submitted.
-  negotiatedAmount: z.string().optional(),
-  tokenAmount: z
-    .string()
-    .optional()
-    .refine(
-      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
-      { message: 'Token amount must be a positive number' },
-    ),
-  notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
-})
+const createBookingSchema = z
+  .object({
+    leadId: z.string().min(1, 'Pick a lead'),
+    unitId: z.string().min(1, 'Pick a unit'),
+    amount: z
+      .string()
+      .min(1, 'Amount is required')
+      .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, {
+        message: 'Amount must be a positive number',
+      })
+      .refine((v) => Number(v) <= 1_000_000_000, {
+        message: 'Amount too large (cap ₹100 Cr)',
+      }),
+    // DERIVED display field: the unit's list total. Never submitted.
+    listAmount: z.string().optional(),
+    // Negotiated per-sq.ft rate the buyer agreed to (optional). The server derives
+    // the negotiated total as buildup sq.ft x this rate.
+    negotiatedRate: z
+      .string()
+      .optional()
+      .refine((v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0), {
+        message: 'Negotiated rate must be a positive number',
+      })
+      .refine((v) => v === undefined || v === '' || Number(v) <= MAX_RATE_PER_SQFT, {
+        message: 'Negotiated rate too large',
+      }),
+    // DERIVED display field: buildup sq.ft x negotiated rate. Never submitted.
+    negotiatedAmount: z.string().optional(),
+    tokenAmount: z
+      .string()
+      .optional()
+      .refine((v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0), {
+        message: 'Token amount must be a positive number',
+      }),
+    notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
+  })
   // T-TOKEN-GATE cap (owner instruction): the token is a part payment, so it can
   // never exceed the booking total - both figures are on this form, so the client
   // can catch it before the request (the DTO enforces it authoritatively).
   .superRefine((values, ctx) => {
-    const token = values.tokenAmount === undefined || values.tokenAmount === '' ? undefined : Number(values.tokenAmount);
+    const token =
+      values.tokenAmount === undefined || values.tokenAmount === ''
+        ? undefined
+        : Number(values.tokenAmount);
     const total = Number(values.amount);
     if (!isTokenWithinTotal(token, total)) {
       ctx.addIssue({
@@ -162,16 +164,14 @@ function NewBookingPageInner() {
   const leadOptions = (() => {
     const rows = leadsQuery.data;
     if (rows === undefined || !Array.isArray(rows)) return [];
-    return (rows as Array<{ id: string; name?: string; status?: string }>).map(
-      (row) => ({
-        value: row.id,
-        label: `${row.name ?? 'Lead'}${
-          typeof row.status === 'string' && row.status.length > 0
-            ? ` (${labelFor('lead', row.status)})`
-            : ''
-        }`,
-      }),
-    );
+    return (rows as Array<{ id: string; name?: string; status?: string }>).map((row) => ({
+      value: row.id,
+      label: `${row.name ?? 'Lead'}${
+        typeof row.status === 'string' && row.status.length > 0
+          ? ` (${labelFor('lead', row.status)})`
+          : ''
+      }`,
+    }));
   })();
 
   // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): the booking total IS
@@ -317,7 +317,7 @@ function NewBookingPageInner() {
         onSubmit={onSubmit}
         submitText={createBooking.isPending ? 'Saving...' : 'Create booking'}
         submitButtonProps={{ disabled: createBooking.isPending }}
-        actionClassName='justify-end'
+        actionClassName="justify-end"
         resetText="Cancel"
         onReset={() => {
           form.reset();
@@ -344,8 +344,7 @@ function NewBookingPageInner() {
             required: true,
             options: unitOptions,
             placeholder: 'Search an available unit...',
-            description:
-              'Available units in this project. A booking holds the unit.',
+            description: 'Available units in this project. A booking holds the unit.',
             comboboxProps: {
               emptyOptionMessage: 'No available units in this project',
               selectOptionAsValue: true,
@@ -364,7 +363,7 @@ function NewBookingPageInner() {
             description:
               selectedUnitPrice === null
                 ? 'Set automatically from the unit you pick.'
-                : `List price of ${(unitRows.find((u) => u.id === selectedUnitId)?.unitNumber) ?? 'the selected unit'} - set on the unit, not editable here.`,
+                : `List price of ${unitRows.find((u) => u.id === selectedUnitId)?.unitNumber ?? 'the selected unit'} - set on the unit, not editable here.`,
             placeholder: 'Pick a unit...',
             className: 'bg-muted/50 cursor-not-allowed',
             inputProps: {

@@ -93,9 +93,7 @@ async function fetchAssignees(
   return (res.rows ?? [])
     .filter(
       (u) =>
-        u.id !== currentOwnerId &&
-        isLinkableStaffRole(u.role) &&
-        canRoleOwnState(status, u.role),
+        u.id !== currentOwnerId && isLinkableStaffRole(u.role) && canRoleOwnState(status, u.role),
     )
     .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
 }
@@ -131,16 +129,16 @@ export function LeadReassignFormBody({
   // T-USER-PROJECT-SCOPE: scoped to the lead's PROJECT. Previously unscoped, so
   // the picker offered staff from other projects - and, for an admin/owner, from
   // other organisations entirely.
-  const { data: defaultUsers } = useUsers({ limit: 10, projectId: projectId ?? undefined,
+  const { data: defaultUsers } = useUsers({
+    limit: 10,
+    projectId: projectId ?? undefined,
     availableOnly: true,
   });
   const defaultOptions = useMemo(() => {
     return (defaultUsers?.rows ?? [])
       .filter(
         (u) =>
-          u.id !== currentOwnerId &&
-          isLinkableStaffRole(u.role) &&
-          canRoleOwnState(status, u.role),
+          u.id !== currentOwnerId && isLinkableStaffRole(u.role) && canRoleOwnState(status, u.role),
       )
       .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }));
   }, [defaultUsers, currentOwnerId, status]);

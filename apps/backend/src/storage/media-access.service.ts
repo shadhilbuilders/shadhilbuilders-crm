@@ -86,9 +86,7 @@ export class MediaAccessService {
 
     const owner = await this.resolveOwner(actor, key);
     if (owner === null) {
-      this.logger.debug(
-        `[media] ${actor.role} ${actor.sub} denied key with no visible owning row`,
-      );
+      this.logger.debug(`[media] ${actor.role} ${actor.sub} denied key with no visible owning row`);
       throw new NotFoundException('Media not found');
     }
   }

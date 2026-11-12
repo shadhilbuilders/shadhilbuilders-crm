@@ -83,9 +83,7 @@ function readEnv(key: string): string | undefined {
 /*  Schemas                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const IsoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/u, 'must be ISO date YYYY-MM-DD');
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'must be ISO date YYYY-MM-DD');
 
 const ReraSchema = z
   .object({

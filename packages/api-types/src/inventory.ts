@@ -107,9 +107,7 @@ export const UnitFilterDtoSchema = z.object({
   phaseId: z.cuid2().optional(),
   bhk: z.number().int().min(1).max(10).optional(),
   facing: z.string().trim().min(1).max(40).optional(),
-  status: z
-    .union([UnitStatusSchema, z.array(UnitStatusSchema)])
-    .optional(),
+  status: z.union([UnitStatusSchema, z.array(UnitStatusSchema)]).optional(),
   /**
    * T-INV-SEARCH (2026-09-25): free-text search over the villa NUMBER.
    * Matches the grid's "Search by villa" input. Server-side (the grid is

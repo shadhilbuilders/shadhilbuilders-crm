@@ -138,7 +138,9 @@ describe('orderQueue', () => {
   it('carries the full row through, not just the sort keys', () => {
     // The page renders name/phone/ownerName off these rows; a projection that
     // dropped fields would blank the queue while still sorting correctly.
-    const rows = [{ id: 'x', name: 'Asha', phone: '9876543210', status: 'NEW', createdAt: minutesAgo(1) }];
+    const rows = [
+      { id: 'x', name: 'Asha', phone: '9876543210', status: 'NEW', createdAt: minutesAgo(1) },
+    ];
     const out = orderQueue(rows);
     expect(out[0]).toEqual(rows[0]);
   });

@@ -23,11 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { UsersService } from './users.service';
@@ -46,9 +42,7 @@ const MANAGER_ID = createId();
 
 const RUN_TAG = SELF_ID.slice(0, 6);
 
-function actorFor(
-  overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>,
-): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
@@ -173,9 +167,7 @@ afterAll(async () => {
 }, 30_000);
 
 /** Read a row back through admin context (see the RLS note above). */
-async function readSelf(
-  select: Record<string, boolean>,
-): Promise<Record<string, unknown> | null> {
+async function readSelf(select: Record<string, boolean>): Promise<Record<string, unknown> | null> {
   return adminSeed((db) =>
     db.user.findUnique({
       where: { id: SELF_ID },

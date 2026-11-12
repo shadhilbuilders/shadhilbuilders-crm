@@ -67,7 +67,11 @@ function baseTx(overrides: Record<string, unknown> = {}) {
   const findMany = vi.fn(async () => photoRows(51));
   return {
     user: {
-      findUnique: vi.fn(async () => ({ name: 'Asha Rao', customerLeadId: 'lead-1', deletedAt: null })),
+      findUnique: vi.fn(async () => ({
+        name: 'Asha Rao',
+        customerLeadId: 'lead-1',
+        deletedAt: null,
+      })),
     },
     organization: { findUnique: vi.fn(async () => ({ contactPhone: '+91 98765 43210' })) },
     booking: {
@@ -75,7 +79,13 @@ function baseTx(overrides: Record<string, unknown> = {}) {
       findMany: vi.fn(async () => []),
     },
     progressPhoto: { findMany, groupBy: vi.fn(async () => []) },
-    unit: { findFirst: vi.fn(async () => ({ id: 'unit-1', unitNumber: 'A-1', phase: { projectId: 'p-1' } })) },
+    unit: {
+      findFirst: vi.fn(async () => ({
+        id: 'unit-1',
+        unitNumber: 'A-1',
+        phase: { projectId: 'p-1' },
+      })),
+    },
     projectMilestone: { findMany: vi.fn(async () => []) },
     // The staff timeline reads PHOTO_LEAD to compute the advisory canMutate
     // flag (slice 4). A buyer's context has no ProjectStaffRole row, and the
@@ -95,13 +105,17 @@ describe('CustomerPortalService authorization (4 exact assertions)', () => {
 
   it('403 for a staff role', async () => {
     await expect(svc.me(actor('MANAGER'))).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(svc.timeline(actor('ADMIN'), 'unit-1', undefined)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.timeline(actor('ADMIN'), 'unit-1', undefined)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('403 CUSTOMER_NOT_LINKED (with the office phone) for a null pointer', async () => {
     setTx(
       baseTx({
-        user: { findUnique: vi.fn(async () => ({ name: 'Asha', customerLeadId: null, deletedAt: null })) },
+        user: {
+          findUnique: vi.fn(async () => ({ name: 'Asha', customerLeadId: null, deletedAt: null })),
+        },
       }),
     );
     for (const call of [
@@ -111,7 +125,10 @@ describe('CustomerPortalService authorization (4 exact assertions)', () => {
       const err = await call().catch((e: unknown) => e);
       expect(err).toBeInstanceOf(HttpException);
       expect((err as HttpException).getStatus()).toBe(403);
-      const body = (err as HttpException).getResponse() as { code: string; details: { officePhone: string } };
+      const body = (err as HttpException).getResponse() as {
+        code: string;
+        details: { officePhone: string };
+      };
       expect(body.code).toBe(NOT_LINKED_CODE);
       expect(body.details.officePhone).toBe('+91 98765 43210');
     }
@@ -119,9 +136,9 @@ describe('CustomerPortalService authorization (4 exact assertions)', () => {
 
   it('404 (not 403) for a unit outside the caller APPROVED bookings', async () => {
     setTx(baseTx({ booking: { findFirst: vi.fn(async () => null), findMany: vi.fn() } }));
-    await expect(svc.timeline(actor('CUSTOMER'), 'someone-elses', undefined)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      svc.timeline(actor('CUSTOMER'), 'someone-elses', undefined),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('200 for an own unit, and the lookup is pinned to APPROVED + own lead', async () => {
@@ -164,7 +181,9 @@ describe('me', () => {
     listAmount: { toString: () => over.listAmount ?? '4380000.00' },
     negotiatedRate: over.negotiatedRate ? { toString: () => over.negotiatedRate } : null,
     negotiatedAmount: over.negotiatedAmount ? { toString: () => over.negotiatedAmount } : null,
-    amount: { toString: () => over.amount ?? over.negotiatedAmount ?? over.listAmount ?? '4380000.00' },
+    amount: {
+      toString: () => over.amount ?? over.negotiatedAmount ?? over.listAmount ?? '4380000.00',
+    },
     tokenAmount: over.tokenAmount ? { toString: () => over.tokenAmount } : null,
     unit: {
       id,
@@ -319,7 +338,7 @@ describe('me', () => {
     });
   });
 
-  it('carries the handover date and only the unit\'s own project milestones, in staff order', async () => {
+  it("carries the handover date and only the unit's own project milestones, in staff order", async () => {
     const tx = baseTx({
       booking: {
         findFirst: vi.fn(),
@@ -330,8 +349,20 @@ describe('me', () => {
       },
       projectMilestone: {
         findMany: vi.fn(async () => [
-          { id: 'm1', projectId: 'p-Metro Heights', name: 'Slab cast', targetDate: new Date(Date.UTC(2027, 0, 15)), completedAt: new Date(Date.UTC(2027, 0, 10)) },
-          { id: 'm2', projectId: 'p-Metro Heights', name: 'Handover', targetDate: null, completedAt: null },
+          {
+            id: 'm1',
+            projectId: 'p-Metro Heights',
+            name: 'Slab cast',
+            targetDate: new Date(Date.UTC(2027, 0, 15)),
+            completedAt: new Date(Date.UTC(2027, 0, 10)),
+          },
+          {
+            id: 'm2',
+            projectId: 'p-Metro Heights',
+            name: 'Handover',
+            targetDate: null,
+            completedAt: null,
+          },
         ]),
       },
     });
@@ -340,7 +371,12 @@ describe('me', () => {
     const metro = res.units.find((u) => u.unitId === 'u1')!;
     expect(metro.expectedHandoverDate).toBe('2027-06-30T00:00:00.000Z');
     expect(metro.milestones).toEqual([
-      { id: 'm1', name: 'Slab cast', targetDate: '2027-01-15T00:00:00.000Z', completedAt: '2027-01-10T00:00:00.000Z' },
+      {
+        id: 'm1',
+        name: 'Slab cast',
+        targetDate: '2027-01-15T00:00:00.000Z',
+        completedAt: '2027-01-10T00:00:00.000Z',
+      },
       { id: 'm2', name: 'Handover', targetDate: null, completedAt: null },
     ]);
     // Aster Court has no milestones and no handover date: both are empty, never guessed.
@@ -349,7 +385,10 @@ describe('me', () => {
     expect(aster.milestones).toEqual([]);
     expect(tx.projectMilestone.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { projectId: { in: expect.arrayContaining(['p-Metro Heights', 'p-Aster Court']) }, organizationId: ORG },
+        where: {
+          projectId: { in: expect.arrayContaining(['p-Metro Heights', 'p-Aster Court']) },
+          organizationId: ORG,
+        },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       }),
     );
@@ -394,14 +433,21 @@ describe('timeline parity with the staff route', () => {
     expect(portalPage1.nextCursor).not.toBeNull();
 
     // Both asked the DB the same question: stable composite order, 51 rows.
-    const calls = tx.progressPhoto.findMany.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const calls = tx.progressPhoto.findMany.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
     expect(calls[0]?.[0]).toEqual(calls[1]?.[0]);
-    expect(calls[0]?.[0]).toMatchObject({ orderBy: [{ takenAt: 'desc' }, { id: 'desc' }], take: 51 });
+    expect(calls[0]?.[0]).toMatchObject({
+      orderBy: [{ takenAt: 'desc' }, { id: 'desc' }],
+      take: 51,
+    });
 
     // The cursor from page 1 drives the SAME keyset predicate on page 2.
     tx.progressPhoto.findMany.mockClear();
     await portal.timeline(actor('CUSTOMER'), 'unit-1', portalPage1.nextCursor!);
-    const where = (tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: { OR: unknown[] } }])[0].where;
+    const where = (
+      tx.progressPhoto.findMany.mock.calls[0] as unknown as [{ where: { OR: unknown[] } }]
+    )[0].where;
     expect(where.OR).toHaveLength(2);
 
     // Same DTO keys on both surfaces - a field present for staff and missing

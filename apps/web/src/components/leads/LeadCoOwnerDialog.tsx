@@ -179,7 +179,9 @@ export function LeadCoOwnerDialog({
       },
       {
         onSuccess: () => {
-          toast.success(hasCoOwner === false || values.assignee ? 'Co-owner updated' : 'Co-owner cleared');
+          toast.success(
+            hasCoOwner === false || values.assignee ? 'Co-owner updated' : 'Co-owner cleared',
+          );
           onOpenChange(false);
         },
         onError: (error) => {

@@ -59,8 +59,15 @@ function TestForm({ status = 'AVAILABLE' }: { status?: string }) {
     <UnitEditFormBody
       form={form}
       onSubmit={() => undefined}
-      bhkOptions={[{ value: '1', label: '1 BHK' }, { value: '2', label: '2 BHK' }, { value: '3', label: '3 BHK' }]}
-      facingOptions={[{ value: 'North', label: 'North' }, { value: 'South', label: 'South' }]}
+      bhkOptions={[
+        { value: '1', label: '1 BHK' },
+        { value: '2', label: '2 BHK' },
+        { value: '3', label: '3 BHK' },
+      ]}
+      facingOptions={[
+        { value: 'North', label: 'North' },
+        { value: 'South', label: 'South' },
+      ]}
       derivedStatus={status === 'HOLD' || status === 'TOKEN' ? status : null}
     />
   );
@@ -119,7 +126,7 @@ describe('UnitEditFormBody - props-API Form surface', () => {
   // (AVAILABLE|SOLD) cannot contain - and always submitted it, so the server
   // DTO rejected every save with a 400 and the unit became uneditable.
   it('shows the status read-only when a booking owns it (HOLD)', () => {
-    const html = renderToStaticMarkup(<TestForm status='HOLD' />);
+    const html = renderToStaticMarkup(<TestForm status="HOLD" />);
 
     expect(html).toMatch(/data-qa="unit-edit-status-derived"/);
     expect(html).toContain('Set by this unit&#x27;s booking');
@@ -131,13 +138,13 @@ describe('UnitEditFormBody - props-API Form surface', () => {
   });
 
   it('shows the status read-only for TOKEN too', () => {
-    const html = renderToStaticMarkup(<TestForm status='TOKEN' />);
+    const html = renderToStaticMarkup(<TestForm status="TOKEN" />);
     expect(html).toMatch(/data-qa="unit-edit-status-derived"/);
     expect(html).not.toMatch(/name="status"/);
   });
 
   it('keeps the editable picker for a status with no booking (AVAILABLE)', () => {
-    const html = renderToStaticMarkup(<TestForm status='AVAILABLE' />);
+    const html = renderToStaticMarkup(<TestForm status="AVAILABLE" />);
     expect(html).toMatch(/data-qa="form-field-status"/);
     expect(html).not.toMatch(/data-qa="unit-edit-status-derived"/);
     expect(html).toMatch(/name="status"/);
@@ -148,7 +155,9 @@ describe('handover date field', () => {
   it('renders the buyer-visible handover date input', () => {
     const html = renderToStaticMarkup(<TestForm />);
     expect(html).toContain('Expected handover');
-    expect(html).toMatch(/<input[^>]*type="date"[^>]*data-qa="unit-edit-handover"|<input[^>]*data-qa="unit-edit-handover"[^>]*type="date"/);
+    expect(html).toMatch(
+      /<input[^>]*type="date"[^>]*data-qa="unit-edit-handover"|<input[^>]*data-qa="unit-edit-handover"[^>]*type="date"/,
+    );
   });
 
   it('round-trips a calendar day without shifting it, and blank clears', () => {

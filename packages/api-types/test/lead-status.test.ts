@@ -46,7 +46,7 @@ function iso(msAgo: number, from: Date = NOON): string {
 }
 
 describe('OVERDUE_AFTER_MIN', () => {
-  it('is the plan\'s 30-minute first-touch target', () => {
+  it("is the plan's 30-minute first-touch target", () => {
     // IMPLEMENTATION-PLAN §13 / Decision 0.2. Pinned so widening the SLA is a
     // deliberate edit with a failing test, not a silent number change.
     expect(OVERDUE_AFTER_MIN).toBe(30);
@@ -61,18 +61,14 @@ describe('isOverdue - NEW only, 30-minute boundary', () => {
   });
 
   it('is FALSE one millisecond inside the SLA', () => {
-    expect(
-      isOverdue({ status: 'NEW', createdAt: iso(30 * MIN - 1) }, NOON.getTime()),
-    ).toBe(false);
+    expect(isOverdue({ status: 'NEW', createdAt: iso(30 * MIN - 1) }, NOON.getTime())).toBe(false);
   });
 
   it('is FALSE for a lead that is no longer NEW, however old', () => {
     // The clock stops mattering once a lead is picked up (plan D25 makes aging
     // non-NEW leads an explicit non-goal).
     for (const status of ['CONTACTED', 'VISITED', 'NEGOTIATION', 'WON', 'LOST', 'RNR']) {
-      expect(isOverdue({ status, createdAt: iso(90 * 24 * 60 * MIN) }, NOON.getTime())).toBe(
-        false,
-      );
+      expect(isOverdue({ status, createdAt: iso(90 * 24 * 60 * MIN) }, NOON.getTime())).toBe(false);
     }
   });
 
@@ -90,8 +86,12 @@ describe('isOverdue - NEW only, 30-minute boundary', () => {
   it('accepts a Date as well as an ISO string', () => {
     // The server side hands back real Date objects; the client side gets JSON
     // strings. One predicate has to serve both or the two will diverge again.
-    expect(isOverdue({ status: 'NEW', createdAt: new Date(NOON.getTime() - 45 * MIN) }, NOON.getTime())).toBe(true);
-    expect(isOverdue({ status: 'NEW', createdAt: new Date(NOON.getTime() - 5 * MIN) }, NOON.getTime())).toBe(false);
+    expect(
+      isOverdue({ status: 'NEW', createdAt: new Date(NOON.getTime() - 45 * MIN) }, NOON.getTime()),
+    ).toBe(true);
+    expect(
+      isOverdue({ status: 'NEW', createdAt: new Date(NOON.getTime() - 5 * MIN) }, NOON.getTime()),
+    ).toBe(false);
   });
 });
 
@@ -210,8 +210,15 @@ describe('dead states vs terminal states (T-VISIT-CLOSE)', () => {
 
   it('no active state is dead', () => {
     for (const s of [
-      'NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED',
-      'NEGOTIATION', 'BOOKING_INITIATED', 'RESCHEDULED', 'NO_SHOW',
+      'NEW',
+      'CONTACTED',
+      'VISIT_REQUESTED',
+      'VISIT_SCHEDULED',
+      'VISITED',
+      'NEGOTIATION',
+      'BOOKING_INITIATED',
+      'RESCHEDULED',
+      'NO_SHOW',
     ]) {
       expect(isDeadLeadState(s)).toBe(false);
     }

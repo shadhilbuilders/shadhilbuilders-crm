@@ -64,14 +64,8 @@ export type CookieReader = {
  * stale `better-auth.dont_remember`, so "some cookie named like this" is a
  * weaker question than "the session token is here".
  */
-export function readSessionCookie(
-  cookies: CookieReader,
-): { name: string; value: string } | null {
-  return (
-    cookies.get(SECURE_SESSION_COOKIE) ??
-    cookies.get(SESSION_COOKIE_BASE) ??
-    null
-  );
+export function readSessionCookie(cookies: CookieReader): { name: string; value: string } | null {
+  return cookies.get(SECURE_SESSION_COOKIE) ?? cookies.get(SESSION_COOKIE_BASE) ?? null;
 }
 
 /**

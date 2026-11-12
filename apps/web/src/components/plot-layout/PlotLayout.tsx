@@ -52,19 +52,19 @@ export function PlotLayout() {
 
   const matches = useMemo(
     () => plots.filter((plot) => plotMatchesFilters(plot, filters)),
-    [plots, filters]
+    [plots, filters],
   );
   const matchingNumbers = useMemo(() => new Set(matches.map((plot) => plot.plotNumber)), [matches]);
   const counts = useMemo(() => countByStatus(plots), [plots]);
 
   const geometryByNumber = useMemo(
     () => new Map(PLOT_GEOMETRY.map((shape) => [shape.plotNumber, shape])),
-    []
+    [],
   );
 
   const selectedPlot = useMemo(
     () => plots.find((plot) => plot.plotNumber === selectedPlotNumber) ?? null,
-    [plots, selectedPlotNumber]
+    [plots, selectedPlotNumber],
   );
 
   /**

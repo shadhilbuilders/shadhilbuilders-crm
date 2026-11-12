@@ -32,8 +32,7 @@ const TEST_PROJECT_ID = 'webhookscopr' + Date.now().toString();
 const TEST_USER_ID = 'test-wa-handler-user';
 const TEST_TEAM_ID = 'test-wa-handler-team';
 
-const uniquePhone = () =>
-  `9${Date.now().toString().padStart(11, '0')}`.slice(0, 12);
+const uniquePhone = () => `9${Date.now().toString().padStart(11, '0')}`.slice(0, 12);
 
 let knownLeadId: string;
 let knownPhone: string;
@@ -68,7 +67,11 @@ beforeAll(async () => {
       await tx.team.upsert({
         where: { id: TEST_TEAM_ID },
         update: {},
-        create: { id: TEST_TEAM_ID, name: 'WA Handler Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        create: {
+          id: TEST_TEAM_ID,
+          name: 'WA Handler Test Team',
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
       });
       await tx.user.upsert({
         where: { id: TEST_USER_ID },
@@ -181,9 +184,7 @@ afterAll(async () => {
         })
         .catch(() => null);
       // Clean up webhook events from this test
-      await tx.webhookEvent
-        .deleteMany({ where: { source: 'WHATSAPP' } })
-        .catch(() => null);
+      await tx.webhookEvent.deleteMany({ where: { source: 'WHATSAPP' } }).catch(() => null);
     },
   );
   await runtimePrisma.$disconnect();
@@ -300,7 +301,14 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
       async (tx) =>
         tx.message.findMany({
           where: { externalId },
-          select: { contactId: true, direction: true, channel: true, body: true, leadId: true, externalId: true },
+          select: {
+            contactId: true,
+            direction: true,
+            channel: true,
+            body: true,
+            leadId: true,
+            externalId: true,
+          },
         }),
     );
     expect(stored).toHaveLength(1);
@@ -395,7 +403,11 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
 
     const updated = await withRlsContext(
       runtimePrisma as unknown as PrismaClient,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      {
+        userId: 'CRON_SERVICE',
+        role: 'CRON_SERVICE',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
       async (tx) =>
         tx.outboundMessage.findUnique({
           where: { id: outboundMessageId },

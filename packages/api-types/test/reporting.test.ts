@@ -65,9 +65,12 @@ describe('RoleSchema matches the Prisma Role enum', () => {
 });
 
 describe('reportsToTeamManager - the assignable, team-derived roles', () => {
-  it.each(['TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const)('%s is team-manager derived', (role) => {
-    expect(reportsToTeamManager(role)).toBe(true);
-  });
+  it.each(['TELECALLER', 'SALES_EXEC', 'ENGINEER'] as const)(
+    '%s is team-manager derived',
+    (role) => {
+      expect(reportsToTeamManager(role)).toBe(true);
+    },
+  );
 
   it.each(['OWNER', 'ADMIN', 'MANAGER', 'CUSTOMER'] as const)(
     '%s is NOT team-manager derived',

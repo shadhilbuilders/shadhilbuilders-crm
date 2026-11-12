@@ -224,10 +224,9 @@ export function useLeadActivities(id: string | null) {
     enabled: id !== null && id.length > 0,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ signal, pageParam }) =>
-      api<LeadActivitiesResponse>(
-        `/leads/${id as string}/activities${qs({ cursor: pageParam })}`,
-        { signal },
-      ),
+      api<LeadActivitiesResponse>(`/leads/${id as string}/activities${qs({ cursor: pageParam })}`, {
+        signal,
+      }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
@@ -245,8 +244,7 @@ export function useLeadActivities(id: string | null) {
 export function useCreateLead() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateLeadDto) =>
-      api<unknown>('/leads', { method: 'POST', json: body }),
+    mutationFn: (body: CreateLeadDto) => api<unknown>('/leads', { method: 'POST', json: body }),
     onSuccess: () => {
       invalidateLeadCaches(queryClient);
     },
@@ -285,8 +283,7 @@ export function useUpdateLead(leadId: string | null) {
 export function useLeadFacts(leadId: string | null) {
   return useQuery({
     queryKey: ['lead-facts', leadId] as const,
-    queryFn: ({ signal }) =>
-      api<LeadFactsResponse>(`/leads/${leadId}/facts`, { signal }),
+    queryFn: ({ signal }) => api<LeadFactsResponse>(`/leads/${leadId}/facts`, { signal }),
     enabled: leadId !== null && leadId.length > 0,
   });
 }
@@ -299,11 +296,7 @@ export function useLeadFacts(leadId: string | null) {
 export function useDecideLeadFact(leadId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      factId: string;
-      decision: 'ACCEPT' | 'DISMISS';
-      reason?: string;
-    }) => {
+    mutationFn: (input: { factId: string; decision: 'ACCEPT' | 'DISMISS'; reason?: string }) => {
       if (leadId === null) {
         return Promise.reject(new Error('Lead id required'));
       }
@@ -537,10 +530,7 @@ export function useCreateVisit() {
         typeof (data as { leadId?: string } | undefined)?.leadId === 'string'
           ? (data as { leadId: string }).leadId
           : variables.leadId;
-      invalidateLeadCaches(
-        queryClient,
-        typeof leadId === 'string' ? leadId : undefined,
-      );
+      invalidateLeadCaches(queryClient, typeof leadId === 'string' ? leadId : undefined);
     },
   });
 }
@@ -613,8 +603,7 @@ export function useMessages(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL'
   return useQuery({
     queryKey: ['chat', leadId, kind] as const,
     enabled: leadId !== null && leadId.length > 0,
-    queryFn: ({ signal }) =>
-      api<unknown[]>(`/chat/${leadId as string}?kind=${kind}`, { signal }),
+    queryFn: ({ signal }) => api<unknown[]>(`/chat/${leadId as string}?kind=${kind}`, { signal }),
   });
 }
 
@@ -638,8 +627,7 @@ export function useChatThreadState(leadId: string | null) {
   return useQuery({
     queryKey: ['chat-state', leadId] as const,
     enabled: leadId !== null && leadId.length > 0,
-    queryFn: ({ signal }) =>
-      api<ChatThreadState>(`/chat/${leadId as string}/state`, { signal }),
+    queryFn: ({ signal }) => api<ChatThreadState>(`/chat/${leadId as string}/state`, { signal }),
     refetchInterval: 60_000,
   });
 }
@@ -665,7 +653,10 @@ export function useSendWelcomeMessage(leadId: string) {
   });
 }
 
-export function useMessagesRealtime(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER'): void {
+export function useMessagesRealtime(
+  leadId: string | null,
+  kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER',
+): void {
   const queryClient = useQueryClient();
   useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {
     void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
@@ -800,8 +791,7 @@ export function useContactMessages(contactId: string | null) {
   return useQuery({
     queryKey: ['chat-contact', contactId] as const,
     enabled: contactId !== null && contactId.length > 0,
-    queryFn: ({ signal }) =>
-      api<unknown[]>(`/chat/contact/${contactId as string}`, { signal }),
+    queryFn: ({ signal }) => api<unknown[]>(`/chat/contact/${contactId as string}`, { signal }),
   });
 }
 
@@ -1049,8 +1039,7 @@ export function useEditBooking() {
 export function useDeleteBooking() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api<{ id: string }>(`/bookings/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api<{ id: string }>(`/bookings/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidateBookingSideEffects(queryClient);
     },
@@ -1088,12 +1077,16 @@ export function useNotifications(
     select: (raw): NotificationsListResult => ({
       rows: unwrapRows<unknown>(raw),
       total:
-        raw !== null && typeof raw === 'object' && typeof (raw as { total?: unknown }).total === 'number'
-          ? ((raw as { total: number }).total)
+        raw !== null &&
+        typeof raw === 'object' &&
+        typeof (raw as { total?: unknown }).total === 'number'
+          ? (raw as { total: number }).total
           : 0,
       unread:
-        raw !== null && typeof raw === 'object' && typeof (raw as { unread?: unknown }).unread === 'number'
-          ? ((raw as { unread: number }).unread)
+        raw !== null &&
+        typeof raw === 'object' &&
+        typeof (raw as { unread?: unknown }).unread === 'number'
+          ? (raw as { unread: number }).unread
           : 0,
     }),
     staleTime: 10_000,
@@ -1163,8 +1156,10 @@ export function useAuditLog(
     select: (raw): AuditListResult => ({
       rows: unwrapRows<unknown>(raw),
       total:
-        raw !== null && typeof raw === 'object' && typeof (raw as { total?: unknown }).total === 'number'
-          ? ((raw as { total: number }).total)
+        raw !== null &&
+        typeof raw === 'object' &&
+        typeof (raw as { total?: unknown }).total === 'number'
+          ? (raw as { total: number }).total
           : 0,
     }),
     staleTime: 30_000,

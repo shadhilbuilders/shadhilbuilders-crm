@@ -91,7 +91,9 @@ async function assertCanSeeData(): Promise<void> {
   ]);
   const total = photos + messages;
   if (total > 0) {
-    console.log(`(connection can see ${photos} progress photo(s) + ${messages} message(s) - results are trustworthy)`);
+    console.log(
+      `(connection can see ${photos} progress photo(s) + ${messages} message(s) - results are trustworthy)`,
+    );
     return;
   }
   throw new Error(
@@ -185,7 +187,10 @@ async function findRows(): Promise<RowRef[]> {
  * still has. A row readable through the ACTIVE provider is not a candidate -
  * this script must never duplicate a healthy blob.
  */
-async function scan(active: StorageProvider, disk: LocalDiskStorage): Promise<{
+async function scan(
+  active: StorageProvider,
+  disk: LocalDiskStorage,
+): Promise<{
   checked: number;
   readable: number;
   stranded: Stranded[];
@@ -362,7 +367,9 @@ async function main(): Promise<void> {
   const disk = makeLocalDisk();
 
   const mediaDir = resolveMediaDir().dir;
-  console.log(`active provider : ${process.env.MEDIA_STORAGE === 'imagekit' ? 'imagekit' : 'local-disk'}`);
+  console.log(
+    `active provider : ${process.env.MEDIA_STORAGE === 'imagekit' ? 'imagekit' : 'local-disk'}`,
+  );
   console.log(describeMediaDir());
   if (!existsSync(join(mediaDir))) {
     console.log(`(warning: ${join(mediaDir)} does not exist - no blob can be recovered)`);
@@ -398,7 +405,9 @@ async function main(): Promise<void> {
   console.log(`Migrated ${migrated} of ${result.stranded.length} stranded blob(s).`);
 
   const after = await scan(active, disk);
-  console.log(`Still stranded: ${after.stranded.length}. Lost beyond recovery: ${after.gone.length}.`);
+  console.log(
+    `Still stranded: ${after.stranded.length}. Lost beyond recovery: ${after.gone.length}.`,
+  );
   console.log('');
 }
 

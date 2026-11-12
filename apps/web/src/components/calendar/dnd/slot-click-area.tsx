@@ -23,7 +23,7 @@ export function SlotClickArea({ date, hour, minute, className }: IProps) {
 
   return (
     <div
-      className={`absolute cursor-pointer transition-colors hover:bg-accent ${className ?? ''}`}
+      className={`hover:bg-accent absolute cursor-pointer transition-colors ${className ?? ''}`}
       onClick={handleClick}
       role="button"
       tabIndex={0}

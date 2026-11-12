@@ -4,18 +4,13 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import {
-  RemindersService,
-  type ReminderListResult,
-} from './reminders.service';
+import { RemindersService, type ReminderListResult } from './reminders.service';
 
 @ApiTags('reminders')
 @ApiBearerAuth('jwt')
 @Controller('reminders')
 export class RemindersController {
-  constructor(
-    @Inject(RemindersService) private readonly reminders: RemindersService,
-  ) {}
+  constructor(@Inject(RemindersService) private readonly reminders: RemindersService) {}
 
   @Get()
   @ApiOperation({

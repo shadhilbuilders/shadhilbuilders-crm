@@ -61,7 +61,9 @@ export class MediaController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Upload a chat attachment (image/doc/video/audio). Returns a storage key.' })
+  @ApiOperation({
+    summary: 'Upload a chat attachment (image/doc/video/audio). Returns a storage key.',
+  })
   async upload(
     @Req() req: AuthedRequest,
     @Body() body: unknown,
@@ -155,13 +157,22 @@ export class MediaController {
 function guessMime(key: string): string {
   const ext = key.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'png': return 'image/png';
-    case 'jpg': case 'jpeg': return 'image/jpeg';
-    case 'gif': return 'image/gif';
-    case 'webp': return 'image/webp';
-    case 'pdf': return 'application/pdf';
-    case 'mp4': return 'video/mp4';
-    case 'mp3': return 'audio/mpeg';
-    default: return 'application/octet-stream';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'pdf':
+      return 'application/pdf';
+    case 'mp4':
+      return 'video/mp4';
+    case 'mp3':
+      return 'audio/mpeg';
+    default:
+      return 'application/octet-stream';
   }
 }

@@ -41,7 +41,11 @@ function makeService() {
   const prismaService = { $client: client } as never;
   const outboundStub = { enqueue: vi.fn().mockResolvedValue(undefined) } as never;
   const service = new ChatService(prismaService, outboundStub);
-  return { service, client, outbound: outboundStub as unknown as { enqueue: ReturnType<typeof vi.fn> } };
+  return {
+    service,
+    client,
+    outbound: outboundStub as unknown as { enqueue: ReturnType<typeof vi.fn> },
+  };
 }
 
 /** A raw conversation row shaped exactly like the SQL returns it. */

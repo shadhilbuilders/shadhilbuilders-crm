@@ -23,11 +23,15 @@ const scope = (over: Partial<ViewerScope> = {}): ViewerScope => ({
 
 describe('canMutateRow', () => {
   it('ADMIN may act on any row', () => {
-    expect(canMutateRow({ createdBy: CREATOR }, scope({ viewer: { userId: OTHER, role: 'ADMIN' } }))).toBe(true);
+    expect(
+      canMutateRow({ createdBy: CREATOR }, scope({ viewer: { userId: OTHER, role: 'ADMIN' } })),
+    ).toBe(true);
   });
 
   it('OWNER may act (it travels as ADMIN at the GUC layer, but the role reaches here)', () => {
-    expect(canMutateRow({ createdBy: CREATOR }, scope({ viewer: { userId: OTHER, role: 'OWNER' } }))).toBe(true);
+    expect(
+      canMutateRow({ createdBy: CREATOR }, scope({ viewer: { userId: OTHER, role: 'OWNER' } })),
+    ).toBe(true);
   });
 
   it('the project photo lead may act on someone else’s photo', () => {
@@ -36,7 +40,10 @@ describe('canMutateRow', () => {
 
   it('the creator may act on their own photo', () => {
     expect(
-      canMutateRow({ createdBy: CREATOR }, scope({ viewer: { userId: CREATOR, role: 'ENGINEER' } })),
+      canMutateRow(
+        { createdBy: CREATOR },
+        scope({ viewer: { userId: CREATOR, role: 'ENGINEER' } }),
+      ),
     ).toBe(true);
   });
 
@@ -84,7 +91,11 @@ describe('toTimelinePhotoDto canMutate wire shape', () => {
   });
 
   it('includes the flag on a staff read', () => {
-    const dto = toTimelinePhotoDto(row, label, scope({ viewer: { userId: CREATOR, role: 'ENGINEER' } }));
+    const dto = toTimelinePhotoDto(
+      row,
+      label,
+      scope({ viewer: { userId: CREATOR, role: 'ENGINEER' } }),
+    );
     expect(dto.canMutate).toBe(true);
   });
 

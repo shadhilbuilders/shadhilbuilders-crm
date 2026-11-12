@@ -65,7 +65,10 @@ function parseFilter(query: Record<string, unknown>): UserFilterDto {
     // The frontend joins multi-select roles with a comma
     // (`role=SALES_EXEC,TELECALLER`). Split before schema validation - a
     // literal "SALES_EXEC,TELECALLER" is not a valid single Role enum value.
-    const parts = roleRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = roleRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     role = parts.length > 1 ? parts : parts[0];
     if (parts.length === 0) role = undefined;
   } else if (Array.isArray(roleRaw)) {
@@ -79,20 +82,12 @@ function parseFilter(query: Record<string, unknown>): UserFilterDto {
         ? query['projectId']
         : undefined,
     availableOnly: query['availableOnly'] === 'true' ? true : undefined,
-    limit:
-      typeof query['limit'] === 'string'
-        ? Number.parseInt(query['limit'], 10)
-        : undefined,
-    offset:
-      typeof query['offset'] === 'string'
-        ? Number.parseInt(query['offset'], 10)
-        : undefined,
+    limit: typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
+    offset: typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
   });
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -105,19 +100,13 @@ export class UsersController {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime (same reason app.module.ts uses useFactory + inject).
-  constructor(
-    @Inject(UsersService) private readonly users: UsersService,
-  ) {}
+  constructor(@Inject(UsersService) private readonly users: UsersService) {}
 
   @Post()
   @ApiOperation({
-    summary:
-      'Create a user (OWNER/ADMIN: below their role; MANAGER: staff in own team)',
+    summary: 'Create a user (OWNER/ADMIN: below their role; MANAGER: staff in own team)',
   })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<CreatedUser> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<CreatedUser> {
     // Shared Zod schema validates BEFORE the service is touched (the
     // api-types convention: same schema rejects at BFF too).
     const dto: CreateUserDto = parseBody(CreateUserDtoSchema, body);
@@ -141,7 +130,7 @@ export class UsersController {
   @Patch(':id/manager')
   @ApiOperation({
     summary:
-      "Assign/reassign the reporting line for a TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07). TELECALLER/SALES_EXEC are MOVED into the chosen team (OWNER/ADMIN: any led team; MANAGER: own team only). ENGINEER is ADDED to it - existing memberships are kept, because team membership is what grants project access - and only OWNER/ADMIN may do it.",
+      'Assign/reassign the reporting line for a TELECALLER/SALES_EXEC/ENGINEER (autoplan 2026-09-13; ENGINEER 2026-11-07). TELECALLER/SALES_EXEC are MOVED into the chosen team (OWNER/ADMIN: any led team; MANAGER: own team only). ENGINEER is ADDED to it - existing memberships are kept, because team membership is what grants project access - and only OWNER/ADMIN may do it.',
   })
   async assignManager(
     @Req() req: AuthedRequest,
@@ -169,10 +158,7 @@ export class UsersController {
     summary:
       'Edit your OWN profile (name). No id parameter - the target is the JWT subject, so this route cannot address another user.',
   })
-  async updateMe(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<UpdatedProfile> {
+  async updateMe(@Req() req: AuthedRequest, @Body() body: unknown): Promise<UpdatedProfile> {
     const dto: UpdateProfileDto = parseBody(UpdateProfileDtoSchema, body);
     return this.users.updateSelf(req.user!, dto);
   }
@@ -197,10 +183,7 @@ export class UsersController {
     summary:
       'Delete a user (autoplan 2026-09-09). Hierarchy-gated: actor must strictly outrank the target; no self-delete; OWNER protected. Also removes the credential Account row.',
   })
-  async remove(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ ok: true }> {
+  async remove(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ ok: true }> {
     return this.users.remove(req.user!, id);
   }
 
@@ -231,7 +214,7 @@ export class UsersController {
   @Get()
   @ApiOperation({
     summary:
-      'List users (ADMIN: all; MANAGER: own team; staff: self). Optional ?role= / ?search= / ?projectId= filters + server pagination. ?projectId= narrows to that project staff (intersection - never widens the caller\'s scope).',
+      "List users (ADMIN: all; MANAGER: own team; staff: self). Optional ?role= / ?search= / ?projectId= filters + server pagination. ?projectId= narrows to that project staff (intersection - never widens the caller's scope).",
   })
   async list(
     @Req() req: AuthedRequest,
@@ -296,10 +279,7 @@ export class UsersController {
     summary:
       'Get a user (detail page). ADMIN/OWNER: anyone; MANAGER: own team + self; staff: self only. Includes team, manager (staff roles only), and project assignments.',
   })
-  async getOne(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<UserDetail> {
+  async getOne(@Req() req: AuthedRequest, @Param('id') id: string): Promise<UserDetail> {
     return this.users.getUser(req.user!, id);
   }
 }

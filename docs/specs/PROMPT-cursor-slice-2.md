@@ -48,6 +48,7 @@ From the repo's ECC pack, use these. Load them with the Cursor skill mechanism, 
 the files directly if you cannot invoke them.
 
 Rules (`.cursor/rules/`, always-on unless noted):
+
 - `common-agents.mdc`, `common-coding-style.mdc`, `common-development-workflow.mdc`,
   `common-testing.mdc`, `common-security.mdc`, `common-patterns.mdc`,
   `common-performance.mdc`, `common-git-workflow.mdc`
@@ -58,6 +59,7 @@ Rules (`.cursor/rules/`, always-on unless noted):
 - `web-security.mdc`, `web-testing.mdc`
 
 Skills (`.cursor/skills/`):
+
 - `database-migrations`, `prisma-patterns`, `postgres-patterns` - for the migration, the
   helpers and the RLS work. These three are the highest-risk part of the task.
 - `nestjs-patterns`, `backend-patterns`, `api-design` - for `customer-portal`.
@@ -164,6 +166,7 @@ hermes verify --skip-start --json             # if available; bootstrap+build+te
 ```
 
 Notes on the last two:
+
 - `pnpm run build` regenerates `apps/web/next-env.d.ts` and `apps/web/public/sw.js`.
   After any build, restore them: `git checkout -- apps/web/next-env.d.ts apps/web/public/sw.js`.
   They are build residue, not your change.

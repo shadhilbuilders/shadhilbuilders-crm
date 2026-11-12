@@ -28,7 +28,13 @@ describe('LeadTimeline', () => {
   it('offers "Load earlier events" only when older events exist', () => {
     const rows = [row('a', 'STATUS_CHANGE', 'New -> Talked')];
     const withMore = renderToStaticMarkup(
-      <LeadTimeline leadName="Priya" isLoading={false} hasMore onLoadMore={() => undefined} activities={rows} />,
+      <LeadTimeline
+        leadName="Priya"
+        isLoading={false}
+        hasMore
+        onLoadMore={() => undefined}
+        activities={rows}
+      />,
     );
     expect(withMore).toContain('Load earlier events');
     const without = renderToStaticMarkup(

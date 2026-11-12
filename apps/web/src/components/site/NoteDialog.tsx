@@ -98,7 +98,7 @@ export const STAGE_PICKER_OPTIONS: { value: string; label: string }[] = [
 export function noteDialogHeading(
   photoCount: number,
   unitNumber: string,
-  phaseName: string
+  phaseName: string,
 ): { title: string; description: string } {
   if (photoCount > 1) {
     return {
@@ -438,7 +438,7 @@ export function NoteDialog({
 }: NoteDialogProps) {
   const heading = noteDialogHeading(attachments.length, unitNumber, phaseName);
   const pendingCount = attachments.filter(
-    (attachment) => attachment.status === 'ready' || attachment.status === 'failed'
+    (attachment) => attachment.status === 'ready' || attachment.status === 'failed',
   ).length;
   const saveLabel = noteSaveLabel(pendingCount);
 

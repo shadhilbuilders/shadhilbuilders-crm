@@ -20,29 +20,15 @@
 // transaction; use it directly (see leads.service.ts:createInTransaction).
 // ────────────────────────────────────────────────────────────────────────────
 
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import {
-  Prisma,
-  rlsContextFrom,
-  withRlsContext,
-  type PrismaClient,
-} from '@shadhil/database';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, rlsContextFrom, withRlsContext, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import {
   scoreEvidence,
   type Evidence,
   type LeadFactField as FactLedgerField,
 } from './lead-evidence';
-import {
-  decideLeadFactWrite,
-  type ExistingFact,
-  type LeadFactSubject,
-} from './lead-facts.rules';
+import { decideLeadFactWrite, type ExistingFact, type LeadFactSubject } from './lead-facts.rules';
 import { PrismaService } from '../prisma/prisma.module';
 import type {
   DecideLeadFactDto,
@@ -66,9 +52,7 @@ const SUBJECT_SELECT = {
 
 @Injectable()
 export class LeadFactsService {
-  constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
    * The lead's current values plus its live facts (APPLIED and PROPOSED).
@@ -113,16 +97,8 @@ export class LeadFactsService {
     leadId: string,
     dto: RecordLeadFactDto,
   ): Promise<RecordLeadFactResult> {
-    return withRlsContext(
-      this.prisma as unknown as PrismaClient,
-      rlsContextFrom(actor),
-      (tx) =>
-        this.recordInTransaction(
-          actor,
-          leadId,
-          dto,
-          tx as unknown as PrismaClient,
-        ),
+    return withRlsContext(this.prisma as unknown as PrismaClient, rlsContextFrom(actor), (tx) =>
+      this.recordInTransaction(actor, leadId, dto, tx as unknown as PrismaClient),
     );
   }
 
@@ -371,10 +347,7 @@ export class LeadFactsService {
  * key would typecheck as a bag of strings and silently write the wrong column
  * if the field list ever grew a field whose name is not its column.
  */
-function columnPatch(
-  field: LeadFactField,
-  value: string,
-): Prisma.LeadUpdateInput {
+function columnPatch(field: LeadFactField, value: string): Prisma.LeadUpdateInput {
   switch (field) {
     case 'name':
       return { name: value };

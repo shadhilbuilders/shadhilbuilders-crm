@@ -35,11 +35,11 @@ export function CalendarTimeline({ firstVisibleHour, lastVisibleHour }: IProps) 
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-50 border-t border-primary"
+      className="border-primary pointer-events-none absolute inset-x-0 z-50 border-t"
       style={{ top: `${getCurrentTimePosition()}%` }}
     >
-      <div className="absolute left-0 top-0 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"></div>
-      <div className="absolute -left-18 flex w-16 -translate-y-1/2 justify-end bg-background pr-1 text-xs font-medium text-primary">
+      <div className="bg-primary absolute top-0 left-0 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full"></div>
+      <div className="bg-background text-primary absolute -left-18 flex w-16 -translate-y-1/2 justify-end pr-1 text-xs font-medium">
         {formatCurrentTime()}
       </div>
     </div>

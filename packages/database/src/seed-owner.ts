@@ -58,12 +58,12 @@ async function main() {
   });
   if (!password) {
     if (existing === null) {
-      throw new Error(
-        'SEED_OWNER_PASSWORD is required to create the owner on a fresh database.',
-      );
+      throw new Error('SEED_OWNER_PASSWORD is required to create the owner on a fresh database.');
     }
     // eslint-disable-next-line no-console
-    console.log('[seed:owner] owner exists and SEED_OWNER_PASSWORD unset - keeping current password');
+    console.log(
+      '[seed:owner] owner exists and SEED_OWNER_PASSWORD unset - keeping current password',
+    );
     password = undefined;
   }
 

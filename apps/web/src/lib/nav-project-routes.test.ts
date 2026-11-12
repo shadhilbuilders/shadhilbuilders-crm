@@ -142,7 +142,9 @@ describe('activeProjectSlugFromPathname', () => {
       activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
     ).toBe(PROJ);
     expect(
-      activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/leads/abc123'),
+      activeProjectSlugFromPathname(
+        '/shadhil-builders/projects/shadhil-metro-heights/leads/abc123',
+      ),
     ).toBe(PROJ);
     expect(
       activeProjectSlugFromPathname('/shadhil-builders/projects/shadhil-metro-heights/dashboard'),
@@ -159,12 +161,12 @@ describe('activeProjectSlugFromPathname', () => {
 
 describe('stripProjectSegment', () => {
   it('strips the org + project prefix from work surfaces', () => {
-    expect(
-      stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads'),
-    ).toBe('/leads');
-    expect(
-      stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads/abc'),
-    ).toBe('/leads/abc');
+    expect(stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads')).toBe(
+      '/leads',
+    );
+    expect(stripProjectSegment('/shadhil-builders/projects/shadhil-metro-heights/leads/abc')).toBe(
+      '/leads/abc',
+    );
   });
 
   it('strips the org prefix from org-level pages', () => {
@@ -223,9 +225,7 @@ describe('isAdminPathname', () => {
   it('is false for work surfaces and org home', () => {
     expect(isAdminPathname('/shadhil-builders')).toBe(false);
     expect(isAdminPathname('/shadhil-builders/work')).toBe(false);
-    expect(
-      isAdminPathname('/shadhil-builders/projects/shadhil-metro-heights/leads'),
-    ).toBe(false);
+    expect(isAdminPathname('/shadhil-builders/projects/shadhil-metro-heights/leads')).toBe(false);
   });
 });
 

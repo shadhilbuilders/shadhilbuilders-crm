@@ -35,9 +35,7 @@ export default function ProjectStaffPage() {
         title="Staff"
         breadcrumb={[{ label: 'Work' }, { label: 'Staff' }]}
         subtitle={
-          project !== null
-            ? `Teams linked to ${project.name}.`
-            : 'Teams linked to this project.'
+          project !== null ? `Teams linked to ${project.name}.` : 'Teams linked to this project.'
         }
       />
       <div className="border-border rounded-lg border p-4">

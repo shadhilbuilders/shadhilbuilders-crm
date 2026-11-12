@@ -46,7 +46,9 @@ function make(opts: Opts = {}) {
       findFirst: vi
         .fn()
         .mockResolvedValue(
-          opts.engineer === undefined ? { id: 'eng-1', role: 'ENGINEER', name: 'Ravi' } : opts.engineer,
+          opts.engineer === undefined
+            ? { id: 'eng-1', role: 'ENGINEER', name: 'Ravi' }
+            : opts.engineer,
         ),
     },
     projectTeam: { count: vi.fn().mockResolvedValue(opts.teamLinks ?? 1) },
@@ -67,7 +69,9 @@ describe('groupNotices', () => {
       { unit: unit('u2', 'eng-2'), from: 'eng-2', to: 'eng-1' },
       { unit: unit('u3', 'eng-1'), from: 'eng-1', to: 'eng-1' },
     ]);
-    const assigned = notices.find((n) => n.recipientId === 'eng-1' && n.type === 'progress.assigned');
+    const assigned = notices.find(
+      (n) => n.recipientId === 'eng-1' && n.type === 'progress.assigned',
+    );
     expect(assigned?.unitIds).toEqual(['u1', 'u2']);
     const unassigned = notices.find((n) => n.type === 'progress.unassigned');
     expect(unassigned).toMatchObject({ recipientId: 'eng-2', unitIds: ['u2'] });
@@ -133,7 +137,10 @@ describe('assignEngineer', () => {
         data: { assignedEngineerId: null, assignedAt: null, assignedById: null },
       }),
     );
-    expect(emit).toHaveBeenCalledWith('eng-1', expect.objectContaining({ type: 'progress.unassigned' }));
+    expect(emit).toHaveBeenCalledWith(
+      'eng-1',
+      expect.objectContaining({ type: 'progress.unassigned' }),
+    );
   });
 
   it('a failed push does not undo the assignment', async () => {
@@ -162,7 +169,11 @@ describe('assignUnits (replace-set)', () => {
   it('rejects ids from another project (400) before writing', async () => {
     const { service, db } = make({ units: [unit('u1', null)] });
     await expect(
-      service.assignUnits(actorAs('ADMIN'), { projectId: 'proj-1', engineerId: 'eng-1', unitIds: ['nope'] }),
+      service.assignUnits(actorAs('ADMIN'), {
+        projectId: 'proj-1',
+        engineerId: 'eng-1',
+        unitIds: ['nope'],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(db.unit.updateMany).not.toHaveBeenCalled();
   });
@@ -170,7 +181,11 @@ describe('assignUnits (replace-set)', () => {
   it('is admin-only', async () => {
     const { service } = make();
     await expect(
-      service.assignUnits(actorAs('MANAGER'), { projectId: 'proj-1', engineerId: 'eng-1', unitIds: [] }),
+      service.assignUnits(actorAs('MANAGER'), {
+        projectId: 'proj-1',
+        engineerId: 'eng-1',
+        unitIds: [],
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

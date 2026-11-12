@@ -1,9 +1,6 @@
 {
   "$schema": "./node_modules/turbo/schema.json",
-  "globalDependencies": [
-    "**/.env.*local",
-    "tsconfig.base.json"
-  ],
+  "globalDependencies": ["**/.env.*local", "tsconfig.base.json"],
   "globalEnv": [
     "NODE_ENV",
     "DATABASE_URL",
@@ -27,9 +24,7 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [
         "dist/**",
         ".next/**",
@@ -38,12 +33,7 @@
         "node_modules/.prisma/client/**",
         "src/generated/prisma/**"
       ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "^tsconfig.base.json",
-        "!README.md",
-        "!docs/**"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "^tsconfig.base.json", "!README.md", "!docs/**"]
     },
     "dev": {
       "cache": false,
@@ -51,40 +41,19 @@
       "outputs": []
     },
     "lint": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        ".eslintrc*",
-        "eslint.config.*",
-        "!README.md"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", ".eslintrc*", "eslint.config.*", "!README.md"]
     },
     "type-check": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "tsconfig.json",
-        "tsconfig.*.json",
-        "^tsconfig.base.json"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "tsconfig.json", "tsconfig.*.json", "^tsconfig.base.json"]
     },
     "test": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "coverage/**"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "vitest.config.*"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "vitest.config.*"]
     },
     "@shadhil/api-types#test": {
       "dependsOn": ["^build", "@shadhil/auth#test"],
@@ -106,15 +75,11 @@
       "outputs": []
     },
     "transit": {
-      "dependsOn": [
-        "^transit"
-      ],
+      "dependsOn": ["^transit"],
       "outputs": []
     },
     "test:integration": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
       "cache": false
     }

@@ -18,12 +18,7 @@
 //     goes through the global JwtAuthGuard.
 //   - An env var name is passed at construction (not read from the class)
 //     so one guard serves every public endpoint without a switch statement.
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 
@@ -51,14 +46,9 @@ export class ApiKeyGuard implements CanActivate {
     // timingSafeEqual throws on length mismatch, so pad both to the longer
     // side and compare the padded buffers (length mismatch still fails).
     const max = Math.max(a.length, b.length);
-    const len =
-      a.length === b.length
-        ? b
-        : Buffer.concat([a, Buffer.alloc(max - a.length)], max);
+    const len = a.length === b.length ? b : Buffer.concat([a, Buffer.alloc(max - a.length)], max);
     const expectedPadded =
-      a.length === b.length
-        ? a
-        : Buffer.concat([b, Buffer.alloc(max - b.length)], max);
+      a.length === b.length ? a : Buffer.concat([b, Buffer.alloc(max - b.length)], max);
 
     const ok = timingSafeEqual(len, expectedPadded) && a.length === b.length;
     if (!ok) {

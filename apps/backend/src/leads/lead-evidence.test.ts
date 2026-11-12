@@ -9,10 +9,7 @@ import {
   type Evidence,
 } from './lead-evidence';
 
-const evidence = (
-  kind: Evidence['kind'],
-  detail = 'probe',
-): Evidence => ({ kind, detail });
+const evidence = (kind: Evidence['kind'], detail = 'probe'): Evidence => ({ kind, detail });
 
 describe('scoreEvidence', () => {
   it('stores nothing without evidence', () => {
@@ -64,9 +61,7 @@ describe('scoreEvidence', () => {
       evidence('contradiction', 'the enquiry form names a different person'),
     ]);
     expect(scored.band).toBeNull();
-    expect(scored.rationale).toBe(
-      'Held: the enquiry form names a different person.',
-    );
+    expect(scored.rationale).toBe('Held: the enquiry form names a different person.');
   });
 
   it('never claims certainty', () => {
@@ -87,18 +82,12 @@ describe('canonicalValue / sameValue', () => {
   });
 
   it('compares a URL as an address, not as a string', () => {
-    expect(
-      sameValue('https://www.LinkedIn.com/in/ramesh/', 'linkedin.com/in/ramesh'),
-    ).toBe(true);
-    expect(
-      sameValue('https://x.com/ramesh?ref=wa', 'https://twitter.com/ramesh/'),
-    ).toBe(true);
+    expect(sameValue('https://www.LinkedIn.com/in/ramesh/', 'linkedin.com/in/ramesh')).toBe(true);
+    expect(sameValue('https://x.com/ramesh?ref=wa', 'https://twitter.com/ramesh/')).toBe(true);
   });
 
   it('keeps a different path different', () => {
-    expect(sameValue('linkedin.com/in/ramesh', 'linkedin.com/in/rameshk')).toBe(
-      false,
-    );
+    expect(sameValue('linkedin.com/in/ramesh', 'linkedin.com/in/rameshk')).toBe(false);
     expect(canonicalValue('  Lead  ')).toBe('lead');
   });
 });

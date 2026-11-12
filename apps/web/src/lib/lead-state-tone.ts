@@ -77,8 +77,7 @@ const LEAD_STATE_TONE_BY_STATE: Readonly<Record<LeadState, TEventColor>> = {
 };
 
 /** Every state this module knows a tone for - for drift assertions in tests. */
-export const LEAD_STATE_TONES: Readonly<Record<string, TEventColor>> =
-  LEAD_STATE_TONE_BY_STATE;
+export const LEAD_STATE_TONES: Readonly<Record<string, TEventColor>> = LEAD_STATE_TONE_BY_STATE;
 
 /**
  * The tone for a lead state.

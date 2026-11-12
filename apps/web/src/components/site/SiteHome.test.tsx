@@ -45,7 +45,12 @@ function unit(over: Partial<UnitRow> & { unitNumber: string }): UnitRow {
   };
 }
 
-const FRESH = unit({ unitNumber: 'B-101', photoCount: 2, lastPhotoAt: ago(0), lastPhotoStage: 'STRUCTURE' });
+const FRESH = unit({
+  unitNumber: 'B-101',
+  photoCount: 2,
+  lastPhotoAt: ago(0),
+  lastPhotoStage: 'STRUCTURE',
+});
 const WEEK = unit({ unitNumber: 'B-102', photoCount: 1, lastPhotoAt: ago(4) });
 const STALE = unit({ unitNumber: 'B-103', photoCount: 6, lastPhotoAt: ago(30) });
 const NONE = unit({ unitNumber: 'B-104' });
@@ -215,9 +220,7 @@ describe('SiteHome empty states', () => {
 describe('SiteHome rows', () => {
   it('sends the whole row to the capture route, project-scoped', () => {
     const html = render({ rows: [STALE] });
-    expect(html).toContain(
-      'href="/shadhil-builders/projects/metro-heights/site/unit-B-103"',
-    );
+    expect(html).toContain('href="/shadhil-builders/projects/metro-heights/site/unit-B-103"');
   });
 
   it('shows the meta line and omits a stage that was never recorded', () => {
@@ -263,7 +266,7 @@ describe('SiteHome scope (2026-11-10)', () => {
     expect(html).toContain('Ravi Kumar');
   });
 
-  it('does not name an engineer on the engineer\'s own list', () => {
+  it("does not name an engineer on the engineer's own list", () => {
     const row = unit({ unitNumber: 'B-111', assignedEngineerName: 'Ravi Kumar' });
     expect(render({ rows: [row], scope: 'ASSIGNED' })).not.toContain('Ravi Kumar');
   });

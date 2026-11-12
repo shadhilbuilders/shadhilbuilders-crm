@@ -2,11 +2,7 @@
 // trusting PUBLIC_ORG_ID. Live-DB tests for the helper and its DB function.
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import {
-  prisma as runtimePrisma,
-  withRlsContext,
-  type PrismaClient,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, withRlsContext, type PrismaClient } from '@shadhil/database';
 import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { cronContextFor, forEachOrganization, listOrganizationIds } from './cron-orgs';

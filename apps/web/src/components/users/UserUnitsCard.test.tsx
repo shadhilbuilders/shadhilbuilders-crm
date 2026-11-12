@@ -11,7 +11,7 @@ const row = (id: string, assignedEngineerId: string | null): UnitRow =>
   ({ id, assignedEngineerId }) as unknown as UnitRow;
 
 describe('UserUnitsCard helpers', () => {
-  it('assignedIdsFor keeps only this engineer\'s villas', () => {
+  it("assignedIdsFor keeps only this engineer's villas", () => {
     const rows = [row('a', 'e1'), row('b', 'e2'), row('c', null), row('d', 'e1')];
     expect([...assignedIdsFor(rows, 'e1')]).toEqual(['a', 'd']);
   });

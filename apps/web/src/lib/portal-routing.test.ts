@@ -43,9 +43,9 @@ describe('portal layout guard', () => {
 // area AND password in one call - see portalGateFor.
 describe('portalGateFor - area', () => {
   it('no session is sent to login, remembering the portal', () => {
-    expect(
-      portalGateFor({ role: undefined, mustChangePassword: false, pathname: '/portal' }),
-    ).toBe('/login?next=/portal');
+    expect(portalGateFor({ role: undefined, mustChangePassword: false, pathname: '/portal' })).toBe(
+      '/login?next=/portal',
+    );
   });
 
   it.each(STAFF)('%s is sent out of the portal regardless of the flag', (role) => {

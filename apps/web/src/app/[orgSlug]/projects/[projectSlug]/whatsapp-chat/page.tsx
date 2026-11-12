@@ -28,10 +28,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { WhatsappUnknownContactConvertModal } from '@/components/whatsapp-unknown-contact-convert-modal';
 import { ChatConversationList } from '@/components/whatsapp/ChatConversationList';
-import {
-  ChatThreadPanel,
-  type ChatThreadSelection,
-} from '@/components/whatsapp/ChatThreadPanel';
+import { ChatThreadPanel, type ChatThreadSelection } from '@/components/whatsapp/ChatThreadPanel';
 import {
   useWaUnknownContacts,
   type WhatsappUnknownContactRow,
@@ -79,8 +76,8 @@ export default function WhatsappChatPage() {
       <div className="py-24 text-center text-sm">
         <Heading className="mb-2">Not authorized</Heading>
         <TypographyP className="text-muted-foreground">
-          The WhatsApp chat system is available to managers, admins and owners.
-          To message a customer you own, open the lead and use its chat panel.
+          The WhatsApp chat system is available to managers, admins and owners. To message a
+          customer you own, open the lead and use its chat panel.
         </TypographyP>
       </div>
     );
@@ -91,7 +88,11 @@ export default function WhatsappChatPage() {
       <PageHeader
         title="WhatsApp Chats"
         breadcrumb={[
-          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          {
+            label: 'Work',
+            href:
+              orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work',
+          },
           { label: 'WhatsApp Chats' },
         ]}
         subtitle="Every WhatsApp conversation - known customers and numbers not yet linked to a lead"
@@ -114,7 +115,7 @@ export default function WhatsappChatPage() {
         </div>
 
         <div
-          className={`${selected !== null ? 'flex' : 'hidden md:flex'} h-full min-w-0 flex-1 border-border md:border-l`}
+          className={`${selected !== null ? 'flex' : 'hidden md:flex'} border-border h-full min-w-0 flex-1 md:border-l`}
         >
           {selected === null ? (
             // Empty state, mirroring WhatsApp Web's "select a chat" panel.
@@ -124,15 +125,20 @@ export default function WhatsappChatPage() {
                 Select a conversation
               </Heading>
               <TypographyP className="text-muted-foreground max-w-sm text-xs">
-                Pick a chat on the left to read the history and reply. Replies go
-                out on WhatsApp to the customer.
+                Pick a chat on the left to read the history and reply. Replies go out on WhatsApp to
+                the customer.
               </TypographyP>
             </div>
           ) : (
             <div className="flex h-full min-w-0 flex-1 flex-col">
               {/* Back link for the small-screen single-pane view. */}
               <div className="border-border flex items-center justify-between border-b px-3 py-2 md:hidden">
-                <Button variant="ghost" size="sm" leftIcon={<LuArrowLeft className="size-4" />} onClick={() => setSelected(null)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<LuArrowLeft className="size-4" />}
+                  onClick={() => setSelected(null)}
+                >
                   All chats
                 </Button>
               </div>
@@ -141,9 +147,7 @@ export default function WhatsappChatPage() {
                   key={`${selected.kind}:${selected.id}`}
                   thread={selected}
                   onConvert={(t) => {
-                    const row = (pendingContacts.data?.rows ?? []).find(
-                      (c) => c.id === t.id,
-                    );
+                    const row = (pendingContacts.data?.rows ?? []).find((c) => c.id === t.id);
                     if (row === undefined) {
                       toast.error(
                         'This number is already being processed - open it from Admin → WhatsApp → WA Unknown.',

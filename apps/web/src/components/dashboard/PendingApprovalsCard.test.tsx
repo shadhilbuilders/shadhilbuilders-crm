@@ -28,7 +28,7 @@ const booking = (over: Record<string, unknown> = {}) => ({
 // naming the unit. This file's job is the rendered markup.
 const render = (bookings: unknown[]) =>
   renderToStaticMarkup(
-    <PendingApprovalsCard bookings={bookings} isLoading={false} onReview={vi.fn()} />
+    <PendingApprovalsCard bookings={bookings} isLoading={false} onReview={vi.fn()} />,
   );
 
 describe('PendingApprovalsCard', () => {

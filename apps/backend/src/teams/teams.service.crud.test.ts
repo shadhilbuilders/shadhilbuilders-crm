@@ -26,21 +26,16 @@ import type { JwtPayload } from '@shadhil/auth';
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: unknown) => unknown,
-      ) => callback((globalThis as { __tx?: unknown }).__tx),
+      async (_client: unknown, _ctx: unknown, callback: (t: unknown) => unknown) =>
+        callback((globalThis as { __tx?: unknown }).__tx),
     ),
   };
 });
@@ -88,21 +83,23 @@ type TxMock = {
 };
 
 /** Build a fresh fake tx + install it as the withRlsContext callback target. */
-function makeTx(overrides: Partial<{
-  teams: Record<string, unknown | null>;
-  users: Record<string, { id: string; role: string; name?: string } | null>;
-  managerLedTeam: { id: string; name: string } | null;
-  memberCount: number;
-  members: Array<{
-    userId: string;
-    teamId: string;
-    organizationId: string;
-    /** 2026-11-07: reassignMembers() now reads the member's ROLE (via the
-     *  user relation) to refuse moving an ENGINEER. Defaults to TELECALLER so
-     *  pre-existing move tests keep their meaning. */
-    user?: { role: string };
-  }>;
-}> = {}): TxMock {
+function makeTx(
+  overrides: Partial<{
+    teams: Record<string, unknown | null>;
+    users: Record<string, { id: string; role: string; name?: string } | null>;
+    managerLedTeam: { id: string; name: string } | null;
+    memberCount: number;
+    members: Array<{
+      userId: string;
+      teamId: string;
+      organizationId: string;
+      /** 2026-11-07: reassignMembers() now reads the member's ROLE (via the
+       *  user relation) to refuse moving an ENGINEER. Defaults to TELECALLER so
+       *  pre-existing move tests keep their meaning. */
+      user?: { role: string };
+    }>;
+  }> = {},
+): TxMock {
   const teams = overrides.teams ?? {};
   const users = overrides.users ?? {};
   // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): reassignMembers() and
@@ -127,29 +124,33 @@ function makeTx(overrides: Partial<{
         defaultAssigneeId: null,
         deletedAt: null,
       })),
-      update: vi.fn().mockImplementation(
-        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({
-          id: where.id,
-          name: (data.name as string) ?? (teams[where.id] as { name?: string })?.name,
-          managerId:
-            'managerId' in data
-              ? (data.managerId as string | null)
-              : ((teams[where.id] as { managerId?: string | null })?.managerId ?? null),
-          defaultAssigneeId: null,
-          deletedAt: 'deletedAt' in data ? (data.deletedAt as Date) : null,
-        }),
-      ),
-      findUnique: vi.fn().mockImplementation(
-        async ({ where }: { where: { id: string } }) =>
+      update: vi
+        .fn()
+        .mockImplementation(
+          async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({
+            id: where.id,
+            name: (data.name as string) ?? (teams[where.id] as { name?: string })?.name,
+            managerId:
+              'managerId' in data
+                ? (data.managerId as string | null)
+                : ((teams[where.id] as { managerId?: string | null })?.managerId ?? null),
+            defaultAssigneeId: null,
+            deletedAt: 'deletedAt' in data ? (data.deletedAt as Date) : null,
+          }),
+        ),
+      findUnique: vi
+        .fn()
+        .mockImplementation(async ({ where }: { where: { id: string } }) =>
           teams[where.id] === undefined ? null : teams[where.id],
-      ),
+        ),
       findFirst: vi.fn().mockResolvedValue(overrides.managerLedTeam ?? null),
     },
     user: {
-      findUnique: vi.fn().mockImplementation(
-        async ({ where }: { where: { id: string } }) =>
+      findUnique: vi
+        .fn()
+        .mockImplementation(async ({ where }: { where: { id: string } }) =>
           users[where.id] === undefined ? null : users[where.id],
-      ),
+        ),
     },
     teamMember: {
       count: vi.fn().mockResolvedValue(members.length),
@@ -176,12 +177,12 @@ describe('TeamsService.create', () => {
   it('rejects non-ADMIN/OWNER actors', async () => {
     makeTx();
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(
-      svc.create(managerActor, { name: 'New Team' }),
-    ).rejects.toMatchObject({ name: 'ForbiddenException' });
-    await expect(
-      svc.create(telecallerActor, { name: 'New Team' }),
-    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    await expect(svc.create(managerActor, { name: 'New Team' })).rejects.toMatchObject({
+      name: 'ForbiddenException',
+    });
+    await expect(svc.create(telecallerActor, { name: 'New Team' })).rejects.toMatchObject({
+      name: 'ForbiddenException',
+    });
   });
 
   it('rejects a managerId that is not a MANAGER role', async () => {
@@ -253,20 +254,22 @@ describe('TeamsService.update', () => {
   it('rejects non-ADMIN/OWNER actors', async () => {
     makeTx();
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(
-      svc.update(managerActor, 'team-1', { name: 'Renamed' }),
-    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    await expect(svc.update(managerActor, 'team-1', { name: 'Renamed' })).rejects.toMatchObject({
+      name: 'ForbiddenException',
+    });
   });
 
   it('404s when the team is missing or soft-deleted', async () => {
-    makeTx({ teams: { 'team-1': null, 'team-deleted': { id: 'team-deleted', deletedAt: new Date() } } });
+    makeTx({
+      teams: { 'team-1': null, 'team-deleted': { id: 'team-deleted', deletedAt: new Date() } },
+    });
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(
-      svc.update(adminActor, 'team-1', { name: 'Renamed' }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
-    await expect(
-      svc.update(adminActor, 'team-deleted', { name: 'Renamed' }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
+    await expect(svc.update(adminActor, 'team-1', { name: 'Renamed' })).rejects.toMatchObject({
+      name: 'NotFoundException',
+    });
+    await expect(svc.update(adminActor, 'team-deleted', { name: 'Renamed' })).rejects.toMatchObject(
+      { name: 'NotFoundException' },
+    );
   });
 
   it('T-TEAM-AUTHORITATIVE: allows reassigning to a managerId that already leads a DIFFERENT team', async () => {
@@ -426,7 +429,10 @@ describe('TeamsService.reassignMembers', () => {
 
   it('400s when there are no matching members to reassign', async () => {
     makeTx({
-      teams: { 'team-1': { id: 'team-1', deletedAt: null }, 'team-2': { id: 'team-2', deletedAt: null } },
+      teams: {
+        'team-1': { id: 'team-1', deletedAt: null },
+        'team-2': { id: 'team-2', deletedAt: null },
+      },
       memberCount: 0,
     });
     const svc = new TeamsService({ $client: {} } as never);
@@ -437,7 +443,10 @@ describe('TeamsService.reassignMembers', () => {
 
   it('bulk (no userIds) moves EVERY member of the source team + audits', async () => {
     const tx = makeTx({
-      teams: { 'team-1': { id: 'team-1', deletedAt: null }, 'team-2': { id: 'team-2', deletedAt: null } },
+      teams: {
+        'team-1': { id: 'team-1', deletedAt: null },
+        'team-2': { id: 'team-2', deletedAt: null },
+      },
       memberCount: 4,
     });
     const svc = new TeamsService({ $client: {} } as never);
@@ -460,7 +469,10 @@ describe('TeamsService.reassignMembers', () => {
 
   it('single (userIds=[x]) moves ONLY that member', async () => {
     const tx = makeTx({
-      teams: { 'team-1': { id: 'team-1', deletedAt: null }, 'team-2': { id: 'team-2', deletedAt: null } },
+      teams: {
+        'team-1': { id: 'team-1', deletedAt: null },
+        'team-2': { id: 'team-2', deletedAt: null },
+      },
       memberCount: 1,
     });
     const svc = new TeamsService({ $client: {} } as never);

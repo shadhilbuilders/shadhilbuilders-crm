@@ -232,7 +232,7 @@ export class OverdueAlertsService implements OnModuleInit, OnModuleDestroy {
               lead.teamId,
               lead.organizationId,
             );
-          for (const sub of recipients) {
+            for (const sub of recipients) {
               await this.notifications.emit(sub, {
                 type: 'lead.overdue',
                 title: `Lead overdue: ${lead.name}`,

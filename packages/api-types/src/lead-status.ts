@@ -52,10 +52,7 @@ export const TERMINAL_LEAD_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR']
 
 /** True when the lead is finished and should be excluded from active counts. */
 export function isTerminalLeadState(state: string | null | undefined): boolean {
-  return (
-    typeof state === 'string' &&
-    (TERMINAL_LEAD_STATES as readonly string[]).includes(state)
-  );
+  return typeof state === 'string' && (TERMINAL_LEAD_STATES as readonly string[]).includes(state);
 }
 
 /**
@@ -77,9 +74,7 @@ export const DEAD_LEAD_STATES: readonly LeadState[] = ['LOST', 'RNR'];
 
 /** True when the deal is dead and attached work should be closed. */
 export function isDeadLeadState(state: string | null | undefined): boolean {
-  return (
-    typeof state === 'string' && (DEAD_LEAD_STATES as readonly string[]).includes(state)
-  );
+  return typeof state === 'string' && (DEAD_LEAD_STATES as readonly string[]).includes(state);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

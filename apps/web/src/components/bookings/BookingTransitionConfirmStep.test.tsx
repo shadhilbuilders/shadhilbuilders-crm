@@ -39,7 +39,7 @@ function Step({ target }: { target: 'CANCELLED' | 'TOKEN' }) {
     <BookingTransitionConfirmStep
       form={form}
       onSubmit={() => undefined}
-      currentStatus='HOLD'
+      currentStatus="HOLD"
       toStatus={target}
       reasonRequired={TransitionReasonRequired.has(target)}
       isPending={false}
@@ -50,7 +50,7 @@ function Step({ target }: { target: 'CANCELLED' | 'TOKEN' }) {
 
 describe('BookingTransitionConfirmStep', () => {
   it('renders "Move from" BEFORE the reason textarea', () => {
-    const html = renderToStaticMarkup(<Step target='CANCELLED' />);
+    const html = renderToStaticMarkup(<Step target="CANCELLED" />);
     const contextAt = html.indexOf('data-qa="booking-transition-context"');
     const reasonAt = html.indexOf('data-qa="booking-reason"');
     expect(contextAt, 'context block missing').toBeGreaterThan(-1);
@@ -59,22 +59,22 @@ describe('BookingTransitionConfirmStep', () => {
   });
 
   it('renders the move-from and move-to labels in the context row', () => {
-    const html = renderToStaticMarkup(<Step target='CANCELLED' />);
+    const html = renderToStaticMarkup(<Step target="CANCELLED" />);
     // "Move from <current> to <target>" - friendly labels, not raw enums.
     expect(html).toContain('Move from');
     expect(html).toContain('Cancelled');
   });
 
   it('puts the confirm/cancel actions after the reason field', () => {
-    const html = renderToStaticMarkup(<Step target='CANCELLED' />);
+    const html = renderToStaticMarkup(<Step target="CANCELLED" />);
     expect(html.indexOf('data-qa="booking-reason"')).toBeLessThan(
       html.indexOf('data-qa="booking-confirm"'),
     );
   });
 
   it('marks the reason required for CANCELLED and optional for TOKEN', () => {
-    const cancel = renderToStaticMarkup(<Step target='CANCELLED' />);
-    const token = renderToStaticMarkup(<Step target='TOKEN' />);
+    const cancel = renderToStaticMarkup(<Step target="CANCELLED" />);
+    const token = renderToStaticMarkup(<Step target="TOKEN" />);
     // The props-API Form renders the required marker as `required-indicator`
     // (data-qa), and the label/description flip with the transition.
     expect(cancel).toContain('required-indicator');
@@ -84,7 +84,7 @@ describe('BookingTransitionConfirmStep', () => {
   });
 
   it('submits through the form (confirm is type=submit, bound to the form id)', () => {
-    const html = renderToStaticMarkup(<Step target='CANCELLED' />);
+    const html = renderToStaticMarkup(<Step target="CANCELLED" />);
     // Slice the WHOLE element: the library puts `form=` after the data-qa, so a
     // slice that stops at the marker would silently miss it.
     const at = html.indexOf('data-qa="booking-confirm"');
@@ -96,7 +96,7 @@ describe('BookingTransitionConfirmStep', () => {
   });
 
   it('the Cancel action is type=button so it never submits the form', () => {
-    const html = renderToStaticMarkup(<Step target='CANCELLED' />);
+    const html = renderToStaticMarkup(<Step target="CANCELLED" />);
     const at = html.indexOf('data-qa="booking-transition-cancel"');
     const start = html.lastIndexOf('<button', at);
     const end = html.indexOf('</button>', at);

@@ -11,12 +11,7 @@
 // Mutations mirror hooks/queries/users.ts: invalidate the registry query
 // on success so the switcher reflects the change immediately.
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 import type { ProjectDetail } from '@shadhil/api-types';
@@ -85,13 +80,7 @@ export type ProjectsListResult = {
  */
 export function useProjectsTable(filter: ProjectsFilter = {}) {
   return useQuery({
-    queryKey: [
-      'projects',
-      'list',
-      filter.search ?? '',
-      filter.limit,
-      filter.offset,
-    ],
+    queryKey: ['projects', 'list', filter.search ?? '', filter.limit, filter.offset],
     queryFn: ({ signal }) =>
       api<ProjectsListResult>(
         `/projects${qs({
@@ -131,10 +120,7 @@ export function useCreateProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      ...input
-    }: UpdateProjectInput & { id: string }) =>
+    mutationFn: async ({ id, ...input }: UpdateProjectInput & { id: string }) =>
       api<ProjectListItem>(`/projects/${id}`, {
         method: 'PATCH',
         json: input,
@@ -148,8 +134,7 @@ export function useUpdateProject() {
 export function useDeleteProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) =>
-      api<{ id: string }>(`/projects/${id}`, { method: 'DELETE' }),
+    mutationFn: async (id: string) => api<{ id: string }>(`/projects/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
     },
@@ -170,12 +155,6 @@ export function useDeleteProject() {
  */
 export const DEFAULT_PROJECT_SLUG = 'shadhil-metro-heights';
 
-export function pickDefaultProject(
-  projects: ProjectListItem[],
-): ProjectListItem | null {
-  return (
-    projects.find((p) => p.slug === DEFAULT_PROJECT_SLUG) ??
-    projects[0] ??
-    null
-  );
+export function pickDefaultProject(projects: ProjectListItem[]): ProjectListItem | null {
+  return projects.find((p) => p.slug === DEFAULT_PROJECT_SLUG) ?? projects[0] ?? null;
 }

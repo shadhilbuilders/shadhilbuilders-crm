@@ -4,8 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
@@ -53,7 +52,14 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-const managerUser = { id: 'mgr-1', name: 'Meera', email: 'meera@x', role: 'MANAGER', teamId: 'team-a', organizationId: 'org-1' };
+const managerUser = {
+  id: 'mgr-1',
+  name: 'Meera',
+  email: 'meera@x',
+  role: 'MANAGER',
+  teamId: 'team-a',
+  organizationId: 'org-1',
+};
 
 describe('MyTeamPage', () => {
   it('shows a skeleton while the session is pending', async () => {
@@ -65,7 +71,14 @@ describe('MyTeamPage', () => {
 
   it('non-MANAGER roles see "Not authorized"', async () => {
     mocks.useSessionUser.mockReturnValue({
-      user: { id: 'tc-1', name: 'Priya', email: 'p@x', role: 'TELECALLER', teamId: 'team-a', organizationId: 'org-1' },
+      user: {
+        id: 'tc-1',
+        name: 'Priya',
+        email: 'p@x',
+        role: 'TELECALLER',
+        teamId: 'team-a',
+        organizationId: 'org-1',
+      },
       isPending: false,
       error: null,
     });
@@ -76,7 +89,14 @@ describe('MyTeamPage', () => {
 
   it('ADMIN also sees "Not authorized" (they use Admin -> Teams instead)', async () => {
     mocks.useSessionUser.mockReturnValue({
-      user: { id: 'admin-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null, organizationId: 'org-1' },
+      user: {
+        id: 'admin-1',
+        name: 'Admin',
+        email: 'a@x',
+        role: 'ADMIN',
+        teamId: null,
+        organizationId: 'org-1',
+      },
       isPending: false,
       error: null,
     });
@@ -91,8 +111,22 @@ describe('MyTeamPage', () => {
       isLoading: false,
       error: null,
       data: [
-        { id: 'team-a', name: 'Metro Sales', defaultAssigneeId: null, memberCount: 5, managerId: 'mgr-1', managerName: 'Meera' },
-        { id: 'team-b', name: 'Closing Desk', defaultAssigneeId: null, memberCount: 3, managerId: 'mgr-2', managerName: 'Arjun' },
+        {
+          id: 'team-a',
+          name: 'Metro Sales',
+          defaultAssigneeId: null,
+          memberCount: 5,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
+        {
+          id: 'team-b',
+          name: 'Closing Desk',
+          defaultAssigneeId: null,
+          memberCount: 3,
+          managerId: 'mgr-2',
+          managerName: 'Arjun',
+        },
       ],
     });
     await mount();

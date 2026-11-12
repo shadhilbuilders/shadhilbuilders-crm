@@ -12,7 +12,7 @@ export function TodayButton() {
 
   return (
     <button
-      className="flex size-14 flex-col items-start overflow-hidden rounded-lg border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="focus-visible:ring-ring flex size-14 flex-col items-start overflow-hidden rounded-lg border focus-visible:ring-1 focus-visible:outline-none"
       onClick={handleClick}
     >
       <p className="bg-primary text-primary-foreground flex h-6 w-full items-center justify-center text-center text-xs font-semibold">

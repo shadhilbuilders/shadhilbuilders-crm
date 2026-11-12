@@ -87,9 +87,7 @@ async function probeForLayoutError(
   const hasOverlay = (await errorOverlay.count()) > 0;
   const hasHeader = (await pageCouldNotLoad.count()) > 0;
   if (hasOverlay || hasHeader) {
-    const dialogText = hasOverlay
-      ? await errorOverlay.innerText().catch(() => '')
-      : '';
+    const dialogText = hasOverlay ? await errorOverlay.innerText().catch(() => '') : '';
     return {
       broken: true,
       reason: `${stepName}: (app) layout crashed with Runtime Error - "${dialogText.split('\n').slice(0, 2).join(' | ').slice(0, 200)}". Source: (app)/layout.tsx crash (useNavSync Rules-of-Hooks regression? see src/lib/use-nav-sync.test.tsx).`,
@@ -144,32 +142,31 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
         ],
       },
     });
-  test('STEP 1 - login as demo user', async ({ page }) => {
-    await page.goto('/login', NAV);
-    await shot(page, '01-login');
-    await login(page);
-    // URL has changed away from /login - login API succeeded.
-    await expect(page).not.toHaveURL(/\/login/);
-    await shot(page, '01b-after-login');
-  });
-
+    test('STEP 1 - login as demo user', async ({ page }) => {
+      await page.goto('/login', NAV);
+      await shot(page, '01-login');
+      await login(page);
+      // URL has changed away from /login - login API succeeded.
+      await expect(page).not.toHaveURL(/\/login/);
+      await shot(page, '01b-after-login');
+    });
   });
 
   test('STEP 2 - /leads lists demo leads', async ({ page }) => {
-      await login(page);
-      await gotoApp(page, `${DEMO_BASE}/leads`);
-      await shot(page, '02-leads');
-      const probe = await probeForLayoutError(page, 'STEP 2');
-      if (probe.broken) throw new Error(probe.reason);
+    await login(page);
+    await gotoApp(page, `${DEMO_BASE}/leads`);
+    await shot(page, '02-leads');
+    const probe = await probeForLayoutError(page, 'STEP 2');
+    if (probe.broken) throw new Error(probe.reason);
 
-      // Wait for the leads table to render (server fetch + DataTable mount).
-      // The "Lead Inbox" heading is always visible immediately, so racing it
-      // against the table would always resolve 'pending' incorrectly.
-      await expect(page.getByRole('table')).toBeVisible({ timeout: 15_000 });
+    // Wait for the leads table to render (server fetch + DataTable mount).
+    // The "Lead Inbox" heading is always visible immediately, so racing it
+    // against the table would always resolve 'pending' incorrectly.
+    await expect(page.getByRole('table')).toBeVisible({ timeout: 15_000 });
 
-      const rowCount = await page.locator('tbody tr').count();
-      console.log(`[STEP 2] /leads table rendered with ${rowCount} row(s).`);
-      expect(rowCount).toBeGreaterThanOrEqual(1);
+    const rowCount = await page.locator('tbody tr').count();
+    console.log(`[STEP 2] /leads table rendered with ${rowCount} row(s).`);
+    expect(rowCount).toBeGreaterThanOrEqual(1);
   });
 
   test('STEP 3 - create new lead and land on /leads/{id} with status NEW', async ({ page }) => {
@@ -279,9 +276,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
       timeout: 10_000,
     });
     await expect(
-      page
-        .locator('[data-qa="lead-action-panel"]')
-        .getByText(/^Talked$/, { exact: true }),
+      page.locator('[data-qa="lead-action-panel"]').getByText(/^Talked$/, { exact: true }),
     ).toBeVisible();
     await shot(page, '05b-after-transition');
   });
@@ -335,9 +330,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     await expect(page.getByText(/Visit scheduled/i)).toBeVisible({ timeout: 15_000 });
 
     await expect(
-      page
-        .locator('[data-qa="lead-action-panel"]')
-        .getByText(/^Visit booked$/, { exact: true }),
+      page.locator('[data-qa="lead-action-panel"]').getByText(/^Visit booked$/, { exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await shot(page, '06c-visit-scheduled');
   });
@@ -354,9 +347,7 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
       timeout: 15_000,
     });
     await expect(
-      page
-        .locator('[data-qa="lead-action-panel"]')
-        .getByText(/^Visit booked$/, { exact: true }),
+      page.locator('[data-qa="lead-action-panel"]').getByText(/^Visit booked$/, { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
 
     // The visit panel renders after its own client-side visits fetch, so it
@@ -381,16 +372,12 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
         .first(),
     ).toBeVisible({ timeout: 15_000 });
     await expect(
-      page
-        .locator('[data-qa="lead-action-panel"]')
-        .getByText(/^Visited$/, { exact: true }),
+      page.locator('[data-qa="lead-action-panel"]').getByText(/^Visited$/, { exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await shot(page, '07b-after-completed');
   });
 
-  test('STEP 8 - /visits shows the scheduled visit in the weekly calendar', async ({
-    page,
-  }) => {
+  test('STEP 8 - /visits shows the scheduled visit in the weekly calendar', async ({ page }) => {
     await login(page);
     await gotoApp(page, `${DEMO_BASE}/visits`);
     const probe = await probeForLayoutError(page, 'STEP 8');
@@ -415,15 +402,11 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     const grid = page.locator('[data-qa="visits-week-grid"]');
     const hasGrid = (await grid.count()) > 0;
     if (!hasGrid) {
-      throw new Error(
-        'STEP 8: /visits weekly grid did not render - page may have errored.',
-      );
+      throw new Error('STEP 8: /visits weekly grid did not render - page may have errored.');
     }
     const dayColumns = await page.locator('[data-qa="visits-week-day"]').count();
     if (dayColumns !== 7) {
-      throw new Error(
-        `STEP 8: expected 7 day columns in the week grid, got ${dayColumns}.`,
-      );
+      throw new Error(`STEP 8: expected 7 day columns in the week grid, got ${dayColumns}.`);
     }
     // The seeded demo visit (demo-visit-upcoming-1) is scheduled relative to
     // today (setup-demo-user.ts, demoVisitSchedule: tomorrow). That is this

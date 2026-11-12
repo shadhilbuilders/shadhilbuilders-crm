@@ -56,9 +56,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -75,7 +73,10 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
     // The frontend joins multi-select states with a comma
     // (`state=NEW,CONTACTED`). Split before schema validation - a
     // literal "NEW,CONTACTED" is not a valid single LeadState enum value.
-    const parts = stateRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = stateRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     state = parts.length > 1 ? parts : parts[0];
     if (parts.length === 0) state = undefined;
   } else if (Array.isArray(stateRaw)) {
@@ -85,24 +86,18 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
     state,
     ownerId: typeof query['ownerId'] === 'string' ? query['ownerId'] : undefined,
     teamId: typeof query['teamId'] === 'string' ? query['teamId'] : undefined,
-    linkedUserId:
-      typeof query['linkedUserId'] === 'string' ? query['linkedUserId'] : undefined,
-    projectId:
-      typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
+    linkedUserId: typeof query['linkedUserId'] === 'string' ? query['linkedUserId'] : undefined,
+    projectId: typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
     search: typeof query['search'] === 'string' ? query['search'] : undefined,
-    limit:
-      typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
-    offset:
-      typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
+    limit: typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
+    offset: typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
     sortBy: typeof query['sortBy'] === 'string' ? query['sortBy'] : undefined,
     sortDir: typeof query['sortDir'] === 'string' ? query['sortDir'] : undefined,
   };
   const result = LeadFilterDtoSchema.safeParse(candidate);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -114,9 +109,7 @@ function parseFilter(query: Record<string, unknown>): LeadFilterDto {
 export class LeadsController {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes (same reason users.controller.ts:48 uses it).
-  constructor(
-    @Inject(LeadsService) private readonly leads: LeadsService,
-  ) {}
+  constructor(@Inject(LeadsService) private readonly leads: LeadsService) {}
 
   @Get()
   @ApiOperation({
@@ -155,10 +148,7 @@ export class LeadsController {
     summary:
       'Get a single lead (Lead Detail page). Role-scoped by the same RLS policies as the inbox; a lead the actor cannot see 404s.',
   })
-  async findOne(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<LeadDetail> {
+  async findOne(@Req() req: AuthedRequest, @Param('id') id: string): Promise<LeadDetail> {
     const idSchema = z.string().cuid2();
     if (!idSchema.safeParse(id).success) {
       throw new BadRequestException(`Lead id "${id}" is not a valid id`);
@@ -191,18 +181,14 @@ export class LeadsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new lead (owner assigned by stub rule)' })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<LeadRow> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<LeadRow> {
     const dto: CreateLeadDto = parseBody(CreateLeadDtoSchema, body);
     return this.leads.create(req.user!, dto);
   }
 
   @Patch(':id')
   @ApiOperation({
-    summary:
-      'Partial update - name, email only. State transitions go through /transition.',
+    summary: 'Partial update - name, email only. State transitions go through /transition.',
   })
   async update(
     @Req() req: AuthedRequest,
@@ -247,9 +233,7 @@ export class LeadsController {
     if (parsed.leadId !== id) {
       // Belt + suspenders: the param is the source of truth. The
       // body could try to claim a different leadId; reject.
-      throw new BadRequestException(
-        'leadId in body does not match URL id',
-      );
+      throw new BadRequestException('leadId in body does not match URL id');
     }
     const dto: ReassignLeadDto = parsed;
     return this.leads.reassign(req.user!, dto);
@@ -267,9 +251,7 @@ export class LeadsController {
   ): Promise<LeadRow> {
     const parsed = parseBody(SetLeadCoOwnerDtoSchema, body);
     if (parsed.leadId !== id) {
-      throw new BadRequestException(
-        'leadId in body does not match URL id',
-      );
+      throw new BadRequestException('leadId in body does not match URL id');
     }
     const dto: SetLeadCoOwnerDto = parsed;
     return this.leads.setCoOwner(req.user!, dto);
@@ -280,10 +262,7 @@ export class LeadsController {
     summary:
       'Hard delete (autoplan 2026-09-07 D13/D14). OWNER/ADMIN only - mirrors the lead_delete_admin RLS policy. 409 when the lead is WON or has any booking (revenue/audit trail must not cascade away). Guard + delete run as ONE statement inside the RLS transaction (no check-then-act race).',
   })
-  async delete(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async delete(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     // URL-authoritative param check (eng review: unvalidated param was a
     // LOW finding). Cuid format pins "this is a lead id" before the DB
     // round trip; a mismatch is a client bug, not a "not found".

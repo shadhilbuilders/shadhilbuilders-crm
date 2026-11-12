@@ -22,7 +22,7 @@ import { type UseStore } from 'idb-keyval';
 const DB_NAME = 'shadhil-offline';
 const DB_VERSION = 1;
 const STORE_NAMES = ['mutations', 'photos', 'rq-cache'] as const;
-type StoreName = typeof STORE_NAMES[number];
+type StoreName = (typeof STORE_NAMES)[number];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 

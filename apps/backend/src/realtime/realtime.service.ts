@@ -22,11 +22,15 @@
 //   - "chat:<leadId>" - allowed only if the actor could read the lead
 //                       (same RLS visibility the REST list enforces:
 //                       owner, same-team, or admin/owner)
-import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
-  type PrismaClient,
-  withRlsContext, rlsContextFrom,
-} from '@shadhil/database';
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
+import { type PrismaClient, withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { MintTicketDto, MintTicketResponse } from '@shadhil/api-types';
 
@@ -86,9 +90,7 @@ function checkAndRecordMint(userId: string): void {
 
 @Injectable()
 export class RealtimeService {
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -114,14 +116,13 @@ export class RealtimeService {
     //    admin-or-owner). This runs inside withRlsContext so the Lead
     //    row lookup honors the same policies the runtime requests do.
     if (parsed.kind === 'chat') {
-      const allowed = await withRlsContext(
-        this.client,
-        rlsContextFrom(actor),
-        async (tx) => {
-          const lead = await tx.lead.findUnique({ where: { id: parsed.leadId }, select: { id: true } });
-          return lead !== null;
-        },
-      );
+      const allowed = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+        const lead = await tx.lead.findUnique({
+          where: { id: parsed.leadId },
+          select: { id: true },
+        });
+        return lead !== null;
+      });
       if (!allowed) {
         throw new ForbiddenException(`no access to channel ${dto.channel}`);
       }

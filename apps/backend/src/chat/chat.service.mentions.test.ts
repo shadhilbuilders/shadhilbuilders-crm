@@ -26,11 +26,7 @@
 // matters - it is what proves the bound is a real boundary and not a no-op.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { UsersService } from '../users/users.service';
@@ -256,13 +252,10 @@ describe.skipIf(!HAS_DB)('ChatService targeted @mentions (T-MENTION-TARGET)', ()
    */
   async function grantsSeenBy(userId: string, role: string, messageId: string) {
     if (prisma === null) throw new Error('prisma missing');
-    return withRlsContext(
-      prisma,
-      { userId, role, organizationId: ORG } as never,
-      async (tx) =>
-        (tx as unknown as PrismaClient).messageRecipient.findMany({
-          where: { messageId },
-        }),
+    return withRlsContext(prisma, { userId, role, organizationId: ORG } as never, async (tx) =>
+      (tx as unknown as PrismaClient).messageRecipient.findMany({
+        where: { messageId },
+      }),
     );
   }
 
@@ -423,15 +416,32 @@ describe.skipIf(!HAS_DB)('canWriteThread mirrors message_insert_team', () => {
     iss: 'shadhil-crm',
   };
 
-  function actorFor(sub: string, role: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC'): JwtPayload {
-    return { sub, email: `${sub}@test.local`, role, organizationId: ORG, iat: 0, exp: 0, iss: 'shadhil-crm' };
+  function actorFor(
+    sub: string,
+    role: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC',
+  ): JwtPayload {
+    return {
+      sub,
+      email: `${sub}@test.local`,
+      role,
+      organizationId: ORG,
+      iat: 0,
+      exp: 0,
+      iss: 'shadhil-crm',
+    };
   }
 
   it('the lead OWNER can write', async () => {
     if (prisma === null) throw new Error('prisma missing');
     const users = new UsersService({ $client: prisma } as never);
     // MGR_ID owns the fixture lead in this suite.
-    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    const service = new ChatService(
+      { $client: prisma } as never,
+      canWriteOutboundStub as never,
+      undefined,
+      undefined,
+      users as never,
+    );
     const state = await service.threadState(actorFor(MGR_ID, 'MANAGER'), LEAD_ID);
     expect(state.canWriteThread).toBe(true);
   });
@@ -439,7 +449,13 @@ describe.skipIf(!HAS_DB)('canWriteThread mirrors message_insert_team', () => {
   it('the team MANAGER can write', async () => {
     if (prisma === null) throw new Error('prisma missing');
     const users = new UsersService({ $client: prisma } as never);
-    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    const service = new ChatService(
+      { $client: prisma } as never,
+      canWriteOutboundStub as never,
+      undefined,
+      undefined,
+      users as never,
+    );
     // MGR leads TEAM_1, which is the lead's team.
     const state = await service.threadState(actorFor(MGR_ID, 'MANAGER'), LEAD_ID);
     expect(state.canWriteThread).toBe(true);
@@ -448,7 +464,13 @@ describe.skipIf(!HAS_DB)('canWriteThread mirrors message_insert_team', () => {
   it('an ADMIN can write', async () => {
     if (prisma === null) throw new Error('prisma missing');
     const users = new UsersService({ $client: prisma } as never);
-    const service = new ChatService({ $client: prisma } as never, canWriteOutboundStub as never, undefined, undefined, users as never);
+    const service = new ChatService(
+      { $client: prisma } as never,
+      canWriteOutboundStub as never,
+      undefined,
+      undefined,
+      users as never,
+    );
     const state = await service.threadState(actorFor(ADMIN_ID, 'ADMIN'), LEAD_ID);
     expect(state.canWriteThread).toBe(true);
   });
@@ -489,9 +511,7 @@ describe.skipIf(!HAS_DB)('canWriteThread mirrors message_insert_team', () => {
     // Asserted as a 404 rather than a false flag because that is the real
     // behaviour; asserting canWriteThread here would require bypassing the RLS
     // read, i.e. testing a state the system never reaches.
-    await expect(service.threadState(otherTeamManager, LEAD_ID)).rejects.toThrow(
-      /not found/i,
-    );
+    await expect(service.threadState(otherTeamManager, LEAD_ID)).rejects.toThrow(/not found/i);
 
     // HONEST LIMIT OF THIS SUITE: because the read 404s first, this test cannot
     // observe the mirror's MANAGER clause. Verified via the RLS matrix and a live

@@ -79,7 +79,9 @@ describe('VisitColourLegend', () => {
     await toggle();
     // One swatch span per entry. They are aria-hidden because the words carry
     // the meaning - colour is the reinforcement, never the only channel.
-    const swatches = container?.querySelectorAll('[data-qa="visit-colour-legend-list"] li span[aria-hidden="true"]');
+    const swatches = container?.querySelectorAll(
+      '[data-qa="visit-colour-legend-list"] li span[aria-hidden="true"]',
+    );
     expect(swatches).toHaveLength(VISIT_LEGEND.length);
   });
 

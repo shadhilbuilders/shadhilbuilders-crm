@@ -8,8 +8,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useProjectTeams: vi.fn(),
@@ -98,7 +97,9 @@ describe('ProjectTeamList', () => {
     });
     await mount({});
     expect(document.body.textContent).toContain('No teams work on this project yet');
-    expect(document.body.textContent).toContain('Link a team so its members and manager get project access.');
+    expect(document.body.textContent).toContain(
+      'Link a team so its members and manager get project access.',
+    );
   });
 
   it('the empty state read-only copy differs for non-admin viewers', async () => {
@@ -208,7 +209,10 @@ describe('ProjectTeamList', () => {
     mocks.useProjectTeams.mockReturnValue({
       isLoading: false,
       error: null,
-      data: { projectId: 'proj-1', teams: [team('team-a', 'Metro Sales'), team('team-b', 'Closing Desk')] },
+      data: {
+        projectId: 'proj-1',
+        teams: [team('team-a', 'Metro Sales'), team('team-b', 'Closing Desk')],
+      },
     });
     await mount({});
     expect(document.body.textContent).toContain('2 linked teams');
@@ -312,7 +316,15 @@ describe('ProjectTeamList', () => {
 // admin can see and for nobody else.
 // ────────────────────────────────────────────────────────────────────────────
 
-function rosterWith(members: Array<{ userId: string; name: string; role: string; photoLead: boolean; isManagerSlot?: boolean }>) {
+function rosterWith(
+  members: Array<{
+    userId: string;
+    name: string;
+    role: string;
+    photoLead: boolean;
+    isManagerSlot?: boolean;
+  }>,
+) {
   baseMocks();
   mocks.useProjectTeams.mockReturnValue({
     isLoading: false,

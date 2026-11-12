@@ -36,11 +36,7 @@ const SWIPE_MIN_PX = 60;
 
 /** Which neighbour a one-finger horizontal flick asks for. Only at 1x: when
  *  zoomed, a horizontal drag is a pan, never a page turn. */
-export function swipeDirection(
-  dx: number,
-  dy: number,
-  scale: number,
-): 'next' | 'previous' | null {
+export function swipeDirection(dx: number, dy: number, scale: number): 'next' | 'previous' | null {
   if (scale > MIN_SCALE) return null;
   if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dy) > Math.abs(dx) * 0.6) return null;
   return dx < 0 ? 'next' : 'previous';
@@ -96,7 +92,8 @@ export function ZoomableImage({
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.currentTarget.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    swipeStart.current = pointers.current.size === 1 ? { x: event.clientX, y: event.clientY } : null;
+    swipeStart.current =
+      pointers.current.size === 1 ? { x: event.clientX, y: event.clientY } : null;
     if (pointers.current.size === 1) {
       const now = Date.now();
       if (now - lastTap.current < 300) {
@@ -136,7 +133,11 @@ export function ZoomableImage({
   const onPointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
     const start = swipeStart.current;
     if (start !== null && event.type === 'pointerup' && pointers.current.size === 1) {
-      const direction = swipeDirection(event.clientX - start.x, event.clientY - start.y, view.scale);
+      const direction = swipeDirection(
+        event.clientX - start.x,
+        event.clientY - start.y,
+        view.scale,
+      );
       if (direction !== null) onSwipe?.(direction);
     }
     swipeStart.current = null;

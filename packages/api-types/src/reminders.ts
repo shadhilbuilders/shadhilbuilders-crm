@@ -44,9 +44,7 @@ export const ReminderFilterDtoSchema = z.object({
   userId: z.string().cuid2().optional(),
   leadId: z.string().cuid2().optional(),
   type: z.union([ReminderTypeSchema, z.array(ReminderTypeSchema)]).optional(),
-  status: z
-    .union([ReminderStatusSchema, z.array(ReminderStatusSchema)])
-    .optional(),
+  status: z.union([ReminderStatusSchema, z.array(ReminderStatusSchema)]).optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   limit: z.number().int().min(1).max(200).default(50),

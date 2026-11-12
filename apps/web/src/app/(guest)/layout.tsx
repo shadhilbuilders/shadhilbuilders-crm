@@ -14,9 +14,7 @@ export default function GuestLayout({ children }: { children: ReactNode }) {
           doubling the notch inset here would push content down twice on
           iOS. Bottom still needs the inset (home-indicator safe area, no
           chrome below it to absorb it). */}
-      <main
-        className="text-ink flex flex-1 flex-col items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4"
-      >
+      <main className="text-ink flex flex-1 flex-col items-center justify-center px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {children}
       </main>
     </div>

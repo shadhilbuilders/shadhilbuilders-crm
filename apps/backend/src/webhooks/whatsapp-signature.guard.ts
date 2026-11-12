@@ -67,10 +67,10 @@ export class WhatsappSignatureGuard implements CanActivate {
     // Opt-out: handlers can decorate with @SkipWaSignatureCheck() for
     // test/dev paths. The GET verify-handshake route is also exempt
     // (it has no body to sign).
-    const skip = this.reflector.getAllAndOverride<boolean>(
-      SKIP_WA_SIGNATURE_CHECK,
-      [context.getHandler(), context.getClass()],
-    );
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_WA_SIGNATURE_CHECK, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (skip) return true;
 
     // The GET verify handshake (challenge-response) is unauthenticated
@@ -99,13 +99,9 @@ export class WhatsappSignatureGuard implements CanActivate {
     }
 
     const signatureHeader = req.headers['x-hub-signature-256'];
-    const signature = Array.isArray(signatureHeader)
-      ? signatureHeader[0]
-      : signatureHeader;
+    const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
     if (!signature) {
-      throw new UnauthorizedException(
-        'Missing X-Hub-Signature-256 header',
-      );
+      throw new UnauthorizedException('Missing X-Hub-Signature-256 header');
     }
 
     const rawBody = req.rawBody;
@@ -113,9 +109,7 @@ export class WhatsappSignatureGuard implements CanActivate {
       // The raw body is missing - likely the request came in without
       // the JSON parser touching it (e.g. an empty body). Without the
       // raw bytes, HMAC verification is impossible.
-      throw new UnauthorizedException(
-        'Cannot verify signature: request body was not captured',
-      );
+      throw new UnauthorizedException('Cannot verify signature: request body was not captured');
     }
 
     const expected = `sha256=${crypto
@@ -125,10 +119,7 @@ export class WhatsappSignatureGuard implements CanActivate {
 
     const sigBuf = Buffer.from(signature);
     const expBuf = Buffer.from(expected);
-    if (
-      sigBuf.length !== expBuf.length ||
-      !crypto.timingSafeEqual(sigBuf, expBuf)
-    ) {
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       this.logger.warn('WhatsApp webhook signature mismatch');
       throw new UnauthorizedException('Invalid webhook signature');
     }

@@ -77,6 +77,7 @@ Nice inContact.
 ## Real cost comparison: FreJun vs Amazon Connect for 10 users
 
 Assumptions (typical Shadhil workload):
+
 - 10 users, logged in 8 hours/day, 22 working days = 1,760
   agent-hours/month
 - 200 calls/day, 3-min average = 600 min/day = 13,200 min/month
@@ -201,6 +202,7 @@ The CRM's telephony integration has three touchpoints:
    URL in the activity log.
 
 **To switch providers, you change:**
+
 - The click-to-call endpoint (NestJS `TelephonyService`
   interface stays the same; only the implementation
   changes).
@@ -209,6 +211,7 @@ The CRM's telephony integration has three touchpoints:
 - The recording URL field in the activity payload.
 
 **You do NOT change:**
+
 - The data model (Activity, Call, Recording).
 - The RLS policies.
 - The chat pane, lead detail, anything else.
@@ -264,6 +267,7 @@ requirements.
 
 If you want to go Amazon Connect anyway, I won't stop you.
 The valid reasons would be:
+
 - Shadhil already has an AWS account and team
 - You want to signal "enterprise-grade" to the client
 - You plan to expand to UAE in 2026 and want the same

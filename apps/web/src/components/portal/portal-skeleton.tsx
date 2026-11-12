@@ -7,7 +7,12 @@
 // static block.
 export function PortalPageSkeleton() {
   return (
-    <div role="status" aria-busy="true" aria-label="Loading your home" data-qa="portal-page-skeleton">
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label="Loading your home"
+      data-qa="portal-page-skeleton"
+    >
       <div className="portal-rule-b grid grid-cols-1 items-end gap-6 pt-7 pb-5 lg:grid-cols-12 lg:gap-5">
         <div className="space-y-3 lg:col-span-8">
           <div className="h-3.5 w-28 animate-pulse bg-[var(--portal-hair)] motion-reduce:animate-none" />

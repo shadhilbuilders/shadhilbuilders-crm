@@ -25,10 +25,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import {
-  withRlsContext, rlsContextFrom,
-  type PrismaClient,
-} from '@shadhil/database';
+import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   MessageEvent,
@@ -43,7 +40,11 @@ import type {
 // T-WA-WINDOW (2026-09-29): Meta's 24h customer-service window is enforced by
 // the SAME predicate the composers use, so the UI cannot offer a send the API
 // refuses - or, worse, the API accept one Meta will reject with 131047.
-import { CLOSED_WINDOW_MESSAGE, isServiceWindowOpen, serviceWindowExpiry } from '@shadhil/api-types';
+import {
+  CLOSED_WINDOW_MESSAGE,
+  isServiceWindowOpen,
+  serviceWindowExpiry,
+} from '@shadhil/api-types';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { OutboundService } from '../whatsapp/outbound.service';
@@ -240,7 +241,10 @@ export class ChatService {
    * NOTE: this does NOT open the reply window. Nothing the business sends can -
    * only the customer's own reply does.
    */
-  async sendWelcome(actor: JwtPayload, dto: SendWelcomeMessageDto): Promise<{ ok: true; templateName: string }> {
+  async sendWelcome(
+    actor: JwtPayload,
+    dto: SendWelcomeMessageDto,
+  ): Promise<{ ok: true; templateName: string }> {
     const templateName = process.env['WA_TEMPLATE_WELCOME'] ?? '';
     if (templateName.length === 0) {
       // Loud, actionable: an operator clicking the button before the template is
@@ -330,73 +334,69 @@ export class ChatService {
     limit: number,
     kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER',
   ): Promise<MessageListResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // Verify the lead exists under the actor's scope - a
-        // non-visible lead returns 0 messages anyway (the JOIN-based
-        // policy filters them out), but surfacing a 404 helps the
-        // BFF distinguish "no messages" from "no lead".
-        const lead = await (tx as unknown as PrismaClient).lead.findUnique({
-          where: { id: leadId },
-          select: { id: true, name: true },
-        });
-        if (lead === null) {
-          throw new NotFoundException(`Lead ${leadId} not found`);
-        }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Verify the lead exists under the actor's scope - a
+      // non-visible lead returns 0 messages anyway (the JOIN-based
+      // policy filters them out), but surfacing a 404 helps the
+      // BFF distinguish "no messages" from "no lead".
+      const lead = await (tx as unknown as PrismaClient).lead.findUnique({
+        where: { id: leadId },
+        select: { id: true, name: true },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${leadId} not found`);
+      }
 
-        const rows = await (tx as unknown as PrismaClient).message.findMany({
-          where: {
-            leadId,
-            kind,
-            ...(since !== undefined ? { createdAt: { gt: new Date(since) } } : {}),
-          },
-          orderBy: { createdAt: 'asc' },
-          take: limit,
-          select: {
-            id: true,
-            leadId: true,
-            contactId: true,
-            direction: true,
-            channel: true,
-            kind: true,
-            body: true,
-            mediaUrl: true,
-            mediaKey: true,
-            mediaType: true,
-            mediaFilename: true,
-            createdAt: true,
-            user: { select: { name: true } },
-            // T-MENTION-TARGET: the addressed recipients, so the pane can show
-            // who a note was directed at and highlight the current user.
-            recipients: { select: { userId: true } },
-          },
-        });
+      const rows = await (tx as unknown as PrismaClient).message.findMany({
+        where: {
+          leadId,
+          kind,
+          ...(since !== undefined ? { createdAt: { gt: new Date(since) } } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          leadId: true,
+          contactId: true,
+          direction: true,
+          channel: true,
+          kind: true,
+          body: true,
+          mediaUrl: true,
+          mediaKey: true,
+          mediaType: true,
+          mediaFilename: true,
+          createdAt: true,
+          user: { select: { name: true } },
+          // T-MENTION-TARGET: the addressed recipients, so the pane can show
+          // who a note was directed at and highlight the current user.
+          recipients: { select: { userId: true } },
+        },
+      });
 
-        return rows.map((r) => ({
-          id: r.id,
-          leadId: r.leadId,
-          contactId: r.contactId,
-          direction: r.direction,
-          channel: r.channel,
-          kind: r.kind,
-          body: r.body,
-          // DERIVED per request (Option A): images resolve to the provider's
-          // public CDN URL, documents to the authenticated BFF path. Legacy
-          // rows without mediaKey fall back to their stored mediaUrl.
-          mediaUrl: this.displayMediaUrl(r),
-          mediaType: r.mediaType,
-          mediaFilename: r.mediaFilename,
-          // OUT → the staff member who sent it; IN → the customer (lead).
-          senderName: r.direction === 'OUT' ? (r.user?.name ?? null) : lead.name,
-          // Defensive `?? []`: the relation is always selected in production,
-          // but a partial test mock must not crash the whole thread render.
-          mentionedUserIds: (r.recipients ?? []).map((rc) => rc.userId),
-          createdAt: r.createdAt.toISOString(),
-        }));
-      },
-    );
+      return rows.map((r) => ({
+        id: r.id,
+        leadId: r.leadId,
+        contactId: r.contactId,
+        direction: r.direction,
+        channel: r.channel,
+        kind: r.kind,
+        body: r.body,
+        // DERIVED per request (Option A): images resolve to the provider's
+        // public CDN URL, documents to the authenticated BFF path. Legacy
+        // rows without mediaKey fall back to their stored mediaUrl.
+        mediaUrl: this.displayMediaUrl(r),
+        mediaType: r.mediaType,
+        mediaFilename: r.mediaFilename,
+        // OUT → the staff member who sent it; IN → the customer (lead).
+        senderName: r.direction === 'OUT' ? (r.user?.name ?? null) : lead.name,
+        // Defensive `?? []`: the relation is always selected in production,
+        // but a partial test mock must not crash the whole thread render.
+        mentionedUserIds: (r.recipients ?? []).map((rc) => rc.userId),
+        createdAt: r.createdAt.toISOString(),
+      }));
+    });
   }
 
   /**
@@ -411,10 +411,7 @@ export class ChatService {
    * (MessageEvent). The BFF invalidates the chat query so the
    * optimistic update lands.
    */
-  async send(
-    actor: JwtPayload,
-    dto: SendMessageDto,
-  ): Promise<MessageEvent> {
+  async send(actor: JwtPayload, dto: SendMessageDto): Promise<MessageEvent> {
     if (dto.body.trim().length === 0) {
       throw new BadRequestException('Message body cannot be empty');
     }
@@ -422,211 +419,209 @@ export class ChatService {
     // WhatsApp; the customer never sees it). Defaults to CUSTOMER so
     // existing callers (webhook, BFF) keep working unchanged.
     const kind: 'CUSTOMER' | 'INTERNAL' = dto.kind ?? 'CUSTOMER';
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // RLS-scoped lead check. message_insert_team gates via the
-        // parent Lead's team/owner - a non-visible lead surfaces as
-        // P2003 (FK violation) or a RLS rejection. We pre-check so
-        // the BFF gets a clear 404 rather than a 500.
-        const lead = await (tx as unknown as PrismaClient).lead.findUnique({
-          where: { id: dto.leadId },
-          select: { id: true, name: true, phoneE164: true, phone: true },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // RLS-scoped lead check. message_insert_team gates via the
+      // parent Lead's team/owner - a non-visible lead surfaces as
+      // P2003 (FK violation) or a RLS rejection. We pre-check so
+      // the BFF gets a clear 404 rather than a 500.
+      const lead = await (tx as unknown as PrismaClient).lead.findUnique({
+        where: { id: dto.leadId },
+        select: { id: true, name: true, phoneE164: true, phone: true },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${dto.leadId} not found`);
+      }
+
+      // T-WA-WINDOW (2026-09-29): refuse a customer message Meta will reject.
+      //
+      // Before this guard the API accepted a freeform reply at ANY time and
+      // queued it for the cron; outside the 24h window Meta rejects it with
+      // 131047 (re-engagement message) and the OutboundMessage row died as a
+      // silent FAILED - the operator saw "sent", the customer received nothing.
+      // The UI only gated the whatsapp-chat pane, so the API was the real hole.
+      //
+      // Enforced for the customer thread only, and only when the message would
+      // actually reach the phone: an INTERNAL note never leaves the app, and an
+      // IN_APP message on a lead with no WhatsApp number is not a WhatsApp send.
+      // Mirrors the OUTBOUND ENQUEUE condition EXACTLY (see the enqueue call
+      // below): a customer message reaches WhatsApp when the channel is
+      // WHATSAPP, or when it is IN_APP on a lead with a phoneE164. Using
+      // `phoneE164 ?? phone` here would have gated leads the enqueue would not
+      // even try to send to - the gate must match the thing it protects.
+      const resolvedChannel: 'WHATSAPP' | 'IN_APP' = dto.channel ?? 'IN_APP';
+      const wouldReachWhatsApp =
+        kind === 'CUSTOMER' &&
+        (resolvedChannel === 'WHATSAPP' ||
+          (resolvedChannel === 'IN_APP' && lead.phoneE164 !== null));
+      if (wouldReachWhatsApp) {
+        const lastInbound = await (tx as unknown as PrismaClient).message.findFirst({
+          where: { leadId: dto.leadId, direction: 'IN' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
         });
-        if (lead === null) {
-          throw new NotFoundException(`Lead ${dto.leadId} not found`);
-        }
-
-        // T-WA-WINDOW (2026-09-29): refuse a customer message Meta will reject.
-        //
-        // Before this guard the API accepted a freeform reply at ANY time and
-        // queued it for the cron; outside the 24h window Meta rejects it with
-        // 131047 (re-engagement message) and the OutboundMessage row died as a
-        // silent FAILED - the operator saw "sent", the customer received nothing.
-        // The UI only gated the whatsapp-chat pane, so the API was the real hole.
-        //
-        // Enforced for the customer thread only, and only when the message would
-        // actually reach the phone: an INTERNAL note never leaves the app, and an
-        // IN_APP message on a lead with no WhatsApp number is not a WhatsApp send.
-        // Mirrors the OUTBOUND ENQUEUE condition EXACTLY (see the enqueue call
-        // below): a customer message reaches WhatsApp when the channel is
-        // WHATSAPP, or when it is IN_APP on a lead with a phoneE164. Using
-        // `phoneE164 ?? phone` here would have gated leads the enqueue would not
-        // even try to send to - the gate must match the thing it protects.
-        const resolvedChannel: 'WHATSAPP' | 'IN_APP' = dto.channel ?? 'IN_APP';
-        const wouldReachWhatsApp =
-          kind === 'CUSTOMER' &&
-          (resolvedChannel === 'WHATSAPP' ||
-            (resolvedChannel === 'IN_APP' && lead.phoneE164 !== null));
-        if (wouldReachWhatsApp) {
-          const lastInbound = await (tx as unknown as PrismaClient).message.findFirst({
-            where: { leadId: dto.leadId, direction: 'IN' },
-            orderBy: { createdAt: 'desc' },
-            select: { createdAt: true },
-          });
-          if (!isServiceWindowOpen(lastInbound?.createdAt ?? null)) {
-            throw new BadRequestException(
-              lastInbound === null
-                ? 'This customer has not written yet, so the 24-hour WhatsApp reply window is closed. Send the welcome message first; you can reply freely once they answer.'
-                : CLOSED_WINDOW_MESSAGE,
-            );
-          }
-        }
-
-        // The sender of an OUT message is the staff member (actor). Look up
-        // their display name for the MessageHeader.
-        const actorRow = await (tx as unknown as PrismaClient).user.findUnique({
-          where: { id: actor.sub },
-          select: { name: true },
-        });
-
-        const created = await (tx as unknown as PrismaClient).message.create({
-          data: {
-            leadId: dto.leadId,
-            organizationId: actor.organizationId,
-            userId: actor.sub,
-            direction: 'OUT',
-            channel: dto.channel ?? 'IN_APP',
-            kind,
-            body: dto.body,
-            // MEDIA (2026-09-18): store the PROVIDER-NEUTRAL key (canonical)
-            // plus a derived display URL for back-compat readers. The display
-            // URL is recomputed per request by displayMediaUrl() using the
-            // Option A policy (images -> public CDN, docs -> authenticated
-            // BFF path), so a storage-provider switch never needs a row
-            // migration. `dto.mediaUrl` is honoured when a caller supplies it.
-            mediaKey: dto.mediaKey,
-            mediaUrl:
-              dto.mediaUrl ??
-              (dto.mediaKey !== undefined ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}` : undefined),
-            mediaType: dto.mediaMimeType,
-            mediaFilename: dto.mediaFilename,
-          },
-          select: {
-            id: true,
-            leadId: true,
-            contactId: true,
-            direction: true,
-            channel: true,
-            kind: true,
-            body: true,
-            mediaUrl: true,
-            mediaKey: true,
-            mediaType: true,
-            mediaFilename: true,
-            createdAt: true,
-          },
-        });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'chat.send',
-            entityType: 'Message',
-            entityId: created.id,
-            after: {
-              leadId: created.leadId,
-              direction: created.direction,
-              channel: created.channel,
-              kind: created.kind,
-            },
-            reason: `Message sent to lead ${created.leadId} by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        // INTERNAL messages are staff-only notes - they never reach the
-        // customer, so the WhatsApp outbound path is skipped entirely.
-        // This is the hard guarantee that an internal note can't leak to
-        // the customer's phone even if a caller passes channel=WHATSAPP.
-        if (kind === 'INTERNAL') {
-          // Best-effort @mention → notification (the "loop the manager"
-          // mechanism). A typo'd @Name just doesn't notify; it never
-          // blocks the send. Resolve mentioned users by name within the
-          // actor's team scope and emit a chat.mention notification for
-          // each. The NotificationsService is @Optional() - if it's not
-          // wired (unit tests), mentions are silently skipped.
-          await this.emitMentions(tx, actor, dto, created.id);
-        } else if (
-          created.channel === 'WHATSAPP' ||
-          (created.channel === 'IN_APP' && lead.phoneE164 !== null)
-        ) {
-          // OUTBOUND-WA (2026-09-17): a staff CUSTOMER reply reaches the
-          // customer on WhatsApp whenever the lead has a reachable WhatsApp
-          // number AND the chat is the customer thread - regardless of the
-          // display channel. The pane sends channel='IN_APP' (the row renders
-          // in the panel), but the customer should still receive the reply on
-          // WhatsApp within the 24h window. This is FREEFORM text, not a
-          // template: a true reply inside the customer-service window needs no
-          // approved template, and `shadhil_chat_reply` is MARKETING anyway
-          // (Meta's category call, 2026-11-11) so it would cost more and be
-          // dropped from a test sender.
-          // INTERNAL is hard-excluded above (staff-only note, never leaks to
-          // the phone). Enqueueing is inside withRlsContext so the
-          // OutboundMessage INSERT has app.user_id (outbound_insert_authenticated)
-          // and the cron drains it via CRON_SERVICE.
-          const firstName = (lead.name ?? '').trim().split(/\s+/)[0] ?? lead.name ?? '';
-
-          // T-E2b: if the channel is WHATSAPP / IN_APP-with-phone, enqueue an
-          // outbound. We do this INSIDE the withRlsContext block so
-          // the OutboundMessage INSERT runs under the actor's RLS
-          // (the outbound_insert_authenticated policy requires
-          // app.user_id to be set, which the bare client can't
-          // provide). The cron processor later picks it up via the
-          // CRON_SERVICE role.
-          const body = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
-          await this.outbound.enqueue(
-            {
-              messageId: created.id,
-              organizationId: actor.organizationId,
-              // A CUSTOMER send is always on a known-lead thread here, so
-              // leadId is present; narrow it rather than passing null.
-              leadId: created.leadId ?? dto.leadId,
-              // FREEFORM, not TEMPLATE: this is a reply inside the 24h
-              // customer-service window, so Meta accepts plain text with
-              // NO approved template. Using shadhil_chat_reply failed with
-              // 132001 "template does not exist" because the template is
-              // never created in Meta. A text reply avoids templates entirely
-              // and costs nothing within the window.
-              sendType: 'FREEFORM',
-              freeformBody: body,
-              // MEDIA (2026-09-17): when the DTO carries an attachment,
-              // persist the metadata so the cron sends the file (instead of
-              // only text). mediaUrl is the storage key for the Message row;
-              // the media* fields come from the same upload.
-              ...(dto.mediaKey !== undefined ? { mediaKey: dto.mediaKey } : {}),
-              ...(dto.mediaMimeType !== undefined ? { mediaType: dto.mediaMimeType } : {}),
-              ...(dto.mediaFilename !== undefined ? { mediaFilename: dto.mediaFilename } : {}),
-            },
-            // Pass the RLS-scoped tx so the OutboundMessage INSERT runs on
-            // the same connection that carries app.user_id (set by
-            // withRlsContext). Without the override, enqueue inserts on the
-            // bare injected client → app.user_id unset → 42501 policy
-            // violation (outbound_insert_authenticated).
-            tx as unknown as PrismaClient,
+        if (!isServiceWindowOpen(lastInbound?.createdAt ?? null)) {
+          throw new BadRequestException(
+            lastInbound === null
+              ? 'This customer has not written yet, so the 24-hour WhatsApp reply window is closed. Send the welcome message first; you can reply freely once they answer.'
+              : CLOSED_WINDOW_MESSAGE,
           );
         }
+      }
 
-        return {
-          id: created.id,
-          leadId: created.leadId,
-          contactId: created.contactId,
-          direction: created.direction,
-          channel: created.channel,
-          kind: created.kind,
-          body: created.body,
-          // Same derivation as list() so the optimistic/returned row matches
-          // what a refetch will show (images -> public CDN under Option A).
-          mediaUrl: this.displayMediaUrl(created),
-          mediaType: created.mediaType,
-          mediaFilename: created.mediaFilename,
-          // OUT → the staff member who sent it (the actor).
-          senderName: actorRow?.name ?? null,
-          createdAt: created.createdAt.toISOString(),
-        };
-      },
-    );
+      // The sender of an OUT message is the staff member (actor). Look up
+      // their display name for the MessageHeader.
+      const actorRow = await (tx as unknown as PrismaClient).user.findUnique({
+        where: { id: actor.sub },
+        select: { name: true },
+      });
+
+      const created = await (tx as unknown as PrismaClient).message.create({
+        data: {
+          leadId: dto.leadId,
+          organizationId: actor.organizationId,
+          userId: actor.sub,
+          direction: 'OUT',
+          channel: dto.channel ?? 'IN_APP',
+          kind,
+          body: dto.body,
+          // MEDIA (2026-09-18): store the PROVIDER-NEUTRAL key (canonical)
+          // plus a derived display URL for back-compat readers. The display
+          // URL is recomputed per request by displayMediaUrl() using the
+          // Option A policy (images -> public CDN, docs -> authenticated
+          // BFF path), so a storage-provider switch never needs a row
+          // migration. `dto.mediaUrl` is honoured when a caller supplies it.
+          mediaKey: dto.mediaKey,
+          mediaUrl:
+            dto.mediaUrl ??
+            (dto.mediaKey !== undefined
+              ? `/api/bff/media/${encodeURIComponent(dto.mediaKey)}`
+              : undefined),
+          mediaType: dto.mediaMimeType,
+          mediaFilename: dto.mediaFilename,
+        },
+        select: {
+          id: true,
+          leadId: true,
+          contactId: true,
+          direction: true,
+          channel: true,
+          kind: true,
+          body: true,
+          mediaUrl: true,
+          mediaKey: true,
+          mediaType: true,
+          mediaFilename: true,
+          createdAt: true,
+        },
+      });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'chat.send',
+          entityType: 'Message',
+          entityId: created.id,
+          after: {
+            leadId: created.leadId,
+            direction: created.direction,
+            channel: created.channel,
+            kind: created.kind,
+          },
+          reason: `Message sent to lead ${created.leadId} by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      // INTERNAL messages are staff-only notes - they never reach the
+      // customer, so the WhatsApp outbound path is skipped entirely.
+      // This is the hard guarantee that an internal note can't leak to
+      // the customer's phone even if a caller passes channel=WHATSAPP.
+      if (kind === 'INTERNAL') {
+        // Best-effort @mention → notification (the "loop the manager"
+        // mechanism). A typo'd @Name just doesn't notify; it never
+        // blocks the send. Resolve mentioned users by name within the
+        // actor's team scope and emit a chat.mention notification for
+        // each. The NotificationsService is @Optional() - if it's not
+        // wired (unit tests), mentions are silently skipped.
+        await this.emitMentions(tx, actor, dto, created.id);
+      } else if (
+        created.channel === 'WHATSAPP' ||
+        (created.channel === 'IN_APP' && lead.phoneE164 !== null)
+      ) {
+        // OUTBOUND-WA (2026-09-17): a staff CUSTOMER reply reaches the
+        // customer on WhatsApp whenever the lead has a reachable WhatsApp
+        // number AND the chat is the customer thread - regardless of the
+        // display channel. The pane sends channel='IN_APP' (the row renders
+        // in the panel), but the customer should still receive the reply on
+        // WhatsApp within the 24h window. This is FREEFORM text, not a
+        // template: a true reply inside the customer-service window needs no
+        // approved template, and `shadhil_chat_reply` is MARKETING anyway
+        // (Meta's category call, 2026-11-11) so it would cost more and be
+        // dropped from a test sender.
+        // INTERNAL is hard-excluded above (staff-only note, never leaks to
+        // the phone). Enqueueing is inside withRlsContext so the
+        // OutboundMessage INSERT has app.user_id (outbound_insert_authenticated)
+        // and the cron drains it via CRON_SERVICE.
+        const firstName = (lead.name ?? '').trim().split(/\s+/)[0] ?? lead.name ?? '';
+
+        // T-E2b: if the channel is WHATSAPP / IN_APP-with-phone, enqueue an
+        // outbound. We do this INSIDE the withRlsContext block so
+        // the OutboundMessage INSERT runs under the actor's RLS
+        // (the outbound_insert_authenticated policy requires
+        // app.user_id to be set, which the bare client can't
+        // provide). The cron processor later picks it up via the
+        // CRON_SERVICE role.
+        const body = created.body.length > 1000 ? created.body.slice(0, 1000) : created.body;
+        await this.outbound.enqueue(
+          {
+            messageId: created.id,
+            organizationId: actor.organizationId,
+            // A CUSTOMER send is always on a known-lead thread here, so
+            // leadId is present; narrow it rather than passing null.
+            leadId: created.leadId ?? dto.leadId,
+            // FREEFORM, not TEMPLATE: this is a reply inside the 24h
+            // customer-service window, so Meta accepts plain text with
+            // NO approved template. Using shadhil_chat_reply failed with
+            // 132001 "template does not exist" because the template is
+            // never created in Meta. A text reply avoids templates entirely
+            // and costs nothing within the window.
+            sendType: 'FREEFORM',
+            freeformBody: body,
+            // MEDIA (2026-09-17): when the DTO carries an attachment,
+            // persist the metadata so the cron sends the file (instead of
+            // only text). mediaUrl is the storage key for the Message row;
+            // the media* fields come from the same upload.
+            ...(dto.mediaKey !== undefined ? { mediaKey: dto.mediaKey } : {}),
+            ...(dto.mediaMimeType !== undefined ? { mediaType: dto.mediaMimeType } : {}),
+            ...(dto.mediaFilename !== undefined ? { mediaFilename: dto.mediaFilename } : {}),
+          },
+          // Pass the RLS-scoped tx so the OutboundMessage INSERT runs on
+          // the same connection that carries app.user_id (set by
+          // withRlsContext). Without the override, enqueue inserts on the
+          // bare injected client → app.user_id unset → 42501 policy
+          // violation (outbound_insert_authenticated).
+          tx as unknown as PrismaClient,
+        );
+      }
+
+      return {
+        id: created.id,
+        leadId: created.leadId,
+        contactId: created.contactId,
+        direction: created.direction,
+        channel: created.channel,
+        kind: created.kind,
+        body: created.body,
+        // Same derivation as list() so the optimistic/returned row matches
+        // what a refetch will show (images -> public CDN under Option A).
+        mediaUrl: this.displayMediaUrl(created),
+        mediaType: created.mediaType,
+        mediaFilename: created.mediaFilename,
+        // OUT → the staff member who sent it (the actor).
+        senderName: actorRow?.name ?? null,
+        createdAt: created.createdAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -940,8 +935,7 @@ export class ChatService {
         // OUT -> the staff member who sent it. IN -> the customer, who on a
         // contact thread has no name until the number is converted, so the
         // phone number stands in (the pane shows it in the MessageHeader).
-        senderName:
-          r.direction === 'OUT' ? (r.user?.name ?? null) : inboundSenderName,
+        senderName: r.direction === 'OUT' ? (r.user?.name ?? null) : inboundSenderName,
         createdAt: r.createdAt.toISOString(),
       }));
     });
@@ -949,10 +943,7 @@ export class ChatService {
 
   /** Display name for an inbound contact-thread sender: the lead's name when
    *  the number is already linked to a lead, otherwise the phone number. */
-  private async contactSenderName(
-    tx: unknown,
-    contactId: string,
-  ): Promise<string | null> {
+  private async contactSenderName(tx: unknown, contactId: string): Promise<string | null> {
     const client = tx as unknown as PrismaClient;
     const contact = await client.whatsappUnknownContact.findUnique({
       where: { id: contactId },
@@ -977,10 +968,7 @@ export class ChatService {
    * A contact thread has no `kind`, so it is always a customer conversation -
    * the INTERNAL-notes concept does not apply here.
    */
-  async sendToContact(
-    actor: JwtPayload,
-    dto: SendContactMessageDto,
-  ): Promise<MessageRow> {
+  async sendToContact(actor: JwtPayload, dto: SendContactMessageDto): Promise<MessageRow> {
     if (dto.body.trim().length === 0) {
       throw new BadRequestException('Message body cannot be empty');
     }

@@ -13,8 +13,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useTeam: vi.fn(),
@@ -64,9 +63,7 @@ async function mount(open = true): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(
-      <TeamWeightDialog team={team} open={open} onOpenChange={() => {}} />,
-    );
+    root?.render(<TeamWeightDialog team={team} open={open} onOpenChange={() => {}} />);
   });
 }
 

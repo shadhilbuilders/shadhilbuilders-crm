@@ -33,9 +33,7 @@ import Link from 'next/link';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { Skeleton } from '@/components/shared/Skeleton';
-import {
-  WhatsappUnknownContactConvertModal,
-} from '@/components/whatsapp-unknown-contact-convert-modal';
+import { WhatsappUnknownContactConvertModal } from '@/components/whatsapp-unknown-contact-convert-modal';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 
@@ -70,15 +68,12 @@ const STATUS_TABS: ReadonlyArray<{ value: StatusTab; label: string }> = [
 export default function WhatsappUnknownContactsPage() {
   const orgSlug = useOrgSlug();
   const [tab, setTab] = useState<StatusTab>('PENDING');
-  const [convertTarget, setConvertTarget] =
-    useState<WhatsappUnknownContactRow | null>(null);
+  const [convertTarget, setConvertTarget] = useState<WhatsappUnknownContactRow | null>(null);
   // Cursor pagination: accumulate rows across pages. `nextCursor` is null
   // when there are no more rows. Reset the accumulation whenever the tab
   // changes (each tab is its own queue).
   const [cursor, setCursor] = useState<string | null>(null);
-  const [accumulated, setAccumulated] = useState<WhatsappUnknownContactRow[]>(
-    [],
-  );
+  const [accumulated, setAccumulated] = useState<WhatsappUnknownContactRow[]>([]);
 
   const listQuery = useWaUnknownContacts({
     status: tab,
@@ -122,8 +117,7 @@ export default function WhatsappUnknownContactsPage() {
           toast.success(`${row.phoneE164} marked as spam`);
         },
         onError: (error) => {
-          const msg =
-            error instanceof Error ? error.message : 'Mark as spam failed';
+          const msg = error instanceof Error ? error.message : 'Mark as spam failed';
           toast.error(msg);
         },
       },
@@ -161,10 +155,7 @@ export default function WhatsappUnknownContactsPage() {
             {item.label}
           </Button>
         ))}
-        <span
-          className="text-muted-foreground ml-2 text-xs"
-          data-qa="wa-unknown-total"
-        >
+        <span className="text-muted-foreground ml-2 text-xs" data-qa="wa-unknown-total">
           {total} {total === 1 ? 'contact' : 'contacts'}
         </span>
       </div>
@@ -191,9 +182,7 @@ export default function WhatsappUnknownContactsPage() {
               orgSlug={orgSlug}
               showActions={isPendingTab}
               pendingSpamId={
-                markSpam.isPending && markSpam.variables?.id === row.id
-                  ? row.id
-                  : null
+                markSpam.isPending && markSpam.variables?.id === row.id ? row.id : null
               }
               onConvert={setConvertTarget}
               onSpam={handleSpam}
@@ -213,7 +202,7 @@ export default function WhatsappUnknownContactsPage() {
             onClick={loadMore}
             data-qa="wa-unknown-load-more"
             isLoading={listQuery.isFetching}
-            loadingText='Loading...'
+            loadingText="Loading..."
             leftIcon={<LuArrowDown className="size-4" />}
           >
             Load more
@@ -265,10 +254,12 @@ function Row({
       data-status={row.status}
     >
       <div className="min-w-0 flex-1">
-        <p
-          data-qa="wa-unknown-phone"
-        >
-          <PhoneNumber phone={row.phoneE164} variant="text" className="font-mono text-sm font-medium" />
+        <p data-qa="wa-unknown-phone">
+          <PhoneNumber
+            phone={row.phoneE164}
+            variant="text"
+            className="font-mono text-sm font-medium"
+          />
         </p>
         <p
           className="text-muted-foreground mt-1 line-clamp-2 text-sm"

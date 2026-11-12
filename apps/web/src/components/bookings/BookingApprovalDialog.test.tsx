@@ -108,7 +108,11 @@ describe('approval decision schema (mirrors BookingTransitionDto)', () => {
   });
 
   it('caps the reason at 500 chars (server DTO limit)', () => {
-    expect(approvalSchema.safeParse({ decision: 'REJECTED', reason: 'x'.repeat(500) }).success).toBe(true);
-    expect(approvalSchema.safeParse({ decision: 'REJECTED', reason: 'x'.repeat(501) }).success).toBe(false);
+    expect(
+      approvalSchema.safeParse({ decision: 'REJECTED', reason: 'x'.repeat(500) }).success,
+    ).toBe(true);
+    expect(
+      approvalSchema.safeParse({ decision: 'REJECTED', reason: 'x'.repeat(501) }).success,
+    ).toBe(false);
   });
 });

@@ -45,7 +45,8 @@ describe('PortalChangePasswordPage - gated buyer', () => {
   // safety), so the form is asserted through the exported
   // `PortalChangePasswordForm`, which is what the page swaps in once mounted.
   // Same split as ThemeToggleButton / PhotoLightboxPanel.
-  const renderForm = (): string => renderToStaticMarkup(<PortalChangePasswordForm userId="cust-1" />);
+  const renderForm = (): string =>
+    renderToStaticMarkup(<PortalChangePasswordForm userId="cust-1" />);
 
   it('offers the three password fields', () => {
     const html = renderForm();

@@ -12,10 +12,7 @@
 // app offered them.
 import { describe, expect, it } from 'vitest';
 
-import {
-  canApproveBookings,
-  canInitiateBookings,
-} from '@/lib/session';
+import { canApproveBookings, canInitiateBookings } from '@/lib/session';
 
 // DESIGN.md §4 columns: SuperAdmin | Admin | Manager | Telecaller | SalesExec
 //   Initiate booking: ✅ ✅ ✅(in team) ❌ ✅(post-visit)

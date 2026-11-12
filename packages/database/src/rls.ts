@@ -66,9 +66,7 @@ export interface RlsContext {
   organizationId: string;
 }
 
-export type RlsTx = Parameters<
-  Parameters<PrismaClient['$transaction']>[0]
->[0];
+export type RlsTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 /**
  * T-ORG (eng review Finding 4): single source of truth for deriving an
@@ -154,8 +152,7 @@ export async function withRlsContext<T>(
   // CRON_SERVICE is a service-account marker - it must travel AS-IS so
   // the reminder_cron_service policy can match its GUC. Downcasting
   // would defeat the bypass.
-  const rlsRole =
-    ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
+  const rlsRole = ctx.role === 'OWNER' ? 'ADMIN' : ctx.role;
   // T-ORG: the org value always travels as-is (never downcast). An actor
   // without an org is a fail-closed state; the policies use
   // current_setting('app.user_org_id', true) which yields NULL here and

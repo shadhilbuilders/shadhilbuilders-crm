@@ -38,11 +38,7 @@ import {
   useUpdateVisitOutcome,
   useVisits,
 } from '@/hooks/queries/crm';
-import {
-  canLogVisitOutcome,
-  canScheduleLeadVisit,
-  useSessionUser,
-} from '@/lib/session';
+import { canLogVisitOutcome, canScheduleLeadVisit, useSessionUser } from '@/lib/session';
 import { queue } from '@/lib/offline-store/queue-store';
 
 type LeadData = {
@@ -110,8 +106,7 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
   const mayMoveToRequested =
     user?.role !== undefined &&
     allowedTransitionsFor(status, user.role).includes('VISIT_REQUESTED');
-  const showRequestAgain =
-    (status === 'VISITED' || status === 'NEGOTIATION') && mayMoveToRequested;
+  const showRequestAgain = (status === 'VISITED' || status === 'NEGOTIATION') && mayMoveToRequested;
   const showBackToRequested = status === 'VISIT_SCHEDULED' && mayMoveToRequested;
 
   if (!showSchedule && !showOutcome && !showRequestAgain && !showBackToRequested) return null;
@@ -176,8 +171,8 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
         {showSchedule && canScheduleLeadVisit(user?.role) ? (
           <>
             <p className="text-muted-foreground text-sm">
-              The lead is ready for a site visit - pick a date/time and
-              (optionally) the sales exec who'll conduct it.
+              The lead is ready for a site visit - pick a date/time and (optionally) the sales exec
+              who'll conduct it.
             </p>
             <Button
               type="button"
@@ -273,8 +268,8 @@ export function LeadVisitPanel({ lead }: { lead: LeadData }) {
         {showRequestAgain ? (
           <>
             <p className="text-muted-foreground text-sm">
-              Customer wants to visit again (for example with family)? Request another
-              visit, then schedule it.
+              Customer wants to visit again (for example with family)? Request another visit, then
+              schedule it.
             </p>
             <Button
               type="button"

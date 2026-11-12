@@ -37,13 +37,9 @@ export const LEAD_FACT_FIELDS = {
 
 export type LeadFactField = keyof typeof LEAD_FACT_FIELDS;
 
-export type LeadFactColumn = NonNullable<
-  (typeof LEAD_FACT_FIELDS)[LeadFactField]['column']
->;
+export type LeadFactColumn = NonNullable<(typeof LEAD_FACT_FIELDS)[LeadFactField]['column']>;
 
-export const LEAD_FACT_FIELD_NAMES = Object.keys(
-  LEAD_FACT_FIELDS,
-) as LeadFactField[];
+export const LEAD_FACT_FIELD_NAMES = Object.keys(LEAD_FACT_FIELDS) as LeadFactField[];
 
 export type FactBand = 'VERIFIED' | 'PROBABLE' | 'POSSIBLE';
 
@@ -107,7 +103,7 @@ export const EVIDENCE_WEIGHTS = {
   'whatsapp.profile-name': {
     weight: 0.4,
     primary: false,
-    label: "their WhatsApp profile name says so (what they typed into their own phone)",
+    label: 'their WhatsApp profile name says so (what they typed into their own phone)',
   },
   'handle.name-form': {
     // Below BAND_FLOOR.POSSIBLE on purpose: `github.com/ramesh` is a form of
@@ -184,10 +180,7 @@ export function scoreEvidence(evidence: readonly Evidence[]): Scored {
   };
 }
 
-export function bandFor(
-  score: number,
-  hasPrimary: boolean,
-): FactBand | null {
+export function bandFor(score: number, hasPrimary: boolean): FactBand | null {
   if (score >= BAND_FLOOR.VERIFIED && hasPrimary) return 'VERIFIED';
   if (score >= BAND_FLOOR.PROBABLE) return 'PROBABLE';
   if (score >= BAND_FLOOR.POSSIBLE) return 'POSSIBLE';

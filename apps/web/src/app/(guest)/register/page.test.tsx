@@ -15,8 +15,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   env: { NEXT_PUBLIC_ORG_SIGNUP_ENABLED: false },
@@ -116,9 +115,7 @@ describe('RegisterForm - env-gated org signup (T-ORG-OWNER-SIGNUP)', () => {
     await act(async () => {
       // Trigger the props-API Form's onSubmit with valid values.
       const form = container?.querySelector('form');
-      form?.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true }),
-      );
+      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       // The Form wires react-hook-form; simulate a valid submit via
       // handleSubmit is hard in a DOM test, so instead assert the Form
       // rendered a submit button of the expected type (the signUp call is

@@ -38,7 +38,10 @@ const CORS_HEADERS: Record<string, string> = {
 };
 
 function applyCors(res: ServerResponse, origin: string | undefined): void {
-  if (origin !== undefined && (config.corsOrigins.includes(origin) || config.corsOrigins[0] === '*')) {
+  if (
+    origin !== undefined &&
+    (config.corsOrigins.includes(origin) || config.corsOrigins[0] === '*')
+  ) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
@@ -80,7 +83,10 @@ async function handleStream(
     // Builder: given the resolved RLS user + an optional lead scope,
     // return the fetcher. The user is resolved once per connection (the
     // ticket binds a user); leadId is only set for the chat channel.
-    fetcher: (user: SseUser, leadId: string | undefined) => (lastSeenAt: Date) => Promise<SseFrame[]>;
+    fetcher: (
+      user: SseUser,
+      leadId: string | undefined,
+    ) => (lastSeenAt: Date) => Promise<SseFrame[]>;
     anchorModel: 'Notification' | 'AuditLog' | 'Message';
     anchorExtraWhere?: (req: IncomingMessage) => { leadId: string } | undefined;
   },
@@ -179,12 +185,18 @@ async function anchorFor(
   extraWhere?: { leadId: string },
 ): Promise<Date> {
   if (lastEventId === null) return new Date(0);
-  const delegate = (prisma as unknown as Record<string, {
-    findUnique: (args: { where: unknown; select: unknown }) => Promise<{ createdAt: Date } | null>;
-  }>)[model];
-  const where = extraWhere !== undefined
-    ? { id: lastEventId, ...extraWhere }
-    : { id: lastEventId };
+  const delegate = (
+    prisma as unknown as Record<
+      string,
+      {
+        findUnique: (args: {
+          where: unknown;
+          select: unknown;
+        }) => Promise<{ createdAt: Date } | null>;
+      }
+    >
+  )[model];
+  const where = extraWhere !== undefined ? { id: lastEventId, ...extraWhere } : { id: lastEventId };
   const row = await delegate.findUnique({ where, select: { createdAt: true } });
   return row?.createdAt ?? new Date(0);
 }
@@ -195,8 +207,7 @@ function readQueryString(req: IncomingMessage, key: string): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
-const errMsg = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err);
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function readLeadId(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -279,9 +290,13 @@ server.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`[realtime-sse] listening on http://localhost:${config.port}`);
   // eslint-disable-next-line no-console
-  console.log(`[realtime-sse] routes: GET /api/sse/{ping,healthz,notifications,audit,chat/:leadId}`);
+  console.log(
+    `[realtime-sse] routes: GET /api/sse/{ping,healthz,notifications,audit,chat/:leadId}`,
+  );
   // eslint-disable-next-line no-console
-  console.log(`[realtime-sse] polls: dbTick=${config.dbTickMs}ms heartbeat=${config.heartbeatMs}ms`);
+  console.log(
+    `[realtime-sse] polls: dbTick=${config.dbTickMs}ms heartbeat=${config.heartbeatMs}ms`,
+  );
 });
 
 const shutdown = (): void => {

@@ -12,11 +12,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Button, Checkbox, Combobox, TypographyP, toast } from '@paalstack/react-ui';
 
 import { Skeleton } from '@/components/shared/Skeleton';
-import {
-  useAssignUserUnits,
-  useInventoryUnits,
-  type UnitRow,
-} from '@/hooks/queries/inventory';
+import { useAssignUserUnits, useInventoryUnits, type UnitRow } from '@/hooks/queries/inventory';
 import { useProjects } from '@/hooks/queries/projects';
 
 /** Pure: the unit ids this engineer holds in the loaded rows. */

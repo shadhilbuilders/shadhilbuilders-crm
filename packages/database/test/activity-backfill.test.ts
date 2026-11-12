@@ -175,9 +175,7 @@ describe.skipIf(!DATABASE_AVAILABLE)('activity backfill migration', () => {
       ['ASSIGNMENT', 'Reassigned from Backfill Actor to Backfill Other - Balance'],
       ['VISIT', 'Visit booked for 12 Oct, 4:00 pm with Backfill Other'],
     ]);
-    expect(rows[1].createdAt.toISOString()).toBe(
-      new Date(T0.getTime() + 2 * 60_000).toISOString(),
-    );
+    expect(rows[1].createdAt.toISOString()).toBe(new Date(T0.getTime() + 2 * 60_000).toISOString());
     expect(rows.every((r) => r.userId === ids.actor && r.organizationId === ORG)).toBe(true);
   });
 

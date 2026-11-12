@@ -29,7 +29,9 @@ const SSE_BACKEND_URL = process.env.SSE_BACKEND_URL ?? 'http://localhost:8090';
 // (web on :3000, Expo on :8081). In prod, set ALLOWED_SSE_ORIGINS to a
 // comma-separated list like
 // 'https://crm.shadhilbuilders.in,https://admin.crm.shadhilbuilders.in'.
-const ALLOWED_SSE_ORIGINS = (process.env.ALLOWED_SSE_ORIGINS ?? 'http://localhost:3000,http://localhost:8081')
+const ALLOWED_SSE_ORIGINS = (
+  process.env.ALLOWED_SSE_ORIGINS ?? 'http://localhost:3000,http://localhost:8081'
+)
   .split(',')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
@@ -37,7 +39,14 @@ const ALLOWED_SSE_ORIGINS = (process.env.ALLOWED_SSE_ORIGINS ?? 'http://localhos
 /** Allow only known SSE paths - defends against an open-proxy abuse
  *  if the path is later broadened. */
 function isAllowedPath(path: string): boolean {
-  if (path === 'ping' || path === 'healthz' || path === 'metrics' || path === 'notifications' || path === 'audit') return true;
+  if (
+    path === 'ping' ||
+    path === 'healthz' ||
+    path === 'metrics' ||
+    path === 'notifications' ||
+    path === 'audit'
+  )
+    return true;
   if (/^chat\/[^/]+$/.test(path)) return true;
   return false;
 }
@@ -48,10 +57,10 @@ function isAllowedPath(path: string): boolean {
 function checkOrigin(origin: string | null): Response | null {
   if (origin === null) return null;
   if (ALLOWED_SSE_ORIGINS.includes(origin)) return null;
-  return new Response(
-    JSON.stringify({ message: 'Origin not allowed' }),
-    { status: 403, headers: { 'Content-Type': 'application/json' } },
-  );
+  return new Response(JSON.stringify({ message: 'Origin not allowed' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 export async function GET(

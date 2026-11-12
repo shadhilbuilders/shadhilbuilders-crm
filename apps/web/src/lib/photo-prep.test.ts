@@ -34,7 +34,10 @@ import {
 
 /** A file whose bytes we never actually decode (normalizeToWebP is mocked). */
 function fileOf(name: string, type = 'image/heic', size = 4_000_000): File {
-  return new File([new Uint8Array(size)], name, { type, lastModified: Date.UTC(2026, 10, 6, 4, 30) });
+  return new File([new Uint8Array(size)], name, {
+    type,
+    lastModified: Date.UTC(2026, 10, 6, 4, 30),
+  });
 }
 
 function webpBlob(size = 300_000): Blob {
@@ -132,7 +135,9 @@ describe('prepareProgressPhoto', () => {
   });
 
   it('accepts a PNG fallback, because the server stores PNG', async () => {
-    mocks.normalizeToWebP.mockResolvedValueOnce(new Blob([new Uint8Array(1000)], { type: 'image/png' }));
+    mocks.normalizeToWebP.mockResolvedValueOnce(
+      new Blob([new Uint8Array(1000)], { type: 'image/png' }),
+    );
     const prepared = await prepareProgressPhoto(fileOf('slab.jpg'), { source: 'camera' });
     expect(prepared.mimeType).toBe('image/png');
     expect(prepared.filename).toBe('slab.png');

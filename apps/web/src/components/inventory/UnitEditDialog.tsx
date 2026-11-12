@@ -183,7 +183,7 @@ export function UnitEditFormBody({
       // element is the scroll container for the field list (min-h-0 lets it
       // shrink inside the grid row instead of overflowing). The negative
       // margin keeps focus rings from being clipped at the edges.
-      className='-mx-1 min-h-0 overflow-y-auto px-1'
+      className="-mx-1 min-h-0 overflow-y-auto px-1"
       // The Save action lives in the Dialog footer (linked via
       // form={FORM_ID} + type="submit" on the footer button); hide the
       // Form's own action buttons so the submit isn't duplicated.
@@ -304,11 +304,13 @@ export function UnitEditFormBody({
               label: 'Status',
               render: () => (
                 <div
-                  className='flex flex-col gap-1 rounded-lg border border-input bg-muted/40 px-2.5 py-2'
-                  data-qa='unit-edit-status-derived'
+                  className="border-input bg-muted/40 flex flex-col gap-1 rounded-lg border px-2.5 py-2"
+                  data-qa="unit-edit-status-derived"
                 >
-                  <span className='text-sm font-medium'>{labelFor('inventory', derivedStatus)}</span>
-                  <span className='text-xs text-muted-foreground'>
+                  <span className="text-sm font-medium">
+                    {labelFor('inventory', derivedStatus)}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
                     Set by this unit&apos;s booking. Cancel or reject the booking to free the unit.
                   </span>
                 </div>
@@ -383,7 +385,8 @@ export function UnitEditDialog({
     resolver: zodResolver(unitEditSchema),
     defaultValues: {
       unitNumber: unit?.unitNumber ?? '',
-      plotNumber: unit?.plotNumber !== null && unit?.plotNumber !== undefined ? String(unit.plotNumber) : '',
+      plotNumber:
+        unit?.plotNumber !== null && unit?.plotNumber !== undefined ? String(unit.plotNumber) : '',
       bhk: unit ? String(unit.bhk) : '',
       facing: unit?.facing ?? '',
       sqft: unit?.sqft !== null && unit?.sqft !== undefined ? String(unit.sqft) : '',
@@ -493,7 +496,7 @@ export function UnitEditDialog({
       // rows keep the header and the Cancel/Save footer pinned while only the
       // field list scrolls (`minmax(0,1fr)` lets the middle row shrink instead
       // of overflowing).
-      contentClassName='grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg'
+      contentClassName="grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg"
       header={{ title: `Edit unit ${target.unitNumber}`, description: 'Update the unit details.' }}
       footer={
         <div className="flex w-full justify-end gap-2">

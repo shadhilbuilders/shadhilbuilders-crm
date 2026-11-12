@@ -99,14 +99,13 @@ test('dashboard: axe audit, responsive layout, tab order', async ({ page }) => {
     type RawViolation = { id: string; impact: string | null; nodes: RawNode[] };
     type RawResult = { violations: RawViolation[]; passes: unknown[] };
     // Injected by addScriptTag, so it is absent from the TS window type.
-    const axeGlobal = (window as unknown as {
-      axe: {
-        run: (
-          ctx: Document,
-          opts: { runOnly: unknown },
-        ) => Promise<RawResult>;
-      };
-    }).axe;
+    const axeGlobal = (
+      window as unknown as {
+        axe: {
+          run: (ctx: Document, opts: { runOnly: unknown }) => Promise<RawResult>;
+        };
+      }
+    ).axe;
 
     const r = await axeGlobal.run(document, {
       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
@@ -130,8 +129,7 @@ test('dashboard: axe audit, responsive layout, tab order', async ({ page }) => {
   // the avatar is the utility class `.size-full`, while the component is only
   // identifiable from its markup.
   const unexpected = axe.violations.filter(
-    (v) =>
-      !v.html.every((node) => KNOWN_OUT_OF_SCOPE.some((k) => node.includes(k))),
+    (v) => !v.html.every((node) => KNOWN_OUT_OF_SCOPE.some((k) => node.includes(k))),
   );
   expect(unexpected, 'unexpected a11y violations').toEqual([]);
 
@@ -181,7 +179,10 @@ test('dashboard: axe audit, responsive layout, tab order', async ({ page }) => {
   }
   console.log('TAB_WALK: ' + JSON.stringify(walk));
   expect(walk.length, 'nothing was focusable').toBeGreaterThan(5);
-  expect(walk.filter((w) => !w.ring), 'focusable elements with no visible focus').toEqual([]);
+  expect(
+    walk.filter((w) => !w.ring),
+    'focusable elements with no visible focus',
+  ).toEqual([]);
 
   // ------------------------------------------------------- console health
   console.log('CONSOLE_ERRORS: ' + JSON.stringify(consoleErrors));

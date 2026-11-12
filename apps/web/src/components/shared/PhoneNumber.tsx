@@ -89,7 +89,7 @@ export function PhoneNumber({
         // hit area from changing the row's layout box.
         largeTapTarget &&
           'text-link -my-3 min-h-11 min-w-11 justify-center px-2.5 pointer-fine:my-0 pointer-fine:min-h-0 pointer-fine:min-w-0 pointer-fine:px-0',
-        className
+        className,
       )}
       aria-label={label}
     >

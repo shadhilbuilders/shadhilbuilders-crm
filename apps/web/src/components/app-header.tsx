@@ -50,7 +50,8 @@ import {
   EMPLOYEE_LAUNCHER,
   adminLauncherHrefFor,
   employeeLauncherHrefFor,
-  orgHref, projectHref,
+  orgHref,
+  projectHref,
 } from '@/lib/nav';
 import { workLandingHref } from '@/lib/dashboard-redirect';
 import { useProjectSlug, useOrgSlug } from '@/lib/tenant-context';
@@ -205,7 +206,7 @@ export function AppHeader() {
           // real button's own breakpoint) instead of pushing content
           // past the viewport edge.
           <div
-            className="w-11 overflow-hidden px-2 sm:min-w-30 sm:w-auto"
+            className="w-11 overflow-hidden px-2 sm:w-auto sm:min-w-30"
             data-qa="user-skeleton-topbar"
           >
             <Skeleton variant="user" />
@@ -324,11 +325,7 @@ function NotificationBell() {
                   >
                     <span
                       aria-hidden
-                      className={
-                        isRead
-                          ? 'text-muted-foreground mt-1.5'
-                          : 'mt-1.5 text-blue-600'
-                      }
+                      className={isRead ? 'text-muted-foreground mt-1.5' : 'mt-1.5 text-blue-600'}
                     >
                       {isRead ? '○' : '●'}
                     </span>
@@ -339,11 +336,9 @@ function NotificationBell() {
                           : 'Notification'}
                       </p>
                       {typeof row.body === 'string' && row.body.length > 0 ? (
-                        <p className="text-muted-foreground line-clamp-2 text-xs">
-                          {row.body}
-                        </p>
+                        <p className="text-muted-foreground line-clamp-2 text-xs">{row.body}</p>
                       ) : null}
-                      <p className="text-muted-foreground mt-0.5 text-[10px] uppercase tracking-wide">
+                      <p className="text-muted-foreground mt-0.5 text-[10px] tracking-wide uppercase">
                         {typeof row.createdAt === 'string'
                           ? dateIntl.formatDateTime(row.createdAt)
                           : ''}
@@ -369,9 +364,7 @@ function NotificationBell() {
         ) : (
           <div className="px-1 py-6 text-center" data-qa="notifications-popover-empty">
             <p className="text-sm font-medium">No unread notifications.</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {copy.emptyHintUnread}
-            </p>
+            <p className="text-muted-foreground mt-1 text-xs">{copy.emptyHintUnread}</p>
           </div>
         )}
         {/* Footer: link to the full notifications page. */}
@@ -426,9 +419,7 @@ function UserMenu({
             data-qa="account-menu"
           >
             <LuUserRound className="size-5" aria-hidden />
-            <span className="hidden max-w-40 truncate sm:inline">
-              {name}
-            </span>
+            <span className="hidden max-w-40 truncate sm:inline">{name}</span>
           </Button>
         }
       />
@@ -482,12 +473,7 @@ function UserMenu({
             Settings
           </span>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 w-full justify-start"
-          onClick={onSignOut}
-        >
+        <Button variant="ghost" size="sm" className="mt-1 w-full justify-start" onClick={onSignOut}>
           <LuLogOut className="mr-2 h-4 w-4" />
           Sign out
         </Button>

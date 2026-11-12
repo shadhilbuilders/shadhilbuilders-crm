@@ -8,7 +8,16 @@
 // service-403ed (RLS alone denies silently - permissive-by-absence looks
 // like "no photos yet", which is why the service check is the messaging
 // wall).
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional, forwardRef } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { ConstructionStageSchema } from '@shadhil/api-types';
 import { z } from 'zod';
 
@@ -110,8 +119,12 @@ export type { TimelinePhotoDto, TimelineResponseDto };
 
 /** Caption: "{phase.name} {en-GB month name} {year}" from takenAt (UTC). */
 export function buildCaption(phaseName: string | null, takenAt: Date): string {
-  const month = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' }).format(takenAt);
-  const year = new Intl.DateTimeFormat('en-GB', { year: 'numeric', timeZone: 'UTC' }).format(takenAt);
+  const month = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' }).format(
+    takenAt,
+  );
+  const year = new Intl.DateTimeFormat('en-GB', { year: 'numeric', timeZone: 'UTC' }).format(
+    takenAt,
+  );
   return `${phaseName ?? 'Site photo'} ${month} ${year}`;
 }
 
@@ -128,7 +141,9 @@ export class CustomerProgressService {
     // 2026-11-08: the STAFF side of the same event (project photo lead + team
     // managers). Optional for the same reason: existing tests build the service
     // with fewer dependencies and the upload must not require a notifier.
-    @Optional() @Inject(SiteUpdateNotifier) private readonly siteUpdateNotifier?: SiteUpdateNotifier,
+    @Optional()
+    @Inject(SiteUpdateNotifier)
+    private readonly siteUpdateNotifier?: SiteUpdateNotifier,
   ) {}
 
   private get client() {
@@ -136,7 +151,10 @@ export class CustomerProgressService {
   }
 
   /** User table has no RLS: creator name for the upload response. */
-  private async userName(tx: { user: { findUnique: (a: unknown) => Promise<{ name: string } | null> } }, userId: string): Promise<string | null> {
+  private async userName(
+    tx: { user: { findUnique: (a: unknown) => Promise<{ name: string } | null> } },
+    userId: string,
+  ): Promise<string | null> {
     const u = await tx.user.findUnique({ where: { id: userId }, select: { name: true } });
     return u?.name ?? null;
   }
@@ -147,11 +165,19 @@ export class CustomerProgressService {
    * unit's project (resolved THROUGH Phase - Unit has no projectId).
    * RLS is the second wall; this is the messaging wall (RLS deny is silent).
    */
-  private async assertUnitAccess(actor: JwtPayload, unitId: string): Promise<{ projectId: string; unitNumber: string }> {
+  private async assertUnitAccess(
+    actor: JwtPayload,
+    unitId: string,
+  ): Promise<{ projectId: string; unitNumber: string }> {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const unit = await tx.unit.findFirst({
         where: { id: unitId, organizationId: actor.organizationId },
-        select: { id: true, unitNumber: true, assignedEngineerId: true, phase: { select: { projectId: true } } },
+        select: {
+          id: true,
+          unitNumber: true,
+          assignedEngineerId: true,
+          phase: { select: { projectId: true } },
+        },
       });
       if (unit === null) throw new NotFoundException(`Unit not found.`);
 
@@ -161,23 +187,27 @@ export class CustomerProgressService {
         throw new ForbiddenException('This villa is not assigned to you.');
       }
 
-      if (isAdminClass(actor.role)) return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
-      if (actor.role === 'ENGINEER' || actor.role === 'MANAGER' || actor.role === 'SALES_EXEC' || actor.role === 'TELECALLER') {
+      if (isAdminClass(actor.role))
+        return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
+      if (
+        actor.role === 'ENGINEER' ||
+        actor.role === 'MANAGER' ||
+        actor.role === 'SALES_EXEC' ||
+        actor.role === 'TELECALLER'
+      ) {
         const member = await tx.projectTeam.findFirst({
           where: {
             projectId: unit.phase.projectId,
             organizationId: actor.organizationId,
             team: {
               deletedAt: null,
-              OR: [
-                { teamMembers: { some: { userId: actor.sub } } },
-                { managerId: actor.sub },
-              ],
+              OR: [{ teamMembers: { some: { userId: actor.sub } } }, { managerId: actor.sub }],
             },
           },
           select: { projectId: true },
         });
-        if (member !== null) return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
+        if (member !== null)
+          return { projectId: unit.phase.projectId, unitNumber: unit.unitNumber };
       }
       throw new ForbiddenException('You are not assigned to this project.');
     });
@@ -335,7 +365,11 @@ export class CustomerProgressService {
     return created;
   }
 
-  async timeline(actor: JwtPayload, unitId: string, cursorRaw: string | undefined): Promise<TimelineResponseDto> {
+  async timeline(
+    actor: JwtPayload,
+    unitId: string,
+    cursorRaw: string | undefined,
+  ): Promise<TimelineResponseDto> {
     const { projectId } = await this.assertUnitAccess(actor, unitId);
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       // Staff-only advisory flag (slice 4): should this viewer be offered the
@@ -361,7 +395,12 @@ export class CustomerProgressService {
   }
 
   /** OWNER/ADMIN only (spec: MANAGER excluded regardless of canManageUsers). */
-  async setPhotoLead(actor: JwtPayload, projectId: string, userId: string, dto: SetPhotoLeadDto): Promise<{ userId: string; projectId: string; photoLead: boolean }> {
+  async setPhotoLead(
+    actor: JwtPayload,
+    projectId: string,
+    userId: string,
+    dto: SetPhotoLeadDto,
+  ): Promise<{ userId: string; projectId: string; photoLead: boolean }> {
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException('Only ADMIN or OWNER can assign the photo lead.');
     }
@@ -404,10 +443,7 @@ export class CustomerProgressService {
             organizationId: actor.organizationId,
             team: {
               deletedAt: null,
-              OR: [
-                { teamMembers: { some: { userId } } },
-                { managerId: userId },
-              ],
+              OR: [{ teamMembers: { some: { userId } } }, { managerId: userId }],
             },
           },
           select: { projectId: true },
@@ -423,7 +459,13 @@ export class CustomerProgressService {
         await tx.projectStaffRole.upsert({
           where: { userId_projectId_kind: { userId, projectId, kind: 'PHOTO_LEAD' } },
           update: {},
-          create: { userId, projectId, kind: 'PHOTO_LEAD', organizationId: actor.organizationId, assignedById: actor.sub },
+          create: {
+            userId,
+            projectId,
+            kind: 'PHOTO_LEAD',
+            organizationId: actor.organizationId,
+            assignedById: actor.sub,
+          },
         });
       } else {
         await tx.projectStaffRole.deleteMany({
@@ -464,7 +506,11 @@ export class CustomerProgressService {
   // ──────────────────────────────────────────────────────────────────────────
 
   /** Resolve a photo the caller may mutate, or throw 404 (RLS decides). */
-  private async assertPhotoMutable(tx: RlsTx, actor: JwtPayload, photoId: string): Promise<{ id: string; unitId: string; key: string; caption: string; stage: string | null }> {
+  private async assertPhotoMutable(
+    tx: RlsTx,
+    actor: JwtPayload,
+    photoId: string,
+  ): Promise<{ id: string; unitId: string; key: string; caption: string; stage: string | null }> {
     const photo = await tx.progressPhoto.findFirst({
       where: { id: photoId, organizationId: actor.organizationId },
       select: { id: true, unitId: true, key: true, caption: true, stage: true },
@@ -475,7 +521,11 @@ export class CustomerProgressService {
     return photo;
   }
 
-  async updatePhoto(actor: JwtPayload, photoId: string, dto: UpdatePhotoDto): Promise<TimelinePhotoDto> {
+  async updatePhoto(
+    actor: JwtPayload,
+    photoId: string,
+    dto: UpdatePhotoDto,
+  ): Promise<TimelinePhotoDto> {
     const updated = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const photo = await this.assertPhotoMutable(tx, actor, photoId);
       // PARTIAL write: only the supplied fields move. A caption correction
@@ -494,7 +544,8 @@ export class CustomerProgressService {
           // A stage-only correction is not a caption correction; the caption
           // path keeps its historical action string so existing reports and
           // audit filters do not silently stop matching.
-          action: dto.stage !== undefined ? 'progress.photo_updated' : 'progress.photo_caption_updated',
+          action:
+            dto.stage !== undefined ? 'progress.photo_updated' : 'progress.photo_caption_updated',
           organizationId: actor.organizationId,
           entityType: 'ProgressPhoto',
           entityId: photo.id,

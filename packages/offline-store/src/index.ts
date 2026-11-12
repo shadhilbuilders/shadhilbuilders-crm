@@ -7,10 +7,7 @@
 export { createMutationQueue, type MutationQueue } from './mutation-queue';
 export type { Mutation, OfflineState, ReplayResult, OfflineMutationResult } from './types';
 export { resolveLWW } from './conflict-resolver';
-export {
-  createPhotoStore,
-  type PhotoStore,
-} from './photo-store';
+export { createPhotoStore, type PhotoStore } from './photo-store';
 export { normalizeToWebP, normalizeOnIdle, fitWithin } from './photo-normalize';
 export {
   mutationStore,

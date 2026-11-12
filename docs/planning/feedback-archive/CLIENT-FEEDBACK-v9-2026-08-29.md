@@ -13,15 +13,15 @@ Real feature, not a clarification. Adding it to the brief now.
 
 Adding a new **Reminders** module to v1. Three reminder types:
 
-  1. **Pre-visit staff reminder** - sales exec gets a nudge
-     before the scheduled visit (default: 2 hours before).
-  2. **Pre-visit customer reminder** - customer gets a
-     WhatsApp message before the visit (default: 24 hours
-     before + 2 hours before).
-  3. **Reschedule follow-up reminder** - sales exec gets a
-     nudge AFTER the reschedule, prompting them to confirm
-     with the customer. (This is what you specifically
-     asked for.)
+1. **Pre-visit staff reminder** - sales exec gets a nudge
+   before the scheduled visit (default: 2 hours before).
+2. **Pre-visit customer reminder** - customer gets a
+   WhatsApp message before the visit (default: 24 hours
+   before + 2 hours before).
+3. **Reschedule follow-up reminder** - sales exec gets a
+   nudge AFTER the reschedule, prompting them to confirm
+   with the customer. (This is what you specifically
+   asked for.)
 
 The system also needs to handle the no-show case (already in
 v2) and the post-booking case (deferred to v1.1).
@@ -33,18 +33,18 @@ v2) and the post-booking case (deferred to v1.1).
 When a customer reschedules a site visit with a specific new
 time, the system should:
 
-  - **Identify the staff member responsible** (telecaller
-    if the lead is still in the pre-handoff stage, sales
-    exec if post-handoff).
-  - **Schedule a reminder** at the right time relative to
-    the new visit.
-  - **Fire the reminder** via the right channel (in-app
-    banner if app is open, push notification if app is
-    closed, fallback to email if push fails).
-  - **Mark the reminder as acknowledged** when the staff
-    member actually does the follow-up.
-  - **Audit log entry** for every reminder fired
-    (RERA + DPDP requirement).
+- **Identify the staff member responsible** (telecaller
+  if the lead is still in the pre-handoff stage, sales
+  exec if post-handoff).
+- **Schedule a reminder** at the right time relative to
+  the new visit.
+- **Fire the reminder** via the right channel (in-app
+  banner if app is open, push notification if app is
+  closed, fallback to email if push fails).
+- **Mark the reminder as acknowledged** when the staff
+  member actually does the follow-up.
+- **Audit log entry** for every reminder fired
+  (RERA + DPDP requirement).
 
 This is more nuanced than it looks because the same visit
 can have MULTIPLE reminders (e.g., 24h before for the
@@ -62,21 +62,22 @@ the staff, etc.).
 (if lead is still in pre-handoff - should not happen in
 normal flow but possible for early scheduled visits).
 **Channel (in priority order):**
-  1. **In-app banner** if the staff member's app is open
-  2. **Push notification** if app is closed (Expo
-     Notifications on mobile, Web Push on web)
-  3. **Email** as last fallback (but email is dropped
-     from v1 per Q3 resolution - actually keep email
-     as the fallback for reminders specifically, since
-     email is good for "low-urgency, time-flexible"
-     notifications; surface to client)
-**Default timing:** 2 hours before. **Configurable per
-user** (Settings → Reminder timing).
-**Repeat:** None. Fire once. If missed, no resend.
-**Acknowledgment:** Staff member taps "Mark done" or
-"Reschedule" on the reminder banner. Acknowledgment is
-logged.
-**Audit log:** `{ action: "reminder.fired",
+
+1. **In-app banner** if the staff member's app is open
+2. **Push notification** if app is closed (Expo
+   Notifications on mobile, Web Push on web)
+3. **Email** as last fallback (but email is dropped
+   from v1 per Q3 resolution - actually keep email
+   as the fallback for reminders specifically, since
+   email is good for "low-urgency, time-flexible"
+   notifications; surface to client)
+   **Default timing:** 2 hours before. **Configurable per
+   user** (Settings → Reminder timing).
+   **Repeat:** None. Fire once. If missed, no resend.
+   **Acknowledgment:** Staff member taps "Mark done" or
+   "Reschedule" on the reminder banner. Acknowledgment is
+   logged.
+   **Audit log:** `{ action: "reminder.fired",
   userId, siteVisitId, type: "pre_visit_staff", channel }`
 
 ### Type 2: Pre-visit customer reminder
@@ -95,39 +96,41 @@ triggers a `Message` row + state change if applicable.
   recipientType: "customer", siteVisitId, type:
   "pre_visit_customer", channel: "whatsapp" }`
 **WhatsApp templates needed:**
-  - `visit_reminder_24h` (UTILITY category)
-  - `visit_reminder_2h` (UTILITY category)
+
+- `visit_reminder_24h` (UTILITY category)
+- `visit_reminder_2h` (UTILITY category)
 
 ### Type 3: Reschedule follow-up reminder (THE ONE YOU ASKED FOR)
 
 **When:** Two cases:
-  - **Case A: Customer-initiated reschedule.** When the
-    customer reschedules (e.g., via WhatsApp reply,
-    phone call to staff, or in-person), the staff member
-    picks a new time. The system schedules:
-      - A pre-visit staff reminder for the new time
-        (Type 1, fires T-2h)
-      - A pre-visit customer reminder for the new time
-        (Type 2, fires T-24h and T-2h)
-      - **A "did you confirm with the customer?"
-        reminder for the staff** (Type 3 specifically).
-        This fires 1 hour AFTER the reschedule is recorded
-        and prompts the staff member to call the customer
-        to confirm the new time.
-  - **Case B: Staff-initiated reschedule.** Sales exec
-    reschedules because customer asked in person or by
-    phone. Same reminders fire, but the "did you confirm"
-    reminder is moot (the staff already confirmed in
-    person). Make it dismissable in the UI.
-**Who:** Sales Exec.
-**Channel:** In-app banner > push > email fallback.
-**Default timing:** 1 hour after reschedule. Configurable.
-**Repeat:** None. Fire once.
-**Acknowledgment:** Tap "Confirmed with customer" or
-"Cancel" on the banner.
-**Audit log:** `{ action: "reminder.fired",
-  userId, siteVisitId, type: "reschedule_followup",
-  channel }`
+
+- **Case A: Customer-initiated reschedule.** When the
+  customer reschedules (e.g., via WhatsApp reply,
+  phone call to staff, or in-person), the staff member
+  picks a new time. The system schedules:
+  - A pre-visit staff reminder for the new time
+    (Type 1, fires T-2h)
+  - A pre-visit customer reminder for the new time
+    (Type 2, fires T-24h and T-2h)
+  - **A "did you confirm with the customer?"
+    reminder for the staff** (Type 3 specifically).
+    This fires 1 hour AFTER the reschedule is recorded
+    and prompts the staff member to call the customer
+    to confirm the new time.
+- **Case B: Staff-initiated reschedule.** Sales exec
+  reschedules because customer asked in person or by
+  phone. Same reminders fire, but the "did you confirm"
+  reminder is moot (the staff already confirmed in
+  person). Make it dismissable in the UI.
+  **Who:** Sales Exec.
+  **Channel:** In-app banner > push > email fallback.
+  **Default timing:** 1 hour after reschedule. Configurable.
+  **Repeat:** None. Fire once.
+  **Acknowledgment:** Tap "Confirmed with customer" or
+  "Cancel" on the banner.
+  **Audit log:** `{ action: "reminder.fired",
+userId, siteVisitId, type: "reschedule_followup",
+channel }`
 
 ### Type 4 (already in v2): No-show staff reminder
 
@@ -157,34 +160,34 @@ model Reminder {
   id              String         @id @default(cuid())
   type            ReminderType
   status          ReminderStatus @default(SCHEDULED)
-  
+
   // What this reminder is about
   siteVisitId     String?
   siteVisit       SiteVisit?     @relation(fields: [siteVisitId], references: [id])
   leadId          String
   lead            Lead           @relation(fields: [leadId], references: [id])
-  
+
   // Who (for staff reminders) or null (for customer reminders)
   recipientUserId String?
   recipient       User?          @relation(fields: [recipientUserId], references: [id])
   recipientPhone  String?        // for customer reminders
-  
+
   // When
   scheduledFor    DateTime       // when it should fire
   firedAt         DateTime?      // when it actually fired
   acknowledgedAt  DateTime?      // when staff member acknowledged
-  
+
   // How
   channel         ReminderChannel
   payload         Json?          // template name, variables, etc.
-  
+
   // Retry / error tracking
   attempts        Int            @default(0)
   lastError       String?
-  
+
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-  
+
   @@index([scheduledFor, status])     // cron job picks due reminders
   @@index([leadId])
   @@index([recipientUserId, status])
@@ -216,6 +219,7 @@ enum ReminderChannel {
 ```
 
 Also add to `SiteVisit`:
+
 ```prisma
 model SiteVisit {
   // ... existing fields
@@ -224,6 +228,7 @@ model SiteVisit {
 ```
 
 And to `Lead`:
+
 ```prisma
 model Lead {
   // ... existing fields
@@ -249,7 +254,7 @@ async processDueReminders() {
     },
     take: 100,  // batch limit per minute
   });
-  
+
   for (const reminder of due) {
     await this.fireReminder(reminder);
   }
@@ -265,7 +270,7 @@ async fireReminder(reminder: Reminder) {
       where: { id: reminder.id },
       data: { status: 'FIRING' },
     });
-    
+
     switch (reminder.channel) {
       case 'IN_APP':
         // Publish to Redis pub/sub for SSE delivery
@@ -289,7 +294,7 @@ async fireReminder(reminder: Reminder) {
         await whatsappService.send(reminder.recipientPhone, reminder);
         break;
     }
-    
+
     await prisma.reminder.update({
       where: { id: reminder.id },
       data: {
@@ -302,7 +307,7 @@ async fireReminder(reminder: Reminder) {
     const attempts = reminder.attempts + 1;
     const status = attempts >= 5 ? 'FAILED' : 'SCHEDULED';
     const nextScheduledFor = new Date(Date.now() + Math.pow(2, attempts) * 60000);
-    
+
     await prisma.reminder.update({
       where: { id: reminder.id },
       data: {
@@ -312,7 +317,7 @@ async fireReminder(reminder: Reminder) {
         scheduledFor: status === 'SCHEDULED' ? nextScheduledFor : reminder.scheduledFor,
       },
     });
-    
+
     // Alert if permanently failed
     if (status === 'FAILED') {
       await alertService.send('reminder.failed', reminder);
@@ -339,20 +344,20 @@ advisory lock around the cron job.
 When a customer reschedules a site visit, the system does
 this in the background:
 
-  1. New `SiteVisit` created with `rescheduledFromId` set
-     to the old visit.
-  2. Old `SiteVisit` outcome marked `RESCHEDULED`.
-  3. ALL pending reminders on the old visit are
-     cancelled (`status: 'CANCELLED'`).
-  4. THREE new reminders created for the new visit:
-       - `PRE_VISIT_STAFF` (T-2h before new time)
-       - `PRE_VISIT_CUSTOMER` (T-24h before new time)
-       - `PRE_VISIT_CUSTOMER` (T-2h before new time)
-  5. ONE additional `RESCHEDULE_FOLLOWUP` reminder for
-     the staff, T+1h after the reschedule record time.
-       - "Hi [Sales Exec], you rescheduled [Lead Name]'s
-         site visit to [New Date/Time]. Did you confirm
-         this with the customer? Tap YES to mark done."
+1. New `SiteVisit` created with `rescheduledFromId` set
+   to the old visit.
+2. Old `SiteVisit` outcome marked `RESCHEDULED`.
+3. ALL pending reminders on the old visit are
+   cancelled (`status: 'CANCELLED'`).
+4. THREE new reminders created for the new visit:
+   - `PRE_VISIT_STAFF` (T-2h before new time)
+   - `PRE_VISIT_CUSTOMER` (T-24h before new time)
+   - `PRE_VISIT_CUSTOMER` (T-2h before new time)
+5. ONE additional `RESCHEDULE_FOLLOWUP` reminder for
+   the staff, T+1h after the reschedule record time.
+   - "Hi [Sales Exec], you rescheduled [Lead Name]'s
+     site visit to [New Date/Time]. Did you confirm
+     this with the customer? Tap YES to mark done."
 
 ### Cancellation flow (when a customer cancels)
 
@@ -372,14 +377,14 @@ status, etc.) - deferred to v1.1 per Q2.
 
 Each user can configure:
 
-  - **Pre-visit staff reminder timing:** 15min / 30min /
-    1h / 2h / 4h before (default: 2h)
-  - **Quiet hours:** no reminders between X and Y
-    (default: 22:00 - 07:00 local time)
-  - **Channel preference:** push > email > SMS
-    (default: push)
-  - **Do-not-disturb on weekends:** bool
-    (default: false, real estate works weekends)
+- **Pre-visit staff reminder timing:** 15min / 30min /
+  1h / 2h / 4h before (default: 2h)
+- **Quiet hours:** no reminders between X and Y
+  (default: 22:00 - 07:00 local time)
+- **Channel preference:** push > email > SMS
+  (default: push)
+- **Do-not-disturb on weekends:** bool
+  (default: false, real estate works weekends)
 
 Configuration is in the existing `User` table as a JSON
 column `reminderSettings`, or as a separate `UserReminderConfig`
@@ -526,15 +531,16 @@ to the no-show reduction.
 
 If you're happy with this design, say "apply" and I'll
 add the Reminders module to DESIGN.md v3, including:
-  - Updated §2 modules list (Reminders as module 7)
-  - Updated §5 entities (Reminder model + relations)
-  - Updated §6 integrations (push + email fallback)
-  - Updated §9 SSE (new reminder channel)
-  - Updated §12 timeline (add 1 week → 12 weeks total)
-  - Submit WhatsApp template requests in week 1
-  - Add 2 new open questions to track:
-    - "Confirm default reminder timings (2h staff, 24h+2h customer)"
-    - "Confirm email is OK as a reminder fallback (low priority)"
+
+- Updated §2 modules list (Reminders as module 7)
+- Updated §5 entities (Reminder model + relations)
+- Updated §6 integrations (push + email fallback)
+- Updated §9 SSE (new reminder channel)
+- Updated §12 timeline (add 1 week → 12 weeks total)
+- Submit WhatsApp template requests in week 1
+- Add 2 new open questions to track:
+  - "Confirm default reminder timings (2h staff, 24h+2h customer)"
+  - "Confirm email is OK as a reminder fallback (low priority)"
 
 The two genuine choices to confirm (Choice A on customer
 reminders, Choice B on email fallback) are also in

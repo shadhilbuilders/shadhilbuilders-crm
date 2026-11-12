@@ -94,7 +94,9 @@ async function assertCanSeeData(): Promise<void> {
   ]);
   const total = photos + messages;
   if (total > 0) {
-    console.log(`(connection can see ${photos} progress photo(s) + ${messages} message(s) - results are trustworthy)`);
+    console.log(
+      `(connection can see ${photos} progress photo(s) + ${messages} message(s) - results are trustworthy)`,
+    );
     return;
   }
   throw new Error(
@@ -118,7 +120,9 @@ function parseArgs(argv: string[]): {
   table?: TableName;
   reason?: string;
 } {
-  const out: { apply: boolean; actor?: string; table?: TableName; reason?: string } = { apply: false };
+  const out: { apply: boolean; actor?: string; table?: TableName; reason?: string } = {
+    apply: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--apply') out.apply = true;
@@ -334,11 +338,17 @@ async function repairOne(
     if (current[keyCol] !== finding.key) return 'skipped-row-gone' as const;
 
     if (finding.table === 'ProgressPhoto') {
-      await tx.progressPhoto.update({ where: { id: finding.id }, data: { mimeType: finding.sniffed } });
+      await tx.progressPhoto.update({
+        where: { id: finding.id },
+        data: { mimeType: finding.sniffed },
+      });
     } else if (finding.table === 'Message') {
       await tx.message.update({ where: { id: finding.id }, data: { mediaType: finding.sniffed } });
     } else {
-      await tx.outboundMessage.update({ where: { id: finding.id }, data: { mediaType: finding.sniffed } });
+      await tx.outboundMessage.update({
+        where: { id: finding.id },
+        data: { mediaType: finding.sniffed },
+      });
     }
 
     await tx.auditLog.create({
@@ -399,7 +409,9 @@ async function main(): Promise<void> {
 
   // Re-scan so the final line is measured, not assumed.
   const after = await scan(storage, args.table);
-  console.log(`Still mismatched: ${after.findings.length}. Unreadable (untouched): ${after.unreadable.length}.`);
+  console.log(
+    `Still mismatched: ${after.findings.length}. Unreadable (untouched): ${after.unreadable.length}.`,
+  );
   console.log('');
 }
 

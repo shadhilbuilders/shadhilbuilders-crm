@@ -55,9 +55,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -75,9 +73,7 @@ function parseQuery<T>(
   const result = schema.safeParse(normalized);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -91,9 +87,7 @@ function parseQuery<T>(
 @ApiBearerAuth()
 @Controller('feedback')
 export class FeedbackAdminController {
-  constructor(
-    @Inject(FeedbacksService) private readonly service: FeedbacksService,
-  ) {}
+  constructor(@Inject(FeedbacksService) private readonly service: FeedbacksService) {}
 
   @Get()
   @ApiOperation({ summary: 'List feedback for triage (ADMIN/OWNER only)' })
@@ -115,10 +109,7 @@ export class FeedbackAdminController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<UpdateFeedbackResult> {
-    const dto: UpdateFeedbackStatusDto = parseBody(
-      UpdateFeedbackStatusDtoSchema,
-      body,
-    );
+    const dto: UpdateFeedbackStatusDto = parseBody(UpdateFeedbackStatusDtoSchema, body);
     return this.service.updateStatus(req.user!, id, dto);
   }
 }
@@ -130,9 +121,7 @@ export class FeedbackAdminController {
 @ApiTags('public')
 @Controller('public')
 export class FeedbackPublicController {
-  constructor(
-    @Inject(FeedbacksService) private readonly service: FeedbacksService,
-  ) {}
+  constructor(@Inject(FeedbacksService) private readonly service: FeedbacksService) {}
 
   @Public()
   @UseGuards(new ApiKeyGuard('PUBLIC_API_KEY'))
@@ -141,10 +130,7 @@ export class FeedbackPublicController {
     summary:
       'Submit feedback from the landing page (API-key-gated, no JWT). Captures ipAddress + userAgent server-side.',
   })
-  async create(
-    @Body() body: unknown,
-    @Req() req: AuthedRequest,
-  ): Promise<CreateFeedbackResult> {
+  async create(@Body() body: unknown, @Req() req: AuthedRequest): Promise<CreateFeedbackResult> {
     // Extract IP + UA from the raw Express request (the @Req() is the raw
     // Request here - the guard does not populate it, but the original
     // Express request object is available with headers/ip).
@@ -152,16 +138,10 @@ export class FeedbackPublicController {
       ip?: string;
       headers?: Record<string, string | string[] | undefined>;
     };
-    const forwarded = (rawReq.headers?.['x-forwarded-for'] as
-      | string
-      | undefined);
-    const ip = (forwarded?.split(',')[0]?.trim() || rawReq.ip || 'unknown').replace(
-      /^::ffff:/,
-      '',
-    );
+    const forwarded = rawReq.headers?.['x-forwarded-for'] as string | undefined;
+    const ip = (forwarded?.split(',')[0]?.trim() || rawReq.ip || 'unknown').replace(/^::ffff:/, '');
     const userAgentHeader = rawReq.headers?.['user-agent'];
-    const userAgent =
-      typeof userAgentHeader === 'string' ? userAgentHeader : undefined;
+    const userAgent = typeof userAgentHeader === 'string' ? userAgentHeader : undefined;
 
     const dto: CreateFeedbackDto = parseBody(CreateFeedbackDtoSchema, body);
     return this.service.publicSubmit(dto, { ip, userAgent: userAgent ?? '' });

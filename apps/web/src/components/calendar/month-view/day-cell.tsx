@@ -40,16 +40,16 @@ export function DayCell({ cell, events, eventPositions }: IProps) {
     <DroppableDayCell cell={cell}>
       <div
         className={cn(
-          'flex h-full flex-col gap-1 border-l border-t py-1.5 lg:pb-2 lg:pt-1',
+          'flex h-full flex-col gap-1 border-t border-l py-1.5 lg:pt-1 lg:pb-2',
           isSunday && 'border-l-0',
         )}
       >
         <button
           onClick={handleClick}
           className={cn(
-            'flex size-6 translate-x-1 items-center justify-center rounded-full text-xs font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:px-2',
+            'hover:bg-accent focus-visible:ring-ring flex size-6 translate-x-1 items-center justify-center rounded-full text-xs font-semibold focus-visible:ring-1 focus-visible:outline-none lg:px-2',
             !currentMonth && 'opacity-20',
-            isToday(date) && 'bg-primary font-bold text-primary-foreground hover:bg-primary',
+            isToday(date) && 'bg-primary text-primary-foreground hover:bg-primary font-bold',
           )}
         >
           {day}
@@ -85,7 +85,7 @@ export function DayCell({ cell, events, eventPositions }: IProps) {
         {cellEvents.length > MAX_VISIBLE_EVENTS && (
           <p
             className={cn(
-              'h-4.5 px-1.5 text-xs font-semibold text-muted-foreground',
+              'text-muted-foreground h-4.5 px-1.5 text-xs font-semibold',
               !currentMonth && 'opacity-50',
             )}
           >

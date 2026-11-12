@@ -16,13 +16,13 @@ A `SiteVisit` is closed only by `VisitsService.updateOutcome`, which the calenda
 and the visit list offer while the visit is `SCHEDULED`/`RESCHEDULED`. Nothing ties
 a visit's life to its lead's. So a deal that dies leaves its open visit behind:
 
-| path | closes the visit? |
-|---|---|
-| visit outcome `COMPLETED` / `NO_SHOW` / `CANCELLED` | yes (the visit itself) |
-| lead → `LOST` / `RNR` (cancel, dead lead) | **no** |
-| booking → `APPROVED` (deal is done) | **no** |
-| booking → `REJECTED` / `CANCELLED` | **no** |
-| `reassign` / `setCoOwner` | **no** (not their concern) |
+| path                                                | closes the visit?          |
+| --------------------------------------------------- | -------------------------- |
+| visit outcome `COMPLETED` / `NO_SHOW` / `CANCELLED` | yes (the visit itself)     |
+| lead → `LOST` / `RNR` (cancel, dead lead)           | **no**                     |
+| booking → `APPROVED` (deal is done)                 | **no**                     |
+| booking → `REJECTED` / `CANCELLED`                  | **no**                     |
+| `reassign` / `setCoOwner`                           | **no** (not their concern) |
 
 Confirmed by grep: `CANCELLED` exists in `VisitStatus` and in both state-machine
 tables, but **no production code ever writes it**.

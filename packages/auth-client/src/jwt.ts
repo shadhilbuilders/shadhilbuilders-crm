@@ -94,9 +94,8 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
   // itself both round-trip cleanly.
   const top = payload as Record<string, unknown>;
   const nested =
-    (top.user as
-      | { role?: string; organizationId?: string; email?: string }
-      | undefined) ?? undefined;
+    (top.user as { role?: string; organizationId?: string; email?: string } | undefined) ??
+    undefined;
   const roleRaw = (top.role as string | undefined) ?? nested?.role;
   const orgRaw = (top.organizationId as string | undefined) ?? nested?.organizationId;
   const emailRaw = (top.email as string | undefined) ?? nested?.email ?? '';

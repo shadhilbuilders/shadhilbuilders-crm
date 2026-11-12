@@ -59,7 +59,11 @@ async function ensureFixtures(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: `WA-UC Test Team ${TEST_TEAM_ID}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: TEST_TEAM_ID,
+        name: `WA-UC Test Team ${TEST_TEAM_ID}`,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -171,16 +175,12 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
       });
       // Both seeded contacts are in the result; b is newer (later
       // seed call) so it comes first.
-      const ourRows = result.rows.filter((r) =>
-        r.id === a.id || r.id === b.id,
-      );
+      const ourRows = result.rows.filter((r) => r.id === a.id || r.id === b.id);
       expect(ourRows).toHaveLength(2);
       expect(ourRows[0]?.id).toBe(b.id);
       expect(ourRows[1]?.id).toBe(a.id);
       // firstMessageBody is preserved.
-      expect(ourRows[0]?.firstMessageBody).toBe(
-        'Hi, I am interested in 3BHK in Shadhil Meadows',
-      );
+      expect(ourRows[0]?.firstMessageBody).toBe('Hi, I am interested in 3BHK in Shadhil Meadows');
     });
 
     it('filters by status - CONVERTED contacts are excluded from PENDING', async () => {
@@ -316,9 +316,7 @@ describe.skipIf(!HAS_DB)('WhatsappUnknownContactsService - T-E2b follow-up queue
         projectId: TEST_PROJECT_ID,
       });
       TEST_LEAD_IDS.push(convert.lead.id);
-      await expect(service.markSpam(makeAdminActor(), c.id)).rejects.toThrow(
-        /is CONVERTED/,
-      );
+      await expect(service.markSpam(makeAdminActor(), c.id)).rejects.toThrow(/is CONVERTED/);
     });
   });
 });

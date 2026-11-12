@@ -18,8 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // `globalThis.IS_REACT_ACT_ENVIRONMENT` tells React this is a test env so
 // `act` works with a raw createRoot (no @testing-library/react in this app).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock('@/hooks/queries/crm', () => ({
   useAuditLog: vi.fn(),
@@ -31,7 +30,10 @@ vi.mock('@/hooks/use-online-status', () => ({
 }));
 
 vi.mock('@/lib/session', () => ({
-  useSessionUser: vi.fn(() => ({ user: { id: 'u1', role: 'ADMIN', name: 'Owner', email: 'owner@x' }, isPending: false })),
+  useSessionUser: vi.fn(() => ({
+    user: { id: 'u1', role: 'ADMIN', name: 'Owner', email: 'owner@x' },
+    isPending: false,
+  })),
   canViewAudit: vi.fn((role: string | undefined) => role === 'ADMIN' || role === 'OWNER'),
 }));
 
@@ -159,7 +161,7 @@ describe('AuditPage - removal batch grouping (UI6)', () => {
     action: 'team.member.remove',
     entityType: 'Team',
     entityId: 'team-a',
-    before: { userId: 'tc-1'},
+    before: { userId: 'tc-1' },
     after: {
       removedUserId: 'tc-1',
       removedUserName: 'Priya Sharma',
@@ -209,7 +211,9 @@ describe('AuditPage - removal batch grouping (UI6)', () => {
 
     await mount();
     const html = container?.innerHTML ?? '';
-    expect(html).toContain('Priya Sharma removed from Metro Sales · 2 leads transferred to Rahul Verma');
+    expect(html).toContain(
+      'Priya Sharma removed from Metro Sales · 2 leads transferred to Rahul Verma',
+    );
     // Detail rows are collapsed by default.
     expect(container?.querySelector('[data-qa="audit-batch-toggle-batch_123_abc"]')).not.toBeNull();
     const detailAppearances = (html.match(/lead-1/g) ?? []).length;

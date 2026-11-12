@@ -102,7 +102,9 @@ html.portal-theme.dark {
 /* Fonts: set by the portal layout through next/font. Space Grotesk. */
 .portal-theme {
   font-family: var(--font-portal-sans, var(--font-inter, system-ui)), system-ui, sans-serif;
-  font-feature-settings: 'ss01' 1, 'ss02' 1;
+  font-feature-settings:
+    'ss01' 1,
+    'ss02' 1;
 }
 /* Root layout sets the staff font on <body>; dialogs portal into <body>, so the
    portal font must be re-inherited there while the portal is mounted. */
@@ -117,13 +119,17 @@ html.portal-theme body {
   font-family: var(--font-portal-sans, var(--font-inter, system-ui)), system-ui, sans-serif;
   font-weight: 500;
   letter-spacing: -0.035em;
-  font-feature-settings: 'ss01' 1, 'ss02' 1;
+  font-feature-settings:
+    'ss01' 1,
+    'ss02' 1;
 }
 
 /* The one figure style: every stage count and date lines up in a column. */
 .portal-figure {
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1, 'cv05' 1;
+  font-feature-settings:
+    'tnum' 1,
+    'cv05' 1;
 }
 
 /* Micro label: 10.5px, wide tracking, no shouting. Used at most twice a
@@ -253,7 +259,13 @@ html.portal-theme body {
   scroll-snap-align: center;
 }
 .portal-fade-x {
-  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
 }
 
 @keyframes portal-pulse {

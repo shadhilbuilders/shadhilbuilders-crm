@@ -92,7 +92,7 @@ describe('PendingTokenCard', () => {
 
   it('shows a loading state instead of a misleading empty one', () => {
     const html = renderToStaticMarkup(
-      <PendingTokenCard bookings={[]} isLoading onRecord={vi.fn()} />
+      <PendingTokenCard bookings={[]} isLoading onRecord={vi.fn()} />,
     );
     expect(html).toContain('Loading');
     // An in-flight load must NOT read as "nothing to do" - that is how a user

@@ -17,15 +17,12 @@ const ALL_STATES: readonly VisitStatus[] = VISIT_STATES;
 
 describe('visits.state-machine - canTransition', () => {
   // Same-state idempotence - every role, every state.
-  it.each(ALL_STATES)(
-    'same-state is idempotent for %s',
-    (state) => {
-      for (const role of ['ADMIN', 'OWNER', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const) {
-        const result = canTransition({ from: state, to: state, role });
-        expect(result).toEqual({ ok: true, reason: 'SAME_STATE' });
-      }
-    },
-  );
+  it.each(ALL_STATES)('same-state is idempotent for %s', (state) => {
+    for (const role of ['ADMIN', 'OWNER', 'MANAGER', 'TELECALLER', 'SALES_EXEC'] as const) {
+      const result = canTransition({ from: state, to: state, role });
+      expect(result).toEqual({ ok: true, reason: 'SAME_STATE' });
+    }
+  });
 
   // ADMIN/OWNER override - every transition is allowed, including
   // re-opening terminals. We don't exhaustively test every pair
@@ -56,7 +53,9 @@ describe('visits.state-machine - canTransition', () => {
       expect(canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'MANAGER' }).ok).toBe(true);
     });
     it('allows SCHEDULED → RESCHEDULED', () => {
-      expect(canTransition({ from: 'SCHEDULED', to: 'RESCHEDULED', role: 'MANAGER' }).ok).toBe(true);
+      expect(canTransition({ from: 'SCHEDULED', to: 'RESCHEDULED', role: 'MANAGER' }).ok).toBe(
+        true,
+      );
     });
     it('forbids COMPLETED → SCHEDULED (terminal, non-admin)', () => {
       const r = canTransition({ from: 'COMPLETED', to: 'SCHEDULED', role: 'MANAGER' });
@@ -71,7 +70,9 @@ describe('visits.state-machine - canTransition', () => {
   // TELECALLER - schedule/cancel + NO_SHOW re-engagement.
   describe('TELECALLER lane', () => {
     it('allows SCHEDULED → CANCELLED', () => {
-      expect(canTransition({ from: 'SCHEDULED', to: 'CANCELLED', role: 'TELECALLER' }).ok).toBe(true);
+      expect(canTransition({ from: 'SCHEDULED', to: 'CANCELLED', role: 'TELECALLER' }).ok).toBe(
+        true,
+      );
     });
     it('forbids SCHEDULED → COMPLETED (sales exec owns outcomes)', () => {
       const r = canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'TELECALLER' });
@@ -79,14 +80,18 @@ describe('visits.state-machine - canTransition', () => {
       if (!r.ok) expect(r.code).toBe('ROLE_FORBIDDEN');
     });
     it('allows NO_SHOW → RESCHEDULED (re-engagement)', () => {
-      expect(canTransition({ from: 'NO_SHOW', to: 'RESCHEDULED', role: 'TELECALLER' }).ok).toBe(true);
+      expect(canTransition({ from: 'NO_SHOW', to: 'RESCHEDULED', role: 'TELECALLER' }).ok).toBe(
+        true,
+      );
     });
   });
 
   // SALES_EXEC - carries out visits, no cancellation.
   describe('SALES_EXEC lane', () => {
     it('allows SCHEDULED → COMPLETED', () => {
-      expect(canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'SALES_EXEC' }).ok).toBe(true);
+      expect(canTransition({ from: 'SCHEDULED', to: 'COMPLETED', role: 'SALES_EXEC' }).ok).toBe(
+        true,
+      );
     });
     it('allows SCHEDULED → NO_SHOW', () => {
       expect(canTransition({ from: 'SCHEDULED', to: 'NO_SHOW', role: 'SALES_EXEC' }).ok).toBe(true);

@@ -118,7 +118,9 @@ export function PendingTokenCard({
                 <span className="w-full min-w-0 wrap-break-word sm:w-auto sm:flex-1 sm:truncate">
                   {label}
                 </span>
-                <span className="text-muted-foreground tabular-nums">{formatMoney(booking.amount)}</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {formatMoney(booking.amount)}
+                </span>
                 <Button
                   type="button"
                   size="sm"

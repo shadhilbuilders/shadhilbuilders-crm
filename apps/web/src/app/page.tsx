@@ -24,22 +24,23 @@ import { PageError } from '@/components/shared/PageError';
 export default function OrgRootRedirectPage() {
   const router = useRouter();
   const { user, isPending } = useSessionUser();
-  const { orgSlug, isPending: orgsPending, error: orgsError } = useOrgSlugForId(
-    user?.organizationId ?? null,
-    {
-      // 2026-11-10: do NOT even ask for the org list until we have a resolved,
-      // non-buyer session. This is the fix for the 403 on the portal landing
-      // path: a CUSTOMER's `/organizations` call is refused by the
-      // mustChangePassword gate, so the old unconditional query produced a
-      // guaranteed 403 (and a console error) on every buyer visit to `/`.
-      // Buyers never need the answer - they are redirected to the portal below.
-      enabled: shouldResolveOrgSlug({
-        role: user?.role,
-        isPending,
-        organizationId: user?.organizationId,
-      }),
-    },
-  );
+  const {
+    orgSlug,
+    isPending: orgsPending,
+    error: orgsError,
+  } = useOrgSlugForId(user?.organizationId ?? null, {
+    // 2026-11-10: do NOT even ask for the org list until we have a resolved,
+    // non-buyer session. This is the fix for the 403 on the portal landing
+    // path: a CUSTOMER's `/organizations` call is refused by the
+    // mustChangePassword gate, so the old unconditional query produced a
+    // guaranteed 403 (and a console error) on every buyer visit to `/`.
+    // Buyers never need the answer - they are redirected to the portal below.
+    enabled: shouldResolveOrgSlug({
+      role: user?.role,
+      isPending,
+      organizationId: user?.organizationId,
+    }),
+  });
 
   useEffect(() => {
     if (isPending) return;

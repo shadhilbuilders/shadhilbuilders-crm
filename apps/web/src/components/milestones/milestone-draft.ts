@@ -1,7 +1,11 @@
 // Pure helpers for the milestone editor (portal redesign, 2026-11-09). Kept out
 // of the component so ordering, date conversion and validation are unit-tested
 // without a DOM. A draft is what the form holds; `toPayload` is the wire shape.
-import { MAX_MILESTONES_PER_PROJECT, type ProjectMilestoneRow, type ReplaceMilestonesDto } from '@shadhil/api-types';
+import {
+  MAX_MILESTONES_PER_PROJECT,
+  type ProjectMilestoneRow,
+  type ReplaceMilestonesDto,
+} from '@shadhil/api-types';
 
 export type MilestoneDraft = {
   /** Stable client key (the server id, or a fresh one for a new row). */
@@ -30,7 +34,11 @@ export function newDraft(key: string): MilestoneDraft {
 }
 
 /** Swap an item with its neighbour; out-of-range moves return the list unchanged. */
-export function moveDraft(list: readonly MilestoneDraft[], index: number, delta: -1 | 1): MilestoneDraft[] {
+export function moveDraft(
+  list: readonly MilestoneDraft[],
+  index: number,
+  delta: -1 | 1,
+): MilestoneDraft[] {
   const to = index + delta;
   if (index < 0 || index >= list.length || to < 0 || to >= list.length) return [...list];
   const next = [...list];

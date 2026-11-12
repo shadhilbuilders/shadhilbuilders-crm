@@ -178,13 +178,10 @@ export function isUpcomingVisit(status: string | null | undefined): boolean {
  * wrongly hidden is invisible and unreportable, whereas a row wrongly shown is
  * one the operator can cancel - so the conservative direction is to show it.
  */
-export function isUpcomingVisitForLead(
-  visit: Pick<VisitApiRow, 'status' | 'leadState'>,
-): boolean {
+export function isUpcomingVisitForLead(visit: Pick<VisitApiRow, 'status' | 'leadState'>): boolean {
   if (!isUpcomingVisit(visit.status)) return false;
   return !isTerminalLeadState(visit.leadState);
 }
-
 
 /**
  * The dashboard's "Today's visits": open visits on live deals, ONE row per lead.

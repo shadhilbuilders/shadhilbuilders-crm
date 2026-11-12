@@ -67,10 +67,7 @@ export type ModulePendingProps = {
 };
 
 function isNotImplemented(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.status === 404 || error.status === 501)
-  );
+  return error instanceof ApiError && (error.status === 404 || error.status === 501);
 }
 
 export function ModulePending({
@@ -103,12 +100,7 @@ export function ModulePending({
         </div>
       );
     }
-    return (
-      <Skeleton
-        variant={skeletonVariant}
-        aria-label={`Loading ${title.toLowerCase()}`}
-      />
-    );
+    return <Skeleton variant={skeletonVariant} aria-label={`Loading ${title.toLowerCase()}`} />;
   }
 
   // Request went through and the endpoint exists - a different failure.
@@ -116,24 +108,19 @@ export function ModulePending({
     return (
       <Empty
         title={`${title} failed to load`}
-        description={
-          error instanceof Error ? error.message : 'Unexpected API error.'
-        }
+        description={error instanceof Error ? error.message : 'Unexpected API error.'}
       />
     );
   }
 
   // Endpoint absent (404 from NestJS router) → module genuinely not built.
   return (
-    <Empty
-      title={`${title} - backend module pending`}
-      description={description}
-    >
+    <Empty title={`${title} - backend module pending`} description={description}>
       <div className="mt-2 flex items-center justify-center gap-2">
         <Badge variant="secondary">Not built yet</Badge>
         <span className="text-muted-foreground text-xs">
-          UI is wired to the locked API contract and lights up when the module
-          ships (Implementation Plan Weeks 4–7).
+          UI is wired to the locked API contract and lights up when the module ships (Implementation
+          Plan Weeks 4–7).
         </span>
       </div>
     </Empty>

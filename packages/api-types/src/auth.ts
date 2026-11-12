@@ -69,11 +69,7 @@ export type LoginDto = z.infer<typeof LoginDtoSchema>;
  * string. Existence, soft-deletion and org membership are enforced in the
  * service.
  */
-const teamIdSchema = z
-  .string()
-  .trim()
-  .min(1, 'Select a team for this user')
-  .optional();
+const teamIdSchema = z.string().trim().min(1, 'Select a team for this user').optional();
 
 /**
  * POST /api/auth/signup - admin-provisioned account creation. `role`
@@ -111,9 +107,7 @@ export type CreateUserDto = z.infer<typeof CreateUserDtoSchema>;
  * `limit`/`offset` drive server-side pagination (T-SRVPG, mirrors leads).
  */
 export const UserFilterDtoSchema = z.object({
-  role: z
-    .union([RoleSchema, z.array(RoleSchema)])
-    .optional(),
+  role: z.union([RoleSchema, z.array(RoleSchema)]).optional(),
   search: z.string().trim().min(1).max(120).optional(),
   /**
    * T-USER-PROJECT-SCOPE (2026-09-16): narrow the result to staffed on ONE
@@ -359,10 +353,7 @@ export type ChangePasswordDto = z.infer<typeof ChangePasswordDtoSchema>;
  * server validation can't drift: both fail on the same rules.
  */
 export const ChangePasswordFormSchema = ChangePasswordDtoSchema.extend({
-  oldPassword: z
-    .string()
-    .min(1, 'Current password is required')
-    .max(200, 'Password is too long'),
+  oldPassword: z.string().min(1, 'Current password is required').max(200, 'Password is too long'),
   confirmPassword: z.string().min(1, 'Please confirm the new password'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'New password and confirmation do not match',
@@ -382,6 +373,4 @@ export const AdminResetPasswordFormSchema = z
     message: 'New password and confirmation do not match',
     path: ['confirmPassword'],
   });
-export type AdminResetPasswordFormValues = z.infer<
-  typeof AdminResetPasswordFormSchema
->;
+export type AdminResetPasswordFormValues = z.infer<typeof AdminResetPasswordFormSchema>;

@@ -47,11 +47,7 @@ export class RedisService implements OnModuleDestroy {
    * Eng review A3: every @Cron job uses this to ensure only one NestJS
    * replica processes the per-minute tick.
    */
-  async acquireLock(
-    key: string,
-    ttlSec: number,
-    token: string,
-  ): Promise<boolean> {
+  async acquireLock(key: string, ttlSec: number, token: string): Promise<boolean> {
     const result = await this.client.set(key, token, 'EX', ttlSec, 'NX');
     return result === 'OK';
   }
@@ -83,11 +79,7 @@ export class RedisService implements OnModuleDestroy {
    * if renewed, false if we no longer hold the lock (the batch
    * should bail in that case).
    */
-  async renewLease(
-    key: string,
-    token: string,
-    ttlSec: number,
-  ): Promise<boolean> {
+  async renewLease(key: string, token: string, ttlSec: number): Promise<boolean> {
     const lua = `
       if redis.call("get", KEYS[1]) == ARGV[1] then
         return redis.call("expire", KEYS[1], ARGV[2])
@@ -95,13 +87,7 @@ export class RedisService implements OnModuleDestroy {
         return 0
       end
     `;
-    const result = (await this.client.eval(
-      lua,
-      1,
-      key,
-      token,
-      String(ttlSec),
-    )) as number;
+    const result = (await this.client.eval(lua, 1, key, token, String(ttlSec))) as number;
     return result === 1;
   }
 

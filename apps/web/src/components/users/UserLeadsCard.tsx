@@ -105,9 +105,7 @@ export function UserLeadsCard({ userId }: { userId: string }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name' | undefined>(
-    undefined,
-  );
+  const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'name' | undefined>(undefined);
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | undefined>(undefined);
 
   const filter = buildUserLeadsFilter({
@@ -123,14 +121,11 @@ export function UserLeadsCard({ userId }: { userId: string }) {
   const leadsQuery = useLeads(filter);
   const envelope = useLeadsEnvelope(filter);
 
-  const rows = Array.isArray(leadsQuery.data)
-    ? (leadsQuery.data as UserLeadRow[])
-    : [];
+  const rows = Array.isArray(leadsQuery.data) ? (leadsQuery.data as UserLeadRow[]) : [];
   const total = envelope?.total ?? 0;
 
   const projectOptions = useMemo(
-    () =>
-      (projectsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name })),
+    () => (projectsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name })),
     [projectsQuery.data],
   );
 
@@ -166,9 +161,7 @@ export function UserLeadsCard({ userId }: { userId: string }) {
                 </Button>
               )}
               {typeof lead.phone === 'string' && lead.phone.length > 0 ? (
-                <span className="text-muted-foreground block text-xs">
-                  {lead.phone}
-                </span>
+                <span className="text-muted-foreground block text-xs">{lead.phone}</span>
               ) : null}
             </div>
           );
@@ -178,18 +171,14 @@ export function UserLeadsCard({ userId }: { userId: string }) {
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => (
-          <LeadStatusBadge status={row.original.status ?? 'UNKNOWN'} />
-        ),
+        cell: ({ row }) => <LeadStatusBadge status={row.original.status ?? 'UNKNOWN'} />,
         enableSorting: false,
       },
       {
         accessorKey: 'projectName',
         header: 'Project',
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.projectName ?? '-'}
-          </span>
+          <span className="text-muted-foreground text-sm">{row.original.projectName ?? '-'}</span>
         ),
         enableSorting: false,
       },
@@ -241,9 +230,7 @@ export function UserLeadsCard({ userId }: { userId: string }) {
         >
           <p className="text-sm font-medium">Couldn&apos;t load this user&apos;s leads.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {leadsQuery.error instanceof Error
-              ? leadsQuery.error.message
-              : 'Unexpected error.'}
+            {leadsQuery.error instanceof Error ? leadsQuery.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -290,7 +277,7 @@ export function UserLeadsCard({ userId }: { userId: string }) {
               options={projectOptions}
               placeholder="All projects"
               selectOptionAsValue
-              className="min-w-48 max-w-72"
+              className="max-w-72 min-w-48"
               data-qa="user-leads-project-filter"
             />
           }
@@ -309,9 +296,7 @@ export function UserLeadsCard({ userId }: { userId: string }) {
           }}
           emptyContent={
             <TypographyP className="text-muted-foreground py-6 text-center text-sm">
-              {isFiltered
-                ? 'No leads match this filter.'
-                : 'No leads are linked to this user yet.'}
+              {isFiltered ? 'No leads match this filter.' : 'No leads are linked to this user yet.'}
             </TypographyP>
           }
           data-qa="user-leads-table"

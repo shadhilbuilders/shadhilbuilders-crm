@@ -2,11 +2,7 @@
 // provider seam that makes an ImageKit -> R2 swap a one-adapter change.
 import { describe, expect, it } from 'vitest';
 
-import {
-  bffMediaPath,
-  isPubliclyServableImage,
-  resolveMediaDisplayUrl,
-} from './media-display';
+import { bffMediaPath, isPubliclyServableImage, resolveMediaDisplayUrl } from './media-display';
 
 describe('resolveMediaDisplayUrl - Option A policy', () => {
   const IK = 'https://ik.imagekit.io/paalstack';

@@ -43,10 +43,7 @@ export interface SseUser {
  * Fails closed (empty org) if the user row vanished, so no cross-tenant
  * leak.
  */
-export async function resolveUserContext(
-  prisma: PrismaClient,
-  userId: string,
-): Promise<SseUser> {
+export async function resolveUserContext(prisma: PrismaClient, userId: string): Promise<SseUser> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true, organizationId: true },

@@ -10,11 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api, ApiError, sessionUserFromSession } from './client';
 
-function mockFetchOnce(response: {
-  status: number;
-  body?: unknown;
-  ok?: boolean;
-}): void {
+function mockFetchOnce(response: { status: number; body?: unknown; ok?: boolean }): void {
   const ok = response.ok ?? (response.status >= 200 && response.status < 300);
   const bodyText = response.body !== undefined ? JSON.stringify(response.body) : '';
   vi.stubGlobal(
@@ -124,7 +120,11 @@ describe('api() error envelope parsing', () => {
     });
     mockFetchOnce({
       status: 403,
-      body: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'change it', redirect: '/change-password' },
+      body: {
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'change it',
+        redirect: '/change-password',
+      },
     });
 
     await expect(api('/customer-portal/me')).rejects.toBeInstanceOf(ApiError);
@@ -138,7 +138,11 @@ describe('api() error envelope parsing', () => {
     });
     mockFetchOnce({
       status: 403,
-      body: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'change it', redirect: '/change-password' },
+      body: {
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'change it',
+        redirect: '/change-password',
+      },
     });
 
     await expect(api('/users')).rejects.toBeInstanceOf(ApiError);

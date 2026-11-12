@@ -27,38 +27,38 @@ sales process and the KPIs they measure.
 
 **The four models:**
 
-  - **Model A (current v3 brief):** Handoff at "customer
-    agrees to visit." Telecaller owns up to the verbal yes.
-    Exec takes over at the visit. **Pro:** clean, simple,
-    matches what the client said. **Con:** telecaller has
-    no skin in the game for the visit actually happening,
-    which is the #1 source of lead loss.
+- **Model A (current v3 brief):** Handoff at "customer
+  agrees to visit." Telecaller owns up to the verbal yes.
+  Exec takes over at the visit. **Pro:** clean, simple,
+  matches what the client said. **Con:** telecaller has
+  no skin in the game for the visit actually happening,
+  which is the #1 source of lead loss.
 
-  - **Model B (industry standard):** Handoff AFTER the site
-    visit is completed. Telecaller owns through the visit.
-    Exec takes over after the visit outcome is logged.
-    **Pro:** telecaller is responsible for the visit
-    happening (perverse incentive removed), exec starts
-    the closing with momentum, customer gets one person
-    they trust for the visit. **Con:** exec only sees the
-    lead after the visit, so the relationship starts later.
+- **Model B (industry standard):** Handoff AFTER the site
+  visit is completed. Telecaller owns through the visit.
+  Exec takes over after the visit outcome is logged.
+  **Pro:** telecaller is responsible for the visit
+  happening (perverse incentive removed), exec starts
+  the closing with momentum, customer gets one person
+  they trust for the visit. **Con:** exec only sees the
+  lead after the visit, so the relationship starts later.
 
-  - **Model C (hybrid - my recommendation):** Shared
-    visibility during the scheduled period, clean
-    handoff at the visit outcome. Telecaller owns
-    through "visit scheduled," both can see during the
-    scheduled period, exec officially owns after the
-    visit. **Pro:** best of both, used by best-in-class
-    Indian real estate CRMs. **Con:** slightly more
-    complex state model.
+- **Model C (hybrid - my recommendation):** Shared
+  visibility during the scheduled period, clean
+  handoff at the visit outcome. Telecaller owns
+  through "visit scheduled," both can see during the
+  scheduled period, exec officially owns after the
+  visit. **Pro:** best of both, used by best-in-class
+  Indian real estate CRMs. **Con:** slightly more
+  complex state model.
 
-  - **Model D (no handoff):** Same person (telecaller)
-    owns the lead end-to-end. Sales exec only gets
-    involved for very serious leads. **Pro:** simplest,
-    no handoff confusion. **Con:** only works if
-    Shadhil's telecallers are skilled closers (rare
-    in mid-market), doesn't match what the client
-    described.
+- **Model D (no handoff):** Same person (telecaller)
+  owns the lead end-to-end. Sales exec only gets
+  involved for very serious leads. **Pro:** simplest,
+  no handoff confusion. **Con:** only works if
+  Shadhil's telecallers are skilled closers (rare
+  in mid-market), doesn't match what the client
+  described.
 
 **Recommendation for Shadhil: Model C (hybrid).** It matches
 the client's intent (telecaller does the qualification and
@@ -89,6 +89,7 @@ SALES EXEC OWNS:
 ```
 
 **What happens in practice:**
+
 1. Telecaller calls lead, qualifies them, asks "would you
    like to visit?" Customer says yes.
 2. Telecaller clicks "Customer agreed to visit" → lead
@@ -98,12 +99,14 @@ SALES EXEC OWNS:
    a date/time), conducts the visit, follows up to close.
 
 **KPI structure:**
+
 - Telecaller: "number of visits scheduled" (NOT number of
   visits that happened, NOT number of bookings)
 - Sales exec: "number of bookings"
 - Manager: "team performance"
 
 **Why this is bad:**
+
 - Telecaller gets credit for booking a visit that the
   customer no-shows on. No consequence for the no-show.
 - Sales exec has to do ALL the follow-up to make the
@@ -133,6 +136,7 @@ SALES EXEC OWNS:
 ```
 
 **What happens in practice:**
+
 1. Telecaller calls lead, qualifies them, asks "would
    you like to visit?" Customer says yes.
 2. Telecaller schedules the visit (date, time, which
@@ -144,12 +148,14 @@ SALES EXEC OWNS:
    for the closing.
 
 **KPI structure:**
+
 - Telecaller: "number of visits COMPLETED" (not just
   scheduled - has skin in the game)
 - Sales exec: "number of bookings from leads handed off"
 - Manager: "team performance"
 
 **Why this is better than Model A:**
+
 - Telecaller is responsible for the visit actually
   happening. No perverse incentive.
 - The person who did the visit is the one who built
@@ -160,6 +166,7 @@ SALES EXEC OWNS:
   the site is now following up."
 
 **Why this can be bad:**
+
 - The sales exec has to be the one conducting the visit
   (since the relationship transfers at the visit). This
   means the exec spends time on visits, not on closing.
@@ -189,6 +196,7 @@ SALES EXEC OWNS:
 ```
 
 **What happens in practice:**
+
 1. Telecaller calls lead, qualifies them, asks "would
    you like to visit?" Customer says yes.
 2. Telecaller schedules the visit (date, time, site).
@@ -204,6 +212,7 @@ SALES EXEC OWNS:
    has lost nothing (didn't spend time on a no-show).
 
 **KPI structure:**
+
 - Telecaller: "number of visits scheduled AND completed"
   (perverse incentive removed - they lose credit if the
   visit no-shows)
@@ -213,6 +222,7 @@ SALES EXEC OWNS:
 - Manager: "team performance" + "visit completion rate"
 
 **Why this is the best model:**
+
 - Telecaller still has skin in the game (they lose credit
   for no-shows).
 - Sales exec gets a warm lead at the visit (not a cold
@@ -229,6 +239,7 @@ SALES EXEC OWNS:
   not by the sales exec (who has no control).
 
 **Why this can be bad:**
+
 - The "shared visibility" period is a slightly more
   complex state. Both the telecaller and exec see the
   lead in their queues during the scheduled period.
@@ -256,16 +267,19 @@ TELECALLER (= SALES EXEC) OWNS:
 ```
 
 **What happens in practice:**
+
 - The same person does the qualification call, the
   site visit, and the closing.
 - There IS no handoff because there's only one role.
 
 **KPI structure:**
+
 - One person: "number of bookings from start to close"
 - The role is "sales rep" (or "relationship manager"),
   not split into telecaller + exec.
 
 **Why this is bad for Shadhil specifically:**
+
 - The client explicitly said there ARE telecallers AND
   sales execs. They're a 4-role org (Admin, Manager,
   Telecaller, Sales Executive). So Model D doesn't
@@ -282,12 +296,12 @@ total. Not a 5-15 user CRM model.
 
 ## Comparison table
 
-| Model | Handoff point | Telecaller incentive | Sales exec role | Complexity | Indian industry use |
-|---|---|---|---|---|---|
-| A | "Verbal yes" | Book visits (no skin in game for no-show) | Closes only | Low | Rare |
-| B | "Visit completed" | Book + confirm visits (full ownership) | Closes only | Medium | Mid-market |
-| C | "Visit completed" (hybrid shared visibility) | Book + confirm visits | Conducts visit + closes | Medium-high | Best-in-class |
-| D | Never (one person) | Full ownership | (same person) | Low | Boutique only |
+| Model | Handoff point                                | Telecaller incentive                      | Sales exec role         | Complexity  | Indian industry use |
+| ----- | -------------------------------------------- | ----------------------------------------- | ----------------------- | ----------- | ------------------- |
+| A     | "Verbal yes"                                 | Book visits (no skin in game for no-show) | Closes only             | Low         | Rare                |
+| B     | "Visit completed"                            | Book + confirm visits (full ownership)    | Closes only             | Medium      | Mid-market          |
+| C     | "Visit completed" (hybrid shared visibility) | Book + confirm visits                     | Conducts visit + closes | Medium-high | Best-in-class       |
+| D     | Never (one person)                           | Full ownership                            | (same person)           | Low         | Boutique only       |
 
 ---
 
@@ -329,6 +343,7 @@ mid-market Indian real estate and it works.
 **Provide Model B as a configuration option in v1.1.** If
 Shadhil's actual process is "telecaller does everything,"
 they can toggle a setting that:
+
 - Hides the "scheduled" state (lead goes straight to "visiting")
 - Removes the shared visibility period
 - Effectively makes the telecaller = sales exec
@@ -369,17 +384,18 @@ exec), but it happens AFTER the visit.
 
 ### §4 RBAC matrix changes
 
-| Operation | Telecaller | Sales Exec |
-|---|---|---|
-| Schedule site visit | ✅ | ❌ (exec conducts, doesn't schedule) |
-| View scheduled visits | ✅ (own leads) | ✅ (assigned leads) |
-| Log visit outcome (visited/no-show) | ❌ (exec only) | ✅ |
-| Re-engage after no-show | ✅ (own leads) | ❌ |
-| Initiate booking | ❌ | ✅ (post-visit only) |
+| Operation                           | Telecaller     | Sales Exec                           |
+| ----------------------------------- | -------------- | ------------------------------------ |
+| Schedule site visit                 | ✅             | ❌ (exec conducts, doesn't schedule) |
+| View scheduled visits               | ✅ (own leads) | ✅ (assigned leads)                  |
+| Log visit outcome (visited/no-show) | ❌ (exec only) | ✅                                   |
+| Re-engage after no-show             | ✅ (own leads) | ❌                                   |
+| Initiate booking                    | ❌             | ✅ (post-visit only)                 |
 
 ### §5 Entity changes
 
 `Lead.currentOwnerId` semantics change:
+
 - Pre-VISIT_SCHEDULED: owner is the telecaller
 - VISIT_SCHEDULED: BOTH the telecaller and the exec can
   see the lead (shared)
@@ -387,6 +403,7 @@ exec), but it happens AFTER the visit.
 - Post-NO_SHOW: owner reverts to the telecaller
 
 `LeadAssignment` table tracks the ownership changes:
+
 - telecaller (on creation)
 - telecaller (on VISIT_REQUESTED - no change)
 - exec (on VISITED - handoff complete)
@@ -438,11 +455,11 @@ and ask which one matches their reality. They'll know.
 
 The four options to present:
 
-  A) Telecaller hands off at "customer agrees to visit"
-  B) Telecaller owns through the visit, handoff after
-  C) Hybrid: shared visibility during scheduled, handoff
-     at visit outcome
-  D) No handoff (one person does everything)
+A) Telecaller hands off at "customer agrees to visit"
+B) Telecaller owns through the visit, handoff after
+C) Hybrid: shared visibility during scheduled, handoff
+at visit outcome
+D) No handoff (one person does everything)
 
 Plus the follow-up: "In your current process (before the
 CRM), who actually conducts the site visit - the telecaller
@@ -495,13 +512,13 @@ This delta does NOT auto-apply. Model A vs Model B vs Model C
 is a real product decision, not a technical one. The right
 move is:
 
-  1. Send this delta to the client (in plain English, no
-     jargon, with the "which model matches your reality"
-     question).
+1. Send this delta to the client (in plain English, no
+   jargon, with the "which model matches your reality"
+   question).
 
-  2. Get their answer.
+2. Get their answer.
 
-  3. Apply the change to v3 → v3.1 if they pick B or C.
+3. Apply the change to v3 → v3.1 if they pick B or C.
 
 Until the client answers, v3 stands as Model A. If they want
 to lock Model C in advance (you know the client better than I

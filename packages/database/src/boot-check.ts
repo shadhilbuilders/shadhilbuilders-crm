@@ -48,9 +48,7 @@ export async function verifyPoolMode(): Promise<'session'> {
 
 // Allow `pnpm dev` / `pnpm boot-check` to invoke directly.
 const isMain =
-  typeof process !== 'undefined' &&
-  process.argv[1] &&
-  process.argv[1].endsWith('boot-check.ts');
+  typeof process !== 'undefined' && process.argv[1] && process.argv[1].endsWith('boot-check.ts');
 
 if (isMain) {
   verifyPoolMode()

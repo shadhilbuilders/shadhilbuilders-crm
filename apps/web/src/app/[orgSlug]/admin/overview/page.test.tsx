@@ -10,7 +10,15 @@ import { commandCenterRedirectTarget } from '@/lib/dashboard-redirect';
 
 const ORG_SLUG = 'shadhil-builders';
 const PROJ = [
-  { id: 'proj-1', slug: 'shadhil-metro-heights', name: 'Metro', address: '', reraNumber: null, cmdaNumber: null, createdAt: '' },
+  {
+    id: 'proj-1',
+    slug: 'shadhil-metro-heights',
+    name: 'Metro',
+    address: '',
+    reraNumber: null,
+    cmdaNumber: null,
+    createdAt: '',
+  },
 ];
 
 describe('commandCenterRedirectTarget - /overview guard', () => {
@@ -43,9 +51,7 @@ describe('commandCenterRedirectTarget - /overview guard', () => {
   });
 
   it('non-admin + empty registry: /[orgSlug]/work (no loop into admin)', () => {
-    expect(commandCenterRedirectTarget('TELECALLER', [], ORG_SLUG)).toBe(
-      '/shadhil-builders/work',
-    );
+    expect(commandCenterRedirectTarget('TELECALLER', [], ORG_SLUG)).toBe('/shadhil-builders/work');
   });
 
   it('falls back to unscoped /work when org slug is missing', () => {

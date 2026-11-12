@@ -37,7 +37,7 @@ describe('PLOT_GEOMETRY', () => {
   it('describes every plot with a real, positively-sized polygon', () => {
     for (const plot of PLOT_GEOMETRY) {
       expect(plot.boundary.length, `plot ${plot.plotNumber} vertex count`).toBeGreaterThanOrEqual(
-        3
+        3,
       );
       expect(Number.isFinite(plot.areaSqM)).toBe(true);
       expect(plot.areaSqM, `plot ${plot.plotNumber} area`).toBeGreaterThan(20);

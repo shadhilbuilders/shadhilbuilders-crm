@@ -34,11 +34,8 @@ function fact(overrides: Partial<LeadFactRow>): LeadFactRow {
     score: 0.67,
     band: 'PROBABLE',
     status: 'PROPOSED',
-    rationale:
-      'Their own message says so, but nothing that identifies them directly.',
-    evidence: [
-      { kind: 'whatsapp.message-mentions', detail: 'signed the message' },
-    ],
+    rationale: 'Their own message says so, but nothing that identifies them directly.',
+    evidence: [{ kind: 'whatsapp.message-mentions', detail: 'signed the message' }],
     method: 'whatsapp-thread',
     sourceUrl: null,
     observedAt: '2026-11-05T06:00:00.000Z',

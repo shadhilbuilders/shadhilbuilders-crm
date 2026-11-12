@@ -150,7 +150,7 @@ test('awaiting-approval row names the UNIT, and the dialog repeats it', async ({
     // name is secondary - the same ordering the bookings grid uses.
     expect(r.row, `row "${r.row}" does not name its unit`).toMatch(/Unit\s+\S+/);
     expect(r.aria, 'the Review button must name the unit for screen readers').toMatch(
-      /Review booking for Unit\s+\S+/
+      /Review booking for Unit\s+\S+/,
     );
   }
 
@@ -159,7 +159,7 @@ test('awaiting-approval row names the UNIT, and the dialog repeats it', async ({
   await page.locator('[data-qa="booking-approve-open"]').first().click();
   await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 15_000 });
   const body = await page.evaluate(() =>
-    (document.querySelector('[role="dialog"]')?.textContent ?? '').trim()
+    (document.querySelector('[role="dialog"]')?.textContent ?? '').trim(),
   );
   expect(body).toMatch(/Unit\s+\S+/);
 });
@@ -223,7 +223,7 @@ test('approval row: hover-only underline, link colour token, formatted amount', 
   // The amount is grouped currency, never the raw API decimal string.
   expect(probe.amount).toMatch(/^₹[\d,]+(\.\d{2})?$/);
   expect(probe.amount, 'the raw API decimal string is leaking into the UI').not.toMatch(
-    /^\d+(\.\d+)?$/
+    /^\d+(\.\d+)?$/,
   );
 
   // T-APPROVE-TOKEN-AMOUNT (2026-09-16, owner report): the token payment the
@@ -235,16 +235,16 @@ test('approval row: hover-only underline, link colour token, formatted amount', 
   expect(await tokenCell.count(), 'the token payment is not shown on the row').toBe(1);
   const tokenText = (await tokenCell.textContent()) ?? '';
   expect(tokenText, 'the row must LABEL the token, not just show a bare figure').toMatch(
-    /^Token received: ₹[\d,]+(\.\d{2})?$/
+    /^Token received: ₹[\d,]+(\.\d{2})?$/,
   );
 
   await review.click();
   await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 15_000 });
   const money = await page.evaluate(() =>
-    (document.querySelector('[data-qa="booking-approval-money"]')?.textContent ?? '').trim()
+    (document.querySelector('[data-qa="booking-approval-money"]')?.textContent ?? '').trim(),
   );
   expect(money, 'the dialog must show the token against the total').toMatch(
-    /^Token received: ₹[\d,]+(\.\d{2})? of ₹[\d,]+(\.\d{2})?$/
+    /^Token received: ₹[\d,]+(\.\d{2})? of ₹[\d,]+(\.\d{2})?$/,
   );
 });
 
@@ -292,7 +292,7 @@ test('the card lists a state the approval can actually act on', async ({ page })
   if (probe.holdAttempt) {
     expect(
       probe.holdAttempt.status,
-      'APPROVED became legal from HOLD - legalNextStates changed; revisit the card filter'
+      'APPROVED became legal from HOLD - legalNextStates changed; revisit the card filter',
     ).toBe(400);
     expect(probe.holdAttempt.message).toMatch(/Cannot transition booking from HOLD/);
   }
@@ -324,7 +324,7 @@ test('HOLD bookings get a token-payment card, with the action wired to its own r
 
   test.skip(
     !(await rowAppeared(page, 'booking-record-token')),
-    'SKIP: no HOLD booking rendered - run packages/database/scripts/setup-demo-user.ts'
+    'SKIP: no HOLD booking rendered - run packages/database/scripts/setup-demo-user.ts',
   );
 
   const card = await page.evaluate(() => {

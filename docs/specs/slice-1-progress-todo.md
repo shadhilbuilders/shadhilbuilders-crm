@@ -2,13 +2,7 @@
 
 STATUS 2026-11-06: T1-T8 done and merged to main (PR #8 → 198e335; CI green, Coolify deploy running). Nothing left open except the manual phone test (AC2), which has not been run.
 
-S0. Resolved contradictions:
-    - authority table = ProjectStaffRole (per-project, kind='PHOTO_LEAD'); photoLead text dropped
-    - unit→project join pinned: Unit.phaseId → Phase.projectId (Unit has no projectId)
-    - manager access: TeamMember row OR Team.managerId arm (both pinned in policies + tests)
-    - label semantics: siteMemberLabel() - "Site Manager" if creatorIsPhotoLead, else "Site Engineer", else "Unknown"
-    - ImageKit delete: listFiles by folder+name to resolve fileId, then deleteFile; WARN-and-resolve on failure
-    - manual test setup: seed ids below; /inventory → unit row → Progress tab on a phone (PWA slice 2)
+S0. Resolved contradictions: - authority table = ProjectStaffRole (per-project, kind='PHOTO_LEAD'); photoLead text dropped - unit→project join pinned: Unit.phaseId → Phase.projectId (Unit has no projectId) - manager access: TeamMember row OR Team.managerId arm (both pinned in policies + tests) - label semantics: siteMemberLabel() - "Site Manager" if creatorIsPhotoLead, else "Site Engineer", else "Unknown" - ImageKit delete: listFiles by folder+name to resolve fileId, then deleteFile; WARN-and-resolve on failure - manual test setup: seed ids below; /inventory → unit row → Progress tab on a phone (PWA slice 2)
 T1. DONE - schema.prisma: +ENGINEER enum, +ProgressPhoto (phaseId String? SetNull, createdBy String? SetNull), +ProjectStaffRole ([userId, projectId, kind] PK)
 T1b. DONE - 20261026160800_customer_progress_slice1 (ONE migration, ALTER TYPE note in header). Fixed during T3: +project_team_select_engineer policy (existing any_authenticated list predated ENGINEER and starved the Phase/Unit membership subqueries).
 T2. DONE - all touchpoints incl. client.ts normalizeRole THROW, users/roles.ts OWNER/ADMIN-only engineer guards, teams addMembers allowlist, nav ENGINEER→inventory-only, CreateUserForm isStaffRole/needsTeam +ENGINEER, backend teamId-required message updated

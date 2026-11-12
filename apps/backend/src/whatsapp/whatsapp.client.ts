@@ -375,9 +375,7 @@ export class WhatsAppClient {
    *        { type: "image", image: { id: mediaId } }
    * @returns the Meta media id (e.g. "1713510587238491")
    */
-  async uploadMedia(
-    file: { buffer: Buffer; mimeType: string; filename: string },
-  ): Promise<string> {
+  async uploadMedia(file: { buffer: Buffer; mimeType: string; filename: string }): Promise<string> {
     const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${this.phoneNumberId}/media`;
 
     const form = new FormData();
@@ -548,5 +546,4 @@ export class WhatsAppClient {
   }
 }
 
-const errMsg = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err);
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));

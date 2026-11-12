@@ -35,12 +35,7 @@ export { FeedbackStatusSchema } from './enums';
  *  enforces its own independent contract (defense in depth: the landing
  *  page is one client; another client could hit the API directly). */
 export const CreateFeedbackDtoSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .max(100, 'Name is too long')
-    .optional()
-    .or(z.literal('')),
+  name: z.string().trim().max(100, 'Name is too long').optional().or(z.literal('')),
   phone: z
     .string()
     .trim()
@@ -54,18 +49,8 @@ export const CreateFeedbackDtoSchema = z.object({
     .int('rating must be an integer')
     .min(1, 'rating must be between 1 and 5')
     .max(5, 'rating must be between 1 and 5'),
-  project: z
-    .string()
-    .trim()
-    .max(100, 'project is too long')
-    .optional()
-    .or(z.literal('')),
-  message: z
-    .string()
-    .trim()
-    .max(2000, 'Message is too long')
-    .optional()
-    .or(z.literal('')),
+  project: z.string().trim().max(100, 'project is too long').optional().or(z.literal('')),
+  message: z.string().trim().max(2000, 'Message is too long').optional().or(z.literal('')),
   page: z.string().trim().max(200, 'page is too long').optional().or(z.literal('')),
 });
 export type CreateFeedbackDto = z.infer<typeof CreateFeedbackDtoSchema>;
@@ -120,9 +105,7 @@ export interface FeedbackListResult {
 export const UpdateFeedbackStatusDtoSchema = z.object({
   status: FeedbackStatusSchema,
 });
-export type UpdateFeedbackStatusDto = z.infer<
-  typeof UpdateFeedbackStatusDtoSchema
->;
+export type UpdateFeedbackStatusDto = z.infer<typeof UpdateFeedbackStatusDtoSchema>;
 
 /** Shape of the PATCH response - the updated row. */
 export interface UpdateFeedbackResult {

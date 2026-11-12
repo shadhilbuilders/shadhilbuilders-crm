@@ -6,14 +6,7 @@
 //   - @ApiTags + @ApiBearerAuth Swagger decorators
 //   - role guard lives in the SERVICE (403), matching the audit convention
 //     where the global JwtAuthGuard handles auth only.
-import {
-  BadRequestException,
-  Controller,
-  Get,
-  Inject,
-  Query,
-  Req,
-} from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   WhatsAppDeliveryQuerySchema,
@@ -34,9 +27,7 @@ function parseQuery<T>(schema: z.ZodType<T>, query: Record<string, unknown>): T 
   const result = schema.safeParse(query);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -61,16 +52,16 @@ export class IntegrationsController {
     @Req() req: AuthedRequest,
     @Query() q: Record<string, unknown>,
   ): Promise<WebhookEventsListResult> {
-    const limit =
-      typeof q['limit'] === 'string' ? Number.parseInt(q['limit'], 10) : undefined;
-    const offset =
-      typeof q['offset'] === 'string' ? Number.parseInt(q['offset'], 10) : undefined;
+    const limit = typeof q['limit'] === 'string' ? Number.parseInt(q['limit'], 10) : undefined;
+    const offset = typeof q['offset'] === 'string' ? Number.parseInt(q['offset'], 10) : undefined;
     const processed =
       q['processed'] === 'true' ? true : q['processed'] === 'false' ? false : undefined;
-    const dto: WebhookEventsQuery = parseQuery(
-      WebhookEventsQuerySchema,
-      { source: q['source'], processed, limit, offset },
-    );
+    const dto: WebhookEventsQuery = parseQuery(WebhookEventsQuerySchema, {
+      source: q['source'],
+      processed,
+      limit,
+      offset,
+    });
     return this.integrations.listWebhookEvents(req.user!, dto);
   }
 
@@ -84,14 +75,13 @@ export class IntegrationsController {
     @Req() req: AuthedRequest,
     @Query() q: Record<string, unknown>,
   ): Promise<WhatsAppDeliveryListResult> {
-    const limit =
-      typeof q['limit'] === 'string' ? Number.parseInt(q['limit'], 10) : undefined;
-    const offset =
-      typeof q['offset'] === 'string' ? Number.parseInt(q['offset'], 10) : undefined;
-    const dto: WhatsAppDeliveryQuery = parseQuery(
-      WhatsAppDeliveryQuerySchema,
-      { status: q['status'], limit, offset },
-    );
+    const limit = typeof q['limit'] === 'string' ? Number.parseInt(q['limit'], 10) : undefined;
+    const offset = typeof q['offset'] === 'string' ? Number.parseInt(q['offset'], 10) : undefined;
+    const dto: WhatsAppDeliveryQuery = parseQuery(WhatsAppDeliveryQuerySchema, {
+      status: q['status'],
+      limit,
+      offset,
+    });
     return this.integrations.listWhatsAppDelivery(req.user!, dto);
   }
 }

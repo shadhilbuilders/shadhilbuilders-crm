@@ -94,7 +94,7 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | null> =>
       () => {
         clearTimeout(timer);
         resolve(null);
-      }
+      },
     );
   });
 
@@ -220,7 +220,7 @@ export const InstallPrompt = () => {
           position: 'bottom-center',
           className: 'motion-reduce:transition-none',
           closeButton: false,
-        }
+        },
       );
     };
 

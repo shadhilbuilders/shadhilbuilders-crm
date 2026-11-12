@@ -61,9 +61,7 @@ export const RemovalPreviewProjectSummarySchema = z.object({
   ownedCount: z.number().int().nonnegative(),
   coOwnedCount: z.number().int().nonnegative(),
 });
-export type RemovalPreviewProjectSummary = z.infer<
-  typeof RemovalPreviewProjectSummarySchema
->;
+export type RemovalPreviewProjectSummary = z.infer<typeof RemovalPreviewProjectSummarySchema>;
 
 /** A same-team candidate eligible to receive the departing member's leads. */
 export const ReplacementCandidateSchema = z.object({
@@ -100,9 +98,7 @@ export const RemovalPreviewResponseSchema = z.object({
   eligibleReplacements: z.array(ReplacementCandidateSchema),
   previewToken: z.string(),
 });
-export type RemovalPreviewResponse = z.infer<
-  typeof RemovalPreviewResponseSchema
->;
+export type RemovalPreviewResponse = z.infer<typeof RemovalPreviewResponseSchema>;
 
 /**
  * POST /api/teams/:teamId/members/:userId/reassign-and-remove body.
@@ -131,9 +127,7 @@ export const ReassignAndRemoveResponseSchema = z.object({
   replacementUserId: z.string().nullable(),
   transferredLeadCount: z.number().int().nonnegative(),
 });
-export type ReassignAndRemoveResponse = z.infer<
-  typeof ReassignAndRemoveResponseSchema
->;
+export type ReassignAndRemoveResponse = z.infer<typeof ReassignAndRemoveResponseSchema>;
 
 /**
  * Stable error codes for the removal flow (design doc "API contracts").

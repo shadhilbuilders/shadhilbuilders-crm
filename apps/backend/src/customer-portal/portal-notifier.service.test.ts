@@ -37,7 +37,11 @@ describe('PortalNotifier', () => {
 
   it('looks recipients up as portal-notifier/CRON_SERVICE and pushes the spec payload', async () => {
     withRlsContext.mockImplementation(async (_c, ctx, cb) => {
-      expect(ctx).toEqual({ userId: PORTAL_NOTIFIER_USER_ID, role: 'CRON_SERVICE', organizationId: 'org-1' });
+      expect(ctx).toEqual({
+        userId: PORTAL_NOTIFIER_USER_ID,
+        role: 'CRON_SERVICE',
+        organizationId: 'org-1',
+      });
       return cb({ $queryRaw: vi.fn(async () => [{ id: 'c1' }, { id: 'c2' }]) });
     });
     expect(await notifier.notifyNewPhoto(NOTICE)).toBe(2);
@@ -55,7 +59,9 @@ describe('PortalNotifier', () => {
   });
 
   it('does not push when no customer is entitled to the unit', async () => {
-    withRlsContext.mockImplementation(async (_c, _x, cb) => cb({ $queryRaw: vi.fn(async () => []) }));
+    withRlsContext.mockImplementation(async (_c, _x, cb) =>
+      cb({ $queryRaw: vi.fn(async () => []) }),
+    );
     expect(await notifier.notifyNewPhoto(NOTICE)).toBe(0);
     expect(sendToUsers).not.toHaveBeenCalled();
   });
@@ -67,7 +73,9 @@ describe('PortalNotifier', () => {
   });
 
   it('swallows a delivery failure (never rejects)', async () => {
-    withRlsContext.mockImplementation(async (_c, _x, cb) => cb({ $queryRaw: vi.fn(async () => [{ id: 'c1' }]) }));
+    withRlsContext.mockImplementation(async (_c, _x, cb) =>
+      cb({ $queryRaw: vi.fn(async () => [{ id: 'c1' }]) }),
+    );
     sendToUsers.mockRejectedValue(new Error('push 500'));
     await expect(notifier.notifyNewPhoto(NOTICE)).resolves.toBe(0);
   });

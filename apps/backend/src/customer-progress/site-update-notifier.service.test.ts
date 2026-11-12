@@ -111,7 +111,9 @@ describe('SiteUpdateNotifier.notifyNewPhoto', () => {
 
   it('fails_when= one bouncing recipient stops the rest', async () => {
     mocks.queryRaw.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
-    mocks.emit.mockRejectedValueOnce(new Error('recipient gone')).mockResolvedValueOnce({ id: 'n-2' });
+    mocks.emit
+      .mockRejectedValueOnce(new Error('recipient gone'))
+      .mockResolvedValueOnce({ id: 'n-2' });
     const { notifier, emit } = build();
 
     const sent = await notifier.notifyNewPhoto(notice());

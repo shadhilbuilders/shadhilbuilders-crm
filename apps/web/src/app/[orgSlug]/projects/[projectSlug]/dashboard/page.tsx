@@ -43,7 +43,12 @@
 // 0s, never a fabricated value).
 
 import { Button, TypographyP, toast } from '@paalstack/react-ui';
-import { LuCalendarCheck, LuListChecks, LuPhoneMissed, LuUserPlus } from '@paalstack/react-icons/lu';
+import {
+  LuCalendarCheck,
+  LuListChecks,
+  LuPhoneMissed,
+  LuUserPlus,
+} from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -54,10 +59,7 @@ import {
 } from '@/components/bookings/BookingApprovalDialog';
 // T-TOKEN-GATE (2026-09-28): recording a token now captures the amount received,
 // so the dashboard row opens this dialog instead of firing the transition inline.
-import {
-  RecordTokenDialog,
-  type RecordTokenTarget,
-} from '@/components/bookings/RecordTokenDialog';
+import { RecordTokenDialog, type RecordTokenTarget } from '@/components/bookings/RecordTokenDialog';
 import { KpiStrip, SectionCard } from '@/components/dashboard/dashboard-shared';
 import { todaysOpenVisits } from '@/lib/visit-status';
 import { TodayVisitsCard } from '@/components/dashboard/TodayVisitsCard';
@@ -221,7 +223,7 @@ function WorkQueue({ role, userName }: { role: Role; userName: string }) {
       sortBy: 'createdAt' as const,
       sortDir: 'asc' as const,
     }),
-    [queueStates, projectId]
+    [queueStates, projectId],
   );
 
   const leadsQuery = useLeads(leadsFilter);

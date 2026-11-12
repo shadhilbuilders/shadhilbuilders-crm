@@ -175,7 +175,9 @@ export function AddTeamMembersDialog({
             <TypographyP className="text-sm">Couldn&apos;t load staff.</TypographyP>
           ) : sortedRows.length === 0 ? (
             <TypographyP className="text-muted-foreground text-sm">
-              {serverSearch ? 'No staff match your search.' : 'No telecallers or sales execs found.'}
+              {serverSearch
+                ? 'No staff match your search.'
+                : 'No telecallers or sales execs found.'}
             </TypographyP>
           ) : (
             sortedRows.map((u) => {

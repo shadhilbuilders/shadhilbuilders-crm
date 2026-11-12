@@ -24,8 +24,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // `globalThis.IS_REACT_ACT_ENVIRONMENT` tells React this is a test env so
 // `act` works with a raw createRoot (no @testing-library/react in this app).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // vi.mock is hoisted before the const declarations; use vi.hoisted to
 // share the mock fns between the mock factory and the per-test setup.
@@ -43,9 +42,7 @@ const mocks = vi.hoisted(() => ({
   useDeleteUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useResetUserPassword: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useTeams: vi.fn(() => ({
-    data: [
-      { id: 't-1', name: 'Team Alpha', defaultAssigneeId: null, memberCount: 0 },
-    ],
+    data: [{ id: 't-1', name: 'Team Alpha', defaultAssigneeId: null, memberCount: 0 }],
     isLoading: false,
   })),
   push: vi.fn(),
@@ -66,8 +63,7 @@ vi.mock('@/hooks/queries/teams', () => ({
 
 vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
-  canManageUsers: (role: string) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+  canManageUsers: (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
   outranks: (actor: string, target: string) => {
     const rank: Record<string, number> = {
@@ -320,7 +316,7 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).toContain('data-qa="user-reports-to-u-1"');
   });
 
-  it('clicking a row (not a link or a control) opens that user\'s page', async () => {
+  it("clicking a row (not a link or a control) opens that user's page", async () => {
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
       isPending: false,
@@ -349,13 +345,9 @@ describe('UsersPage - T-D3 state matrix', () => {
     const row = container?.querySelector('[data-qa="data-table-row"]');
     expect(row).not.toBeNull();
     // A click on a non-interactive cell (the email cell) navigates.
-    const emailCell = container?.querySelector(
-      '[data-qa="data-table-row"] td:nth-child(2)',
-    );
+    const emailCell = container?.querySelector('[data-qa="data-table-row"] td:nth-child(2)');
     await act(async () => {
-      emailCell?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true }),
-      );
+      emailCell?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(mocks.push).toHaveBeenCalledWith('/shadhil-builders/admin/users/u-priya');
   });

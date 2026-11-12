@@ -81,24 +81,36 @@ describe('MilestonesService', () => {
     setTx(t);
     const res = await svc.list(actor('MANAGER'), 'p-1');
     expect(res).toEqual([
-      { id: 'm1', name: 'Slab cast', targetDate: '2027-01-15T00:00:00.000Z', completedAt: '2027-01-10T00:00:00.000Z' },
+      {
+        id: 'm1',
+        name: 'Slab cast',
+        targetDate: '2027-01-15T00:00:00.000Z',
+        completedAt: '2027-01-10T00:00:00.000Z',
+      },
       { id: 'm2', name: 'Handover', targetDate: null, completedAt: null },
     ]);
     expect(t.projectMilestone.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { projectId: 'p-1', organizationId: ORG }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] }),
+      expect.objectContaining({
+        where: { projectId: 'p-1', organizationId: ORG },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      }),
     );
   });
 
   it.each(['MANAGER', 'SALES_EXEC', 'TELECALLER', 'ENGINEER', 'CUSTOMER'] as const)(
     'replace: %s is forbidden',
     async (role) => {
-      await expect(svc.replace(actor(role), 'p-1', { milestones: [] })).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(svc.replace(actor(role), 'p-1', { milestones: [] })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     },
   );
 
   it('replace: 404 for a project the actor cannot see', async () => {
     setTx(tx({ project: { findUnique: vi.fn(async () => null) } }));
-    await expect(svc.replace(actor('ADMIN'), 'nope', { milestones: [] })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.replace(actor('ADMIN'), 'nope', { milestones: [] })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('replace: deletes then inserts in staff order, and audits in the same tx', async () => {
@@ -112,11 +124,27 @@ describe('MilestonesService', () => {
         { name: 'Slab cast', completedAt: '2027-02-01T00:00:00.000Z' },
       ],
     });
-    expect(t.projectMilestone.deleteMany).toHaveBeenCalledWith({ where: { projectId: 'p-1', organizationId: ORG } });
+    expect(t.projectMilestone.deleteMany).toHaveBeenCalledWith({
+      where: { projectId: 'p-1', organizationId: ORG },
+    });
     expect(t.projectMilestone.createMany).toHaveBeenCalledWith({
       data: [
-        { projectId: 'p-1', organizationId: ORG, name: ' Plinth ', targetDate: new Date('2027-03-01T00:00:00.000Z'), completedAt: null, sortOrder: 0 },
-        { projectId: 'p-1', organizationId: ORG, name: 'Slab cast', targetDate: null, completedAt: new Date('2027-02-01T00:00:00.000Z'), sortOrder: 1 },
+        {
+          projectId: 'p-1',
+          organizationId: ORG,
+          name: ' Plinth ',
+          targetDate: new Date('2027-03-01T00:00:00.000Z'),
+          completedAt: null,
+          sortOrder: 0,
+        },
+        {
+          projectId: 'p-1',
+          organizationId: ORG,
+          name: 'Slab cast',
+          targetDate: null,
+          completedAt: new Date('2027-02-01T00:00:00.000Z'),
+          sortOrder: 1,
+        },
       ],
     });
     expect(t.auditLog.create).toHaveBeenCalledWith(

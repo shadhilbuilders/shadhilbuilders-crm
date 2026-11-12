@@ -23,7 +23,10 @@ describe('splitTransitions', () => {
   });
 
   it('Visit booked backs out to Visit requested', () => {
-    const { forward, back } = splitTransitions('VISIT_SCHEDULED', TRANSITIONS.VISIT_SCHEDULED ?? []);
+    const { forward, back } = splitTransitions(
+      'VISIT_SCHEDULED',
+      TRANSITIONS.VISIT_SCHEDULED ?? [],
+    );
     expect(back).toEqual(['VISIT_REQUESTED']);
     expect(forward).not.toContain('VISIT_REQUESTED');
   });
@@ -39,8 +42,12 @@ describe('splitTransitions', () => {
       const { forward } = splitTransitions(status, TRANSITIONS[status] ?? []);
       expect(forward).not.toContain('VISIT_REQUESTED');
     }
-    expect(splitTransitions('NEGOTIATION', TRANSITIONS.NEGOTIATION ?? []).back).toEqual(['VISITED']);
-    expect(splitTransitions('VISITED', TRANSITIONS.VISITED ?? []).back).toEqual(['VISIT_REQUESTED']);
+    expect(splitTransitions('NEGOTIATION', TRANSITIONS.NEGOTIATION ?? []).back).toEqual([
+      'VISITED',
+    ]);
+    expect(splitTransitions('VISITED', TRANSITIONS.VISITED ?? []).back).toEqual([
+      'VISIT_REQUESTED',
+    ]);
   });
 
   it('every state except NEW and the terminal trio offers a Move back step', () => {

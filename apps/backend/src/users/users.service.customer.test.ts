@@ -74,15 +74,26 @@ const setTx = (t: unknown) => {
 };
 const svc = () => new UsersService({ $client: {} } as never);
 const dto = (o: Record<string, unknown> = {}) =>
-  ({ name: 'Asha', email: 'asha@x.in', password: 'Passw0rd!x', role: 'CUSTOMER', customerLeadId: 'lead-1', ...o }) as never;
+  ({
+    name: 'Asha',
+    email: 'asha@x.in',
+    password: 'Passw0rd!x',
+    role: 'CUSTOMER',
+    customerLeadId: 'lead-1',
+    ...o,
+  }) as never;
 
 describe('role gates', () => {
   it('only the admin class may create or change into/out of CUSTOMER', () => {
     expect(() => assertCanCreateRole('ADMIN', 'CUSTOMER')).not.toThrow();
     expect(() => assertCanCreateRole('OWNER', 'CUSTOMER')).not.toThrow();
     expect(() => assertCanCreateRole('MANAGER', 'CUSTOMER')).toThrow(ForbiddenException);
-    expect(() => assertCanChangeRole('MANAGER', 'CUSTOMER', 'TELECALLER')).toThrow(ForbiddenException);
-    expect(() => assertCanChangeRole('MANAGER', 'TELECALLER', 'CUSTOMER')).toThrow(ForbiddenException);
+    expect(() => assertCanChangeRole('MANAGER', 'CUSTOMER', 'TELECALLER')).toThrow(
+      ForbiddenException,
+    );
+    expect(() => assertCanChangeRole('MANAGER', 'TELECALLER', 'CUSTOMER')).toThrow(
+      ForbiddenException,
+    );
     expect(() => assertCanChangeRole('ADMIN', 'CUSTOMER', 'TELECALLER')).not.toThrow();
   });
 });
@@ -95,7 +106,11 @@ describe('create CUSTOMER', () => {
     setTx(t);
     const res = await svc().create(actor('ADMIN'), dto());
     expect(t.user.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ role: 'CUSTOMER', customerLeadId: 'lead-1', organizationId: ORG }),
+      data: expect.objectContaining({
+        role: 'CUSTOMER',
+        customerLeadId: 'lead-1',
+        organizationId: ORG,
+      }),
     });
     expect(t.teamMember.create).not.toHaveBeenCalled();
     expect(t.auditLog.create).toHaveBeenCalled();
@@ -127,15 +142,18 @@ describe('create CUSTOMER', () => {
       },
     });
     setTx(t);
-    await svc().create(actor('ADMIN'), dto({ role: 'TELECALLER', customerLeadId: undefined, teamId: 'team-1' }));
+    await svc().create(
+      actor('ADMIN'),
+      dto({ role: 'TELECALLER', customerLeadId: undefined, teamId: 'team-1' }),
+    );
     const data = t.user.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
     expect(data.mustChangePassword).toBeUndefined();
   });
 
   it('requires customerLeadId', async () => {
-    await expect(svc().create(actor('ADMIN'), dto({ customerLeadId: undefined }))).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      svc().create(actor('ADMIN'), dto({ customerLeadId: undefined })),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects a teamId for a customer', async () => {
@@ -181,9 +199,9 @@ describe('changeRole around CUSTOMER', () => {
     const t = tx();
     t.user.findUnique.mockResolvedValue({ id: 't-1', role: 'TELECALLER', name: 'T' });
     setTx(t);
-    await expect(svc().changeRole(actor('ADMIN'), 't-1', { role: 'CUSTOMER' } as never)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      svc().changeRole(actor('ADMIN'), 't-1', { role: 'CUSTOMER' } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(t.user.update).not.toHaveBeenCalled();
   });
 });

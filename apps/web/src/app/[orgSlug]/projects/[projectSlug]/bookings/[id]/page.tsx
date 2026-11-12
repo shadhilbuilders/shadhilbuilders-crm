@@ -146,9 +146,7 @@ export default function BookingDetailPage() {
 
   const booking = bookingQuery.data as BookingRow | undefined;
   const leadName =
-    typeof booking?.leadName === 'string' && booking.leadName.length > 0
-      ? booking.leadName
-      : null;
+    typeof booking?.leadName === 'string' && booking.leadName.length > 0 ? booking.leadName : null;
   const unitNumber =
     typeof booking?.unitNumber === 'string' && booking.unitNumber.length > 0
       ? booking.unitNumber
@@ -289,7 +287,6 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
             <p className="text-muted-foreground mt-1 text-sm">{booking.notes}</p>
           </div>
         ) : null}
-
       </CardContent>
     </Card>
   );
@@ -311,46 +308,41 @@ function BookingInfoCard({ booking }: { booking: BookingRow }) {
  */
 const transitionSchemaFor = (totalAmount: number) =>
   z
-  .object({
-    toStatus: z.enum(['TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED']),
-    reason: z
-      .string()
-      .trim()
-      .max(500, 'Reason must be under 500 characters')
-      .optional(),
-    // T-TOKEN-GATE cap (owner instruction): the token is a part payment, so it
-    // cannot exceed the booking's total. The total is not part of this form, so
-    // it is threaded in as a factory argument - the client shows the problem
-    // before the request, and the service re-checks it authoritatively.
-    tokenAmount: TokenAmountSchema.optional(),
-  })
-  .superRefine((values, ctx) => {
-    if (values.toStatus === 'TOKEN' && values.tokenAmount === undefined) {
+    .object({
+      toStatus: z.enum(['TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED']),
+      reason: z.string().trim().max(500, 'Reason must be under 500 characters').optional(),
+      // T-TOKEN-GATE cap (owner instruction): the token is a part payment, so it
+      // cannot exceed the booking's total. The total is not part of this form, so
+      // it is threaded in as a factory argument - the client shows the problem
+      // before the request, and the service re-checks it authoritatively.
+      tokenAmount: TokenAmountSchema.optional(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.toStatus === 'TOKEN' && values.tokenAmount === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message: 'Enter the token amount received before marking the token as received',
+        });
+      }
+      if (
+        values.tokenAmount !== undefined &&
+        !isTokenWithinTotal(values.tokenAmount, totalAmount)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tokenAmount'],
+          message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
+        });
+      }
+      if (!TransitionReasonRequired.has(values.toStatus)) return;
+      if ((values.reason ?? '').trim().length > 0) return;
       ctx.addIssue({
         code: 'custom',
-        path: ['tokenAmount'],
-        message:
-          'Enter the token amount received before marking the token as received',
+        path: ['reason'],
+        message: `A reason is required when moving a booking to ${labelFor('booking', values.toStatus)}`,
       });
-    }
-    if (
-      values.tokenAmount !== undefined &&
-      !isTokenWithinTotal(values.tokenAmount, totalAmount)
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['tokenAmount'],
-        message: TOKEN_EXCEEDS_TOTAL_MESSAGE,
-      });
-    }
-    if (!TransitionReasonRequired.has(values.toStatus)) return;
-    if ((values.reason ?? '').trim().length > 0) return;
-    ctx.addIssue({
-      code: 'custom',
-      path: ['reason'],
-      message: `A reason is required when moving a booking to ${labelFor('booking', values.toStatus)}`,
     });
-  });
 
 function BookingActions({
   booking,
@@ -443,8 +435,7 @@ function BookingActions({
   // A control that silently disappears reads as a broken tool; the operator needs
   // to know the booking is fine and the MONEY record is what is missing - and
   // which screen fixes it.
-  const approvalBlockedByMissingToken =
-    current === 'TOKEN' && canApprove && !hasTokenAmount;
+  const approvalBlockedByMissingToken = current === 'TOKEN' && canApprove && !hasTokenAmount;
   // `offered` is empty but the booking is not terminal: the only blocker is the
   // missing amount, which deserves its own message rather than "terminal state".
   const nothingOfferedButNotTerminal =
@@ -466,11 +457,10 @@ function BookingActions({
               </div>
               {approvalBlockedByMissingToken ? (
                 <p className="text-muted-foreground text-xs">
-                  Approving confirms the token was received, so the amount actually
-                  received must be on the booking first. Add it with the booking's
-                  Edit action, then approve. The booking can still be{' '}
-                  {labelFor('booking', 'CANCELLED').toLowerCase()} if the deal fell
-                  through.
+                  Approving confirms the token was received, so the amount actually received must be
+                  on the booking first. Add it with the booking's Edit action, then approve. The
+                  booking can still be {labelFor('booking', 'CANCELLED').toLowerCase()} if the deal
+                  fell through.
                 </p>
               ) : null}
             </div>
@@ -544,13 +534,10 @@ function BookingActions({
                 not only in the all-blocked branch, which never fires here
                 because Reject and Cancel stay available. */}
             {approvalBlockedByMissingToken && offered.length > 0 ? (
-              <p
-                className="text-muted-foreground text-xs"
-                data-qa="booking-approval-blocked"
-              >
-                Approval is unavailable: no token amount is recorded, and approving
-                confirms the token was received. Add the amount actually received
-                with the booking&rsquo;s Edit action, then approve.
+              <p className="text-muted-foreground text-xs" data-qa="booking-approval-blocked">
+                Approval is unavailable: no token amount is recorded, and approving confirms the
+                token was received. Add the amount actually received with the booking&rsquo;s Edit
+                action, then approve.
               </p>
             ) : null}
             <div className="flex flex-wrap gap-2">
@@ -588,7 +575,6 @@ function BookingActions({
           />
         )}
 
-
         <div className="border-border border-t pt-3">
           <Button
             type="button"
@@ -605,4 +591,3 @@ function BookingActions({
     </Card>
   );
 }
-

@@ -123,6 +123,7 @@ engineer's home page would be invented. Add two real fields once, in the shared
 unit row.
 
 `apps/backend/src/inventory/unit-row.ts`:
+
 - `UNIT_ROW_SELECT`: add
   `progressPhotos: { select: { takenAt: true }, orderBy: { takenAt: 'desc' }, take: 1 }`
   and `_count: { select: { progressPhotos: true } }`.
@@ -200,7 +201,7 @@ Top to bottom:
 
 7. Empty states: no units at all gets the library `Empty` component with
    `No villas on the board yet` and `Units appear here once they are added to a
-   phase of this project.` A filter that matches nothing gets one quiet line,
+phase of this project.` A filter that matches nothing gets one quiet line,
    not the same copy.
 
    Careful with the wording: there is no per-engineer unit assignment in this
@@ -208,6 +209,7 @@ Top to bottom:
    engineer sees every unit of every project their team is on. Never write
    "assigned to you" in this UI; it describes a relationship the data does not
    have.
+
 8. Loading: skeleton tiles plus six skeleton rows.
 
 ### Slice 1: a route instead of a sheet, for site roles only
@@ -259,7 +261,7 @@ One column, phone first, thumb reachable.
 - Root: `min-h-dvh flex flex-col bg-background`, no card, no modal chrome, no
   tab bar, no "Close" button (the back chevron is the only exit).
 - Sticky header (`sticky top-0 z-20 bg-background/95 backdrop-blur
-  border-b border-border`), 56px, three items in a row:
+border-b border-border`), 56px, three items in a row:
   - a 44×44 back button (`LuChevronLeft`, `aria-label="Back to site updates"`)
     linking to the site home URL (`/site`, never `/inventory` - a site role must
     not be able to exit onto the sales grid),
@@ -340,17 +342,17 @@ idle → file-picked (preview) → note-sheet-open → uploading → saved
      textarea stays the single source of truth and stays freely editable; the
      chips are a keyboard-free shortcut, not a hidden field. If `ToggleGroup`'s
      props API fights you, fall back to `<Button variant="outline"
-     aria-pressed>` chips. Add `aria-label="Quick notes"` on the group.
+aria-pressed>` chips. Add `aria-label="Quick notes"` on the group.
    - a labelled `Textarea` (visible `<label>`, not placeholder-only):
      label `"Note for the team"`, helper `"This is the line the customer reads
-     in their portal. Keep it short."`, placeholder
+in their portal. Keep it short."`, placeholder
      `"Plinth poured, curing until Friday"`, `maxLength={200}`, `rows={3}`,
      and **`className="text-base"`** (16px minimum), because anything smaller
      makes iOS Safari zoom the page on focus, which on a phone looks broken.
      Do not autofocus it.
    - a live counter `{n}/200` in `text-xs text-muted-foreground`, right aligned.
 4. Footer: primary `Save photo` (`isLoading={upload.isPending}
-   loadingText="Saving..."`), secondary `Retake` (ghost). Save is disabled only
+loadingText="Saving..."`), secondary `Retake` (ghost). Save is disabled only
    while pending. An empty note is valid: the server falls back to its
    generated caption.
 5. Upload: pass the note as `caption` (see Slice 8). On success: close the
@@ -415,7 +417,7 @@ Tapping an image opens a `Dialog` at full screen
 - the image centered with `object-contain`, `max-h-dvh`.
 - a 44×44 close button top right, `aria-label="Close photo"`.
 - prev/next 44×44 buttons when there are neighbours, `aria-label="Previous
-  photo"` / `"Next photo"`, plus ArrowLeft/ArrowRight keyboard handling and
+photo"` / `"Next photo"`, plus ArrowLeft/ArrowRight keyboard handling and
   Escape to close.
 - a bottom bar: the note, the full date (`4 November 2026, 4:12 pm`) and the
   uploader.
@@ -477,48 +479,48 @@ in the payload trimmed, and an empty note produces no `caption` key / undefined.
 
 Use these strings. Sentence case, no emoji, no exclamation marks, no em dashes.
 
-| Where | String |
-|---|---|
-| Sticky primary | `Take photo` |
-| Sticky secondary | `Gallery` |
-| Empty hero title | `Add the first photo` |
-| Empty hero body | `{unitNumber} has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.` |
-| Empty steps | `Shoot the unit` → `Add a one-line note` → `The customer sees it today` |
-| Note sheet title | `What did you shoot?` |
-| Note sheet subtitle | `Unit {unitNumber} · {phaseName}` |
-| Note label | `Note for the team` |
-| Note helper | `This is the line the customer reads in their portal. Keep it short.` |
-| Note placeholder | `Plinth poured, curing until Friday` |
-| Save | `Save photo` / `Saving...` |
-| Retake | `Retake` |
-| Saved toast | `Photo saved.` |
-| Uploading card | `Uploading photo...` |
-| Upload failure | `That photo did not upload. Nothing was saved.` |
-| Timeline error | `Could not load the photos for this unit.` |
-| Not a member | `You are not on this project's team.` |
-| Relative time | `Today, 4:12 pm` · `Yesterday, 9:05 am` · `3 Nov 2026` |
-| Home title | `Site updates` |
-| Stat tiles | `Needs a photo` · `Updated this week` · `No photos yet` |
-| Filters | `All` · `Needs a photo` · `Updated` · `No photos` |
-| Home search placeholder | `Find a villa number` |
-| Row meta | `3 BHK · East · 3 days ago` |
-| State label, fresh | `Updated today` |
-| State label, week | `This week` |
-| State label, stale | `Needs a photo` |
-| State label, none | `No photos` |
-| Home empty | `No villas on the board yet` / `Units appear here once they are added to a phase of this project.` |
-| Filter empty | `Nothing in this filter.` |
-| Cap notice | `Showing the first 200 units` |
-| Stage picker label | `Construction stage` |
-| Stage not set | `Stage not set` |
-| Stage list | `Not started` · `Foundation` · `Structure` · `Brickwork` · `Plastering` · `Waterproofing` · `Flooring` · `Finishing` · `Ready` |
-| Preparing a photo | `Preparing photo...` |
-| Decode failed | `This phone cannot read that photo format. Use the camera button instead.` |
-| Wrong type | `That file is not a JPEG, PNG or WebP image.` |
-| Too large | `That photo is too large to upload.` |
-| Not an image | `That file is not an image.` |
-| Batch too large | `Pick up to 8 photos at a time.` |
-| Batch sheet title | `{n} photos · Unit {unitNumber} · {phaseName}` |
+| Where                   | String                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Sticky primary          | `Take photo`                                                                                                                   |
+| Sticky secondary        | `Gallery`                                                                                                                      |
+| Empty hero title        | `Add the first photo`                                                                                                          |
+| Empty hero body         | `{unitNumber} has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.`                                  |
+| Empty steps             | `Shoot the unit` → `Add a one-line note` → `The customer sees it today`                                                        |
+| Note sheet title        | `What did you shoot?`                                                                                                          |
+| Note sheet subtitle     | `Unit {unitNumber} · {phaseName}`                                                                                              |
+| Note label              | `Note for the team`                                                                                                            |
+| Note helper             | `This is the line the customer reads in their portal. Keep it short.`                                                          |
+| Note placeholder        | `Plinth poured, curing until Friday`                                                                                           |
+| Save                    | `Save photo` / `Saving...`                                                                                                     |
+| Retake                  | `Retake`                                                                                                                       |
+| Saved toast             | `Photo saved.`                                                                                                                 |
+| Uploading card          | `Uploading photo...`                                                                                                           |
+| Upload failure          | `That photo did not upload. Nothing was saved.`                                                                                |
+| Timeline error          | `Could not load the photos for this unit.`                                                                                     |
+| Not a member            | `You are not on this project's team.`                                                                                          |
+| Relative time           | `Today, 4:12 pm` · `Yesterday, 9:05 am` · `3 Nov 2026`                                                                         |
+| Home title              | `Site updates`                                                                                                                 |
+| Stat tiles              | `Needs a photo` · `Updated this week` · `No photos yet`                                                                        |
+| Filters                 | `All` · `Needs a photo` · `Updated` · `No photos`                                                                              |
+| Home search placeholder | `Find a villa number`                                                                                                          |
+| Row meta                | `3 BHK · East · 3 days ago`                                                                                                    |
+| State label, fresh      | `Updated today`                                                                                                                |
+| State label, week       | `This week`                                                                                                                    |
+| State label, stale      | `Needs a photo`                                                                                                                |
+| State label, none       | `No photos`                                                                                                                    |
+| Home empty              | `No villas on the board yet` / `Units appear here once they are added to a phase of this project.`                             |
+| Filter empty            | `Nothing in this filter.`                                                                                                      |
+| Cap notice              | `Showing the first 200 units`                                                                                                  |
+| Stage picker label      | `Construction stage`                                                                                                           |
+| Stage not set           | `Stage not set`                                                                                                                |
+| Stage list              | `Not started` · `Foundation` · `Structure` · `Brickwork` · `Plastering` · `Waterproofing` · `Flooring` · `Finishing` · `Ready` |
+| Preparing a photo       | `Preparing photo...`                                                                                                           |
+| Decode failed           | `This phone cannot read that photo format. Use the camera button instead.`                                                     |
+| Wrong type              | `That file is not a JPEG, PNG or WebP image.`                                                                                  |
+| Too large               | `That photo is too large to upload.`                                                                                           |
+| Not an image            | `That file is not an image.`                                                                                                   |
+| Batch too large         | `Pick up to 8 photos at a time.`                                                                                               |
+| Batch sheet title       | `{n} photos · Unit {unitNumber} · {phaseName}`                                                                                 |
 
 ### Slice 10: accessibility and the QA contract
 
@@ -633,10 +635,12 @@ which resolves buyer ids only. Add the reverse direction.
 ```
 project_site_update_recipient_ids(p_project_id TEXT) RETURNS SETOF TEXT
 ```
-  returning the distinct, soft-delete-excluded user ids of:
-  - every `ProjectStaffRole` row for that project with `kind = 'PHOTO_LEAD'`,
-  - every `Team.managerId` for a team linked to the project through
-    `ProjectTeam`.
+
+returning the distinct, soft-delete-excluded user ids of:
+
+- every `ProjectStaffRole` row for that project with `kind = 'PHOTO_LEAD'`,
+- every `Team.managerId` for a team linked to the project through
+  `ProjectTeam`.
   `REVOKE ALL ... FROM PUBLIC` and `GRANT EXECUTE ... TO shadhil_app`, same as
   the existing helpers.
 
@@ -721,7 +725,8 @@ enum ConstructionStage {
   READY
 }
 ```
-   and `ProgressPhoto.stage ConstructionStage?`.
+
+and `ProgressPhoto.stage ConstructionStage?`.
 
 2. A migration in `packages/database/prisma/migrations/` that creates the type
    and adds a nullable column with no default and no backfill, matching the
@@ -1007,13 +1012,13 @@ write either; do not guess a prop.
 
 Rule, applied without debate:
 
-| Thing | Component | Why |
-|---|---|---|
-| A unit in a list of 20 to 200, where the whole row is one action | `Item` | Dense, scannable, one tap target, dividers instead of card borders |
-| A phase group on the home page | `CardRoot` + `CardHeader` + `CardContent` holding an `ItemGroup` | The group is one surface with a heading; the rows inside are rows |
-| A stat tile | `Box` or `CardRoot` with a tint | One number, one label, no internal list |
-| One photo entry in the capture feed | `CardRoot` with the image edge to edge, then content | A self-contained object, not a row in a list |
-| The first-photo hero | `CardRoot`, whole card is the button | It is content, not chrome |
+| Thing                                                            | Component                                                        | Why                                                                |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| A unit in a list of 20 to 200, where the whole row is one action | `Item`                                                           | Dense, scannable, one tap target, dividers instead of card borders |
+| A phase group on the home page                                   | `CardRoot` + `CardHeader` + `CardContent` holding an `ItemGroup` | The group is one surface with a heading; the rows inside are rows  |
+| A stat tile                                                      | `Box` or `CardRoot` with a tint                                  | One number, one label, no internal list                            |
+| One photo entry in the capture feed                              | `CardRoot` with the image edge to edge, then content             | A self-contained object, not a row in a list                       |
+| The first-photo hero                                             | `CardRoot`, whole card is the button                             | It is content, not chrome                                          |
 
 Never nest a `Card` inside an `Item`. Never use `Card` for a repeated list of
 more than ten items: padding and borders turn into noise and the page gets
@@ -1028,12 +1033,12 @@ which is which villa have I not been to yet.
 
 Four documentation states, each derived from a real timestamp:
 
-| State | Rule | Badge variant | Surface tint |
-|---|---|---|---|
-| `none` | `photoCount === 0` | `muted` | `bg-muted-soft`, `text-muted-foreground` |
-| `today` | `lastPhotoAt` within 2 days | `success` | `bg-success-soft`, `text-success-soft-fg` |
-| `week` | 3 to 7 days | `info` | `bg-info-soft`, `text-info-soft-fg` |
-| `stale` | more than 7 days | `warning` | `bg-warning-soft`, `text-warning-soft-fg` |
+| State   | Rule                        | Badge variant | Surface tint                              |
+| ------- | --------------------------- | ------------- | ----------------------------------------- |
+| `none`  | `photoCount === 0`          | `muted`       | `bg-muted-soft`, `text-muted-foreground`  |
+| `today` | `lastPhotoAt` within 2 days | `success`     | `bg-success-soft`, `text-success-soft-fg` |
+| `week`  | 3 to 7 days                 | `info`        | `bg-info-soft`, `text-info-soft-fg`       |
+| `stale` | more than 7 days            | `warning`     | `bg-warning-soft`, `text-warning-soft-fg` |
 
 Sort order is the work queue: `stale`, then `none`, then `week`, then `today`.
 Compute the state in one pure helper (`unitPhotoState(unit, now)`) and unit test
@@ -1133,7 +1138,7 @@ Not negotiable:
     `4 photos · Unit ...`, one note and one stage save all four, they upload in
     order, and each row reports its own state.
 17. Pick a PDF through the gallery button: one toast says `That file is not an
-    image.` and nothing is prepared.
+image.` and nothing is prepared.
 18. Tap `Take photo` on a phone and confirm the camera opens directly, not the
     library sheet. This is the check that keeps the native input honest.
 

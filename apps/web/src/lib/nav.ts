@@ -83,7 +83,13 @@ import { useEffect } from 'react';
 
 import { useSidebar } from '@paalstack/react-ui';
 
-import { canUseWhatsappInbox, canViewSiteUpdates, isAdminLike, isSiteOnlyRole, isSiteRole } from '@/lib/session';
+import {
+  canUseWhatsappInbox,
+  canViewSiteUpdates,
+  isAdminLike,
+  isSiteOnlyRole,
+  isSiteRole,
+} from '@/lib/session';
 import type { Role } from '@/apis/client';
 
 // ---------------------------------------------------------------------------
@@ -96,9 +102,7 @@ export type NavGroup = 'work' | 'admin';
 
 /** Loosened to match react-icons' `IconType` return signature
  *  (`ReactNode`, not the narrower `JSX.Element`). */
-export type IconComponent = (props: {
-  className?: string;
-}) => React.ReactNode;
+export type IconComponent = (props: { className?: string }) => React.ReactNode;
 
 export type NavItem = {
   /** Template route path (e.g. `'/leads'`). Project-scoped items are
@@ -495,24 +499,20 @@ const FALLBACK_BADGE = 0;
  * module lands, the response is 404 → `ModulePending`, so `data` stays
  * `undefined` and we render 0 (not a fake number).
  */
-export function useNavBadge(
-  key: NavBadgeKey | undefined,
-  projectId: string | null = null,
-): number {
+export function useNavBadge(key: NavBadgeKey | undefined, projectId: string | null = null): number {
   // Lazy-require to avoid a circular import in the test harness (T15 builds
   // a pure-function test that never mounts the app, so the queries module's
   // session/BFF dependencies must not be loaded at import time).
-  const { useNewLeadsBadge, useNotifications, useChatConversations } = require(
-    '@/hooks/queries/crm',
-  ) as {
-    useNewLeadsBadge: (projectId: string | null) => { data: { newLeads: number } | undefined };
-    useNotifications: (params: { unreadOnly?: boolean }) => {
-      data: { rows: unknown[]; total: number; unread: number };
+  const { useNewLeadsBadge, useNotifications, useChatConversations } =
+    require('@/hooks/queries/crm') as {
+      useNewLeadsBadge: (projectId: string | null) => { data: { newLeads: number } | undefined };
+      useNotifications: (params: { unreadOnly?: boolean }) => {
+        data: { rows: unknown[]; total: number; unread: number };
+      };
+      useChatConversations: (params: { limit?: number; enabled?: boolean }) => {
+        data: { totalUnread: number } | undefined;
+      };
     };
-    useChatConversations: (params: { limit?: number; enabled?: boolean }) => {
-      data: { totalUnread: number } | undefined;
-    };
-  };
 
   const newLeads = useNewLeadsBadge(projectId);
   const notifications = useNotifications({ unreadOnly: true });
@@ -613,11 +613,7 @@ export function projectHref(
   projectSlug: string | null,
   templateHref: string,
 ): string {
-  if (
-    orgSlug === null ||
-    projectSlug === null ||
-    !isProjectScopedNavPath(templateHref)
-  ) {
+  if (orgSlug === null || projectSlug === null || !isProjectScopedNavPath(templateHref)) {
     return templateHref;
   }
   return `/${orgSlug}/projects/${projectSlug}${templateHref}`;

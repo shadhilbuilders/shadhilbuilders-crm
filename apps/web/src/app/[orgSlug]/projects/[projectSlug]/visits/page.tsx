@@ -77,12 +77,7 @@ export default function VisitsPage() {
       <PageHeader
         title="Site Visits"
         breadcrumb={[{ label: 'Work' }, { label: 'Visits' }]}
-        subtitle={
-          <>
-            Week of{' '}
-            {dateIntl.format(weekStart, 'd MMM yyyy')}
-          </>
-        }
+        subtitle={<>Week of {dateIntl.format(weekStart, 'd MMM yyyy')}</>}
         action={
           <div className="flex items-center gap-2">
             <Button

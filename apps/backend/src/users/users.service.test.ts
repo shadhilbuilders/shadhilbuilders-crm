@@ -135,8 +135,7 @@ function makeService(opts: StubOptions = {}) {
       findUnique: accountFindUnique,
       update: accountUpdate,
     },
-    $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb(txMock),
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
@@ -265,15 +264,18 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   it('ADMIN resetting a different user → ALLOWED (privileged)', async () => {
     const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
-      user: { id: managerActor.sub, email: managerActor.email, role: 'MANAGER', mustChangePassword: true },
+      user: {
+        id: managerActor.sub,
+        email: managerActor.email,
+        role: 'MANAGER',
+        mustChangePassword: true,
+      },
       accountPassword: storedHash,
     });
 
-    const result = await service.changePassword(
-      adminActor,
-      managerActor.sub,
-      { newPassword: 'NewPass456!' },
-    );
+    const result = await service.changePassword(adminActor, managerActor.sub, {
+      newPassword: 'NewPass456!',
+    });
     expect(result).toEqual({ ok: true, mustChangePassword: false });
     expect(mocks.userUpdate).toHaveBeenCalled();
   });
@@ -281,15 +283,18 @@ describe('changePassword - actor is not self and not admin/owner', () => {
   it('OWNER resetting a different user → ALLOWED (privileged)', async () => {
     const storedHash = 'mock-salt:mock-hash-TargetOld123!';
     const { service, mocks } = makeService({
-      user: { id: managerActor.sub, email: managerActor.email, role: 'MANAGER', mustChangePassword: true },
+      user: {
+        id: managerActor.sub,
+        email: managerActor.email,
+        role: 'MANAGER',
+        mustChangePassword: true,
+      },
       accountPassword: storedHash,
     });
 
-    const result = await service.changePassword(
-      ownerActor,
-      managerActor.sub,
-      { newPassword: 'NewPass456!' },
-    );
+    const result = await service.changePassword(ownerActor, managerActor.sub, {
+      newPassword: 'NewPass456!',
+    });
     expect(result).toEqual({ ok: true, mustChangePassword: false });
     expect(mocks.userUpdate).toHaveBeenCalled();
   });
@@ -298,7 +303,12 @@ describe('changePassword - actor is not self and not admin/owner', () => {
 describe('changePassword - admin reset hierarchy', () => {
   it('ADMIN cannot reset the OWNER (does not outrank)', async () => {
     const { service, mocks } = makeService({
-      user: { id: ownerActor.sub, email: ownerActor.email, role: 'OWNER', mustChangePassword: false },
+      user: {
+        id: ownerActor.sub,
+        email: ownerActor.email,
+        role: 'OWNER',
+        mustChangePassword: false,
+      },
     });
     await expect(
       service.changePassword(adminActor, ownerActor.sub, { newPassword: 'NewPass456!' }),
@@ -308,7 +318,12 @@ describe('changePassword - admin reset hierarchy', () => {
 
   it('self-change without oldPassword → BadRequestException', async () => {
     const { service, mocks } = makeService({
-      user: { id: telecallerActor.sub, email: telecallerActor.email, role: 'TELECALLER', mustChangePassword: false },
+      user: {
+        id: telecallerActor.sub,
+        email: telecallerActor.email,
+        role: 'TELECALLER',
+        mustChangePassword: false,
+      },
     });
     await expect(
       service.changePassword(telecallerActor, telecallerActor.sub, { newPassword: 'NewPass456!' }),
@@ -525,7 +540,11 @@ describe('teamMembers - mention-picker source (T-CHAT-INTERNAL)', () => {
   it('TELECALLER sees their team + the team manager (so they can loop the manager)', async () => {
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): resolved via the
     // telecaller's OWN TeamMember rows, not the JWT teamId claim.
-    const { service, mocks } = makeTeamService([], [{ managerId: 'mgr-1' }], [{ teamId: 'team-tc' }]);
+    const { service, mocks } = makeTeamService(
+      [],
+      [{ managerId: 'mgr-1' }],
+      [{ teamId: 'team-tc' }],
+    );
     mocks.userFindMany.mockResolvedValue([]);
     await service.teamMembers(telecallerActor);
     expect(mocks.userFindMany).toHaveBeenCalledWith(
@@ -633,8 +652,22 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('SALES_EXEC/TELECALLER report to their team manager', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'se-1', email: 'se@x', name: 'Priya', role: 'SALES_EXEC', teamMemberships: [{ teamId: 'team-1' }] },
-        { ...baseRow, id: 'tc-1', email: 'tc@x', name: 'Rajesh', role: 'TELECALLER', teamMemberships: [{ teamId: 'team-1' }] },
+        {
+          ...baseRow,
+          id: 'se-1',
+          email: 'se@x',
+          name: 'Priya',
+          role: 'SALES_EXEC',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
+        {
+          ...baseRow,
+          id: 'tc-1',
+          email: 'tc@x',
+          name: 'Rajesh',
+          role: 'TELECALLER',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(2);
       mocks.teamMemberFindMany.mockResolvedValue([
@@ -645,8 +678,20 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       const result = await service.list(adminActor);
 
       expect(result.rows.map((r) => r.reportsTo)).toEqual([
-        [{ teamId: 'team-1', teamName: 'Metro Sales', manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com') }],
-        [{ teamId: 'team-1', teamName: 'Metro Sales', manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com') }],
+        [
+          {
+            teamId: 'team-1',
+            teamName: 'Metro Sales',
+            manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com'),
+          },
+        ],
+        [
+          {
+            teamId: 'team-1',
+            teamName: 'Metro Sales',
+            manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com'),
+          },
+        ],
       ]);
     });
 
@@ -655,7 +700,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('protects= a two-team engineer reports to BOTH managers', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-a' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-a' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([
@@ -675,7 +727,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('fails_when= a two-team engineer collapses to one manager (the lossy old shape)', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-a' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-a' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([
@@ -693,7 +752,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('ENGINEER reports to their team manager', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-1' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([
@@ -703,15 +769,33 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       const result = await service.list(adminActor);
 
       expect(result.rows[0]?.reportsTo).toEqual([
-        { teamId: 'team-1', teamName: 'Metro Crew', manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com') },
+        {
+          teamId: 'team-1',
+          teamName: 'Metro Crew',
+          manager: mgr('mgr-1', 'Ravi Manager', 'ravi@example.com'),
+        },
       ]);
     });
 
     it('batches one membership lookup for the whole page, not one per row', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-1' }] },
-        { ...baseRow, id: 'tc-1', email: 'tc@x', name: 'Rajesh', role: 'TELECALLER', teamMemberships: [{ teamId: 'team-1' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
+        {
+          ...baseRow,
+          id: 'tc-1',
+          email: 'tc@x',
+          name: 'Rajesh',
+          role: 'TELECALLER',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(2);
       mocks.teamMemberFindMany.mockResolvedValue([]);
@@ -732,7 +816,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('CUSTOMER reports to nobody', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'cust-1', email: 'buyer@x', name: 'Buyer', role: 'CUSTOMER', teamMemberships: [{ teamId: 'team-1' }] },
+        {
+          ...baseRow,
+          id: 'cust-1',
+          email: 'buyer@x',
+          name: 'Buyer',
+          role: 'CUSTOMER',
+          teamMemberships: [{ teamId: 'team-1' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
 
@@ -747,7 +838,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('a team with no manager yields a line with manager null (unled is a state, not an omission)', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'se-1', email: 'se@x', name: 'Priya', role: 'SALES_EXEC', teamMemberships: [{ teamId: 'team-unled' }] },
+        {
+          ...baseRow,
+          id: 'se-1',
+          email: 'se@x',
+          name: 'Priya',
+          role: 'SALES_EXEC',
+          teamMemberships: [{ teamId: 'team-unled' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([line('se-1', 'team-unled', 'Unled Crew', null)]);
@@ -774,11 +872,22 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     it('fails_when= a soft-deleted team is advertised as a reporting line', async () => {
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-gone' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-gone' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([
-        { userId: 'eng-1', teamId: 'team-gone', team: { name: 'Gone Crew', deletedAt: new Date(), manager: mgr('m', 'M', 'm@x') } },
+        {
+          userId: 'eng-1',
+          teamId: 'team-gone',
+          team: { name: 'Gone Crew', deletedAt: new Date(), manager: mgr('m', 'M', 'm@x') },
+        },
       ]);
 
       const result = await service.list(adminActor);
@@ -792,7 +901,14 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       const { service, mocks } = makeListService();
       mocks.userFindMany.mockResolvedValue([
         // The service takes teamMemberships[0]; the DB ordered newest-first.
-        { ...baseRow, id: 'eng-1', email: 'eng@x', name: 'Arjun', role: 'ENGINEER', teamMemberships: [{ teamId: 'team-new' }] },
+        {
+          ...baseRow,
+          id: 'eng-1',
+          email: 'eng@x',
+          name: 'Arjun',
+          role: 'ENGINEER',
+          teamMemberships: [{ teamId: 'team-new' }],
+        },
       ]);
       mocks.userCount.mockResolvedValue(1);
       mocks.teamMemberFindMany.mockResolvedValue([
@@ -829,7 +945,13 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       mocks.userFindMany.mockResolvedValue([
         { ...baseRow, id: 'mgr-1', email: 'm@x', name: 'Ravi', role: 'MANAGER' },
         { ...baseRow, id: 'adm-1', email: 'a@x', name: 'Second Admin', role: 'ADMIN' },
-        { ...baseRow, id: 'owner-1', email: 'owner@example.com', name: 'Deepak Owner', role: 'OWNER' },
+        {
+          ...baseRow,
+          id: 'owner-1',
+          email: 'owner@example.com',
+          name: 'Deepak Owner',
+          role: 'OWNER',
+        },
       ]);
       mocks.userCount.mockResolvedValue(3);
       mocks.userFindFirst.mockResolvedValue(ownerRow);
@@ -842,7 +964,10 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
       expect(mocks.userFindFirst).toHaveBeenCalledTimes(1);
       expect(mocks.userFindFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ role: 'OWNER', organizationId: 'ceid01lpfe1esm8jwsxid41k28' }),
+          where: expect.objectContaining({
+            role: 'OWNER',
+            organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+          }),
         }),
       );
     });
@@ -1116,7 +1241,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     );
   });
 
-  it('returns { rows, total } envelope (projects come from the user\'s TEAM\'s ProjectTeam rows - T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover, ProjectMember retired)', async () => {
+  it("returns { rows, total } envelope (projects come from the user's TEAM's ProjectTeam rows - T-TEAM-AUTHORITATIVE 2026-09-13 clean cutover, ProjectMember retired)", async () => {
     const { service, mocks } = makeListService();
     // Non-admin role (TELECALLER): project list reflects their TEAM's linked
     // projects. (ADMIN/OWNER rows return the full org project set instead -
@@ -1164,10 +1289,7 @@ describe('list - role facet filter + server pagination (autoplan 2026-09-09)', (
     mocks.userCount.mockResolvedValue(1);
     // The org-wide registry: project.findMany returns ALL org projects for
     // admin-class rows (owner/owner2 downcast to ADMIN at the RLS layer).
-    mocks.projectFindMany.mockResolvedValue([
-      { name: 'Bridgeway' },
-      { name: 'Metro Heights' },
-    ]);
+    mocks.projectFindMany.mockResolvedValue([{ name: 'Bridgeway' }, { name: 'Metro Heights' }]);
     const result = await service.list(ownerActor, { limit: 50, offset: 0 });
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.projects).toEqual(['Bridgeway', 'Metro Heights']);
@@ -1247,19 +1369,17 @@ interface ManageStubOptions {
 }
 
 function makeManageService(opts: ManageStubOptions = {}) {
-  const userFindUnique = vi
-    .fn()
-    .mockResolvedValue(
-      opts.target === undefined
-        ? {
-            id: 'u-priya',
-            email: 'priya@x',
-            name: 'Priya',
-            role: 'SALES_EXEC',
-            teamId: 't-1',
-          }
-        : opts.target,
-    );
+  const userFindUnique = vi.fn().mockResolvedValue(
+    opts.target === undefined
+      ? {
+          id: 'u-priya',
+          email: 'priya@x',
+          name: 'Priya',
+          role: 'SALES_EXEC',
+          teamId: 't-1',
+        }
+      : opts.target,
+  );
   const userUpdate = vi.fn().mockResolvedValue({
     id: 'u-priya',
     email: 'priya@x',
@@ -1300,8 +1420,7 @@ function makeManageService(opts: ManageStubOptions = {}) {
     },
     account: { deleteMany: accountDeleteMany },
     teamMember: { findFirst: teamMemberFindFirst },
-    $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb(txMock),
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
   return {
@@ -1351,9 +1470,9 @@ describe('update - PATCH /api/users/:id (hierarchy-gated)', () => {
         teamId: null,
       },
     });
-    await expect(
-      service.update(adminActor, adminActor.sub, { name: 'X' }),
-    ).rejects.toThrow('You cannot edit your own user');
+    await expect(service.update(adminActor, adminActor.sub, { name: 'X' })).rejects.toThrow(
+      'You cannot edit your own user',
+    );
   });
 
   it('MANAGER editing an ADMIN → 403 (does not outrank)', async () => {
@@ -1366,16 +1485,14 @@ describe('update - PATCH /api/users/:id (hierarchy-gated)', () => {
         teamId: null,
       },
     });
-    await expect(
-      service.update(managerActor, 'u-admin', { name: 'X' }),
-    ).rejects.toThrow('MANAGER cannot edit a ADMIN user');
+    await expect(service.update(managerActor, 'u-admin', { name: 'X' })).rejects.toThrow(
+      'MANAGER cannot edit a ADMIN user',
+    );
   });
 
   it('unknown target → 404 NotFoundException', async () => {
     const { service } = makeManageService({ target: null });
-    await expect(
-      service.update(adminActor, 'missing', { name: 'X' }),
-    ).rejects.toThrow('not found');
+    await expect(service.update(adminActor, 'missing', { name: 'X' })).rejects.toThrow('not found');
   });
 });
 
@@ -1440,8 +1557,6 @@ describe('remove - DELETE /api/users/:id (SOFT delete, admin/owner only)', () =>
 
   it('unknown target → 404 NotFoundException', async () => {
     const { service } = makeManageService({ target: null });
-    await expect(service.remove(adminActor, 'missing')).rejects.toThrow(
-      'not found',
-    );
+    await expect(service.remove(adminActor, 'missing')).rejects.toThrow('not found');
   });
 });

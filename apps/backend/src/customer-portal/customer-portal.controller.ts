@@ -16,9 +16,7 @@ import { CustomerPortalService, type PortalMeDto } from './customer-portal.servi
 @ApiBearerAuth('jwt')
 @Controller('customer-portal')
 export class CustomerPortalController {
-  constructor(
-    @Inject(CustomerPortalService) private readonly service: CustomerPortalService,
-  ) {}
+  constructor(@Inject(CustomerPortalService) private readonly service: CustomerPortalService) {}
 
   @Get('me')
   @ApiOperation({ summary: "The signed-in buyer's APPROVED units (CUSTOMER only)." })
@@ -27,7 +25,9 @@ export class CustomerPortalController {
   }
 
   @Get('units/:unitId/photos')
-  @ApiOperation({ summary: "Progress timeline for one of the buyer's units (newest first, 50/page)." })
+  @ApiOperation({
+    summary: "Progress timeline for one of the buyer's units (newest first, 50/page).",
+  })
   async timeline(
     @Req() req: AuthedRequest,
     @Param('unitId') unitId: string,

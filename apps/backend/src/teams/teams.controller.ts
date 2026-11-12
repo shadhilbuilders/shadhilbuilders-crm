@@ -42,9 +42,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -60,9 +58,7 @@ export class TeamsController {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime (same as users.service.ts / leads.service.ts).
-  constructor(
-    @Inject(TeamsService) private readonly teams: TeamsService,
-  ) {}
+  constructor(@Inject(TeamsService) private readonly teams: TeamsService) {}
 
   /**
    * GET /api/teams
@@ -86,13 +82,9 @@ export class TeamsController {
    */
   @Get(':id')
   @ApiOperation({
-    summary:
-      'Get a team roster (manager + members w/ project assignments). ADMIN/OWNER only.',
+    summary: 'Get a team roster (manager + members w/ project assignments). ADMIN/OWNER only.',
   })
-  async getOne(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<TeamDetail> {
+  async getOne(@Req() req: AuthedRequest, @Param('id') id: string): Promise<TeamDetail> {
     return this.teams.getTeam(req.user!, id);
   }
 
@@ -105,10 +97,7 @@ export class TeamsController {
   @ApiOperation({
     summary: 'Create a team. ADMIN/OWNER only.',
   })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<TeamListItem> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<TeamListItem> {
     const dto: CreateTeamDto = parseBody(CreateTeamDtoSchema, body);
     return this.teams.create(req.user!, dto);
   }
@@ -142,13 +131,9 @@ export class TeamsController {
    */
   @Delete(':id')
   @ApiOperation({
-    summary:
-      'Delete a team. ADMIN/OWNER only. 409 when members or a manager still exist.',
+    summary: 'Delete a team. ADMIN/OWNER only. 409 when members or a manager still exist.',
   })
-  async remove(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async remove(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid team id: ${id}`);
     }
@@ -188,7 +173,7 @@ export class TeamsController {
   @Post(':id/reassign-members')
   @ApiOperation({
     summary:
-      'Reassign this team\'s members to another team. ADMIN/OWNER only. ' +
+      "Reassign this team's members to another team. ADMIN/OWNER only. " +
       'Omit userIds to move everyone (bulk); pass ids to move only those members.',
   })
   async reassignMembers(
@@ -199,10 +184,7 @@ export class TeamsController {
     if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid team id: ${id}`);
     }
-    const dto: ReassignTeamMembersDto = parseBody(
-      ReassignTeamMembersDtoSchema,
-      body,
-    );
+    const dto: ReassignTeamMembersDto = parseBody(ReassignTeamMembersDtoSchema, body);
     return this.teams.reassignMembers(req.user!, id, dto);
   }
 }

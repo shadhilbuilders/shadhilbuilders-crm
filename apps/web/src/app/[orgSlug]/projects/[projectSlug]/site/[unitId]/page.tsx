@@ -87,7 +87,7 @@ export default function SiteCapturePage() {
 
   const photos = useMemo(
     () => (photosQuery.data?.pages ?? []).flatMap((page) => page.photos),
-    [photosQuery.data]
+    [photosQuery.data],
   );
 
   // Captured once per mount so the relative phrases do not flicker between
@@ -152,7 +152,7 @@ export default function SiteCapturePage() {
       // a partial batch is a mess to explain later. `Promise.all` is safe here
       // precisely because nothing has been sent yet.
       const prepared = await Promise.all(
-        files.map((file) => prepareProgressPhoto(file, { source: from }))
+        files.map((file) => prepareProgressPhoto(file, { source: from })),
       );
       setQueue((current) => {
         // A fresh note starts clean: the stage defaults to the unit's current
@@ -209,7 +209,7 @@ export default function SiteCapturePage() {
       if (item === undefined || item.status === 'saved') continue;
 
       setQueue((current) =>
-        current.map((q, index) => (index === i ? { ...q, status: 'uploading' } : q))
+        current.map((q, index) => (index === i ? { ...q, status: 'uploading' } : q)),
       );
 
       const input: UploadPhotoInput = {
@@ -230,12 +230,12 @@ export default function SiteCapturePage() {
         await upload.mutateAsync(input);
         savedCount += 1;
         setQueue((current) =>
-          current.map((q, index) => (index === i ? { ...q, status: 'saved' } : q))
+          current.map((q, index) => (index === i ? { ...q, status: 'saved' } : q)),
         );
       } catch {
         failed = true;
         setQueue((current) =>
-          current.map((q, index) => (index === i ? { ...q, status: 'failed' } : q))
+          current.map((q, index) => (index === i ? { ...q, status: 'failed' } : q)),
         );
         break;
       }
@@ -283,7 +283,7 @@ export default function SiteCapturePage() {
   // ── Derived view props ───────────────────────────────────────────────────
   const unit = unitQuery.data;
   const selectedChips = QUICK_NOTE_LABELS.filter((label) =>
-    note.split('\n').some((line) => line.trim() === label)
+    note.split('\n').some((line) => line.trim() === label),
   );
 
   // In-flight/failed cards come from the queue, so there is ONE source of truth
@@ -316,7 +316,7 @@ export default function SiteCapturePage() {
   const retryUpload = (): void => {
     // Retry the SAME prepared bytes - never re-capture, never re-prepare.
     setQueue((current) =>
-      current.map((q) => (q.status === 'failed' ? { ...q, status: 'ready' } : q))
+      current.map((q) => (q.status === 'failed' ? { ...q, status: 'ready' } : q)),
     );
     setNoteOpen(true);
   };

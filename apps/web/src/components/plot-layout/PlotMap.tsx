@@ -137,7 +137,7 @@ export function PlotMap({
       x: PLAN_VIEWBOX.x + PLAN_VIEWBOX.width / 2,
       y: PLAN_VIEWBOX.y + PLAN_VIEWBOX.height / 2,
     }),
-    []
+    [],
   );
 
   const anchorFor = useCallback(
@@ -146,12 +146,12 @@ export function PlotMap({
       if (svg === null) return planCentre;
       return clientToPlan(svg, clientX, clientY) ?? planCentre;
     },
-    [planCentre]
+    [planCentre],
   );
 
   const zoomByStep = useCallback(
     (factor: number) => zoomByFactor(factor, planCentre),
-    [planCentre, zoomByFactor]
+    [planCentre, zoomByFactor],
   );
 
   // Wheel zoom needs a non-passive listener: React's synthetic onWheel cannot
@@ -249,7 +249,7 @@ export function PlotMap({
           if (rect.width > 0 && rect.height > 0) {
             panByPlanUnits(
               ((midX - gesture.pinchMidX) * viewBox.width) / rect.width,
-              ((midY - gesture.pinchMidY) * viewBox.height) / rect.height
+              ((midY - gesture.pinchMidY) * viewBox.height) / rect.height,
             );
           }
           zoomByFactor(distance / gesture.pinchDistance, anchorFor(midX, midY));
@@ -273,14 +273,14 @@ export function PlotMap({
         if (rect.width > 0 && rect.height > 0) {
           panByPlanUnits(
             (dxScreen * viewBox.width) / rect.width,
-            (dyScreen * viewBox.height) / rect.height
+            (dyScreen * viewBox.height) / rect.height,
           );
         }
       }
       gesture.lastX = event.clientX;
       gesture.lastY = event.clientY;
     },
-    [anchorFor, panByPlanUnits, viewBox.height, viewBox.width, zoomByFactor]
+    [anchorFor, panByPlanUnits, viewBox.height, viewBox.width, zoomByFactor],
   );
 
   const endPointer = useCallback(
@@ -310,7 +310,7 @@ export function PlotMap({
         onSelect(pressed);
       }
     },
-    [matchingNumbers, onSelect]
+    [matchingNumbers, onSelect],
   );
 
   const handleKeyDown = useCallback(
@@ -345,19 +345,27 @@ export function PlotMap({
         reset();
       }
     },
-    [centreOn, matchingNumbers, onSelectWithoutToggle, plots, reset, selectedPlotNumber, zoomByStep]
+    [
+      centreOn,
+      matchingNumbers,
+      onSelectWithoutToggle,
+      plots,
+      reset,
+      selectedPlotNumber,
+      zoomByStep,
+    ],
   );
 
   const hoveredPlot = useMemo(
     () => plots.find((plot) => plot.plotNumber === hoveredPlotNumber) ?? null,
-    [hoveredPlotNumber, plots]
+    [hoveredPlotNumber, plots],
   );
 
   // Hover-only callout. Selection is shown by the plot fill and the details
   // panel — a sticky badge after click duplicates that and covers the drawing.
   const tooltipAnchor = useMemo(
     () => (hoveredPlot === null ? null : polygonCentroid(hoveredPlot.boundary)),
-    [hoveredPlot]
+    [hoveredPlot],
   );
 
   if (plots.length === 0) {

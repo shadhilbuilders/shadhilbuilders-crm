@@ -14,7 +14,9 @@ describe('notLinkedInfo', () => {
     expect(notLinkedInfo(err)).toEqual({ officePhone: '+91 1' });
   });
   it('is phone-less when the org has none', () => {
-    expect(notLinkedInfo(new ApiError('x', 403, NOT_LINKED_CODE, { officePhone: null }))).toEqual({ officePhone: null });
+    expect(notLinkedInfo(new ApiError('x', 403, NOT_LINKED_CODE, { officePhone: null }))).toEqual({
+      officePhone: null,
+    });
     expect(notLinkedInfo(new ApiError('x', 403, NOT_LINKED_CODE))).toEqual({ officePhone: null });
   });
   it('ignores every other error', () => {

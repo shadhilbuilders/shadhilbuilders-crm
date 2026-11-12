@@ -14,7 +14,7 @@ So the deliverable is a **problem-hunting / resolution inbox**, not a metrics re
 
 ## Problem Statement
 
-`/admin/overview` is the admin/owner command center. Today it is a read-only metrics page (KPI strip + three charts). It shows numbers about work. It does not surface *what is wrong and needs a human decision today*. The owner runs a team where a lead can sit uncalled for days and nobody is told; a visit can slip; a booking can stall holding money; a telecaller can go quiet - and none of that appears anywhere until the owner asks and digs per project. The owner wants one daily screen that says "these are the problems, in order, here is the fix" across every project and team.
+`/admin/overview` is the admin/owner command center. Today it is a read-only metrics page (KPI strip + three charts). It shows numbers about work. It does not surface _what is wrong and needs a human decision today_. The owner runs a team where a lead can sit uncalled for days and nobody is told; a visit can slip; a booking can stall holding money; a telecaller can go quiet - and none of that appears anywhere until the owner asks and digs per project. The owner wants one daily screen that says "these are the problems, in order, here is the fix" across every project and team.
 
 ## Demand Evidence
 
@@ -23,7 +23,7 @@ The owner's instruction is the demand. It names a concrete, recurring pain ("lea
 - **"Pipeline Exception Dashboard" flips the traditional review model on its head** - aggregate dashboards "nobody looks at twice a week are decoration"; an exception feed is a habit because it names the fixable issue. (zime.ai, top-15 sales reports)
 - **"Highlight at-risk deals missing next steps" / "deal that has slipped past its expected stage duration."** (Bitrix24 real-estate CRM)
 - **"Stale emails/departed contacts inflate pipeline counts and distort forecasts"** - the exception list is accurate where an aggregate chart lies. (prospeo.io)
-- **"Most SLA problems are systemic, not individual"** - the owner's highest-value job is spotting *patterns* (a team going quiet, a clogged stage), which only a cross-project exception feed surfaces. (rework.com LMA)
+- **"Most SLA problems are systemic, not individual"** - the owner's highest-value job is spotting _patterns_ (a team going quiet, a clogged stage), which only a cross-project exception feed surfaces. (rework.com LMA)
 - Follow-up cadence norms: first conversation attempts daily for 3 days, then day 7/14/21/30 - gives concrete idle-age thresholds to surface. (sayso/asksayso; saber.app SLA glossary)
 
 ## Status Quo
@@ -55,7 +55,9 @@ The owner's instruction is the demand. It names a concrete, recurring pain ("lea
 ## Approaches Considered
 
 ### Approach A: Admin-exception endpoint + one-page problem inbox
+
 Add ONE admin-only GET `/api/dashboard/exceptions` that computes, under one RLS query, buckets for: idle/no-touch leads (by updatedAt age, bucketed 1/3/7/14/30 days), visit risk (unassigned/no-outcome-today), booking money stuck (token-vs-approval age), and team/exec quietness or overload. Frontend `/overview` renders cards - one per problem type, count-as-filter, each row links to the fix. Charts and old KPI strip removed.
+
 - Effort: M (human ~2 days / CC ~3 hrs)
 - Risk: Low-Med. Backend is a new read-only endpoint (additive). Frontend is a new component, not a reuse.
 - Pros: Accurate; the "idle" number is real; owner resolves inline; one endpoint keeps it cheap; matches the researched exception-dashboard pattern exactly.
@@ -63,7 +65,9 @@ Add ONE admin-only GET `/api/dashboard/exceptions` that computes, under one RLS 
 - Reuses: `withRlsContext`, admin role guard (mirror `dashboard/overview`), `useProjects()` registry for deep-link slugs, `ScheduleVisitDialog`, `BookingApprovalDialog`, `projectHref`.
 
 ### Approach B: Frontend-only exception inbox from existing lists
+
 Derive the idle/visit/booking buckets client-side from the existing unscoped list endpoints (`useLeads`/`useVisits`/`useBookings`). No backend change.
+
 - Effort: S (client ~3-4 hrs)
 - Risk: Medio-Alto. Accurate only up to the list row fields; "idle since" from `updatedAt` is fine, but visit-age/token-age need fields the list rows may not expose; the "team quiet / overloaded" cards would be guesswork without an aggregate.
 - Pros: Ships fastest, zero backend.
@@ -71,7 +75,9 @@ Derive the idle/visit/booking buckets client-side from the existing unscoped lis
 - Recommend against as the final, but reasonable as a first slice.
 
 ### Approach C: Two-phase - frontend now (Approach B), backend aggregate later (Approach A)
+
 Ship the client-derived inbox first to see what the owner actually uses, then add the endpoint.
+
 - Effort: S → M
 - Risk: Med. The first version may surface the wrong idle numbers and burn trust before the real endpoint lands.
 - Pros: Fast signal; owner sees the shape.
@@ -126,6 +132,6 @@ Before any code: the owner sits with `/admin/overview` open once, as themselves,
 
 ## What I noticed about how you think
 
-- You rejected the easy, correct-looking answer. "Like the work dashboard" could have been a copy-paste; instead you named the actual job - *"find out problems and resolve issues."* That is a product decision, not a styling one.
-- You gave a concrete failure before asking for the fix: *"leads is not calling so long time."* That one example pinned the whole design to a real pain, which is why it became the flagship card.
+- You rejected the easy, correct-looking answer. "Like the work dashboard" could have been a copy-paste; instead you named the actual job - _"find out problems and resolve issues."_ That is a product decision, not a styling one.
+- You gave a concrete failure before asking for the fix: _"leads is not calling so long time."_ That one example pinned the whole design to a real pain, which is why it became the flagship card.
 - You said "search it in web" - you wanted the pattern validated against what the sales-tools world already knows, rather than trust my design instinct. The research confirmed your direction (the "pipeline exception dashboard"), which means you were right before I even looked.

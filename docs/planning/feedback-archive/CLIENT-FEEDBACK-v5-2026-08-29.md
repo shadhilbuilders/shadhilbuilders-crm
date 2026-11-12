@@ -15,6 +15,7 @@ for exactly the fields you need, avoid over-fetching on slow
 networks." Real for some apps, not for yours.
 
 Where GraphQL is genuinely better:
+
 - Multiple clients (iOS, Android, web, third-party) needing
   different data shapes for the "same" entity.
 - Aggregating 5+ backend services into one API.
@@ -22,6 +23,7 @@ Where GraphQL is genuinely better:
 - Server-side batching of N+1 query problems.
 
 Where the pitch FAILS for Shadhil CRM specifically:
+
 - **You have 3 clients, all needing the same data shapes.**
   Web, iOS, Android all want "lead detail." GraphQL's
   client-shape flexibility doesn't help.
@@ -45,6 +47,7 @@ Where the pitch FAILS for Shadhil CRM specifically:
 ### 1. Codegen complexity drops by 80%
 
 With GraphQL, you need:
+
 - A `schema.graphql` file as single source of truth
 - `graphql-codegen` configured for both web and mobile
 - A `packages/contracts` package
@@ -52,6 +55,7 @@ With GraphQL, you need:
 - TypeScript types generated from the schema
 
 With REST, you need:
+
 - TypeScript types defined once (or generated from Prisma)
 - TanStack Query hooks (you write them, ~20 lines per endpoint)
 - `zod` schemas for runtime validation
@@ -65,9 +69,10 @@ version is explicit and debuggable.
 Every NestJS dev knows REST controllers. `@Controller('leads')`
 with `@Get()`, `@Post()`, `@Patch()` is the bread and butter.
 GraphQL with NestJS requires `@nestjs/graphql` + `@nestjs/apollo`
-+ schema-first OR code-first, plus resolvers instead of
-controllers. It works, but it's a non-trivial setup with a
-learning curve.
+
+- schema-first OR code-first, plus resolvers instead of
+  controllers. It works, but it's a non-trivial setup with a
+  learning curve.
 
 For "reusable infra" value, REST NestJS is the most marketable
 skill. GraphQL NestJS is narrower.
@@ -125,11 +130,32 @@ booking + unit + project), the GraphQL version is:
 ```graphql
 query GetLeadDetail($id: ID!) {
   lead(id: $id) {
-    id fullName phone status
-    activities { id type createdAt }
-    siteVisits { id scheduledAt outcome }
-    messages { id body createdAt direction }
-    booking { tokenAmount unit { unitNumber } }
+    id
+    fullName
+    phone
+    status
+    activities {
+      id
+      type
+      createdAt
+    }
+    siteVisits {
+      id
+      scheduledAt
+      outcome
+    }
+    messages {
+      id
+      body
+      createdAt
+      direction
+    }
+    booking {
+      tokenAmount
+      unit {
+        unitNumber
+      }
+    }
   }
 }
 ```
@@ -137,11 +163,11 @@ query GetLeadDetail($id: ID!) {
 The REST version is:
 
 ```typescript
-const { data: lead } = useLead(id)
-const { data: activities } = useActivities(id)
-const { data: visits } = useSiteVisits(id)
-const { data: messages } = useMessages(id)
-const { data: booking } = useBooking(id)
+const { data: lead } = useLead(id);
+const { data: activities } = useActivities(id);
+const { data: visits } = useSiteVisits(id);
+const { data: messages } = useMessages(id);
+const { data: booking } = useBooking(id);
 // All 5 fire in parallel. Total latency: max(slowest), not sum.
 ```
 
@@ -214,6 +240,7 @@ Deploy:     Coolify on Hostinger VPS (8GB plan, India)
 ```
 
 Same as v4 except:
+
 - GraphQL → REST
 - Apollo Client → TanStack Query
 - graphql-ws subscriptions → SSE
@@ -240,6 +267,7 @@ shadhil-crm/
 ```
 
 `packages/api-types` is simpler now:
+
 - Run `prisma generate` in the backend, copy the generated
   types to `packages/api-types/src/db.ts`.
 - Manually write request/response types for the few that
@@ -281,6 +309,7 @@ Client (web/mobile)
 ```
 
 NestJS:
+
 - `POST /leads/:id/messages` - saves the message, publishes
   to Redis channel `lead:{id}:messages`.
 - `GET /leads/:id/stream` - NestJS SSE handler. Subscribes
@@ -306,6 +335,7 @@ NestJS:
 ## What stays the same
 
 Everything else from v4 carries over:
+
 - Roles (Admin / Manager / Telecaller / Sales Executive)
 - Modules (Lead Inbox, Lead Detail, Site Visit Scheduler,
   Inventory, In-app Chat, Audit Log, thin Booking)
@@ -329,6 +359,7 @@ Everything else from v4 carries over:
 The one thing I want to flag clearly: **this conversation
 has gone through 5 rounds of feedback in one session.** That's
 normal for an early brief, but it also means we have:
+
 - DESIGN.md v1 (PM agent's first cut)
 - 4 delta files (v1.1 through v1.4 → now v1.5)
 
@@ -344,6 +375,7 @@ have it produce a clean v2 in one shot. That path loses
 the trace but is faster.
 
 Tell me:
+
 1. **REST** confirmed (my recommendation)?
 2. **Subdomain structure** (Option 1, 2, or 3 from v4)?
 3. **Apply now** = rewrite DESIGN.md v2 in one pass, OR

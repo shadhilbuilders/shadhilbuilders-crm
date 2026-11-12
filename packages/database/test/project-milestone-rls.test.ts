@@ -43,7 +43,10 @@ const ALL_USERS = [MGR, ADM, C1, C2];
 async function cleanup(): Promise<void> {
   await adminPrisma.projectMilestone.deleteMany({ where: { projectId: { in: [P1, P2] } } });
   await adminPrisma.booking.deleteMany({ where: { unitId: { in: [U1, U2] } } });
-  await adminPrisma.user.updateMany({ where: { id: { in: ALL_USERS } }, data: { customerLeadId: null } });
+  await adminPrisma.user.updateMany({
+    where: { id: { in: ALL_USERS } },
+    data: { customerLeadId: null },
+  });
   await adminPrisma.lead.deleteMany({ where: { id: { in: [L1, L2] } } });
   await adminPrisma.unit.deleteMany({ where: { id: { in: [U1, U2] } } });
   await adminPrisma.phase.deleteMany({ where: { id: { in: [PH1, PH2] } } });
@@ -52,7 +55,11 @@ async function cleanup(): Promise<void> {
   await adminPrisma.user.deleteMany({ where: { id: { in: ALL_USERS } } });
 }
 
-async function mkUser(id: string, role: 'CUSTOMER' | 'MANAGER' | 'ADMIN', leadId?: string): Promise<void> {
+async function mkUser(
+  id: string,
+  role: 'CUSTOMER' | 'MANAGER' | 'ADMIN',
+  leadId?: string,
+): Promise<void> {
   await adminPrisma.user.create({
     data: {
       id,
@@ -70,7 +77,9 @@ async function buildFixture(): Promise<void> {
   await cleanup();
   await mkUser(MGR, 'MANAGER');
   await mkUser(ADM, 'ADMIN');
-  await adminPrisma.team.create({ data: { id: TEAM, name: 'PM1 Team', managerId: MGR, organizationId: ORG_ID } });
+  await adminPrisma.team.create({
+    data: { id: TEAM, name: 'PM1 Team', managerId: MGR, organizationId: ORG_ID },
+  });
   for (const [id, slug] of [
     [P1, 'pm1-p1'],
     [P2, 'pm1-p2'],
@@ -79,8 +88,12 @@ async function buildFixture(): Promise<void> {
       data: { id, name: `Project ${slug}`, slug, address: 'x', organizationId: ORG_ID },
     });
   }
-  await adminPrisma.phase.create({ data: { id: PH1, projectId: P1, name: 'Phase 1', organizationId: ORG_ID } });
-  await adminPrisma.phase.create({ data: { id: PH2, projectId: P2, name: 'Phase 2', organizationId: ORG_ID } });
+  await adminPrisma.phase.create({
+    data: { id: PH1, projectId: P1, name: 'Phase 1', organizationId: ORG_ID },
+  });
+  await adminPrisma.phase.create({
+    data: { id: PH2, projectId: P2, name: 'Phase 2', organizationId: ORG_ID },
+  });
   for (const [id, phaseId, num, handover] of [
     [U1, PH1, 'PM1-A1', HANDOVER],
     [U2, PH2, 'PM1-B1', new Date('2028-01-01T00:00:00.000Z')],
@@ -143,8 +156,16 @@ async function buildFixture(): Promise<void> {
   });
 }
 
-const asCustomer = (userId: string) => ({ userId, role: 'CUSTOMER' as const, organizationId: ORG_ID });
-const asRole = (userId: string, role: 'MANAGER' | 'ADMIN') => ({ userId, role, organizationId: ORG_ID });
+const asCustomer = (userId: string) => ({
+  userId,
+  role: 'CUSTOMER' as const,
+  organizationId: ORG_ID,
+});
+const asRole = (userId: string, role: 'MANAGER' | 'ADMIN') => ({
+  userId,
+  role,
+  organizationId: ORG_ID,
+});
 
 const maybe = DATABASE_AVAILABLE ? describe : describe.skip;
 
@@ -153,12 +174,16 @@ maybe('ProjectMilestone RLS + Unit.expectedHandoverDate', () => {
   afterAll(cleanup);
 
   it('a buyer sees only their own project milestones', async () => {
-    const rows = await withRlsContext(prisma, asCustomer(C1), (tx) => tx.projectMilestone.findMany());
+    const rows = await withRlsContext(prisma, asCustomer(C1), (tx) =>
+      tx.projectMilestone.findMany(),
+    );
     expect(rows.map((r) => r.id)).toEqual([M1]);
   });
 
   it('a second buyer sees only theirs', async () => {
-    const rows = await withRlsContext(prisma, asCustomer(C2), (tx) => tx.projectMilestone.findMany());
+    const rows = await withRlsContext(prisma, asCustomer(C2), (tx) =>
+      tx.projectMilestone.findMany(),
+    );
     expect(rows.map((r) => r.id)).toEqual([M2]);
   });
 
@@ -172,7 +197,9 @@ maybe('ProjectMilestone RLS + Unit.expectedHandoverDate', () => {
   it('a buyer cannot write a milestone', async () => {
     await expect(
       withRlsContext(prisma, asCustomer(C1), (tx) =>
-        tx.projectMilestone.create({ data: { projectId: P1, organizationId: ORG_ID, name: 'Hack' } }),
+        tx.projectMilestone.create({
+          data: { projectId: P1, organizationId: ORG_ID, name: 'Hack' },
+        }),
       ),
     ).rejects.toThrow();
   });
@@ -184,7 +211,9 @@ maybe('ProjectMilestone RLS + Unit.expectedHandoverDate', () => {
     expect(rows).toHaveLength(2);
     await expect(
       withRlsContext(prisma, asRole(MGR, 'MANAGER'), (tx) =>
-        tx.projectMilestone.create({ data: { projectId: P1, organizationId: ORG_ID, name: 'Nope' } }),
+        tx.projectMilestone.create({
+          data: { projectId: P1, organizationId: ORG_ID, name: 'Nope' },
+        }),
       ),
     ).rejects.toThrow();
   });

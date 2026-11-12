@@ -84,7 +84,11 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'WA Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: TEST_TEAM_ID,
+        name: 'WA Test Team',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     // Upsert user (staff)
     await db.user.upsert({
@@ -108,7 +112,9 @@ beforeAll(async () => {
     // unique phone constraint). We use a 14-digit random phone that
     // starts with the test run's Date.now() so we can find + clean
     // up via LIKE if a prior run was interrupted.
-    const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, '0')}`;
     await db.lead.upsert({
       where: { id: TEST_LEAD_ID },
       update: { phoneE164: uniquePhone },
@@ -195,10 +201,7 @@ interface OutboundCall {
 }
 const capturedCalls: OutboundCall[] = [];
 const outboundStub = {
-  enqueue: async (
-    opts: OutboundCall,
-    _clientOverride?: unknown,
-  ) => {
+  enqueue: async (opts: OutboundCall, _clientOverride?: unknown) => {
     capturedCalls.push(opts);
     return { id: 'mock-out-' + Date.now() };
   },
@@ -239,7 +242,8 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     const message = await withRlsContext(
       prisma,
       { userId: TEST_USER_ID, role: 'ADMIN', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
-      async (tx) => (tx as unknown as PrismaClient).message.findUnique({ where: { id: result.id } }),
+      async (tx) =>
+        (tx as unknown as PrismaClient).message.findUnique({ where: { id: result.id } }),
     );
     expect(message).not.toBeNull();
     expect(message?.channel).toBe('WHATSAPP');
@@ -304,7 +308,9 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
       });
     } finally {
       // Restore the fixture lead's phoneE164 for sibling tests.
-      const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000)
+        .toString()
+        .padStart(4, '0')}`;
       await adminSeed(async (db) => {
         await db.lead.update({ where: { id: TEST_LEAD_ID }, data: { phoneE164: uniquePhone } });
       });
@@ -347,7 +353,11 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     const service = makeService();
 
     await expect(
-      service.send(actor, { leadId: TEST_LEAD_ID, body: 'Are you still interested?', channel: 'WHATSAPP' }),
+      service.send(actor, {
+        leadId: TEST_LEAD_ID,
+        body: 'Are you still interested?',
+        channel: 'WHATSAPP',
+      }),
     ).rejects.toThrow(/has not written yet/);
     // Nothing queued: the whole point is that Meta never sees it.
     expect(capturedCalls).toHaveLength(0);

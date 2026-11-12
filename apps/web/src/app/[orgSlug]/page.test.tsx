@@ -13,7 +13,15 @@ import { rootRedirectTarget, workLandingHref, workSurfaceForRole } from '@/lib/d
 
 const ORG_SLUG = 'shadhil-builders';
 const PROJ = [
-  { id: 'proj-1', slug: 'shadhil-metro-heights', name: 'Metro', address: '', reraNumber: null, cmdaNumber: null, createdAt: '' },
+  {
+    id: 'proj-1',
+    slug: 'shadhil-metro-heights',
+    name: 'Metro',
+    address: '',
+    reraNumber: null,
+    cmdaNumber: null,
+    createdAt: '',
+  },
 ];
 
 const ORG_USER = { role: 'MANAGER', organizationId: 'org-1' } as const;
@@ -64,9 +72,7 @@ describe('workLandingHref', () => {
   });
 
   it('empty registry: /{orgSlug}/work regardless of role', () => {
-    expect(workLandingHref(ORG_SLUG, [], 'ENGINEER')).toBe(
-      '/shadhil-builders/work',
-    );
+    expect(workLandingHref(ORG_SLUG, [], 'ENGINEER')).toBe('/shadhil-builders/work');
   });
 });
 

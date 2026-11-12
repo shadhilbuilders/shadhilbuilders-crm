@@ -14,11 +14,7 @@
 // Authorization matrix (design doc): Link/unlink ProjectTeam is Owner/
 // Admin-only on any organization project - NOT a Manager capability (unlike
 // ProjectMember's canManageProjectMembers, which also allows MANAGER).
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
@@ -37,16 +33,11 @@ import {
   CodedNotFoundException,
 } from '../common/errors/coded-exception';
 
-type Tx = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
->;
+type Tx = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$use' | '$extends'>;
 
 @Injectable()
 export class ProjectTeamsService {
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -192,11 +183,7 @@ export class ProjectTeamsService {
    * reassign those leads through existing lead controls first (bulk
    * team-to-team transfer is explicitly out of scope, per the design doc).
    */
-  async unlink(
-    actor: JwtPayload,
-    projectId: string,
-    teamId: string,
-  ): Promise<{ ok: true }> {
+  async unlink(actor: JwtPayload, projectId: string, teamId: string): Promise<{ ok: true }> {
     if (!isAdminClass(actor.role)) {
       throw new CodedForbiddenException(
         'PROJECT_TEAM_UNLINK_FORBIDDEN',
@@ -257,7 +244,11 @@ export class ProjectTeamsService {
    * costs nothing and matches the design doc's `isManagerSlot` contract
    * exactly either way).
    */
-  private async buildMembership(tx: Tx, teamId: string, projectId?: string): Promise<TeamMembership[]> {
+  private async buildMembership(
+    tx: Tx,
+    teamId: string,
+    projectId?: string,
+  ): Promise<TeamMembership[]> {
     const [team, memberRows, photoLeadRows] = await Promise.all([
       tx.team.findUnique({
         where: { id: teamId },

@@ -10,7 +10,12 @@
 // "Showing the first 200 units" instead of a number.
 import type { UnitRow } from '@/hooks/queries/inventory';
 import { constructionStageLabel } from '@/lib/labels';
-import { stalenessLabel, unitPhotoState, unitPhotoStateRank, type UnitPhotoState } from '@/lib/site-photos';
+import {
+  stalenessLabel,
+  unitPhotoState,
+  unitPhotoStateRank,
+  type UnitPhotoState,
+} from '@/lib/site-photos';
 
 /** The server's `UnitFilterDto` limit cap. */
 export const SITE_LIST_CAP = 200;
@@ -209,9 +214,10 @@ export const SITE_SCOPE_COPY = {
 } as const;
 
 /** The empty-state copy for a scope (admin/owner see the generic one). */
-export function siteEmptyCopyFor(
-  scope: 'ASSIGNED' | 'MANAGED' | 'ALL' | null | undefined,
-): { title: string; body: string } {
+export function siteEmptyCopyFor(scope: 'ASSIGNED' | 'MANAGED' | 'ALL' | null | undefined): {
+  title: string;
+  body: string;
+} {
   if (scope === 'ASSIGNED') return SITE_EMPTY_COPY.noAssignments;
   if (scope === 'MANAGED') return SITE_EMPTY_COPY.noManaged;
   return SITE_EMPTY_COPY.noUnits;

@@ -19,12 +19,7 @@ interface DroppableTimeBlockProps {
   children: React.ReactNode;
 }
 
-export function DroppableTimeBlock({
-  date,
-  hour,
-  minute,
-  children,
-}: DroppableTimeBlockProps) {
+export function DroppableTimeBlock({ date, hour, minute, children }: DroppableTimeBlockProps) {
   const { updateEvent } = useUpdateEvent();
 
   const [{ isOver, canDrop }, drop] = useDrop(
@@ -36,10 +31,7 @@ export function DroppableTimeBlock({
         const eventStartDate = parseISO(droppedEvent.startDate);
         const eventEndDate = parseISO(droppedEvent.endDate);
 
-        const eventDurationMs = differenceInMilliseconds(
-          eventEndDate,
-          eventStartDate,
-        );
+        const eventDurationMs = differenceInMilliseconds(eventEndDate, eventStartDate);
 
         const newStartDate = new Date(date);
         newStartDate.setHours(hour, minute, 0, 0);

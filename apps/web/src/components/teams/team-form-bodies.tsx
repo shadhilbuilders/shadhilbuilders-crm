@@ -163,12 +163,12 @@ export function TeamFormBody({
       render: ({ field }) => (
         <div className="flex items-center gap-2">
           <Switch
-            id='auto-assign-leads'
+            id="auto-assign-leads"
             checked={Boolean(field.value)}
             onCheckedChange={(checked) => field.onChange(!!checked)}
             aria-label="Auto-assign new leads to the least-loaded telecaller"
           />
-          <Label htmlFor='auto-assign-leads'>Auto-assign new leads</Label>
+          <Label htmlFor="auto-assign-leads">Auto-assign new leads</Label>
         </div>
       ),
     },
@@ -263,13 +263,12 @@ export function TeamDeleteBody({
     <>
       <form onSubmit={submit} className="space-y-3" noValidate>
         <TypographyP>
-          Delete <strong>{team.name}</strong>? This soft-deletes the team - it's
-          hidden from the org-Teams pages, but historical leads and audit records
-          are kept (not erased).
+          Delete <strong>{team.name}</strong>? This soft-deletes the team - it's hidden from the
+          org-Teams pages, but historical leads and audit records are kept (not erased).
         </TypographyP>
         <TypographyP className="text-muted-foreground text-xs">
-          Teams with members or an active manager cannot be deleted - the
-          server refuses with 409. Only ADMIN or OWNER can delete.
+          Teams with members or an active manager cannot be deleted - the server refuses with 409.
+          Only ADMIN or OWNER can delete.
         </TypographyP>
         {deleteTeam.isError && deleteTeam.error instanceof Error ? (
           <div className="space-y-2">
@@ -292,12 +291,7 @@ export function TeamDeleteBody({
           </div>
         ) : null}
         <div className="flex justify-end gap-2 pt-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onDone}
-            disabled={deleteTeam.isPending}
-          >
+          <Button type="button" variant="ghost" onClick={onDone} disabled={deleteTeam.isPending}>
             Cancel
           </Button>
           <Button
@@ -390,11 +384,7 @@ export function TeamReassignAllDialog({
       confirmButtonProps={{ disabled: !targetTeamId || reassignMembers.isPending }}
       onConfirm={handleConfirm}
     >
-      <TeamTargetPicker
-        excludeTeamId={team.id}
-        value={targetTeamId}
-        onChange={setTargetTeamId}
-      />
+      <TeamTargetPicker excludeTeamId={team.id} value={targetTeamId} onChange={setTargetTeamId} />
     </AlertDialog>
   );
 }

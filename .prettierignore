@@ -17,5 +17,6 @@ node_modules/
 # Generated or lockstep files that must stay byte-identical.
 pnpm-lock.yaml
 apps/web/public/sw.js
+apps/web/next-env.d.ts
 apps/web/src/generated/
 **/src/generated/

@@ -256,10 +256,7 @@ export function evaluateAssignment(
  * column is null/undefined, ANY value on the lead matches. When
  * set, only an exact match counts.
  */
-function matchesCriteria(
-  rule: ManagerAssignmentRule,
-  lead: LeadAttributes,
-): boolean {
+function matchesCriteria(rule: ManagerAssignmentRule, lead: LeadAttributes): boolean {
   if (rule.source !== lead.source) return false;
   if (!criterionMatches(rule.projectId, lead.projectId)) return false;
   if (!criterionMatches(rule.phaseId, lead.phaseId)) return false;
@@ -299,9 +296,7 @@ function criterionMatches(
  *
  * Pure - no DB / no Nest / no Prisma. Easy to exhaustively test.
  */
-export function extractCriteriaFromSource(
-  source: string,
-): { language?: string; region?: string } {
+export function extractCriteriaFromSource(source: string): { language?: string; region?: string } {
   // Today: no-op. Week 8 will parse UTM tags here.
   void source;
   return {};

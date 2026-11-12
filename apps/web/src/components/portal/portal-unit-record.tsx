@@ -44,15 +44,7 @@ function Row({ label, value, emphasis }: Fact) {
 }
 
 /** The eyebrow + display line that heads each half of the record. */
-function BlockHead({
-  id,
-  eyebrow,
-  display,
-}: {
-  id?: string;
-  eyebrow: string;
-  display: string;
-}) {
+function BlockHead({ id, eyebrow, display }: { id?: string; eyebrow: string; display: string }) {
   return (
     <>
       <h2 id={id} className="portal-eyebrow mb-1.5">
@@ -70,7 +62,8 @@ const NOT_RECORDED = 'Not recorded';
 export function PortalUnitRecord({ unit }: { unit: PortalUnit }) {
   const plot = unit.plotNumber === null ? NOT_RECORDED : String(unit.plotNumber);
   const facing = unit.facing === null || unit.facing.trim() === '' ? NOT_RECORDED : unit.facing;
-  const plotSqft = unit.plotSqft === null ? NOT_RECORDED : `${numberIntl.format(unit.plotSqft)} sq.ft`;
+  const plotSqft =
+    unit.plotSqft === null ? NOT_RECORDED : `${numberIntl.format(unit.plotSqft)} sq.ft`;
 
   const physical: Fact[] = [
     { label: 'Plot number', value: plot },
@@ -88,15 +81,25 @@ export function PortalUnitRecord({ unit }: { unit: PortalUnit }) {
   ];
   if (unit.isNegotiated) {
     if (unit.negotiatedRate !== null) {
-      money.push({ label: 'Negotiated rate', value: currencyIntl.format(Number(unit.negotiatedRate)) });
+      money.push({
+        label: 'Negotiated rate',
+        value: currencyIntl.format(Number(unit.negotiatedRate)),
+      });
     }
     if (unit.negotiatedAmount !== null) {
-      money.push({ label: 'Negotiated', value: currencyIntl.format(Number(unit.negotiatedAmount)) });
+      money.push({
+        label: 'Negotiated',
+        value: currencyIntl.format(Number(unit.negotiatedAmount)),
+      });
     }
     // The "You pay" row only earns its place when it DIFFERS from the list
     // total (2026-11-09). With no negotiation it would repeat the headline
     // figure twice on one screen - the display line above already says it.
-    money.push({ label: 'You pay', value: currencyIntl.format(Number(unit.finalAmount)), emphasis: 'total' });
+    money.push({
+      label: 'You pay',
+      value: currencyIntl.format(Number(unit.finalAmount)),
+      emphasis: 'total',
+    });
   }
 
   // Token already received. Only shown when staff recorded one - an unrecorded

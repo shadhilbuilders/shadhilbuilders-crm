@@ -81,7 +81,7 @@
    * explicit dark foregrounds for the soft tints. The plan's verify
    * line "contrast check script in compliance.test.ts" audits every
    * pair below to CR >= 4.5. */
-  --success: oklch(0.530 0.16 160);            /* was oklch(0.63 0.16 160); CR was 3.10, now 4.53 */
+  --success: oklch(0.53 0.16 160); /* was oklch(0.63 0.16 160); CR was 3.10, now 4.53 */
   /* 2026-11-08: the destructive BADGE variant is `bg-destructive/10
    * text-destructive`, a 10% tint of this same colour. At 0.585 that pair
    * measured 4.02:1 for 12px text (axe: color-contrast, the "Sold" badge on the
@@ -89,16 +89,20 @@
    * = 4.6:1) AND clears the tint pair at 4.85:1. Both are pinned in
    * test/compliance.test.ts. */
   --destructive: oklch(0.545 0.21 25);
-  --info: oklch(0.560 0.19 255);               /* was oklch(0.58 0.19 255); CR was 4.23, now 4.59 */
-  --success-soft-fg: oklch(0.495 0.16 160);     /* was --success-foreground (white, CR 1.08); now 5.43 */
-  --destructive-soft-fg: oklch(0.495 0.21 25); /* was --destructive-foreground (white, CR 1.13); now 5.37 */
-  --info-soft-fg: oklch(0.495 0.19 255);       /* was --info-foreground (white, CR 1.10); now 5.41 */
-  --warning-soft-fg: oklch(0.25 0.04 70);       /* on --warning-soft 0.97: 14.75:1 */
+  --info: oklch(0.56 0.19 255); /* was oklch(0.58 0.19 255); CR was 4.23, now 4.59 */
+  --success-soft-fg: oklch(
+    0.495 0.16 160
+  ); /* was --success-foreground (white, CR 1.08); now 5.43 */
+  --destructive-soft-fg: oklch(
+    0.495 0.21 25
+  ); /* was --destructive-foreground (white, CR 1.13); now 5.37 */
+  --info-soft-fg: oklch(0.495 0.19 255); /* was --info-foreground (white, CR 1.10); now 5.41 */
+  --warning-soft-fg: oklch(0.25 0.04 70); /* on --warning-soft 0.97: 14.75:1 */
 
   /* 2026-11-09: `bg-muted-soft` is used across the site surface but the
    * library never defined it, so it rendered transparent. Neutral tint that
    * keeps --muted-foreground at 5.01:1. Mapped to a utility in globals.css. */
-  --muted-soft: oklch(0.975 0.010 258);
+  --muted-soft: oklch(0.975 0.01 258);
 }
 
 .dark {
@@ -109,7 +113,7 @@
   --secondary: oklch(0.684 0.178 136.1);
   --secondary-foreground: oklch(0.985 0 0);
 
-  --input: oklch(0.40 0.012 255);
+  --input: oklch(0.4 0.012 255);
 
   /* ── Muted foreground - dark mode ────────────────────────────────
    * REQUIRED, not optional. `brand.css` is imported AFTER the library's
@@ -134,11 +138,11 @@
    * leak into .dark, where the soft tints are dark. Measured against the
    * library's dark tints: success 11.26:1, warning 11.79:1, destructive
    * 9.87:1, info 10.65:1; muted-soft vs muted-foreground 6.42:1. */
-  --success-soft-fg: oklch(0.86 0.10 160);
-  --warning-soft-fg: oklch(0.90 0.08 70);
-  --destructive-soft-fg: oklch(0.86 0.10 25);
+  --success-soft-fg: oklch(0.86 0.1 160);
+  --warning-soft-fg: oklch(0.9 0.08 70);
+  --destructive-soft-fg: oklch(0.86 0.1 25);
   --info-soft-fg: oklch(0.86 0.09 255);
-  --muted-soft: oklch(0.24 0.020 259);
+  --muted-soft: oklch(0.24 0.02 259);
 
   /* ── Link color - dark mode ───────────────────────────────────── */
   --link: oklch(0.72 0.13 255);

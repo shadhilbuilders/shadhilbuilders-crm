@@ -102,7 +102,8 @@ async function audit(page: Page, opts: { reload?: boolean } = {}) {
     for (const el of Array.from(document.querySelectorAll('body *'))) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      if (el.closest('[data-slot="sidebar"]') || el.getAttribute('data-qa') === 'skeleton') continue;
+      if (el.closest('[data-slot="sidebar"]') || el.getAttribute('data-qa') === 'skeleton')
+        continue;
       // Off-canvas sidebar sits left of 0 on a phone by design. Only a right
       // overhang is a real sideways-scroll layout defect.
       if (r.right > vw + 1) {
@@ -111,7 +112,7 @@ async function audit(page: Page, opts: { reload?: boolean } = {}) {
     }
 
     const kpiEls = Array.from(
-      document.querySelectorAll('[data-qa^="kpi-filter-"], [data-qa="kpi-card-static"]')
+      document.querySelectorAll('[data-qa^="kpi-filter-"], [data-qa="kpi-card-static"]'),
     );
     const clipped = kpiEls
       .filter((el) => {
@@ -135,7 +136,7 @@ async function audit(page: Page, opts: { reload?: boolean } = {}) {
       if (r.width === 0 || r.height === 0) continue;
       if (r.width < 44 || r.height < 44) {
         small.push(
-          `${el.tagName}[${el.getAttribute('data-qa') ?? (el.textContent ?? '').trim().slice(0, 12)}] ${Math.round(r.width)}x${Math.round(r.height)}`
+          `${el.tagName}[${el.getAttribute('data-qa') ?? (el.textContent ?? '').trim().slice(0, 12)}] ${Math.round(r.width)}x${Math.round(r.height)}`,
         );
       }
     }
@@ -219,7 +220,7 @@ test('dashboard fits every phone width, with no clipped counts', async ({ page }
     expect(r.kpiCount, `${vp.label}: expected four count cards`).toBe(4);
     const expectedRows = vp.w < 640 ? 4 : 1;
     expect(r.kpiRows, `${vp.label}: expected ${expectedRows} KPI row(s) at ${vp.w}px`).toBe(
-      expectedRows
+      expectedRows,
     );
 
     // No label may be cut off. This is what was broken at 320px.

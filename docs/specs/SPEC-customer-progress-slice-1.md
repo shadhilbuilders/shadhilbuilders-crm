@@ -20,6 +20,7 @@ the unit page inside the existing CRM auth. Customers do NOT log in in this
 slice; their portal and push land in slice 2 against the same data.
 
 User stories:
+
 1. As a site engineer, from my phone, I open a unit's Progress tab, tap the
    camera button, take a photo, pick the phase, and tap upload. Done in
    under 30 seconds; the photo appears in the timeline.
@@ -35,6 +36,7 @@ User stories:
 ## Tech Stack
 
 Unchanged from the repo (AGENTS.md is authoritative):
+
 - Next.js 16 (apps/web), NestJS 12 (apps/backend), Prisma 7
   (@shadhil/database), better-auth (@shadhil/auth-client),
   @paalstack/react-ui (UI components; Props API only), Tailwind v4.
@@ -60,6 +62,7 @@ Unchanged from the repo (AGENTS.md is authoritative):
 ## Project Structure
 
 New in this slice:
+
 ```
 packages/database/prisma/schema.prisma          → +Role ENGINEER, +ProgressPhoto, +TeamMember.photoLead
 packages/database/prisma/migrations/            → migration 1: ENGINEER + photoLead + policies

@@ -6,11 +6,7 @@
 // polygons are actually painted with - including "Selected", which is a filled
 // swatch (`PLOT_SELECTED_FILL`) just like booked and blocked.
 
-import {
-  PLOT_SELECTED_FILL,
-  PLOT_STATUS_FILL,
-  PLOT_STATUS_LABEL,
-} from './plot-colors';
+import { PLOT_SELECTED_FILL, PLOT_STATUS_FILL, PLOT_STATUS_LABEL } from './plot-colors';
 import type { PlotStatus } from './plot-types';
 
 export interface PlotLegendProps {

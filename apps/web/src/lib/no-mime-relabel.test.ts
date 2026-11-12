@@ -56,7 +56,10 @@ describe('photo type coercion', () => {
     // got back; nothing may FORCE one onto a file the browser described.
     const offenders = sourceFiles(SRC).filter((file) => {
       const text = codeOnly(readFileSync(file, 'utf8'));
-      return /mimeType:\s*'image\/jpeg'\s*\?\?/.test(text) || /:\s*'image\/jpeg';?\s*\/\/ fallback/.test(text);
+      return (
+        /mimeType:\s*'image\/jpeg'\s*\?\?/.test(text) ||
+        /:\s*'image\/jpeg';?\s*\/\/ fallback/.test(text)
+      );
     });
     expect(offenders).toEqual([]);
   });

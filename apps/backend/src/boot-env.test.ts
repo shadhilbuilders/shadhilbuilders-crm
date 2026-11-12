@@ -129,9 +129,7 @@ describe('assertBootEnv - URL + format checks', () => {
       assertBootEnv(env);
       expect.fail('should have thrown');
     } catch (err) {
-      expect((err as BootEnvError).issues.join('\n')).toMatch(
-        /BETTER_AUTH_URL: not a valid URL/,
-      );
+      expect((err as BootEnvError).issues.join('\n')).toMatch(/BETTER_AUTH_URL: not a valid URL/);
     }
   });
 
@@ -166,9 +164,7 @@ describe('assertBootEnv - URL + format checks', () => {
       assertBootEnv(env);
       expect.fail('should have thrown');
     } catch (err) {
-      expect((err as BootEnvError).issues.join('\n')).toMatch(
-        /API_PORT: not a positive integer/,
-      );
+      expect((err as BootEnvError).issues.join('\n')).toMatch(/API_PORT: not a positive integer/);
     }
   });
 
@@ -178,9 +174,7 @@ describe('assertBootEnv - URL + format checks', () => {
       assertBootEnv(env);
       expect.fail('should have thrown');
     } catch (err) {
-      expect((err as BootEnvError).issues.join('\n')).toMatch(
-        /API_PORT: not a positive integer/,
-      );
+      expect((err as BootEnvError).issues.join('\n')).toMatch(/API_PORT: not a positive integer/);
     }
   });
 });

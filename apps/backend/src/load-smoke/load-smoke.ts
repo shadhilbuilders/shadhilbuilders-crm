@@ -61,10 +61,14 @@ type Endpoint = {
 };
 
 const ENDPOINTS: Endpoint[] = [
-  { name: 'leads',          path: '/leads',                              concurrency: DEFAULT_CONCURRENCY },
-  { name: 'notifications',  path: '/notifications?unreadOnly=false',     concurrency: DEFAULT_CONCURRENCY },
-  { name: 'bookings',       path: '/bookings',                           concurrency: DEFAULT_CONCURRENCY },
-  { name: 'audit',          path: '/audit?limit=50',                     concurrency: 50 },
+  { name: 'leads', path: '/leads', concurrency: DEFAULT_CONCURRENCY },
+  {
+    name: 'notifications',
+    path: '/notifications?unreadOnly=false',
+    concurrency: DEFAULT_CONCURRENCY,
+  },
+  { name: 'bookings', path: '/bookings', concurrency: DEFAULT_CONCURRENCY },
+  { name: 'audit', path: '/audit?limit=50', concurrency: 50 },
 ];
 
 type Sample = {
@@ -109,9 +113,7 @@ async function signIn(): Promise<string> {
 async function ping(url: string, headers: Record<string, string>): Promise<void> {
   const res = await fetch(url, { headers });
   if (!res.ok) {
-    throw new Error(
-      `preflight ping failed: ${res.status} ${res.statusText} for ${url}`,
-    );
+    throw new Error(`preflight ping failed: ${res.status} ${res.statusText} for ${url}`);
   }
   await res.body?.cancel();
 }
@@ -193,7 +195,12 @@ function summarise(samples: Sample[]): {
 async function runEndpoint(
   ep: Endpoint,
   cookie: string,
-): Promise<{ ep: Endpoint; stats: ReturnType<typeof summarise>; samples: Sample[]; wallMs: number }> {
+): Promise<{
+  ep: Endpoint;
+  stats: ReturnType<typeof summarise>;
+  samples: Sample[];
+  wallMs: number;
+}> {
   const headers = {
     Cookie: cookie,
     'X-Load-Smoke': '1',
@@ -280,7 +287,7 @@ function parseCli(): { failFast: boolean; only?: string } {
   const { values } = parseArgs({
     options: {
       'fail-fast': { type: 'boolean', default: false },
-      'only': { type: 'string' },
+      only: { type: 'string' },
     },
     strict: false,
     allowPositionals: true,
@@ -308,7 +315,9 @@ async function main(): Promise<number> {
   try {
     await ping(`${WEB_ORIGIN}/api/bff${ENDPOINTS[0]!.path}`, { Cookie: cookie });
   } catch (err) {
-    console.error(`\nFATAL: preflight on /api/bff${ENDPOINTS[0]!.path} failed: ${(err as Error).message}\n`);
+    console.error(
+      `\nFATAL: preflight on /api/bff${ENDPOINTS[0]!.path} failed: ${(err as Error).message}\n`,
+    );
     return 1;
   }
 

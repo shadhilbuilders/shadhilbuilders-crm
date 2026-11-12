@@ -7,7 +7,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { withRlsContext, rlsContextFrom } from '@shadhil/database';
 import type { PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { Organization, OrganizationSettings, UpdateOrganizationSettings } from '@shadhil/api-types';
+import type {
+  Organization,
+  OrganizationSettings,
+  UpdateOrganizationSettings,
+} from '@shadhil/api-types';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -17,9 +21,7 @@ export class OrganizationsService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -29,9 +31,7 @@ export class OrganizationsService {
    * List the orgs the caller can access (id + slug). Used to resolve an
    * id-keyed session back to a slug for href building.
    */
-  async list(
-    actor: JwtPayload,
-  ): Promise<Array<{ id: string; name: string; slug: string }>> {
+  async list(actor: JwtPayload): Promise<Array<{ id: string; name: string; slug: string }>> {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const rows = await tx.organization.findMany({
         select: { id: true, name: true, slug: true },

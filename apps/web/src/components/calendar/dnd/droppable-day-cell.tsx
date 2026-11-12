@@ -29,10 +29,7 @@ export function DroppableDayCell({ cell, children }: DroppableDayCellProps) {
         const eventStartDate = parseISO(droppedEvent.startDate);
         const eventEndDate = parseISO(droppedEvent.endDate);
 
-        const eventDurationMs = differenceInMilliseconds(
-          eventEndDate,
-          eventStartDate,
-        );
+        const eventDurationMs = differenceInMilliseconds(eventEndDate, eventStartDate);
 
         const newStartDate = new Date(cell.date);
         newStartDate.setHours(

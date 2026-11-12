@@ -54,14 +54,7 @@ const DIST_DIR = join(PKG_DIR, 'dist');
 // All 6 source files in src/ that should be emitted to dist/.
 // Matches the `exports` map subpaths: "." (auth, env, index, jwt, types)
 // and "./auth-client" (auth-client).
-const EXPECTED_JS = [
-  'auth-client.js',
-  'auth.js',
-  'env.js',
-  'index.js',
-  'jwt.js',
-  'types.js',
-];
+const EXPECTED_JS = ['auth-client.js', 'auth.js', 'env.js', 'index.js', 'jwt.js', 'types.js'];
 
 function run(cmd: string, cwd: string = REPO_ROOT): string {
   return execSync(cmd, {
@@ -121,9 +114,7 @@ function classifyWatchProcesses(): {
       const pid = Number(match[1]);
       const args = match[2];
       if (!/tsc.*tsconfig\.build\.json.*--watch/.test(args)) continue;
-      (hasLiveDevAncestor(pid, parents) ? devOwned : leaked).push(
-        line.trim(),
-      );
+      (hasLiveDevAncestor(pid, parents) ? devOwned : leaked).push(line.trim());
     }
   } catch {
     /* no ps -> nothing known */

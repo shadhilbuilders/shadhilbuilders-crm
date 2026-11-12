@@ -38,11 +38,7 @@ const RegisterFormSchema = z.object({
     .trim()
     .min(2, 'Organization name must be at least 2 characters')
     .max(120, 'Organization name is too long'),
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Name is required')
-    .max(120, 'Name is too long'),
+  name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
   email: z
     .email({ error: 'Enter a valid email address' })
     .trim()
@@ -106,9 +102,7 @@ export function RegisterForm() {
 
     if (error) {
       // Generic: never reveal whether the email exists or why it failed.
-      toast.error(
-        typeof error === 'string' ? error : error.message ?? 'Registration failed.',
-      );
+      toast.error(typeof error === 'string' ? error : (error.message ?? 'Registration failed.'));
       setPending(false);
       return;
     }

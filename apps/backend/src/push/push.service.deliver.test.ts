@@ -39,7 +39,11 @@ vi.mock('@shadhil/database', () => ({
 import { PushService } from './push.service';
 
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
-const PAYLOAD = { title: 'New photos for A-101', body: 'Plinth November 2026', url: '/portal?photo=p1' };
+const PAYLOAD = {
+  title: 'New photos for A-101',
+  body: 'Plinth November 2026',
+  url: '/portal?photo=p1',
+};
 const SUB = {
   endpoint: 'https://push.example/abc',
   p256dh: 'pkey',
@@ -89,11 +93,15 @@ describe('PushService delivery contract', () => {
     const n = await enabledService().sendToUsers(ORG, ['cust-1'], PAYLOAD);
 
     expect(n).toBe(1); // the subscription was attempted
-    expect(mocks.tx.pushSubscription.delete).toHaveBeenCalledWith({ where: { endpoint: SUB.endpoint } });
+    expect(mocks.tx.pushSubscription.delete).toHaveBeenCalledWith({
+      where: { endpoint: SUB.endpoint },
+    });
   });
 
   it('protects= a 404 is treated the same as 410 (the other expiry signal)', async () => {
-    mocks.sendNotification.mockRejectedValue(Object.assign(new Error('missing'), { statusCode: 404 }));
+    mocks.sendNotification.mockRejectedValue(
+      Object.assign(new Error('missing'), { statusCode: 404 }),
+    );
 
     await enabledService().sendToUsers(ORG, ['cust-1'], PAYLOAD);
 
@@ -127,7 +135,11 @@ describe('PushService delivery contract', () => {
     delete process.env.VAPID_PUBLIC_KEY;
     delete process.env.VAPID_PRIVATE_KEY;
     try {
-      const n = await new PushService({ $client: {} } as never).sendToUsers(ORG, ['cust-1'], PAYLOAD);
+      const n = await new PushService({ $client: {} } as never).sendToUsers(
+        ORG,
+        ['cust-1'],
+        PAYLOAD,
+      );
       expect(n).toBe(0);
       expect(mocks.sendNotification).not.toHaveBeenCalled();
     } finally {

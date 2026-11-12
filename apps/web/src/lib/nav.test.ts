@@ -171,9 +171,7 @@ describe('lib/nav', () => {
       expect(hrefs).toContain('/admin/audit');
       expect(hrefs).toContain('/admin/feedback');
       expect(hrefs).toContain('/admin/whatsapp-unknown-contacts');
-      const overview = items.find(
-        (i) => i.href === '/admin/overview' && i.group === 'admin',
-      );
+      const overview = items.find((i) => i.href === '/admin/overview' && i.group === 'admin');
       expect(overview?.scoped).toBe(false);
     });
 
@@ -241,13 +239,31 @@ describe('lib/nav', () => {
       const work = '/shadhil-builders/projects/metro-heights/dashboard';
       it('shows only inside /admin/* for OWNER/ADMIN', () => {
         for (const role of ['OWNER', 'ADMIN'] as const) {
-          expect(employeeLauncherHrefFor(role, '/shadhil-builders/admin/users', 'shadhil-builders', work)).toBe(work);
-          expect(employeeLauncherHrefFor(role, '/shadhil-builders/projects/x/leads', 'shadhil-builders', work)).toBeNull();
+          expect(
+            employeeLauncherHrefFor(
+              role,
+              '/shadhil-builders/admin/users',
+              'shadhil-builders',
+              work,
+            ),
+          ).toBe(work);
+          expect(
+            employeeLauncherHrefFor(
+              role,
+              '/shadhil-builders/projects/x/leads',
+              'shadhil-builders',
+              work,
+            ),
+          ).toBeNull();
         }
       });
       it('hides for non-admin roles and unresolved slug', () => {
-        expect(employeeLauncherHrefFor('MANAGER', '/shadhil-builders/admin', 'shadhil-builders', work)).toBeNull();
-        expect(employeeLauncherHrefFor(undefined, '/shadhil-builders/admin', 'shadhil-builders', work)).toBeNull();
+        expect(
+          employeeLauncherHrefFor('MANAGER', '/shadhil-builders/admin', 'shadhil-builders', work),
+        ).toBeNull();
+        expect(
+          employeeLauncherHrefFor(undefined, '/shadhil-builders/admin', 'shadhil-builders', work),
+        ).toBeNull();
         expect(employeeLauncherHrefFor('OWNER', '/admin', null, work)).toBeNull();
       });
     });
@@ -270,15 +286,29 @@ describe('lib/nav', () => {
       it('shows the row for OWNER/ADMIN on a work route with a resolved slug', () => {
         for (const role of ['OWNER', 'ADMIN'] as const) {
           expect(
-            adminLauncherHrefFor(role, '/shadhil-builders/projects/metro-heights/leads', 'shadhil-builders'),
+            adminLauncherHrefFor(
+              role,
+              '/shadhil-builders/projects/metro-heights/leads',
+              'shadhil-builders',
+            ),
           ).toBe('/shadhil-builders/admin');
         }
       });
 
       it('hides the row for every non-admin role', () => {
-        for (const role of ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const) {
+        for (const role of [
+          'MANAGER',
+          'TELECALLER',
+          'SALES_EXEC',
+          'ENGINEER',
+          'CUSTOMER',
+        ] as const) {
           expect(
-            adminLauncherHrefFor(role, '/shadhil-builders/projects/metro-heights/leads', 'shadhil-builders'),
+            adminLauncherHrefFor(
+              role,
+              '/shadhil-builders/projects/metro-heights/leads',
+              'shadhil-builders',
+            ),
           ).toBeNull();
         }
         // No session yet: no row (same fail-closed default as the nav).
@@ -286,7 +316,9 @@ describe('lib/nav', () => {
       });
 
       it('hides the row inside /admin/* - "Switch Employee" is the matching switch there', () => {
-        expect(adminLauncherHrefFor('OWNER', '/shadhil-builders/admin', 'shadhil-builders')).toBeNull();
+        expect(
+          adminLauncherHrefFor('OWNER', '/shadhil-builders/admin', 'shadhil-builders'),
+        ).toBeNull();
         expect(
           adminLauncherHrefFor('OWNER', '/shadhil-builders/admin/users', 'shadhil-builders'),
         ).toBeNull();

@@ -15,9 +15,7 @@ import { PORTAL_NAV_ITEMS, PortalNav } from './portal-nav';
 
 /** PortalNav renders PortalRefreshButton, which needs a query client. */
 const render = (ui: React.ReactElement): string =>
-  renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
-  );
+  renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 describe('PortalNav', () => {
   it('is <nav aria-label="Portal"> with the iOS safe-area inset', () => {
@@ -67,7 +65,10 @@ describe('PortalNav', () => {
   });
 
   it('renders extra links straight from the array (slice 3 needs no rewrite)', () => {
-    const items = [...PORTAL_NAV_ITEMS, { href: '/portal/payments', label: 'Payments', icon: null }];
+    const items = [
+      ...PORTAL_NAV_ITEMS,
+      { href: '/portal/payments', label: 'Payments', icon: null },
+    ];
     const html = render(<PortalNav items={items} />);
     expect(html.match(/data-qa="portal-nav-item"/g)).toHaveLength(1);
     expect(html).toContain('Payments');

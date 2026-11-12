@@ -167,10 +167,7 @@ export function getChartShape(hint: ChartDataHint | undefined): ReactNode {
     default:
       // 5 bars - the canonical bar-chart shape. T32 pins this count.
       return (
-        <div
-          className="flex h-32 items-end justify-around gap-2 px-2"
-          data-qa="skeleton-bar"
-        >
+        <div className="flex h-32 items-end justify-around gap-2 px-2" data-qa="skeleton-bar">
           {[60, 80, 45, 90, 70].map((height, index) => (
             <div
               key={index}
@@ -207,12 +204,8 @@ export function Skeleton({
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
             {Array.from({ length: c }).map((_, index) => (
               <div key={index} className="space-y-2">
-                <LibSkeleton
-                  className={SKELETON_SHAPES.kpi.cells.label}
-                />
-                <LibSkeleton
-                  className={SKELETON_SHAPES.kpi.cells.value}
-                />
+                <LibSkeleton className={SKELETON_SHAPES.kpi.cells.label} />
+                <LibSkeleton className={SKELETON_SHAPES.kpi.cells.value} />
               </div>
             ))}
           </div>
@@ -233,24 +226,16 @@ export function Skeleton({
 
       case 'table':
         return (
-          <div
-            className="border-border overflow-x-auto rounded-lg border"
-            data-qa="skeleton-table"
-          >
+          <div className="border-border overflow-x-auto rounded-lg border" data-qa="skeleton-table">
             <div className="space-y-0">
               {Array.from({ length: c }).map((_, index) => (
                 <div
                   key={index}
                   className="border-border flex gap-4 border-b px-4 py-3 last:border-b-0"
                 >
-                  {Array.from({ length: SKELETON_SHAPES.table.cols }).map(
-                    (_, colIndex) => (
-                      <LibSkeleton
-                        key={colIndex}
-                        className={`${SKELETON_SHAPES.table.row} flex-1`}
-                      />
-                    ),
-                  )}
+                  {Array.from({ length: SKELETON_SHAPES.table.cols }).map((_, colIndex) => (
+                    <LibSkeleton key={colIndex} className={`${SKELETON_SHAPES.table.row} flex-1`} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -261,19 +246,14 @@ export function Skeleton({
         return (
           <div className="space-y-3" data-qa="skeleton-list">
             {isOffline ? (
-              <p
-                className="text-muted-foreground text-xs"
-                data-qa="skeleton-offline-hint"
-              >
+              <p className="text-muted-foreground text-xs" data-qa="skeleton-offline-hint">
                 Will sync when online
               </p>
             ) : null}
             <ul className="space-y-3">
               {Array.from({ length: c }).map((_, index) => (
                 <li key={index} className="flex items-center gap-3">
-                  <LibSkeleton
-                    className={`${SKELETON_SHAPES.list.item.avatar} rounded-full`}
-                  />
+                  <LibSkeleton className={`${SKELETON_SHAPES.list.item.avatar} rounded-full`} />
                   <div className="flex-1 space-y-2">
                     <LibSkeleton className="h-3 w-3/4" />
                     <LibSkeleton className="h-3 w-1/2" />
@@ -285,19 +265,12 @@ export function Skeleton({
         );
 
       case 'card':
-        return (
-          <LibSkeleton className={SKELETON_SHAPES.card.shape} />
-        );
+        return <LibSkeleton className={SKELETON_SHAPES.card.shape} />;
 
       case 'user':
         return (
-          <div
-            className="flex items-center gap-3"
-            data-qa="skeleton-user"
-          >
-            <LibSkeleton
-              className={`${SKELETON_SHAPES.user.avatar} rounded-full`}
-            />
+          <div className="flex items-center gap-3" data-qa="skeleton-user">
+            <LibSkeleton className={`${SKELETON_SHAPES.user.avatar} rounded-full`} />
             <div className="flex-1 space-y-2">
               <LibSkeleton className="h-3 w-32" />
               <LibSkeleton className="h-3 w-20" />
@@ -310,9 +283,7 @@ export function Skeleton({
           <ul className="space-y-1" data-qa="skeleton-nav-items">
             {Array.from({ length: c }).map((_, index) => (
               <li key={index} className="flex items-center gap-2 rounded-md p-2">
-                <LibSkeleton
-                  className={`${SKELETON_SHAPES.navItems.icon} shrink-0 rounded-sm`}
-                />
+                <LibSkeleton className={`${SKELETON_SHAPES.navItems.icon} shrink-0 rounded-sm`} />
                 <LibSkeleton className={SKELETON_SHAPES.navItems.label} />
               </li>
             ))}
@@ -336,42 +307,30 @@ export function Skeleton({
             <div className="flex flex-wrap items-center gap-2">
               <LibSkeleton className={SKELETON_SHAPES.users.toolbar.search} />
               <LibSkeleton className={SKELETON_SHAPES.users.toolbar.filter} />
-              <LibSkeleton
-                className={`${SKELETON_SHAPES.users.toolbar.create} ml-auto`}
-              />
+              <LibSkeleton className={`${SKELETON_SHAPES.users.toolbar.create} ml-auto`} />
             </div>
             {/* DataTable: body */}
             <div
               className="border-border overflow-x-auto rounded-lg border"
               data-qa="skeleton-users-table"
             >
-              {Array.from({ length: SKELETON_SHAPES.users.rows }).map(
-                (_, index) => (
-                  <div
-                    key={index}
-                    className="border-border flex gap-4 border-b px-4 py-3 last:border-b-0"
-                  >
-                    {Array.from({ length: SKELETON_SHAPES.users.cols }).map(
-                      (_, colIndex) => (
-                        <LibSkeleton
-                          key={colIndex}
-                          className="h-10 flex-1"
-                        />
-                      ),
-                    )}
-                  </div>
-                ),
-              )}
+              {Array.from({ length: SKELETON_SHAPES.users.rows }).map((_, index) => (
+                <div
+                  key={index}
+                  className="border-border flex gap-4 border-b px-4 py-3 last:border-b-0"
+                >
+                  {Array.from({ length: SKELETON_SHAPES.users.cols }).map((_, colIndex) => (
+                    <LibSkeleton key={colIndex} className="h-10 flex-1" />
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         );
 
       case 'projectSwitcher':
         return (
-          <div
-            className="flex items-center gap-2"
-            data-qa="skeleton-project-switcher"
-          >
+          <div className="flex items-center gap-2" data-qa="skeleton-project-switcher">
             <LibSkeleton
               className={`${SKELETON_SHAPES.projectSwitcher.icon} shrink-0 rounded-lg`}
             />
@@ -396,32 +355,24 @@ export function Skeleton({
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
             data-qa="skeleton-overview"
           >
-            {Array.from({ length: SKELETON_SHAPES.overview.count }).map(
-              (_, index) => (
-                <div
-                  key={index}
-                  className={`bg-card flex flex-col gap-4 p-4 ${SKELETON_SHAPES.overview.card}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-2">
-                      <LibSkeleton
-                        className={SKELETON_SHAPES.overview.label}
-                      />
-                      <LibSkeleton
-                        className={SKELETON_SHAPES.overview.value}
-                      />
-                    </div>
-                    <LibSkeleton
-                      className={`${SKELETON_SHAPES.overview.badge} rounded-full`}
-                    />
+            {Array.from({ length: SKELETON_SHAPES.overview.count }).map((_, index) => (
+              <div
+                key={index}
+                className={`bg-card flex flex-col gap-4 p-4 ${SKELETON_SHAPES.overview.card}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-2">
+                    <LibSkeleton className={SKELETON_SHAPES.overview.label} />
+                    <LibSkeleton className={SKELETON_SHAPES.overview.value} />
                   </div>
-                  <div className="mt-auto space-y-2">
-                    <LibSkeleton className={SKELETON_SHAPES.overview.footer} />
-                    <LibSkeleton className="h-3 w-1/2" />
-                  </div>
+                  <LibSkeleton className={`${SKELETON_SHAPES.overview.badge} rounded-full`} />
                 </div>
-              ),
-            )}
+                <div className="mt-auto space-y-2">
+                  <LibSkeleton className={SKELETON_SHAPES.overview.footer} />
+                  <LibSkeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
           </div>
         );
 

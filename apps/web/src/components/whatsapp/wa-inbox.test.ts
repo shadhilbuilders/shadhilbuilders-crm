@@ -51,9 +51,7 @@ describe('replyWindowState - the 24h WhatsApp reply window', () => {
 
 describe('conversationPreview - the one-line list preview', () => {
   it('leaves an inbound message unprefixed', () => {
-    expect(conversationPreview('Is the villa available?', 'IN')).toBe(
-      'Is the villa available?',
-    );
+    expect(conversationPreview('Is the villa available?', 'IN')).toBe('Is the villa available?');
   });
 
   it('prefixes our own last message with "You:" so direction is readable', () => {
@@ -114,9 +112,7 @@ describe('toSelection - API row -> chat panel selection', () => {
 
   it('builds the full lead href when the project slug is known', () => {
     const sel = toSelection(row, 'shadhil-builders', 'shadhil-metro-heights');
-    expect(sel.leadHref).toBe(
-      '/shadhil-builders/projects/shadhil-metro-heights/leads/lead-1',
-    );
+    expect(sel.leadHref).toBe('/shadhil-builders/projects/shadhil-metro-heights/leads/lead-1');
   });
 
   it('never links a CONTACT thread to a lead page', () => {

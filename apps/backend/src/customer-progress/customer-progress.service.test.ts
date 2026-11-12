@@ -97,11 +97,15 @@ describe('cursor codec', () => {
       decodeCursor(Buffer.from('{"takenAt":"not-a-date","id":"x"}', 'utf8').toString('base64url')),
     ).toBeNull();
     expect(
-      decodeCursor(Buffer.from('{"takenAt":"2026-13-45T99:99:99Z","id":"x"}', 'utf8').toString('base64url')),
+      decodeCursor(
+        Buffer.from('{"takenAt":"2026-13-45T99:99:99Z","id":"x"}', 'utf8').toString('base64url'),
+      ),
     ).toBeNull();
     // A VALID date still decodes (guard is not over-eager).
     const ok = decodeCursor(
-      Buffer.from('{"takenAt":"2026-11-07T10:00:00.000Z","id":"abc"}', 'utf8').toString('base64url'),
+      Buffer.from('{"takenAt":"2026-11-07T10:00:00.000Z","id":"abc"}', 'utf8').toString(
+        'base64url',
+      ),
     );
     expect(ok?.id).toBe('abc');
     expect(ok?.takenAt.toISOString()).toBe('2026-11-07T10:00:00.000Z');
@@ -143,10 +147,16 @@ function makeUploadService() {
   const client = {
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
-    unit: { findFirst: vi.fn().mockResolvedValue({ id: 'unit-1', unitNumber: 'A-101', phase: { projectId: 'proj-1' } }) },
+    unit: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue({ id: 'unit-1', unitNumber: 'A-101', phase: { projectId: 'proj-1' } }),
+    },
     phase: { findFirst: vi.fn().mockResolvedValue({ name: 'Phase A' }) },
     progressPhoto: {
-      create: vi.fn().mockResolvedValue({ id: 'photo-1', createdAt: new Date('2026-11-06T10:00:00Z') }),
+      create: vi
+        .fn()
+        .mockResolvedValue({ id: 'photo-1', createdAt: new Date('2026-11-06T10:00:00Z') }),
       // 2026-11-08: upload() counts today's photos for the unit so the staff
       // notification fires once per unit per day, not once per photo.
       count: vi.fn().mockResolvedValue(0),
@@ -199,7 +209,11 @@ describe('upload() - the stored MIME comes from the bytes', () => {
 
   it('keeps the declared type when it matches the bytes', async () => {
     const { service } = makeUploadService();
-    const dto: UploadPhotoDto = { ...UPLOAD_DTO, mimeType: 'image/png', base64: PNG_BYTES.toString('base64') };
+    const dto: UploadPhotoDto = {
+      ...UPLOAD_DTO,
+      mimeType: 'image/png',
+      base64: PNG_BYTES.toString('base64'),
+    };
 
     const result = await service.upload(makeUploadActor(), 'unit-1', dto);
 
@@ -208,9 +222,14 @@ describe('upload() - the stored MIME comes from the bytes', () => {
 
   it('rejects an unidentifiable buffer instead of storing it', async () => {
     const { service, save } = makeUploadService();
-    const dto = { ...UPLOAD_DTO, base64: Buffer.from('definitely not an image').toString('base64') };
+    const dto = {
+      ...UPLOAD_DTO,
+      base64: Buffer.from('definitely not an image').toString('base64'),
+    };
 
-    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unrecognised image format/);
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(
+      /Unrecognised image format/,
+    );
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -220,9 +239,15 @@ describe('upload() - the stored MIME comes from the bytes', () => {
       Buffer.from([0x00, 0x00, 0x00, 0x18]),
       Buffer.from('ftypheic', 'binary'),
     ]);
-    const dto: UploadPhotoDto = { ...UPLOAD_DTO, mimeType: 'image/jpeg', base64: heic.toString('base64') };
+    const dto: UploadPhotoDto = {
+      ...UPLOAD_DTO,
+      mimeType: 'image/jpeg',
+      base64: heic.toString('base64'),
+    };
 
-    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/HEIC.*Most Compatible/);
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(
+      /HEIC.*Most Compatible/,
+    );
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -230,7 +255,9 @@ describe('upload() - the stored MIME comes from the bytes', () => {
     const { service, save } = makeUploadService();
     const dto = { ...UPLOAD_DTO, base64: Buffer.from('%PDF-1.7\n').toString('base64') };
 
-    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(/Unsupported image type: application\/pdf/);
+    await expect(service.upload(makeUploadActor(), 'unit-1', dto)).rejects.toThrow(
+      /Unsupported image type: application\/pdf/,
+    );
     expect(save).not.toHaveBeenCalled();
   });
 });
@@ -284,7 +311,10 @@ describe('upload() - PortalNotifier is best effort (D8)', () => {
       } as never,
     );
 
-    await svc.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+    await svc.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
 
     // The row committed, so the bytes must stay.
     expect(storageDelete).not.toHaveBeenCalled();
@@ -293,7 +323,10 @@ describe('upload() - PortalNotifier is best effort (D8)', () => {
   it('passes the committed photo + unit context to the notifier', async () => {
     const { service, notifier } = withNotifier(async () => 1);
 
-    await service.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+    await service.upload(makeUploadActor(), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
 
     expect(notifier.notifyNewPhoto).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -310,7 +343,10 @@ describe('upload() - PortalNotifier is best effort (D8)', () => {
     client.progressPhoto.create.mockRejectedValueOnce(new Error('db down'));
 
     await expect(
-      service.upload(makeUploadActor(), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(makeUploadActor(), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toThrow(/db down/);
 
     expect(notifier.notifyNewPhoto).not.toHaveBeenCalled();
@@ -516,7 +552,9 @@ describe('UpdatePhotoSchema - partial writes (stage and caption are independent)
   });
 
   it('accepts both together', () => {
-    expect(UpdatePhotoSchema.safeParse({ caption: 'Corrected', stage: 'READY' }).success).toBe(true);
+    expect(UpdatePhotoSchema.safeParse({ caption: 'Corrected', stage: 'READY' }).success).toBe(
+      true,
+    );
   });
 
   it('rejects neither, so a no-op PATCH is a caller bug, not a silent touch', () => {
@@ -534,10 +572,7 @@ describe('UpdatePhotoSchema - partial writes (stage and caption are independent)
 // caller. These pin the four branches directly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function makeAccessService(over: {
-  unit?: unknown;
-  member?: unknown;
-}) {
+function makeAccessService(over: { unit?: unknown; member?: unknown }) {
   const built = makeUploadService();
   if ('unit' in over) built.client.unit.findFirst.mockResolvedValue(over.unit);
   const projectTeamFindFirst = vi.fn().mockResolvedValue(over.member ?? null);
@@ -564,7 +599,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
       member: { projectId: 'proj-1' },
     });
     await expect(
-      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('ENGINEER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -574,7 +612,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
       member: { projectId: 'proj-1' },
     });
     await expect(
-      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('ENGINEER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -584,14 +625,20 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
       member: { projectId: 'proj-1' },
     });
     await expect(
-      service.upload(actorAs('MANAGER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('MANAGER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).resolves.toBeDefined();
   });
 
   it('ADMIN reaches any org unit without a project-team lookup', async () => {
     const { service, projectTeamFindFirst } = makeAccessService({ unit: UNIT });
     await expect(
-      service.upload(actorAs('ADMIN'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('ADMIN'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).resolves.toBeDefined();
     expect(projectTeamFindFirst).not.toHaveBeenCalled();
   });
@@ -600,7 +647,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
     for (const role of STAFF_ROLES) {
       const { service } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
       await expect(
-        service.upload(actorAs(role), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+        service.upload(actorAs(role), 'unit-1', {
+          ...UPLOAD_DTO,
+          base64: PNG_BYTES.toString('base64'),
+        }),
       ).resolves.toBeDefined();
     }
   });
@@ -610,7 +660,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
     for (const role of STAFF_ROLES) {
       const { service } = makeAccessService({ unit: UNIT, member: null });
       await expect(
-        service.upload(actorAs(role), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+        service.upload(actorAs(role), 'unit-1', {
+          ...UPLOAD_DTO,
+          base64: PNG_BYTES.toString('base64'),
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     }
   });
@@ -618,13 +671,19 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
   it('fails_when= an unknown unit reports 403 instead of 404 (404 never confirms a foreign unit)', async () => {
     const { service } = makeAccessService({ unit: null });
     await expect(
-      service.upload(actorAs('ENGINEER'), 'unit-x', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('ENGINEER'), 'unit-x', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('fails_when= the unit lookup is not org-scoped (cross-org read)', async () => {
     const { service, client } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
-    await service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') });
+    await service.upload(actorAs('ENGINEER'), 'unit-1', {
+      ...UPLOAD_DTO,
+      base64: PNG_BYTES.toString('base64'),
+    });
     expect(client.unit.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ organizationId: 'ceid01lpfe1esm8jwsxid41k28' }),
@@ -635,7 +694,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
   it('fails_when= the membership lookup ignores soft-deleted teams', async () => {
     const { service, projectTeamFindFirst } = makeAccessService({ unit: UNIT, member: null });
     await expect(
-      service.upload(actorAs('ENGINEER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('ENGINEER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(projectTeamFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -653,7 +715,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
   it('fails_when= a CUSTOMER can reach the staff upload route', async () => {
     const { service } = makeAccessService({ unit: null, member: { projectId: 'proj-1' } });
     await expect(
-      service.upload(actorAs('CUSTOMER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('CUSTOMER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -663,7 +728,10 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
     // membership path that ENGINEER/MANAGER/SALES_EXEC/TELECALLER use.
     const { service } = makeAccessService({ unit: UNIT, member: { projectId: 'proj-1' } });
     await expect(
-      service.upload(actorAs('CUSTOMER'), 'unit-1', { ...UPLOAD_DTO, base64: PNG_BYTES.toString('base64') }),
+      service.upload(actorAs('CUSTOMER'), 'unit-1', {
+        ...UPLOAD_DTO,
+        base64: PNG_BYTES.toString('base64'),
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
@@ -678,7 +746,9 @@ describe('assertUnitAccess - the service returns a typed status, not a silent em
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makePhotoLeadService(opts: { staffed: boolean }) {
-  const projectTeamFindFirst = vi.fn().mockResolvedValue(opts.staffed ? { projectId: 'proj-1' } : null);
+  const projectTeamFindFirst = vi
+    .fn()
+    .mockResolvedValue(opts.staffed ? { projectId: 'proj-1' } : null);
   const projectStaffRoleUpsert = vi.fn().mockResolvedValue({});
   const projectStaffRoleDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
   const auditCreate = vi.fn().mockResolvedValue({});
@@ -709,7 +779,9 @@ describe('setPhotoLead() - staffing gate', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('GRANT is refused when the target is on no team linked to the project', async () => {
-    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({ staffed: false });
+    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({
+      staffed: false,
+    });
 
     await expect(
       service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: true }),
@@ -721,9 +793,13 @@ describe('setPhotoLead() - staffing gate', () => {
   });
 
   it('GRANT succeeds when the target is staffed on the project', async () => {
-    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({ staffed: true });
+    const { service, projectStaffRoleUpsert, auditCreate } = makePhotoLeadService({
+      staffed: true,
+    });
 
-    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: true });
+    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', {
+      photoLead: true,
+    });
 
     expect(res).toEqual({ userId: 'eng-1', projectId: 'proj-1', photoLead: true });
     expect(projectStaffRoleUpsert).toHaveBeenCalled();
@@ -735,9 +811,13 @@ describe('setPhotoLead() - staffing gate', () => {
   });
 
   it('REVOKE still works for someone no longer staffed (stale grant must be clearable)', async () => {
-    const { service, projectStaffRoleDeleteMany, auditCreate } = makePhotoLeadService({ staffed: false });
+    const { service, projectStaffRoleDeleteMany, auditCreate } = makePhotoLeadService({
+      staffed: false,
+    });
 
-    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', { photoLead: false });
+    const res = await service.setPhotoLead(makeUploadActor(), 'proj-1', 'eng-1', {
+      photoLead: false,
+    });
 
     expect(res.photoLead).toBe(false);
     // The staffing predicate is a GRANT rule only: removing someone from a

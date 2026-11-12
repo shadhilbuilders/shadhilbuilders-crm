@@ -145,7 +145,9 @@ describe('PortalMilestones', () => {
   it('says "was due" for a passed target and never the word overdue', () => {
     const html = renderToStaticMarkup(
       <PortalMilestones
-        milestones={[{ id: 'x', name: 'Roof', targetDate: '2026-10-01T00:00:00Z', completedAt: null }]}
+        milestones={[
+          { id: 'x', name: 'Roof', targetDate: '2026-10-01T00:00:00Z', completedAt: null },
+        ]}
         now={NOW}
       />,
     );
@@ -153,7 +155,7 @@ describe('PortalMilestones', () => {
     expect(html.toLowerCase()).not.toContain('overdue');
   });
 
-  it('states every row\'s date status, including a missing target', () => {
+  it("states every row's date status, including a missing target", () => {
     const html = renderToStaticMarkup(
       <PortalMilestones
         milestones={[{ id: 'x', name: 'Roof', targetDate: null, completedAt: null }]}
@@ -204,24 +206,34 @@ describe('metaCopy', () => {
   const base = { id: 'x', name: 'Roof' };
   it('states reached with its date', () => {
     expect(
-      metaCopy('reached', { ...base, targetDate: null, completedAt: '2026-10-01T00:00:00Z' }, false),
+      metaCopy(
+        'reached',
+        { ...base, targetDate: null, completedAt: '2026-10-01T00:00:00Z' },
+        false,
+      ),
     ).toBe('Reached 1 Oct 2026');
   });
   it('leads the next row with "Next", and names the target', () => {
-    expect(metaCopy('next', { ...base, targetDate: '2026-12-20T00:00:00Z', completedAt: null }, false)).toBe(
-      'Next · Target 20 Dec 2026',
-    );
+    expect(
+      metaCopy('next', { ...base, targetDate: '2026-12-20T00:00:00Z', completedAt: null }, false),
+    ).toBe('Next · Target 20 Dec 2026');
   });
   it('states a passed target as "Was due", not overdue', () => {
-    expect(metaCopy('upcoming', { ...base, targetDate: '2026-10-01T00:00:00Z', completedAt: null }, true)).toBe(
-      'Was due 1 Oct 2026',
-    );
+    expect(
+      metaCopy(
+        'upcoming',
+        { ...base, targetDate: '2026-10-01T00:00:00Z', completedAt: null },
+        true,
+      ),
+    ).toBe('Was due 1 Oct 2026');
   });
   it('says the target is unset rather than printing a dash', () => {
     expect(metaCopy('next', { ...base, targetDate: null, completedAt: null }, false)).toBe(
       'Next · Target not set',
     );
-    expect(metaCopy('upcoming', { ...base, targetDate: null, completedAt: null }, false)).toBe('Target not set');
+    expect(metaCopy('upcoming', { ...base, targetDate: null, completedAt: null }, false)).toBe(
+      'Target not set',
+    );
   });
 });
 

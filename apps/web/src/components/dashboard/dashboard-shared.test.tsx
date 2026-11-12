@@ -26,7 +26,12 @@
 // The real-browser axe audit (src/test/e2e/dashboard-audit.spec.ts) proves the
 // computed colours pass; these tests pin the class-level contract cheaply.
 
-import { LuCalendarCheck, LuListChecks, LuPhoneMissed, LuUserPlus } from '@paalstack/react-icons/lu';
+import {
+  LuCalendarCheck,
+  LuListChecks,
+  LuPhoneMissed,
+  LuUserPlus,
+} from '@paalstack/react-icons/lu';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 

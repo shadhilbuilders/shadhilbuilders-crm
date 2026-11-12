@@ -13,7 +13,14 @@
 // a new enum member cannot quietly render as the neutral fallback.
 import { describe, expect, it } from 'vitest';
 
-import { isUpcomingVisit, isUpcomingVisitForLead, isVisitClosed, todaysOpenVisits, toVisitEventMeta, visitStatusColor } from './visit-status';
+import {
+  isUpcomingVisit,
+  isUpcomingVisitForLead,
+  isVisitClosed,
+  todaysOpenVisits,
+  toVisitEventMeta,
+  visitStatusColor,
+} from './visit-status';
 import type { VisitApiRow } from './visit-status';
 
 // The five values of VisitStatus (packages/api-types/src/enums.ts). Duplicated
@@ -195,7 +202,13 @@ describe('isUpcomingVisitForLead', () => {
 });
 
 describe('todaysOpenVisits', () => {
-  const v = (id: string, leadId: string, status: string, leadState: string, scheduledFor: string) => ({
+  const v = (
+    id: string,
+    leadId: string,
+    status: string,
+    leadState: string,
+    scheduledFor: string,
+  ) => ({
     id,
     leadId,
     status,

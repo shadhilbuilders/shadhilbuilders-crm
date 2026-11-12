@@ -83,9 +83,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
       return null;
     }
     if (minLength !== undefined && value.length < minLength) {
-      issues.push(
-        `  - ${name}: must be at least ${minLength} chars (got ${value.length})`,
-      );
+      issues.push(`  - ${name}: must be at least ${minLength} chars (got ${value.length})`);
       return null;
     }
     return value;
@@ -104,21 +102,16 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
     try {
       new URL(BETTER_AUTH_URL);
     } catch {
-      issues.push(
-        `  - BETTER_AUTH_URL: not a valid URL (got "${BETTER_AUTH_URL}")`,
-      );
+      issues.push(`  - BETTER_AUTH_URL: not a valid URL (got "${BETTER_AUTH_URL}")`);
     }
   }
 
   const POOL_MODE = env['POOL_MODE'] ?? '';
   if (POOL_MODE !== 'session') {
-    issues.push(
-      `  - POOL_MODE: must be 'session' for RLS (got "${POOL_MODE || '<unset>'}")`,
-    );
+    issues.push(`  - POOL_MODE: must be 'session' for RLS (got "${POOL_MODE || '<unset>'}")`);
   }
 
-  const CORS_ORIGINS =
-    env['CORS_ORIGINS'] ?? 'http://localhost:3000,http://localhost:8081';
+  const CORS_ORIGINS = env['CORS_ORIGINS'] ?? 'http://localhost:3000,http://localhost:8081';
 
   // T-E2b Telegram alert env vars - ALL OPTIONAL. The alerts module
   // no-ops if any of these are missing (with a one-time warn at boot).
@@ -138,9 +131,7 @@ export function assertBootEnv(env: NodeJS.ProcessEnv = process.env): BootEnv {
   }
   const rawCooldown = env['TELEGRAM_ALERT_COOLDOWN_MS'];
   const TELEGRAM_ALERT_COOLDOWN_MS =
-    rawCooldown === undefined || rawCooldown === ''
-      ? 900_000
-      : Number.parseInt(rawCooldown, 10);
+    rawCooldown === undefined || rawCooldown === '' ? 900_000 : Number.parseInt(rawCooldown, 10);
   if (!Number.isFinite(TELEGRAM_ALERT_COOLDOWN_MS) || TELEGRAM_ALERT_COOLDOWN_MS < 0) {
     issues.push(
       `  - TELEGRAM_ALERT_COOLDOWN_MS: must be a non-negative integer (got "${rawCooldown}")`,

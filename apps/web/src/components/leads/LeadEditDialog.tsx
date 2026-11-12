@@ -132,12 +132,7 @@ export function LeadEditFormBody({
  * Controlled edit dialog. `lead === null` renders nothing (the inbox
  * holds the currently-editing row in state; null = closed).
  */
-export function LeadEditDialog({
-  lead,
-  open,
-  onOpenChange,
-  onSaved,
-}: LeadEditDialogProps) {
+export function LeadEditDialog({ lead, open, onOpenChange, onSaved }: LeadEditDialogProps) {
   const updateLead = useUpdateLead(lead?.id ?? null);
   const pending = updateLead.isPending;
 
@@ -199,7 +194,7 @@ export function LeadEditDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       header={{ title: 'Edit lead', description: "Edit the lead's name, phone, and email." }}
       footer={
         <div className="flex w-full justify-end gap-2">

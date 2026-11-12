@@ -43,9 +43,7 @@ const ID_RE = z.cuid2();
 @ApiBearerAuth('jwt')
 @Controller('projects/:projectId/teams')
 export class ProjectTeamsController {
-  constructor(
-    @Inject(ProjectTeamsService) private readonly projectTeams: ProjectTeamsService,
-  ) {}
+  constructor(@Inject(ProjectTeamsService) private readonly projectTeams: ProjectTeamsService) {}
 
   @Get()
   @ApiOperation({

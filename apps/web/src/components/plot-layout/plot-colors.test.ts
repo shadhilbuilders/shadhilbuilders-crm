@@ -39,11 +39,7 @@ function toHex(channel: number): string {
 
 function rgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 /** CIE L*a*b* from sRGB hex. */
@@ -161,7 +157,7 @@ describe('the status colours are actually distinguishable', () => {
     for (const kind of ['deuteranopia', 'protanopia'] as const) {
       const d = deltaE(
         simulate(PLOT_STATUS_FILL.blocked, kind),
-        simulate(PLOT_STATUS_FILL.booked, kind)
+        simulate(PLOT_STATUS_FILL.booked, kind),
       );
       expect(d).toBeGreaterThan(25);
     }
@@ -171,7 +167,7 @@ describe('the status colours are actually distinguishable', () => {
     for (const kind of ['deuteranopia', 'protanopia'] as const) {
       const d = deltaE(
         simulate(PLOT_STATUS_FILL.blocked, kind),
-        simulate(PLOT_STATUS_FILL.available, kind)
+        simulate(PLOT_STATUS_FILL.available, kind),
       );
       expect(d).toBeGreaterThan(25);
     }
@@ -184,9 +180,9 @@ describe('the plot number is readable on every status fill', () => {
     // large text gets. The number's colour follows its fill: white on the
     // dark green and red, dark ink on the light gold.
     for (const status of STATUSES) {
-      expect(
-        contrast(PLOT_STATUS_FILL[status], PLOT_STATUS_NUMBER[status])
-      ).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(PLOT_STATUS_FILL[status], PLOT_STATUS_NUMBER[status])).toBeGreaterThanOrEqual(
+        4.5,
+      );
     }
   });
 

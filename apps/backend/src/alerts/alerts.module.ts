@@ -74,10 +74,7 @@ export class TelegramService {
     this.token = (opts.botToken ?? '').trim();
     this.chatId = (opts.channelId ?? '').trim();
     this.botName = opts.botName;
-    this.apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.telegram.org').replace(
-      /\/+$/,
-      '',
-    );
+    this.apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.telegram.org').replace(/\/+$/, '');
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.enabled = this.token.length > 0 && this.chatId.length > 0;
     if (!this.enabled) {
@@ -115,9 +112,7 @@ export class TelegramService {
         // Body might be JSON with a description; we don't depend on it,
         // just log enough to debug.
         const body = await res.text().catch(() => '');
-        this.logger.warn(
-          `Telegram sendMessage ${res.status}: ${body.slice(0, 200)}`,
-        );
+        this.logger.warn(`Telegram sendMessage ${res.status}: ${body.slice(0, 200)}`);
         return false;
       }
       return true;
@@ -162,9 +157,8 @@ export class AlertsService {
   private cooldownUntil: number | null = null;
   // Diagnostic: tracks the most recent failure reason for inclusion in
   // the alert body.
-  private lastFailedSample:
-    | { claimed: number; failed: number; lastError: string | null }
-    | null = null;
+  private lastFailedSample: { claimed: number; failed: number; lastError: string | null } | null =
+    null;
 
   constructor(opts: AlertsServiceOptions) {
     this.threshold = Math.max(1, opts.threshold);
@@ -251,9 +245,7 @@ export class AlertsService {
     cooldownRemainingMs: number;
   } {
     const remaining =
-      this.cooldownUntil === null
-        ? 0
-        : Math.max(0, this.cooldownUntil - this.now());
+      this.cooldownUntil === null ? 0 : Math.max(0, this.cooldownUntil - this.now());
     return {
       consecutiveFailedTicks: this.consecutiveFailedTicks,
       cooldownRemainingMs: remaining,
@@ -272,9 +264,7 @@ export class AlertsService {
   private buildAlertText(tick: OutboundTickResult): string {
     const sample = this.lastFailedSample;
     const lines: string[] = [];
-    lines.push(
-      `🚨 *WhatsApp outbound - systematic failure* (${this.environment})`,
-    );
+    lines.push(`🚨 *WhatsApp outbound - systematic failure* (${this.environment})`);
     lines.push('');
     lines.push(
       `\`${this.consecutiveFailedTicks}\` consecutive cron ticks had ` +
@@ -347,9 +337,7 @@ export function buildAlertsService(opts: AlertsModuleOptions): {
         new TelegramService({
           botToken: process.env.TELEGRAM_BOT_TOKEN,
           channelId: process.env.TELEGRAM_CHANNEL_ID,
-          botName:
-            process.env.TELEGRAM_BOT_NAME?.trim() ||
-            'ShadhilCRMAlertsBot',
+          botName: process.env.TELEGRAM_BOT_NAME?.trim() || 'ShadhilCRMAlertsBot',
         }),
     },
     {

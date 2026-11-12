@@ -11,22 +11,14 @@
 
 import { useState } from 'react';
 
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-} from '@paalstack/react-ui';
+import { Badge, Button, Card, CardContent } from '@paalstack/react-ui';
 import { LuRefreshCw, LuSend } from '@paalstack/react-icons/lu';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 
-import {
-  useWhatsAppDelivery,
-  type WhatsAppDeliveryRow,
-} from '@/hooks/queries/integrations';
+import { useWhatsAppDelivery, type WhatsAppDeliveryRow } from '@/hooks/queries/integrations';
 
 import { dateIntl } from '@/lib/format';
 
@@ -107,10 +99,7 @@ export default function WhatsAppDeliveryPage() {
             {item.label}
           </Button>
         ))}
-        <span
-          className="text-muted-foreground ml-2 text-xs"
-          data-qa="wa-delivery-total"
-        >
+        <span className="text-muted-foreground ml-2 text-xs" data-qa="wa-delivery-total">
           {total} {total === 1 ? 'message' : 'messages'}
         </span>
       </div>
@@ -127,12 +116,10 @@ export default function WhatsAppDeliveryPage() {
         <Card data-qa="wa-delivery-empty">
           <CardContent className="space-y-1 p-10 text-center">
             <LuSend className="text-muted-foreground mx-auto size-8" />
-            <p className="text-base font-medium">
-              No WhatsApp delivery records.
-            </p>
+            <p className="text-base font-medium">No WhatsApp delivery records.</p>
             <p className="text-muted-foreground text-sm">
-              Outbound messages to leads (via the chat outbox) appear here as
-              they're sent and their Meta status callbacks land.
+              Outbound messages to leads (via the chat outbox) appear here as they're sent and their
+              Meta status callbacks land.
             </p>
           </CardContent>
         </Card>
@@ -182,9 +169,7 @@ function WhatsAppDeliveryListItem({ row }: { row: WhatsAppDeliveryRow }) {
     <li className="px-4 py-3" data-qa="wa-delivery-row" data-row-id={row.id}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">{row.leadName || row.leadId}</span>
-        <Badge
-          className={STATUS_STYLES[row.status] ?? 'bg-muted text-muted-foreground'}
-        >
+        <Badge className={STATUS_STYLES[row.status] ?? 'bg-muted text-muted-foreground'}>
           {row.status}
         </Badge>
         <span className="text-muted-foreground text-xs">

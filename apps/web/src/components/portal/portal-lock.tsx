@@ -16,11 +16,13 @@ export type PortalLockReason = 'not-linked' | 'no-units';
 const COPY: Record<PortalLockReason, { title: string; description: string }> = {
   'not-linked': {
     title: 'Your photos are not linked yet',
-    description: 'Your account has been created, but your home is not connected to it. Please contact the project office and we will sort it out.',
+    description:
+      'Your account has been created, but your home is not connected to it. Please contact the project office and we will sort it out.',
   },
   'no-units': {
     title: "We're setting this up",
-    description: 'Progress photos appear here once your booking is confirmed. We will let you know as soon as that happens.',
+    description:
+      'Progress photos appear here once your booking is confirmed. We will let you know as soon as that happens.',
   },
 };
 
@@ -53,7 +55,9 @@ export function PortalLock({
                 <span className="portal-figure font-normal opacity-70">{officePhone}</span>
               </a>
             ) : (
-              <p className="text-base text-[var(--portal-ink-2)]">Please contact the project office.</p>
+              <p className="text-base text-[var(--portal-ink-2)]">
+                Please contact the project office.
+              </p>
             )
           }
         />

@@ -12,16 +12,8 @@
 //     has NO admin SELECT policy yet (2026-09-11). A migration adds
 //     outbound_select_admin so ADMIN/OWNER can read the delivery feed; until
 //     applied, this module would return zero rows for staff reads.
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
-import {
-  withRlsContext,
-  rlsContextFrom,
-  type PrismaClient,
-} from '@shadhil/database';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type {
   WebhookEventRow,
@@ -48,9 +40,7 @@ export interface IntegrationListEnvelope {
 
 @Injectable()
 export class IntegrationsService {
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -60,9 +50,7 @@ export class IntegrationsService {
     // Service-side guard (the RLS policy is the second wall). ADMIN/OWNER
     // only - mirrors the audit module guard.
     if (!isAdminClass(actor.role)) {
-      throw new ForbiddenException(
-        'Only ADMIN or OWNER can view integration telemetry',
-      );
+      throw new ForbiddenException('Only ADMIN or OWNER can view integration telemetry');
     }
   }
 
@@ -107,9 +95,7 @@ export class IntegrationsService {
           source: r.source,
           externalId: r.externalId,
           processed: r.processed,
-          processedAt: r.processedAt
-            ? r.processedAt.toISOString()
-            : null,
+          processedAt: r.processedAt ? r.processedAt.toISOString() : null,
           error: r.error,
           payload: r.payload as Record<string, unknown>,
           createdAt: r.createdAt.toISOString(),

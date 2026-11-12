@@ -49,9 +49,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -61,9 +59,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 @ApiBearerAuth('jwt')
 @Controller('chat')
 export class ChatController {
-  constructor(
-    @Inject(ChatService) private readonly chat: ChatService,
-  ) {}
+  constructor(@Inject(ChatService) private readonly chat: ChatService) {}
 
   // Lead ids are cuid2 - validate strictly (a `c`-only regex rejects real
   // cuid2 ids that don't start with 'c').
@@ -122,8 +118,7 @@ export class ChatController {
   /** GET /api/chat/contact/:contactId - messages on a contact thread. */
   @Get('contact/:contactId')
   @ApiOperation({
-    summary:
-      'List messages on an unknown-contact WhatsApp thread. MANAGER/ADMIN/OWNER only.',
+    summary: 'List messages on an unknown-contact WhatsApp thread. MANAGER/ADMIN/OWNER only.',
   })
   async listContact(
     @Req() req: AuthedRequest,
@@ -143,10 +138,7 @@ export class ChatController {
     summary:
       'Send a WhatsApp reply to an unknown contact. Enqueues the Meta outbound. MANAGER/ADMIN/OWNER only.',
   })
-  async sendToContact(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<MessageRow> {
+  async sendToContact(@Req() req: AuthedRequest, @Body() body: unknown): Promise<MessageRow> {
     const actor = req.user!;
     this.assertInboxAccess(actor);
     const dto: SendContactMessageDto = parseBody(SendContactMessageDtoSchema, body);
@@ -158,10 +150,7 @@ export class ChatController {
   @ApiOperation({
     summary: 'Mark a chat thread read for the calling user (per-user unread).',
   })
-  async markRead(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<{ ok: true }> {
+  async markRead(@Req() req: AuthedRequest, @Body() body: unknown): Promise<{ ok: true }> {
     const actor = req.user!;
     this.assertInboxAccess(actor);
     const dto: MarkChatReadDto = parseBody(MarkChatReadDtoSchema, body);
@@ -236,13 +225,9 @@ export class ChatController {
 
   @Post('send')
   @ApiOperation({
-    summary:
-      'Send a message to a lead. direction=OUT, channel=IN_APP unless overridden.',
+    summary: 'Send a message to a lead. direction=OUT, channel=IN_APP unless overridden.',
   })
-  async send(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<MessageRow> {
+  async send(@Req() req: AuthedRequest, @Body() body: unknown): Promise<MessageRow> {
     const dto: SendMessageDto = parseBody(SendMessageDtoSchema, body);
     return this.chat.send(req.user!, dto);
   }

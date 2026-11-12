@@ -25,11 +25,7 @@ import {
   sameValue,
 } from './lead-evidence';
 
-export type ExistingFactStatus =
-  | 'APPLIED'
-  | 'PROPOSED'
-  | 'DISMISSED'
-  | 'SUPERSEDED';
+export type ExistingFactStatus = 'APPLIED' | 'PROPOSED' | 'DISMISSED' | 'SUPERSEDED';
 
 export type ExistingFact = {
   value: string;
@@ -76,16 +72,10 @@ export function decideLeadFactWrite(input: DecideInput): WriteDecision {
     };
   }
 
-  if (
-    input.existing.some(
-      (fact) =>
-        fact.status === 'DISMISSED' && sameValue(fact.value, value),
-    )
-  ) {
+  if (input.existing.some((fact) => fact.status === 'DISMISSED' && sameValue(fact.value, value))) {
     return {
       action: 'REFUSE',
-      reason:
-        'A person has already dismissed this exact value. Do not offer it again.',
+      reason: 'A person has already dismissed this exact value. Do not offer it again.',
     };
   }
 
@@ -113,8 +103,7 @@ export function decideLeadFactWrite(input: DecideInput): WriteDecision {
       };
     }
 
-    const current =
-      input.subject[LEAD_FACT_FIELDS[input.field].column] ?? '';
+    const current = input.subject[LEAD_FACT_FIELDS[input.field].column] ?? '';
     const strongEnoughToAsk =
       input.scored.band === 'VERIFIED' || input.scored.band === CONFLICT_FLOOR;
 

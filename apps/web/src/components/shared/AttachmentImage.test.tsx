@@ -23,15 +23,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('next/image', () => ({
   // Stand-in that advertises its use; forwards src/alt/className so the shared
   // assertions below still work.
-  default: ({
-    src,
-    alt,
-    className,
-  }: {
-    src: string;
-    alt: string;
-    className?: string;
-  }) => (
+  default: ({ src, alt, className }: { src: string; alt: string; className?: string }) => (
     <img
       src={src}
       alt={alt}
@@ -112,9 +104,7 @@ describe('AttachmentImage', () => {
     // either way. The real guard is the error-level
     // `jsx-a11y/no-noninteractive-element-interactions` rule in eslint.config.js,
     // which fails `pnpm lint` if `onError` is put back on the <img>.
-    const html = renderToStaticMarkup(
-      <AttachmentImage src="/api/bff/media/x.png" alt="x" />,
-    );
+    const html = renderToStaticMarkup(<AttachmentImage src="/api/bff/media/x.png" alt="x" />);
 
     expect(html).toContain('<img src="/api/bff/media/x.png" alt="x"');
   });

@@ -35,12 +35,12 @@ The client's message (paraphrased and structured):
 DESIGN.md §1 lists 4 roles: Sales Agent, Sales Manager, Admin, Marketing.
 The client has 4 too, but they map differently and the internal mechanics differ.
 
-| My draft v1 | Client's actual | What changes |
-|---|---|---|
-| Sales Agent (one role, owns lead end-to-end) | **Telecaller** (first touch → customer agrees to visit) AND **Sales Executive** (visit → booking) | Two distinct roles. Lead ownership TRANSFERS between them at a hard gate. |
-| Sales Manager (approves bookings, reassigns leads) | **Director** (handles many telecallers + executives, sees their pipelines, performs the handoff, monitors all conversations) | Same idea, but Director also reads every chat thread for their reports. Stronger monitoring role than my "Sales Manager." |
-| Admin (manages users) | **Admin** (one person - single super-user; manages directors, creates telecaller + executive accounts) | "One" is explicit. Admin does NOT create director accounts. Director accounts are presumably seeded by Shadhil leadership. |
-| Marketing (read-only) | (not mentioned) | Either drop, or confirm with client. My guess: not in v1. |
+| My draft v1                                        | Client's actual                                                                                                              | What changes                                                                                                               |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Sales Agent (one role, owns lead end-to-end)       | **Telecaller** (first touch → customer agrees to visit) AND **Sales Executive** (visit → booking)                            | Two distinct roles. Lead ownership TRANSFERS between them at a hard gate.                                                  |
+| Sales Manager (approves bookings, reassigns leads) | **Director** (handles many telecallers + executives, sees their pipelines, performs the handoff, monitors all conversations) | Same idea, but Director also reads every chat thread for their reports. Stronger monitoring role than my "Sales Manager."  |
+| Admin (manages users)                              | **Admin** (one person - single super-user; manages directors, creates telecaller + executive accounts)                       | "One" is explicit. Admin does NOT create director accounts. Director accounts are presumably seeded by Shadhil leadership. |
+| Marketing (read-only)                              | (not mentioned)                                                                                                              | Either drop, or confirm with client. My guess: not in v1.                                                                  |
 
 **Action:** rewrite §1. Add a fifth implicit role: **Director**'s read-only
 "Admin-lite" oversight is not in scope because Admin already sees everything
@@ -81,6 +81,7 @@ director can passively read every thread. This is structurally different from
 "log calls after the fact."
 
 What it means for MVP:
+
 - **Add a new module: In-app Chat** (per-lead, per-thread; sends through the
   WhatsApp Business API; receives via webhook; shows full message history
   with timestamps; visible to director in real time).
@@ -103,17 +104,17 @@ DESIGN.md never spelled out role-by-role permissions explicitly (the brief
 proxies it via the "Cannot" clauses in §1). With four roles and two
 handoffs, the matrix matters. Here's what I infer - needs client sign-off:
 
-| Action | Admin | Director | Telecaller | Sales Exec |
-|---|---|---|---|---|
-| Create director account | seed (out of app) | - | - | - |
-| Create telecaller / exec account | ✅ | ❌ | ❌ | ❌ |
-| View any lead | ✅ | their reports only | own only | own only |
-| Assign telecaller to lead | ✅ | ✅ | ❌ | ❌ |
-| Receive handoff from telecaller | ✅ | ✅ (in their team) | n/a | n/a |
-| Assign exec from director's pool | ✅ | ✅ | ❌ | ❌ |
-| Book a unit | ✅ | ✅ (must approve) | ❌ | ✅ (initiates) |
-| Read chat on any lead | ✅ | their team | own leads | own leads |
-| View reports | ✅ | their team | own KPIs | own KPIs |
+| Action                           | Admin             | Director           | Telecaller | Sales Exec     |
+| -------------------------------- | ----------------- | ------------------ | ---------- | -------------- |
+| Create director account          | seed (out of app) | -                  | -          | -              |
+| Create telecaller / exec account | ✅                | ❌                 | ❌         | ❌             |
+| View any lead                    | ✅                | their reports only | own only   | own only       |
+| Assign telecaller to lead        | ✅                | ✅                 | ❌         | ❌             |
+| Receive handoff from telecaller  | ✅                | ✅ (in their team) | n/a        | n/a            |
+| Assign exec from director's pool | ✅                | ✅                 | ❌         | ❌             |
+| Book a unit                      | ✅                | ✅ (must approve)  | ❌         | ✅ (initiates) |
+| Read chat on any lead            | ✅                | their team         | own leads  | own leads      |
+| View reports                     | ✅                | their team         | own KPIs   | own KPIs       |
 
 **Action:** add §11 "Permission Matrix" to DESIGN.md.
 

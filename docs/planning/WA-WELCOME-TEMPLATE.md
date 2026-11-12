@@ -15,14 +15,14 @@ template name instead of throwing the "not configured" 400.
 
 WhatsApp Manager → Message Templates → Create template.
 
-| field | value |
-|---|---|
-| Name | `shadhil_welcome_enquiry` (`WA_TEMPLATE_WELCOME`) |
+| field    | value                                                                                                                                                                                                                                              |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name     | `shadhil_welcome_enquiry` (`WA_TEMPLATE_WELCOME`)                                                                                                                                                                                                  |
 | Category | **UTILITY** — this is a transactional follow-up to the customer's own enquiry, not marketing. A MARKETING template from a test sender is accepted by the API and silently dropped (see the state file), and it also needs no re-engagement opt-in. |
-| Language | `en` |
-| Header | None (or a text header) |
-| Body | see below |
-| Footer | `Shadhil Builders & Constructions` (optional) |
+| Language | `en`                                                                                                                                                                                                                                               |
+| Header   | None (or a text header)                                                                                                                                                                                                                            |
+| Body     | see below                                                                                                                                                                                                                                          |
+| Footer   | `Shadhil Builders & Constructions` (optional)                                                                                                                                                                                                      |
 
 ## Body (one parameter)
 
@@ -36,6 +36,7 @@ Cloud API sends body params as an ordered array, so `templateVars` in
 order in Meta, update that mapping in the same change or every send breaks.
 
 Rules this body satisfies (Meta rejects violations with terse errors):
+
 - no `{{1}}` at the very start or end (it is wrapped in static text both sides)
 - one variable, well under the density limit
 - body under 1024 chars, footer under 60 and text-only

@@ -27,7 +27,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, withRlsContext, rlsContextFrom, type Role, type PrismaClient } from '@shadhil/database';
+import {
+  Prisma,
+  withRlsContext,
+  rlsContextFrom,
+  type Role,
+  type PrismaClient,
+} from '@shadhil/database';
 
 import {
   LEAD_IN_ACTIVE_PROJECT,
@@ -35,11 +41,32 @@ import {
   PROJECT_TEAM_LIVE,
 } from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
-import type { AssignManagerDto, CreateUserDto, ChangePasswordDto, ChangeRoleDto, UpdateProfileDto, UpdateUserDto, UserDetail, UserFilterDto, UserListResult } from '@shadhil/api-types';
-import { reportingTargetFor, reportsToTeamManager, type TeamReportingLine } from '@shadhil/api-types';
+import type {
+  AssignManagerDto,
+  CreateUserDto,
+  ChangePasswordDto,
+  ChangeRoleDto,
+  UpdateProfileDto,
+  UpdateUserDto,
+  UserDetail,
+  UserFilterDto,
+  UserListResult,
+} from '@shadhil/api-types';
+import {
+  reportingTargetFor,
+  reportsToTeamManager,
+  type TeamReportingLine,
+} from '@shadhil/api-types';
 import { PrismaService } from '../prisma/prisma.module';
 import { CodedConflictException } from '../common/errors/coded-exception';
-import { assertCanCreateRole, assertCanChangeRole, findOrgOwner, isAdminClass, outranks, OWNER } from './roles';
+import {
+  assertCanCreateRole,
+  assertCanChangeRole,
+  findOrgOwner,
+  isAdminClass,
+  outranks,
+  OWNER,
+} from './roles';
 import { hashPassword, upsertCredentialAccount, verifyPassword } from './credentials';
 
 /**
@@ -95,9 +122,7 @@ export class UsersService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -194,9 +219,7 @@ export class UsersService {
 
     if (target === 'ORG_OWNER') {
       const owner = await findOrgOwner(client, organizationId);
-      return owner === null
-        ? []
-        : [{ teamId: '', teamName: 'Organisation', manager: owner }];
+      return owner === null ? [] : [{ teamId: '', teamName: 'Organisation', manager: owner }];
     }
 
     // TEAM_MANAGER: one entry per membership, newest first. Same tie-break as
@@ -279,15 +302,18 @@ export class UsersService {
         }
         if (dto.teamId !== undefined) {
           if (!managedTeams.some((t) => t.id === dto.teamId)) {
-            throw new ForbiddenException(
-              'You can only create users in a team you manage',
-            );
+            throw new ForbiddenException('You can only create users in a team you manage');
           }
           teamId = dto.teamId;
         } else {
           teamId = managedTeams[0]!.id;
         }
-      } else if (actorIsOrgOwner && dto.role !== 'ADMIN' && dto.role !== 'CUSTOMER' && !dto.teamId) {
+      } else if (
+        actorIsOrgOwner &&
+        dto.role !== 'ADMIN' &&
+        dto.role !== 'CUSTOMER' &&
+        !dto.teamId
+      ) {
         // Admin creating a manager WITHOUT teamId: auto-create the team.
         // Admin creating a STAFF user without teamId: reject - ambiguous.
         if (dto.role === 'MANAGER') {
@@ -478,7 +504,11 @@ export class UsersService {
         });
         if (!existing) {
           await client.team.create({
-            data: { name: `${target.name}'s Team`, managerId: target.id, organizationId: actor.organizationId },
+            data: {
+              name: `${target.name}'s Team`,
+              managerId: target.id,
+              organizationId: actor.organizationId,
+            },
           });
         }
       }
@@ -490,7 +520,9 @@ export class UsersService {
         // the customer helpers must never be trusted to ignore.
         data: {
           role: dto.role,
-          ...(target.role === 'CUSTOMER' && dto.role !== 'CUSTOMER' ? { customerLeadId: null } : {}),
+          ...(target.role === 'CUSTOMER' && dto.role !== 'CUSTOMER'
+            ? { customerLeadId: null }
+            : {}),
         },
       });
       const teamId = await this.resolveDisplayTeamId(
@@ -530,11 +562,7 @@ export class UsersService {
    * Hierarchy-gated: the actor must strictly outrank the target (no
    * self-edit, OWNER protected). Mirrors the changeRole guards.
    */
-  async update(
-    actor: JwtPayload,
-    targetUserId: string,
-    dto: UpdateUserDto,
-  ): Promise<CreatedUser> {
+  async update(actor: JwtPayload, targetUserId: string, dto: UpdateUserDto): Promise<CreatedUser> {
     // One RLS transaction: resolveDisplayTeamId reads the FORCE-RLS
     // Team/TeamMember tables, and the user write + audit row must commit
     // atomically (AGENTS.md A2/G-1).
@@ -558,9 +586,7 @@ export class UsersService {
       // 3. Hierarchy: actor must strictly outrank the target. OWNER is
       //    protected (nobody outranks it).
       if (!outranks(actor.role, target.role as Role)) {
-        throw new ForbiddenException(
-          `${actor.role} cannot edit a ${target.role} user`,
-        );
+        throw new ForbiddenException(`${actor.role} cannot edit a ${target.role} user`);
       }
 
       // 4. Apply the update (only the provided fields).
@@ -628,10 +654,7 @@ export class UsersService {
    * actor's RLS context, because THAT table is FORCE RLS and the insert policy
    * gates on app.user_id.
    */
-  async updateSelf(
-    actor: JwtPayload,
-    dto: UpdateProfileDto,
-  ): Promise<UpdatedProfile> {
+  async updateSelf(actor: JwtPayload, dto: UpdateProfileDto): Promise<UpdatedProfile> {
     // 1. Read the current value first so the audit row can carry a real
     //    before/after pair (and so a no-op change can be reported as such).
     const before = await this.client.user.findUnique({
@@ -685,10 +708,7 @@ export class UsersService {
    * is kept so audit/history survive, but the user cannot sign in and is
    * hidden from every list/picker. No self-delete; OWNER is protected.
    */
-  async remove(
-    actor: JwtPayload,
-    targetUserId: string,
-  ): Promise<{ ok: true }> {
+  async remove(actor: JwtPayload, targetUserId: string): Promise<{ ok: true }> {
     // 0. Admin/owner only.
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException('Only ADMIN or OWNER can delete users.');
@@ -717,23 +737,19 @@ export class UsersService {
     });
 
     // 4. Audit row in the actor's RLS context.
-    await withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'user.delete',
-            organizationId: actor.organizationId,
-            entityType: 'User',
-            entityId: target.id,
-            before: { name: target.name, email: target.email, role: target.role },
-            reason: `user.delete (soft) by ${actor.email} (${actor.role})`,
-          },
-        });
-      },
-    );
+    await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'user.delete',
+          organizationId: actor.organizationId,
+          entityType: 'User',
+          entityId: target.id,
+          before: { name: target.name, email: target.email, role: target.role },
+          reason: `user.delete (soft) by ${actor.email} (${actor.role})`,
+        },
+      });
+    });
 
     return { ok: true };
   }
@@ -954,9 +970,7 @@ export class UsersService {
       // 1. Only team-linked staff report to a manager on this surface.
       //    2026-11-07: shared exhaustive rule - ENGINEER included.
       if (!reportsToTeamManager(target.role as Role)) {
-        throw new BadRequestException(
-          'Only TELECALLER/SALES_EXEC/ENGINEER report to a manager',
-        );
+        throw new BadRequestException('Only TELECALLER/SALES_EXEC/ENGINEER report to a manager');
       }
 
       // 1b. ENGINEER targets are admin-class only. Team membership IS the
@@ -976,9 +990,7 @@ export class UsersService {
       // 2. Hierarchy: actor must strictly outrank the target (mirrors
       //    update()/changeRole() - no self-service).
       if (!outranks(actor.role, target.role as Role)) {
-        throw new ForbiddenException(
-          `${actor.role} cannot reassign this user's manager`,
-        );
+        throw new ForbiddenException(`${actor.role} cannot reassign this user's manager`);
       }
 
       // 3. Target team must exist, be active, and have a manager -
@@ -994,16 +1006,12 @@ export class UsersService {
         throw new NotFoundException(`Team ${dto.teamId} not found`);
       }
       if (team.managerId === null) {
-        throw new BadRequestException(
-          `Team "${team.name}" has no manager assigned yet`,
-        );
+        throw new BadRequestException(`Team "${team.name}" has no manager assigned yet`);
       }
 
       // 4. MANAGER scope: only into their own team.
       if (actor.role === 'MANAGER' && team.managerId !== actor.sub) {
-        throw new ForbiddenException(
-          'Managers can only assign staff into their own team',
-        );
+        throw new ForbiddenException('Managers can only assign staff into their own team');
       }
 
       // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): "assign into this
@@ -1159,10 +1167,7 @@ export class UsersService {
         where: { userId: target.id, organizationId: actor.organizationId },
         select: { teamId: true },
       });
-      if (
-        afterMemberships.length !== 1 ||
-        afterMemberships[0]?.teamId !== dto.teamId
-      ) {
+      if (afterMemberships.length !== 1 || afterMemberships[0]?.teamId !== dto.teamId) {
         throw new ConflictException(
           `Could not move user ${target.id} cleanly into team ${dto.teamId} - the membership set did not settle to a single team. No change was applied.`,
         );
@@ -1238,9 +1243,7 @@ export class UsersService {
     // can't reset the OWNER or another ADMIN), mirroring the role-change
     // hierarchy guard.
     if (!isSelf && !outranks(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `You can't reset the password of a ${target.role} user`,
-      );
+      throw new ForbiddenException(`You can't reset the password of a ${target.role} user`);
     }
     // Self-service rotation must prove knowledge of the current password.
     // An admin reset of ANOTHER user does not (the admin doesn't know it).
@@ -1293,29 +1296,28 @@ export class UsersService {
 
     // 5. Audit row in the actor's RLS context so the AuditLog policy
     // admits the insert (it gates on app.user_id).
-    await withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'user.changePassword',
-            organizationId: actor.organizationId,
-            entityType: 'User',
-            entityId: target.id,
-            before: { mustChangePassword: target.mustChangePassword },
-            after: { mustChangePassword: false },
-            reason: `password changed by ${actor.email} (${actor.role})`,
-          },
-        });
-      },
-    );
+    await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'user.changePassword',
+          organizationId: actor.organizationId,
+          entityType: 'User',
+          entityId: target.id,
+          before: { mustChangePassword: target.mustChangePassword },
+          after: { mustChangePassword: false },
+          reason: `password changed by ${actor.email} (${actor.role})`,
+        },
+      });
+    });
 
     return { ok: true, mustChangePassword: false };
   }
 
-  async list(actor: JwtPayload, filter: UserFilterDto = { limit: 50, offset: 0 }): Promise<UserListResult> {
+  async list(
+    actor: JwtPayload,
+    filter: UserFilterDto = { limit: 50, offset: 0 },
+  ): Promise<UserListResult> {
     // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): team scoping
     // resolves EVERY team via Team.managerId (a manager may lead multiple
     // teams) UNION the manager's own TeamMember rows, matching
@@ -1520,7 +1522,9 @@ export class UsersService {
       }
 
       const resolvedTeamIds = rows.map(
-        (r) => (r.role === 'MANAGER' ? ledTeamByManagerId.get(r.id) : r.teamMemberships[0]?.teamId) ?? null,
+        (r) =>
+          (r.role === 'MANAGER' ? ledTeamByManagerId.get(r.id) : r.teamMemberships[0]?.teamId) ??
+          null,
       );
 
       // Project names for the admin Users table (autoplan 2026-09-12).
@@ -1528,7 +1532,9 @@ export class UsersService {
       // are "whichever projects this user's resolved TEAM is linked to"
       // (ProjectTeam) - ProjectMember (per-user linking) was retired.
       // Batched: fetch ProjectTeam rows for every resolved team id at once.
-      const uniqueTeamIds = Array.from(new Set(resolvedTeamIds.filter((id): id is string => id !== null)));
+      const uniqueTeamIds = Array.from(
+        new Set(resolvedTeamIds.filter((id): id is string => id !== null)),
+      );
       const projectTeams =
         uniqueTeamIds.length > 0
           ? await client.projectTeam.findMany({
@@ -1593,9 +1599,7 @@ export class UsersService {
       }
       // ORG_OWNER roles get the fixed single line; NONE gets an empty array.
       const ownerLine: TeamReportingLine[] =
-        orgOwner === null
-          ? []
-          : [{ teamId: '', teamName: 'Organisation', manager: orgOwner }];
+        orgOwner === null ? [] : [{ teamId: '', teamName: 'Organisation', manager: orgOwner }];
 
       // T-ORG-OWNER-ACCESS (2026-09-17): OWNER and ADMIN see EVERY project in
       // the org, not just the (empty) set linked to their team. OWNER/ADMIN
@@ -1653,7 +1657,7 @@ export class UsersService {
           // reflects the projects linked to their resolved team.
           projects: adminRoles.has(r.role)
             ? orgProjectNames
-            : projectNamesByTeamId.get(resolvedTeamIds[i] ?? '') ?? [],
+            : (projectNamesByTeamId.get(resolvedTeamIds[i] ?? '') ?? []),
         })),
         total,
       };
@@ -1688,10 +1692,7 @@ export class UsersService {
    * lead in this project is still offered even if their team is not linked (that
    * is how the previous behaviour earned its place).
    */
-  async projectSalesExecs(
-    actor: JwtPayload,
-    projectId: string,
-  ): Promise<CreatedUser[]> {
+  async projectSalesExecs(actor: JwtPayload, projectId: string): Promise<CreatedUser[]> {
     if (actor.role !== 'ADMIN' && actor.role !== 'OWNER' && actor.role !== 'MANAGER') {
       return [];
     }
@@ -1819,9 +1820,11 @@ export class UsersService {
 
       // A MANAGER's own team rows resolve teamId from the team they lead, since
       // a manager has no TeamMember row for it.
-      const managerTeamByUser = new Map(projectTeamRows
-        .filter((t) => t.managerId !== null)
-        .map((t) => [t.managerId as string, t.id]));
+      const managerTeamByUser = new Map(
+        projectTeamRows
+          .filter((t) => t.managerId !== null)
+          .map((t) => [t.managerId as string, t.id]),
+      );
 
       return execs.map((e) => ({
         id: e.id,
@@ -2000,7 +2003,8 @@ export class UsersService {
         name: u.name,
         role: u.role,
         teamId:
-          (u.role === 'MANAGER' ? ledTeamByManagerId.get(u.id) : u.teamMemberships[0]?.teamId) ?? null,
+          (u.role === 'MANAGER' ? ledTeamByManagerId.get(u.id) : u.teamMemberships[0]?.teamId) ??
+          null,
       }));
     });
   }

@@ -34,7 +34,7 @@ async function waitForMapToHydrate(page: import('@playwright/test').Page) {
       if (!(svg instanceof SVGElement)) return false;
       return Object.keys(svg).some((key) => key.startsWith('__react'));
     },
-    { timeout: 15_000 }
+    { timeout: 15_000 },
   );
 }
 
@@ -106,7 +106,7 @@ test.describe('plot layout', () => {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes('/api/bff/inventory/plots') && response.status() === 200,
-      { timeout: 30_000 }
+      { timeout: 30_000 },
     );
     await page.goto(PLOTS_PATH, NAV);
     const response = await responsePromise;
@@ -121,7 +121,7 @@ test.describe('plot layout', () => {
       // Nothing is on the layout, so everything must read available and the page
       // must SAY why - an entirely grey plan with no explanation reads as a bug.
       await expect(page.locator('[data-qa="plot-no-unit-mapping"]')).toContainText(
-        'has a plot number yet'
+        'has a plot number yet',
       );
       // available = green
       expect(await page.locator('[data-plot-number="1"] polygon[fill="#15803D"]').count()).toBe(1);
@@ -155,15 +155,15 @@ test.describe('plot layout', () => {
     // Each link opens its OWN entity, so neither is a dead end.
     await expect(page.locator('[data-qa="plot-unit-link"]')).toHaveAttribute(
       'href',
-      /\/inventory\?unit=/
+      /\/inventory\?unit=/,
     );
     await expect(page.locator('[data-qa="plot-booking-link"]')).toHaveAttribute(
       'href',
-      /\/bookings\/[a-z0-9]+/
+      /\/bookings\/[a-z0-9]+/,
     );
     await expect(page.locator('[data-qa="plot-booking-lead-link"]')).toHaveAttribute(
       'href',
-      /\/leads\/[a-z0-9]+/
+      /\/leads\/[a-z0-9]+/,
     );
   });
 
@@ -302,7 +302,7 @@ test.describe('plot layout', () => {
     await expect(details).toContainText('D-103');
     await expect(details).toContainText('Available');
     await expect(page.locator('[data-qa="plot-booking-none"]')).toContainText(
-      'No booking on this villa'
+      'No booking on this villa',
     );
 
     // A selected plot is marked by its fill alone: a single polygon, filled
@@ -369,7 +369,7 @@ test.describe('plot layout', () => {
     // Aspect ratio survives the round trip.
     expect(parseViewBox(backToFirstStep)[2] / parseViewBox(backToFirstStep)[3]).toBeCloseTo(
       iw / ih,
-      4
+      4,
     );
 
     await page.locator('[data-qa="plot-map-reset"]').click();

@@ -20,10 +20,7 @@ import {
   Skeleton,
   ToggleGroup,
 } from '@paalstack/react-ui';
-import {
-  LuMessagesSquare,
-  LuSearch,
-} from '@paalstack/react-icons/lu';
+import { LuMessagesSquare, LuSearch } from '@paalstack/react-icons/lu';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { useMemo, useState } from 'react';
 
@@ -60,10 +57,7 @@ export function conversationTime(iso: string): string {
 
 /** One-line preview. Our own last message is prefixed so the direction is
  *  readable at a glance (WhatsApp Web shows a tick; text is clearer here). */
-export function conversationPreview(
-  body: string,
-  direction: 'IN' | 'OUT',
-): string {
+export function conversationPreview(body: string, direction: 'IN' | 'OUT'): string {
   const text = body.trim().length > 0 ? body.trim() : 'Attachment';
   return direction === 'OUT' ? `You: ${text}` : text;
 }
@@ -188,9 +182,7 @@ export function ChatConversationList({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium">
-                          {row.displayName}
-                        </span>
+                        <span className="truncate text-sm font-medium">{row.displayName}</span>
                         <span className="text-muted-foreground shrink-0 text-[10px]">
                           {conversationTime(row.lastMessageAt)}
                         </span>
@@ -208,10 +200,7 @@ export function ChatConversationList({
                           {conversationPreview(row.lastMessageBody, row.lastMessageDirection)}
                         </span>
                         {row.unreadCount > 0 ? (
-                          <Badge
-                            className="shrink-0"
-                            data-qa="row-unread-count"
-                          >
+                          <Badge className="shrink-0" data-qa="row-unread-count">
                             {row.unreadCount}
                           </Badge>
                         ) : null}

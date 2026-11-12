@@ -7,20 +7,9 @@
 //   - GET  /api/push/vapid-key   - the VAPID public key the web app needs to
 //                                  subscribe (null when push is disabled).
 //   - POST /api/push/subscribe   - register/upsert a push subscription.
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Inject,
-  Post,
-  Req,
-} from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  RegisterPushDtoSchema,
-  type RegisterPushDto,
-} from '@shadhil/api-types';
+import { RegisterPushDtoSchema, type RegisterPushDto } from '@shadhil/api-types';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
@@ -30,9 +19,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -42,9 +29,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 @ApiBearerAuth('jwt')
 @Controller('push')
 export class PushController {
-  constructor(
-    @Inject(PushService) private readonly push: PushService,
-  ) {}
+  constructor(@Inject(PushService) private readonly push: PushService) {}
 
   @Get('vapid-key')
   @ApiOperation({
@@ -58,10 +43,7 @@ export class PushController {
   @ApiOperation({
     summary: 'Register/upsert a push subscription for the current user.',
   })
-  async subscribe(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<{ ok: true }> {
+  async subscribe(@Req() req: AuthedRequest, @Body() body: unknown): Promise<{ ok: true }> {
     const dto: RegisterPushDto = parseBody(RegisterPushDtoSchema, body);
     return this.push.subscribe(req.user!, dto);
   }

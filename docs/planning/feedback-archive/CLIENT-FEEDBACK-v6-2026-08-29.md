@@ -13,11 +13,12 @@ telephony market in 2026. Here's the honest answer.
 **For Shadhil CRM (5-15 users, click-to-call + recording + webhooks,
 no IVR/auto-dialer needed): pick FreJun at ~₹1,149/user/month.**
 
-- 5 users: ~₹5,745/month (~$69/month)
-- 10 users: ~₹11,490/month (~$138/month)
-- 15 users: ~₹17,235/month (~$207/month)
+- 5 users: ~~₹5,745/month (~~$69/month)
+- 10 users: ~~₹11,490/month (~~$138/month)
+- 15 users: ~~₹17,235/month (~~$207/month)
 
 Why FreJun over the alternatives (full comparison below):
+
 - Best balance of cost vs features for THIS use case
 - AI transcription INCLUDED (manager can read what execs actually
   said to customers - the original "monitor by application" requirement)
@@ -30,17 +31,18 @@ Why FreJun over the alternatives (full comparison below):
 
 ## The real options, with verified 2026 pricing
 
-| Provider | Starting price | Per-user cost (5-15 users) | What you get | Hidden costs |
-|---|---|---|---|---|
-| **FreJun** | ₹1,149/user/mo | ₹5,745-17,235/mo | Virtual number, click-to-call, recording, AI transcription, auto-dialer, 23+ CRM integrations, webhooks | Per-minute outbound beyond bundle (~₹0.30-0.50/min) |
-| **TeleCMI** | ₹587/user/mo | ₹2,935-8,805/mo | Virtual number, click-to-call, recording, basic routing, webhooks | Limited AI/transcription; add-ons for analytics |
-| **MyOperator** | ₹2,499/mo (annual) or ₹2,500/mo (3 users) | ₹2,500-7,500/mo | Virtual number, click-to-call, recording, **WhatsApp included** in bundle | Per-minute outbound; limited to 3-5 users on base plan |
-| **Knowlarity** | ₹1,999/agent (unlimited inbound) | ₹9,995-29,985/mo | Unlimited inbound, click-to-call, recording, analytics | Per-minute outbound charged separately |
-| **Exotel (Dabbler)** | $200/6mo = ~₹2,800/mo | ₹2,800-8,400/mo base + usage | Virtual number, click-to-call, recording, IVR, SMS, webhooks | **Credit pool for usage** (per-minute voice + SMS) - your real cost is plan + usage, not plan alone |
-| **Exotel (Believer)** | $500/yr = ~₹3,500/mo | ₹3,500-10,500/mo base + usage | Same as Dabbler + more features | Same credit pool |
-| **WhatsApp Business Calling API** | 2-3 cents/min inside the 1,000 min/mo free tier | Free up to 1,000 min/mo, then usage-based | Voice calls IN WhatsApp, recorded by Meta, no separate provider | **Only works if customer calls from inside WhatsApp**; Meta approval required; currently in limited rollout in India |
+| Provider                          | Starting price                                  | Per-user cost (5-15 users)                | What you get                                                                                            | Hidden costs                                                                                                         |
+| --------------------------------- | ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **FreJun**                        | ₹1,149/user/mo                                  | ₹5,745-17,235/mo                          | Virtual number, click-to-call, recording, AI transcription, auto-dialer, 23+ CRM integrations, webhooks | Per-minute outbound beyond bundle (~₹0.30-0.50/min)                                                                  |
+| **TeleCMI**                       | ₹587/user/mo                                    | ₹2,935-8,805/mo                           | Virtual number, click-to-call, recording, basic routing, webhooks                                       | Limited AI/transcription; add-ons for analytics                                                                      |
+| **MyOperator**                    | ₹2,499/mo (annual) or ₹2,500/mo (3 users)       | ₹2,500-7,500/mo                           | Virtual number, click-to-call, recording, **WhatsApp included** in bundle                               | Per-minute outbound; limited to 3-5 users on base plan                                                               |
+| **Knowlarity**                    | ₹1,999/agent (unlimited inbound)                | ₹9,995-29,985/mo                          | Unlimited inbound, click-to-call, recording, analytics                                                  | Per-minute outbound charged separately                                                                               |
+| **Exotel (Dabbler)**              | $200/6mo = ~₹2,800/mo                           | ₹2,800-8,400/mo base + usage              | Virtual number, click-to-call, recording, IVR, SMS, webhooks                                            | **Credit pool for usage** (per-minute voice + SMS) - your real cost is plan + usage, not plan alone                  |
+| **Exotel (Believer)**             | $500/yr = ~₹3,500/mo                            | ₹3,500-10,500/mo base + usage             | Same as Dabbler + more features                                                                         | Same credit pool                                                                                                     |
+| **WhatsApp Business Calling API** | 2-3 cents/min inside the 1,000 min/mo free tier | Free up to 1,000 min/mo, then usage-based | Voice calls IN WhatsApp, recorded by Meta, no separate provider                                         | **Only works if customer calls from inside WhatsApp**; Meta approval required; currently in limited rollout in India |
 
 **Translation of the prices for 10 users:**
+
 - Cheapest: TeleCMI at ~₹5,870/month
 - Best value: FreJun at ~₹11,490/month
 - Premium: Exotel at ₹3,500/mo plan + ~₹10,000/mo usage = ~₹13,500/month
@@ -188,6 +190,7 @@ transcription. ₹3,000-9,000/month. You can revisit FreJun when
 revenue justifies the upgrade.
 
 **Skip:**
+
 - Knowlarity - too expensive for the use case
 - Exotel - overkill, credit pool is a trap for small teams
 - MyOperator - only if WhatsApp inclusion is decisive (it isn't
@@ -241,6 +244,7 @@ oversight the client explicitly asked for.** My recommendation
 ## Next step
 
 Say "apply" and I'll:
+
 1. Update DESIGN.md v2 (when we apply the v5 stack) with FreJun
    instead of Exotel.
 2. Add Q16 to CLIENT-QUESTIONS.md.

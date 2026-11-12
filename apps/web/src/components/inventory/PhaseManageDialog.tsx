@@ -25,10 +25,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import {
-  useCreatePhase,
-  useUpdatePhase,
-} from '@/hooks/queries/inventory';
+import { useCreatePhase, useUpdatePhase } from '@/hooks/queries/inventory';
 
 const FORM_ID = 'phase-manage-form';
 
@@ -164,11 +161,9 @@ export function PhaseManageDialog({
       onOpenChange={onOpenChange}
       header={{
         title: isEdit ? `Rename phase ${phase.name}` : 'New phase',
-        description: isEdit
-          ? 'Update the phase name.'
-          : 'Add a phase to this project.',
+        description: isEdit ? 'Update the phase name.' : 'Add a phase to this project.',
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

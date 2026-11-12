@@ -70,16 +70,7 @@ const photoOf = (unitId: string): string => `${unitId.slice(0, 18)}pho`.padEnd(2
 const bookingOf = (unitId: string): string => `${unitId.slice(0, 18)}bkg`.padEnd(24, '0');
 const PHOTO_APPROVED_2 = fid('photoapp2');
 
-const ALL_UNITS = [
-  U_APPROVED,
-  U_HOLD,
-  U_TOKEN,
-  U_REJECTED,
-  U_CANCELLED,
-  U_OTHER,
-  U_FREE,
-  U_X,
-];
+const ALL_UNITS = [U_APPROVED, U_HOLD, U_TOKEN, U_REJECTED, U_CANCELLED, U_OTHER, U_FREE, U_X];
 const ALL_USERS = [MGR, ENG, TELE, C1, C1B, C1_DEL, C2, C_NULL, C_XORG];
 
 const ctx = (userId: string, orgId: string = ORG_ID) => ({
@@ -215,9 +206,15 @@ async function buildFixture(): Promise<void> {
   await adminPrisma.project.create({
     data: { id: PX, name: 'Project X', slug: 'cs2-px', address: 'x', organizationId: ORG_X },
   });
-  await adminPrisma.phase.create({ data: { id: PH1, projectId: P1, name: 'Phase 1', organizationId: ORG_ID } });
-  await adminPrisma.phase.create({ data: { id: PH2, projectId: P2, name: 'Phase 2', organizationId: ORG_ID } });
-  await adminPrisma.phase.create({ data: { id: PHX, projectId: PX, name: 'Phase X', organizationId: ORG_X } });
+  await adminPrisma.phase.create({
+    data: { id: PH1, projectId: P1, name: 'Phase 1', organizationId: ORG_ID },
+  });
+  await adminPrisma.phase.create({
+    data: { id: PH2, projectId: P2, name: 'Phase 2', organizationId: ORG_ID },
+  });
+  await adminPrisma.phase.create({
+    data: { id: PHX, projectId: PX, name: 'Phase X', organizationId: ORG_X },
+  });
 
   for (const [id, num] of [
     [U_APPROVED, 'CS2-A1'],
@@ -281,10 +278,23 @@ async function buildFixture(): Promise<void> {
     },
   });
   await adminPrisma.activity.create({
-    data: { id: fid('act1'), leadId: L1, organizationId: ORG_ID, userId: MGR, type: 'NOTE', body: 'internal' },
+    data: {
+      id: fid('act1'),
+      leadId: L1,
+      organizationId: ORG_ID,
+      userId: MGR,
+      type: 'NOTE',
+      body: 'internal',
+    },
   });
   await adminPrisma.siteVisit.create({
-    data: { id: fid('visit1'), leadId: L1, organizationId: ORG_ID, userId: MGR, scheduledFor: new Date() },
+    data: {
+      id: fid('visit1'),
+      leadId: L1,
+      organizationId: ORG_ID,
+      userId: MGR,
+      scheduledFor: new Date(),
+    },
   });
   await adminPrisma.reminder.create({
     data: {
@@ -363,7 +373,9 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
       ['AuditLog', (tx) => tx.auditLog.findMany()],
     ];
     it.each(cases)('%s: length 0 for C1', async (_name, read) => {
-      const rows = await withRlsContext(prisma, ctx(C1), (tx) => read(tx as unknown as typeof prisma));
+      const rows = await withRlsContext(prisma, ctx(C1), (tx) =>
+        read(tx as unknown as typeof prisma),
+      );
       expect(rows.length).toBe(0);
     });
   });
@@ -393,9 +405,13 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
   // a row/true without GUCs; no_claim=says nothing about a valid context.
   it('helpers fail closed without GUCs', async () => {
     const lead = await prisma.$queryRaw<{ v: string | null }[]>`SELECT customer_lead_id() AS v`;
-    const can = await prisma.$queryRaw<{ v: boolean }[]>`SELECT customer_can_read_unit(${U_APPROVED}) AS v`;
+    const can = await prisma.$queryRaw<
+      { v: boolean }[]
+    >`SELECT customer_can_read_unit(${U_APPROVED}) AS v`;
     const users = await prisma.$queryRaw<unknown[]>`SELECT unit_customer_user_ids(${U_APPROVED})`;
-    const label = await prisma.$queryRaw<unknown[]>`SELECT * FROM progress_photo_creator_label(${photoOf(U_APPROVED)})`;
+    const label = await prisma.$queryRaw<
+      unknown[]
+    >`SELECT * FROM progress_photo_creator_label(${photoOf(U_APPROVED)})`;
     expect(lead[0]?.v).toBeNull();
     expect(can[0]?.v).toBe(false);
     expect(users.length).toBe(0);
@@ -460,7 +476,10 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
       tx.progressPhoto.deleteMany({ where: { unitId: U_APPROVED } }),
     );
     const bupd = await withRlsContext(prisma, ctx(C1), (tx) =>
-      tx.booking.updateMany({ where: { id: bookingOf(U_APPROVED) }, data: { status: 'CANCELLED' } }),
+      tx.booking.updateMany({
+        where: { id: bookingOf(U_APPROVED) },
+        data: { status: 'CANCELLED' },
+      }),
     );
     expect([upd.count, del.count, bupd.count]).toEqual([0, 0, 0]);
 
@@ -476,11 +495,17 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
   //   a non-APPROVED unit's buyer, or another org;
   // no_claim=does not prove push delivery.
   it('unit_customer_user_ids returns exactly the live approved customers, org-scoped', async () => {
-    const svc = (org: string) => ({ userId: 'portal-notifier', role: 'CRON_SERVICE' as const, organizationId: org });
+    const svc = (org: string) => ({
+      userId: 'portal-notifier',
+      role: 'CRON_SERVICE' as const,
+      organizationId: org,
+    });
     const call = async (org: string, unit: string): Promise<string[]> =>
       (
-        await withRlsContext(prisma, svc(org), (tx) =>
-          tx.$queryRaw<{ id: string }[]>`SELECT unit_customer_user_ids(${unit}) AS id`,
+        await withRlsContext(
+          prisma,
+          svc(org),
+          (tx) => tx.$queryRaw<{ id: string }[]>`SELECT unit_customer_user_ids(${unit}) AS id`,
         )
       )
         .map((r) => r.id)
@@ -499,8 +524,11 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
   // no_claim=existing staff branches are covered by progress-rls.test.ts / service tests.
   describe('creator label customer arm', () => {
     it('own APPROVED unit: returns the uploader name', async () => {
-      const rows = await withRlsContext(prisma, ctx(C1), (tx) =>
-        tx.$queryRaw<{ creator_name: string | null }[]>`
+      const rows = await withRlsContext(
+        prisma,
+        ctx(C1),
+        (tx) =>
+          tx.$queryRaw<{ creator_name: string | null }[]>`
           SELECT * FROM progress_photo_creator_label(${photoOf(U_APPROVED)})`,
       );
       expect(rows.length).toBe(1);
@@ -509,8 +537,11 @@ maybe('Customer portal RLS (issue #8 slice 2)', () => {
 
     it("another buyer's / unapproved unit: returns nothing", async () => {
       for (const unit of [U_OTHER, U_HOLD]) {
-        const rows = await withRlsContext(prisma, ctx(C1), (tx) =>
-          tx.$queryRaw<unknown[]>`SELECT * FROM progress_photo_creator_label(${photoOf(unit)})`,
+        const rows = await withRlsContext(
+          prisma,
+          ctx(C1),
+          (tx) =>
+            tx.$queryRaw<unknown[]>`SELECT * FROM progress_photo_creator_label(${photoOf(unit)})`,
         );
         expect(rows.length).toBe(0);
       }

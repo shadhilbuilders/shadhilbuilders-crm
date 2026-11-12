@@ -30,7 +30,8 @@ export function PhotoLightbox({ photos, openPhotoId, onSelect, onClose }: PhotoL
   const index = openPhotoId === null ? -1 : photos.findIndex((p) => p.id === openPhotoId);
   const photo = index === -1 ? null : (photos[index] as TimelinePhoto);
   const previous = index > 0 ? (photos[index - 1] as TimelinePhoto) : null;
-  const next = index !== -1 && index < photos.length - 1 ? (photos[index + 1] as TimelinePhoto) : null;
+  const next =
+    index !== -1 && index < photos.length - 1 ? (photos[index + 1] as TimelinePhoto) : null;
 
   useEffect(() => {
     if (photo === null) return;
@@ -92,7 +93,10 @@ export function PhotoLightboxPanel({
   return (
     <div className="relative flex h-dvh w-full flex-col" data-qa="portal-lightbox">
       <div className="relative z-10 flex items-center justify-between gap-2 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
-        <p className="text-muted-foreground pl-2 text-sm tabular-nums" data-qa="portal-lightbox-count">
+        <p
+          className="text-muted-foreground pl-2 text-sm tabular-nums"
+          data-qa="portal-lightbox-count"
+        >
           {position} of {total}
         </p>
         <div className="flex items-center gap-1">
@@ -149,7 +153,10 @@ export function PhotoLightboxPanel({
 
       <div className="border-border bg-background/90 border-t px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
         {note.length > 0 ? (
-          <p className="portal-display text-foreground text-lg leading-snug" data-qa="portal-lightbox-note">
+          <p
+            className="portal-display text-foreground text-lg leading-snug"
+            data-qa="portal-lightbox-note"
+          >
             {note}
           </p>
         ) : null}

@@ -60,12 +60,10 @@ vi.mock('@/lib/session', () => ({
     user: { id: 'u1', role: 'SALES_EXEC', name: 'Exec', email: 'e@x' },
     isPending: false,
   })),
-  canApproveBookings: vi.fn((role: string | undefined) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+  canApproveBookings: vi.fn(
+    (role: string | undefined) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
   ),
-  isAdminLike: vi.fn((role: string | undefined) =>
-    role === 'ADMIN' || role === 'OWNER',
-  ),
+  isAdminLike: vi.fn((role: string | undefined) => role === 'ADMIN' || role === 'OWNER'),
 }));
 
 import BookingsPage from './page';

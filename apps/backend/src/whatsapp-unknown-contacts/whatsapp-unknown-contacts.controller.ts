@@ -47,9 +47,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -70,9 +68,7 @@ function parseQuery<T>(
   const result = schema.safeParse(normalized);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -115,10 +111,7 @@ export class WhatsappUnknownContactsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ConvertUnknownContactResult> {
-    const dto: ConvertUnknownContactDto = parseBody(
-      ConvertUnknownContactDtoSchema,
-      body,
-    );
+    const dto: ConvertUnknownContactDto = parseBody(ConvertUnknownContactDtoSchema, body);
     return this.service.convert(req.user!, id, dto);
   }
 

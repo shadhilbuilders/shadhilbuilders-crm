@@ -9,12 +9,7 @@
 // TeamMember row's removal, inside one transaction sharing one audit
 // batchId (plan A2/G-1: high-stakes audit writes happen in the SAME
 // transaction as the action).
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
   withRlsContext,
@@ -51,10 +46,7 @@ import {
   type LeadOwnershipSnapshot,
 } from './team-removal.util';
 
-type Tx = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
->;
+type Tx = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$use' | '$extends'>;
 
 /** Interactive-transaction cap (design doc: "loads at most 1,000 affected
  * leads"). Preview fails fast with TOO_MANY_AFFECTED_LEADS above this. */
@@ -167,11 +159,16 @@ export class TeamMembersService {
         }
         eligibleReplacements = pool
           .filter((c) => ownedStates.every((state) => canRoleOwnState(state, c.role)))
-          .map((c) => ({ userId: c.userId, name: c.name, role: c.role, isTeamManager: c.isTeamManager }));
+          .map((c) => ({
+            userId: c.userId,
+            name: c.name,
+            role: c.role,
+            isTeamManager: c.isTeamManager,
+          }));
         if (eligibleReplacements.length === 0) {
           throw new CodedNotFoundException(
             'NO_ELIGIBLE_REPLACEMENT',
-            'No same-team candidate can own every state among this person\'s leads. Reassign the incompatible leads through the Leads page first.',
+            "No same-team candidate can own every state among this person's leads. Reassign the incompatible leads through the Leads page first.",
           );
         }
       }
@@ -209,7 +206,11 @@ export class TeamMembersService {
     userId: string,
     dto: ReassignAndRemoveDto,
   ): Promise<ReassignAndRemoveResponse> {
-    if (dto.replacementUserId !== undefined && dto.replacementUserId !== null && dto.replacementUserId === userId) {
+    if (
+      dto.replacementUserId !== undefined &&
+      dto.replacementUserId !== null &&
+      dto.replacementUserId === userId
+    ) {
       throw new CodedBadRequestException(
         'SELF_REPLACEMENT',
         'The replacement cannot be the same person being removed.',
@@ -238,9 +239,7 @@ export class TeamMembersService {
           return this.responseFromAudit(existingAudit);
         }
         // requestId reused for a DIFFERENT removal - not this operation.
-        throw new NotFoundException(
-          `No pending removal matches requestId ${dto.requestId}.`,
-        );
+        throw new NotFoundException(`No pending removal matches requestId ${dto.requestId}.`);
       }
       if (membershipRow === null) {
         throw new CodedNotFoundException(
@@ -269,7 +268,14 @@ export class TeamMembersService {
       }
 
       const lockedLeads = await t.$queryRaw<
-        Array<{ id: string; updatedAt: Date; ownerId: string; coOwnerId: string | null; state: LeadState; projectId: string | null }>
+        Array<{
+          id: string;
+          updatedAt: Date;
+          ownerId: string;
+          coOwnerId: string | null;
+          state: LeadState;
+          projectId: string | null;
+        }>
       >(
         Prisma.sql`
           SELECT "id", "updatedAt", "ownerId", "coOwnerId", "state", "projectId"
@@ -382,7 +388,8 @@ export class TeamMembersService {
           const isClear = plan.clearCoOwnerLeadIds.includes(leadId);
           const after = {
             ownerId:
-              plan.promoteCoOwnerToOwnerLeadIds.includes(leadId) || plan.reassignOwnerLeadIds.includes(leadId)
+              plan.promoteCoOwnerToOwnerLeadIds.includes(leadId) ||
+              plan.reassignOwnerLeadIds.includes(leadId)
                 ? replacementUserId
                 : before.ownerId,
             coOwnerId:
@@ -562,7 +569,7 @@ export class TeamMembersService {
     const allowed = await this.teamAccess.canMutateTeam(tx as never, actor, teamId);
     if (!allowed) {
       throw new ForbiddenException(
-        'Only ADMIN, OWNER, or the team\'s manager may remove a member from this team.',
+        "Only ADMIN, OWNER, or the team's manager may remove a member from this team.",
       );
     }
   }
@@ -608,15 +615,29 @@ export class TeamMembersService {
     });
     const pool: CandidateMember[] = memberRows
       .filter((m) => CANDIDATE_ROLES.includes(m.user.role))
-      .map((m) => ({ userId: m.userId, name: m.user.name, role: m.user.role, isTeamManager: false }));
+      .map((m) => ({
+        userId: m.userId,
+        name: m.user.name,
+        role: m.user.role,
+        isTeamManager: false,
+      }));
 
-    if (managerId !== null && managerId !== excludeUserId && !pool.some((c) => c.userId === managerId)) {
+    if (
+      managerId !== null &&
+      managerId !== excludeUserId &&
+      !pool.some((c) => c.userId === managerId)
+    ) {
       const manager = await tx.user.findUnique({
         where: { id: managerId },
         select: { name: true, role: true },
       });
       if (manager !== null && CANDIDATE_ROLES.includes(manager.role)) {
-        pool.push({ userId: managerId, name: manager.name, role: manager.role, isTeamManager: true });
+        pool.push({
+          userId: managerId,
+          name: manager.name,
+          role: manager.role,
+          isTeamManager: true,
+        });
       }
     }
     return pool;
@@ -636,7 +657,12 @@ export class TeamMembersService {
         select: { name: true, role: true },
       });
       if (manager === null || !CANDIDATE_ROLES.includes(manager.role)) return null;
-      return { userId: candidateUserId, name: manager.name, role: manager.role, isTeamManager: true };
+      return {
+        userId: candidateUserId,
+        name: manager.name,
+        role: manager.role,
+        isTeamManager: true,
+      };
     }
     const membership = await tx.teamMember.findUnique({
       where: { userId_teamId: { userId: candidateUserId, teamId } },

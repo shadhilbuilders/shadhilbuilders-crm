@@ -9,12 +9,7 @@
 // Edit   → PATCH /api/projects/:id (ADMIN/OWNER; slug immutable).
 // Delete → DELETE /api/projects/:id (OWNER only; 409 when bookings exist).
 
-import {
-  Button,
-  Form,
-  toast,
-  TypographyP,
-} from '@paalstack/react-ui';
+import { Button, Form, toast, TypographyP } from '@paalstack/react-ui';
 import type { FormFieldItemType } from '@paalstack/react-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -70,12 +65,10 @@ export function ProjectFormBody({
         {
           name: values.name.trim(),
           address: values.address.trim(),
-          ...(values.reraNumber !== undefined &&
-          values.reraNumber.trim().length > 0
+          ...(values.reraNumber !== undefined && values.reraNumber.trim().length > 0
             ? { reraNumber: values.reraNumber.trim() }
             : {}),
-          ...(values.cmdaNumber !== undefined &&
-          values.cmdaNumber.trim().length > 0
+          ...(values.cmdaNumber !== undefined && values.cmdaNumber.trim().length > 0
             ? { cmdaNumber: values.cmdaNumber.trim() }
             : {}),
         },
@@ -85,9 +78,7 @@ export function ProjectFormBody({
             onDone();
           },
           onError: (error: unknown) => {
-            toast.error(
-              error instanceof Error ? error.message : 'Create failed',
-            );
+            toast.error(error instanceof Error ? error.message : 'Create failed');
           },
         },
       );
@@ -100,13 +91,11 @@ export function ProjectFormBody({
         name: values.name.trim(),
         address: values.address.trim(),
         reraNumber:
-          values.reraNumber !== undefined &&
-          values.reraNumber.trim().length > 0
+          values.reraNumber !== undefined && values.reraNumber.trim().length > 0
             ? values.reraNumber.trim()
             : null,
         cmdaNumber:
-          values.cmdaNumber !== undefined &&
-          values.cmdaNumber.trim().length > 0
+          values.cmdaNumber !== undefined && values.cmdaNumber.trim().length > 0
             ? values.cmdaNumber.trim()
             : null,
       },
@@ -116,9 +105,7 @@ export function ProjectFormBody({
           onDone();
         },
         onError: (error: unknown) => {
-          toast.error(
-            error instanceof Error ? error.message : 'Update failed',
-          );
+          toast.error(error instanceof Error ? error.message : 'Update failed');
         },
       },
     );
@@ -189,12 +176,7 @@ export function ProjectFormBody({
         <p className="text-destructive text-xs">{mutationError.message}</p>
       ) : null}
       <div className="flex justify-end gap-2 pt-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onDone}
-          disabled={pending}
-        >
+        <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           Cancel
         </Button>
         <Button
@@ -236,9 +218,7 @@ export function ProjectDeleteBody({
         void router.push('/');
       },
       onError: (error: unknown) => {
-        toast.error(
-          error instanceof Error ? error.message : 'Delete failed',
-        );
+        toast.error(error instanceof Error ? error.message : 'Delete failed');
       },
     });
   }
@@ -246,24 +226,18 @@ export function ProjectDeleteBody({
   return (
     <form onSubmit={submit} className="space-y-3" noValidate>
       <TypographyP>
-        Delete <strong>{project.name}</strong>? This soft-deletes the project:
-        it's hidden from the registry/switcher and the per-project pages. Its
-        leads and records are kept (not erased).
+        Delete <strong>{project.name}</strong>? This soft-deletes the project: it's hidden from the
+        registry/switcher and the per-project pages. Its leads and records are kept (not erased).
       </TypographyP>
       <TypographyP className="text-muted-foreground text-xs">
-        Projects with bookings cannot be deleted - the server refuses with
-        409. Only ADMIN or OWNER can delete.
+        Projects with bookings cannot be deleted - the server refuses with 409. Only ADMIN or OWNER
+        can delete.
       </TypographyP>
       {deleteProject.isError && deleteProject.error instanceof Error ? (
         <p className="text-destructive text-xs">{deleteProject.error.message}</p>
       ) : null}
       <div className="flex justify-end gap-2 pt-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onDone}
-          disabled={deleteProject.isPending}
-        >
+        <Button type="button" variant="ghost" onClick={onDone} disabled={deleteProject.isPending}>
           Cancel
         </Button>
         <Button

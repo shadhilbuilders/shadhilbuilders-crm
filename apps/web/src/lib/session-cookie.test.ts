@@ -21,9 +21,7 @@ import {
 
 /** A stand-in for Next's RequestCookies / ReadonlyRequestCookies. */
 function reader(entries: Record<string, string>): CookieReader {
-  const parsed = new Map(
-    Object.entries(entries).map(([name, value]) => [name, { name, value }]),
-  );
+  const parsed = new Map(Object.entries(entries).map(([name, value]) => [name, { name, value }]));
   return {
     get: (name) => parsed.get(name),
     getAll: () => Array.from(parsed.values()),

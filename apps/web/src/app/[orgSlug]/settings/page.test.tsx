@@ -98,10 +98,7 @@ async function unmount(): Promise<void> {
 }
 
 function setNativeValue(input: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype,
-    'value',
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -186,12 +183,8 @@ describe('SettingsPage - access', () => {
 describe('SettingsPage - profile', () => {
   it('prefills the name and shows the email + user id read-only', async () => {
     await mount();
-    const name = document.querySelector<HTMLInputElement>(
-      '[data-qa="settings-profile-name"]',
-    );
-    const email = document.querySelector<HTMLInputElement>(
-      '[data-qa="settings-profile-email"]',
-    );
+    const name = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-name"]');
+    const email = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-email"]');
     expect(name?.value).toBe('Priya Sharma');
     expect(email?.value).toBe('priya@shadhilbuilders.in');
     // Read-only, not merely styled to look so.
@@ -210,20 +203,21 @@ describe('SettingsPage - profile', () => {
     // Drive the mutation's onSuccess the way react-query does.
     mocks.mutate.mockImplementation(
       (vars: { name: string }, opts: { onSuccess?: (r: unknown) => Promise<void> }) => {
-        void opts.onSuccess?.({ id: 'tc-1', name: vars.name, email: telecaller.email, role: 'TELECALLER' });
+        void opts.onSuccess?.({
+          id: 'tc-1',
+          name: vars.name,
+          email: telecaller.email,
+          role: 'TELECALLER',
+        });
       },
     );
 
     await mount();
-    const input = document.querySelector<HTMLInputElement>(
-      '[data-qa="settings-profile-name"]',
-    )!;
+    const input = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-name"]')!;
     await act(async () => {
       setNativeValue(input, 'Priya S.');
     });
-    const save = document.querySelector<HTMLButtonElement>(
-      '[data-qa="settings-profile-save"]',
-    )!;
+    const save = document.querySelector<HTMLButtonElement>('[data-qa="settings-profile-save"]')!;
     await act(async () => {
       save.click();
     });
@@ -239,15 +233,11 @@ describe('SettingsPage - profile', () => {
 
   it('does not submit an empty name (the server would 400)', async () => {
     await mount();
-    const input = document.querySelector<HTMLInputElement>(
-      '[data-qa="settings-profile-name"]',
-    )!;
+    const input = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-name"]')!;
     await act(async () => {
       setNativeValue(input, '   ');
     });
-    const save = document.querySelector<HTMLButtonElement>(
-      '[data-qa="settings-profile-save"]',
-    )!;
+    const save = document.querySelector<HTMLButtonElement>('[data-qa="settings-profile-save"]')!;
     await act(async () => {
       save.click();
     });

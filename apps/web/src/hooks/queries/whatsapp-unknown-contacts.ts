@@ -23,12 +23,7 @@
 // ['leads'] because convert() creates a new Lead that the inbox needs
 // to surface.
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 import { invalidateLeadCaches } from '@/hooks/queries/crm';
@@ -46,9 +41,7 @@ import type {
 // List (GET /api/whatsapp-unknown-contacts)
 // ---------------------------------------------------------------------------
 
-export function useWaUnknownContacts(
-  query: Partial<WhatsappUnknownContactListQuery> = {},
-) {
+export function useWaUnknownContacts(query: Partial<WhatsappUnknownContactListQuery> = {}) {
   return useQuery({
     queryKey: ['whatsapp-unknown-contacts', query] as const,
     queryFn: ({ signal }) =>
@@ -64,9 +57,7 @@ export function useWaUnknownContacts(
       total: typeof raw.total === 'number' ? raw.total : 0,
       rows: Array.isArray(raw.rows) ? raw.rows : [],
       nextCursor:
-        typeof raw.nextCursor === 'string' && raw.nextCursor.length > 0
-          ? raw.nextCursor
-          : null,
+        typeof raw.nextCursor === 'string' && raw.nextCursor.length > 0 ? raw.nextCursor : null,
     }),
     staleTime: 10_000,
     placeholderData: keepPreviousData,
@@ -85,10 +76,10 @@ export function useConvertWaUnknownContact() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { id: string; body: ConvertUnknownContactDto }) =>
-      api<ConvertUnknownContactResult>(
-        `/whatsapp-unknown-contacts/${args.id}/convert`,
-        { method: 'POST', json: args.body },
-      ),
+      api<ConvertUnknownContactResult>(`/whatsapp-unknown-contacts/${args.id}/convert`, {
+        method: 'POST',
+        json: args.body,
+      }),
     onSuccess: () => {
       // The list must refetch - convert flips the contact to CONVERTED
       // and adds a row to the Leads inbox. KPI strip counts bump too.
@@ -108,10 +99,9 @@ export function useMarkWaUnknownSpam() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { id: string }) =>
-      api<SpamUnknownContactResult>(
-        `/whatsapp-unknown-contacts/${args.id}/spam`,
-        { method: 'POST' },
-      ),
+      api<SpamUnknownContactResult>(`/whatsapp-unknown-contacts/${args.id}/spam`, {
+        method: 'POST',
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ['whatsapp-unknown-contacts'],

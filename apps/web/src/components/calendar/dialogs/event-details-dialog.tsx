@@ -102,7 +102,8 @@ const STATUS_CHIP: Record<string, string> = {
 function StatusIcon({ tone }: { tone: string }) {
   if (tone === 'green') return <LuCircleCheck className="size-3.5 shrink-0" aria-hidden="true" />;
   if (tone === 'red') return <LuCircleX className="size-3.5 shrink-0" aria-hidden="true" />;
-  if (tone === 'yellow') return <LuTriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />;
+  if (tone === 'yellow')
+    return <LuTriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />;
   return <LuCalendarClock className="size-3.5 shrink-0" aria-hidden="true" />;
 }
 
@@ -212,7 +213,9 @@ export function EventDetailsDialog({ event, children }: IProps) {
             </span>
           ),
         }}
-        footer={<span className="text-muted-foreground text-xs">Conducted by {event.user.name}</span>}
+        footer={
+          <span className="text-muted-foreground text-xs">Conducted by {event.user.name}</span>
+        }
       >
         <div className="space-y-4">
           <div className="flex items-start gap-2">

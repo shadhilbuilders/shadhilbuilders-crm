@@ -14,7 +14,13 @@ import { DroppableTimeBlock } from '../dnd/droppable-time-block';
 import { SlotClickArea } from '../dnd/slot-click-area';
 import { CalendarTimeline } from './calendar-time-line';
 import { DayViewMultiDayEventsRow } from './day-view-multi-day-events-row';
-import { groupEvents, getEventBlockStyle, isWorkingHour, getCurrentEvents, getVisibleHours } from '../helpers';
+import {
+  groupEvents,
+  getEventBlockStyle,
+  isWorkingHour,
+  getCurrentEvents,
+  getVisibleHours,
+} from '../helpers';
 
 import type { IEvent } from '../interfaces';
 
@@ -142,17 +148,26 @@ export function CalendarDayView({ singleDayEvents, multiDayEvents }: IProps) {
 
                 {groupedEvents.map((group, groupIndex) =>
                   group.map((event) => {
-                    let style = getEventBlockStyle(event, selectedDate, groupIndex, groupedEvents.length, {
-                      from: earliestEventHour,
-                      to: latestEventHour,
-                    });
+                    let style = getEventBlockStyle(
+                      event,
+                      selectedDate,
+                      groupIndex,
+                      groupedEvents.length,
+                      {
+                        from: earliestEventHour,
+                        to: latestEventHour,
+                      },
+                    );
                     const hasOverlap = groupedEvents.some(
                       (otherGroup, otherIndex) =>
                         otherIndex !== groupIndex &&
                         otherGroup.some((otherEvent) =>
                           areIntervalsOverlapping(
                             { start: parseISO(event.startDate), end: parseISO(event.endDate) },
-                            { start: parseISO(otherEvent.startDate), end: parseISO(otherEvent.endDate) },
+                            {
+                              start: parseISO(otherEvent.startDate),
+                              end: parseISO(otherEvent.endDate),
+                            },
                           ),
                         ),
                     );
@@ -168,7 +183,10 @@ export function CalendarDayView({ singleDayEvents, multiDayEvents }: IProps) {
                 )}
               </div>
 
-              <CalendarTimeline firstVisibleHour={earliestEventHour} lastVisibleHour={latestEventHour} />
+              <CalendarTimeline
+                firstVisibleHour={earliestEventHour}
+                lastVisibleHour={latestEventHour}
+              />
             </div>
           </div>
         </ScrollArea>

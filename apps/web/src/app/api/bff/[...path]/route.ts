@@ -21,38 +21,23 @@ import { readSessionCookie } from '@/lib/session-cookie';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  request: NextRequest,
-  ctx: RouteContext<'/api/bff/[...path]'>,
-) {
+export async function GET(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
-export async function POST(
-  request: NextRequest,
-  ctx: RouteContext<'/api/bff/[...path]'>,
-) {
+export async function POST(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
-export async function PATCH(
-  request: NextRequest,
-  ctx: RouteContext<'/api/bff/[...path]'>,
-) {
+export async function PATCH(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
-export async function PUT(
-  request: NextRequest,
-  ctx: RouteContext<'/api/bff/[...path]'>,
-) {
+export async function PUT(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
-export async function DELETE(
-  request: NextRequest,
-  ctx: RouteContext<'/api/bff/[...path]'>,
-) {
+export async function DELETE(request: NextRequest, ctx: RouteContext<'/api/bff/[...path]'>) {
   return forward(request, ctx);
 }
 
@@ -117,10 +102,7 @@ async function forward(
       Authorization: `Bearer ${jwt}`,
       'Content-Type': request.headers.get('content-type') ?? 'application/json',
     },
-    body:
-      request.method === 'GET' || request.method === 'HEAD'
-        ? undefined
-        : await request.text(),
+    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text(),
     cache: 'no-store',
   });
 
@@ -132,22 +114,18 @@ async function forward(
   // (image/document bytes) - re-serializing to UTF-8 via .text() would corrupt
   // non-ASCII bytes. Detect binary content-types and echo the raw ArrayBuffer.
   const isBinary =
-    !upstreamContentType.includes('application/json') &&
-    !upstreamContentType.includes('text/');
+    !upstreamContentType.includes('application/json') && !upstreamContentType.includes('text/');
 
   const body =
     isBinary && upstreamBody.byteLength > 0
       ? Buffer.from(upstreamBody)
       : Buffer.from(new TextDecoder().decode(upstreamBody));
 
-  return new NextResponse(
-    new Uint8Array(body),
-    {
-      status: upstream.status,
-      headers: {
-        'Content-Type': upstreamContentType,
-        'Cache-Control': 'no-store',
-      },
+  return new NextResponse(new Uint8Array(body), {
+    status: upstream.status,
+    headers: {
+      'Content-Type': upstreamContentType,
+      'Cache-Control': 'no-store',
     },
-  );
+  });
 }

@@ -35,15 +35,25 @@ const unit = (unitId: string, unitNumber: string): PortalUnit => ({
 
 describe('UnitSwitcher', () => {
   it('renders nothing for zero or one unit', () => {
-    expect(renderToStaticMarkup(<UnitSwitcher units={[]} selectedUnitId={null} onSelect={() => undefined} />)).toBe('');
     expect(
-      renderToStaticMarkup(<UnitSwitcher units={[unit('a', 'A-1')]} selectedUnitId="a" onSelect={() => undefined} />),
+      renderToStaticMarkup(
+        <UnitSwitcher units={[]} selectedUnitId={null} onSelect={() => undefined} />,
+      ),
+    ).toBe('');
+    expect(
+      renderToStaticMarkup(
+        <UnitSwitcher units={[unit('a', 'A-1')]} selectedUnitId="a" onSelect={() => undefined} />,
+      ),
     ).toBe('');
   });
 
   it('renders one chip per unit with the selected one pressed, for 2+ units', () => {
     const html = renderToStaticMarkup(
-      <UnitSwitcher units={[unit('a', 'A-1'), unit('b', 'A-2')]} selectedUnitId="b" onSelect={() => undefined} />,
+      <UnitSwitcher
+        units={[unit('a', 'A-1'), unit('b', 'A-2')]}
+        selectedUnitId="b"
+        onSelect={() => undefined}
+      />,
     );
     expect(html.match(/data-qa="unit-switcher-chip"/g)).toHaveLength(2);
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);

@@ -142,10 +142,14 @@ async function main(): Promise<void> {
     throw new Error('--amount must be a positive number');
   }
   if (args.actor === undefined || args.actor.trim().length === 0) {
-    throw new Error('Refusing to write without --actor <userId>: an unattributed money change is not acceptable.');
+    throw new Error(
+      'Refusing to write without --actor <userId>: an unattributed money change is not acceptable.',
+    );
   }
   if (args.reason === undefined || args.reason.trim().length === 0) {
-    throw new Error('Refusing to write without --reason: record the reference the corrected figure came from.');
+    throw new Error(
+      'Refusing to write without --reason: record the reference the corrected figure came from.',
+    );
   }
 
   const actorRow = await prisma.user.findUnique({

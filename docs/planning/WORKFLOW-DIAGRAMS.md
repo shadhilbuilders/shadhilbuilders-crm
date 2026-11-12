@@ -8,7 +8,7 @@ A picture-book guide for Shadhil's sales leadership. Six diagrams, plain English
 
 ## Diagram 1 - The Big Picture: All Our Apps and Where Data Lives
 
-**ELI10.** Think of the CRM as a small office with three front desks and one filing cabinet. The *web app* is the desk a Sales Manager uses on a laptop. The *mobile app* is the desk a Telecaller carries in their pocket. The *backend* is the clerk behind the scenes who actually files things. All three desks talk to the same clerk, who writes everything into a big locked filing cabinet (the database). When the clerk wants to "shout" a message to anyone who has a file open right now, he shouts through a little intercom (Redis), and messages on WhatsApp flow in and out through a special phone line (the WhatsApp Cloud API). Phone calls flow through FreJun, our Indian cloud phone system.
+**ELI10.** Think of the CRM as a small office with three front desks and one filing cabinet. The _web app_ is the desk a Sales Manager uses on a laptop. The _mobile app_ is the desk a Telecaller carries in their pocket. The _backend_ is the clerk behind the scenes who actually files things. All three desks talk to the same clerk, who writes everything into a big locked filing cabinet (the database). When the clerk wants to "shout" a message to anyone who has a file open right now, he shouts through a little intercom (Redis), and messages on WhatsApp flow in and out through a special phone line (the WhatsApp Cloud API). Phone calls flow through FreJun, our Indian cloud phone system.
 
 ```
                                                                                 ┌──────────────────┐
@@ -80,13 +80,13 @@ flowchart LR
     Nest -- "click-to-call" --> FreJun
 ```
 
-**Note.** Everything important sits in Postgres - Redis is only for "who is online, push them this chat message *now*". Losing Redis never loses a lead. Both apps share the same NestJS backend, so a Sales Manager's laptop and a Telecaller's phone always see the same data within a second of each other.
+**Note.** Everything important sits in Postgres - Redis is only for "who is online, push them this chat message _now_". Losing Redis never loses a lead. Both apps share the same NestJS backend, so a Sales Manager's laptop and a Telecaller's phone always see the same data within a second of each other.
 
 ---
 
 ## Diagram 2 - Logging In From a Laptop (Web)
 
-**ELI10.** Imagine Priya the Sales Executive walks up to the office door (opens her browser). She shows her ID (email + password) to the guard at the front desk (Next.js, which is also doing login). The guard checks her ID, gives her a little wristband (an encrypted cookie) so she doesn't have to show ID at every desk, and gives her a stamped pass (a JWT token) she can show to the back-office clerk (NestJS). Every time she asks the clerk for a file, the clerk checks the pass *and* the filing cabinet has a built-in lock that only opens files for people with the right pass - even if the clerk makes a mistake, the cabinet itself refuses to show her files she shouldn't see.
+**ELI10.** Imagine Priya the Sales Executive walks up to the office door (opens her browser). She shows her ID (email + password) to the guard at the front desk (Next.js, which is also doing login). The guard checks her ID, gives her a little wristband (an encrypted cookie) so she doesn't have to show ID at every desk, and gives her a stamped pass (a JWT token) she can show to the back-office clerk (NestJS). Every time she asks the clerk for a file, the clerk checks the pass _and_ the filing cabinet has a built-in lock that only opens files for people with the right pass - even if the clerk makes a mistake, the cabinet itself refuses to show her files she shouldn't see.
 
 ```
 Step  Actor              Action
@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## Diagram 3 - Logging In From a Phone (Expo Mobile)
 
-**ELI10.** Same idea as the laptop login, but the "wristband" can't be an httpOnly cookie on a phone - phones don't send cookies back the same way browsers do. Instead, after the front desk (Next.js) checks Ravi the Telecaller's ID, Ravi's phone tucks the stamped pass (JWT) into the phone's *hardware safe* - on iPhones that's the secure Keychain chip, on Android that's the encrypted shared-preferences vault. Every time the app calls the back office, it pulls the pass out of the safe and shows it. If Ravi loses his phone, the safe is encrypted and locked, so nobody can read the pass.
+**ELI10.** Same idea as the laptop login, but the "wristband" can't be an httpOnly cookie on a phone - phones don't send cookies back the same way browsers do. Instead, after the front desk (Next.js) checks Ravi the Telecaller's ID, Ravi's phone tucks the stamped pass (JWT) into the phone's _hardware safe_ - on iPhones that's the secure Keychain chip, on Android that's the encrypted shared-preferences vault. Every time the app calls the back office, it pulls the pass out of the safe and shows it. If Ravi loses his phone, the safe is encrypted and locked, so nobody can read the pass.
 
 ```
 Step  Actor              Action
@@ -336,7 +336,7 @@ RECEIVING (Customer → Sales Exec)
 ═══════════════════════════════════════════════════════════════════════════════
 
  Customer    WhatsApp Cloud API        NestJS (webhook)         Postgres       Redis       Open apps
- phone                                                                                      
+ phone
     │                                    │                        │              │              │
     │  WhatsApp message                  │                        │              │              │
     │───────────────────────────────────▶│                        │              │              │
@@ -517,9 +517,9 @@ sequenceDiagram
 
 ---
 
-## A Quick Word on What This Document Is *Not*
+## A Quick Word on What This Document Is _Not_
 
-This is the *sales leadership view* - what happens, who does it, and why. It deliberately skips:
+This is the _sales leadership view_ - what happens, who does it, and why. It deliberately skips:
 
 - The exact database tables and column names (those live in the engineering spec).
 - The exact endpoints and request/response shapes (those live in the API reference).
@@ -527,4 +527,4 @@ This is the *sales leadership view* - what happens, who does it, and why. It del
 
 If you want any of those, ask the engineering team and they'll pull the right doc.
 
-- *End of diagrams*
+- _End of diagrams_

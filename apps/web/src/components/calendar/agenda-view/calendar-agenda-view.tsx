@@ -20,10 +20,7 @@ export function CalendarAgendaView({ singleDayEvents, multiDayEvents }: IProps) 
   const { selectedDate } = useCalendar();
 
   const eventsByDay = useMemo(() => {
-    const allDates = new Map<
-      string,
-      { date: Date; events: IEvent[]; multiDayEvents: IEvent[] }
-    >();
+    const allDates = new Map<string, { date: Date; events: IEvent[]; multiDayEvents: IEvent[] }>();
 
     singleDayEvents.forEach((event) => {
       const eventDate = parseISO(event.startDate);

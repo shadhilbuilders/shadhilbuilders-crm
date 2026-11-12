@@ -42,14 +42,21 @@ const LEAD = `${TAG}lead`;
 const PROJECT = `${TAG}proj`;
 
 beforeAll(async () => {
-  const db = OWNER as unknown as Record<string, { create: (a: unknown) => Promise<unknown>; findFirst: (a: unknown) => Promise<unknown> }>;
+  const db = OWNER as unknown as Record<
+    string,
+    { create: (a: unknown) => Promise<unknown>; findFirst: (a: unknown) => Promise<unknown> }
+  >;
   await db['project']!.create({
     data: { id: PROJECT, name: 'tokchk', slug: PROJECT, address: 'x', organizationId: ORG },
   });
   await db['user']!.create({
     data: {
-      id: USER, email: `${USER}@x.local`, name: 'Token Check', role: 'TELECALLER',
-      organizationId: ORG, mustChangePassword: false,
+      id: USER,
+      email: `${USER}@x.local`,
+      name: 'Token Check',
+      role: 'TELECALLER',
+      organizationId: ORG,
+      mustChangePassword: false,
     },
   });
   await db['team']!.create({ data: { id: TEAM, name: 'tokchk', organizationId: ORG } });
@@ -59,12 +66,29 @@ beforeAll(async () => {
     data: { id: phaseId, name: 'tokchk', projectId: PROJECT, organizationId: ORG },
   });
   await db['unit']!.create({
-    data: { id: UNIT, phaseId, unitNumber: 'TC-1', bhk: 2, buildupSqft: 100, pricePerSqft: 1000, price: 100000, status: 'AVAILABLE', organizationId: ORG },
+    data: {
+      id: UNIT,
+      phaseId,
+      unitNumber: 'TC-1',
+      bhk: 2,
+      buildupSqft: 100,
+      pricePerSqft: 1000,
+      price: 100000,
+      status: 'AVAILABLE',
+      organizationId: ORG,
+    },
   });
   await db['lead']!.create({
     data: {
-      id: LEAD, name: 'Token Check Lead', phone: '+910000000099', state: 'NEGOTIATION',
-      ownerId: USER, ownerType: 'TELECALLER', teamId: TEAM, projectId: PROJECT, organizationId: ORG,
+      id: LEAD,
+      name: 'Token Check Lead',
+      phone: '+910000000099',
+      state: 'NEGOTIATION',
+      ownerId: USER,
+      ownerType: 'TELECALLER',
+      teamId: TEAM,
+      projectId: PROJECT,
+      organizationId: ORG,
     },
   });
 });
@@ -96,15 +120,16 @@ async function rawInsert(amount: number, token: string): Promise<string> {
     const tokenExpr = token === 'NULL' ? 'NULL' : '$7';
     const params: unknown[] = [id, LEAD, UNIT, ORG, USER, amount.toFixed(2)];
     if (token !== 'NULL') params.push(token);
-    await (OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }).$executeRawUnsafe(
+    await (
+      OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }
+    ).$executeRawUnsafe(
       `INSERT INTO "Booking" (id,"leadId","unitId","organizationId","userId",status,amount,"listAmount","tokenAmount","updatedAt")
        VALUES ($1,$2,$3,$4,$5,'HOLD',$6,$6,${tokenExpr},now())`,
       ...params,
     );
-    await (OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }).$executeRawUnsafe(
-      `DELETE FROM "Booking" WHERE id = $1`,
-      id,
-    );
+    await (
+      OWNER as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown> }
+    ).$executeRawUnsafe(`DELETE FROM "Booking" WHERE id = $1`, id);
     return 'accepted';
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -118,9 +143,7 @@ describe('Booking token CHECK constraint (booking_token_within_total)', () => {
     // The exact shape that reached production: B-103, token 16,525,612 against a
     // 6,050,000 total. The service would refuse this now; the point here is that
     // the DATABASE refuses it too, so no path can reintroduce it.
-    expect(await rawInsert(6050000, '16525612.00')).toBe(
-      'constraint:booking_token_within_total',
-    );
+    expect(await rawInsert(6050000, '16525612.00')).toBe('constraint:booking_token_within_total');
   });
 
   it('REJECTS a zero token (not a payment)', async () => {

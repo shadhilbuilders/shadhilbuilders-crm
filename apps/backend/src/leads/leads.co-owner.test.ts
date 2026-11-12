@@ -11,24 +11,10 @@
 //   6. Clearing the co-owner (coOwnerId = null) works.
 //   7. The audit row is written with correct before/after.
 
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
@@ -63,9 +49,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function actorFor(
-  overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>,
-): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
@@ -249,7 +233,7 @@ describe('LeadsService.setCoOwner', () => {
   const service = new LeadsService(new PrismaService());
 
   it('1. ADMIN can set a same-team co-owner', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: SE_A_ID,
@@ -266,7 +250,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('2. MANAGER can set a same-team co-owner', async () => {
-    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER'});
+    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER' });
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: TC_A2_ID,
@@ -283,7 +267,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('3. MANAGER cannot set a co-owner in another team (403)', async () => {
-    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER'});
+    const actor = actorFor({ sub: MGR_A_ID, role: 'MANAGER' });
     await expect(
       service.setCoOwner(actor, {
         leadId: LEAD_ID,
@@ -299,7 +283,7 @@ describe('LeadsService.setCoOwner', () => {
     // NotFound - regardless of which team they're in. TC_B (other team,
     // no ownership tie) is the clean actor here: an earlier test sets
     // TC_A2 as co-owner, which would let TC_A2 see the lead.
-    const actor = actorFor({ sub: TC_B_ID, role: 'TELECALLER'});
+    const actor = actorFor({ sub: TC_B_ID, role: 'TELECALLER' });
     let thrown: unknown;
     try {
       await service.setCoOwner(actor, {
@@ -314,7 +298,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('5. the lead owner cannot also be the co-owner (400)', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
     await expect(
       service.setCoOwner(actor, {
         leadId: LEAD_ID,
@@ -331,7 +315,7 @@ describe('LeadsService.setCoOwner', () => {
         data: { coOwnerId: SE_A_ID },
       }),
     );
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
     const result = await service.setCoOwner(actor, {
       leadId: LEAD_ID,
       coOwnerId: null,
@@ -348,7 +332,7 @@ describe('LeadsService.setCoOwner', () => {
   });
 
   it('7. unknown lead -> NotFound', async () => {
-    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN'});
+    const actor = actorFor({ sub: ADMIN_ID, role: 'ADMIN' });
     await expect(
       service.setCoOwner(actor, {
         leadId: 'cmx00000000000000000000000',

@@ -22,10 +22,7 @@ import { withRlsContext } from '@shadhil/database';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
-import {
-  OverdueAlertsService,
-  OVERDUE_ALERT_LOCK_KEY,
-} from './overdue-alerts.service';
+import { OverdueAlertsService, OVERDUE_ALERT_LOCK_KEY } from './overdue-alerts.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
@@ -46,9 +43,7 @@ const TEAM_ID = `team-${runToken}`;
 const LEAD_ID = `lead-${runToken}`;
 const LEAD2_ID = `lead2-${runToken}`;
 
-async function adminSeed<T>(
-  fn: (db: PrismaClient) => Promise<T>,
-): Promise<T> {
+async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
@@ -286,11 +281,7 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)(
 
     it('lock contention: a second replica is rejected when the lock is held', async () => {
       const REPLICA_A = 'ovdo-replica-a';
-      const acquired = await stubRedis.acquireLock(
-        OVERDUE_ALERT_LOCK_KEY,
-        50,
-        REPLICA_A,
-      );
+      const acquired = await stubRedis.acquireLock(OVERDUE_ALERT_LOCK_KEY, 50, REPLICA_A);
       expect(acquired).toBe(true);
 
       await service.tick();

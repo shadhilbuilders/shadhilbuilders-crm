@@ -107,9 +107,7 @@ export function normalizeLeadSource(raw: string | null | undefined): LeadSource 
 
   const key = text.replace(/\s+/g, '_');
 
-  const canonical = LEAD_SOURCES.find(
-    (source) => source.toLowerCase() === key,
-  );
+  const canonical = LEAD_SOURCES.find((source) => source.toLowerCase() === key);
   if (canonical !== undefined) return canonical;
 
   const aliased = SOURCE_ALIASES[key];

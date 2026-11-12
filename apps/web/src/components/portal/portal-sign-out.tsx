@@ -78,7 +78,7 @@ export function PortalSignOut() {
       <IconButton
         type="button"
         variant="ghost"
-        className='size-9 min-h-9 min-w-9 rounded-full p-0 sm:size-11 sm:min-h-11 sm:min-w-11'
+        className="size-9 min-h-9 min-w-9 rounded-full p-0 sm:size-11 sm:min-h-11 sm:min-w-11"
         icon={<LuLogOut className={ICON_SIZE} aria-hidden="true" />}
         // The icon is the only content: without this the control has NO
         // accessible name (axe `button-name`, critical).

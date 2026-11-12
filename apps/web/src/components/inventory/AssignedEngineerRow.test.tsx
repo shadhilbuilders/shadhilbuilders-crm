@@ -26,7 +26,13 @@ import type { UnitRow } from '@/hooks/queries/inventory';
 import { AssignedEngineerRow } from './AssignedEngineerRow';
 
 const unit = (over: Partial<UnitRow> = {}): UnitRow =>
-  ({ id: 'u1', projectId: 'p1', assignedEngineerId: null, assignedEngineerName: null, ...over }) as UnitRow;
+  ({
+    id: 'u1',
+    projectId: 'p1',
+    assignedEngineerId: null,
+    assignedEngineerName: null,
+    ...over,
+  }) as UnitRow;
 
 const render = (role: string, u: UnitRow) => {
   mocks.role = role;
@@ -41,7 +47,10 @@ describe('AssignedEngineerRow', () => {
   });
 
   it('shows MANAGER the engineer name read-only, or "Not assigned"', () => {
-    const named = render('MANAGER', unit({ assignedEngineerId: 'e1', assignedEngineerName: 'Ravi' }));
+    const named = render(
+      'MANAGER',
+      unit({ assignedEngineerId: 'e1', assignedEngineerName: 'Ravi' }),
+    );
     expect(named).toContain('Ravi');
     expect(named).not.toContain('unit-assign-engineer');
     expect(render('MANAGER', unit())).toContain('Not assigned');

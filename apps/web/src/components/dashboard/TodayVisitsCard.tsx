@@ -111,7 +111,7 @@ export function TodayVisitsCard({
                     )}
                   </span>
                 </div>
-                <span className="flex flex-col sm:flex-row shrink-0 items-start sm:items-center gap-2 text-muted-foreground text-xs">
+                <span className="text-muted-foreground flex shrink-0 flex-col items-start gap-2 text-xs sm:flex-row sm:items-center">
                   {/* T-VISIT-OWNER-LABEL (2026-09-28): both names labelled.
                       `leadOwnerName` is the SAME field the lead page renders as
                       "Owner", so this row and that page can never appear to
@@ -131,7 +131,9 @@ export function TodayVisitsCard({
                         : '-'}
                     </span>
                   </span>
-                  <span aria-hidden="true" className="hidden sm:block">·</span>
+                  <span aria-hidden="true" className="hidden sm:block">
+                    ·
+                  </span>
                   <span>
                     Visit exec:{' '}
                     <span className="text-foreground">{visit.userName ?? 'unassigned'}</span>

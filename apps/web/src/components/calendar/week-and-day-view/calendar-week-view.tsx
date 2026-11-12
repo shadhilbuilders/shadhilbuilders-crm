@@ -1,6 +1,13 @@
 // CalendarWeekView (vendored from lramos33/big-calendar, adapted to
 // @paalstack/react-ui + relative imports). The week grid view.
-import { startOfWeek, addDays, format, parseISO, isSameDay, areIntervalsOverlapping } from 'date-fns';
+import {
+  startOfWeek,
+  addDays,
+  format,
+  parseISO,
+  isSameDay,
+  areIntervalsOverlapping,
+} from 'date-fns';
 
 import { ScrollArea } from '@paalstack/react-ui';
 import { cn } from '@paalstack/react-ui/lib';
@@ -45,10 +52,7 @@ export function CalendarWeekView({ singleDayEvents, multiDayEvents }: IProps) {
           {/* Week header */}
           <div className="relative z-20 flex border-b">
             <div className="w-18"></div>
-            <div
-              data-qa="visits-week-grid"
-              className="grid flex-1 grid-cols-7 divide-x border-l"
-            >
+            <div data-qa="visits-week-grid" className="grid flex-1 grid-cols-7 divide-x border-l">
               {weekDays.map((day, index) => (
                 <span
                   key={index}
@@ -149,17 +153,29 @@ export function CalendarWeekView({ singleDayEvents, multiDayEvents }: IProps) {
 
                       {groupedEvents.map((group, groupIndex) =>
                         group.map((event) => {
-                          let style = getEventBlockStyle(event, day, groupIndex, groupedEvents.length, {
-                            from: earliestEventHour,
-                            to: latestEventHour,
-                          });
+                          let style = getEventBlockStyle(
+                            event,
+                            day,
+                            groupIndex,
+                            groupedEvents.length,
+                            {
+                              from: earliestEventHour,
+                              to: latestEventHour,
+                            },
+                          );
                           const hasOverlap = groupedEvents.some(
                             (otherGroup, otherIndex) =>
                               otherIndex !== groupIndex &&
                               otherGroup.some((otherEvent) =>
                                 areIntervalsOverlapping(
-                                  { start: parseISO(event.startDate), end: parseISO(event.endDate) },
-                                  { start: parseISO(otherEvent.startDate), end: parseISO(otherEvent.endDate) },
+                                  {
+                                    start: parseISO(event.startDate),
+                                    end: parseISO(event.endDate),
+                                  },
+                                  {
+                                    start: parseISO(otherEvent.startDate),
+                                    end: parseISO(otherEvent.endDate),
+                                  },
                                 ),
                               ),
                           );
@@ -183,7 +199,10 @@ export function CalendarWeekView({ singleDayEvents, multiDayEvents }: IProps) {
                 })}
               </div>
 
-              <CalendarTimeline firstVisibleHour={earliestEventHour} lastVisibleHour={latestEventHour} />
+              <CalendarTimeline
+                firstVisibleHour={earliestEventHour}
+                lastVisibleHour={latestEventHour}
+              />
             </div>
           </div>
         </ScrollArea>

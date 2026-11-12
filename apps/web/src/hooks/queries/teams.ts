@@ -4,12 +4,7 @@
 // TELECALLER/SALES_EXEC staff to a team (the backend rejects staff users
 // without a teamId). Also powers the ADMIN/OWNER org-Teams pages
 // (/teams list + /teams/[teamId] roster).
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/apis/client';
 
@@ -74,8 +69,7 @@ export function useTeam(id: string | undefined) {
   return useQuery({
     queryKey: [...TEAMS_KEY, id ?? ''],
     enabled: id !== undefined && id.length > 0,
-    queryFn: ({ signal }) =>
-      api<TeamDetail>(`/teams/${id as string}`, { signal }),
+    queryFn: ({ signal }) => api<TeamDetail>(`/teams/${id as string}`, { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
@@ -118,10 +112,7 @@ export function useCreateTeam() {
 export function useUpdateTeam() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      ...input
-    }: UpdateTeamInput & { id: string }) =>
+    mutationFn: async ({ id, ...input }: UpdateTeamInput & { id: string }) =>
       api<TeamListItem>(`/teams/${id}`, { method: 'PATCH', json: input }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
@@ -133,8 +124,7 @@ export function useUpdateTeam() {
 export function useDeleteTeam() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) =>
-      api<{ id: string }>(`/teams/${id}`, { method: 'DELETE' }),
+    mutationFn: async (id: string) => api<{ id: string }>(`/teams/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: TEAMS_KEY });
     },

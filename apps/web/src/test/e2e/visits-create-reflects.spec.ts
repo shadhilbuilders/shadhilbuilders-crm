@@ -37,7 +37,13 @@ async function visibleMonth(page: Page): Promise<string> {
   // Read the month label from the calendar's own DateNavigator (the
   // "MMMM YYYY" heading inside the calendar subtree), not the first
   // match in main which can be from an unrelated toast/section.
-  const monthLabel = page.locator('[data-qa="calendar-prev"]').first().locator('..').locator('..').locator('span').first();
+  const monthLabel = page
+    .locator('[data-qa="calendar-prev"]')
+    .first()
+    .locator('..')
+    .locator('..')
+    .locator('span')
+    .first();
   const text = (await monthLabel.innerText()).trim();
   return text || '(unknown)';
 }
@@ -133,7 +139,10 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
     // outside the month the calendar is currently showing.
     await dialog.getByRole('textbox', { name: /date/i }).fill('2026-11-15');
     await dialog.getByRole('textbox', { name: /time/i }).fill('10:00');
-    await dialog.getByRole('button', { name: /^schedule$/i }).last().click();
+    await dialog
+      .getByRole('button', { name: /^schedule$/i })
+      .last()
+      .click();
 
     // Dialog closes on success - a validation failure leaves it open with an alert.
     await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
@@ -156,54 +165,53 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
   });
 
   test('a visit dated in the SAME month appears without moving the view', async ({ page }) => {
-      const now = new Date();
-      const tomorrow = new Date(now);
-      tomorrow.setDate(now.getDate() + 1);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const ymd = (d: Date) =>
-        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      // Dialog rejects past slots. Stay in the visible month so the agenda
-      // does not jump. Tomorrow works except on the last day of the month;
-      // then book later today if there is still evening left.
-      const slot =
-        tomorrow.getMonth() === now.getMonth()
-          ? { date: ymd(tomorrow), time: '23:30' }
-          : now.getHours() < 22
-            ? { date: ymd(now), time: '23:30' }
-            : null;
-      test.skip(
-        slot === null,
-        'no future slot remains in the current month',
-      );
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    // Dialog rejects past slots. Stay in the visible month so the agenda
+    // does not jump. Tomorrow works except on the last day of the month;
+    // then book later today if there is still evening left.
+    const slot =
+      tomorrow.getMonth() === now.getMonth()
+        ? { date: ymd(tomorrow), time: '23:30' }
+        : now.getHours() < 22
+          ? { date: ymd(now), time: '23:30' }
+          : null;
+    test.skip(slot === null, 'no future slot remains in the current month');
 
-      const monthBefore = await visibleMonth(page);
+    const monthBefore = await visibleMonth(page);
 
-      await page.locator('[data-qa="schedule-visit-button"]').click();
-      const dialog = page.locator('[role="dialog"]').first();
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      await page.waitForTimeout(600);
+    await page.locator('[data-qa="schedule-visit-button"]').click();
+    const dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(600);
 
-      await dialog.getByRole('combobox', { name: /search a lead/i }).click();
-      await page.waitForTimeout(700);
-      const option = page.getByRole('option', { name: new RegExp(FIXTURE_LEAD, 'i') });
-      await expect(option).toBeVisible({ timeout: 10_000 });
-      await option.click();
-      await page.waitForTimeout(400);
+    await dialog.getByRole('combobox', { name: /search a lead/i }).click();
+    await page.waitForTimeout(700);
+    const option = page.getByRole('option', { name: new RegExp(FIXTURE_LEAD, 'i') });
+    await expect(option).toBeVisible({ timeout: 10_000 });
+    await option.click();
+    await page.waitForTimeout(400);
 
-      await dialog.getByRole('textbox', { name: /date/i }).fill(slot!.date);
-      await dialog.getByRole('textbox', { name: /time/i }).fill(slot!.time);
-      await dialog.getByRole('button', { name: /^schedule$/i }).last().click();
+    await dialog.getByRole('textbox', { name: /date/i }).fill(slot!.date);
+    await dialog.getByRole('textbox', { name: /time/i }).fill(slot!.time);
+    await dialog
+      .getByRole('button', { name: /^schedule$/i })
+      .last()
+      .click();
 
-      // Dialog closes on success - a validation failure leaves it open with an alert.
-      await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
-      await page.waitForTimeout(3500);
+    // Dialog closes on success - a validation failure leaves it open with an alert.
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
+    await page.waitForTimeout(3500);
 
-      // Same month = the view stays put. No gratuitous jump for the common case.
-      expect(await visibleMonth(page)).toBe(monthBefore);
+    // Same month = the view stays put. No gratuitous jump for the common case.
+    expect(await visibleMonth(page)).toBe(monthBefore);
 
-      const body = await page.evaluate(
-        () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
-      );
-      expect(body).toMatch(/11:30 PM|23:30/);
-    });
+    const body = await page.evaluate(
+      () => ((document.querySelector('main') ?? document.body) as HTMLElement).innerText,
+    );
+    expect(body).toMatch(/11:30 PM|23:30/);
   });
+});

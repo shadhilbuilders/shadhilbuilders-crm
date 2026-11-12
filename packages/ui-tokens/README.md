@@ -7,12 +7,12 @@ using OKLCH color space. Inter is the brand font (loaded via
 
 ## Files in this package
 
-| File | What it is | When you touch it |
-|---|---|---|
-| `src/brand.css` | Per-project brand overrides. The only file you edit when starting a new project. | **Every new project.** ~25 lines. |
-| `src/fonts.css` | Deprecated placeholder. The brand font (Inter) is now configured in each consuming app via `next/font`. See "Font setup" below. | Not touched. Kept as a placeholder so existing imports don't break. |
-| `src/compliance.ts` | RERA / CMDA compliance helpers (Zod schemas). | When extending the compliance contract. |
-| `src/index.ts` | Barrel: exports compliance helpers only. | When adding new exports. |
+| File                | What it is                                                                                                                      | When you touch it                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `src/brand.css`     | Per-project brand overrides. The only file you edit when starting a new project.                                                | **Every new project.** ~25 lines.                                   |
+| `src/fonts.css`     | Deprecated placeholder. The brand font (Inter) is now configured in each consuming app via `next/font`. See "Font setup" below. | Not touched. Kept as a placeholder so existing imports don't break. |
+| `src/compliance.ts` | RERA / CMDA compliance helpers (Zod schemas).                                                                                   | When extending the compliance contract.                             |
+| `src/index.ts`      | Barrel: exports compliance helpers only.                                                                                        | When adding new exports.                                            |
 
 ## Where the default values come from
 
@@ -25,8 +25,8 @@ version. One source of truth, automatic updates on `pnpm install`.
 ## The cascade (in `apps/web/src/styles/globals.css`)
 
 ```css
-@import '@paalstack/react-ui/all.css';       /* shadcn defaults + theme + utilities + toast */
-@import '@shadhil/ui-tokens/brand.css';      /* YOUR overrides - last :root wins */
+@import '@paalstack/react-ui/all.css'; /* shadcn defaults + theme + utilities + toast */
+@import '@shadhil/ui-tokens/brand.css'; /* YOUR overrides - last :root wins */
 @import 'tailwindcss';
 
 @source '../../node_modules/@paalstack/react-ui';
@@ -73,18 +73,18 @@ Open `src/brand.css` and update the three values in `:root`:
 
 ```css
 :root {
-  --primary: oklch(0.238 0.099 260.3);     /* YOUR primary */
+  --primary: oklch(0.238 0.099 260.3); /* YOUR primary */
   --primary-foreground: oklch(0.971 0.009 84.6); /* contrast color (white-ish or black-ish) */
   --ring: var(--primary);
 
-  --secondary: oklch(0.684 0.178 136.1);   /* YOUR secondary */
+  --secondary: oklch(0.684 0.178 136.1); /* YOUR secondary */
   --secondary-foreground: oklch(0.145 0 0);
 
   --accent: var(--secondary);
   --accent-foreground: var(--secondary-foreground);
 
-  --background: oklch(0.971 0.009 84.6);   /* YOUR surface */
-  --foreground: oklch(0.238 0.099 260.3);  /* text color on the surface */
+  --background: oklch(0.971 0.009 84.6); /* YOUR surface */
+  --foreground: oklch(0.238 0.099 260.3); /* text color on the surface */
   /* ...rest cascades from base.css */
 }
 ```
@@ -121,9 +121,7 @@ const inter = Inter({
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(inter.variable, 'antialiased font-sans')}>
-        {children}
-      </body>
+      <body className={cn(inter.variable, 'font-sans antialiased')}>{children}</body>
     </html>
   );
 }
@@ -135,6 +133,7 @@ The `inter.variable` class sets `--font-inter` on `<body>`. Tailwind's
 cascade example above).
 
 **Why `next/font` instead of `@font-face` in CSS:**
+
 - Self-hosted: font files are downloaded once at build time and served
   from your domain (no third-party Google Fonts CDN request)
 - Preloaded with `<link rel="preload">` (no FOIT/FOUT flash)

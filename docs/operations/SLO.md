@@ -20,13 +20,13 @@ must change first (see "What would void these targets").
 
 ## Scope: what is measured
 
-| # | Service | What the user experiences | In scope |
-|---|---|---|---|
-| SLO-1 | `shadhil-web` (`crm.`) | the app loads and pages render | yes |
-| SLO-2 | `shadhil-api` (`api.crm.`) | data loads, saves, approves, sends | yes |
-| SLO-3 | `shadhil-realtime-sse` (`sse.crm.`) | live chat and notification badges update | degraded-only |
-| SLO-4 | `shadhil-postgres` + `shadhil-pgbouncer` | everything above depends on it | best-effort |
-| SLO-5 | Background jobs (reminders, overdue alerts, WhatsApp outbound) | an action happens on schedule | best-effort |
+| #     | Service                                                        | What the user experiences                | In scope      |
+| ----- | -------------------------------------------------------------- | ---------------------------------------- | ------------- |
+| SLO-1 | `shadhil-web` (`crm.`)                                         | the app loads and pages render           | yes           |
+| SLO-2 | `shadhil-api` (`api.crm.`)                                     | data loads, saves, approves, sends       | yes           |
+| SLO-3 | `shadhil-realtime-sse` (`sse.crm.`)                            | live chat and notification badges update | degraded-only |
+| SLO-4 | `shadhil-postgres` + `shadhil-pgbouncer`                       | everything above depends on it           | best-effort   |
+| SLO-5 | Background jobs (reminders, overdue alerts, WhatsApp outbound) | an action happens on schedule            | best-effort   |
 
 SLO-3 is deliberately weaker: losing the live stream degrades the product but the
 UI degrades gracefully (the client reconnects with backoff and replays missed
@@ -34,17 +34,17 @@ events via `Last-Event-ID`), so a stream outage is not a page outage.
 
 ## The targets
 
-| Service | Objective | Monthly error budget | Reasoning |
-|---|---|---|---|
-| SLO-1 web | **99.9%** | 43 min 50 s | user-facing; a dead page is the most visible failure |
-| SLO-2 api | **99.9%** | 43 min 50 s | same - every screen depends on it |
-| SLO-3 sse | **99.5%** | 3 h 39 min | real-time is a nicety; the UI recovers without it |
-| SLO-4 data | **99.9%** | 43 min 50 s | inferred from API health (it is the API's dependency) |
-| SLO-5 jobs | **99.0%** | 7 h 18 min | a late reminder is a business problem, not an outage |
+| Service    | Objective | Monthly error budget | Reasoning                                             |
+| ---------- | --------- | -------------------- | ----------------------------------------------------- |
+| SLO-1 web  | **99.9%** | 43 min 50 s          | user-facing; a dead page is the most visible failure  |
+| SLO-2 api  | **99.9%** | 43 min 50 s          | same - every screen depends on it                     |
+| SLO-3 sse  | **99.5%** | 3 h 39 min           | real-time is a nicety; the UI recovers without it     |
+| SLO-4 data | **99.9%** | 43 min 50 s          | inferred from API health (it is the API's dependency) |
+| SLO-5 jobs | **99.0%** | 7 h 18 min           | a late reminder is a business problem, not an outage  |
 
 **Measurement window:** a rolling 30 days.
 **Availability formula:** `1 - (failed_minutes / total_minutes)`, where a minute
-is *failed* if any health probe in it returns non-2xx or times out (3
+is _failed_ if any health probe in it returns non-2xx or times out (3
 consecutive failures = 1 failed minute, so one blip does not burn budget).
 
 99.9% is the target because it is **reachable on the current single VPS** with
@@ -90,10 +90,10 @@ budget - it converts "be careful" into a rule with a trigger.
 every container recreate is ~10-30 seconds where that route 502s:
 
 | Deploys / month | Downtime from recreates alone | Share of the 99.9% budget |
-|---|---|---|
-| 10 | ~3.3 min | 8% |
-| 20 | ~6.7 min | 15% |
-| 40 | ~13.3 min | 30% |
+| --------------- | ----------------------------- | ------------------------- |
+| 10              | ~3.3 min                      | 8%                        |
+| 20              | ~6.7 min                      | 15%                       |
+| 40              | ~13.3 min                     | 30%                       |
 
 You can hit 99.9% simply by deploying less. That is the wrong answer. The right
 answer is Phase B below (two instances + rolling restarts), which removes the
@@ -113,10 +113,10 @@ You cannot manage an SLO you do not measure. In order:
    Redis declare one today, so Docker currently cannot tell a wedged API from a
    healthy one:
 
-   | App | Path |
-   |---|---|
-   | `shadhil-web` | `/api/health` |
-   | `shadhil-api` | `/api/health` |
+   | App                    | Path               |
+   | ---------------------- | ------------------ |
+   | `shadhil-web`          | `/api/health`      |
+   | `shadhil-api`          | `/api/health`      |
    | `shadhil-realtime-sse` | `/api/sse/healthz` |
 
 4. **Docker log rotation, daemon-wide.** An uncapped log file fills the 100 GB
@@ -207,12 +207,12 @@ anyone today. Set up in this order:
 
 ### Severity
 
-| Level | Definition | Response target | Notify |
-|---|---|---|---|
-| SEV-1 | site unreachable, or data loss/corruption | 15 min to acknowledge | owner immediately, client if >30 min |
-| SEV-2 | a major feature broken (chat, bookings, approvals) | 1 h | owner |
-| SEV-3 | degraded (slow, one integration down) | next business day | owner |
-| SEV-4 | cosmetic or single-user issue | normal backlog | - |
+| Level | Definition                                         | Response target       | Notify                               |
+| ----- | -------------------------------------------------- | --------------------- | ------------------------------------ |
+| SEV-1 | site unreachable, or data loss/corruption          | 15 min to acknowledge | owner immediately, client if >30 min |
+| SEV-2 | a major feature broken (chat, bookings, approvals) | 1 h                   | owner                                |
+| SEV-3 | degraded (slow, one integration down)              | next business day     | owner                                |
+| SEV-4 | cosmetic or single-user issue                      | normal backlog        | -                                    |
 
 ### First actions, in order
 
@@ -253,7 +253,7 @@ lost in a commit message.
 
 ## Change log
 
-| Date | Change |
-|---|---|
-| 2026-10-01 | Created. Targets set at 99.9% app / 99.5% SSE / 99.9% data / 99.0% jobs. Current state recorded as UNMEASURED; Phase A not yet done. |
+| Date       | Change                                                                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-01 | Created. Targets set at 99.9% app / 99.5% SSE / 99.9% data / 99.0% jobs. Current state recorded as UNMEASURED; Phase A not yet done.                                         |
 | 2026-10-01 | On-call named: owner primary, client escalation. Paging channel fixed to the existing Telegram bot (group chat_id, not a DM). Still not provisioned - no monitor on the VPS. |

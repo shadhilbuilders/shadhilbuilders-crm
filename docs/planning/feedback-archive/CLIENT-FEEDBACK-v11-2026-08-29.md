@@ -44,6 +44,7 @@ audit log for OUTBOUND pushes (what we sent, delivery status,
 Expo receipt). It's append-only - never mutated after creation.
 
 The inbox is a different thing. It needs:
+
 - `readAt` (mutable, set when user clicks)
 - `dismissedAt` (mutable, set when user dismisses)
 - `recipientUserId` (one per user, not per device)
@@ -54,6 +55,7 @@ add mutable fields to an audit log, which is a bad pattern
 (loses the append-only guarantee for compliance).
 
 **Cleaner:** Two tables.
+
 - `PushNotification` - what we sent (audit, append-only)
 - `Notification` - what the user sees (mutable state)
 
@@ -69,36 +71,36 @@ same transaction so they always match.
 // User-facing inbox. Mutable state.
 model Notification {
   id            String   @id @default(cuid())
-  
+
   // Who receives
   userId        String
   user          User     @relation(fields: [userId], references: [id])
-  
+
   // What type of event (mirrors PushTrigger types for consistency)
   type          String   // "lead.assigned", "site_visit.pre_visit", etc.
   category      NotificationCategory  // LEAD, VISIT, BOOKING, SYSTEM, CHAT
-  
+
   // Content
   title         String
   body          String
   icon          String?  // icon name (lucide-react on web, lucide-react-native on mobile)
-  
+
   // Deep link target
   deepLink      String?  // "/leads/abc123", "/leads/abc/visits/xyz", etc.
-  
+
   // Reference to the source entity (for filtering, deep linking, dedup)
   refType       String?  // "Lead", "SiteVisit", "Booking", "Message"
   refId         String?
-  
+
   // State
   readAt        DateTime?
   dismissedAt   DateTime?
   archivedAt    DateTime?  // v1.1
-  
+
   // Audit
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  
+
   // Indexes
   @@index([userId, readAt, createdAt(sort: Desc)])  // inbox query
   @@index([userId, createdAt(sort: Desc)])
@@ -155,7 +157,7 @@ async createAndDeliver(input: {
   if (recent) {
     return recent;  // skip duplicate
   }
-  
+
   // 2. Create Notification row
   const notification = await prisma.notification.create({
     data: {
@@ -170,16 +172,16 @@ async createAndDeliver(input: {
       refId: input.refId,
     },
   });
-  
+
   // 3. Publish to Redis pub/sub for real-time delivery (in-app SSE)
   await redis.publish(
     `user:${input.userId}:notifications`,
     JSON.stringify(notification)
   );
-  
+
   // 4. Update unread count cache
   await this.incrementUnreadCount(input.userId);
-  
+
   // 5. Trigger push delivery (v10 service)
   await pushService.sendTriggerPush({
     type: input.type,
@@ -188,10 +190,10 @@ async createAndDeliver(input: {
     body: input.body,
     data: { notificationId: notification.id, deepLink: input.deepLink },
   });
-  
+
   // 6. Create PushNotification rows (one per device, populated async by v10)
   // ... (handled inside pushService)
-  
+
   return notification;
 }
 ```
@@ -211,14 +213,14 @@ async listNotifications(userId: string, filter: string, limit: number, offset: n
     // 90-day visibility retention
     createdAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
   };
-  
+
   if (filter === 'unread') {
     where.readAt = null;
     where.dismissedAt = null;
   } else if (filter !== 'all') {
     where.category = filter.toUpperCase();
   }
-  
+
   return prisma.notification.findMany({
     where,
     orderBy: { createdAt: 'desc' },
@@ -236,29 +238,29 @@ async markAsRead(userId: string, notificationId: string) {
   const notification = await prisma.notification.findUnique({
     where: { id: notificationId },
   });
-  
+
   if (!notification || notification.userId !== userId) {
     throw new NotFoundException();
   }
-  
+
   if (notification.readAt) {
     return notification;  // already read, no-op
   }
-  
+
   const updated = await prisma.notification.update({
     where: { id: notificationId },
     data: { readAt: new Date() },
   });
-  
+
   // Decrement unread count cache
   await this.decrementUnreadCount(userId);
-  
+
   // Publish to Redis for real-time UI update (unread badge)
   await redis.publish(
     `user:${userId}:notifications:read`,
     JSON.stringify({ id: notificationId, readAt: updated.readAt })
   );
-  
+
   return updated;
 }
 ```
@@ -277,16 +279,16 @@ async markAllAsRead(userId: string) {
     },
     data: { readAt: new Date() },
   });
-  
+
   // Reset unread count cache
   await this.resetUnreadCount(userId);
-  
+
   // Publish to Redis for real-time UI update
   await redis.publish(
     `user:${userId}:notifications:read-all`,
     JSON.stringify({ count: result.count })
   );
-  
+
   return { count: result.count };
 }
 ```
@@ -303,30 +305,30 @@ channel). This one is per-userId:
 // Server-Sent Events stream of all notification events for the logged-in user
 async notificationsStream(@Req() req, @Res() res) {
   const userId = req.user.id;
-  
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  
+
   // Authenticate via JWT in query param (SSE doesn't support custom headers)
   // ... (same pattern as chat SSE)
-  
+
   // Subscribe to user's notification channel
   const subscriber = redis.duplicate();
   await subscriber.subscribe(`user:${userId}:notifications`);
   await subscriber.subscribe(`user:${userId}:notifications:read`);
   await subscriber.subscribe(`user:${userId}:notifications:read-all`);
-  
+
   subscriber.on('message', (channel, message) => {
     res.write(`event: notification\n`);
     res.write(`data: ${message}\n\n`);
   });
-  
+
   // Heartbeat every 30s to keep connection alive
   const heartbeat = setInterval(() => {
     res.write(`: heartbeat\n\n`);
   }, 30000);
-  
+
   // Cleanup on disconnect
   req.on('close', async () => {
     clearInterval(heartbeat);
@@ -337,6 +339,7 @@ async notificationsStream(@Req() req, @Res() res) {
 ```
 
 Three Redis channels per user:
+
 - `user:{id}:notifications` - new notification created
 - `user:{id}:notifications:read` - single notification marked read
 - `user:{id}:notifications:read-all` - all marked read (reset badge)
@@ -354,7 +357,7 @@ async getUnreadCount(userId: string): Promise<number> {
   const cacheKey = `user:${userId}:unread_count`;
   const cached = await redis.get(cacheKey);
   if (cached !== null) return parseInt(cached, 10);
-  
+
   const count = await prisma.notification.count({
     where: {
       userId,
@@ -363,7 +366,7 @@ async getUnreadCount(userId: string): Promise<number> {
       createdAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
     },
   });
-  
+
   await redis.set(cacheKey, count.toString(), 'EX', 300);  // 5 min TTL
   return count;
 }
@@ -389,6 +392,7 @@ async resetUnreadCount(userId: string) {
 ```
 
 Cache invalidation happens on:
+
 - New notification created (`increment`)
 - Notification marked read (`decrement`)
 - Notification marked dismissed (`decrement`)
@@ -437,6 +441,7 @@ dropdown panel.
 ```
 
 Filled circle `●` = unread. Click on item:
+
 1. Marks as read (fires `POST /notifications/:id/read`)
 2. Closes the panel
 3. Navigates to the `deepLink` (e.g., `/leads/abc123`)
@@ -445,6 +450,7 @@ Filled circle `●` = unread. Click on item:
 
 When the user clicks "See all" in the dropdown, navigate to
 `/notifications` for a full page view with:
+
 - Same filter tabs at the top
 - Larger list with more metadata
 - Pagination (load more on scroll)
@@ -548,6 +554,7 @@ When applied:
 ### Grouping by date (not just one long list)
 
 The full page groups notifications:
+
 - **Today** (with timestamp like "2 min ago")
 - **Yesterday** (with date)
 - **This week** (with day name)
@@ -560,6 +567,7 @@ visual noise.
 
 When the inbox is empty (no unread, or no notifications at
 all), show a friendly empty state:
+
 - Illustration (a sleeping cat or a "no notifications" icon)
 - "You're all caught up!" message
 - "We'll let you know when something needs your attention."
@@ -578,6 +586,7 @@ If a customer sends 5 messages in 2 minutes, the user gets
 5 separate chat notifications. That's noisy. Solution:
 **grouping.** If 3+ notifications of the same type for the
 same refId arrive within 5 minutes, collapse them into one:
+
 - Title: "Priya Sharma sent 5 messages"
 - Click: opens the chat at the latest message
 
@@ -605,11 +614,12 @@ acceptable.
 The Redis cache is incremented/decremented on every create/
 read. If a process crashes mid-operation, the cache can be
 out of sync with the database. Mitigation:
+
 - 5-minute TTL means the cache re-queries Postgres within
   5 minutes even if it drifts
 - Add a daily cron that recomputes the cache for all active
   users: `unreadCount = SELECT COUNT(*) FROM notification WHERE
-  readAt IS NULL AND dismissedAt IS NULL`
+readAt IS NULL AND dismissedAt IS NULL`
 - The cache is a performance optimization, not a source of
   truth. The DB is the source of truth.
 
@@ -669,10 +679,11 @@ v1.1 if needed.
 create an inbox entry?**
 
 Two options:
+
 - (a) Yes - daily summary creates a `Notification` row,
-      visible in the inbox like any other
+  visible in the inbox like any other
 - (b) No - daily summary is push-only, lives in the email
-      fallback, not in the inbox
+  fallback, not in the inbox
 
 **Default: (a) - yes, in the inbox. The inbox is the user's
 single record of what happened. Push is just a delivery
@@ -691,15 +702,16 @@ fold v11 (Notification Center + inbox) into DESIGN.md v3
 along with v8, v9, v10, and CLIENT-DECISIONS.md.
 
 The new v3 will have:
-  - 9 modules in §2 (Notifications Center added as a
-    cross-cutting infrastructure, not a separate module -
-    but its UI is a first-class surface)
-  - 15 models in §5 (Notification added; PushSubscription
-    + PushNotification from v10; Reminder from v9; better-auth
+
+- 9 modules in §2 (Notifications Center added as a
+  cross-cutting infrastructure, not a separate module -
+  but its UI is a first-class surface)
+- 15 models in §5 (Notification added; PushSubscription
+  - PushNotification from v10; Reminder from v9; better-auth
     Account + Verification from v8; original 12 from v2)
-  - §10 split into §10 (Push - outbound) and §11
-    (Notification Center - inbox)
-  - §12 timeline: 13 weeks (was 12)
+- §10 split into §10 (Push - outbound) and §11
+  (Notification Center - inbox)
+- §12 timeline: 13 weeks (was 12)
 
 If you want a different decision on any of the above
 (daily summary in inbox, 90-day window, etc.), name it.

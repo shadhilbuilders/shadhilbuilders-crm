@@ -75,8 +75,22 @@ function seed() {
     data: {
       total: 2,
       rows: [
-        { id: 'u-in', name: 'Asha', email: 'asha@x', role: 'TELECALLER', teamId: null, projects: [] },
-        { id: 'u-new', name: 'Priya', email: 'priya@x', role: 'TELECALLER', teamId: null, projects: [] },
+        {
+          id: 'u-in',
+          name: 'Asha',
+          email: 'asha@x',
+          role: 'TELECALLER',
+          teamId: null,
+          projects: [],
+        },
+        {
+          id: 'u-new',
+          name: 'Priya',
+          email: 'priya@x',
+          role: 'TELECALLER',
+          teamId: null,
+          projects: [],
+        },
       ],
     },
     isLoading: false,
@@ -103,9 +117,8 @@ describe('AddTeamMembersDialog', () => {
 
   it('submits the picked user ids and toasts the result', async () => {
     seed();
-    mocks.mutate.mockImplementation(
-      (_input: unknown, opts: { onSuccess: (r: unknown) => void }) =>
-        opts.onSuccess({ added: 1, alreadyMembers: 0 }),
+    mocks.mutate.mockImplementation((_input: unknown, opts: { onSuccess: (r: unknown) => void }) =>
+      opts.onSuccess({ added: 1, alreadyMembers: 0 }),
     );
     await mount();
     const checkbox = document.body.querySelector(
@@ -122,10 +135,7 @@ describe('AddTeamMembersDialog', () => {
     await act(async () => {
       submit.click();
     });
-    expect(mocks.mutate).toHaveBeenCalledWith(
-      { userIds: ['u-new'] },
-      expect.any(Object),
-    );
+    expect(mocks.mutate).toHaveBeenCalledWith({ userIds: ['u-new'] }, expect.any(Object));
     expect(mocks.toast.success).toHaveBeenCalledWith(
       expect.stringContaining('1 member added to Construction Desk'),
     );

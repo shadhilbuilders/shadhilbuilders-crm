@@ -97,189 +97,198 @@ let leads: LeadsService;
 let visits: VisitsService;
 let prismaService: PrismaService;
 
-describe.skipIf(!HAS_DB)('nested lead transition runs on the caller transaction (T-NESTED-TX)', () => {
-  beforeAll(async () => {
-    if (prisma === null) return;
-    prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
-    leads = new LeadsService(prismaService);
-    visits = new VisitsService(prismaService, leads);
+describe.skipIf(!HAS_DB)(
+  'nested lead transition runs on the caller transaction (T-NESTED-TX)',
+  () => {
+    beforeAll(async () => {
+      if (prisma === null) return;
+      prismaService = { $client: prisma as unknown as PrismaClient } as PrismaService;
+      leads = new LeadsService(prismaService);
+      visits = new VisitsService(prismaService, leads);
 
-    await adminSeed(async (db) => {
-      await db.project.upsert({
-        where: { id: PROJECT_ID },
-        update: {},
-        create: {
-          id: PROJECT_ID,
-          name: `NestedTx Project ${RUN}`,
-          slug: PROJECT_ID,
-          address: 'test',
-          organizationId: ORG_ID,
-        },
-      });
-      await db.team.upsert({
-        where: { id: TEAM_ID },
-        update: {},
-        create: { id: TEAM_ID, name: `NestedTx Team ${RUN}`, organizationId: ORG_ID },
-      });
-      for (const [id, role] of [
-        [ADMIN_ID, 'ADMIN'],
-        [TC_ID, 'TELECALLER'],
-        [SE_ID, 'SALES_EXEC'],
-      ] as const) {
-        await db.user.upsert({
-          where: { id },
-          update: { role },
+      await adminSeed(async (db) => {
+        await db.project.upsert({
+          where: { id: PROJECT_ID },
+          update: {},
           create: {
-            id,
-            email: `${id}@example.com`,
-            name: id,
-            role,
-            mustChangePassword: false,
+            id: PROJECT_ID,
+            name: `NestedTx Project ${RUN}`,
+            slug: PROJECT_ID,
+            address: 'test',
             organizationId: ORG_ID,
           },
         });
-      }
-      await db.lead.upsert({
-        where: { id: SEED_LEAD_ID },
-        update: { state: 'VISIT_REQUESTED' },
-        create: leadFixture(SEED_LEAD_ID, 1),
-      });
-      await db.lead.upsert({
-        where: { id: JOURNEY_LEAD_ID },
-        update: { state: 'VISIT_REQUESTED', coOwnerId: null },
-        create: leadFixture(JOURNEY_LEAD_ID, 2),
-      });
-    });
-  });
-
-  afterAll(async () => {
-    if (prisma === null) return;
-    await adminSeed(async (db) => {
-      const leadIds = [SEED_LEAD_ID, JOURNEY_LEAD_ID];
-      await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`, leadIds);
-      await db.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "entityId" = ANY($1::text[])`, leadIds);
-      await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id = ANY($1::text[])`, leadIds);
-      await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id = ANY($1::text[])`, [
-        ADMIN_ID,
-        TC_ID,
-        SE_ID,
-      ]);
-      await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id = $1`, TEAM_ID);
-      await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id = $1`, PROJECT_ID);
-    });
-  });
-
-  it('rolls the transition BACK when the caller transaction rolls back', async () => {
-    if (prisma === null) throw new Error('prisma missing');
-
-    // Outer transaction: transition the lead on ITS client, then abort.
-    await expect(
-      withRlsContext(
-        prisma,
-        { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
-        async (tx) => {
-          await leads.transitionInTransaction(
-            actorFor(ADMIN_ID, 'ADMIN'),
-            { leadId: SEED_LEAD_ID, toState: 'VISIT_SCHEDULED', notes: 'rollback probe' },
-            tx as unknown as PrismaClient,
-          );
-          throw new Error('intentional abort');
-        },
-      ),
-    ).rejects.toThrow('intentional abort');
-
-    // THE PROOF it shared the caller's transaction: the committed state is
-    // unchanged. A separate transaction would have committed VISIT_SCHEDULED.
-    const after = await adminSeed((db) =>
-      db.lead.findUnique({ where: { id: SEED_LEAD_ID }, select: { state: true } }),
-    );
-    expect(after?.state).toBe('VISIT_REQUESTED');
-  });
-
-  it('the OLD shape (a bare nested withRlsContext) does NOT roll back - the defect', async () => {
-    if (prisma === null) throw new Error('prisma missing');
-
-    // Same outer transaction, but the nested work opens its OWN transaction - the
-    // pre-fix shape. This is what contended with the caller's Lead lock.
-    await expect(
-      withRlsContext(
-        prisma,
-        { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
-        async () => {
-          await withRlsContext(
-            prisma,
-            { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
-            async (inner) => {
-              await (inner as unknown as PrismaClient).lead.update({
-                where: { id: SEED_LEAD_ID },
-                data: { state: 'VISIT_SCHEDULED' },
-              });
+        await db.team.upsert({
+          where: { id: TEAM_ID },
+          update: {},
+          create: { id: TEAM_ID, name: `NestedTx Team ${RUN}`, organizationId: ORG_ID },
+        });
+        for (const [id, role] of [
+          [ADMIN_ID, 'ADMIN'],
+          [TC_ID, 'TELECALLER'],
+          [SE_ID, 'SALES_EXEC'],
+        ] as const) {
+          await db.user.upsert({
+            where: { id },
+            update: { role },
+            create: {
+              id,
+              email: `${id}@example.com`,
+              name: id,
+              role,
+              mustChangePassword: false,
+              organizationId: ORG_ID,
             },
-          );
-          throw new Error('intentional abort');
-        },
-      ),
-    ).rejects.toThrow('intentional abort');
-
-    // SURVIVED the rollback: it was a second transaction, on a second connection.
-    // That is precisely why the old code self-deadlocked once the caller had
-    // written the Lead row, and why the fix must pass the caller's client.
-    const after = await adminSeed((db) =>
-      db.lead.findUnique({ where: { id: SEED_LEAD_ID }, select: { state: true } }),
-    );
-    expect(after?.state).toBe('VISIT_SCHEDULED');
-
-    // Reset so the journey test below starts from a clean state.
-    await adminSeed(async (db) => {
-      await db.lead.update({
-        where: { id: SEED_LEAD_ID },
-        data: { state: 'VISIT_REQUESTED' },
+          });
+        }
+        await db.lead.upsert({
+          where: { id: SEED_LEAD_ID },
+          update: { state: 'VISIT_REQUESTED' },
+          create: leadFixture(SEED_LEAD_ID, 1),
+        });
+        await db.lead.upsert({
+          where: { id: JOURNEY_LEAD_ID },
+          update: { state: 'VISIT_REQUESTED', coOwnerId: null },
+          create: leadFixture(JOURNEY_LEAD_ID, 2),
+        });
       });
     });
-  });
 
-  it('schedules a visit for a NON-OWNER exec and lands both effects', async () => {
-    if (prisma === null) throw new Error('prisma missing');
-
-    // The exact failing journey: the TELECALLER (who owns the lead and so can see
-    // it) schedules the visit and assigns a SALES_EXEC. The exec is NOT the owner,
-    // so grantExecLeadVisibility writes coOwnerId on the Lead row INSIDE the visit
-    // transaction - the write that took the lock and deadlocked the nested
-    // transition before the fix.
-    //
-    // The actor must be the TELECALLER, not the exec: `lead_select_telecaller`
-    // hides a lead from anyone who is neither owner nor co-owner, so an exec
-    // calling create() on a lead they do not own gets NotFoundException before any
-    // of this runs. That visibility gap is exactly what coOwnerId exists to close,
-    // and it is granted as a RESULT of this call - so the exec can only be the
-    // assignee here, never the actor.
-    const created = await visits.create(actorFor(TC_ID, 'TELECALLER'), {
-      leadId: JOURNEY_LEAD_ID,
-      salesExecId: SE_ID,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+    afterAll(async () => {
+      if (prisma === null) return;
+      await adminSeed(async (db) => {
+        const leadIds = [SEED_LEAD_ID, JOURNEY_LEAD_ID];
+        await db.$executeRawUnsafe(
+          `DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`,
+          leadIds,
+        );
+        await db.$executeRawUnsafe(
+          `DELETE FROM "AuditLog" WHERE "entityId" = ANY($1::text[])`,
+          leadIds,
+        );
+        await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id = ANY($1::text[])`, leadIds);
+        await db.$executeRawUnsafe(`DELETE FROM "User" WHERE id = ANY($1::text[])`, [
+          ADMIN_ID,
+          TC_ID,
+          SE_ID,
+        ]);
+        await db.$executeRawUnsafe(`DELETE FROM "Team" WHERE id = $1`, TEAM_ID);
+        await db.$executeRawUnsafe(`DELETE FROM "Project" WHERE id = $1`, PROJECT_ID);
+      });
     });
-    expect(created.leadId).toBe(JOURNEY_LEAD_ID);
 
-    const after = await adminSeed((db) =>
-      db.lead.findUnique({
-        where: { id: JOURNEY_LEAD_ID },
-        select: { state: true, coOwnerId: true },
-      }),
-    );
-    // The nested transition ran (scheduling completes a VISIT_REQUESTED)...
-    expect(after?.state).toBe('VISIT_SCHEDULED');
-    // ...and the exec-visibility grant that caused the lock.
-    expect(after?.coOwnerId).toBe(SE_ID);
+    it('rolls the transition BACK when the caller transaction rolls back', async () => {
+      if (prisma === null) throw new Error('prisma missing');
 
-    // Both audits present, so neither effect was skipped to dodge the deadlock.
-    const audits = await adminSeed((db) =>
-      db.auditLog.findMany({
-        where: { entityId: { in: [JOURNEY_LEAD_ID, created.id] } },
-        select: { action: true },
-      }),
-    );
-    const actions = audits.map((a) => a.action).sort();
-    expect(actions).toContain('visit.create');
-    expect(actions).toContain('lead.transition');
-  });
-});
+      // Outer transaction: transition the lead on ITS client, then abort.
+      await expect(
+        withRlsContext(
+          prisma,
+          { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
+          async (tx) => {
+            await leads.transitionInTransaction(
+              actorFor(ADMIN_ID, 'ADMIN'),
+              { leadId: SEED_LEAD_ID, toState: 'VISIT_SCHEDULED', notes: 'rollback probe' },
+              tx as unknown as PrismaClient,
+            );
+            throw new Error('intentional abort');
+          },
+        ),
+      ).rejects.toThrow('intentional abort');
+
+      // THE PROOF it shared the caller's transaction: the committed state is
+      // unchanged. A separate transaction would have committed VISIT_SCHEDULED.
+      const after = await adminSeed((db) =>
+        db.lead.findUnique({ where: { id: SEED_LEAD_ID }, select: { state: true } }),
+      );
+      expect(after?.state).toBe('VISIT_REQUESTED');
+    });
+
+    it('the OLD shape (a bare nested withRlsContext) does NOT roll back - the defect', async () => {
+      if (prisma === null) throw new Error('prisma missing');
+
+      // Same outer transaction, but the nested work opens its OWN transaction - the
+      // pre-fix shape. This is what contended with the caller's Lead lock.
+      await expect(
+        withRlsContext(
+          prisma,
+          { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
+          async () => {
+            await withRlsContext(
+              prisma,
+              { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
+              async (inner) => {
+                await (inner as unknown as PrismaClient).lead.update({
+                  where: { id: SEED_LEAD_ID },
+                  data: { state: 'VISIT_SCHEDULED' },
+                });
+              },
+            );
+            throw new Error('intentional abort');
+          },
+        ),
+      ).rejects.toThrow('intentional abort');
+
+      // SURVIVED the rollback: it was a second transaction, on a second connection.
+      // That is precisely why the old code self-deadlocked once the caller had
+      // written the Lead row, and why the fix must pass the caller's client.
+      const after = await adminSeed((db) =>
+        db.lead.findUnique({ where: { id: SEED_LEAD_ID }, select: { state: true } }),
+      );
+      expect(after?.state).toBe('VISIT_SCHEDULED');
+
+      // Reset so the journey test below starts from a clean state.
+      await adminSeed(async (db) => {
+        await db.lead.update({
+          where: { id: SEED_LEAD_ID },
+          data: { state: 'VISIT_REQUESTED' },
+        });
+      });
+    });
+
+    it('schedules a visit for a NON-OWNER exec and lands both effects', async () => {
+      if (prisma === null) throw new Error('prisma missing');
+
+      // The exact failing journey: the TELECALLER (who owns the lead and so can see
+      // it) schedules the visit and assigns a SALES_EXEC. The exec is NOT the owner,
+      // so grantExecLeadVisibility writes coOwnerId on the Lead row INSIDE the visit
+      // transaction - the write that took the lock and deadlocked the nested
+      // transition before the fix.
+      //
+      // The actor must be the TELECALLER, not the exec: `lead_select_telecaller`
+      // hides a lead from anyone who is neither owner nor co-owner, so an exec
+      // calling create() on a lead they do not own gets NotFoundException before any
+      // of this runs. That visibility gap is exactly what coOwnerId exists to close,
+      // and it is granted as a RESULT of this call - so the exec can only be the
+      // assignee here, never the actor.
+      const created = await visits.create(actorFor(TC_ID, 'TELECALLER'), {
+        leadId: JOURNEY_LEAD_ID,
+        salesExecId: SE_ID,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      expect(created.leadId).toBe(JOURNEY_LEAD_ID);
+
+      const after = await adminSeed((db) =>
+        db.lead.findUnique({
+          where: { id: JOURNEY_LEAD_ID },
+          select: { state: true, coOwnerId: true },
+        }),
+      );
+      // The nested transition ran (scheduling completes a VISIT_REQUESTED)...
+      expect(after?.state).toBe('VISIT_SCHEDULED');
+      // ...and the exec-visibility grant that caused the lock.
+      expect(after?.coOwnerId).toBe(SE_ID);
+
+      // Both audits present, so neither effect was skipped to dodge the deadlock.
+      const audits = await adminSeed((db) =>
+        db.auditLog.findMany({
+          where: { entityId: { in: [JOURNEY_LEAD_ID, created.id] } },
+          select: { action: true },
+        }),
+      );
+      const actions = audits.map((a) => a.action).sort();
+      expect(actions).toContain('visit.create');
+      expect(actions).toContain('lead.transition');
+    });
+  },
+);

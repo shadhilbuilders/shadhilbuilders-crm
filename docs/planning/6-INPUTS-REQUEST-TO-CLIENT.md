@@ -13,17 +13,18 @@
 **Required by:** Week 1 of build (blocks WhatsApp template submission + every customer-facing surface)
 **Format:** RERA = `TN/02/XXXX/YYYY`, CMDA = alphanumeric plan approval number, validity = date range
 
-| Field | Value | Status |
-|---|---|---|
-| RERA registration number | (awaiting - placeholder used) | ⏳ Pending |
-| CMDA plan approval number | (awaiting) | ⏳ Pending |
-| Validity start date | (awaiting) | ⏳ Pending |
-| Validity end date | (awaiting) | ⏳ Pending |
-| Project name as on RERA certificate | Shadhil Metro Heights | ✅ Known |
+| Field                               | Value                         | Status     |
+| ----------------------------------- | ----------------------------- | ---------- |
+| RERA registration number            | (awaiting - placeholder used) | ⏳ Pending |
+| CMDA plan approval number           | (awaiting)                    | ⏳ Pending |
+| Validity start date                 | (awaiting)                    | ⏳ Pending |
+| Validity end date                   | (awaiting)                    | ⏳ Pending |
+| Project name as on RERA certificate | Shadhil Metro Heights         | ✅ Known   |
 
 **Current placeholder in code:** `TN/02/0000/2024` (TODO, must replace before Week 5 WhatsApp template submission)
 
 **Where it surfaces in the app:**
+
 - WhatsApp template headers (4 templates, Meta approval pending)
 - Landing site footer (already on `~/workspace/shadhil-projects/landing-page/` - verify it's correct)
 - Push notification titles (lead assigned, booking approved, etc.)
@@ -36,13 +37,13 @@
 **Required by:** Week 1 of build (blocks any state-machine implementation work in Week 4)
 **Owner of signature:** Shadhil sales leadership (NOT just promoter verbal)
 
-| Item | Value | Status |
-|---|---|---|
-| Signed document on file | (awaiting - confirmed intent) | ⏳ Pending signature |
-| Telecaller role understood | "Books + confirms visit, owns through VISIT_SCHEDULED" | ✅ Confirmed |
-| Sales exec role understood | "Conducts visit, takes over at VISITED" | ✅ Confirmed |
-| Manager role understood | "Per-team only, no lead reassignment in v1" | ✅ Confirmed |
-| Ownership transfer understood | "Automatic on visit outcome, no manager gate" | ✅ Confirmed |
+| Item                          | Value                                                  | Status               |
+| ----------------------------- | ------------------------------------------------------ | -------------------- |
+| Signed document on file       | (awaiting - confirmed intent)                          | ⏳ Pending signature |
+| Telecaller role understood    | "Books + confirms visit, owns through VISIT_SCHEDULED" | ✅ Confirmed         |
+| Sales exec role understood    | "Conducts visit, takes over at VISITED"                | ✅ Confirmed         |
+| Manager role understood       | "Per-team only, no lead reassignment in v1"            | ✅ Confirmed         |
+| Ownership transfer understood | "Automatic on visit outcome, no manager gate"          | ✅ Confirmed         |
 
 **Code implication:** Until signature lands, state machine + handoff flow is built but feature-flagged OFF (`MODEL_C_ENABLED=false`). Falls back to "always-telecaller" model (legacy behavior).
 
@@ -52,12 +53,12 @@
 
 **Required by:** Week 1 (provisioning) + Week 5 (active + templates approved)
 
-| Field | Value | Status |
-|---|---|---|
-| New CRM WhatsApp Business number | (awaiting) | ⏳ Pending |
+| Field                                     | Value                 | Status     |
+| ----------------------------------------- | --------------------- | ---------- |
+| New CRM WhatsApp Business number          | (awaiting)            | ⏳ Pending |
 | Separate from landing site +91 9025012311 | (verified not reused) | ⏳ Pending |
-| Meta Business Manager verified | (awaiting) | ⏳ Pending |
-| WhatsApp Business API access | (awaiting) | ⏳ Pending |
+| Meta Business Manager verified            | (awaiting)            | ⏳ Pending |
+| WhatsApp Business API access              | (awaiting)            | ⏳ Pending |
 
 **Code implication:** Until number is active, WhatsApp webhook handler in NestJS is built but `WA_WEBHOOK_VERIFY_TOKEN` env is unset. Inbound messages queue in Redis but don't process.
 
@@ -67,12 +68,12 @@
 
 **Required by:** Week 1 (LOI) + Week 5 (signed contract + provisioning complete)
 
-| Field | Value | Status |
-|---|---|---|
-| FreJun contract signed | (awaiting - LOI sent) | ⏳ Pending |
-| 10 user plan confirmed | (awaiting) | ⏳ Pending |
-| Indian phone number provisioned | (awaiting) | ⏳ Pending |
-| Cost confirmed | ~₹15,300/month at 10 users | ✅ Estimated (per design) |
+| Field                           | Value                      | Status                    |
+| ------------------------------- | -------------------------- | ------------------------- |
+| FreJun contract signed          | (awaiting - LOI sent)      | ⏳ Pending                |
+| 10 user plan confirmed          | (awaiting)                 | ⏳ Pending                |
+| Indian phone number provisioned | (awaiting)                 | ⏳ Pending                |
+| Cost confirmed                  | ~₹15,300/month at 10 users | ✅ Estimated (per design) |
 
 **Code implication:** Until contract lands, telephony webhook handler in NestJS is built but `FREJUN_API_KEY` env is unset. Call recording archive is wired but doesn't receive calls.
 
@@ -84,12 +85,12 @@
 
 **Minimum 3 for Week 3:**
 
-| Role | Name | Email | Phone | Status |
-|---|---|---|---|---|
-| Admin | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Manager | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Telecaller | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Sales exec | (awaiting) | (awaiting) | (awaiting) | ⏳ |
+| Role       | Name       | Email      | Phone      | Status |
+| ---------- | ---------- | ---------- | ---------- | ------ |
+| Admin      | (awaiting) | (awaiting) | (awaiting) | ⏳     |
+| Manager    | (awaiting) | (awaiting) | (awaiting) | ⏳     |
+| Telecaller | (awaiting) | (awaiting) | (awaiting) | ⏳     |
+| Sales exec | (awaiting) | (awaiting) | (awaiting) | ⏳     |
 
 **Code implication:** Until names arrive, Admin user is created with placeholder `admin@shadhilbuilders.in` and the Admin signs in via the seeded link. First Manager is created via better-auth admin plugin during Week 3. Roster change is one config update via Admin UI.
 
@@ -99,12 +100,12 @@
 
 **Required by:** Week 1 (FreJun KYC) + Week 5 (numbers live)
 
-| Role | Name | Phone | Aadhaar/PAN (last 4) | Status |
-|---|---|---|---|---|
-| Sales exec 1 | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Sales exec 2 | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Telecaller 1 | (awaiting) | (awaiting) | (awaiting) | ⏳ |
-| Telecaller 2 | (awaiting) | (awaiting) | (awaiting) | ⏳ |
+| Role         | Name       | Phone      | Aadhaar/PAN (last 4) | Status |
+| ------------ | ---------- | ---------- | -------------------- | ------ |
+| Sales exec 1 | (awaiting) | (awaiting) | (awaiting)           | ⏳     |
+| Sales exec 2 | (awaiting) | (awaiting) | (awaiting)           | ⏳     |
+| Telecaller 1 | (awaiting) | (awaiting) | (awaiting)           | ⏳     |
+| Telecaller 2 | (awaiting) | (awaiting) | (awaiting)           | ⏳     |
 
 **Code implication:** Until numbers land, the FreJun dashboard agent provisioning script is built but no agents are created. Outbound calls from CRM fail gracefully with "telephony not provisioned" error.
 

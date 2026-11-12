@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   // [ReactNode, options?] and the assertions on the toast id type-check.
   toast: Object.assign(
     vi.fn((_content: unknown, _options?: { id?: string }) => 'install-toast-id'),
-    { dismiss: vi.fn() }
+    { dismiss: vi.fn() },
   ),
   Button: vi.fn(
     ({
@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
       <button type="button" onClick={onClick} {...(rest as object)}>
         {children}
       </button>
-    )
+    ),
   ),
 }));
 
@@ -125,7 +125,7 @@ function makePromptEvent(outcome: 'accepted' | 'dismissed' = 'dismissed'): FakeP
 }
 
 async function fireInstallPrompt(
-  outcome: 'accepted' | 'dismissed' = 'dismissed'
+  outcome: 'accepted' | 'dismissed' = 'dismissed',
 ): Promise<FakePromptEvent> {
   const evt = makePromptEvent(outcome);
   await act(async () => {
@@ -146,7 +146,7 @@ beforeEach(() => {
         matches: false,
         addEventListener: () => undefined,
         removeEventListener: () => undefined,
-      }) as unknown as MediaQueryList
+      }) as unknown as MediaQueryList,
   );
 });
 
@@ -180,7 +180,7 @@ describe('InstallPrompt - Samsung Internet userChoice hang', () => {
 
     const rendered = await renderLastToastContent();
     const install = Array.from(rendered.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Install')
+      b.textContent?.includes('Install'),
     );
 
     await act(async () => {
@@ -253,7 +253,7 @@ describe('InstallPrompt - dedupe', () => {
           matches: true,
           addEventListener: () => undefined,
           removeEventListener: () => undefined,
-        }) as unknown as MediaQueryList
+        }) as unknown as MediaQueryList,
     );
     await mount();
 
@@ -277,7 +277,7 @@ describe('InstallPrompt - dedupe', () => {
     const evt = await fireInstallPrompt('accepted');
     const rendered = await renderLastToastContent();
     const install = Array.from(rendered.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Install')
+      b.textContent?.includes('Install'),
     );
     expect(install).toBeDefined();
 

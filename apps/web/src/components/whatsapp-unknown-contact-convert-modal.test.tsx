@@ -87,49 +87,69 @@ describe('prefillNotes (T-E2b)', () => {
 
 describe('buildConvertBody (T-E2b)', () => {
   it('forces source="WHATSAPP" regardless of any caller input', () => {
-    const body = buildConvertBody(makeContact(), {
-      name: 'Priya',
-      email: '',
-      notes: '',
-    }, TEST_PROJECT_ID);
+    const body = buildConvertBody(
+      makeContact(),
+      {
+        name: 'Priya',
+        email: '',
+        notes: '',
+      },
+      TEST_PROJECT_ID,
+    );
     expect(body.source).toBe('WHATSAPP');
   });
 
   it('passes phoneE164 from the contact', () => {
-    const body = buildConvertBody(makeContact({ phoneE164: '+14155552671' }), {
-      name: 'X',
-      email: '',
-      notes: '',
-    }, TEST_PROJECT_ID);
+    const body = buildConvertBody(
+      makeContact({ phoneE164: '+14155552671' }),
+      {
+        name: 'X',
+        email: '',
+        notes: '',
+      },
+      TEST_PROJECT_ID,
+    );
     expect(body.phone).toBe('+14155552671');
   });
 
   it('trims the name and lowercases the email', () => {
-    const body = buildConvertBody(makeContact(), {
-      name: '  Priya Sharma  ',
-      email: '  Priya@Example.COM  ',
-      notes: '',
-    }, TEST_PROJECT_ID);
+    const body = buildConvertBody(
+      makeContact(),
+      {
+        name: '  Priya Sharma  ',
+        email: '  Priya@Example.COM  ',
+        notes: '',
+      },
+      TEST_PROJECT_ID,
+    );
     expect(body.name).toBe('Priya Sharma');
     expect(body.email).toBe('priya@example.com');
   });
 
   it('omits optional fields when empty (email, notes)', () => {
-    const body = buildConvertBody(makeContact(), {
-      name: 'X',
-      email: '',
-      notes: '',
-    }, TEST_PROJECT_ID);
+    const body = buildConvertBody(
+      makeContact(),
+      {
+        name: 'X',
+        email: '',
+        notes: '',
+      },
+      TEST_PROJECT_ID,
+    );
     expect('email' in body).toBe(false);
     expect('notes' in body).toBe(false);
   });
 
   it('includes trimmed notes when provided', () => {
-    const body = buildConvertBody(makeContact(), {
-      name: 'X',
-      email: '',
-      notes: '  First message: Hi there  ',
-    }, TEST_PROJECT_ID);
+    const body = buildConvertBody(
+      makeContact(),
+      {
+        name: 'X',
+        email: '',
+        notes: '  First message: Hi there  ',
+      },
+      TEST_PROJECT_ID,
+    );
     expect(body.notes).toBe('First message: Hi there');
   });
 });
@@ -161,7 +181,7 @@ describe('ConvertFormBody (T-E2b) - wire-shape contract', () => {
     expect(html).toContain('contact&#x27;s first message');
   });
 
-  it('renders the pre-filled notes from the contact\'s first message', () => {
+  it("renders the pre-filled notes from the contact's first message", () => {
     const contact = makeContact({
       firstMessageBody: 'I want to book a site visit this Saturday.',
     });
@@ -170,9 +190,7 @@ describe('ConvertFormBody (T-E2b) - wire-shape contract', () => {
 
     // The textarea renders its defaultValue as the inner text (Form's
     // textarea maps defaultValues onto the DOM children of the <textarea>).
-    expect(html).toContain(
-      'First message: I want to book a site visit this Saturday.',
-    );
+    expect(html).toContain('First message: I want to book a site visit this Saturday.');
   });
 
   it('uses a generic name placeholder when the phone is empty', () => {

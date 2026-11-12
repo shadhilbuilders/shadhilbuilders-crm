@@ -17,11 +17,7 @@
 //      set + status flipped to PENDING (not SENT) - the next
 //      tick will retry per the backoff schedule
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
@@ -49,9 +45,7 @@ const TEST_LEAD_ID = 'test-outbound-cron-lead';
 const TEST_OUTBOUND_IDS: string[] = [];
 const TEST_MESSAGE_IDS: string[] = [];
 
-async function adminSeed<T>(
-  fn: (db: PrismaClient) => Promise<T>,
-): Promise<T> {
+async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
@@ -83,7 +77,11 @@ async function ensureFixtures(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'Outbound Cron Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: TEST_TEAM_ID,
+        name: 'Outbound Cron Test Team',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -153,9 +151,7 @@ async function seedOutbound(
         templateVars: { name: 'Test', body: 'test outbound message body' },
         status: 'PENDING',
         attempts: opts.attempts ?? 0,
-        ...(opts.lastAttemptAt !== undefined
-          ? { lastAttemptAt: opts.lastAttemptAt }
-          : {}),
+        ...(opts.lastAttemptAt !== undefined ? { lastAttemptAt: opts.lastAttemptAt } : {}),
         ...(opts.wamid !== undefined ? { wamid: opts.wamid } : {}),
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
@@ -197,10 +193,7 @@ async function cleanupAllTestRows(): Promise<void> {
     // Delete via Message cascade - same pattern as cleanupTestOutbound.
     await db.message.deleteMany({
       where: {
-        OR: [
-          { id: { startsWith: 'test-msg-' } },
-          { id: { startsWith: 'test-wamid-' } },
-        ],
+        OR: [{ id: { startsWith: 'test-msg-' } }, { id: { startsWith: 'test-wamid-' } }],
       },
     });
   });
@@ -219,10 +212,7 @@ class StubRedis implements Pick<RedisService, 'acquireLock' | 'releaseLock' | 'r
       const parsed = JSON.parse(existing) as { expiresAt: number };
       if (parsed.expiresAt > this.now) return Promise.resolve(false);
     }
-    this.store.set(
-      key,
-      JSON.stringify({ token, expiresAt: this.now + ttlSec * 1000 }),
-    );
+    this.store.set(key, JSON.stringify({ token, expiresAt: this.now + ttlSec * 1000 }));
     return Promise.resolve(true);
   }
 
@@ -287,248 +277,237 @@ class StubWhatsApp {
   }
 }
 
-describe.skipIf(!HAS_DB || !HAS_REDIS)(
-  'T-E2b outbound cron - lease + claim + send',
-  () => {
-    let stubRedis: StubRedis;
-    let stubWhatsApp: StubWhatsApp;
-    let prismaService: PrismaService;
-    let outbound: OutboundService;
-    let cron: OutboundCronService;
+describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + send', () => {
+  let stubRedis: StubRedis;
+  let stubWhatsApp: StubWhatsApp;
+  let prismaService: PrismaService;
+  let outbound: OutboundService;
+  let cron: OutboundCronService;
 
-    beforeAll(async () => {
-      await ensureFixtures();
-    }, 30_000);
+  beforeAll(async () => {
+    await ensureFixtures();
+  }, 30_000);
 
-    afterAll(async () => {
-      await cleanupTestOutbound();
-    }, 30_000);
+  afterAll(async () => {
+    await cleanupTestOutbound();
+  }, 30_000);
 
-    beforeEach(() => {
-      stubRedis = new StubRedis();
-      stubWhatsApp = new StubWhatsApp();
-      prismaService = {
-        $client: prisma as unknown as PrismaClient,
-      } as PrismaService;
-      outbound = new OutboundService(
-        prismaService,
-        stubWhatsApp as unknown as WhatsAppClient,
-      );
-      cron = OutboundCronService.withReplicaId(
-        prismaService,
-        stubRedis as unknown as RedisService,
-        outbound,
-        REPLICA_ID,
-      );
+  beforeEach(() => {
+    stubRedis = new StubRedis();
+    stubWhatsApp = new StubWhatsApp();
+    prismaService = {
+      $client: prisma as unknown as PrismaClient,
+    } as PrismaService;
+    outbound = new OutboundService(prismaService, stubWhatsApp as unknown as WhatsAppClient);
+    cron = OutboundCronService.withReplicaId(
+      prismaService,
+      stubRedis as unknown as RedisService,
+      outbound,
+      REPLICA_ID,
+    );
+  });
+
+  it('happy path: claims a PENDING row, sends, marks SENT', async () => {
+    const { outboundId } = await seedOutbound('happy');
+    stubWhatsApp.nextResult = { wamid: 'wamid.happy' };
+
+    const tick = await cron.runOnce();
+
+    expect(tick.lockHeld).toBe(true);
+    expect(tick.claimed).toBe(1);
+    expect(tick.sent).toBe(1);
+    expect(tick.failed).toBe(0);
+    expect(stubWhatsApp.calls).toHaveLength(1);
+    expect(stubWhatsApp.calls[0]?.templateName).toBe('shadhil_chat_reply');
+
+    const updated = await adminSeed(async (db) =>
+      db.outboundMessage.findUnique({
+        where: { id: outboundId },
+        select: { status: true, wamid: true, attempts: true },
+      }),
+    );
+    expect(updated?.status).toBe('SENT');
+    expect(updated?.wamid).toBe('wamid.happy');
+    // attempts was 0 at seed; claimPending increments to 1
+    expect(updated?.attempts).toBe(1);
+  });
+
+  it('lock contention: another replica holds the lock → no-op', async () => {
+    await seedOutbound('locked');
+    const OTHER_REPLICA = 'other-replica-token';
+    const acquired = await stubRedis.acquireLock(OUTBOUND_LOCK_KEY, 50, OTHER_REPLICA);
+    expect(acquired).toBe(true);
+
+    const tick = await cron.runOnce();
+
+    expect(tick.lockHeld).toBe(false);
+    expect(tick.claimed).toBe(0);
+    expect(tick.sent).toBe(0);
+    // The stub WhatsApp client was never called.
+    expect(stubWhatsApp.calls).toHaveLength(0);
+
+    // Cleanup: release the manually-acquired lock so the next test starts clean.
+    await stubRedis.releaseLock(OUTBOUND_LOCK_KEY, OTHER_REPLICA);
+
+    // Also clean up the seeded row - it stays PENDING because the
+    // lock test doesn't claim it, but a later test's cron run
+    // would claim it (since lastAttemptAt is null → backoff filter
+    // treats it as ready). The next test's expected counts would
+    // be off by 1.
+    await cleanupAllTestRows();
+  });
+
+  it('backoff: a row within the backoff window is NOT claimed', async () => {
+    // Clear any PENDING orphans from previous test runs - if an
+    // orphan's backoff has elapsed (> 5 min), the cron will claim
+    // it before checking our test row, breaking the assertion
+    // (claimed would be 1, expected 0). The backoff filter is
+    // correct; this just isolates the test.
+    await cleanupAllTestRows();
+
+    // First attempt happened 1 second ago - the first backoff
+    // is 30s, so this row is still in its backoff window.
+    const recentAttempt = new Date(Date.now() - 1_000);
+    const { outboundId } = await seedOutbound('backoff', {
+      lastAttemptAt: recentAttempt,
+      attempts: 1,
     });
 
-    it('happy path: claims a PENDING row, sends, marks SENT', async () => {
-      const { outboundId } = await seedOutbound('happy');
-      stubWhatsApp.nextResult = { wamid: 'wamid.happy' };
+    const tick = await cron.runOnce();
 
-      const tick = await cron.runOnce();
+    // The row should not have been claimed (still PENDING) and
+    // the Meta API was not called. The cron reports 0 claimed.
+    expect(tick.claimed).toBe(0);
+    expect(stubWhatsApp.calls).toHaveLength(0);
 
-      expect(tick.lockHeld).toBe(true);
-      expect(tick.claimed).toBe(1);
-      expect(tick.sent).toBe(1);
-      expect(tick.failed).toBe(0);
-      expect(stubWhatsApp.calls).toHaveLength(1);
-      expect(stubWhatsApp.calls[0]?.templateName).toBe('shadhil_chat_reply');
+    const row = await adminSeed(async (db) =>
+      db.outboundMessage.findUnique({
+        where: { id: outboundId },
+        select: { status: true, attempts: true },
+      }),
+    );
+    // status unchanged, attempts not incremented
+    expect(row?.status).toBe('PENDING');
+    expect(row?.attempts).toBe(1);
+  });
 
-      const updated = await adminSeed(async (db) =>
-        db.outboundMessage.findUnique({
-          where: { id: outboundId },
-          select: { status: true, wamid: true, attempts: true },
-        }),
-      );
-      expect(updated?.status).toBe('SENT');
-      expect(updated?.wamid).toBe('wamid.happy');
-      // attempts was 0 at seed; claimPending increments to 1
-      expect(updated?.attempts).toBe(1);
+  it('failure: a row whose send throws gets lastError set + stays PENDING', async () => {
+    stubWhatsApp.nextResult = {
+      throw: new Error('Meta API network error'),
+    };
+    const { outboundId } = await seedOutbound('fail', { attempts: 0 });
+
+    const tick = await cron.runOnce();
+
+    expect(tick.lockHeld).toBe(true);
+    expect(tick.claimed).toBe(1);
+    // sendOne caught the error, so tick.sent stays 0; the row
+    // is in the backoff limbo (PENDING with lastError). It will
+    // be retried in 30s (the first backoff bucket).
+    expect(tick.sent).toBe(0);
+    expect(tick.failed).toBe(0);
+
+    const row = await adminSeed(async (db) =>
+      db.outboundMessage.findUnique({
+        where: { id: outboundId },
+        select: { status: true, lastError: true, attempts: true },
+      }),
+    );
+    expect(row?.status).toBe('PENDING');
+    expect(row?.lastError).toContain('Meta API network error');
+    // attempts was bumped by claimPending (it's part of the
+    // status-claim atomicity), even though the actual send
+    // failed. The retry counter reflects "we tried", not
+    // "we succeeded". MAX_ATTEMPTS is the cap on how many
+    // times we'll keep trying.
+    expect(row?.attempts).toBe(1);
+  });
+
+  it('final failure: a row that exhausts MAX_ATTEMPTS is marked FAILED', async () => {
+    // Seed a row that has already been tried MAX_ATTEMPTS - 1
+    // times. The next failure will hit the cap and flip to
+    // FAILED instead of PENDING.
+    stubWhatsApp.nextResult = {
+      throw: new Error('Meta API: 400 invalid template'),
+    };
+    // attempts is set to MAX_ATTEMPTS - 1 in the seed. The
+    // claimPending increments to MAX_ATTEMPTS. The sendOne's
+    // catch sees attempts >= MAX_ATTEMPTS and marks FAILED.
+    const { outboundId } = await seedOutbound('exhaust', {
+      attempts: MAX_ATTEMPTS - 1,
     });
 
-    it('lock contention: another replica holds the lock → no-op', async () => {
-      await seedOutbound('locked');
-      const OTHER_REPLICA = 'other-replica-token';
-      const acquired = await stubRedis.acquireLock(
-        OUTBOUND_LOCK_KEY,
-        50,
-        OTHER_REPLICA,
-      );
-      expect(acquired).toBe(true);
+    const tick = await cron.runOnce();
 
-      const tick = await cron.runOnce();
+    expect(tick.claimed).toBe(1);
+    expect(tick.failed).toBe(1);
+    expect(tick.sent).toBe(0);
 
-      expect(tick.lockHeld).toBe(false);
-      expect(tick.claimed).toBe(0);
-      expect(tick.sent).toBe(0);
-      // The stub WhatsApp client was never called.
-      expect(stubWhatsApp.calls).toHaveLength(0);
+    const row = await adminSeed(async (db) =>
+      db.outboundMessage.findUnique({
+        where: { id: outboundId },
+        select: { status: true, lastError: true, attempts: true },
+      }),
+    );
+    expect(row?.status).toBe('FAILED');
+    expect(row?.lastError).toContain('Meta API: 400 invalid template');
+    expect(row?.attempts).toBe(MAX_ATTEMPTS);
+  });
 
-      // Cleanup: release the manually-acquired lock so the next test starts clean.
-      await stubRedis.releaseLock(OUTBOUND_LOCK_KEY, OTHER_REPLICA);
+  it('T-E2b: every runOnce passes the tick result to alerts.recordTickResult', async () => {
+    // Stub the alerts service. The cron service is reconstructed
+    // for this test so we can inject the stub via the
+    // OutboundCronService.withReplicaId factory (which now takes
+    // an optional 5th arg).
+    const recordTickResult = vi.fn(
+      async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) => undefined,
+    );
+    const stubAlerts = {
+      recordTickResult,
+    } as unknown as import('../alerts/alerts.module').AlertsService;
+    const cronWithAlerts = OutboundCronService.withReplicaId(
+      prismaService,
+      stubRedis as unknown as RedisService,
+      outbound,
+      REPLICA_ID,
+      stubAlerts,
+    );
 
-      // Also clean up the seeded row - it stays PENDING because the
-      // lock test doesn't claim it, but a later test's cron run
-      // would claim it (since lastAttemptAt is null → backoff filter
-      // treats it as ready). The next test's expected counts would
-      // be off by 1.
-      await cleanupAllTestRows();
-    });
+    // Run once with a happy path - recordTickResult must be called
+    // exactly once with the resulting tick.
+    await seedOutbound('alerts-happy');
+    stubWhatsApp.nextResult = { wamid: 'wamid.alerts' };
+    const tick = await cronWithAlerts.runOnce();
+    expect(recordTickResult).toHaveBeenCalledTimes(1);
+    // The argument must be the same tick object the cron returned.
+    expect(recordTickResult.mock.calls[0]?.[0]).toBe(tick);
+  });
 
-    it('backoff: a row within the backoff window is NOT claimed', async () => {
-      // Clear any PENDING orphans from previous test runs - if an
-      // orphan's backoff has elapsed (> 5 min), the cron will claim
-      // it before checking our test row, breaking the assertion
-      // (claimed would be 1, expected 0). The backoff filter is
-      // correct; this just isolates the test.
-      await cleanupAllTestRows();
+  it('T-E2b: a throwing alerts service does NOT crash the cron (best-effort)', async () => {
+    // If alerts.recordTickResult throws (it shouldn't - it's
+    // contractually no-throw - but defense-in-depth), the cron
+    // must still complete and return a tick.
+    const stubAlerts = {
+      recordTickResult: vi.fn(
+        async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) => {
+          throw new Error('telegram down hard');
+        },
+      ),
+    } as unknown as import('../alerts/alerts.module').AlertsService;
+    const cronWithAlerts = OutboundCronService.withReplicaId(
+      prismaService,
+      stubRedis as unknown as RedisService,
+      outbound,
+      REPLICA_ID,
+      stubAlerts,
+    );
 
-      // First attempt happened 1 second ago - the first backoff
-      // is 30s, so this row is still in its backoff window.
-      const recentAttempt = new Date(Date.now() - 1_000);
-      const { outboundId } = await seedOutbound('backoff', {
-        lastAttemptAt: recentAttempt,
-        attempts: 1,
-      });
+    await seedOutbound('alerts-throw');
+    stubWhatsApp.nextResult = { wamid: 'wamid.alerts-throw' };
 
-      const tick = await cron.runOnce();
-
-      // The row should not have been claimed (still PENDING) and
-      // the Meta API was not called. The cron reports 0 claimed.
-      expect(tick.claimed).toBe(0);
-      expect(stubWhatsApp.calls).toHaveLength(0);
-
-      const row = await adminSeed(async (db) =>
-        db.outboundMessage.findUnique({
-          where: { id: outboundId },
-          select: { status: true, attempts: true },
-        }),
-      );
-      // status unchanged, attempts not incremented
-      expect(row?.status).toBe('PENDING');
-      expect(row?.attempts).toBe(1);
-    });
-
-    it('failure: a row whose send throws gets lastError set + stays PENDING', async () => {
-      stubWhatsApp.nextResult = {
-        throw: new Error('Meta API network error'),
-      };
-      const { outboundId } = await seedOutbound('fail', { attempts: 0 });
-
-      const tick = await cron.runOnce();
-
-      expect(tick.lockHeld).toBe(true);
-      expect(tick.claimed).toBe(1);
-      // sendOne caught the error, so tick.sent stays 0; the row
-      // is in the backoff limbo (PENDING with lastError). It will
-      // be retried in 30s (the first backoff bucket).
-      expect(tick.sent).toBe(0);
-      expect(tick.failed).toBe(0);
-
-      const row = await adminSeed(async (db) =>
-        db.outboundMessage.findUnique({
-          where: { id: outboundId },
-          select: { status: true, lastError: true, attempts: true },
-        }),
-      );
-      expect(row?.status).toBe('PENDING');
-      expect(row?.lastError).toContain('Meta API network error');
-      // attempts was bumped by claimPending (it's part of the
-      // status-claim atomicity), even though the actual send
-      // failed. The retry counter reflects "we tried", not
-      // "we succeeded". MAX_ATTEMPTS is the cap on how many
-      // times we'll keep trying.
-      expect(row?.attempts).toBe(1);
-    });
-
-    it('final failure: a row that exhausts MAX_ATTEMPTS is marked FAILED', async () => {
-      // Seed a row that has already been tried MAX_ATTEMPTS - 1
-      // times. The next failure will hit the cap and flip to
-      // FAILED instead of PENDING.
-      stubWhatsApp.nextResult = {
-        throw: new Error('Meta API: 400 invalid template'),
-      };
-      // attempts is set to MAX_ATTEMPTS - 1 in the seed. The
-      // claimPending increments to MAX_ATTEMPTS. The sendOne's
-      // catch sees attempts >= MAX_ATTEMPTS and marks FAILED.
-      const { outboundId } = await seedOutbound('exhaust', {
-        attempts: MAX_ATTEMPTS - 1,
-      });
-
-      const tick = await cron.runOnce();
-
-      expect(tick.claimed).toBe(1);
-      expect(tick.failed).toBe(1);
-      expect(tick.sent).toBe(0);
-
-      const row = await adminSeed(async (db) =>
-        db.outboundMessage.findUnique({
-          where: { id: outboundId },
-          select: { status: true, lastError: true, attempts: true },
-        }),
-      );
-      expect(row?.status).toBe('FAILED');
-      expect(row?.lastError).toContain('Meta API: 400 invalid template');
-      expect(row?.attempts).toBe(MAX_ATTEMPTS);
-    });
-
-    it('T-E2b: every runOnce passes the tick result to alerts.recordTickResult', async () => {
-      // Stub the alerts service. The cron service is reconstructed
-      // for this test so we can inject the stub via the
-      // OutboundCronService.withReplicaId factory (which now takes
-      // an optional 5th arg).
-      const recordTickResult = vi.fn(
-        async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) =>
-          undefined,
-      );
-      const stubAlerts = {
-        recordTickResult,
-      } as unknown as import('../alerts/alerts.module').AlertsService;
-      const cronWithAlerts = OutboundCronService.withReplicaId(
-        prismaService,
-        stubRedis as unknown as RedisService,
-        outbound,
-        REPLICA_ID,
-        stubAlerts,
-      );
-
-      // Run once with a happy path - recordTickResult must be called
-      // exactly once with the resulting tick.
-      await seedOutbound('alerts-happy');
-      stubWhatsApp.nextResult = { wamid: 'wamid.alerts' };
-      const tick = await cronWithAlerts.runOnce();
-      expect(recordTickResult).toHaveBeenCalledTimes(1);
-      // The argument must be the same tick object the cron returned.
-      expect(recordTickResult.mock.calls[0]?.[0]).toBe(tick);
-    });
-
-    it('T-E2b: a throwing alerts service does NOT crash the cron (best-effort)', async () => {
-      // If alerts.recordTickResult throws (it shouldn't - it's
-      // contractually no-throw - but defense-in-depth), the cron
-      // must still complete and return a tick.
-      const stubAlerts = {
-        recordTickResult: vi.fn(
-          async (_tick: import('../whatsapp/outbound.cron').OutboundTickResult) => {
-            throw new Error('telegram down hard');
-          },
-        ),
-      } as unknown as import('../alerts/alerts.module').AlertsService;
-      const cronWithAlerts = OutboundCronService.withReplicaId(
-        prismaService,
-        stubRedis as unknown as RedisService,
-        outbound,
-        REPLICA_ID,
-        stubAlerts,
-      );
-
-      await seedOutbound('alerts-throw');
-      stubWhatsApp.nextResult = { wamid: 'wamid.alerts-throw' };
-
-      // runOnce must NOT throw.
-      const tick = await cronWithAlerts.runOnce();
-      expect(tick.lockHeld).toBe(true);
-      expect(tick.sent).toBe(1);
-    });
-  },
-);
+    // runOnce must NOT throw.
+    const tick = await cronWithAlerts.runOnce();
+    expect(tick.lockHeld).toBe(true);
+    expect(tick.sent).toBe(1);
+  });
+});

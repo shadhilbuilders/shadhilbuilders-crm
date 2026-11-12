@@ -34,8 +34,9 @@ vi.mock('@/lib/session', () => ({
   // T-BOOK-ROLES: mirrors the real helper (DESIGN.md §4 "Initiate booking").
   // A partial mock here would make `canInitiate` undefined and silently drop
   // the TOKEN action from every case.
-  canInitiateBookings: vi.fn((role: string | undefined) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC',
+  canInitiateBookings: vi.fn(
+    (role: string | undefined) =>
+      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC',
   ),
 }));
 

@@ -19,8 +19,7 @@ const DEFAULT_PROJECT_SLUG = 'shadhil-metro-heights';
 function projectLeadHrefFromCache(cache: unknown): string {
   try {
     // PersistedShape: { timestamp, buster, cacheState: dehydrated }
-    const dehydrated = (cache as { cacheState?: { queries?: unknown[] } })
-      .cacheState;
+    const dehydrated = (cache as { cacheState?: { queries?: unknown[] } }).cacheState;
     for (const q of dehydrated?.queries ?? []) {
       const qk = (q as { queryKey?: unknown[] }).queryKey;
       if (!Array.isArray(qk) || qk[0] !== 'projects') continue;
@@ -79,9 +78,7 @@ const OfflinePage = () => {
           leadHref: projectLeadHrefFromCache(rqCache),
         });
       })
-      .catch(() =>
-        setState({ hasCache: false, lastSyncedAt: null, leadHref: '/leads' }),
-      );
+      .catch(() => setState({ hasCache: false, lastSyncedAt: null, leadHref: '/leads' }));
   }, []);
 
   if (state === null) {
@@ -106,9 +103,7 @@ const OfflinePage = () => {
 
   // State B: cached view available
   const leadHref = state.leadHref;
-  const lastSynced = state.lastSyncedAt
-    ? dateIntl.formatDateTime(state.lastSyncedAt)
-    : 'recently';
+  const lastSynced = state.lastSyncedAt ? dateIntl.formatDateTime(state.lastSyncedAt) : 'recently';
 
   return (
     <div className="flex flex-col items-center gap-4 text-center">

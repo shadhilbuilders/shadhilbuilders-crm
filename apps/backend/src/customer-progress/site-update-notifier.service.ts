@@ -72,12 +72,12 @@ export class SiteUpdateNotifier {
           organizationId: notice.organizationId,
         },
         (tx) =>
-          tx.$queryRaw<Array<{ id: string }>>`SELECT project_site_update_recipient_ids(${notice.projectId}) AS id`,
+          tx.$queryRaw<
+            Array<{ id: string }>
+          >`SELECT project_site_update_recipient_ids(${notice.projectId}) AS id`,
       );
 
-      const targets = recipients
-        .map((r) => r.id)
-        .filter((id) => id !== notice.uploaderId);
+      const targets = recipients.map((r) => r.id).filter((id) => id !== notice.uploaderId);
       if (targets.length === 0) return 0;
 
       const body = clampBody(

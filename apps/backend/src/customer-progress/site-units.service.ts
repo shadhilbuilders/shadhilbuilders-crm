@@ -29,10 +29,7 @@ export function siteScopeFor(role: JwtPayload['role']): SiteUnitScope | null {
 }
 
 /** The Unit filter that implements a scope for one actor. Pure, unit-tested. */
-export function siteScopeWhere(
-  scope: SiteUnitScope,
-  actorId: string,
-): Prisma.UnitWhereInput {
+export function siteScopeWhere(scope: SiteUnitScope, actorId: string): Prisma.UnitWhereInput {
   switch (scope) {
     case 'ASSIGNED':
       return { assignedEngineerId: actorId };

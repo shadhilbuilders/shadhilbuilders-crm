@@ -19,11 +19,11 @@ dev too means the same label-based config syntax you'll use in prod.
 
 After setup, the following dev URLs work over HTTPS with valid certs:
 
-| URL | Proxies to |
-|---|---|
-| `https://crm.local` | `apps/web:3000` (Next.js) |
+| URL                     | Proxies to                   |
+| ----------------------- | ---------------------------- |
+| `https://crm.local`     | `apps/web:3000` (Next.js)    |
 | `https://api.crm.local` | `apps/backend:8080` (NestJS) |
-| `https://sse.crm.local` | `apps/realtime-sse:8090` |
+| `https://sse.crm.local` | `apps/realtime-sse:8090`     |
 
 All three share one h2 connection per browser tab. The 6-conn limit
 disappears. SSE works over h2 multiplexed to the browser.
@@ -123,10 +123,12 @@ Give it 60s.
 **Traefik dashboard** - not exposed by default (we set
 `exposedbydefault=false`). If you want to see the Traefik dashboard
 during dev, add these command flags:
+
 ```
 - "--api.dashboard=true"
 - "--api.insecure=true"
 ```
+
 and port `:8080` (which the apps/web service also uses - change
 to `:8089` or another free port).
 

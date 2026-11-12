@@ -30,11 +30,8 @@ const MAX_BACKOFF_MS = 30_000;
 /** True when a fetch was cancelled via AbortController (component teardown). */
 export function isAbortError(err: unknown): boolean {
   return (
-    err instanceof DOMException && err.name === 'AbortError'
-  ) || (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { name?: unknown }).name === 'AbortError'
+    (err instanceof DOMException && err.name === 'AbortError') ||
+    (typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError')
   );
 }
 

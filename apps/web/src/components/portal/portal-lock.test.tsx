@@ -10,7 +10,9 @@ import { PortalLock } from './portal-lock';
 
 describe('PortalLock', () => {
   it('not-linked: says so and offers the office phone as a tel: link', () => {
-    const html = renderToStaticMarkup(<PortalLock reason="not-linked" officePhone="+91 98765 43210" />);
+    const html = renderToStaticMarkup(
+      <PortalLock reason="not-linked" officePhone="+91 98765 43210" />,
+    );
     expect(html).toContain('not linked yet');
     expect(html).toContain('href="tel:+919876543210"');
     expect(html).toContain('+91 98765 43210');

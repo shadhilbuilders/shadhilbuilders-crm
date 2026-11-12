@@ -48,10 +48,7 @@
 import { LEAD_STATE_LABELS } from '@shadhil/api-types';
 // T-LEAD-SOURCES (2026-11-05): the lead-source vocabulary is shared with the
 // backend, which normalises an inbound channel against it.
-import {
-  LEAD_SOURCES as SHARED_LEAD_SOURCES,
-  type LeadSource,
-} from '@shadhil/api-types';
+import { LEAD_SOURCES as SHARED_LEAD_SOURCES, type LeadSource } from '@shadhil/api-types';
 
 // ---------------------------------------------------------------------------
 // Source-of-truth lists (the test asserts `labelFor(enum, x)` is defined
@@ -88,12 +85,7 @@ export type LeadStatus = (typeof LEAD_STATUSES)[number];
  * as its status word, so both pages use one vocabulary, and the visit's own
  * status is only ever displayed through `VISIT_STATUS_LABELS` below.
  */
-export const VISIT_OUTCOMES = [
-  'COMPLETED',
-  'NO_SHOW',
-  'CANCELLED',
-  'RESCHEDULED',
-] as const;
+export const VISIT_OUTCOMES = ['COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED'] as const;
 export type VisitOutcome = (typeof VISIT_OUTCOMES)[number];
 
 /**
@@ -120,14 +112,8 @@ export type VisitStatus = (typeof VISIT_STATUSES)[number];
  */
 export const UPCOMING_VISIT_STATUSES = ['SCHEDULED'] as const;
 
-
 /** Inventory-unit values per the Prisma `InventoryUnit.status` enum. */
-export const INVENTORY_STATUSES = [
-  'AVAILABLE',
-  'HOLD',
-  'TOKEN',
-  'SOLD',
-] as const;
+export const INVENTORY_STATUSES = ['AVAILABLE', 'HOLD', 'TOKEN', 'SOLD'] as const;
 export type InventoryStatus = (typeof INVENTORY_STATUSES)[number];
 
 /**
@@ -165,13 +151,7 @@ export function isDerivedUnitStatus(status: string): boolean {
  * Added 2026-09-04 alongside the booking page wire-up. The friendly
  * labels match §0.11 plan copy.
  */
-export const BOOKING_STATUSES = [
-  'HOLD',
-  'TOKEN',
-  'APPROVED',
-  'REJECTED',
-  'CANCELLED',
-] as const;
+export const BOOKING_STATUSES = ['HOLD', 'TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 /**
@@ -292,9 +272,7 @@ export function constructionStageLabel(value: string): string {
  * spends the page's colour budget on "which villa needs a photo", and a second
  * hue system on the same row would make neither legible.
  */
-export function constructionStageBadgeVariant(
-  value: string | null,
-): 'muted' {
+export function constructionStageBadgeVariant(value: string | null): 'muted' {
   void value;
   return 'muted';
 }
@@ -408,12 +386,7 @@ const FACT_BAND_LABELS: Record<FactBandLabel, string> = {
  * Fact statuses per the Prisma `FactStatus` enum. A PROPOSED row is what the
  * rep is being asked about; APPLIED is already on the record.
  */
-export const FACT_STATUSES = [
-  'APPLIED',
-  'PROPOSED',
-  'DISMISSED',
-  'SUPERSEDED',
-] as const;
+export const FACT_STATUSES = ['APPLIED', 'PROPOSED', 'DISMISSED', 'SUPERSEDED'] as const;
 export type FactStatusLabel = (typeof FACT_STATUSES)[number];
 
 const FACT_STATUS_LABELS: Record<FactStatusLabel, string> = {

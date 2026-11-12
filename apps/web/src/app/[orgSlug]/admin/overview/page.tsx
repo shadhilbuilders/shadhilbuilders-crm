@@ -71,11 +71,7 @@ export default function AdminDashboardPage() {
   // dead-end). Guard the empty-registry loop (eng CRITICAL-2): if no
   // default project, go to /projects - otherwise projectHref(null, ...)
   // returns /overview and the redirect loops forever.
-  const redirectTarget = commandCenterRedirectTarget(
-    user.role,
-    projects ?? [],
-    orgSlug,
-  );
+  const redirectTarget = commandCenterRedirectTarget(user.role, projects ?? [], orgSlug);
   if (redirectTarget !== null) {
     return <RedirectToProject href={redirectTarget} />;
   }
@@ -141,7 +137,7 @@ function ProblemInbox() {
     projectsById.get(projectId)?.name ?? 'Unknown project';
 
   return (
-    <div className="px-4 py-6 space-y-8 sm:px-6 lg:px-8">
+    <div className="space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <ProblemHeader />
 
       {/* Card 1 - the flagship: leads nobody has touched in a day.
@@ -169,22 +165,22 @@ function ProblemInbox() {
               >
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{lead.name}</span>
-                  <span className="text-muted-foreground mt-0.5 block text-sm truncate">
+                  <span className="text-muted-foreground mt-0.5 block truncate text-sm">
                     {projectLabel(lead.projectId)}
                     {lead.ownerName ? ` · ${lead.ownerName}` : ''}
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
-                  <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
-                  {lead.idleDays}d since last write
-                </span>
+                  <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
+                    {lead.idleDays}d since last write
+                  </span>
                   {href !== null ? (
                     <Button
                       as={Link}
                       variant="link"
                       size="sm"
                       href={href}
-                      className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
+                      className="text-link flex min-h-[40px] min-w-[40px] items-center justify-center p-2 sm:p-0"
                     >
                       Open
                     </Button>
@@ -219,13 +215,13 @@ function ProblemInbox() {
               >
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{visit.leadName}</span>
-                  <span className="text-muted-foreground mt-0.5 block text-sm truncate">
+                  <span className="text-muted-foreground mt-0.5 block truncate text-sm">
                     {labelFor('lead', visit.leadStatus)} · {projectLabel(visit.projectId)}
                     {visit.userName ? ` · ${visit.userName}` : ' · no exec assigned'}
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
-                  <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
+                  <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
                     {visit.reason === 'overdue-past-due'
                       ? `overdue · was due ${dateIntl.formatDate(visit.scheduledFor)}`
                       : 'due today'}
@@ -236,7 +232,7 @@ function ProblemInbox() {
                       variant="link"
                       size="sm"
                       href={href}
-                      className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
+                      className="text-link flex min-h-[40px] min-w-[40px] items-center justify-center p-2 sm:p-0"
                     >
                       Open
                     </Button>
@@ -258,54 +254,61 @@ function ProblemInbox() {
         <ul role="list" className="divide-border divide-y">
           {bookingMoney.slice(0, 10).map((booking) => {
             const proj = projectsById.get(booking.projectId);
-            const href = proj
-              ? projectHref(orgSlug, proj.slug, `/bookings/${booking.id}`)
-              : null;
+            const href = proj ? projectHref(orgSlug, proj.slug, `/bookings/${booking.id}`) : null;
             return (
-            <li
-              key={booking.id}
-              className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="font-medium">{booking.leadName}</span>
-                <span className="text-muted-foreground mt-0.5 block text-sm truncate">
-                  {booking.unitNumber ? `Unit ${booking.unitNumber} · ` : ''}
-                  {projectLabel(booking.projectId)}
+              <li
+                key={booking.id}
+                className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{booking.leadName}</span>
+                  <span className="text-muted-foreground mt-0.5 block truncate text-sm">
+                    {booking.unitNumber ? `Unit ${booking.unitNumber} · ` : ''}
+                    {projectLabel(booking.projectId)}
+                  </span>
                 </span>
-              </span>
-              <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
-                {booking.reason === 'token-paid-awaiting-approval' ? (
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="success" data-qa={`booking-token-paid-${booking.id}`}>
-                      Token paid
-                    </Badge>
-                    <Badge variant="warning" data-qa={`booking-approval-due-${booking.id}`}>
-                      {booking.stuckDays}d to approve
-                    </Badge>
-                  </span>
-                ) : booking.reason === 'token-recorded-missing-amount' ? (
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="destructive" data-qa={`booking-token-missing-amount-${booking.id}`}>
-                      Amount missing
-                    </Badge>
-                    <span className="text-muted-foreground text-xs whitespace-nowrap">
-                      marked received · {booking.stuckDays}d
+                <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
+                  {booking.reason === 'token-paid-awaiting-approval' ? (
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="success" data-qa={`booking-token-paid-${booking.id}`}>
+                        Token paid
+                      </Badge>
+                      <Badge variant="warning" data-qa={`booking-approval-due-${booking.id}`}>
+                        {booking.stuckDays}d to approve
+                      </Badge>
                     </span>
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground text-sm whitespace-nowrap">
-                    {booking.stuckDays}d no token
-                  </span>
-                )}
-                {href !== null ? (
-                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center">
-                    {booking.reason === 'token-recorded-missing-amount'
-                      ? 'Fix amount'
-                      : 'Approve'}
-                  </Button>
-                ) : null}
-              </span>
-            </li>
+                  ) : booking.reason === 'token-recorded-missing-amount' ? (
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant="destructive"
+                        data-qa={`booking-token-missing-amount-${booking.id}`}
+                      >
+                        Amount missing
+                      </Badge>
+                      <span className="text-muted-foreground text-xs whitespace-nowrap">
+                        marked received · {booking.stuckDays}d
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-sm whitespace-nowrap">
+                      {booking.stuckDays}d no token
+                    </span>
+                  )}
+                  {href !== null ? (
+                    <Button
+                      as={Link}
+                      variant="link"
+                      size="sm"
+                      href={href}
+                      className="text-link flex min-h-[40px] min-w-[40px] items-center justify-center p-2 sm:p-0"
+                    >
+                      {booking.reason === 'token-recorded-missing-amount'
+                        ? 'Fix amount'
+                        : 'Approve'}
+                    </Button>
+                  ) : null}
+                </span>
+              </li>
             );
           })}
         </ul>
@@ -321,35 +324,38 @@ function ProblemInbox() {
         <ul role="list" className="divide-border divide-y">
           {teamHealth.slice(0, 10).map((member) => {
             const href = member.userId
-              ? orgHref(
-                  orgSlug,
-                  `/admin/users/${encodeURIComponent(member.userId)}`,
-                )
+              ? orgHref(orgSlug, `/admin/users/${encodeURIComponent(member.userId)}`)
               : null;
             return (
-            <li
-              key={member.userId}
-              className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="font-medium">{member.userName}</span>
-                <span className="text-muted-foreground mt-0.5 block text-sm">
-                  {member.role.toLowerCase().replace('_', ' ')}
+              <li
+                key={member.userId}
+                className="flex flex-col gap-y-2 py-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{member.userName}</span>
+                  <span className="text-muted-foreground mt-0.5 block text-sm">
+                    {member.role.toLowerCase().replace('_', ' ')}
+                  </span>
                 </span>
-              </span>
-              <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
-                <span className="text-muted-foreground text-sm whitespace-nowrap">
-                  {member.kind === 'quiet'
-                    ? `quiet ${member.quietDays}d · ${member.activeLeadCount} leads`
-                    : `overloaded · ${member.activeLeadCount} active leads`}
+                <span className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
+                  <span className="text-muted-foreground text-sm whitespace-nowrap">
+                    {member.kind === 'quiet'
+                      ? `quiet ${member.quietDays}d · ${member.activeLeadCount} leads`
+                      : `overloaded · ${member.activeLeadCount} active leads`}
+                  </span>
+                  {href !== null ? (
+                    <Button
+                      as={Link}
+                      variant="link"
+                      size="sm"
+                      href={href}
+                      className="text-link flex min-h-[40px] min-w-[40px] items-center justify-center p-2 sm:p-0"
+                    >
+                      Review
+                    </Button>
+                  ) : null}
                 </span>
-                {href !== null ? (
-                  <Button as={Link} variant="link" size="sm" href={href} className="text-link p-2 sm:p-0 min-h-[40px] min-w-[40px] flex items-center justify-center">
-                    Review
-                  </Button>
-                ) : null}
-              </span>
-            </li>
+              </li>
             );
           })}
         </ul>
@@ -397,18 +403,14 @@ function ProblemCard({
 }) {
   return (
     <section className="min-w-0">
-      <div className="flex flex-col gap-y-1.5 mb-2 sm:flex-row sm:items-center sm:justify-between sm:mb-3">
+      <div className="mb-2 flex flex-col gap-y-1.5 sm:mb-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold tracking-wide uppercase">{title}</h2>
-        <span className="text-muted-foreground text-sm tabular-nums whitespace-nowrap">
+        <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
           {count} {count === 1 ? 'problem' : 'problems'} · {sub}
         </span>
       </div>
       <div className="border-border rounded-lg border p-3 sm:p-4">
-        {count === 0 ? (
-          <p className="text-muted-foreground text-sm">{empty}</p>
-        ) : (
-          children
-        )}
+        {count === 0 ? <p className="text-muted-foreground text-sm">{empty}</p> : children}
       </div>
     </section>
   );

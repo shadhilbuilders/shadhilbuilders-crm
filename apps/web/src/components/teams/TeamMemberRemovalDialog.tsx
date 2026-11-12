@@ -141,7 +141,9 @@ export function TeamMemberRemovalDialog({
         if (
           error instanceof ApiError &&
           error.code !== null &&
-          (['SELF_REPLACEMENT', 'TARGET_NOT_TEAM_MEMBER', 'TARGET_ROLE_INELIGIBLE'] as const).includes(
+          (
+            ['SELF_REPLACEMENT', 'TARGET_NOT_TEAM_MEMBER', 'TARGET_ROLE_INELIGIBLE'] as const
+          ).includes(
             error.code as 'SELF_REPLACEMENT' | 'TARGET_NOT_TEAM_MEMBER' | 'TARGET_ROLE_INELIGIBLE',
           )
         ) {
@@ -385,7 +387,10 @@ export function TeamMemberRemovalDialogBody({
       />
       {/* Responsive/a11y contract (design doc UI5): "Reason supports 500
           characters with a visible character count." */}
-      <p className="text-muted-foreground -mt-2 text-right text-xs" data-qa="team-member-removal-reason-count">
+      <p
+        className="text-muted-foreground -mt-2 text-right text-xs"
+        data-qa="team-member-removal-reason-count"
+      >
         {reasonLength}/500
       </p>
       {pending ? (
@@ -401,7 +406,11 @@ export function TeamMemberRemovalDialogBody({
 function RemovalPreviewError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   if (error instanceof ApiError && error.code === 'LAST_TEAM_PARTICIPANT') {
     return (
-      <div role="alert" className="space-y-2 text-sm" data-qa="team-member-removal-last-participant">
+      <div
+        role="alert"
+        className="space-y-2 text-sm"
+        data-qa="team-member-removal-last-participant"
+      >
         <TypographyP>Add another team member before removing this person.</TypographyP>
       </div>
     );
@@ -430,7 +439,9 @@ function RemovalPreviewError({ error, onRetry }: { error: unknown; onRetry: () =
       data-qa="team-member-removal-error"
     >
       <TypographyP>Couldn&apos;t load this removal preview.</TypographyP>
-      <TypographyMuted>{error instanceof Error ? error.message : 'Unexpected error.'}</TypographyMuted>
+      <TypographyMuted>
+        {error instanceof Error ? error.message : 'Unexpected error.'}
+      </TypographyMuted>
       <Button variant="outline" size="sm" onClick={onRetry} data-qa="team-member-removal-retry">
         Try again
       </Button>

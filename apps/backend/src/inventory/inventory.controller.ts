@@ -63,9 +63,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -102,29 +100,23 @@ export class InventoryController {
       // The frontend joins multi-select statuses with a comma
       // (`status=AVAILABLE,HOLD`). Split before schema validation - a
       // literal "AVAILABLE,HOLD" is not a valid single UnitStatus enum value.
-      const parts = statusRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      const parts = statusRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       status = parts.length > 1 ? parts : parts[0];
       if (parts.length === 0) status = undefined;
     } else if (Array.isArray(statusRaw)) {
       status = statusRaw.filter((v): v is string => typeof v === 'string');
     }
-    const bhk =
-      typeof query['bhk'] === 'string'
-        ? Number.parseInt(query['bhk'], 10)
-        : undefined;
+    const bhk = typeof query['bhk'] === 'string' ? Number.parseInt(query['bhk'], 10) : undefined;
     const limit =
-      typeof query['limit'] === 'string'
-        ? Number.parseInt(query['limit'], 10)
-        : undefined;
+      typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined;
     const offset =
-      typeof query['offset'] === 'string'
-        ? Number.parseInt(query['offset'], 10)
-        : undefined;
+      typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined;
     const candidate = {
-      projectId:
-        typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
-      phaseId:
-        typeof query['phaseId'] === 'string' ? query['phaseId'] : undefined,
+      projectId: typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
+      phaseId: typeof query['phaseId'] === 'string' ? query['phaseId'] : undefined,
       bhk,
       facing: typeof query['facing'] === 'string' ? query['facing'] : undefined,
       status,
@@ -133,12 +125,9 @@ export class InventoryController {
       // this line omits would be silently dropped (the grid would render the
       // unfiltered set with no error, the same failure mode as a misnamed
       // query param).
-      search:
-        typeof query['search'] === 'string' ? query['search'] : undefined,
+      search: typeof query['search'] === 'string' ? query['search'] : undefined,
       assignedEngineerId:
-        typeof query['assignedEngineerId'] === 'string'
-          ? query['assignedEngineerId']
-          : undefined,
+        typeof query['assignedEngineerId'] === 'string' ? query['assignedEngineerId'] : undefined,
       limit,
       offset,
     };
@@ -151,10 +140,7 @@ export class InventoryController {
     summary:
       "Replace one engineer's villa set within a project. ADMIN/OWNER only. Audit rows + notifications.",
   })
-  async assignUnits(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<AssignUnitsResult> {
+  async assignUnits(@Req() req: AuthedRequest, @Body() body: unknown): Promise<AssignUnitsResult> {
     return this.assignment.assignUnits(req.user!, parseBody(AssignUnitsDtoSchema, body));
   }
 
@@ -180,10 +166,7 @@ export class InventoryController {
     summary:
       'Get a single inventory unit (detail panel). Every authenticated role can read, with villa money nulled for site-only roles (ENGINEER).',
   })
-  async findOne(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<UnitRow> {
+  async findOne(@Req() req: AuthedRequest, @Param('id') id: string): Promise<UnitRow> {
     if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid unit id: ${id}`);
     }
@@ -221,18 +204,14 @@ export class InventoryController {
     summary:
       'Create a phase in a project. MANAGER/ADMIN/OWNER only. Audit row records the actor + phase.',
   })
-  async createPhase(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<PhaseRow> {
+  async createPhase(@Req() req: AuthedRequest, @Body() body: unknown): Promise<PhaseRow> {
     const dto: CreatePhaseDto = parseBody(CreatePhaseDtoSchema, body);
     return this.inventory.createPhase(req.user!, dto);
   }
 
   @Patch('phases/:id')
   @ApiOperation({
-    summary:
-      'Rename a phase. MANAGER/ADMIN/OWNER only. Audit row with before/after.',
+    summary: 'Rename a phase. MANAGER/ADMIN/OWNER only. Audit row with before/after.',
   })
   async updatePhase(
     @Req() req: AuthedRequest,
@@ -251,10 +230,7 @@ export class InventoryController {
     summary:
       'Delete a phase. MANAGER/ADMIN/OWNER only. 409 when the phase still has units. Audit row records the deleted phase.',
   })
-  async removePhase(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async removePhase(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid phase id: ${id}`);
     }
@@ -270,13 +246,10 @@ export class InventoryController {
     @Req() req: AuthedRequest,
     @Query() query: Record<string, unknown>,
   ): Promise<ProjectOptionRow[]> {
-    const dto: ProjectOptionFilterDto = parseBody(
-      ProjectOptionFilterDtoSchema,
-      {
-        projectId: typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
-        type: typeof query['type'] === 'string' ? query['type'] : undefined,
-      },
-    );
+    const dto: ProjectOptionFilterDto = parseBody(ProjectOptionFilterDtoSchema, {
+      projectId: typeof query['projectId'] === 'string' ? query['projectId'] : undefined,
+      type: typeof query['type'] === 'string' ? query['type'] : undefined,
+    });
     return this.inventory.options(req.user!, dto);
   }
 
@@ -285,14 +258,8 @@ export class InventoryController {
     summary:
       'Add a value to a project option set. MANAGER/ADMIN/OWNER only. Audit row records the actor + option.',
   })
-  async createOption(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<ProjectOptionRow> {
-    const dto: CreateProjectOptionDto = parseBody(
-      CreateProjectOptionDtoSchema,
-      body,
-    );
+  async createOption(@Req() req: AuthedRequest, @Body() body: unknown): Promise<ProjectOptionRow> {
+    const dto: CreateProjectOptionDto = parseBody(CreateProjectOptionDtoSchema, body);
     return this.inventory.createOption(req.user!, dto);
   }
 
@@ -301,10 +268,7 @@ export class InventoryController {
     summary:
       'Remove a value from a project option set. MANAGER/ADMIN/OWNER only. 409 when the value is in use by a unit in the project. Audit row records the deleted option.',
   })
-  async removeOption(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async removeOption(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid option id: ${id}`);
     }
@@ -316,10 +280,7 @@ export class InventoryController {
     summary:
       'Create a new inventory unit. ADMIN/OWNER only (DESIGN.md §4). Audit row records the actor + unit.',
   })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<UnitRow> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<UnitRow> {
     const dto: CreateUnitDto = parseBody(CreateUnitDtoSchema, body);
     return this.inventory.create(req.user!, dto);
   }
@@ -346,10 +307,7 @@ export class InventoryController {
     summary:
       'Delete an inventory unit. ADMIN/OWNER only. 409 when the unit has bookings (Booking FK is Restrict). Audit row records the deleted unit.',
   })
-  async remove(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async remove(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     if (!CUID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid unit id: ${id}`);
     }

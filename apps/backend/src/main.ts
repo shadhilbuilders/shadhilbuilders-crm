@@ -113,10 +113,7 @@ async function bootstrap(): Promise<void> {
       'REST + SSE API for lead management, visits, bookings, chat, reminders, notifications.',
     )
     .setVersion('0.1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'jwt',
-    )
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'jwt')
     .addTag('auth', 'better-auth catch-all + JWT bridge')
     .addTag('leads', 'Lead CRUD + state machine + reassignment')
     .addTag('visits', 'Site visit scheduling + outcomes')

@@ -46,7 +46,7 @@ function PortalProgress() {
   const units = me.data?.units ?? [];
   const deepLinkUnitId = useDeepLinkUnit(
     deepLinkPhotoId,
-    units.map((u) => u.unitId)
+    units.map((u) => u.unitId),
   );
 
   const [chosenUnitId, setChosenUnitId] = useState<string | null>(null);
@@ -56,7 +56,7 @@ function PortalProgress() {
   const timeline = useCustomerTimeline(selectedUnitId);
   const photos = useMemo(
     () => (timeline.data?.pages ?? []).flatMap((page) => page.photos),
-    [timeline.data]
+    [timeline.data],
   );
 
   // The lightbox pages through the whole feed, including the hero's photo.
@@ -112,7 +112,11 @@ function PortalProgress() {
     return (
       <div data-qa="portal-load-error">
         <PageError
-          error={timeline.error instanceof Error ? timeline.error : new Error('Could not load progress photos')}
+          error={
+            timeline.error instanceof Error
+              ? timeline.error
+              : new Error('Could not load progress photos')
+          }
           onRefresh={() => void timeline.refetch()}
           logToConsole={false}
           showErrorMessage={false}

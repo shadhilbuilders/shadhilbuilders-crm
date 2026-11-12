@@ -13,10 +13,7 @@ import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { PageHeader } from '@/components/shared/PageHeader';
-import {
-  useMarkNotificationsRead,
-  useNotifications,
-} from '@/hooks/queries/crm';
+import { useMarkNotificationsRead, useNotifications } from '@/hooks/queries/crm';
 
 import { useNotificationsRealtime } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
@@ -126,9 +123,7 @@ export default function NotificationsPage() {
             const id = typeof row.id === 'string' ? row.id : null;
             const href = notificationHref(orgSlug, projectSlug, row);
             const titleText =
-              typeof row.title === 'string' && row.title.length > 0
-                ? row.title
-                : 'Notification';
+              typeof row.title === 'string' && row.title.length > 0 ? row.title : 'Notification';
             return (
               <li
                 key={id ?? `n-${index}`}
@@ -137,11 +132,7 @@ export default function NotificationsPage() {
               >
                 <span
                   aria-hidden
-                  className={
-                    isRead
-                      ? 'text-muted-foreground mt-1.5'
-                      : 'mt-1.5 text-blue-600'
-                  }
+                  className={isRead ? 'text-muted-foreground mt-1.5' : 'mt-1.5 text-blue-600'}
                 >
                   {isRead ? '○' : '●'}
                 </span>
@@ -234,10 +225,7 @@ function NotificationsEmpty({
     );
   }
   return (
-    <Box
-      className="border-border rounded-lg border p-10 text-center"
-      data-qa="notifications-empty"
-    >
+    <Box className="border-border rounded-lg border p-10 text-center" data-qa="notifications-empty">
       <p className="text-base font-medium">
         {filter === 'UNREAD'
           ? unread === 0

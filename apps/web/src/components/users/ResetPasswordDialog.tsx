@@ -53,9 +53,7 @@ export function ResetPasswordDialog({
           close();
         },
         onError: (error) => {
-          toast.error(
-            error instanceof Error ? error.message : 'Password change failed',
-          );
+          toast.error(error instanceof Error ? error.message : 'Password change failed');
         },
       },
     );

@@ -59,7 +59,9 @@ if (existsSync(rootEnv)) {
 // not run at all, because the whole point is that dev is unreachable from tests.
 isolateTestDatabase();
 
-export const DATABASE_AVAILABLE = Boolean(process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL);
+export const DATABASE_AVAILABLE = Boolean(
+  process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL,
+);
 
 beforeAll(() => {
   if (!DATABASE_AVAILABLE) {

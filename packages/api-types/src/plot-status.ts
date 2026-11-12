@@ -31,7 +31,12 @@
 
 import { z } from 'zod';
 
-import { BookingStatusSchema, UnitStatusSchema, type BookingStatus, type UnitStatus } from './enums';
+import {
+  BookingStatusSchema,
+  UnitStatusSchema,
+  type BookingStatus,
+  type UnitStatus,
+} from './enums';
 import { UnitRowSchema } from './inventory';
 import { PlotNumberSchema } from './plot-number';
 
@@ -131,7 +136,12 @@ export function plotStatusFromUnitStatus(status: UnitStatus): PlotStatus {
 export const PLOT_STATUS_BINDING_ORDER: readonly PlotStatus[] = ['booked', 'blocked', 'available'];
 
 /** Unit lifecycle statuses, most binding first (mirrors the booking mapping). */
-export const UNIT_STATUS_BINDING_ORDER: readonly UnitStatus[] = ['SOLD', 'TOKEN', 'HOLD', 'AVAILABLE'];
+export const UNIT_STATUS_BINDING_ORDER: readonly UnitStatus[] = [
+  'SOLD',
+  'TOKEN',
+  'HOLD',
+  'AVAILABLE',
+];
 
 /**
  * Booking statuses that still claim their unit, most binding first.

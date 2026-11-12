@@ -16,8 +16,8 @@ export default function ApiDocsPage(): React.JSX.Element {
       <div className="flex flex-col gap-4">
         <Heading>API Documentation</Heading>
         <TypographyP className="text-muted-foreground">
-          The Shadhil Builders CRM REST API is documented with OpenAPI 3.0. The Swagger UI is
-          served by the NestJS backend.
+          The Shadhil Builders CRM REST API is documented with OpenAPI 3.0. The Swagger UI is served
+          by the NestJS backend.
         </TypographyP>
         <div className="flex flex-col gap-3">
           <Button variant="default" asChild>

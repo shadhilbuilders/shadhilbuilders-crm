@@ -188,7 +188,11 @@ export function LeadActionPanel({ lead }: { lead: LeadData }) {
 // (≤120), email optional but must be a valid email when present. The
 // server remains the source of truth - a 400/409 surfaces verbatim.
 const editLeadSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(120, 'Name must be 120 characters or fewer'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(120, 'Name must be 120 characters or fewer'),
   email: z
     .string()
     .trim()
@@ -311,14 +315,12 @@ function TransitionLeadForm({
   if (outgoing.length === 0) {
     return (
       <div className="text-muted-foreground text-xs">
-        No transitions available from <strong>{labelFor('lead', status)}</strong>{' '}
-        (terminal state).
+        No transitions available from <strong>{labelFor('lead', status)}</strong> (terminal state).
       </div>
     );
   }
 
-  const requiresReason =
-    toState !== null && (reopen || STATES_REQUIRING_REASON.has(toState));
+  const requiresReason = toState !== null && (reopen || STATES_REQUIRING_REASON.has(toState));
 
   function onSubmit(target: string) {
     const body: LeadStateTransitionDto = {
@@ -372,7 +374,7 @@ function TransitionLeadForm({
           setToState(target);
         }}
         data-qa={`transition-to-${target}`}
-        className="h-auto min-h-9 justify-start gap-1.5 whitespace-normal text-left sm:justify-center sm:text-center"
+        className="h-auto min-h-9 justify-start gap-1.5 text-left whitespace-normal sm:justify-center sm:text-center"
       >
         {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
         {text}
@@ -405,8 +407,7 @@ function TransitionLeadForm({
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            Move from <LeadStatusBadge status={status} /> to{' '}
-            <LeadStatusBadge status={toState} />
+            Move from <LeadStatusBadge status={status} /> to <LeadStatusBadge status={toState} />
           </div>
 
           {requiresReason ? (
@@ -484,9 +485,7 @@ function TransitionLeadForm({
                 'Saving...'
               ) : (
                 <>
-                  {ConfirmIcon ? (
-                    <ConfirmIcon className="h-4 w-4" aria-hidden="true" />
-                  ) : null}
+                  {ConfirmIcon ? <ConfirmIcon className="h-4 w-4" aria-hidden="true" /> : null}
                   <span>Confirm {labelFor('lead', toState)}</span>
                 </>
               )}

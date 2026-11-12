@@ -91,8 +91,7 @@ export function TeamRosterMemberRow({
   // is inert - the roster shows "Not auto-assigned" instead). Only the viewer
   // who may mutate members may edit weight at all.
   // Weight is a SHARE of new leads, not a cap - see the input's title below.
-  const canEditWeight =
-    canRemove && !isManagerRow && member.role === 'TELECALLER';
+  const canEditWeight = canRemove && !isManagerRow && member.role === 'TELECALLER';
 
   // T-REPORTS-TO-OWNER (2026-10-06): "Reports to" is keyed off the
   // member's ROLE, not the pinned manager badge - a MANAGER reports to

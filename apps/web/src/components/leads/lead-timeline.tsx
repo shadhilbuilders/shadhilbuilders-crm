@@ -27,9 +27,7 @@ export function LeadTimeline({
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <div className="border-border text-xs font-semibold tracking-wide uppercase">
-          Timeline
-        </div>
+        <div className="border-border text-xs font-semibold tracking-wide uppercase">Timeline</div>
         <Skeleton variant="list" count={3} />
       </div>
     );
@@ -46,25 +44,18 @@ export function LeadTimeline({
         {hasActivities ? (
           <ol className="space-y-0">
             {activities!.map((entry) => (
-              <li
-                key={entry.id}
-                className="border-border flex gap-3 border-b py-3 last:border-b-0"
-              >
+              <li key={entry.id} className="border-border flex gap-3 border-b py-3 last:border-b-0">
                 <div className="bg-muted-foreground/20 mt-1.5 h-2 w-2 shrink-0 rounded-full" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                    <span className="text-sm font-medium">
-                      {labelFor('activity', entry.type)}
-                    </span>
+                    <span className="text-sm font-medium">{labelFor('activity', entry.type)}</span>
                     <span className="text-muted-foreground text-xs">
                       {formatDateTime(entry.createdAt)}
                     </span>
                   </div>
                   <p className="text-muted-foreground mt-0.5 text-sm">{entry.body}</p>
                   {entry.userName !== null ? (
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      by {entry.userName}
-                    </p>
+                    <p className="text-muted-foreground mt-0.5 text-xs">by {entry.userName}</p>
                   ) : null}
                 </div>
               </li>
@@ -72,8 +63,8 @@ export function LeadTimeline({
           </ol>
         ) : (
           <TypographyP className="text-muted-foreground text-sm">
-            No activity for {leadName} yet. Timeline entries appear as the lead
-            is called, visited, and moved through the pipeline.
+            No activity for {leadName} yet. Timeline entries appear as the lead is called, visited,
+            and moved through the pipeline.
           </TypographyP>
         )}
         {hasMore ? (

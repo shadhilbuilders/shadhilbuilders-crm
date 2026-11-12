@@ -25,8 +25,7 @@ export function computePreviewToken(leads: readonly LeadOwnershipSnapshot[]): st
   const sorted = [...leads].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const material = sorted
     .map((l) => {
-      const updatedAt =
-        typeof l.updatedAt === 'string' ? l.updatedAt : l.updatedAt.toISOString();
+      const updatedAt = typeof l.updatedAt === 'string' ? l.updatedAt : l.updatedAt.toISOString();
       return `${l.id}|${updatedAt}|${l.ownerId}|${l.coOwnerId ?? ''}`;
     })
     .join('\n');

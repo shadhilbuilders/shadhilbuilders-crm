@@ -22,8 +22,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
@@ -46,11 +45,16 @@ vi.mock('@/lib/session', () => ({
   useSessionUser: mocks.useSessionUser,
   isAdminLike: (role: string) => role === 'ADMIN' || role === 'OWNER',
   outranks: (actor: string, target: string) => {
-    const rank: Record<string, number> = { OWNER: 4, ADMIN: 3, MANAGER: 2, TELECALLER: 1, SALES_EXEC: 1 };
+    const rank: Record<string, number> = {
+      OWNER: 4,
+      ADMIN: 3,
+      MANAGER: 2,
+      TELECALLER: 1,
+      SALES_EXEC: 1,
+    };
     return (rank[actor] ?? 0) > (rank[target] ?? 0);
   },
-  canManageUsers: (role: string) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+  canManageUsers: (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
 }));
 
 // T-USER-LEADS (2026-09-24): the page now mounts UserLeadsCard, which reads

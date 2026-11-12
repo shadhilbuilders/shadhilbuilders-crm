@@ -24,11 +24,7 @@
 // of the same shape for the standalone SSE service). Backend is
 // the source of truth; testing it covers the contract.
 import { ForbiddenException } from '@nestjs/common';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -41,9 +37,7 @@ const TEST_USER_ID = 'test-realtime-ticket-user';
 const TEST_TEAM_ID = 'test-realtime-ticket-team';
 const TEST_TICKET_IDS: string[] = [];
 
-async function adminSeed<T>(
-  fn: (db: PrismaClient) => Promise<T>,
-): Promise<T> {
+async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
   return withRlsContext(
     prisma,
@@ -62,7 +56,11 @@ async function ensureUser(): Promise<void> {
     await db.team.upsert({
       where: { id: TEST_TEAM_ID },
       update: {},
-      create: { id: TEST_TEAM_ID, name: 'Realtime Ticket Test Team', organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: TEST_TEAM_ID,
+        name: 'Realtime Ticket Test Team',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     await db.user.upsert({
       where: { id: TEST_USER_ID },
@@ -78,10 +76,7 @@ async function ensureUser(): Promise<void> {
   });
 }
 
-async function seedTicket(opts: {
-  channel: string;
-  expiresAt: Date;
-}): Promise<string> {
+async function seedTicket(opts: { channel: string; expiresAt: Date }): Promise<string> {
   if (prisma === null) throw new Error('prisma missing');
   const id = `test-tkt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await adminSeed(async (db) => {
@@ -162,9 +157,7 @@ describe.skipIf(!HAS_DB)('T-E2 StreamTicket - consumeTicket lifecycle', () => {
     await service.consumeTicket(id, 'notifications');
 
     // Second consume with the SAME ticket id - the row is gone.
-    await expect(
-      service.consumeTicket(id, 'notifications'),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.consumeTicket(id, 'notifications')).rejects.toThrow(ForbiddenException);
 
     // Reject message must mention 'invalid ticket' (not 'expired'
     // or 'channel mismatch' - we want to verify the *replay* path,
@@ -220,9 +213,7 @@ describe.skipIf(!HAS_DB)('T-E2 StreamTicket - consumeTicket lifecycle', () => {
       thrown = e;
     }
     expect(thrown).toBeInstanceOf(ForbiddenException);
-    expect((thrown as ForbiddenException).message).toBe(
-      'ticket channel mismatch',
-    );
+    expect((thrown as ForbiddenException).message).toBe('ticket channel mismatch');
 
     // The row is NOT deleted on a mismatch - the legitimate caller
     // (on the right channel) can still connect.

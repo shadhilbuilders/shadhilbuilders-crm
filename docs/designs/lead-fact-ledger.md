@@ -23,14 +23,14 @@ nobody downstream knows to check it.
 `LeadFact` stores the observation, the evidence that priced it, and the
 decision, as three separate things:
 
-| Column | Meaning |
-| --- | --- |
-| `field` | which Lead column the observation is about (`name`, `email`, `source`) |
-| `value` | what the source said, verbatim |
-| `evidence` | one entry per independent source: `{ kind, detail, sourceUrl? }` |
-| `score`, `band` | priced by the server, never supplied by the caller |
-| `method` | who observed it (`whatsapp.profile-name`, `enquiry-form`, ...) |
-| `status` | `PROPOSED` (waiting on a rep), `APPLIED` (on the record), `DISMISSED`, `SUPERSEDED` |
+| Column          | Meaning                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `field`         | which Lead column the observation is about (`name`, `email`, `source`)              |
+| `value`         | what the source said, verbatim                                                      |
+| `evidence`      | one entry per independent source: `{ kind, detail, sourceUrl? }`                    |
+| `score`, `band` | priced by the server, never supplied by the caller                                  |
+| `method`        | who observed it (`whatsapp.profile-name`, `enquiry-form`, ...)                      |
+| `status`        | `PROPOSED` (waiting on a rep), `APPLIED` (on the record), `DISMISSED`, `SUPERSEDED` |
 
 A `PROPOSED` row is a suggestion shown under the field. `APPLIED` means the
 column was written from it. `SUPERSEDED` is history: only one `APPLIED` row per
@@ -43,11 +43,11 @@ sales-enrichment fields that do not exist on a construction lead. Mapping them
 would mean inventing columns, so the ledger starts with the three columns that
 exist and can honestly be filled from a source:
 
-| Field | Lead column | Today | Why it matters here |
-| --- | --- | --- | --- |
-| `name` | `name` (required) | always typed by a person at create | never overwritten automatically; a strong conflicting source becomes a suggestion, which is the only way anyone finds out the name on the lead is the WhatsApp profile name |
-| `email` | `email` (nullable) | often blank | the first real win: a blank field is filled by anything that clears the floor for keeping |
-| `source` | `source` (required text) | typed, or forced to `WHATSAPP` by the convert flow | low value, kept for completeness |
+| Field    | Lead column              | Today                                              | Why it matters here                                                                                                                                                         |
+| -------- | ------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`   | `name` (required)        | always typed by a person at create                 | never overwritten automatically; a strong conflicting source becomes a suggestion, which is the only way anyone finds out the name on the lead is the WhatsApp profile name |
+| `email`  | `email` (nullable)       | often blank                                        | the first real win: a blank field is filled by anything that clears the floor for keeping                                                                                   |
+| `source` | `source` (required text) | typed, or forced to `WHATSAPP` by the convert flow | low value, kept for completeness                                                                                                                                            |
 
 Deliberately excluded: `phone` and `phoneE164`. They are the identity key
 (the inbound webhook resolves a lead by `phoneE164`), so a wrong phone is not a
@@ -76,17 +76,17 @@ every caller and are testable without a database.
 
 ## Evidence kinds and weights
 
-| Kind | Weight | Primary | Reads as |
-| --- | --- | --- | --- |
-| `lead.reply-from-number` | 0.90 | yes | they replied from this number on a thread we hold |
-| `enquiry.form-email` | 0.90 | yes | the enquiry form itself carried this address |
-| `booking.contact-match` | 0.85 | yes | a booking exists under this name and number |
-| `site-visit.signin` | 0.75 | yes | they signed in at a site visit |
-| `call.note-mentions` | 0.55 | no | a telecaller's note says so |
-| `whatsapp.message-mentions` | 0.45 | no | their own message says so |
-| `whatsapp.profile-name` | 0.40 | no | their WhatsApp profile name says so |
-| `handle.name-form` | 0.25 | no | the handle is a form of the name |
-| `contradiction` | 0.00 | no | another source disagrees |
+| Kind                        | Weight | Primary | Reads as                                          |
+| --------------------------- | ------ | ------- | ------------------------------------------------- |
+| `lead.reply-from-number`    | 0.90   | yes     | they replied from this number on a thread we hold |
+| `enquiry.form-email`        | 0.90   | yes     | the enquiry form itself carried this address      |
+| `booking.contact-match`     | 0.85   | yes     | a booking exists under this name and number       |
+| `site-visit.signin`         | 0.75   | yes     | they signed in at a site visit                    |
+| `call.note-mentions`        | 0.55   | no      | a telecaller's note says so                       |
+| `whatsapp.message-mentions` | 0.45   | no      | their own message says so                         |
+| `whatsapp.profile-name`     | 0.40   | no      | their WhatsApp profile name says so               |
+| `handle.name-form`          | 0.25   | no      | the handle is a form of the name                  |
+| `contradiction`             | 0.00   | no      | another source disagrees                          |
 
 Bands: `VERIFIED` at 0.85 with at least one primary source, `PROBABLE` at 0.55,
 `POSSIBLE` at 0.30. Independent sources combine multiplicatively

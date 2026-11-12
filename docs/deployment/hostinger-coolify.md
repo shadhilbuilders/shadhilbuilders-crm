@@ -5,20 +5,20 @@ Author: Hermes (PaalStack OS).
 
 ## Provisioned VPS (actual)
 
-| Spec | Value |
-|---|---|
-| Host | Hostinger KVM2 |
-| OS | **Ubuntu 26.04 LTS** |
-| Memory | 8 GB |
-| vCPU | 2 |
-| Disk | 100 GB |
-| Bandwidth | 8 TB/mo |
+| Spec      | Value                |
+| --------- | -------------------- |
+| Host      | Hostinger KVM2       |
+| OS        | **Ubuntu 26.04 LTS** |
+| Memory    | 8 GB                 |
+| vCPU      | 2                    |
+| Disk      | 100 GB               |
+| Bandwidth | 8 TB/mo              |
 
 Two notes that matter:
 
 - **Ubuntu 26.04 is accepted by Coolify's installer.** The docs list only
   20.04/22.04/24.04, and several blog posts claim the script refuses anything
-  newer. It does not: the script gates on the distro *id* (`ubuntu`) and uses
+  newer. It does not: the script gates on the distro _id_ (`ubuntu`) and uses
   `VERSION_ID` only for its banner. Verified by reading
   `https://cdn.coollabs.io/coolify/install.sh` (2026-10-01). If a future release
   starts refusing 26.04, fall back to the manual install path.
@@ -45,14 +45,14 @@ Two notes that matter:
 
 ## Cost
 
-| Component | Plan | Cost |
-|---|---|---|
-| Hostinger VPS | **KVM2 - 8 GB / 2 vCPU / 100 GB** (purchased; 2 vCPU builds slower than plan §10's 4 vCPU) | ~₹2,500/mo |
-| Coolify | Self-hosted | ₹0 |
-| Postgres + PgBouncer + Redis | Containers on the same VPS | ₹0 |
-| Cloudflare R2 / Backblaze B2 | Chat media + encrypted Postgres dumps | ~₹500/mo |
-| Domain | One you already own | (existing) |
-| **Total ongoing, excluding telephony** | | **~₹3,000/mo** |
+| Component                              | Plan                                                                                       | Cost           |
+| -------------------------------------- | ------------------------------------------------------------------------------------------ | -------------- |
+| Hostinger VPS                          | **KVM2 - 8 GB / 2 vCPU / 100 GB** (purchased; 2 vCPU builds slower than plan §10's 4 vCPU) | ~₹2,500/mo     |
+| Coolify                                | Self-hosted                                                                                | ₹0             |
+| Postgres + PgBouncer + Redis           | Containers on the same VPS                                                                 | ₹0             |
+| Cloudflare R2 / Backblaze B2           | Chat media + encrypted Postgres dumps                                                      | ~₹500/mo       |
+| Domain                                 | One you already own                                                                        | (existing)     |
+| **Total ongoing, excluding telephony** |                                                                                            | **~₹3,000/mo** |
 
 FreJun telephony is the real cost centre (~₹15,300/mo at 10 users, plan §10) and
 is billed separately.
@@ -359,12 +359,12 @@ Use it as the reference for what Coolify's settings should contain.
 
 At your registrar, add A records pointing at the VPS IP:
 
-| Host | Type | Value |
-|---|---|---|
-| `crm` | A | `<vps-ip>` |
-| `api.crm` | A | `<vps-ip>` |
-| `sse.crm` | A | `<vps-ip>` |
-| `coolify` | A | `<vps-ip>` |
+| Host      | Type | Value      |
+| --------- | ---- | ---------- |
+| `crm`     | A    | `<vps-ip>` |
+| `api.crm` | A    | `<vps-ip>` |
+| `sse.crm` | A    | `<vps-ip>` |
+| `coolify` | A    | `<vps-ip>` |
 
 Propagation is minutes to 48h depending on TTL. Check with
 `dig crm.shadhilbuilders.in +short`. Traefik answers the HTTP-01 challenge for
@@ -506,13 +506,13 @@ dead page because a container died, a deploy went out, or the DB blipped.
 
 ### The five guarantees
 
-| # | Guarantee | Mechanism |
-|---|---|---|
-| 1 | A dead container comes back | `restart: unless-stopped` on all six services |
-| 2 | A container stuck in a bad state gets replaced | Coolify health checks + restart |
-| 3 | A client's live stream reconnects on its own | EventSource retry with backoff + `Last-Event-ID` replay (`apps/web/src/lib/sse.ts`) |
-| 4 | In-flight work is not lost on redeploy | graceful shutdown hooks (`app.enableShutdownHooks()`) |
-| 5 | A silent failure gets noticed | uptime monitor on both apps + Telegram alerts |
+| #   | Guarantee                                      | Mechanism                                                                           |
+| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | A dead container comes back                    | `restart: unless-stopped` on all six services                                       |
+| 2   | A container stuck in a bad state gets replaced | Coolify health checks + restart                                                     |
+| 3   | A client's live stream reconnects on its own   | EventSource retry with backoff + `Last-Event-ID` replay (`apps/web/src/lib/sse.ts`) |
+| 4   | In-flight work is not lost on redeploy         | graceful shutdown hooks (`app.enableShutdownHooks()`)                               |
+| 5   | A silent failure gets noticed                  | uptime monitor on both apps + Telegram alerts                                       |
 
 ### What is ALREADY handled in the code
 
@@ -544,10 +544,10 @@ default:
    cannot detect as unhealthy. Only Postgres and Redis declare health checks
    today. Set the health check path in Coolify per app:
 
-   | App | Health check path |
-   |---|---|
-   | `shadhil-web` | `/api/health` |
-   | `shadhil-api` | `/api/health` |
+   | App                    | Health check path  |
+   | ---------------------- | ------------------ |
+   | `shadhil-web`          | `/api/health`      |
+   | `shadhil-api`          | `/api/health`      |
    | `shadhil-realtime-sse` | `/api/sse/healthz` |
 
    A health check that hits `/` on an app that renders a full page (or returns
@@ -555,7 +555,7 @@ default:
    real dependency where possible.
 
 2. **Docker log rotation.** Nothing caps container logs right now, so a
-   crash-looping container fills the 100 GB disk and then *every* service fails -
+   crash-looping container fills the 100 GB disk and then _every_ service fails -
    the classic "the disk killed the database" outage. Set this on the VPS's
    Docker daemon so it applies to every container including Coolify's:
 
@@ -592,7 +592,7 @@ Say these out loud rather than implying they are covered:
 - **Restore is manual.** Backups are automated; the restore test is not. Until
   it is, your real recovery time is unmeasured.
 
-**So the honest definition of "24/7" here:** a *process-level* self-healing
+**So the honest definition of "24/7" here:** a _process-level_ self-healing
 system, plus backups for the catastrophic case. It is not an availability
 guarantee on the infrastructure. If the client needs a contractual uptime figure
 (99.9% or similar), that requires the second node and managed Postgres, and it
@@ -624,6 +624,7 @@ old image still works against the new schema.
 
 **The whole VPS is gone.** Restore the latest `pg_dump` into a fresh Postgres,
 repoint DNS, redeploy. This is the drill to actually rehearse once before go-live
+
 - an untested restore is not a backup.
 
 ## Media storage
@@ -656,16 +657,16 @@ Recorded because these are the failure modes to watch if the Dockerfiles are
 edited again. All were found by actually running `docker build`, which nothing in
 CI did before:
 
-| # | Defect | Fix |
-|---|---|---|
-| 1 | `apps/backend/Dockerfile` ran `tsc` before `prisma generate`. The generated Prisma client is gitignored, so the clean-context build failed with five `TS2307` errors. | Added `pnpm --filter @shadhil/database generate` before the database build. Verified: `tsc` exits 2 without it, 0 with it. |
-| 2 | `apps/web/next.config.ts` had `output: 'standalone'` commented out while the Dockerfile copied `.next/standalone`. | Enabled it. CI now asserts the file exists so the failure names the cause. |
-| 3 | Web install copied `package.json` + `pnpm-lock.yaml` but not `pnpm-workspace.yaml`, where the `overrides` block the lockfile records lives -> `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, blocking all three images. | Copy the workspace manifest too. |
-| 4 | The web runner ran `node server.js`, but in a pnpm monorepo the standalone tree roots at the repo root, so the server is at `apps/web/server.js`. | Corrected the copy paths and `CMD`. |
-| 5 | The web postinstall runs bash; `node:26-alpine` has no bash. | `pnpm install --ignore-scripts`. |
-| 6 | `BACKEND_API_URL` had no build arg, so the image baked the localhost fallback. | Declared it as a build `ARG`. |
-| 7 | Nothing in CI built any image, so every defect above was invisible. | Added the `docker-images` CI job. |
-| 8 | `next build` prerenders `/api/docs` and imports the auth chain, so `@t3-oss/env-nextjs` and `assertAuthEnv()` both run at build time and killed the build with `Failed to collect page data for /api/docs` (`Invalid environment variables`). `assertAuthEnv()` has no skip switch. | The builder stage sets shape-valid placeholder server env (`BETTER_AUTH_URL`, `DIRECT_DATABASE_URL`, and 44-char placeholder secrets). They live in the builder `FROM` only, so they never reach the shipped image; real values come from Coolify at runtime. Never pass real secrets as build args. |
+| #   | Defect                                                                                                                                                                                                                                                                              | Fix                                                                                                                                                                                                                                                                                                  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `apps/backend/Dockerfile` ran `tsc` before `prisma generate`. The generated Prisma client is gitignored, so the clean-context build failed with five `TS2307` errors.                                                                                                               | Added `pnpm --filter @shadhil/database generate` before the database build. Verified: `tsc` exits 2 without it, 0 with it.                                                                                                                                                                           |
+| 2   | `apps/web/next.config.ts` had `output: 'standalone'` commented out while the Dockerfile copied `.next/standalone`.                                                                                                                                                                  | Enabled it. CI now asserts the file exists so the failure names the cause.                                                                                                                                                                                                                           |
+| 3   | Web install copied `package.json` + `pnpm-lock.yaml` but not `pnpm-workspace.yaml`, where the `overrides` block the lockfile records lives -> `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, blocking all three images.                                                                       | Copy the workspace manifest too.                                                                                                                                                                                                                                                                     |
+| 4   | The web runner ran `node server.js`, but in a pnpm monorepo the standalone tree roots at the repo root, so the server is at `apps/web/server.js`.                                                                                                                                   | Corrected the copy paths and `CMD`.                                                                                                                                                                                                                                                                  |
+| 5   | The web postinstall runs bash; `node:26-alpine` has no bash.                                                                                                                                                                                                                        | `pnpm install --ignore-scripts`.                                                                                                                                                                                                                                                                     |
+| 6   | `BACKEND_API_URL` had no build arg, so the image baked the localhost fallback.                                                                                                                                                                                                      | Declared it as a build `ARG`.                                                                                                                                                                                                                                                                        |
+| 7   | Nothing in CI built any image, so every defect above was invisible.                                                                                                                                                                                                                 | Added the `docker-images` CI job.                                                                                                                                                                                                                                                                    |
+| 8   | `next build` prerenders `/api/docs` and imports the auth chain, so `@t3-oss/env-nextjs` and `assertAuthEnv()` both run at build time and killed the build with `Failed to collect page data for /api/docs` (`Invalid environment variables`). `assertAuthEnv()` has no skip switch. | The builder stage sets shape-valid placeholder server env (`BETTER_AUTH_URL`, `DIRECT_DATABASE_URL`, and 44-char placeholder secrets). They live in the builder `FROM` only, so they never reach the shipped image; real values come from Coolify at runtime. Never pass real secrets as build args. |
 
 There was also no repo-root `.dockerignore`, so a root-context build shipped
 `node_modules`, every `.next`, and the real `.env` into the builder. Fixed.

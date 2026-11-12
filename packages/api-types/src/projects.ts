@@ -83,14 +83,22 @@ export type ProjectFilterDto = z.infer<typeof ProjectFilterDtoSchema>;
  * derives it from the name (slugify + uniqueness suffix on collision).
  */
 export const CreateProjectDtoSchema = z.object({
-  name: z.string({
-    error: 'Name is required',
-  }).trim().min(1).max(120),
+  name: z
+    .string({
+      error: 'Name is required',
+    })
+    .trim()
+    .min(1)
+    .max(120),
   // Required: the Project table column is NOT nullable (schema.prisma
   // `address String`). Compliance numbers stay optional.
-  address: z.string({
-    error: 'Address is required',
-  }).trim().min(1).max(500),
+  address: z
+    .string({
+      error: 'Address is required',
+    })
+    .trim()
+    .min(1)
+    .max(500),
   reraNumber: z.string().trim().max(64).optional(),
   cmdaNumber: z.string().trim().max(64).optional(),
 });

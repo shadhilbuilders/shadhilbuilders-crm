@@ -25,7 +25,13 @@ describe('unitPhotoStateSurface theme coverage', () => {
   });
 
   it('maps the five tokens the site surface depends on', () => {
-    for (const n of ['muted-soft', 'success-soft-fg', 'warning-soft-fg', 'destructive-soft-fg', 'info-soft-fg']) {
+    for (const n of [
+      'muted-soft',
+      'success-soft-fg',
+      'warning-soft-fg',
+      'destructive-soft-fg',
+      'info-soft-fg',
+    ]) {
       expect(css).toContain(`--color-${n}: var(--${n})`);
     }
   });

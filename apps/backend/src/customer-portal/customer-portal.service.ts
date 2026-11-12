@@ -16,7 +16,10 @@ import type { JwtPayload } from '@shadhil/auth';
 
 import { CodedForbiddenException } from '../common/errors/coded-exception';
 import { PrismaService } from '../prisma/prisma.module';
-import { readTimelinePage, type TimelineResponseDto } from '../customer-progress/progress-photo.mapper';
+import {
+  readTimelinePage,
+  type TimelineResponseDto,
+} from '../customer-progress/progress-photo.mapper';
 
 export interface PortalUnitDto {
   unitId: string;

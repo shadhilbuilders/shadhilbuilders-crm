@@ -29,18 +29,22 @@ type TxMock = {
   project: { findMany: ReturnType<typeof vi.fn> };
 };
 
-function makeTx(overrides: Partial<{
-  teams: { id: string }[];
-  memberTeamIds: { teamId: string }[];
-  projectTeamRows: { projectId: string }[];
-  projects: { id: string }[];
-}> = {}): TxMock {
+function makeTx(
+  overrides: Partial<{
+    teams: { id: string }[];
+    memberTeamIds: { teamId: string }[];
+    projectTeamRows: { projectId: string }[];
+    projects: { id: string }[];
+  }> = {},
+): TxMock {
   return {
     team: {
       findMany: vi.fn(async () => overrides.teams ?? []),
       // canMutateTeam now resolves the team in the actor's org.
       findFirst: vi.fn(async (args: { where?: { id?: string } }) =>
-        (overrides.teams ?? []).some((t) => t.id === args?.where?.id) ? { id: args.where?.id } : null,
+        (overrides.teams ?? []).some((t) => t.id === args?.where?.id)
+          ? { id: args.where?.id }
+          : null,
       ),
     },
     teamMember: {
@@ -152,9 +156,9 @@ describe('TeamAccessService.getMutableTeamIds / canMutateTeam', () => {
     expect(ids).toEqual(['team-a', 'team-b']);
     // T-ORG-EXPLICIT: canMutateTeam now resolves the team in the actor's org
     // instead of returning `true` unconditionally for an admin.
-    expect(
-      await service.canMutateTeam(tx as never, actor('admin-1', 'ADMIN'), 'team-a'),
-    ).toBe(true);
+    expect(await service.canMutateTeam(tx as never, actor('admin-1', 'ADMIN'), 'team-a')).toBe(
+      true,
+    );
     expect(
       await service.canMutateTeam(tx as never, actor('admin-1', 'ADMIN'), 'team-in-other-org'),
     ).toBe(false);
@@ -172,19 +176,17 @@ describe('TeamAccessService.getMutableTeamIds / canMutateTeam', () => {
     expect(
       await service.canMutateTeam(tx as never, actor('mgr-1', 'MANAGER'), 'team-managed'),
     ).toBe(true);
-    expect(
-      await service.canMutateTeam(tx as never, actor('mgr-1', 'MANAGER'), 'team-other'),
-    ).toBe(false);
+    expect(await service.canMutateTeam(tx as never, actor('mgr-1', 'MANAGER'), 'team-other')).toBe(
+      false,
+    );
   });
 
   it('other staff roles may mutate no teams', async () => {
     const tx = makeTx();
-    expect(
-      await service.getMutableTeamIds(tx as never, actor('tc-1', 'TELECALLER')),
-    ).toEqual([]);
-    expect(
-      await service.canMutateTeam(tx as never, actor('tc-1', 'TELECALLER'), 'team-a'),
-    ).toBe(false);
+    expect(await service.getMutableTeamIds(tx as never, actor('tc-1', 'TELECALLER'))).toEqual([]);
+    expect(await service.canMutateTeam(tx as never, actor('tc-1', 'TELECALLER'), 'team-a')).toBe(
+      false,
+    );
   });
 });
 

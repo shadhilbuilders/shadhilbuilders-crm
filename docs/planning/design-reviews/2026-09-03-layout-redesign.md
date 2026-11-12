@@ -5,6 +5,7 @@
 **Branch:** working tree of `~/workspace/shadhil-projects/shadhilbuilders-crm`, HEAD `c1118a7`, no PR open
 **Reviewer verdict:** Plan-design-review complete. 7 passes executed; design score 3/10 → target 8/10 after this plan implements the additions.
 **Locked design decisions from this review:**
+
 - D2: **Friendly labels everywhere** - engineering enums get human-friendly UI names; server still stores the enum.
 - D3: **Role-tuned default** - each role's Dashboard shows charts relevant to their work.
 - D4: **Floating "+ Add lead" CTA** on `/leads` and `/leads/[id]`, role-gated (telecaller/exec/manager+).
@@ -93,9 +94,11 @@ Floating action button (only on /leads + /leads/[id], role-gated):
 
 ```tsx
 <div className="border-b px-4 py-3 sm:px-6 sm:py-4">
-  <Breadcrumb items={[{label: 'Work'}, {label: pageTitle}]} />
+  <Breadcrumb items={[{ label: 'Work' }, { label: pageTitle }]} />
   <div className="flex items-center justify-between gap-3">
-    <Heading as="h1" size="xl">{pageTitle}</Heading>
+    <Heading as="h1" size="xl">
+      {pageTitle}
+    </Heading>
     {pageAction /* e.g., "+ Add lead" */}
   </div>
 </div>
@@ -105,17 +108,17 @@ Floating action button (only on /leads + /leads/[id], role-gated):
 
 ## 4. Pass 2 - Interaction state coverage
 
-| Feature | LOADING | EMPTY | ERROR | SUCCESS | PARTIAL |
-|---|---|---|---|---|---|
-| **Sidebar nav (mobile Sheet)** | Sheet open transition | n/a | n/a | n/a | n/a |
-| **Sidebar nav active state** | n/a | n/a | n/a | bg-sidebar-accent ring | n/a |
-| **UserMenu popover** | n/a | "Session expired" → /login | retry | name + role | n/a |
-| **ChartCard: Pipeline funnel** | `ModulePending` "Loading funnel..." | "No leads this week. Add a lead to start your funnel." + CTA | retry | real bars | "Showing 3 of 12" |
-| **ChartCard: Visits/week (bar)** | skeleton | "No visits scheduled this week." | retry | real bars | "Past 7 days" |
-| **ChartCard: Lead status (pie)** | skeleton | "No leads yet - start by adding one." | retry | real pie | n/a |
-| **ChartCard: Audit timeline** | skeleton | "No recent activity." | retry | real timeline | n/a |
-| **Brand logo** | n/a | n/a | fallback text "Shadhil CRM" | logo image | n/a |
-| **Floating action button** | n/a | n/a | hidden if offline | visible on /leads only | n/a |
+| Feature                          | LOADING                             | EMPTY                                                        | ERROR                       | SUCCESS                | PARTIAL           |
+| -------------------------------- | ----------------------------------- | ------------------------------------------------------------ | --------------------------- | ---------------------- | ----------------- |
+| **Sidebar nav (mobile Sheet)**   | Sheet open transition               | n/a                                                          | n/a                         | n/a                    | n/a               |
+| **Sidebar nav active state**     | n/a                                 | n/a                                                          | n/a                         | bg-sidebar-accent ring | n/a               |
+| **UserMenu popover**             | n/a                                 | "Session expired" → /login                                   | retry                       | name + role            | n/a               |
+| **ChartCard: Pipeline funnel**   | `ModulePending` "Loading funnel..." | "No leads this week. Add a lead to start your funnel." + CTA | retry                       | real bars              | "Showing 3 of 12" |
+| **ChartCard: Visits/week (bar)** | skeleton                            | "No visits scheduled this week."                             | retry                       | real bars              | "Past 7 days"     |
+| **ChartCard: Lead status (pie)** | skeleton                            | "No leads yet - start by adding one."                        | retry                       | real pie               | n/a               |
+| **ChartCard: Audit timeline**    | skeleton                            | "No recent activity."                                        | retry                       | real timeline          | n/a               |
+| **Brand logo**                   | n/a                                 | n/a                                                          | fallback text "Shadhil CRM" | logo image             | n/a               |
+| **Floating action button**       | n/a                                 | n/a                                                          | hidden if offline           | visible on /leads only | n/a               |
 
 **ModulePending is reused for every chart card** - same component, same contract. Charts never invent fake data.
 
@@ -125,13 +128,13 @@ Floating action button (only on /leads + /leads/[id], role-gated):
 
 ### 5.1 Telecaller named Asha (literal end-user)
 
-| Step | She does | She feels | Plan supports it |
-|---|---|---|---|
-| 1 | Opens app on phone 9am | "What first?" | Hamburger → "Your queue" highlighted → tap → leads visible |
-| 2 | Sees "Ravi · 47m overdue" | "Call NOW" | Overdue-first sort (locked Decision 0.2); phone + tap-to-call visible |
-| 3 | Taps "Log outcome" after call | "Booked visit? Reached?" | Friendly labels: "Talked / Couldn't reach / Postponed / Booked visit" |
-| 4 | Drives to site | "Address?" | "Open in Maps" deep-link on lead |
-| 5 | Manager: weekly review | "Team on track?" | Role-tuned chart set with honest ModulePending |
+| Step | She does                      | She feels                | Plan supports it                                                      |
+| ---- | ----------------------------- | ------------------------ | --------------------------------------------------------------------- |
+| 1    | Opens app on phone 9am        | "What first?"            | Hamburger → "Your queue" highlighted → tap → leads visible            |
+| 2    | Sees "Ravi · 47m overdue"     | "Call NOW"               | Overdue-first sort (locked Decision 0.2); phone + tap-to-call visible |
+| 3    | Taps "Log outcome" after call | "Booked visit? Reached?" | Friendly labels: "Talked / Couldn't reach / Postponed / Booked visit" |
+| 4    | Drives to site                | "Address?"               | "Open in Maps" deep-link on lead                                      |
+| 5    | Manager: weekly review        | "Team on track?"         | Role-tuned chart set with honest ModulePending                        |
 
 ### 5.2 Manager named Bala
 
@@ -156,6 +159,7 @@ Opens app. Sidebar shows "Admin" group with Users + Audit. Dashboard adds an ext
 - ✅ Logo + brand text in SidebarHeader - brand unmistakable.
 
 **Subtraction defaults applied:**
+
 - `SectionCard` (bordered div) is replaced by thinner borders OR `<Paper elevation={0}>` from layouts - no shadow chrome.
 - KPI strip stays as-is (locked).
 - Charts: 1 per row on mobile, 2 per row on desktop (`md:grid-cols-2`); 3 only if Admin explicitly justifies.
@@ -178,16 +182,16 @@ Opens app. Sidebar shows "Admin" group with Users + Audit. Dashboard adds an ext
 
 ### 7.3 Component placement summary
 
-| Component | Source | Used for |
-|---|---|---|
-| `SidebarProvider` | `@paalstack/react-ui` | Wrap entire `(app)` route group |
-| `Sidebar`, `SidebarInset` | `@paalstack/react-ui` | Shell |
-| `SidebarHeader/Content/Footer/Group/Menu/MenuItem/MenuButton/MenuBadge/Separator` | `@paalstack/react-ui` | Nav structure |
-| `SidebarTrigger` | `@paalstack/react-ui` | Hamburger on mobile topbar |
-| `SidebarRail` | `@paalstack/react-ui` | Desktop collapse-to-icon rail (auto on hover-out) |
-| `Chart` + `BarChart` / `LineChart` / `AreaChart` / `PieChart` | `@paalstack/react-ui` | Charts on Dashboard |
-| `Breadcrumb`, `Empty`, `Error`, `Tooltip`, `Badge`, `Avatar` | `@paalstack/react-ui` | Page header + utility |
-| `LuLayoutDashboard`, `LuUsers`, `LuCalendarDays`, `LuPackage`, `LuBell`, `LuShieldCheck`, `LuUserCog`, `LuUserRound`, `LuLogOut`, `LuMenu`, `LuPlus` | `@paalstack/react-icons/lu` | Icon set |
+| Component                                                                                                                                            | Source                      | Used for                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------- |
+| `SidebarProvider`                                                                                                                                    | `@paalstack/react-ui`       | Wrap entire `(app)` route group                   |
+| `Sidebar`, `SidebarInset`                                                                                                                            | `@paalstack/react-ui`       | Shell                                             |
+| `SidebarHeader/Content/Footer/Group/Menu/MenuItem/MenuButton/MenuBadge/Separator`                                                                    | `@paalstack/react-ui`       | Nav structure                                     |
+| `SidebarTrigger`                                                                                                                                     | `@paalstack/react-ui`       | Hamburger on mobile topbar                        |
+| `SidebarRail`                                                                                                                                        | `@paalstack/react-ui`       | Desktop collapse-to-icon rail (auto on hover-out) |
+| `Chart` + `BarChart` / `LineChart` / `AreaChart` / `PieChart`                                                                                        | `@paalstack/react-ui`       | Charts on Dashboard                               |
+| `Breadcrumb`, `Empty`, `Error`, `Tooltip`, `Badge`, `Avatar`                                                                                         | `@paalstack/react-ui`       | Page header + utility                             |
+| `LuLayoutDashboard`, `LuUsers`, `LuCalendarDays`, `LuPackage`, `LuBell`, `LuShieldCheck`, `LuUserCog`, `LuUserRound`, `LuLogOut`, `LuMenu`, `LuPlus` | `@paalstack/react-icons/lu` | Icon set                                          |
 
 ---
 
@@ -227,41 +231,41 @@ Opens app. Sidebar shows "Admin" group with Users + Audit. Dashboard adds an ext
 
 ## 9. Pass 7 - Unresolved design decisions (resolved)
 
-| Decision | Resolution |
-|---|---|
-| Brand logo placement | **SidebarHeader only** (desktop always visible); topbar mobile shows hamburger only, sheet opens with logo |
-| Bottom-nav vs hamburger mobile | **Hamburger-only** (SidebarProvider auto-Sheet) |
-| Outcome enum labels | **Friendly**: Talked / Couldn't reach / Postponed / Booked visit (server stores enum) |
-| Chart colors | **Single accent + muted baseline** (`--color-primary` + `--color-muted-foreground`) |
-| Floating "+ Add lead" | **Yes, role-gated** (telecaller/exec/manager+) on `/leads` + `/leads/[id]`, mobile-only |
-| OnlineRevalidationBar | **Move into SidebarInset topbar** (was inside `<main>`) |
-| Notification bell | **Topbar right** (mobile thumb-reach) |
-| UserMenu | **SidebarFooter** (desktop) / compact avatar only in topbar (mobile) |
-| PWA install prompt | **Keep current position** (verify no collision with FAB) |
-| Sidebar collapse default | **Expanded desktop / hidden mobile Sheet** (default) |
+| Decision                       | Resolution                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Brand logo placement           | **SidebarHeader only** (desktop always visible); topbar mobile shows hamburger only, sheet opens with logo |
+| Bottom-nav vs hamburger mobile | **Hamburger-only** (SidebarProvider auto-Sheet)                                                            |
+| Outcome enum labels            | **Friendly**: Talked / Couldn't reach / Postponed / Booked visit (server stores enum)                      |
+| Chart colors                   | **Single accent + muted baseline** (`--color-primary` + `--color-muted-foreground`)                        |
+| Floating "+ Add lead"          | **Yes, role-gated** (telecaller/exec/manager+) on `/leads` + `/leads/[id]`, mobile-only                    |
+| OnlineRevalidationBar          | **Move into SidebarInset topbar** (was inside `<main>`)                                                    |
+| Notification bell              | **Topbar right** (mobile thumb-reach)                                                                      |
+| UserMenu                       | **SidebarFooter** (desktop) / compact avatar only in topbar (mobile)                                       |
+| PWA install prompt             | **Keep current position** (verify no collision with FAB)                                                   |
+| Sidebar collapse default       | **Expanded desktop / hidden mobile Sheet** (default)                                                       |
 
 ### 9.1 Friendly label mapping (non-tech UI ↔ engineering enum)
 
-| Engineering (server) | Friendly UI | Used in |
-|---|---|---|
-| `NEW` | New | Lead status badge |
-| `CONTACTED` | Talked | Lead status badge, outcome log |
-| `VISIT_REQUESTED` | Visit requested | Lead status badge |
-| `VISIT_SCHEDULED` | Visit booked | Lead status badge |
-| `VISITED` | Visited | Lead status badge |
-| `NEGOTIATION` | Negotiating | Lead status badge |
-| `BOOKING_INITIATED` | Booking in progress | Lead status badge |
-| `WON` | Won 🎉 | Lead status badge |
-| `LOST` | Lost | Lead status badge |
-| `COLD` | Cold | Lead status badge |
-| `NO_SHOW` | Didn't show up | Visit outcome |
-| `RESCHEDULED` | Postponed | Visit outcome |
-| `CANCELLED` | Cancelled | Visit outcome |
-| `COMPLETED` | Done | Visit outcome |
-| `AVAILABLE` | Available | Inventory |
-| `HOLD` | On hold | Inventory |
-| `TOKEN` | Token received | Inventory |
-| `SOLD` | Sold | Inventory |
+| Engineering (server) | Friendly UI         | Used in                        |
+| -------------------- | ------------------- | ------------------------------ |
+| `NEW`                | New                 | Lead status badge              |
+| `CONTACTED`          | Talked              | Lead status badge, outcome log |
+| `VISIT_REQUESTED`    | Visit requested     | Lead status badge              |
+| `VISIT_SCHEDULED`    | Visit booked        | Lead status badge              |
+| `VISITED`            | Visited             | Lead status badge              |
+| `NEGOTIATION`        | Negotiating         | Lead status badge              |
+| `BOOKING_INITIATED`  | Booking in progress | Lead status badge              |
+| `WON`                | Won 🎉              | Lead status badge              |
+| `LOST`               | Lost                | Lead status badge              |
+| `COLD`               | Cold                | Lead status badge              |
+| `NO_SHOW`            | Didn't show up      | Visit outcome                  |
+| `RESCHEDULED`        | Postponed           | Visit outcome                  |
+| `CANCELLED`          | Cancelled           | Visit outcome                  |
+| `COMPLETED`          | Done                | Visit outcome                  |
+| `AVAILABLE`          | Available           | Inventory                      |
+| `HOLD`               | On hold             | Inventory                      |
+| `TOKEN`              | Token received      | Inventory                      |
+| `SOLD`               | Sold                | Inventory                      |
 
 Server still stores the enum; UI maps via a small `lib/labels.ts` lookup. No emoji except 🎉 for `WON` (deliberate celebration signal).
 
@@ -272,21 +276,21 @@ Server still stores the enum; UI maps via a small `lib/labels.ts` lookup. No emo
 ### 10.1 Foundational shell (P1 - must ship together)
 
 1. **`apps/web/src/app/(app)/layout.tsx`** - wrap in `SidebarProvider`, swap `<main>` for `SidebarInset`, move `OnlineRevalidationBar` into the new topbar slot.
-2. **`apps/web/src/components/app-shell.tsx`** *(new)* - the actual `Sidebar` content (logo + nav groups + footer with UserMenu + sign out). Role-gated admin group via `canManageUsers` / `canViewAudit`.
+2. **`apps/web/src/components/app-shell.tsx`** _(new)_ - the actual `Sidebar` content (logo + nav groups + footer with UserMenu + sign out). Role-gated admin group via `canManageUsers` / `canViewAudit`.
 3. **`apps/web/src/components/app-header.tsx`** - REPLACE the existing top-nav with a slim topbar inside `SidebarInset`: `SidebarTrigger` (mobile) + breadcrumb + page title + notification bell + UserMenu avatar.
-4. **`apps/web/src/components/user-menu.tsx`** *(extract from app-header.tsx)* - same popover, takes user/name/role/onSignOut, mounted in `SidebarFooter`.
-5. **`apps/web/src/components/topbar.tsx`** *(new)* - wraps breadcrumb + page title + per-page actions; receives `pageTitle` + `actions` props.
-6. **`apps/web/src/components/shared/ChartCard.tsx`** *(new)* - wrapper described in §7.2.
-7. **`apps/web/src/components/shared/FloatingActionButton.tsx`** *(new)* - described in §7.2.
-8. **`apps/web/src/lib/labels.ts`** *(new)* - friendly-label lookup from §9.1.
+4. **`apps/web/src/components/user-menu.tsx`** _(extract from app-header.tsx)_ - same popover, takes user/name/role/onSignOut, mounted in `SidebarFooter`.
+5. **`apps/web/src/components/topbar.tsx`** _(new)_ - wraps breadcrumb + page title + per-page actions; receives `pageTitle` + `actions` props.
+6. **`apps/web/src/components/shared/ChartCard.tsx`** _(new)_ - wrapper described in §7.2.
+7. **`apps/web/src/components/shared/FloatingActionButton.tsx`** _(new)_ - described in §7.2.
+8. **`apps/web/src/lib/labels.ts`** _(new)_ - friendly-label lookup from §9.1.
 
 ### 10.2 Charts on Dashboard (P1 - must ship together)
 
 9. **`apps/web/src/app/(app)/page.tsx`** - manager + admin homes get chart cards. Telecaller / Sales Exec get a single "Your queue" funnel chart + overdue list.
-10. **`apps/web/src/components/charts/PipelineFunnelChart.tsx`** *(new)* - `BarChart` horizontal, 4 stages (New → Talked → Visit booked → Booked), driven by `useLeads({limit:500})` grouped client-side. `aria-label` template.
-11. **`apps/web/src/components/charts/VisitsThisWeekChart.tsx`** *(new)* - `BarChart` vertical, 7-day window, `useVisits({from,to})`. Mon–Sun labels.
-12. **`apps/web/src/components/charts/LeadStatusPieChart.tsx`** *(new)* - `PieChart`, status counts from `useLeads`.
-13. **`apps/web/src/components/charts/AuditTimelineChart.tsx`** *(new)* - `LineChart` sparkline, `useAuditLog({limit:200})` bucketed by day. Admin/Owner only.
+10. **`apps/web/src/components/charts/PipelineFunnelChart.tsx`** _(new)_ - `BarChart` horizontal, 4 stages (New → Talked → Visit booked → Booked), driven by `useLeads({limit:500})` grouped client-side. `aria-label` template.
+11. **`apps/web/src/components/charts/VisitsThisWeekChart.tsx`** _(new)_ - `BarChart` vertical, 7-day window, `useVisits({from,to})`. Mon–Sun labels.
+12. **`apps/web/src/components/charts/LeadStatusPieChart.tsx`** _(new)_ - `PieChart`, status counts from `useLeads`.
+13. **`apps/web/src/components/charts/AuditTimelineChart.tsx`** _(new)_ - `LineChart` sparkline, `useAuditLog({limit:200})` bucketed by day. Admin/Owner only.
 
 ### 10.3 Per-page wiring (P2 - same PR, ~6 files)
 
@@ -490,14 +494,14 @@ User explicitly asked to bring back the 3 previously-deferred items. P2 polish e
 
 ## 12. Review Readiness Dashboard
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|---|---|---|---|---|---|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | clean | SELECTIVE EXPANSION; 10/10 proposals accepted; scope 10→27 tasks; lake score 10/10 |
-| CEO Review (re) | `/plan-ceo-review` | Pre-impl gate (re-review all session changes) | 1 | clean | 8 hidden landmines (recharts SSR, AbortSignal, sidebar flash, ErrorBoundary scope, test shape-count, computed-style assertion, dataHint, PR split); 27→35 tasks; 3-PR split locked |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | - | - |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 8 issues (2 P1 DRY, 1 P1 SSR, 2 P2 image/cookie, 1 P2 bell deferral, 1 P2 dedup, 1 P2 cookies), 24 test gaps, 2 critical failure-mode gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score 3/10 → 8/10, 9 decisions |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | - |
+| Review          | Trigger               | Why                                           | Runs | Status | Findings                                                                                                                                                                           |
+| --------------- | --------------------- | --------------------------------------------- | ---- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CEO Review      | `/plan-ceo-review`    | Scope & strategy                              | 1    | clean  | SELECTIVE EXPANSION; 10/10 proposals accepted; scope 10→27 tasks; lake score 10/10                                                                                                 |
+| CEO Review (re) | `/plan-ceo-review`    | Pre-impl gate (re-review all session changes) | 1    | clean  | 8 hidden landmines (recharts SSR, AbortSignal, sidebar flash, ErrorBoundary scope, test shape-count, computed-style assertion, dataHint, PR split); 27→35 tasks; 3-PR split locked |
+| Codex Review    | `/codex review`       | Independent 2nd opinion                       | 0    | -      | -                                                                                                                                                                                  |
+| Eng Review      | `/plan-eng-review`    | Architecture & tests (required)               | 1    | clean  | 8 issues (2 P1 DRY, 1 P1 SSR, 2 P2 image/cookie, 1 P2 bell deferral, 1 P2 dedup, 1 P2 cookies), 24 test gaps, 2 critical failure-mode gaps                                         |
+| Design Review   | `/plan-design-review` | UI/UX gaps                                    | 1    | clean  | score 3/10 → 8/10, 9 decisions                                                                                                                                                     |
+| DX Review       | `/plan-devex-review`  | Developer experience gaps                     | 0    | -      | -                                                                                                                                                                                  |
 
 - **VERDICT:** design + eng + CEO + CEO-reviews complete - ready for `pn dev` walkthrough then implementation in 3 PRs (T1-T15 → T16-T27 → T20-T35). All findings folded into §11 tasks.
 
@@ -528,17 +532,17 @@ Mode: **SELECTIVE EXPANSION** (user's verbatim: "add proper skeleton loading as 
 
 ### Scope decisions (SELECTIVE EXPANSION cherry-picks)
 
-| Proposal | Decision | Reasoning |
-|---|---|---|
-| Skeleton-to-real cross-fade (200ms) | ACCEPTED | The "alive UI" feel vs skeletons popping out |
-| KPI strip shimmer-once pulse | ACCEPTED | Same delight story; differentiates data arrival |
-| Skeleton vs ModulePending single source of truth | ACCEPTED | Kill the text "Loading..." everywhere |
-| Offline-aware skeletons (pair with offline-queue) | ACCEPTED | User chose all-in |
-| 4 dedicated skeleton files | REJECTED → 1 generic with variants | DRY collapse (1D) |
-| Session-loading uses UserSkeleton | ACCEPTED | 1C |
-| TanStack Query explicit timeouts | ACCEPTED | 1A - prevents skeleton-pulse-forever |
-| React error boundary above ChartCard | ACCEPTED | 1B - prevents white-screen-on-render |
-| Approach C (RSC streaming + prefetch) | DEFERRED to TODOS.md | 10x ideal, but separate architecture conversation |
+| Proposal                                          | Decision                           | Reasoning                                         |
+| ------------------------------------------------- | ---------------------------------- | ------------------------------------------------- |
+| Skeleton-to-real cross-fade (200ms)               | ACCEPTED                           | The "alive UI" feel vs skeletons popping out      |
+| KPI strip shimmer-once pulse                      | ACCEPTED                           | Same delight story; differentiates data arrival   |
+| Skeleton vs ModulePending single source of truth  | ACCEPTED                           | Kill the text "Loading..." everywhere             |
+| Offline-aware skeletons (pair with offline-queue) | ACCEPTED                           | User chose all-in                                 |
+| 4 dedicated skeleton files                        | REJECTED → 1 generic with variants | DRY collapse (1D)                                 |
+| Session-loading uses UserSkeleton                 | ACCEPTED                           | 1C                                                |
+| TanStack Query explicit timeouts                  | ACCEPTED                           | 1A - prevents skeleton-pulse-forever              |
+| React error boundary above ChartCard              | ACCEPTED                           | 1B - prevents white-screen-on-render              |
+| Approach C (RSC streaming + prefetch)             | DEFERRED to TODOS.md               | 10x ideal, but separate architecture conversation |
 
 **All 10 expansion proposals accepted (4 cherry-picks + 6 findings from CEO review sections).** Scope grew from 15 → 27 tasks.
 
@@ -558,23 +562,23 @@ Mode: **SELECTIVE EXPANSION** (user's verbatim: "add proper skeleton loading as 
 
 ### Failure modes (final)
 
-| Codepath | Failure | Rescued | Test | User sees |
-|---|---|---|---|---|
-| ChartCard isLoading | query times out (30s) | Y (T21) | GAP → T26 | skeleton → error Empty |
-| ChartCard render | render throws | Y (T22) | GAP → T26 | error boundary fallback |
-| TableSkeleton → real | query errors | Y (ModulePending) | GAP → T26 | skeleton → "no data" |
-| Cross-fade | motion-reduce not respected | Y (CSS) | GAP → T26 | instant swap |
-| Session-loading | hook never resolves | Y (T21 timeout) | GAP → T26 | skeleton forever → "session timed out" |
+| Codepath             | Failure                     | Rescued           | Test      | User sees                              |
+| -------------------- | --------------------------- | ----------------- | --------- | -------------------------------------- |
+| ChartCard isLoading  | query times out (30s)       | Y (T21)           | GAP → T26 | skeleton → error Empty                 |
+| ChartCard render     | render throws               | Y (T22)           | GAP → T26 | error boundary fallback                |
+| TableSkeleton → real | query errors                | Y (ModulePending) | GAP → T26 | skeleton → "no data"                   |
+| Cross-fade           | motion-reduce not respected | Y (CSS)           | GAP → T26 | instant swap                           |
+| Session-loading      | hook never resolves         | Y (T21 timeout)   | GAP → T26 | skeleton forever → "session timed out" |
 
 **Critical gaps after T16-T27:** 0
 
 ### TODOS.md updates (deferred from CEO review)
 
-| What | Effort | Priority |
-|---|---|---|
-| `time_to_first_real_content` metric via `/api/metrics/ttfr` | M | P3 |
-| Approach C (RSC skeletons + TanStack prefetch on link hover) | XL | P3 |
-| `Loading` component audit (login, modals - replace spinners with `<Loading>`) | S | P3 |
+| What                                                                          | Effort | Priority |
+| ----------------------------------------------------------------------------- | ------ | -------- |
+| `time_to_first_real_content` metric via `/api/metrics/ttfr`                   | M      | P3       |
+| Approach C (RSC skeletons + TanStack prefetch on link hover)                  | XL     | P3       |
+| `Loading` component audit (login, modals - replace spinners with `<Loading>`) | S      | P3       |
 
 ### What already exists (reused)
 
@@ -646,16 +650,16 @@ PR3 (Polish + Safety): T20+T21+T22+T23+T24+T25+T28-T33
 
 ### Re-review findings vs original CEO findings - what changed
 
-| Finding | Original CEO | Re-review |
-|---|---|---|
-| Chart loading state | ModulePending text | Skeleton variant |
-| Cross-fade | D1 cherry-pick | T17 + computed-style test (T33) |
-| Timeouts | T21 query-side | + T29 abort-side (NEW) |
-| Error boundary | T22 skeleton fallback | T31 Empty fallback (NEW scope) |
-| Tests | T26 smoke | T32 shape-count (NEW) |
-| SSR safety | not addressed | T28 recharts min-height (NEW) |
-| Sidebar mobile | not addressed | T30 defaultOpen=false (NEW) |
-| PR sequencing | "split into 3 PRs" suggested | T35 documents explicit split |
+| Finding             | Original CEO                 | Re-review                       |
+| ------------------- | ---------------------------- | ------------------------------- |
+| Chart loading state | ModulePending text           | Skeleton variant                |
+| Cross-fade          | D1 cherry-pick               | T17 + computed-style test (T33) |
+| Timeouts            | T21 query-side               | + T29 abort-side (NEW)          |
+| Error boundary      | T22 skeleton fallback        | T31 Empty fallback (NEW scope)  |
+| Tests               | T26 smoke                    | T32 shape-count (NEW)           |
+| SSR safety          | not addressed                | T28 recharts min-height (NEW)   |
+| Sidebar mobile      | not addressed                | T30 defaultOpen=false (NEW)     |
+| PR sequencing       | "split into 3 PRs" suggested | T35 documents explicit split    |
 
 ---
 
@@ -675,30 +679,59 @@ PR3 (Polish + Safety): T20+T21+T22+T23+T24+T25+T28-T33
 
 ```tsx
 import {
-  Sidebar, SidebarProvider, SidebarInset,
-  SidebarHeader, SidebarContent, SidebarFooter,
-  SidebarGroup, SidebarGroupLabel, SidebarSeparator,
-  SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge,
-  SidebarTrigger, SidebarRail,
-  Chart, BarChart, LineChart, AreaChart, PieChart,
-  Breadcrumb, Empty, Error, Tooltip, Badge, Avatar, Button,
+  Sidebar,
+  SidebarProvider,
+  SidebarInset,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarSeparator,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuBadge,
+  SidebarTrigger,
+  SidebarRail,
+  Chart,
+  BarChart,
+  LineChart,
+  AreaChart,
+  PieChart,
+  Breadcrumb,
+  Empty,
+  Error,
+  Tooltip,
+  Badge,
+  Avatar,
+  Button,
 } from '@paalstack/react-ui';
 import {
-  LuLayoutDashboard, LuUsers, LuCalendarDays, LuPackage, LuBell,
-  LuShieldCheck, LuUserCog, LuUserRound, LuLogOut, LuMenu, LuPlus,
+  LuLayoutDashboard,
+  LuUsers,
+  LuCalendarDays,
+  LuPackage,
+  LuBell,
+  LuShieldCheck,
+  LuUserCog,
+  LuUserRound,
+  LuLogOut,
+  LuMenu,
+  LuPlus,
 } from '@paalstack/react-icons/lu';
 ```
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | clean | SELECTIVE EXPANSION; 10/10 accepted; scope 10→27 tasks; lake 10/10 |
-| CEO Review (re) | `/plan-ceo-review` | Pre-impl gate | 1 | clean | 8 landmines (T28-T35); 27→35 tasks; 3-PR split |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | - | - |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 8 issues, 24 test gaps, 2 critical failure-mode gaps, 6 parallel lanes |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score 3/10 → 8/10, 9 decisions |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | - |
+| Review          | Trigger               | Why                             | Runs | Status | Findings                                                               |
+| --------------- | --------------------- | ------------------------------- | ---- | ------ | ---------------------------------------------------------------------- |
+| CEO Review      | `/plan-ceo-review`    | Scope & strategy                | 1    | clean  | SELECTIVE EXPANSION; 10/10 accepted; scope 10→27 tasks; lake 10/10     |
+| CEO Review (re) | `/plan-ceo-review`    | Pre-impl gate                   | 1    | clean  | 8 landmines (T28-T35); 27→35 tasks; 3-PR split                         |
+| Codex Review    | `/codex review`       | Independent 2nd opinion         | 0    | -      | -                                                                      |
+| Eng Review      | `/plan-eng-review`    | Architecture & tests (required) | 1    | clean  | 8 issues, 24 test gaps, 2 critical failure-mode gaps, 6 parallel lanes |
+| Design Review   | `/plan-design-review` | UI/UX gaps                      | 1    | clean  | score 3/10 → 8/10, 9 decisions                                         |
+| DX Review       | `/plan-devex-review`  | Developer experience gaps       | 0    | -      | -                                                                      |
 
 - **VERDICT:** design + eng + CEO + CEO-reviews complete - ready for `pn dev` walkthrough then implementation in 3 PRs (T1-T15 → T16-T27 → T20-T35). No outstanding reviews.
 

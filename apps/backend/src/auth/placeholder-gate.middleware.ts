@@ -20,14 +20,7 @@
 // (the test build uses a __test__ export). For production we just
 // re-read the file - it's small (~5 entries) and the parse is O(1).
 
-import {
-  Inject,
-  Injectable,
-  Logger,
-  MiddlewareConsumer,
-  Module,
-  NestModule,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Request, Response } from 'express';
@@ -69,9 +62,7 @@ export class PlaceholderGateMiddleware {
     }
 
     // T-S hit: block the sign-in.
-    this.logger.warn(
-      `T-S: blocked sign-in for placeholder user ${email}`,
-    );
+    this.logger.warn(`T-S: blocked sign-in for placeholder user ${email}`);
     res.status(403).json({
       error: 'placeholder_password_locked',
       message:
@@ -101,22 +92,16 @@ export class PlaceholderGateMiddleware {
       const path = require('node:path') as typeof import('node:path');
       const flagPath = this.findFlagFile(path);
       if (flagPath === null) {
-        this.logger.warn(
-          'T-S: placeholder-users.json not found anywhere; gate is a no-op',
-        );
+        this.logger.warn('T-S: placeholder-users.json not found anywhere; gate is a no-op');
         return new Set();
       }
       const raw = readFileSync(flagPath, 'utf8');
       const parsed = JSON.parse(raw) as { emails?: unknown };
       if (!Array.isArray(parsed.emails)) {
-        this.logger.warn(
-          'placeholder-users.json has no emails array - T-S gate is a no-op',
-        );
+        this.logger.warn('placeholder-users.json has no emails array - T-S gate is a no-op');
         return new Set();
       }
-      return new Set(
-        parsed.emails.filter((e): e is string => typeof e === 'string'),
-      );
+      return new Set(parsed.emails.filter((e): e is string => typeof e === 'string'));
     } catch (err) {
       this.logger.warn(
         `T-S: failed to load placeholder-users.json (${err instanceof Error ? err.message : 'unknown'}); gate is a no-op`,
@@ -137,12 +122,7 @@ export class PlaceholderGateMiddleware {
     // Cap the walk at 8 levels - defensive against infinite loop
     // in degenerate test setups that mount __dirname oddly.
     for (let i = 0; i < 8; i += 1) {
-      const candidate = path.join(
-        dir,
-        'packages',
-        'auth-client',
-        'placeholder-users.json',
-      );
+      const candidate = path.join(dir, 'packages', 'auth-client', 'placeholder-users.json');
       if (fs.existsSync(candidate)) return candidate;
       const parent = path.dirname(dir);
       if (parent === dir) return null;

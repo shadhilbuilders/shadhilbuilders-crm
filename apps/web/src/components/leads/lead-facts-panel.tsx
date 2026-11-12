@@ -38,7 +38,7 @@ export function LeadFactsPanel({ leadId }: { leadId: string | null }) {
     <div className="flex flex-col gap-4" data-qa="lead-facts">
       {suggestions.length > 0 ? (
         <section
-          className="flex flex-col gap-2 rounded-md border border-warning/40 bg-warning-soft/40 p-3"
+          className="border-warning/40 bg-warning-soft/40 flex flex-col gap-2 rounded-md border p-3"
           data-qa="lead-fact-suggestions"
         >
           <h3 className="text-sm font-medium">
@@ -51,19 +51,14 @@ export function LeadFactsPanel({ leadId }: { leadId: string | null }) {
               key={fact.id}
               fact={fact}
               busy={decide.isPending}
-              onDecide={(decision) =>
-                decide.mutate({ factId: fact.id, decision })
-              }
+              onDecide={(decision) => decide.mutate({ factId: fact.id, decision })}
             />
           ))}
         </section>
       ) : null}
 
       {applied.length > 0 ? (
-        <section
-          className="flex flex-col gap-2"
-          data-qa="lead-fact-applied"
-        >
+        <section className="flex flex-col gap-2" data-qa="lead-fact-applied">
           <h3 className="text-sm font-medium">Where these values came from</h3>
           {applied.map((fact) => (
             <div
@@ -72,9 +67,7 @@ export function LeadFactsPanel({ leadId }: { leadId: string | null }) {
               data-qa="lead-fact-applied-row"
               data-field={fact.field}
             >
-              <span className="text-muted-foreground">
-                {FIELD_LABELS[fact.field]}
-              </span>
+              <span className="text-muted-foreground">{FIELD_LABELS[fact.field]}</span>
               <span className="font-medium">{fact.value}</span>
               <Badge variant={factBandBadgeVariant(fact.band)}>
                 {labelFor('factBand', fact.band)}
@@ -99,20 +92,16 @@ function SuggestionRow({
 }) {
   return (
     <div
-      className="flex flex-col gap-1 border-t border-warning/30 pt-2 first:border-t-0 first:pt-0"
+      className="border-warning/30 flex flex-col gap-1 border-t pt-2 first:border-t-0 first:pt-0"
       data-qa="lead-fact-suggestion"
       data-field={fact.field}
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">
-          {FIELD_LABELS[fact.field]}
-        </span>
+        <span className="text-muted-foreground">{FIELD_LABELS[fact.field]}</span>
         <span className="font-medium">{fact.value}</span>
-        <Badge variant={factBandBadgeVariant(fact.band)}>
-          {labelFor('factBand', fact.band)}
-        </Badge>
+        <Badge variant={factBandBadgeVariant(fact.band)}>{labelFor('factBand', fact.band)}</Badge>
       </div>
-      <p className="text-sm text-muted-foreground">{fact.rationale}</p>
+      <p className="text-muted-foreground text-sm">{fact.rationale}</p>
       <div className="flex gap-2">
         <Button
           type="button"

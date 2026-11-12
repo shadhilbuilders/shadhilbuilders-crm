@@ -25,7 +25,12 @@ export function Reveal({
   const ref = useReveal<HTMLElement>();
   const style: CSSProperties | undefined =
     delayMs > 0 ? { transitionDelay: `${Math.min(delayMs, MAX_DELAY_MS)}ms` } : undefined;
-  const props = { ref: ref as never, className: `portal-reveal ${className}`.trim(), style, ...rest };
+  const props = {
+    ref: ref as never,
+    className: `portal-reveal ${className}`.trim(),
+    style,
+    ...rest,
+  };
   if (as === 'li') return <li {...props}>{children}</li>;
   if (as === 'section') return <section {...props}>{children}</section>;
   return <div {...props}>{children}</div>;

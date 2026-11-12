@@ -185,7 +185,7 @@ export function PlotDetails({ plot, geometry, requestedPlotNumber }: PlotDetails
                 <Button
                   as={Link}
                   variant="link"
-                  className="text-link h-auto p-0 justify-start"
+                  className="text-link h-auto justify-start p-0"
                   href={
                     siteOnly
                       ? projectHref(orgSlug, projectSlug, `/site/${unit.id}`)

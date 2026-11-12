@@ -28,7 +28,10 @@ describe('CreateUserFormSchema (CUSTOMER)', () => {
     expect(res.error?.issues.some((i) => i.path[0] === 'customerLeadId')).toBe(true);
   });
   it('accepts a CUSTOMER with a lead and no team', () => {
-    expect(CreateUserFormSchema.safeParse({ ...base, role: 'CUSTOMER', customerLeadId: 'lead-1' }).success).toBe(true);
+    expect(
+      CreateUserFormSchema.safeParse({ ...base, role: 'CUSTOMER', customerLeadId: 'lead-1' })
+        .success,
+    ).toBe(true);
   });
   it('does not ask a staff role for a lead', () => {
     expect(CreateUserFormSchema.safeParse({ ...base, role: 'MANAGER' }).success).toBe(true);
@@ -37,7 +40,14 @@ describe('CreateUserFormSchema (CUSTOMER)', () => {
 
 describe('toLeadOptions', () => {
   it('maps leads to "name - phone" and skips malformed rows', () => {
-    expect(toLeadOptions([{ id: 'l1', name: 'Vikram', phone: '98765' }, { id: 5 }, null, { id: 'l2', name: 'Meera' }])).toEqual([
+    expect(
+      toLeadOptions([
+        { id: 'l1', name: 'Vikram', phone: '98765' },
+        { id: 5 },
+        null,
+        { id: 'l2', name: 'Meera' },
+      ]),
+    ).toEqual([
       { value: 'l1', label: 'Vikram - 98765' },
       { value: 'l2', label: 'Meera' },
     ]);
@@ -69,9 +79,7 @@ describe('fetchLeadOptions', () => {
   it('accepts a bare array response', async () => {
     apiMock.mockResolvedValue([{ id: 'l2', name: 'Meera', phone: '90000' }]);
 
-    expect(await fetchLeadOptions('meera')).toEqual([
-      { value: 'l2', label: 'Meera - 90000' },
-    ]);
+    expect(await fetchLeadOptions('meera')).toEqual([{ value: 'l2', label: 'Meera - 90000' }]);
   });
 
   it('does not fetch on a blank query (never dumps the org lead list)', async () => {

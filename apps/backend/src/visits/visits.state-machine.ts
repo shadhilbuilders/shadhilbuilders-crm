@@ -41,9 +41,7 @@ const TRANSITIONS: Readonly<Record<VisitStatus, readonly VisitStatus[]>> = {
  * left-to-right. The order is documented per role below; the
  * TRANSITIONS table is the graph only (no UI ordering implication).
  */
-const ROLE_LANES: Readonly<
-  Record<Role, Readonly<Record<VisitStatus, readonly VisitStatus[]>>>
-> = {
+const ROLE_LANES: Readonly<Record<Role, Readonly<Record<VisitStatus, readonly VisitStatus[]>>>> = {
   MANAGER: {
     SCHEDULED: ['COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED'],
     RESCHEDULED: ['COMPLETED', 'NO_SHOW', 'CANCELLED'],
@@ -97,11 +95,7 @@ const ROLE_LANES: Readonly<
   },
 };
 
-function canRoleTransition(
-  from: VisitStatus,
-  to: VisitStatus,
-  role: Role,
-): boolean {
+function canRoleTransition(from: VisitStatus, to: VisitStatus, role: Role): boolean {
   if (from === to) return true;
   if (role === 'ADMIN' || role === 'OWNER') {
     return true; // admin override
@@ -153,10 +147,7 @@ export function canTransition(req: TransitionRequest): TransitionResult {
   return { ok: true, reason: 'ALLOWED' };
 }
 
-export function allowedNextStates(
-  from: VisitStatus,
-  role: Role,
-): readonly VisitStatus[] {
+export function allowedNextStates(from: VisitStatus, role: Role): readonly VisitStatus[] {
   if (role === 'ADMIN' || role === 'OWNER') {
     // Admin override: include the lane plus terminal re-open edges.
     const base = ROLE_LANES[role][from];
