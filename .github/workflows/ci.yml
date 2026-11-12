@@ -105,6 +105,31 @@ jobs:
       - uses: actions/checkout@v4
       - run: node scripts/check-bare-prisma.mjs
 
+  # Added 2026-11-12. Impeccable's deterministic design detector: 59 rules, no
+  # LLM, no API key, ~2s on this tree (336 files). It exits 2 when it finds a
+  # primary issue, so it is NON-BLOCKING for now - the two hits it reports today
+  # (border-l-4 side-tabs in SiteHome.tsx:348 and lib/past-event-style.ts:104)
+  # are incumbent styling that has not been reworked yet, and a red check on
+  # every PR would train everyone to ignore it. Remove `continue-on-error` once
+  # `pnpm design:detect` exits 0. Test files are excluded in
+  # .impeccable/config.json because fixture JSX is where the false positives
+  # came from.
+  design-detect:
+    name: Design detector
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design:detect:ci
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest

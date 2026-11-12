@@ -26,6 +26,8 @@
     "db:test:reset": "pnpm --filter @shadhil/database test:db:reset",
     "db:studio": "pnpm --filter @shadhil/database studio",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,mdx}\" --cache",
+    "design:detect": "impeccable detect apps/web packages/ui-tokens/src",
+    "design:detect:ci": "impeccable detect apps/web packages/ui-tokens/src --github",
     "docker:up": "pnpm --filter @shadhil/database docker:up",
     "docker:stack": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
+    "impeccable": "4.8.2",
     "prettier": "^3.4.2",
     "turbo": "^2.11.10",
     "typescript": "^5.9.3"

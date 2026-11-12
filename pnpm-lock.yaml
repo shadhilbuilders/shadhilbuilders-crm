@@ -181,6 +181,9 @@ importers:
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
+      impeccable:
+        specifier: 4.8.2
+        version: 4.8.2
       prettier:
         specifier: ^3.4.2
         version: 3.9.6
@@ -1385,6 +1388,36 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [win32]
+
+  '@impeccable/cli-darwin-arm64@0.1.21':
+    resolution: {integrity: sha512-8gKNvi98N3pa1tD5+D70/p85Whcs18g1Fp0isPn0iEg1jGnHZnTdZSAdowOITzRTCuAWwRwDuk9gFCgZ8wXctg==}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  '@impeccable/cli-darwin-x64@0.1.21':
+    resolution: {integrity: sha512-p37+Anz1JrWlsDqNIutTKDGM1He9S2Y9aaxK1sT2zqfyH4xa5yFVJt5TBD0Z1ZPc+kNhEwsfffVWr3OQNRS8+w==}
+    cpu: [x64]
+    os: [darwin]
+    hasBin: true
+
+  '@impeccable/cli-linux-arm64@0.1.21':
+    resolution: {integrity: sha512-Ia2L/Sm6qm9sexWyyUuUK3VUpEl83sfgO0UHKad9iWsZe2pDCxW3iIaBG8naQtfLCFgd+yrmGdG5KNZ0UDaD5w==}
+    cpu: [arm64]
+    os: [linux]
+    hasBin: true
+
+  '@impeccable/cli-linux-x64@0.1.21':
+    resolution: {integrity: sha512-X7r/nQnk2imNF5QH8v0nMdraxnkCUh0XBchScolYODimuInezEKpLAPbCMmhTibpg7EkMgnfPuCA8/IvIDGjdw==}
+    cpu: [x64]
+    os: [linux]
+    hasBin: true
+
+  '@impeccable/cli-windows-x64@0.1.21':
+    resolution: {integrity: sha512-wWcmPBzh0HDWfSDtuJFi5RiGrXk7+8TfAuQOeePsNqqNLyQ4KTp0CR0JfzVvuLXEmRV/goY4g4Y2Hmaya0o/SA==}
+    cpu: [x64]
+    os: [win32]
+    hasBin: true
 
   '@inquirer/ansi@2.0.7':
     resolution: {integrity: sha512-3eTuUO1vH2cZm2ZKHeQxnOqlTi9EfZDGgIe3BL3I4u+rJHocr9Fz86M4fjYABPvFnQG/gGK551HqDiIcETwU6Q==}
@@ -4318,6 +4351,11 @@ packages:
   immer@11.1.18:
     resolution: {integrity: sha512-EQyQtLiYW029lyoczMl/Hh4Xu7cDecSc58JRYpHyL4tIAu3eqd1yJzQX04d2BZHDkzFFvm6qJEJWOtfDSWAXbQ==}
 
+  impeccable@4.8.2:
+    resolution: {integrity: sha512-NCEL/OndWjqCgN1hhau4In7zLDMlk/NZim8IcBitSER56hx3/eQecXjRC5+kSV6iRd2d8G5kWwR5agGXse4b3w==}
+    engines: {node: '>=18.19.0'}
+    hasBin: true
+
   import-fresh@3.3.1:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
     engines: {node: '>=6'}
@@ -4964,6 +5002,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-emoji@2.2.0:
     resolution: {integrity: sha512-Z3lTE9pLaJF47NyMhd4ww1yFTAP8YhYI8SleJiHzM46Fgpm5cnNzSl9XfzFNqbaz+VlJrIj3fXQ4DeN1Rjm6cw==}
@@ -7021,6 +7060,21 @@ snapshots:
     optional: true
 
   '@img/sharp-win32-x64@0.35.4':
+    optional: true
+
+  '@impeccable/cli-darwin-arm64@0.1.21':
+    optional: true
+
+  '@impeccable/cli-darwin-x64@0.1.21':
+    optional: true
+
+  '@impeccable/cli-linux-arm64@0.1.21':
+    optional: true
+
+  '@impeccable/cli-linux-x64@0.1.21':
+    optional: true
+
+  '@impeccable/cli-windows-x64@0.1.21':
     optional: true
 
   '@inquirer/ansi@2.0.7': {}
@@ -10140,6 +10194,14 @@ snapshots:
       - supports-color
 
   immer@11.1.18: {}
+
+  impeccable@4.8.2:
+    optionalDependencies:
+      '@impeccable/cli-darwin-arm64': 0.1.21
+      '@impeccable/cli-darwin-x64': 0.1.21
+      '@impeccable/cli-linux-arm64': 0.1.21
+      '@impeccable/cli-linux-x64': 0.1.21
+      '@impeccable/cli-windows-x64': 0.1.21
 
   import-fresh@3.3.1:
     dependencies:
