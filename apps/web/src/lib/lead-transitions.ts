@@ -28,7 +28,6 @@ export const TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
   RESCHEDULED: ['VISIT_REQUESTED', 'VISIT_SCHEDULED', 'RNR', 'LOST'],
 };
 
-
 /**
  * The one edge the visit handoff reserves (2026-09-16 owner ruling).
  *
@@ -135,7 +134,6 @@ const TELECALLER_LANE: readonly string[] = [
 ];
 
 const EXEC_LANE: readonly string[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
-
 
 /**
  * Mirror of `canRoleOwnState` (leads.state-machine.ts): may a user with `role`

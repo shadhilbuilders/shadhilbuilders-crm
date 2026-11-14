@@ -42,16 +42,14 @@ export const WhatsappUnknownContactListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).optional(),
 });
-export type WhatsappUnknownContactListQuery = z.infer<
-  typeof WhatsappUnknownContactListQuerySchema
->;
+export type WhatsappUnknownContactListQuery = z.infer<typeof WhatsappUnknownContactListQuerySchema>;
 
 /** Shape of one row in the list response. */
 export interface WhatsappUnknownContactRow {
   id: string;
   phoneE164: string;
   firstMessageAt: string; // ISO
-  lastMessageAt: string;  // ISO
+  lastMessageAt: string; // ISO
   messageCount: number;
   firstMessageBody: string | null;
   status: 'PENDING' | 'CONVERTED' | 'SPAM';

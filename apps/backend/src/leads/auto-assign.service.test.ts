@@ -22,11 +22,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 // TEST-ONLY helper: connects as the bypass-RLS owner role, so it is deliberately
 // absent from the package's production barrel. Import it from the test-only
 // subpath, never from '@shadhil/database' (scripts/check-bare-prisma.mjs fails
@@ -161,7 +157,12 @@ beforeAll(async () => {
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_ID, teamId } },
         update: {},
-        create: { projectId: PROJECT_ID, teamId, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_ID,
+          teamId,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
     }
   });
@@ -382,12 +383,22 @@ describe('autoAssignLeads = true → team round-robin, least-loaded telecaller w
       await db.teamMember.upsert({
         where: { userId_teamId: { userId: SE_ONLY, teamId: TEAM_SE } },
         update: {},
-        create: { userId: SE_ONLY, teamId: TEAM_SE, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          userId: SE_ONLY,
+          teamId: TEAM_SE,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_SE, teamId: TEAM_SE } },
         update: {},
-        create: { projectId: PROJECT_SE, teamId: TEAM_SE, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_SE,
+          teamId: TEAM_SE,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
     });
 
@@ -451,7 +462,12 @@ describe('autoAssignLeads = false → manager owns the lead (pending)', () => {
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_ID, teamId: TEAM_C } },
         update: {},
-        create: { projectId: PROJECT_ID, teamId: TEAM_C, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_ID,
+          teamId: TEAM_C,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
     });
 
@@ -514,7 +530,12 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_CAP, teamId: TEAM_CAP } },
         update: {},
-        create: { projectId: PROJECT_CAP, teamId: TEAM_CAP, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_CAP,
+          teamId: TEAM_CAP,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
       // TC_A1 is capped at 2 and holds 2 open leads -> full, ineligible.
       await db.teamMember.upsert({
@@ -609,7 +630,12 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_FULL, teamId: TEAM_FULL } },
         update: {},
-        create: { projectId: PROJECT_FULL, teamId: TEAM_FULL, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_FULL,
+          teamId: TEAM_FULL,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
       // The only telecaller has a ceiling of 1 and already holds 1 open lead.
       await db.teamMember.upsert({
@@ -698,7 +724,12 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_DEDUPE, teamId: TEAM_DEDUPE } },
         update: {},
-        create: { projectId: PROJECT_DEDUPE, teamId: TEAM_DEDUPE, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_DEDUPE,
+          teamId: TEAM_DEDUPE,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
       // CAP THE LEAST-LOADED MEMBER AND BURDEN THE OTHER. TC_A1 is at its
       // ceiling but holds ZERO open leads, so if the cap is dropped it scores
@@ -795,7 +826,12 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
       await db.projectTeam.upsert({
         where: { projectId_teamId: { projectId: PROJECT_NOCAP, teamId: TEAM_NOCAP } },
         update: {},
-        create: { projectId: PROJECT_NOCAP, teamId: TEAM_NOCAP, organizationId: ORG, assignedById: ADMIN_ACTOR_ID },
+        create: {
+          projectId: PROJECT_NOCAP,
+          teamId: TEAM_NOCAP,
+          organizationId: ORG,
+          assignedById: ADMIN_ACTOR_ID,
+        },
       });
       await db.teamMember.upsert({
         where: { userId_teamId: { userId: TC_NOCAP, teamId: TEAM_NOCAP } },
@@ -865,7 +901,12 @@ describe('rule chain on create: a NEW lead never auto-routes to a sales exec', (
       await db.team.upsert({
         where: { id: TEAM_CHAIN },
         update: {},
-        create: { id: TEAM_CHAIN, name: `Chain Team ${RUN_TAG}`, managerId: null, organizationId: ORG },
+        create: {
+          id: TEAM_CHAIN,
+          name: `Chain Team ${RUN_TAG}`,
+          managerId: null,
+          organizationId: ORG,
+        },
       });
     });
     // priority 1 → sales exec (must NOT fire), priority 5 → telecaller (wins).
@@ -996,7 +1037,8 @@ async function buildRrFixture(label: string, specs: readonly TeamSpec[]): Promis
       // Ids sort by `key` ('a' < 'b' < 'c'), which fixes the first-turn order.
       const id = `rr-team-${spec.key}-${label}-${RUN_TAG}`;
       const managerId = spec.hasManager ? `rr-mgr-${spec.key}-${label}-${RUN_TAG}` : null;
-      if (managerId !== null) await seedUser(db, managerId, spec.managerRole ?? 'MANAGER', `RR Mgr ${spec.key}`);
+      if (managerId !== null)
+        await seedUser(db, managerId, spec.managerRole ?? 'MANAGER', `RR Mgr ${spec.key}`);
       await db.team.upsert({
         where: { id },
         update: {},
@@ -1032,11 +1074,7 @@ async function buildRrFixture(label: string, specs: readonly TeamSpec[]): Promis
   return { projectId, teams };
 }
 
-async function createLeadIn(
-  fx: RrFixture,
-  teamKey: string,
-  extra: Record<string, unknown> = {},
-) {
+async function createLeadIn(fx: RrFixture, teamKey: string, extra: Record<string, unknown> = {}) {
   const lead = await service.create(adminActor(), {
     name: `RR lead ${rrSeq}`,
     phone: nextPhone(),
@@ -1161,13 +1199,24 @@ describe('team round-robin: ON team -> telecaller, OFF team -> manager', () => {
           select: { after: true },
         }),
       );
-      return (row?.after as { routing: { branch: string; chosenTeamId: string; previousLastAssignedAt: string | null } })
-        .routing;
+      return (
+        row?.after as {
+          routing: { branch: string; chosenTeamId: string; previousLastAssignedAt: string | null };
+        }
+      ).routing;
     };
     const r1 = await routingOf(first.id);
     const r2 = await routingOf(second.id);
-    expect(r1).toMatchObject({ branch: 'team-telecaller', chosenTeamId: fx.teams.a!.id, previousLastAssignedAt: null });
-    expect(r2).toMatchObject({ branch: 'team-manager', chosenTeamId: fx.teams.b!.id, previousLastAssignedAt: null });
+    expect(r1).toMatchObject({
+      branch: 'team-telecaller',
+      chosenTeamId: fx.teams.a!.id,
+      previousLastAssignedAt: null,
+    });
+    expect(r2).toMatchObject({
+      branch: 'team-manager',
+      chosenTeamId: fx.teams.b!.id,
+      previousLastAssignedAt: null,
+    });
   });
 
   it('a lead created in an OFF team goes to ITS manager and does not advance the rotation', async () => {
@@ -1220,9 +1269,7 @@ describe('team round-robin: ON team -> telecaller, OFF team -> manager', () => {
     const leads = await Promise.all([createLeadIn(fx, 'a'), createLeadIn(fx, 'a')]);
     const owners = leads.map((l) => l.ownerId).sort();
     // Without the lock both reads see a NULL cursor and both pick team A.
-    expect(owners).toEqual(
-      [fx.teams.a!.telecallerIds[0]!, fx.teams.b!.telecallerIds[0]!].sort(),
-    );
+    expect(owners).toEqual([fx.teams.a!.telecallerIds[0]!, fx.teams.b!.telecallerIds[0]!].sort());
   });
 
   it('an OFF team whose "manager" is an ADMIN (not a MANAGER; one-owner-per-org forbids seeding a 2nd OWNER, same code path) is skipped, never handed the lead', async () => {
@@ -1239,7 +1286,14 @@ describe('team round-robin: ON team -> telecaller, OFF team -> manager', () => {
     // Not silent: the first create records why team B was passed over.
     const first = await seed((db) =>
       db.auditLog.findFirst({
-        where: { entityType: 'Lead', action: 'lead.assigned', after: { path: ['routing', 'skipped'], array_contains: [{ teamId: fx.teams.b!.id, reason: 'invalid-manager' }] } },
+        where: {
+          entityType: 'Lead',
+          action: 'lead.assigned',
+          after: {
+            path: ['routing', 'skipped'],
+            array_contains: [{ teamId: fx.teams.b!.id, reason: 'invalid-manager' }],
+          },
+        },
         select: { id: true },
       }),
     );

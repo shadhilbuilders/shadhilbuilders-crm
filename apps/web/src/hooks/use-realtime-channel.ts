@@ -19,10 +19,7 @@ import { useEffect, useRef } from 'react';
 
 import { openStream } from '@/lib/sse';
 
-export function useRealtimeChannel(
-  channel: string | null,
-  onMessage: () => void,
-): void {
+export function useRealtimeChannel(channel: string | null, onMessage: () => void): void {
   // Keep the latest callback in a ref so the effect doesn't re-run
   // (and re-open the stream) when the caller passes a new closure
   // every render.
@@ -41,9 +38,7 @@ export function useRealtimeChannel(
     // browser gets the live stream.
     if (typeof EventSource === 'undefined') return;
     const cleanup = openStream<unknown>({
-      path: channel.startsWith('chat:')
-        ? `/chat/${channel.slice('chat:'.length)}`
-        : `/${channel}`,
+      path: channel.startsWith('chat:') ? `/chat/${channel.slice('chat:'.length)}` : `/${channel}`,
       channel,
       onMessage: () => {
         onMessageRef.current();

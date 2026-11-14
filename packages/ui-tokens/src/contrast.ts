@@ -122,10 +122,7 @@ export interface ContrastVerdict {
   passes: Record<AaLevel, boolean>;
 }
 
-export function evaluateContrast(
-  fg: Oklch,
-  bg: Oklch,
-): ContrastVerdict {
+export function evaluateContrast(fg: Oklch, bg: Oklch): ContrastVerdict {
   const ratio = contrastRatio(fg, bg);
   return {
     ratio,

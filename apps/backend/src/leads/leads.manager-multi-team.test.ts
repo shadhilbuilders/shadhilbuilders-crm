@@ -20,11 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
@@ -86,12 +82,22 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_1_ID },
       update: { managerId: MGR_ID },
-      create: { id: TEAM_1_ID, name: `MMT Team 1 ${RUN_TAG}`, organizationId: ORG, managerId: null },
+      create: {
+        id: TEAM_1_ID,
+        name: `MMT Team 1 ${RUN_TAG}`,
+        organizationId: ORG,
+        managerId: null,
+      },
     });
     await db.team.upsert({
       where: { id: TEAM_2_ID },
       update: { managerId: MGR_ID },
-      create: { id: TEAM_2_ID, name: `MMT Team 2 ${RUN_TAG}`, organizationId: ORG, managerId: null },
+      create: {
+        id: TEAM_2_ID,
+        name: `MMT Team 2 ${RUN_TAG}`,
+        organizationId: ORG,
+        managerId: null,
+      },
     });
     await db.user.upsert({
       where: { id: ADMIN_ID },
@@ -212,7 +218,7 @@ afterAll(async () => {
 
 describe.skipIf(!HAS_DB)('Manager leading multiple teams (design doc fixture #1)', () => {
   const service = new LeadsService(new PrismaService());
-  const managerActor = actorFor({ sub: MGR_ID, role: 'MANAGER'});
+  const managerActor = actorFor({ sub: MGR_ID, role: 'MANAGER' });
 
   it('list(): the manager sees leads from BOTH teams they manage, not just their own User.teamId', async () => {
     const result = await service.list(managerActor, { limit: 50, offset: 0 });
@@ -226,7 +232,8 @@ describe.skipIf(!HAS_DB)('Manager leading multiple teams (design doc fixture #1)
     const rows = await withRlsContext(
       prisma,
       { userId: MGR_ID, role: 'MANAGER', organizationId: ORG },
-      (tx) => tx.lead.findMany({ where: { id: { in: [LEAD_1_ID, LEAD_2_ID] } }, select: { id: true } }),
+      (tx) =>
+        tx.lead.findMany({ where: { id: { in: [LEAD_1_ID, LEAD_2_ID] } }, select: { id: true } }),
     );
     const ids = rows.map((r) => r.id);
     expect(ids.sort()).toEqual([LEAD_1_ID, LEAD_2_ID].sort());

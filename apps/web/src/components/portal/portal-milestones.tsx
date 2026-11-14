@@ -139,11 +139,13 @@ export function PortalMilestones({ milestones, now }: PortalMilestonesProps) {
 
 /** Square marker. Filled + check when reached, green when next, hairline else. */
 function Marker({ state }: { state: 'reached' | 'next' | 'upcoming' }) {
-  const base =
-    'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[2px] border';
+  const base = 'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[2px] border';
   if (state === 'reached') {
     return (
-      <span aria-hidden="true" className={`${base} border-[var(--portal-navy)] bg-[var(--portal-navy)]`}>
+      <span
+        aria-hidden="true"
+        className={`${base} border-[var(--portal-navy)] bg-[var(--portal-navy)]`}
+      >
         <LuCheck className="size-2.5 text-[var(--portal-paper)]" />
       </span>
     );

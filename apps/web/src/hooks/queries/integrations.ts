@@ -49,8 +49,7 @@ export function useWebhookEvents(query: Partial<WebhookEventsQuery> = {}) {
       api<{ total: number; rows: WebhookEventRow[] }>(
         `/integrations/webhook-events${qs({
           source: query.source,
-          processed:
-            typeof query.processed === 'boolean' ? String(query.processed) : undefined,
+          processed: typeof query.processed === 'boolean' ? String(query.processed) : undefined,
           limit: query.limit,
           offset: query.offset,
         })}`,

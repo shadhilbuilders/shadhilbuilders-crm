@@ -14,9 +14,7 @@ import { SseStatusPill, __test__ } from './SseStatusPill';
 
 describe('SseStatusPill - DOM contract per state', () => {
   it('connecting: amber dot + pulse + aria-live', () => {
-    const html = renderToStaticMarkup(
-      <SseStatusPill endpoint="/api/sse/ping" />,
-    );
+    const html = renderToStaticMarkup(<SseStatusPill endpoint="/api/sse/ping" />);
     // Initial state is connecting (useState default).
     expect(html).toMatch(/data-state="connecting"/);
     expect(html).toMatch(/aria-live="polite"/);
@@ -41,9 +39,7 @@ describe('SseStatusPill - DOM contract per state', () => {
 
 describe('SseStatusPill - disabled state', () => {
   it('disabled → renders offline (no connection attempt)', () => {
-    const html = renderToStaticMarkup(
-      <SseStatusPill disabled />,
-    );
+    const html = renderToStaticMarkup(<SseStatusPill disabled />);
     // SSR doesn't run useEffect, so initial state is "connecting".
     // The disabled branch sets state to "offline" via useEffect on
     // mount - that effect can't fire in renderToStaticMarkup, but
@@ -105,9 +101,7 @@ describe('SseStatusPill - endpoint prop', () => {
   });
 
   it('accepts a custom endpoint prop', () => {
-    const html = renderToStaticMarkup(
-      <SseStatusPill endpoint="/api/notifications/stream" />,
-    );
+    const html = renderToStaticMarkup(<SseStatusPill endpoint="/api/notifications/stream" />);
     expect(html).toBeTruthy();
   });
 });

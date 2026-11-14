@@ -25,10 +25,7 @@ import { LeadVisitPanel } from '@/components/shared/LeadVisitPanel';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { ModulePending } from '@/components/shared/ModulePending';
 import { Skeleton } from '@/components/shared/Skeleton';
-import {
-  useLead,
-  useLeadActivities,
-} from '@/hooks/queries/crm';
+import { useLead, useLeadActivities } from '@/hooks/queries/crm';
 import { labelFor } from '@/lib/labels';
 
 import { PageHeader } from '@/components/shared/PageHeader';

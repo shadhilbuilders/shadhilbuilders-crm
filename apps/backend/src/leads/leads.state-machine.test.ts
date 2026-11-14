@@ -26,13 +26,7 @@ import {
   type Role,
 } from './leads.state-machine';
 
-const ROLES: readonly Role[] = [
-  'OWNER',
-  'ADMIN',
-  'MANAGER',
-  'TELECALLER',
-  'SALES_EXEC',
-];
+const ROLES: readonly Role[] = ['OWNER', 'ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC'];
 
 const TERMINAL_STATES: readonly LeadState[] = ['WON', 'LOST', 'RNR'];
 
@@ -226,11 +220,7 @@ describe('canTransition - TELECALLER lane (NEW..VISIT_SCHEDULED + re-engagement)
 });
 
 describe('canTransition - SALES_EXEC lane (VISITED → BOOKING_INITIATED)', () => {
-  const execLane: readonly LeadState[] = [
-    'VISITED',
-    'NEGOTIATION',
-    'BOOKING_INITIATED',
-  ];
+  const execLane: readonly LeadState[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
   for (const from of execLane) {
     for (const to of ALLOWED_EDGES[from]) {
       it(`SALES_EXEC: ${from} → ${to}`, () => {

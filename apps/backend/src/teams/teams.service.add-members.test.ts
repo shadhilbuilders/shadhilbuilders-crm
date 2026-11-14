@@ -11,9 +11,8 @@ vi.mock('@shadhil/database', () => ({
     userId: a.sub,
     role: a.role,
   })),
-  withRlsContext: vi.fn(
-    async (_c: unknown, _ctx: unknown, cb: (t: unknown) => unknown) =>
-      cb((globalThis as { __tx?: unknown }).__tx),
+  withRlsContext: vi.fn(async (_c: unknown, _ctx: unknown, cb: (t: unknown) => unknown) =>
+    cb((globalThis as { __tx?: unknown }).__tx),
   ),
 }));
 
@@ -78,9 +77,9 @@ describe('TeamsService.addMembers', () => {
 
   it('404s when the team is missing or soft-deleted', async () => {
     makeTx({ team: { id: 'team-1', deletedAt: new Date(), organizationId: ORG } });
-    await expect(
-      svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
+    await expect(svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] })).rejects.toMatchObject({
+      name: 'NotFoundException',
+    });
   });
 
   it('404s for a team in another organization and writes nothing', async () => {
@@ -88,9 +87,9 @@ describe('TeamsService.addMembers', () => {
       team: { id: 'team-1', deletedAt: null, organizationId: 'other-org' },
       users: [{ id: 'u1', name: 'Priya', role: 'TELECALLER' }],
     });
-    await expect(
-      svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
+    await expect(svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] })).rejects.toMatchObject({
+      name: 'NotFoundException',
+    });
     expect(tx.teamMember.createMany).not.toHaveBeenCalled();
   });
 
@@ -106,16 +105,16 @@ describe('TeamsService.addMembers', () => {
 
   it('404s naming users that are not in the org', async () => {
     makeTx({ users: [{ id: 'u1', name: 'Priya', role: 'TELECALLER' }] });
-    await expect(
-      svc().addMembers(actor({}), 'team-1', { userIds: ['u1', 'u2'] }),
-    ).rejects.toThrow(/u2/);
+    await expect(svc().addMembers(actor({}), 'team-1', { userIds: ['u1', 'u2'] })).rejects.toThrow(
+      /u2/,
+    );
   });
 
   it('400s for managers / admins (not team staff)', async () => {
     const tx = makeTx({ users: [{ id: 'u1', name: 'Maya', role: 'MANAGER' }] });
-    await expect(
-      svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] }),
-    ).rejects.toMatchObject({ name: 'BadRequestException' });
+    await expect(svc().addMembers(actor({}), 'team-1', { userIds: ['u1'] })).rejects.toMatchObject({
+      name: 'BadRequestException',
+    });
     expect(tx.teamMember.createMany).not.toHaveBeenCalled();
   });
 
@@ -132,9 +131,7 @@ describe('TeamsService.addMembers', () => {
     });
     expect(result).toEqual({ added: 1, alreadyMembers: 1 });
     expect(tx.teamMember.createMany).toHaveBeenCalledWith({
-      data: [
-        { userId: 'u1', teamId: 'team-1', organizationId: ORG, assignedById: 'admin-1' },
-      ],
+      data: [{ userId: 'u1', teamId: 'team-1', organizationId: ORG, assignedById: 'admin-1' }],
       skipDuplicates: true,
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith(

@@ -8,29 +8,34 @@ Mode: Startup (client product)
 Supersedes: paalstack-main-design-20260916-014221.md
 
 ## Problem Statement
+
 Homebuyers with Shadhil Builders have no way to see construction progress on their
 unit. Today a buyer emails the site manager and waits for a reply; there is no
 self-service view, no photos, no status. The buyer's actual question is one:
 "where is my house at, show me."
 
 ## Demand Evidence
+
 - The demand signal the user named: customers email the site manager asking about
   unit progress. That is a real, observed request, not a hypothetical.
 - Frequency and volume are not yet measured (see Open Questions). The direction is
   confirmed; the volume is not.
 
 ## Status Quo
+
 Nothing happens. The user verified there is no existing workflow and no workaround
 in place. This means any self-service loop is an improvement, and there is no
 legacy behavior to migrate or preserve.
 
 ## Target User & Narrowest Wedge
+
 The buyer of one specific unit. One-time customer for the duration of construction
 (roughly 18-24 months), then gone. The wedge is still the photo timeline; the
 umbrella is the full customer portal the user chose (Approach C) because the client
 wants the complete surface.
 
 ## Premises (user confirmed all four)
+
 1. Web app, mobile-first, PWA-installable. Not a native app. The planned Expo
    `apps/mobile` stays for staff use, not customers.
 2. Customers get their own logins in the existing better-auth system, with a new
@@ -43,21 +48,26 @@ wants the complete surface.
    an empty docs tab but a live photo timeline still got value.
 
 ## Approaches Considered
+
 ### A) Photo timeline only
+
 Site manager uploads site photos per unit from their phone; customer sees a photo
 timeline with phase labels, web push on new upload. Smallest diff, ships days.
 Rejected by the user in favor of C; its upload loop becomes Slice 1 of C.
 
 ### B) Weekly automated status link
+
 Weekly email/link showing phase status from CRM data, no photos. Zero staff work,
 ships fastest. Rejected: no photos means no emotional payoff; "phase 4 complete"
 is not what a buyer wants to see.
 
 ### C) Full customer portal (CHOSEN)
+
 Progress timeline + booking docs + payment views + messages under one customer
 login. Most professional, one auth surface, absorbs A and B as slices.
 
 ## Recommended Approach
+
 Approach C, sequenced into three slices so value lands early:
 
 - Slice 1 (photo timeline): new backend module `customer-progress` (NestJS,
@@ -83,6 +93,7 @@ three images (web Vercel, backend + realtime-sse on the VPS via Coolify); push t
 main auto-deploys. No new distribution channel.
 
 ## Open Questions
+
 - How often do buyers actually email for progress? (Sets push frequency and SLA
   expectations; does not change the architecture.)
 - Which object storage is already in use for CRM file uploads? Slice 1 must match
@@ -91,6 +102,7 @@ main auto-deploys. No new distribution channel.
   default; Message model is ready either way.)
 
 ## Success Criteria
+
 - A customer can log in, see their unit, and see the latest construction photos
   within one login. Measured: first login to last photo in under a minute on a
   mid-range Android phone.
@@ -100,18 +112,21 @@ main auto-deploys. No new distribution channel.
   database-first test pattern passes for customer-vs-customer isolation.
 
 ## Dependencies
+
 - New Customer role + RLS policies (database-first tests per repo convention).
 - Object storage decision confirmed against current CRM upload patterns.
 - Web push plumbing is present in the schema but unverified for customer
   subscriptions; confirm during Slice 1.
 
 ## The Assignment
+
 Write the slice-1 spec as a backlog-ready issue: the upload flow (site manager's
 phone, per-unit, phase label), the customer timeline route, and the
 ProgressPhoto Prisma model. Run it through /spec so it is committable, then
 implement Slice 1 only.
 
 ## What I noticed about how you think
+
 - You said "Currently nothing happens, we have build a new system with all
   possible useful scenerios." That is a green-field answer: no workaround to
   respect, no migration. It freed the design to pick the smallest feed first.

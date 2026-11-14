@@ -215,9 +215,17 @@ services:
       # WA_BUSINESS_ACCOUNT_ID -- the WABA id is not read by the backend.
       WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-placeholder}
       WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-placeholder}
-      WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-placeholder}
+      # Required, no fallback: a stack that boots with the literal string
+      # 'placeholder' here comes up "healthy" and then fails Meta's callback
+      # registration with the generic "couldn't be validated" error, which is
+      # exactly the wrong place to discover a missing env var.
+      WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:?WA_WEBHOOK_VERIFY_TOKEN required (Meta compares it during callback registration)}
       # Signature verification on inbound webhooks (Meta app secret).
-      WA_APP_SECRET: ${WA_APP_SECRET:-placeholder}
+      # Deliberately NO fallback value: the guard treats an ABSENT secret as
+      # "dev pass-through / 503 in production", but a fallback string would be
+      # a PUBLIC HMAC key - anyone could sign a forged webhook with
+      # 'placeholder' and it would verify. Empty is safe; a default is not.
+      WA_APP_SECRET: ${WA_APP_SECRET:-}
       FREJUN_API_KEY: ${FREJUN_API_KEY:-placeholder}
       FREJUN_WEBHOOK_SECRET: ${FREJUN_WEBHOOK_SECRET:-placeholder}
     # Rewrite the localhost in DATABASE_URL/DIRECT_DATABASE_URL to the

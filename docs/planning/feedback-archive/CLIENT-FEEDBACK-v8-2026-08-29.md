@@ -1,6 +1,7 @@
 # Client Feedback Round 9 - 2026-08-29 (Shadhil CRM)
 
 You asked two questions:
+
 1. "Can we use Prisma with NestJS + REST API?"
 2. "How does the database share the same data for all three places?"
 
@@ -50,6 +51,7 @@ This is the harder question. There are three real models:
 ### Model A: One schema, three apps, single Prisma client (RECOMMENDED)
 
 **The architecture:**
+
 - ONE Postgres database (single instance in Docker on the VPS)
 - ONE `schema.prisma` file (lives in `packages/database`)
 - ONE Prisma Client (generated once, imported by both Next.js and NestJS)
@@ -62,14 +64,14 @@ This is the harder question. There are three real models:
 
 **The data ownership:**
 
-| Tables | Owned by | Read by | Written by |
-|---|---|---|---|
-| `User`, `Session`, `Account`, `Verification` | Next.js BFF (via better-auth) | Both apps | BFF (via better-auth) |
-| `Team`, `Project`, `Unit` | NestJS | Both apps | NestJS only |
-| `Lead`, `LeadAssignment`, `SiteVisit`, `Booking` | NestJS | Both apps | NestJS only |
-| `Activity`, `Message` | NestJS | Both apps | NestJS only (webhook receivers + REST) |
-| `AuditLog` | NestJS | Both apps (Admin only via RLS) | NestJS only (writes from middleware) |
-| `ManagerAssignmentRule` | NestJS | Both apps | NestJS only |
+| Tables                                           | Owned by                      | Read by                        | Written by                             |
+| ------------------------------------------------ | ----------------------------- | ------------------------------ | -------------------------------------- |
+| `User`, `Session`, `Account`, `Verification`     | Next.js BFF (via better-auth) | Both apps                      | BFF (via better-auth)                  |
+| `Team`, `Project`, `Unit`                        | NestJS                        | Both apps                      | NestJS only                            |
+| `Lead`, `LeadAssignment`, `SiteVisit`, `Booking` | NestJS                        | Both apps                      | NestJS only                            |
+| `Activity`, `Message`                            | NestJS                        | Both apps                      | NestJS only (webhook receivers + REST) |
+| `AuditLog`                                       | NestJS                        | Both apps (Admin only via RLS) | NestJS only (writes from middleware)   |
+| `ManagerAssignmentRule`                          | NestJS                        | Both apps                      | NestJS only                            |
 
 **The key rule:** Next.js components DO NOT query business tables
 directly. They call the NestJS REST API. This avoids two paths to
@@ -132,7 +134,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shadhil"]
+      test: ['CMD-SHELL', 'pg_isready -U shadhil']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -147,12 +149,12 @@ services:
       - POSTGRESQL_PASSWORD=*** # from .env
       - PGBOUNCER_DATABASE=shadhil_crm
       - PGBOUNCER_AUTH_TYPE=scram-sha-256
-      - PGBOUNCER_POOL_MODE=session  # see "RLS gotcha" below
+      - PGBOUNCER_POOL_MODE=session # see "RLS gotcha" below
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "6432:6432"
+      - '6432:6432'
 
   backend:
     build: ./apps/backend
@@ -305,7 +307,7 @@ written) so you don't have to refactor at v2.
 - The roles, modules, lifecycle state machine, RBAC+ABAC matrix
   all stay the same.
 - The locked stack (Next.js + NestJS + Prisma + Postgres + Redis
-  + Coolify) stays the same.
+  - Coolify) stays the same.
 - The 10-week timeline stays the same.
 - The Q0–Q16 open questions to the client stay the same.
 

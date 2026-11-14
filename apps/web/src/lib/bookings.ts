@@ -21,9 +21,6 @@ import { projectHref } from '@/lib/nav';
  * does not depend on the new booking's id; keeping it id-free means the rule
  * cannot drift into a `/bookings/:id` deep link by accident.
  */
-export function afterBookingCreateHref(
-  orgSlug: string | null,
-  projectSlug: string | null,
-): string {
+export function afterBookingCreateHref(orgSlug: string | null, projectSlug: string | null): string {
   return projectHref(orgSlug, projectSlug, '/bookings');
 }

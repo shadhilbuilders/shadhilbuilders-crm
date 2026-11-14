@@ -19,10 +19,28 @@
 //     (Badge) → Amount → Token → Created → Owner / Approval.
 //   Row actions: Approve/Reject (TOKEN + manager) ·
 //     View lead · Edit · Delete.
-import { AlertDialog, Badge, Button, Combobox, DataTable, DataTableRowActions, TypographyP, toast } from '@paalstack/react-ui';
+import {
+  AlertDialog,
+  Badge,
+  Button,
+  Combobox,
+  DataTable,
+  DataTableRowActions,
+  TypographyP,
+  toast,
+} from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import { LuArrowRight, LuBadgeCheck, LuClock, LuCoins, LuPencil, LuPlus, LuTrash2, LuUser } from '@paalstack/react-icons/lu';
+import {
+  LuArrowRight,
+  LuBadgeCheck,
+  LuClock,
+  LuCoins,
+  LuPencil,
+  LuPlus,
+  LuTrash2,
+  LuUser,
+} from '@paalstack/react-icons/lu';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -36,7 +54,12 @@ import { useBookings, useBookingsEnvelope, useDeleteBooking } from '@/hooks/quer
 import { currencyIntl, dateIntl, formatBalanceDue } from '@/lib/format';
 import { labelFor, BOOKING_STATUSES, type BookingStatus } from '@/lib/labels';
 import { projectHref } from '@/lib/nav';
-import { canApproveBookings, canInitiateBookings, isAdminLike, useSessionUser } from '@/lib/session';
+import {
+  canApproveBookings,
+  canInitiateBookings,
+  isAdminLike,
+  useSessionUser,
+} from '@/lib/session';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -84,7 +107,10 @@ const bookingRowSchema = z.object({
 
 // Status → Badge semantic variant (user-mandated: use Badge, not hand-rolled
 // spans). Maps to theme tokens so colors stay consistent + dark-mode aware.
-const STATUS_BADGE_VARIANT: Record<BookingStatus, 'success' | 'warning' | 'info' | 'destructive' | 'muted'> = {
+const STATUS_BADGE_VARIANT: Record<
+  BookingStatus,
+  'success' | 'warning' | 'info' | 'destructive' | 'muted'
+> = {
   HOLD: 'warning',
   TOKEN: 'info',
   APPROVED: 'success',
@@ -132,8 +158,7 @@ export default function BookingsPage() {
   // hit on every keystroke.
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const serverSearch =
-    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
+  const serverSearch = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
   // Server-side pagination (T-SRVPG): page is 1-indexed (the DataTable
   // Pagination is 1-indexed); offset = (page - 1) * pageSize.
   const [page, setPage] = useState(1);
@@ -149,9 +174,7 @@ export default function BookingsPage() {
 
   const bookingsQuery = useBookings(filter);
   const total = useBookingsEnvelope(filter);
-  const rows = Array.isArray(bookingsQuery.data)
-    ? (bookingsQuery.data as BookingRow[])
-    : [];
+  const rows = Array.isArray(bookingsQuery.data) ? (bookingsQuery.data as BookingRow[]) : [];
 
   // T-BOOK-ROLES: the shared helper mirrors the service gate exactly, so the
   // button and the API can't disagree about who may initiate a booking.
@@ -186,11 +209,9 @@ export default function BookingsPage() {
         accessorKey: 'unitNumber',
         header: 'Unit',
         cell: ({ row }) => {
-          const bookingId =
-            typeof row.original.id === 'string' ? row.original.id : '';
+          const bookingId = typeof row.original.id === 'string' ? row.original.id : '';
           const unitNumber =
-            typeof row.original.unitNumber === 'string' &&
-            row.original.unitNumber.length > 0
+            typeof row.original.unitNumber === 'string' && row.original.unitNumber.length > 0
               ? row.original.unitNumber
               : null;
           // T-BOOK-LINK (2026-09-15): Unit is the FIRST column and opens the
@@ -243,9 +264,7 @@ export default function BookingsPage() {
         header: 'Status',
         cell: ({ row }) => {
           const status = row.original.status ?? '';
-          const variant = isBookingStatus(status)
-            ? STATUS_BADGE_VARIANT[status]
-            : 'muted';
+          const variant = isBookingStatus(status) ? STATUS_BADGE_VARIANT[status] : 'muted';
           return (
             <Badge variant={variant} data-qa="booking-status-badge">
               {isBookingStatus(status) ? labelFor('booking', status) : status || '-'}
@@ -316,9 +335,7 @@ export default function BookingsPage() {
                   menu ("Approve / Reject"), so this cell no longer needs the
                   buried link - it keeps a plain hint for context. */}
               {canApprove && status === 'TOKEN' ? (
-                <span className="mt-1 block font-medium text-amber-700">
-                  Awaiting approval
-                </span>
+                <span className="mt-1 block font-medium text-amber-700">Awaiting approval</span>
               ) : null}
             </div>
           );
@@ -400,7 +417,12 @@ export default function BookingsPage() {
         subtitle={<BookingPipeline />}
         action={
           canCreate ? (
-            <Button as={Link} href={projectHref(orgSlug, projectSlug, '/bookings/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-booking-button">
+            <Button
+              as={Link}
+              href={projectHref(orgSlug, projectSlug, '/bookings/new')}
+              leftIcon={<LuPlus className="size-4" />}
+              data-qa="new-booking-button"
+            >
               New booking
             </Button>
           ) : null
@@ -442,12 +464,9 @@ export default function BookingsPage() {
               const target = event.target;
               if (!(target instanceof Element)) return;
               if (target.closest('a, button, [role="menuitem"]')) return;
-              const bookingId =
-                typeof row.original.id === 'string' ? row.original.id : '';
+              const bookingId = typeof row.original.id === 'string' ? row.original.id : '';
               if (bookingId.length === 0) return;
-              void router.push(
-                projectHref(orgSlug, projectSlug, `/bookings/${bookingId}`),
-              );
+              void router.push(projectHref(orgSlug, projectSlug, `/bookings/${bookingId}`));
             },
           }}
           // Search is server-side (onSearchValueChange → API). The DataTable's
@@ -476,7 +495,7 @@ export default function BookingsPage() {
               placeholder="Filter by status"
               selectOptionAsValue
               maxSelectedChips={2}
-              className="min-w-48 max-w-96"
+              className="max-w-96 min-w-48"
               data-qa="bookings-status-filter"
             />
           }
@@ -495,7 +514,7 @@ export default function BookingsPage() {
           }}
           emptyContent={
             isFiltered ? (
-              <div className="rounded-lg p-10 text-center space-y-1">
+              <div className="space-y-1 rounded-lg p-10 text-center">
                 <TypographyP className="text-xl font-medium">
                   No bookings match this search.
                 </TypographyP>
@@ -504,7 +523,7 @@ export default function BookingsPage() {
                 </TypographyP>
               </div>
             ) : (
-              <div className="rounded-lg p-10 text-center space-y-1" data-qa="bookings-empty">
+              <div className="space-y-1 rounded-lg p-10 text-center" data-qa="bookings-empty">
                 <TypographyP className="text-xl font-medium">No bookings yet.</TypographyP>
                 <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                   {canCreate

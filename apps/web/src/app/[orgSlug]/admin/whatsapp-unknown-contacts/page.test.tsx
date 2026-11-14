@@ -98,8 +98,7 @@ describe('WhatsappUnknownContactsPage - wire-shape contract (T-E2b)', () => {
             firstMessageAt: '2026-09-04T08:30:00Z',
             lastMessageAt: '2026-09-04T08:34:00Z',
             messageCount: 3,
-            firstMessageBody:
-              'Hi, I saw your listing on the website. Are 3BHK units available?',
+            firstMessageBody: 'Hi, I saw your listing on the website. Are 3BHK units available?',
             status: 'PENDING',
             convertedToLeadId: null,
             notes: null,
@@ -139,9 +138,7 @@ describe('WhatsappUnknownContactsPage - wire-shape contract (T-E2b)', () => {
     // non-+91 E164 (e.g. +1 US) passes through unchanged.
     expect(html).toContain('+91 98765 43210');
     expect(html).toContain('+14155552671');
-    expect(html).toContain(
-      'Hi, I saw your listing on the website. Are 3BHK units available?',
-    );
+    expect(html).toContain('Hi, I saw your listing on the website. Are 3BHK units available?');
     expect(html).toContain('Hello?');
     expect(html).toContain('3 messages');
     expect(html).toContain('1 message'); // singular form

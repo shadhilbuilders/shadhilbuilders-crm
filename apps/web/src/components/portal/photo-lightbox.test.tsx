@@ -28,9 +28,19 @@ const photo: TimelinePhoto = {
   canMutate: false,
 };
 const noop = () => undefined;
-const render = (over: { onPrevious: (() => void) | null; onNext: (() => void) | null; position?: number }) =>
+const render = (over: {
+  onPrevious: (() => void) | null;
+  onNext: (() => void) | null;
+  position?: number;
+}) =>
   renderToStaticMarkup(
-    <PhotoLightboxPanel photo={photo} position={over.position ?? 2} total={5} onClose={noop} {...over} />,
+    <PhotoLightboxPanel
+      photo={photo}
+      position={over.position ?? 2}
+      total={5}
+      onClose={noop}
+      {...over}
+    />,
   );
 
 describe('PhotoLightboxPanel', () => {

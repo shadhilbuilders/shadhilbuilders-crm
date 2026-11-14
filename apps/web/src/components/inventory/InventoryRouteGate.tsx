@@ -52,10 +52,7 @@ export function InventoryRouteGate({ children }: { children: ReactNode }) {
 
   if (user !== null && isSiteOnlyRole(user.role)) {
     return (
-      <div
-        className="mx-auto max-w-lg py-16"
-        data-qa="inventory-blocked"
-      >
+      <div className="mx-auto max-w-lg py-16" data-qa="inventory-blocked">
         <Empty
           media={<LuCamera className="size-full" />}
           mediaVariant="icon"

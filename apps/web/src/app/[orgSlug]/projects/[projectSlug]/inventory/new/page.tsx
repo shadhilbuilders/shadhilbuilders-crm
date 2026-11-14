@@ -150,9 +150,7 @@ export default function NewUnitPage() {
       buildupSqft,
       pricePerSqft,
       ...(plotNumber !== undefined ? { plotNumber } : {}),
-      ...(values.facing && values.facing.trim().length > 0
-        ? { facing: values.facing.trim() }
-        : {}),
+      ...(values.facing && values.facing.trim().length > 0 ? { facing: values.facing.trim() } : {}),
       ...(sqft !== undefined ? { sqft } : {}),
     };
 

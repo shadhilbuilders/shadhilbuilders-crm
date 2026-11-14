@@ -6,19 +6,19 @@ byte-verified migration; user decision: "only keep needed ones").
 
 ## Document index
 
-| Document | What it is | Status |
-|----------|-----------|--------|
-| [`docs/planning/IMPLEMENTATION-PLAN-v1.md`](IMPLEMENTATION-PLAN-v1.md) | **THE PLAN** - 13-week build, all phases, section 0-19 + full /autoplan review (2026-08-31, APPROVED) + task list + review report | Plan of record |
-| [`docs/planning/DESIGN.md`](DESIGN.md) | Source design (v3.1, 1,038 lines, 28 locked decisions) - §-referenced throughout the plan | Signed off |
-| [`docs/planning/WIREFRAMES.md`](WIREFRAMES.md) | Locked ASCII wireframes + UI reference (eng/design tasks point here) | Locked |
-| [`docs/planning/SIGN-OFF-SUMMARY-v3.1.md`](SIGN-OFF-SUMMARY-v3.1.md) | 1-page client sign-off + the 6 required inputs | Signed off |
-| [`docs/planning/SIGN-OFF-SUMMARY-v3.1.pdf`](SIGN-OFF-SUMMARY-v3.1.pdf) | Client-facing PDF of the same | Sent |
-| [`docs/planning/6-INPUTS-REQUEST-TO-CLIENT.md`](6-INPUTS-REQUEST-TO-CLIENT.md) | Live tracker for the 6 client inputs (check before Week 1) | ⏳ Awaiting client |
-| [`docs/planning/ASSIGNMENT-MODEL-CHANGE.md`](ASSIGNMENT-MODEL-CHANGE.md) | Full design rationale for manual reassign + auto-assignment (§18 backing doc) | Ratified |
-| [`docs/planning/DECISION-CHANGELOG.md`](DECISION-CHANGELOG.md) | Chronological trace of every design decision round | Historical |
-| [`docs/planning/CLIENT-DECISIONS.md`](CLIENT-DECISIONS.md) | 16 resolved client questions + reliability design | Historical |
-| [`docs/planning/WORKFLOW-DIAGRAMS.md`](WORKFLOW-DIAGRAMS.md) | 6 ELI10 diagrams (system, web auth, mobile auth, lifecycle, handoff) | Historical |
-| [`docs/planning/feedback-archive/`](feedback-archive/) | All 12 client feedback rounds + archived questions (provenance only) | Archive |
+| Document                                                                       | What it is                                                                                                                        | Status             |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| [`docs/planning/IMPLEMENTATION-PLAN-v1.md`](IMPLEMENTATION-PLAN-v1.md)         | **THE PLAN** - 13-week build, all phases, section 0-19 + full /autoplan review (2026-08-31, APPROVED) + task list + review report | Plan of record     |
+| [`docs/planning/DESIGN.md`](DESIGN.md)                                         | Source design (v3.1, 1,038 lines, 28 locked decisions) - §-referenced throughout the plan                                         | Signed off         |
+| [`docs/planning/WIREFRAMES.md`](WIREFRAMES.md)                                 | Locked ASCII wireframes + UI reference (eng/design tasks point here)                                                              | Locked             |
+| [`docs/planning/SIGN-OFF-SUMMARY-v3.1.md`](SIGN-OFF-SUMMARY-v3.1.md)           | 1-page client sign-off + the 6 required inputs                                                                                    | Signed off         |
+| [`docs/planning/SIGN-OFF-SUMMARY-v3.1.pdf`](SIGN-OFF-SUMMARY-v3.1.pdf)         | Client-facing PDF of the same                                                                                                     | Sent               |
+| [`docs/planning/6-INPUTS-REQUEST-TO-CLIENT.md`](6-INPUTS-REQUEST-TO-CLIENT.md) | Live tracker for the 6 client inputs (check before Week 1)                                                                        | ⏳ Awaiting client |
+| [`docs/planning/ASSIGNMENT-MODEL-CHANGE.md`](ASSIGNMENT-MODEL-CHANGE.md)       | Full design rationale for manual reassign + auto-assignment (§18 backing doc)                                                     | Ratified           |
+| [`docs/planning/DECISION-CHANGELOG.md`](DECISION-CHANGELOG.md)                 | Chronological trace of every design decision round                                                                                | Historical         |
+| [`docs/planning/CLIENT-DECISIONS.md`](CLIENT-DECISIONS.md)                     | 16 resolved client questions + reliability design                                                                                 | Historical         |
+| [`docs/planning/WORKFLOW-DIAGRAMS.md`](WORKFLOW-DIAGRAMS.md)                   | 6 ELI10 diagrams (system, web auth, mobile auth, lifecycle, handoff)                                                              | Historical         |
+| [`docs/planning/feedback-archive/`](feedback-archive/)                         | All 12 client feedback rounds + archived questions (provenance only)                                                              | Archive            |
 
 ## Reading order (new engineer)
 

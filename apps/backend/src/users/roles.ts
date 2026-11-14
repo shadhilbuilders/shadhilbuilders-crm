@@ -160,11 +160,7 @@ export function assertCanCreateRole(actor: Role, targetRole: Role): void {
  * touches ADMIN rows, OWNER role itself is unassignable.
  * Issue #7 slice 1: ENGINEER target/assignment is OWNER/ADMIN-only.
  */
-export function assertCanChangeRole(
-  actor: Role,
-  targetRole: Role,
-  newRole: Role,
-): void {
+export function assertCanChangeRole(actor: Role, targetRole: Role, newRole: Role): void {
   // Guard 0 (absolute): never into or out of OWNER.
   if (newRole === OWNER || targetRole === OWNER) {
     throw new ForbiddenException(
@@ -186,14 +182,12 @@ export function assertCanChangeRole(
   }
   // Guard 1: nobody changes their own role.
   // (target-user identity check happens in the service; role-level rule:
-    //  an actor can only change strictly-lower-ranked users, which already
-    //  excludes self - a role can never outrank itself.)
+  //  an actor can only change strictly-lower-ranked users, which already
+  //  excludes self - a role can never outrank itself.)
   if (RANK[actor] <= RANK[targetRole]) {
     throw new ForbiddenException(`${actor} cannot change the role of a ${targetRole}`);
   }
   if (RANK[actor] <= RANK[newRole]) {
-    throw new ForbiddenException(
-      `${actor} cannot assign the ${newRole} role`,
-    );
+    throw new ForbiddenException(`${actor} cannot assign the ${newRole} role`);
   }
 }

@@ -27,11 +27,7 @@ describe('LeadReassignFormBody', () => {
 
   it('renders the assignee combobox (label + description) and the reason field', () => {
     const html = renderToStaticMarkup(
-      <LeadReassignFormBody
-        currentOwnerId="owner-1"
-        projectId={null}
-        onSubmit={noopSubmit}
-      />,
+      <LeadReassignFormBody currentOwnerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).toContain('Assign to');
     expect(html).toContain('Only telecallers / sales executives');
@@ -41,22 +37,14 @@ describe('LeadReassignFormBody', () => {
 
   it('shows the reason as required', () => {
     const html = renderToStaticMarkup(
-      <LeadReassignFormBody
-        currentOwnerId="owner-1"
-        projectId={null}
-        onSubmit={noopSubmit}
-      />,
+      <LeadReassignFormBody currentOwnerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).toContain('*');
   });
 
   it('hides the Form action section - Assign lives in the Dialog footer', () => {
     const html = renderToStaticMarkup(
-      <LeadReassignFormBody
-        currentOwnerId="owner-1"
-        projectId={null}
-        onSubmit={noopSubmit}
-      />,
+      <LeadReassignFormBody currentOwnerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).not.toContain('data-qa="form-submit-button"');
     expect(html).not.toContain('data-qa="form-reset-button"');
@@ -65,11 +53,7 @@ describe('LeadReassignFormBody', () => {
 
   it('uses the lead name only in the dialog shell (not the form body)', () => {
     const html = renderToStaticMarkup(
-      <LeadReassignFormBody
-        currentOwnerId="owner-1"
-        projectId={null}
-        onSubmit={noopSubmit}
-      />,
+      <LeadReassignFormBody currentOwnerId="owner-1" projectId={null} onSubmit={noopSubmit} />,
     );
     expect(html).not.toContain(lead.name);
   });

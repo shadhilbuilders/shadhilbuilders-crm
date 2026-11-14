@@ -58,9 +58,7 @@ export type MintTicketResponse = z.infer<typeof MintTicketResponseSchema>;
  * a cuid and rejects unknown channel shapes with a typed error.
  */
 export type RealtimeChannel =
-  | { kind: 'notifications' }
-  | { kind: 'audit' }
-  | { kind: 'chat'; leadId: string };
+  { kind: 'notifications' } | { kind: 'audit' } | { kind: 'chat'; leadId: string };
 
 const CUID_RE = /^c[a-z0-9]{20,}$/i;
 

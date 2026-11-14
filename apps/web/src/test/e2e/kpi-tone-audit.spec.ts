@@ -159,8 +159,7 @@ async function mutedHex(page: Page): Promise<string> {
     const d = ctx2.getImageData(0, 0, 1, 1).data;
     probe.remove();
     return (
-      '#' +
-      [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0].map((c) => c.toString(16).padStart(2, '0')).join('')
+      '#' + [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0].map((c) => c.toString(16).padStart(2, '0')).join('')
     );
   });
 }

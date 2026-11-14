@@ -127,7 +127,7 @@ describe('NoteDialog stage + quick notes', () => {
 
   function optionTexts(): string[] {
     return Array.from(document.querySelectorAll('[role="option"]')).map(
-      (option) => option.textContent ?? ''
+      (option) => option.textContent ?? '',
     );
   }
 
@@ -155,7 +155,7 @@ describe('NoteDialog stage + quick notes', () => {
 
     await openAndCollect(document.querySelector('[data-qa="select-trigger"]'));
     const structure = Array.from(document.querySelectorAll('[role="option"]')).find(
-      (option) => option.textContent === 'Structure'
+      (option) => option.textContent === 'Structure',
     );
     await act(async () => {
       (structure as HTMLElement | undefined)?.click();
@@ -174,7 +174,7 @@ describe('NoteDialog stage + quick notes', () => {
 
     await openAndCollect(document.querySelector('[data-qa="select-trigger"]'));
     const unset = Array.from(document.querySelectorAll('[role="option"]')).find(
-      (option) => option.textContent === 'Stage not set'
+      (option) => option.textContent === 'Stage not set',
     );
     await act(async () => {
       (unset as HTMLElement | undefined)?.click();
@@ -189,7 +189,7 @@ describe('NoteDialog stage + quick notes', () => {
     // A suggestion row of buttons, each one a tap away - not another input the
     // engineer has to open first.
     const chips = Array.from(
-      document.querySelectorAll('[data-qa="site-note-quick-picker"] button')
+      document.querySelectorAll('[data-qa="site-note-quick-picker"] button'),
     ).map((chip) => chip.textContent ?? '');
     expect(chips).toEqual([...QUICK_NOTE_LABELS]);
   });

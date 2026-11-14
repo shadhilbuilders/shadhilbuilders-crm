@@ -37,15 +37,17 @@ describe('shouldResolveOrgSlug', () => {
   });
 
   it('an anonymous session never asks', () => {
-    expect(shouldResolveOrgSlug({ role: undefined, isPending: false, organizationId: 'org-1' })).toBe(
-      false,
-    );
+    expect(
+      shouldResolveOrgSlug({ role: undefined, isPending: false, organizationId: 'org-1' }),
+    ).toBe(false);
   });
 
   it.each([null, undefined, ''])(
     'a staff role with no org id (%s) never asks',
     (organizationId) => {
-      expect(shouldResolveOrgSlug({ role: 'MANAGER', isPending: false, organizationId })).toBe(false);
+      expect(shouldResolveOrgSlug({ role: 'MANAGER', isPending: false, organizationId })).toBe(
+        false,
+      );
     },
   );
 });

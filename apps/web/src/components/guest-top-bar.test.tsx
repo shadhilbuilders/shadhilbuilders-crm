@@ -17,7 +17,11 @@ vi.mock('next/image', () => ({
 }));
 
 vi.mock('@/components/theme-toggle', () => ({
-  ThemeToggle: () => <button type="button" data-qa="theme-toggle">theme</button>,
+  ThemeToggle: () => (
+    <button type="button" data-qa="theme-toggle">
+      theme
+    </button>
+  ),
 }));
 
 import { GuestTopBar } from './guest-top-bar';

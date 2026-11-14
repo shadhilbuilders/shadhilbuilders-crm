@@ -164,11 +164,7 @@ export function ScheduleVisitDialog({
     // project whose staffing is incomplete.
     const source = fromProject.length > 0 ? fromProject : assignable(teamMembersQuery.data);
     return source.map(asOption);
-  }, [
-    showExecPicker,
-    teamMembersQuery.data,
-    projectSalesExecsQuery.data,
-  ]);
+  }, [showExecPicker, teamMembersQuery.data, projectSalesExecsQuery.data]);
 
   // A telecaller CANNOT omit the exec: the server falls back to the actor and
   // then rejects a TELECALLER assignee with a 400. So required for them, and
@@ -247,8 +243,7 @@ export function ScheduleVisitDialog({
     if (rows === undefined || !Array.isArray(rows)) return [];
     return rows.map((r) => {
       const row = r as { id: string; name?: string; status?: string };
-      const statusLabel =
-        typeof row.status === 'string' ? labelFor('lead', row.status) : '';
+      const statusLabel = typeof row.status === 'string' ? labelFor('lead', row.status) : '';
       return {
         value: row.id,
         label: `${row.name ?? 'Lead'}${statusLabel.length > 0 ? ` (${statusLabel})` : ''}`,
@@ -260,9 +255,7 @@ export function ScheduleVisitDialog({
     // zodResolver already validated leadId + the future-datetime refine, so
     // no manual checks needed here. Combine date + time into an ISO datetime
     // with the user's local timezone offset.
-    const localDateTime = new Date(
-      `${values.scheduledForDate}T${values.scheduledForTime}:00`,
-    );
+    const localDateTime = new Date(`${values.scheduledForDate}T${values.scheduledForTime}:00`);
 
     const payload: {
       leadId: string;
@@ -345,8 +338,7 @@ export function ScheduleVisitDialog({
             options: salesExecOptions,
             placeholder: 'Search a sales exec...',
             comboboxProps: {
-              emptyOptionMessage:
-                'No sales exec available - add one to a team on this project',
+              emptyOptionMessage: 'No sales exec available - add one to a team on this project',
               'data-qa': 'schedule-visit-sales-exec',
               selectOptionAsValue: true,
             },
@@ -366,7 +358,7 @@ export function ScheduleVisitDialog({
     <Dialog
       trigger={null}
       header={{ title: 'Schedule a site visit' }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

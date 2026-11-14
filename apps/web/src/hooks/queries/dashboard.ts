@@ -33,8 +33,7 @@ export function useDashboardStats(projectId?: string) {
 export function useDashboardExceptions() {
   return useQuery({
     queryKey: ['dashboard-exceptions'] as const,
-    queryFn: ({ signal }) =>
-      api<DashboardExceptions>('/dashboard/exceptions', { signal }),
+    queryFn: ({ signal }) => api<DashboardExceptions>('/dashboard/exceptions', { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

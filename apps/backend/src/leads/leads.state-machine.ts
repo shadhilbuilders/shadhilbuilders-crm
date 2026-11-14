@@ -109,11 +109,7 @@ const HANDOFF_TO: LeadState = 'VISITED';
 const REPEAT_FROM: LeadState = 'VISIT_REQUESTED';
 const REPEAT_TO: LeadState = 'VISIT_SCHEDULED';
 
-function canRoleTransition(
-  from: LeadState,
-  to: LeadState,
-  role: Role,
-): boolean {
+function canRoleTransition(from: LeadState, to: LeadState, role: Role): boolean {
   // Self-transition is a no-op; allow it but the service treats it as a
   // write-free call (no audit row).
   if (from === to) return true;
@@ -149,11 +145,7 @@ function canRoleTransition(
   }
 
   if (role === 'SALES_EXEC') {
-    const execLane: readonly LeadState[] = [
-      'VISITED',
-      'NEGOTIATION',
-      'BOOKING_INITIATED',
-    ];
+    const execLane: readonly LeadState[] = ['VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'];
     if (execLane.includes(from)) {
       return TRANSITIONS[from].includes(to);
     }
@@ -209,8 +201,7 @@ export function canTransition(req: TransitionRequest): TransitionResult {
   // Admin/OWNER override: drive any graph edge + re-open any terminal.
   if (role === 'ADMIN' || role === 'OWNER') {
     const edgeInGraph = TRANSITIONS[from].includes(to);
-    const reopeningTerminal =
-      TERMINAL_STATES.includes(from) && !TERMINAL_STATES.includes(to);
+    const reopeningTerminal = TERMINAL_STATES.includes(from) && !TERMINAL_STATES.includes(to);
     if (edgeInGraph || reopeningTerminal) {
       return { ok: true, reason: 'ALLOWED' };
     }
@@ -236,16 +227,21 @@ export function canTransition(req: TransitionRequest): TransitionResult {
  * the UI: the dropdown of allowed next-states for a lead is exactly this
  * set, no round-trip to the server.
  */
-export function allowedNextStates(
-  from: LeadState,
-  role: Role,
-): readonly LeadState[] {
+export function allowedNextStates(from: LeadState, role: Role): readonly LeadState[] {
   if (role === 'ADMIN' || role === 'OWNER') {
     // Admin override on terminal states - re-open allowed.
     return [
       ...TRANSITIONS[from],
       ...(from === 'WON' || from === 'LOST' || from === 'RNR'
-        ? (['NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED', 'NEGOTIATION', 'BOOKING_INITIATED'] as LeadState[])
+        ? ([
+            'NEW',
+            'CONTACTED',
+            'VISIT_REQUESTED',
+            'VISIT_SCHEDULED',
+            'VISITED',
+            'NEGOTIATION',
+            'BOOKING_INITIATED',
+          ] as LeadState[])
         : []),
     ];
   }
@@ -288,11 +284,7 @@ export function canRoleOwnState(state: LeadState, role: Role): boolean {
     );
   }
   if (role === 'SALES_EXEC') {
-    return (
-      state === 'VISITED' ||
-      state === 'NEGOTIATION' ||
-      state === 'BOOKING_INITIATED'
-    );
+    return state === 'VISITED' || state === 'NEGOTIATION' || state === 'BOOKING_INITIATED';
   }
   return false;
 }

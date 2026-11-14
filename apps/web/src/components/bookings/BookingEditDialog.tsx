@@ -46,17 +46,15 @@ const editBookingSchema = z.object({
   negotiatedRate: z
     .string()
     .optional()
-    .refine(
-      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
-      { message: 'Negotiated rate must be a positive number' },
-    ),
+    .refine((v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0), {
+      message: 'Negotiated rate must be a positive number',
+    }),
   tokenAmount: z
     .string()
     .optional()
-    .refine(
-      (v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0),
-      { message: 'Token amount must be a positive number' },
-    ),
+    .refine((v) => v === undefined || v === '' || (Number.isFinite(Number(v)) && Number(v) > 0), {
+      message: 'Token amount must be a positive number',
+    }),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').trim().optional(),
 });
 
@@ -133,9 +131,10 @@ export function BookingEditFormBody({
           label: 'Total amount (₹)',
           required: true,
           inputType: 'number',
-          description: amountDerived === true
-            ? 'Derived from the negotiated rate below - edit the rate to change it.'
-            : 'Booking value in rupees (cap ₹100 Cr). Enter a negotiated rate below to derive it instead.',
+          description:
+            amountDerived === true
+              ? 'Derived from the negotiated rate below - edit the rate to change it.'
+              : 'Booking value in rupees (cap ₹100 Cr). Enter a negotiated rate below to derive it instead.',
           placeholder: 'Enter amount here...',
           ...(amountDerived === true ? { className: 'bg-muted/50 cursor-not-allowed' } : {}),
           inputProps: {
@@ -286,7 +285,7 @@ export function BookingEditDialog({
         title: `Edit booking${target.leadName ? ` for ${target.leadName}` : ''}`,
         description: 'Update the booking amount, token amount, or notes.',
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button

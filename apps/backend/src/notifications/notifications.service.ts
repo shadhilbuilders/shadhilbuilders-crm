@@ -131,8 +131,11 @@ export class NotificationsService {
         // project_unit_ids() is SECURITY DEFINER: an engineer who was just
         // unassigned can no longer read the Unit row (RLS), but must still see
         // the "villa reassigned" notification anchored to it.
-        withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
-          (tx as unknown as PrismaClient).$queryRaw<{ project_unit_ids: string }[]>`
+        withRlsContext(
+          this.client,
+          rlsContextFrom(actor),
+          (tx) =>
+            (tx as unknown as PrismaClient).$queryRaw<{ project_unit_ids: string }[]>`
             SELECT project_unit_ids(${dto.projectId}) AS project_unit_ids
           `,
         ),

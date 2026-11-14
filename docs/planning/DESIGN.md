@@ -13,28 +13,28 @@ behind any decision.
 
 ## 1. Primary user roles
 
-| Role | Count | What they do | What they cannot do |
-|---|---|---|---|
-| **Admin** | 1 | Manages all user accounts (managers, telecallers, sales executives), sees everything across the system, configures WhatsApp + telephony integrations, manages projects and inventory. | Act on leads directly unless also assigned Sales Executive role. Create other Admin accounts (seeded out-of-band by Shadhil leadership). |
-| **Manager** | 1+ | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / initiates bookings. | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot approve bookings (admin/owner only, 2026-09-24). Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
-| **Telecaller** | N | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that - Model C). |
-| **Sales Executive** | N | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / RNR." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing. | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (admin/owner approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C). |
+| Role                | Count | What they do                                                                                                                                                                                                                                                         | What they cannot do                                                                                                                                                                                                                                    |
+| ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Admin**           | 1     | Manages all user accounts (managers, telecallers, sales executives), sees everything across the system, configures WhatsApp + telephony integrations, manages projects and inventory.                                                                                | Act on leads directly unless also assigned Sales Executive role. Create other Admin accounts (seeded out-of-band by Shadhil leadership).                                                                                                               |
+| **Manager**         | 1+    | Owns a team of telecallers + sales executives. Manages `ManagerAssignmentRule` to auto-route leads to the right exec when a visit is logged. Reviews team pipelines, reads chat threads for their team only, books / initiates bookings.                             | Cannot create user accounts. Cannot see other managers' teams. Cannot edit system config or projects. Cannot approve bookings (admin/owner only, 2026-09-24). Cannot manually override lead ownership in v1 (v1.1 adds manual reassignment if needed). |
+| **Telecaller**      | N     | First-touch lead owner from "New" through "Visit Scheduled" AND through the visit confirmation (24h + 2h before). Sends WhatsApp messages, logs calls, schedules site visits, confirms visits with customer. After NO_SHOW, reverts to telecaller for re-engagement. | Cannot reassign leads. Cannot see other telecallers' pipelines. Cannot book units. Cannot see chat threads for leads they don't own. Cannot log a visit as VISITED (only the exec can do that - Model C).                                              |
+| **Sales Executive** | N     | Conducts the site visit and owns the lead from "Visited" through "Won / Lost / RNR." Sends WhatsApp messages, logs calls, logs the visit outcome, handles reschedules, initiates bookings, follows the customer to closing.                                          | Cannot reassign leads. Cannot see other executives' pipelines. Cannot approve their own bookings (admin/owner approves). Cannot see chat threads for leads they don't own. Cannot schedule a visit (only the telecaller does that - Model C).          |
 
 ---
 
 ## 2. Core modules (9 modules)
 
-| # | Module | Purpose | Primary user | Data touched |
-|---|---|---|---|---|
-| 1 | **Lead Inbox** | Sortable/filterable list, assign/reassign, bulk actions, status filters | Telecaller, Manager, Sales Exec | Lead |
-| 2 | **Lead Detail** | Single lead view: contact, timeline, notes, status, next action, embedded chat pane, site visit widget, booking panel | All | Lead, Activity, SiteVisit, Message, Booking |
-| 3 | **Site Visit Scheduler** | Calendar slots for sites, agent availability, confirmations, no-show/reschedule outcomes | Manager, Sales Exec | SiteVisit, Lead, User |
-| 4 | **Inventory / Unit availability** | Villa grid (project/phase/BHK/facing/price/status) with **search by villa number**, listed on-hold first, then available, then token/sold - ranking and search both applied by the server so they hold across pages | Manager, Sales Exec, Admin | Unit, Project, Booking |
-| 5 | **In-app Chat** | Per-lead chat pane. All customer messages flow through here. Manager reads threads live. SSE realtime updates. | All | Message, Lead |
-| 6 | **Booking Pipeline (thin slice)** | Unit hold → token receipt capture → admin/owner approval. NOT agreement generation (deferred to v1.1). | Manager, Sales Exec | Booking, Lead, Unit |
-| 7 | **Reminders** | Automated reminders: pre-visit staff, pre-visit customer, reschedule follow-up, no-show. In-app banner + push + email fallback. | All | Reminder, SiteVisit, Lead |
-| 8 | **Audit Log** | Every login, every lead view, every state transition, every message, every call, every consent change. 7-year retention. Writes in v1, full UI in v1.1. | (system writes; Admin reads) | AuditLog |
-| 9 | **Notification Center** | In-app inbox for all events from all 12 triggers. Bell icon + unread badge. Real-time SSE updates. 90-day visibility, 7-year retention. | All | Notification |
+| #   | Module                            | Purpose                                                                                                                                                                                                             | Primary user                    | Data touched                                |
+| --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------- |
+| 1   | **Lead Inbox**                    | Sortable/filterable list, assign/reassign, bulk actions, status filters                                                                                                                                             | Telecaller, Manager, Sales Exec | Lead                                        |
+| 2   | **Lead Detail**                   | Single lead view: contact, timeline, notes, status, next action, embedded chat pane, site visit widget, booking panel                                                                                               | All                             | Lead, Activity, SiteVisit, Message, Booking |
+| 3   | **Site Visit Scheduler**          | Calendar slots for sites, agent availability, confirmations, no-show/reschedule outcomes                                                                                                                            | Manager, Sales Exec             | SiteVisit, Lead, User                       |
+| 4   | **Inventory / Unit availability** | Villa grid (project/phase/BHK/facing/price/status) with **search by villa number**, listed on-hold first, then available, then token/sold - ranking and search both applied by the server so they hold across pages | Manager, Sales Exec, Admin      | Unit, Project, Booking                      |
+| 5   | **In-app Chat**                   | Per-lead chat pane. All customer messages flow through here. Manager reads threads live. SSE realtime updates.                                                                                                      | All                             | Message, Lead                               |
+| 6   | **Booking Pipeline (thin slice)** | Unit hold → token receipt capture → admin/owner approval. NOT agreement generation (deferred to v1.1).                                                                                                              | Manager, Sales Exec             | Booking, Lead, Unit                         |
+| 7   | **Reminders**                     | Automated reminders: pre-visit staff, pre-visit customer, reschedule follow-up, no-show. In-app banner + push + email fallback.                                                                                     | All                             | Reminder, SiteVisit, Lead                   |
+| 8   | **Audit Log**                     | Every login, every lead view, every state transition, every message, every call, every consent change. 7-year retention. Writes in v1, full UI in v1.1.                                                             | (system writes; Admin reads)    | AuditLog                                    |
+| 9   | **Notification Center**           | In-app inbox for all events from all 12 triggers. Bell icon + unread badge. Real-time SSE updates. 90-day visibility, 7-year retention.                                                                             | All                             | Notification                                |
 
 **Cross-cutting infrastructure (not a module):** Push notifications (Expo Push + Web Push), the in-app SSE channels, the backup/restore pipeline, the monitoring stack.
 
@@ -88,20 +88,20 @@ SALES EXEC OWNS:                          NO_SHOW → telecaller owns
 
 **State semantics:**
 
-| State | Owner | Meaning |
-|---|---|---|
-| `NEW` | Telecaller | Lead created (from landing site webhook, walk-in, or manual). Not yet contacted. |
-| `CONTACTED` | Telecaller | First outbound message sent (WhatsApp or call logged). |
-| `VISIT_REQUESTED` | Telecaller | Telecaller has asked "would you like to visit?" Customer replied yes. Telecaller now schedules the visit. |
-| `VISIT_SCHEDULED` | **Shared (Telecaller + Exec)** | Site visit booked on the calendar. **Telecaller** continues to confirm with customer (24h, 2h reminders fire to the telecaller, not the exec). **Sales Exec** sees the lead in their queue, knows the visit is on their calendar, prepares for it. The exec is the one who actually conducts the visit on the day. |
-| `VISITED` | Sales Exec | Customer showed up, outcome logged by exec. Lead officially hands off to exec. |
-| `RESCHEDULED` | Sales Exec | Customer asked to reschedule during the visit (e.g., "let me think, can I come back next week?"). Old `SiteVisit` marked RESCHEDULED, new one created with `rescheduledFromId` set. Lead stays with exec. |
-| `NO_SHOW` | Telecaller (reverts) | Customer didn't show up. Lead hands BACK to the telecaller for re-engagement and rescheduling. The exec didn't waste time on a no-show. Auto WhatsApp + push to customer + push to telecaller + notification to manager. |
-| `RNR` | (review) | 2+ consecutive no-shows. Manager notified. Manager decides: re-engage (back to VISIT_SCHEDULED with telecaller) or `LOST`. (`RNR` = renamed from `COLD` 2026-09-24; meaning unchanged - NOT the call-centre "Ring No Response" concept.) |
-| `NEGOTIATION` | Sales Exec | Price or terms being discussed. |
-| `BOOKING_INITIATED` | Sales Exec | Token payment received. |
-| `WON` | (closed) | Agreement signed, booking finalized. |
-| `LOST` | (closed) | Customer dropped out, competitor won, or otherwise dead. Required: `lostReason`. |
+| State               | Owner                          | Meaning                                                                                                                                                                                                                                                                                                            |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEW`               | Telecaller                     | Lead created (from landing site webhook, walk-in, or manual). Not yet contacted.                                                                                                                                                                                                                                   |
+| `CONTACTED`         | Telecaller                     | First outbound message sent (WhatsApp or call logged).                                                                                                                                                                                                                                                             |
+| `VISIT_REQUESTED`   | Telecaller                     | Telecaller has asked "would you like to visit?" Customer replied yes. Telecaller now schedules the visit.                                                                                                                                                                                                          |
+| `VISIT_SCHEDULED`   | **Shared (Telecaller + Exec)** | Site visit booked on the calendar. **Telecaller** continues to confirm with customer (24h, 2h reminders fire to the telecaller, not the exec). **Sales Exec** sees the lead in their queue, knows the visit is on their calendar, prepares for it. The exec is the one who actually conducts the visit on the day. |
+| `VISITED`           | Sales Exec                     | Customer showed up, outcome logged by exec. Lead officially hands off to exec.                                                                                                                                                                                                                                     |
+| `RESCHEDULED`       | Sales Exec                     | Customer asked to reschedule during the visit (e.g., "let me think, can I come back next week?"). Old `SiteVisit` marked RESCHEDULED, new one created with `rescheduledFromId` set. Lead stays with exec.                                                                                                          |
+| `NO_SHOW`           | Telecaller (reverts)           | Customer didn't show up. Lead hands BACK to the telecaller for re-engagement and rescheduling. The exec didn't waste time on a no-show. Auto WhatsApp + push to customer + push to telecaller + notification to manager.                                                                                           |
+| `RNR`               | (review)                       | 2+ consecutive no-shows. Manager notified. Manager decides: re-engage (back to VISIT_SCHEDULED with telecaller) or `LOST`. (`RNR` = renamed from `COLD` 2026-09-24; meaning unchanged - NOT the call-centre "Ring No Response" concept.)                                                                           |
+| `NEGOTIATION`       | Sales Exec                     | Price or terms being discussed.                                                                                                                                                                                                                                                                                    |
+| `BOOKING_INITIATED` | Sales Exec                     | Token payment received.                                                                                                                                                                                                                                                                                            |
+| `WON`               | (closed)                       | Agreement signed, booking finalized.                                                                                                                                                                                                                                                                               |
+| `LOST`              | (closed)                       | Customer dropped out, competitor won, or otherwise dead. Required: `lostReason`.                                                                                                                                                                                                                                   |
 
 **Assignment semantics (`Lead.currentOwnerId`):**
 
@@ -124,6 +124,7 @@ SALES EXEC OWNS:                          NO_SHOW → telecaller owns
 ```
 
 Or, with a no-show:
+
 ```
 2026-09-15 10:00:00  →  Telecaller A  (created)
 2026-09-15 14:00:00  →  Telecaller A  (VISIT_REQUESTED, no change)
@@ -148,29 +149,29 @@ Or, with a no-show:
 
 ## 4. Permission matrix (RBAC) - Model C handoff
 
-| Operation | Super Admin | Admin | Manager | Telecaller | Sales Exec |
-|---|---|---|---|---|---|
-| Create user accounts | ✅ (any below) | ✅ (below admin) | ✅ (telecaller + exec, own team) | ❌ | ❌ |
-| Change user roles | ✅ (anyone, any role) | ✅ (below admin) | ✅ (telecaller + exec, own team) | ❌ | ❌ |
-| Create lead / enquiry | ✅ (any team) | ✅ (any team) | ✅ (own team) | ✅ (becomes owner) | ✅ (becomes owner) |
-| View any lead | ✅ | ✅ | their team only | own OR shared (VISIT_SCHEDULED) | own OR shared (VISIT_SCHEDULED) |
-| Assign telecaller to lead | ✅ | ✅ | ✅ (in team) | ❌ | ❌ |
-| Schedule site visit | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ (exec conducts, doesn't schedule) |
-| Confirm visit with customer (24h, 2h before) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
-| Log visit outcome (VISITED / NO_SHOW) | ✅ (any lead) | ✅ (any lead) | ✅ (in team - all outcomes) | ✅ (only NO_SHOW - marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
-| Re-engage after no-show | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ❌ |
-| Log activity (call, note, WhatsApp) | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
-| Initiate booking | ✅ | ✅ (any lead, post-visit) | ✅ (in team, post-visit) | ❌ | ✅ (post-visit only) |
-| Approve booking | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Send WhatsApp message to customer | ✅ (any lead) | ✅ (any lead) | ✅ (in team) | ✅ (own leads) | ✅ (own leads) |
-| Read chat on a lead | ✅ | ✅ | ✅ (in team) | ✅ (own leads + shared) | ✅ (own leads + shared) |
-| Use the WhatsApp Chats inbox (T-WA-INBOX) | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Reply to an unknown number (contact thread) | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Convert an unknown number to a lead (from the inbox) | ✅ | ✅ | ✅ | ❌ | ❌ |
-| View reports (own KPIs) | ✅ (org KPIs) | ✅ (org KPIs) | ✅ (team KPIs) | ✅ (own KPIs) | ✅ (own KPIs) |
-| Edit projects / units / inventory | ✅ | ✅ | ❌ | ❌ | ❌ |
-| View audit log | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Configure integrations (WhatsApp, FreJun, Expo Push) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Operation                                            | Super Admin           | Admin                     | Manager                          | Telecaller                           | Sales Exec                           |
+| ---------------------------------------------------- | --------------------- | ------------------------- | -------------------------------- | ------------------------------------ | ------------------------------------ |
+| Create user accounts                                 | ✅ (any below)        | ✅ (below admin)          | ✅ (telecaller + exec, own team) | ❌                                   | ❌                                   |
+| Change user roles                                    | ✅ (anyone, any role) | ✅ (below admin)          | ✅ (telecaller + exec, own team) | ❌                                   | ❌                                   |
+| Create lead / enquiry                                | ✅ (any team)         | ✅ (any team)             | ✅ (own team)                    | ✅ (becomes owner)                   | ✅ (becomes owner)                   |
+| View any lead                                        | ✅                    | ✅                        | their team only                  | own OR shared (VISIT_SCHEDULED)      | own OR shared (VISIT_SCHEDULED)      |
+| Assign telecaller to lead                            | ✅                    | ✅                        | ✅ (in team)                     | ❌                                   | ❌                                   |
+| Schedule site visit                                  | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team)                     | ✅ (own leads)                       | ❌ (exec conducts, doesn't schedule) |
+| Confirm visit with customer (24h, 2h before)         | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team)                     | ✅ (own leads)                       | ❌                                   |
+| Log visit outcome (VISITED / NO_SHOW)                | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team - all outcomes)      | ✅ (only NO_SHOW - marks as no-show) | ✅ (VISITED, RESCHEDULED, CANCELLED) |
+| Re-engage after no-show                              | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team)                     | ✅ (own leads)                       | ❌                                   |
+| Log activity (call, note, WhatsApp)                  | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team)                     | ✅ (own leads)                       | ✅ (own leads)                       |
+| Initiate booking                                     | ✅                    | ✅ (any lead, post-visit) | ✅ (in team, post-visit)         | ❌                                   | ✅ (post-visit only)                 |
+| Approve booking                                      | ✅                    | ✅                        | ❌                               | ❌                                   | ❌                                   |
+| Send WhatsApp message to customer                    | ✅ (any lead)         | ✅ (any lead)             | ✅ (in team)                     | ✅ (own leads)                       | ✅ (own leads)                       |
+| Read chat on a lead                                  | ✅                    | ✅                        | ✅ (in team)                     | ✅ (own leads + shared)              | ✅ (own leads + shared)              |
+| Use the WhatsApp Chats inbox (T-WA-INBOX)            | ✅                    | ✅                        | ✅                               | ❌                                   | ❌                                   |
+| Reply to an unknown number (contact thread)          | ✅                    | ✅                        | ✅                               | ❌                                   | ❌                                   |
+| Convert an unknown number to a lead (from the inbox) | ✅                    | ✅                        | ✅                               | ❌                                   | ❌                                   |
+| View reports (own KPIs)                              | ✅ (org KPIs)         | ✅ (org KPIs)             | ✅ (team KPIs)                   | ✅ (own KPIs)                        | ✅ (own KPIs)                        |
+| Edit projects / units / inventory                    | ✅                    | ✅                        | ❌                               | ❌                                   | ❌                                   |
+| View audit log                                       | ✅                    | ✅                        | ❌                               | ❌                                   | ❌                                   |
+| Configure integrations (WhatsApp, FreJun, Expo Push) | ✅                    | ✅                        | ❌                               | ❌                                   | ❌                                   |
 
 **What the model C RBAC matrix means in practice:**
 
@@ -190,13 +191,13 @@ Or, with a no-show:
 - **Authority inheritance (client-confirmed 2026-08-31):**
   Admin can do anything a Manager can; a Manager can do
   anything a Telecaller or Sales Exec can. Scope follows the
-  actor, not the role: the manager inherits staff *actions*
+  actor, not the role: the manager inherits staff _actions_
   only within their own team's leads; the admin inherits them
   across all leads. Role-specific gates that do not flow up:
   the exec-only scheduling block (exec conducts, never
   schedules) and the telecaller-only NO_SHOW logging - those
   stay ❌ for admin/manager because they are role
-  *responsibility* boundaries in Model C, not capability
+  _responsibility_ boundaries in Model C, not capability
   limits.
 - Creation flows: telecaller/exec-created leads start with
   the creator as `ownerId` (ownerType from their role);
@@ -236,6 +237,7 @@ Or, with a no-show:
 
 **ABAC layer (fine-grained, per-resource):** Enforced at
 Postgres RLS. Attributes checked at query time:
+
 - `user_id` - the actor's ID
 - `role` - the actor's role
 - `team_id` - which manager's team the actor belongs to
@@ -340,12 +342,14 @@ action, not a rebuild.
 ### Prisma schema (full)
 
 **Auth tables (better-auth required):**
+
 - `User` - `id, email, name, emailVerified, image, createdAt, updatedAt, phone, role, teamId, pushSettings`
 - `Session` - `id, expiresAt, token, createdAt, ipAddress, userAgent, userId`
 - `Account` - `id, accountId, providerId, userId, accessToken, refreshToken, idToken, accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt`
 - `Verification` - `id, identifier, value, expiresAt, createdAt, updatedAt`
 
 **Business tables (12):**
+
 - `Team` - `id, name, managerId, createdAt`
 - `Project` - `id, slug, name, location, createdAt`
 - `Unit` - `id, projectId, unitNumber, phase, bhk, facing, sqft, basePrice, status, createdAt`
@@ -359,11 +363,13 @@ action, not a rebuild.
 - `ManagerAssignmentRule` - `id, managerId, projectId, territory, priority, active, createdAt`
 
 **Notifications + reminders (3):**
+
 - `Reminder` - `id, type, status, siteVisitId, leadId, recipientUserId, recipientPhone, scheduledFor, firedAt, acknowledgedAt, channel, payload, attempts, lastError, createdAt, updatedAt`
 - `PushSubscription` - `id, userId, expoPushToken, platform, deviceName, appVersion, isActive, lastSeenAt, createdAt, updatedAt`
 - `PushNotification` - `id, triggerType, triggerRefId, userId, subscriptionId, notificationId, title, body, data, status, sentAt, deliveredAt, clickedAt, failedAt, errorMessage, suppressedByQuietHours, rescheduledFor, expoPushId, createdAt, updatedAt`
 
 **Notification inbox (1):**
+
 - `Notification` - `id, userId, type, category, title, body, icon, deepLink, refType, refId, readAt, dismissedAt, archivedAt, createdAt, updatedAt`
 
 **Total: 19 Prisma models.**
@@ -416,7 +422,8 @@ action, not a rebuild.
 - Numbers: TBD (provision fresh India DID, e.g., +91 90250 12344).
 - **Send:** Templated messages via existing Meta setup. Both
   sides of the conversation go through the CRM number.
-- **Receive:** Webhook to `https://api.crm.shadhilbuilders.in/webhooks/whatsapp`.
+- **Receive:** Webhook to `https://api.crm.shadhilbuilders.in/api/webhooks/whatsapp`
+  (the `/api` prefix is global — `main.ts` calls `setGlobalPrefix('api')`).
   Inbound message → log as `Message` row → push via SSE + push notification + inbox.
 - **Templates needed:**
   - `customer_enquiry_confirmation` (existing)
@@ -441,7 +448,7 @@ action, not a rebuild.
   real but not needed at Shadhil's current scale.
 - **Features:** virtual India number, click-to-call, auto-
   recording, AI call transcription, real-time webhooks.
-- **Webhook URL:** `https://api.crm.shadhilbuilders.in/webhooks/frejun`
+- **Webhook URL:** `https://api.crm.shadhilbuilders.in/api/webhooks/frejun`
 - **Events:** `call.initiated`, `call.answered`, `call.ended`,
   `recording.ready`, `transcription.ready`
 
@@ -618,6 +625,7 @@ shadhil-crm/
 ### better-auth in SAME Next.js app as the web UI
 
 **Not a separate auth app.** Why:
+
 - Next.js server components need `auth.api.getSession({ headers })`
   in the same process. A separate auth app = 50-100ms HTTP call
   per SSR page.
@@ -630,7 +638,7 @@ shadhil-crm/
 ### CORS (the half-day of work BEFORE any feature code)
 
 - better-auth config has `trustedOrigins: [...]` listing web
-  + dev URLs.
+  - dev URLs.
 - NestJS CORS middleware has the same allowlist.
 - Mobile: native, no CORS in production.
 - Expo in dev: CORS allowlist includes `http://localhost:8081`
@@ -647,11 +655,11 @@ and a per-user reminder stream. The client uses native
 
 ### Channels
 
-| Channel | Subscribe URL | Who subscribes | What flows |
-|---|---|---|---|
-| Chat (per lead) | `GET /leads/:id/stream` | Users with access to that lead | New messages for that lead |
-| Notifications (per user) | `GET /notifications/stream` | The user | New notifications, mark-read, mark-all-read |
-| Reminders (per user) | `GET /reminders/stream` | The user | Due reminders (for the in-app banner fallback) |
+| Channel                  | Subscribe URL               | Who subscribes                 | What flows                                     |
+| ------------------------ | --------------------------- | ------------------------------ | ---------------------------------------------- |
+| Chat (per lead)          | `GET /leads/:id/stream`     | Users with access to that lead | New messages for that lead                     |
+| Notifications (per user) | `GET /notifications/stream` | The user                       | New notifications, mark-read, mark-all-read    |
+| Reminders (per user)     | `GET /reminders/stream`     | The user                       | Due reminders (for the in-app banner fallback) |
 
 ### Redis pub/sub channels (backend)
 
@@ -682,20 +690,20 @@ One API, one payload format, one push token storage.
 
 ### 12 staff triggers
 
-| # | Trigger | Recipients | Title | Body |
-|---|---|---|---|---|
-| 1 | New lead assigned | The assigned telecaller | "New lead: {{name}}" | "{{phone}} · {{source}}" |
-| 2 | Lead handed off (manager) | The manager | "Handoff: {{lead.name}}" | "Telecaller {{user.name}} handed off a lead" |
-| 3 | Lead handed off (team) | All managers in the team | "Team handoff" | "{{user.name}} handed off a lead to your team" |
-| 4 | Lead assigned (exec) | The assigned exec | "New lead for you" | "Manager {{user.name}} assigned a lead" |
-| 5 | Pre-visit staff (T-2h) | Sales exec | "Site visit soon" | "{{lead.name}} in 2 hours at {{time}}" |
-| 6 | No-show staff (T+2h) | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} - no outcome logged" |
-| 7 | Customer replied to chat (when staff away) | Lead's current owner | "{{lead.name}} replied" | "{{message preview}}" |
-| 8 | Booking awaiting approval | Manager | "Booking: {{lead.name}}" | "{{unit.number}} · ₹{{token.amount}}" |
-| 9 | Booking approved/rejected | Sales exec | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}" |
-| 10 | Customer rescheduled | Sales exec | "Reschedule: {{lead.name}}" | "New time: {{newTime}}" |
-| 11 | Mentioned in note/chat | The mentioned user | "{{user.name}} mentioned you" | "{{context}}" |
-| 12 | Daily summary 8 AM (opt-in, default off) | Manager + admin | "Yesterday's summary" | "{{n}} new leads, {{m}} visits, {{k}} bookings" |
+| #   | Trigger                                    | Recipients               | Title                                         | Body                                            |
+| --- | ------------------------------------------ | ------------------------ | --------------------------------------------- | ----------------------------------------------- |
+| 1   | New lead assigned                          | The assigned telecaller  | "New lead: {{name}}"                          | "{{phone}} · {{source}}"                        |
+| 2   | Lead handed off (manager)                  | The manager              | "Handoff: {{lead.name}}"                      | "Telecaller {{user.name}} handed off a lead"    |
+| 3   | Lead handed off (team)                     | All managers in the team | "Team handoff"                                | "{{user.name}} handed off a lead to your team"  |
+| 4   | Lead assigned (exec)                       | The assigned exec        | "New lead for you"                            | "Manager {{user.name}} assigned a lead"         |
+| 5   | Pre-visit staff (T-2h)                     | Sales exec               | "Site visit soon"                             | "{{lead.name}} in 2 hours at {{time}}"          |
+| 6   | No-show staff (T+2h)                       | Sales exec + manager     | "No-show: {{lead.name}}"                      | "Visit at {{time}} - no outcome logged"         |
+| 7   | Customer replied to chat (when staff away) | Lead's current owner     | "{{lead.name}} replied"                       | "{{message preview}}"                           |
+| 8   | Booking awaiting approval                  | Manager                  | "Booking: {{lead.name}}"                      | "{{unit.number}} · ₹{{token.amount}}"           |
+| 9   | Booking approved/rejected                  | Sales exec               | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}"                  |
+| 10  | Customer rescheduled                       | Sales exec               | "Reschedule: {{lead.name}}"                   | "New time: {{newTime}}"                         |
+| 11  | Mentioned in note/chat                     | The mentioned user       | "{{user.name}} mentioned you"                 | "{{context}}"                                   |
+| 12  | Daily summary 8 AM (opt-in, default off)   | Manager + admin          | "Yesterday's summary"                         | "{{n}} new leads, {{m}} visits, {{k}} bookings" |
 
 Triggers 1-10 ship in v1. Triggers 11-12 deferred to v1.1 / opt-in.
 
@@ -770,12 +778,12 @@ channel. SSE subscribers receive it. Badge updates live.
 
 ## 12. Reminders module (4 reminder types)
 
-| Type | When | Who | Channel | Template |
-|---|---|---|---|---|
-| Pre-visit staff | T-2h before visit | Sales exec | Push + in-app + email fallback | (no template, push content) |
-| Pre-visit customer | T-24h + T-2h | Customer | WhatsApp | `visit_reminder_24h`, `visit_reminder_2h` |
-| Reschedule follow-up | T+1h after reschedule | Sales exec | Push + in-app | (no template, push content) |
-| No-show staff | T+2h after visit, no outcome | Sales exec + manager | Push + in-app | WhatsApp to customer: `missed_visit_followup` |
+| Type                 | When                         | Who                  | Channel                        | Template                                      |
+| -------------------- | ---------------------------- | -------------------- | ------------------------------ | --------------------------------------------- |
+| Pre-visit staff      | T-2h before visit            | Sales exec           | Push + in-app + email fallback | (no template, push content)                   |
+| Pre-visit customer   | T-24h + T-2h                 | Customer             | WhatsApp                       | `visit_reminder_24h`, `visit_reminder_2h`     |
+| Reschedule follow-up | T+1h after reschedule        | Sales exec           | Push + in-app                  | (no template, push content)                   |
+| No-show staff        | T+2h after visit, no outcome | Sales exec + manager | Push + in-app                  | WhatsApp to customer: `missed_visit_followup` |
 
 ### Reminder processor (NestJS cron)
 
@@ -859,18 +867,18 @@ When a customer reschedules (Type 3 + supporting reminders):
 
 ### Failure modes and prevention
 
-| Failure mode | Prevention |
-|---|---|
-| VPS down | Hostinger SLA 99.9%, Coolify auto-restart, health check 30s |
-| Postgres crash | Daily `pg_dump` to R2, WAL archiving, 7-day PITR, weekly restore test |
-| Redis crash | AOF persistence, maxmemory `noeviction`, auto-restart |
-| App crash | Coolify restart policy (3 retries), health check at `/health` |
-| Webhook delivery fail | Exponential backoff retry, dead-letter queue in Redis |
-| Disk full | Log rotation, log shipping to R2, recording archive, alert at 70% |
-| Meta API rate limit | Token-bucket rate limiter, queue sends, retry on 429 |
-| Backup failure | Backup logs to Telegram, weekly restore test alerts |
-| Cert expiry | Coolify auto-renews, UptimeRobot expiry monitor |
-| Deploy breaks prod | Coolify blue/green, health check before traffic, auto-rollback |
+| Failure mode          | Prevention                                                            |
+| --------------------- | --------------------------------------------------------------------- |
+| VPS down              | Hostinger SLA 99.9%, Coolify auto-restart, health check 30s           |
+| Postgres crash        | Daily `pg_dump` to R2, WAL archiving, 7-day PITR, weekly restore test |
+| Redis crash           | AOF persistence, maxmemory `noeviction`, auto-restart                 |
+| App crash             | Coolify restart policy (3 retries), health check at `/health`         |
+| Webhook delivery fail | Exponential backoff retry, dead-letter queue in Redis                 |
+| Disk full             | Log rotation, log shipping to R2, recording archive, alert at 70%     |
+| Meta API rate limit   | Token-bucket rate limiter, queue sends, retry on 429                  |
+| Backup failure        | Backup logs to Telegram, weekly restore test alerts                   |
+| Cert expiry           | Coolify auto-renews, UptimeRobot expiry monitor                       |
+| Deploy breaks prod    | Coolify blue/green, health check before traffic, auto-rollback        |
 
 ### Backup plan
 
@@ -926,33 +934,34 @@ fix, escalation.
 
 ## 16. Timeline (13-week plan to v1)
 
-| Week | Focus | Deliverable |
-|---|---|---|
-| 1 | VPS + Coolify + DNS + SSL. NestJS scaffold. Next.js scaffold. Monorepo setup. `packages/database` skeleton. **Submit 4 new WhatsApp templates to Meta for approval.** | Skeleton monorepo runs locally + on VPS |
-| 2 | Postgres schema (Prisma), first migration, all 19 models. RLS policies written. NestJS REST controllers for `User`, `Team`, `Project`. better-auth integrated. | Schema live, RLS proven |
-| 3 | better-auth login/logout working on web and mobile. JWT issuance + verification proven end-to-end. RLS test suite. | Auth works on both surfaces |
-| 4 | Lead CRUD via REST, Lead Inbox page on web. TanStack Query hooks. Lead state machine + RLS enforcement. Site Visit basic CRUD. | Lead Inbox functional |
-| 5 | Chat pane + SSE (NestJS endpoint, Redis pub/sub, client hook). WhatsApp webhook handler. Lead Detail page with embedded chat. | Chat works, WA inbound flows |
-| 6 | Site Visit scheduler UI, no-show/reschedule outcomes. FreJun webhook handler. **Model C handoff flow** (exec conducts visit, ownership auto-transitions on outcome). Notification triggers 1-4 + 8-10 wired. | Site visits + handoffs work |
-| 7 | Reminders module: schema, cron, 4 types. Notification Center UI on web. Inventory grid, booking slice, audit log writer. | Reminders + Inbox work on web |
-| 8 | Notification Center UI on mobile. Push notification setup (Expo Push + VAPID). All 12 triggers wired. Manager handoff flow E2E. | Push + Inbox work on mobile |
-| 9 | 4 KPI widgets on manager dashboard. RERA + DPDP compliance workflows. Consent capture + right-to-erasure. | Compliance + dashboard work |
-| 10 | Expo mobile app: login + Lead Inbox + Lead Detail. App Store + Play Store submission. | Mobile app submitted |
-| 11 | Real WhatsApp + FreJun testing (requires Meta production approval, pending since Aug 27). Bug fixes. | Real integrations working |
-| 12 | Deployment to Hostinger via Coolify. Smoke test in production. Monitoring + alerting live. RUNBOOK.md written. | First production deployment |
-| 13 | Bug fixes from production usage. Performance tuning. PWA install flow on iOS Safari. Final QA pass. | v1 done, ready for handoff |
+| Week | Focus                                                                                                                                                                                                        | Deliverable                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| 1    | VPS + Coolify + DNS + SSL. NestJS scaffold. Next.js scaffold. Monorepo setup. `packages/database` skeleton. **Submit 4 new WhatsApp templates to Meta for approval.**                                        | Skeleton monorepo runs locally + on VPS |
+| 2    | Postgres schema (Prisma), first migration, all 19 models. RLS policies written. NestJS REST controllers for `User`, `Team`, `Project`. better-auth integrated.                                               | Schema live, RLS proven                 |
+| 3    | better-auth login/logout working on web and mobile. JWT issuance + verification proven end-to-end. RLS test suite.                                                                                           | Auth works on both surfaces             |
+| 4    | Lead CRUD via REST, Lead Inbox page on web. TanStack Query hooks. Lead state machine + RLS enforcement. Site Visit basic CRUD.                                                                               | Lead Inbox functional                   |
+| 5    | Chat pane + SSE (NestJS endpoint, Redis pub/sub, client hook). WhatsApp webhook handler. Lead Detail page with embedded chat.                                                                                | Chat works, WA inbound flows            |
+| 6    | Site Visit scheduler UI, no-show/reschedule outcomes. FreJun webhook handler. **Model C handoff flow** (exec conducts visit, ownership auto-transitions on outcome). Notification triggers 1-4 + 8-10 wired. | Site visits + handoffs work             |
+| 7    | Reminders module: schema, cron, 4 types. Notification Center UI on web. Inventory grid, booking slice, audit log writer.                                                                                     | Reminders + Inbox work on web           |
+| 8    | Notification Center UI on mobile. Push notification setup (Expo Push + VAPID). All 12 triggers wired. Manager handoff flow E2E.                                                                              | Push + Inbox work on mobile             |
+| 9    | 4 KPI widgets on manager dashboard. RERA + DPDP compliance workflows. Consent capture + right-to-erasure.                                                                                                    | Compliance + dashboard work             |
+| 10   | Expo mobile app: login + Lead Inbox + Lead Detail. App Store + Play Store submission.                                                                                                                        | Mobile app submitted                    |
+| 11   | Real WhatsApp + FreJun testing (requires Meta production approval, pending since Aug 27). Bug fixes.                                                                                                         | Real integrations working               |
+| 12   | Deployment to Hostinger via Coolify. Smoke test in production. Monitoring + alerting live. RUNBOOK.md written.                                                                                               | First production deployment             |
+| 13   | Bug fixes from production usage. Performance tuning. PWA install flow on iOS Safari. Final QA pass.                                                                                                          | v1 done, ready for handoff              |
 
 **Total: 13 weeks to v1.** This is honest. The original 8-week
 estimate was for the "fast" path; the "reusable infra + reliable
-+ compliant" path takes 13. v1.1 starts immediately after.
+
+- compliant" path takes 13. v1.1 starts immediately after.
 
 ---
 
 ## 17. NOT in scope (deferred, with reason)
 
 - **Document Vault full version** - sales team uses Google Drive
-  + link in lead notes for v1. Vault adds no measurable value
-  until agreement template flow is defined (Q2 deferred to v1.1).
+  - link in lead notes for v1. Vault adds no measurable value
+    until agreement template flow is defined (Q2 deferred to v1.1).
 - **Reports beyond 4 KPI widgets** - instrument first, report later.
 - **Native mobile app beyond PWA + Expo** - Expo in v1 covers
   App Store / Play Store. iOS-specific polish deferred to v1.1.
@@ -974,7 +983,7 @@ estimate was for the "fast" path; the "reusable infra + reliable
 - `~/workspace/shadhil-projects/landing-page/` - Next.js 16 +
   Tailwind v4 marketing site at shadhilbuilders.in
 - Brand tokens (`--color-brand-primary #001a4c`, `--color-brand-
-  secondary #62b132`, `--color-surface #f8f5ef`) → `packages/ui-tokens`
+secondary #62b132`, `--color-surface #f8f5ef`) → `packages/ui-tokens`
 - WhatsApp Cloud API integration in `lib/whatsapp.ts` with two
   approved templates (`customer_enquiry_confirmation`,
   `internal_enquiry_notification`)
@@ -1041,36 +1050,36 @@ estimate was for the "fast" path; the "reusable infra + reliable
 
 ## 20. Decision log (locked decisions, with sources)
 
-| # | Decision | Source |
-|---|---|---|
-| 1 | Architecture: NestJS + REST on Hostinger VPS via Coolify | v3 |
-| 2 | Auth: better-auth in SAME Next.js app (BFF) | v3 (Q0 not relevant, but same-app pattern locked) |
-| 3 | API style: REST + TanStack Query (not GraphQL) | v5 |
-| 4 | Realtime: SSE from NestJS (chat + notifications + reminders) | v5, v11 |
-| 5 | ORM: Prisma in `packages/database/`, multi-app shared client | v4, v8 |
-| 6 | Database: Postgres 16 in Docker via PgBouncer (session pooling v1) | v3, v8 |
-| 7 | Telephony: FreJun (not Amazon Connect) | v6, v7 |
-| 8 | Hosting: Hostinger VPS 8GB plan via Coolify | v3 |
-| 9 | Mobile: PWA (web) in v1 + Expo in v1.1 (both ship) | Q5 |
-| 10 | Role naming: Manager (not Director) | v2 |
-| 11 | Lifecycle: two-stage ownership with VISIT-outcome handoff, shared visibility during VISIT_SCHEDULED (Model C) | v3.1, Q15 |
-| 12 | Reminders: 4 types in v1 (pre-visit staff/customer, reschedule follow-up, no-show) | v9 |
-| 13 | Push: Expo Push as universal service, 12 triggers | v10 |
-| 14 | Notification Center: in-app inbox, 90-day visibility, 7-year retention | v11 |
-| 15 | RBAC + ABAC: both from day 1, RLS-enforced | v2 |
-| 16 | Subdomain: split (crm + api.crm) | v4 |
-| 17 | WhatsApp: NEW separate number for CRM (not landing site) | Q0 |
-| 18 | Audit retention: 7 years (RERA upper bound) | Q12 |
-| 19 | Manager scope: per-team ONLY; admin is global | Q13 |
-| 20 | Sites: Mudichur only in v1 UI, multi-site data model | Q14 |
-| 21 | Handoff: at VISIT outcome (not verbal yes); telecaller owns through the visit; reverts on NO_SHOW (Model C) | v3.1 |
-| 22 | Call recording + AI transcription: ON by default, 7-year R2 archive | Q11 |
-| 23 | Document Vault: vNext (Google Drive link in v1) | Q2 |
-| 24 | Tamil UI: vNext (defer to v1.2) | v1 |
-| 25 | E-sign: v1.1 | Q2 |
-| 26 | Per-trigger notification settings: v1.1 | v11 |
-| 27 | Daily summary push: opt-in, default off | v10 |
-| 28 | Customer-side pre-visit reminders: IN v1 | v9 |
+| #   | Decision                                                                                                      | Source                                            |
+| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1   | Architecture: NestJS + REST on Hostinger VPS via Coolify                                                      | v3                                                |
+| 2   | Auth: better-auth in SAME Next.js app (BFF)                                                                   | v3 (Q0 not relevant, but same-app pattern locked) |
+| 3   | API style: REST + TanStack Query (not GraphQL)                                                                | v5                                                |
+| 4   | Realtime: SSE from NestJS (chat + notifications + reminders)                                                  | v5, v11                                           |
+| 5   | ORM: Prisma in `packages/database/`, multi-app shared client                                                  | v4, v8                                            |
+| 6   | Database: Postgres 16 in Docker via PgBouncer (session pooling v1)                                            | v3, v8                                            |
+| 7   | Telephony: FreJun (not Amazon Connect)                                                                        | v6, v7                                            |
+| 8   | Hosting: Hostinger VPS 8GB plan via Coolify                                                                   | v3                                                |
+| 9   | Mobile: PWA (web) in v1 + Expo in v1.1 (both ship)                                                            | Q5                                                |
+| 10  | Role naming: Manager (not Director)                                                                           | v2                                                |
+| 11  | Lifecycle: two-stage ownership with VISIT-outcome handoff, shared visibility during VISIT_SCHEDULED (Model C) | v3.1, Q15                                         |
+| 12  | Reminders: 4 types in v1 (pre-visit staff/customer, reschedule follow-up, no-show)                            | v9                                                |
+| 13  | Push: Expo Push as universal service, 12 triggers                                                             | v10                                               |
+| 14  | Notification Center: in-app inbox, 90-day visibility, 7-year retention                                        | v11                                               |
+| 15  | RBAC + ABAC: both from day 1, RLS-enforced                                                                    | v2                                                |
+| 16  | Subdomain: split (crm + api.crm)                                                                              | v4                                                |
+| 17  | WhatsApp: NEW separate number for CRM (not landing site)                                                      | Q0                                                |
+| 18  | Audit retention: 7 years (RERA upper bound)                                                                   | Q12                                               |
+| 19  | Manager scope: per-team ONLY; admin is global                                                                 | Q13                                               |
+| 20  | Sites: Mudichur only in v1 UI, multi-site data model                                                          | Q14                                               |
+| 21  | Handoff: at VISIT outcome (not verbal yes); telecaller owns through the visit; reverts on NO_SHOW (Model C)   | v3.1                                              |
+| 22  | Call recording + AI transcription: ON by default, 7-year R2 archive                                           | Q11                                               |
+| 23  | Document Vault: vNext (Google Drive link in v1)                                                               | Q2                                                |
+| 24  | Tamil UI: vNext (defer to v1.2)                                                                               | v1                                                |
+| 25  | E-sign: v1.1                                                                                                  | Q2                                                |
+| 26  | Per-trigger notification settings: v1.1                                                                       | v11                                               |
+| 27  | Daily summary push: opt-in, default off                                                                       | v10                                               |
+| 28  | Customer-side pre-visit reminders: IN v1                                                                      | v9                                                |
 
 ---
 
@@ -1083,7 +1092,7 @@ estimate was for the "fast" path; the "reusable infra + reliable
   Diagram 6 regenerated to one-step automatic handoff on visit
   outcome (Model C).
 - `CLIENT-DECISIONS.md` - the 16 resolved client questions
-  + reliability design (Q15 updated to Model C in v3.1)
+  - reliability design (Q15 updated to Model C in v3.1)
 - `CLIENT-FEEDBACK-2026-08-29.md` through
   `CLIENT-FEEDBACK-v12-2026-08-29.md` - the reasoning trail for
   every decision above. **Numbering note:** the directory has 13

@@ -13,21 +13,16 @@ import type { JwtPayload } from '@shadhil/auth';
 vi.mock('@shadhil/database', () => {
   return {
     Prisma: { sql: (...args: unknown[]) => args },
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: unknown) => unknown,
-      ) => callback((globalThis as { __tx?: unknown }).__tx),
+      async (_client: unknown, _ctx: unknown, callback: (t: unknown) => unknown) =>
+        callback((globalThis as { __tx?: unknown }).__tx),
     ),
   };
 });
@@ -64,18 +59,20 @@ type Lead = {
   projectId: string | null;
 };
 
-function makeTx(overrides: Partial<{
-  team: { id: string; managerId: string | null; deletedAt: Date | null } | null;
-  targetMembership: { userId: string; teamId: string; maxOpenLeads?: number | null } | null;
-  leads: Array<Lead & { project?: { name: string } | null }>;
-  teamMembers: Array<{ userId: string; user: { name: string; role: string } }>;
-  manager: { name: string; role: string } | null;
-  queryRawSequence: unknown[][];
-  existingAudit: { batchId: string | null; after: unknown } | null;
-  membershipRowPresent: boolean;
-  candidateMembership: { userId: string; user: { name: string; role: string } } | null;
-  candidateManager: { name: string; role: string } | null;
-}> = {}) {
+function makeTx(
+  overrides: Partial<{
+    team: { id: string; managerId: string | null; deletedAt: Date | null } | null;
+    targetMembership: { userId: string; teamId: string; maxOpenLeads?: number | null } | null;
+    leads: Array<Lead & { project?: { name: string } | null }>;
+    teamMembers: Array<{ userId: string; user: { name: string; role: string } }>;
+    manager: { name: string; role: string } | null;
+    queryRawSequence: unknown[][];
+    existingAudit: { batchId: string | null; after: unknown } | null;
+    membershipRowPresent: boolean;
+    candidateMembership: { userId: string; user: { name: string; role: string } } | null;
+    candidateManager: { name: string; role: string } | null;
+  }> = {},
+) {
   const queryRawCalls = overrides.queryRawSequence ?? [];
   let callIndex = 0;
   const tx = {
@@ -83,13 +80,17 @@ function makeTx(overrides: Partial<{
       findUnique: vi.fn(async () => overrides.team ?? null),
     },
     teamMember: {
-      findUnique: vi.fn(async (args: { where: { userId_teamId: { userId: string; teamId: string } } }) => {
-        const { userId } = args.where.userId_teamId;
-        if (userId === TARGET_ID) {
-          return overrides.membershipRowPresent === false ? null : (overrides.targetMembership ?? { userId, teamId: TEAM_ID });
-        }
-        return overrides.candidateMembership ?? null;
-      }),
+      findUnique: vi.fn(
+        async (args: { where: { userId_teamId: { userId: string; teamId: string } } }) => {
+          const { userId } = args.where.userId_teamId;
+          if (userId === TARGET_ID) {
+            return overrides.membershipRowPresent === false
+              ? null
+              : (overrides.targetMembership ?? { userId, teamId: TEAM_ID });
+          }
+          return overrides.candidateMembership ?? null;
+        },
+      ),
       findMany: vi.fn(async () => overrides.teamMembers ?? []),
       delete: vi.fn(async () => ({})),
       update: vi.fn(
@@ -208,7 +209,14 @@ describe('TeamMembersService.preview', () => {
     makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
       leads: [
-        { id: 'lead-1', updatedAt: new Date(), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: null },
+        {
+          id: 'lead-1',
+          updatedAt: new Date(),
+          ownerId: TARGET_ID,
+          coOwnerId: null,
+          state: 'NEW',
+          projectId: null,
+        },
       ],
       teamMembers: [],
     });
@@ -224,11 +232,16 @@ describe('TeamMembersService.preview', () => {
       // Owned lead in a SALES_EXEC-only state; the only other member is
       // a TELECALLER, which cannot own VISITED/NEGOTIATION/BOOKING_INITIATED.
       leads: [
-        { id: 'lead-1', updatedAt: new Date(), ownerId: TARGET_ID, coOwnerId: null, state: 'VISITED', projectId: null },
+        {
+          id: 'lead-1',
+          updatedAt: new Date(),
+          ownerId: TARGET_ID,
+          coOwnerId: null,
+          state: 'VISITED',
+          projectId: null,
+        },
       ],
-      teamMembers: [
-        { userId: 'tc-2', user: { name: 'Other Telecaller', role: 'TELECALLER' } },
-      ],
+      teamMembers: [{ userId: 'tc-2', user: { name: 'Other Telecaller', role: 'TELECALLER' } }],
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(svc.preview(adminActor, TEAM_ID, TARGET_ID)).rejects.toMatchObject({
@@ -238,15 +251,29 @@ describe('TeamMembersService.preview', () => {
 
   it('happy path: computes owned/co-owned breakdown, project summaries, and eligible replacements', async () => {
     const leads = [
-      { id: 'lead-1', updatedAt: new Date('2026-01-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: 'proj-1', project: { name: 'Metro Heights' } },
-      { id: 'lead-2', updatedAt: new Date('2026-01-02'), ownerId: 'other-owner', coOwnerId: TARGET_ID, state: 'CONTACTED', projectId: 'proj-1', project: { name: 'Metro Heights' } },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-01-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'NEW',
+        projectId: 'proj-1',
+        project: { name: 'Metro Heights' },
+      },
+      {
+        id: 'lead-2',
+        updatedAt: new Date('2026-01-02'),
+        ownerId: 'other-owner',
+        coOwnerId: TARGET_ID,
+        state: 'CONTACTED',
+        projectId: 'proj-1',
+        project: { name: 'Metro Heights' },
+      },
     ];
     makeTx({
       team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },
       leads,
-      teamMembers: [
-        { userId: 'tc-2', user: { name: 'Priya', role: 'TELECALLER' } },
-      ],
+      teamMembers: [{ userId: 'tc-2', user: { name: 'Priya', role: 'TELECALLER' } }],
       manager: { name: 'Meera', role: 'MANAGER' },
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
@@ -263,7 +290,14 @@ describe('TeamMembersService.preview', () => {
     expect(names).toEqual(['Meera', 'Priya']);
     expect(result.eligibleReplacements.find((c) => c.name === 'Meera')?.isTeamManager).toBe(true);
     expect(result.previewToken).toBe(
-      computePreviewToken(leads.map((l) => ({ id: l.id, updatedAt: l.updatedAt, ownerId: l.ownerId, coOwnerId: l.coOwnerId }))),
+      computePreviewToken(
+        leads.map((l) => ({
+          id: l.id,
+          updatedAt: l.updatedAt,
+          ownerId: l.ownerId,
+          coOwnerId: l.coOwnerId,
+        })),
+      ),
     );
   });
 });
@@ -295,7 +329,10 @@ describe('TeamMembersService.reassignAndRemove', () => {
     makeTx();
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(false));
     await expect(
-      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, { ...baseDto, replacementUserId: null }),
+      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, {
+        ...baseDto,
+        replacementUserId: null,
+      }),
     ).rejects.toMatchObject({ name: 'ForbiddenException' });
   });
 
@@ -303,7 +340,12 @@ describe('TeamMembersService.reassignAndRemove', () => {
     const tx = makeTx({
       existingAudit: {
         batchId: 'batch_123',
-        after: { removedUserId: TARGET_ID, teamId: TEAM_ID, replacementUserId: 'r-1', transferredLeadCount: 3 },
+        after: {
+          removedUserId: TARGET_ID,
+          teamId: TEAM_ID,
+          replacementUserId: 'r-1',
+          transferredLeadCount: 3,
+        },
       },
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
@@ -326,12 +368,20 @@ describe('TeamMembersService.reassignAndRemove', () => {
     makeTx({
       existingAudit: {
         batchId: 'batch_999',
-        after: { removedUserId: 'someone-else', teamId: 'team-z', replacementUserId: null, transferredLeadCount: 0 },
+        after: {
+          removedUserId: 'someone-else',
+          teamId: 'team-z',
+          replacementUserId: null,
+          transferredLeadCount: 0,
+        },
       },
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(
-      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, { ...baseDto, replacementUserId: null }),
+      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, {
+        ...baseDto,
+        replacementUserId: null,
+      }),
     ).rejects.toMatchObject({ name: 'NotFoundException' });
   });
 
@@ -339,7 +389,10 @@ describe('TeamMembersService.reassignAndRemove', () => {
     makeTx({ membershipRowPresent: false, existingAudit: null });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(
-      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, { ...baseDto, replacementUserId: null }),
+      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, {
+        ...baseDto,
+        replacementUserId: null,
+      }),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }),
     });
@@ -355,19 +408,31 @@ describe('TeamMembersService.reassignAndRemove', () => {
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(
-      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, { ...baseDto, replacementUserId: null }),
+      svc.reassignAndRemove(adminActor, TEAM_ID, TARGET_ID, {
+        ...baseDto,
+        replacementUserId: null,
+      }),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'CONCURRENT_MEMBERSHIP_CHANGE' }),
     });
   });
 
-  it('409s (STALE_PREVIEW) when the locked leads no longer match the caller\'s previewToken', async () => {
+  it("409s (STALE_PREVIEW) when the locked leads no longer match the caller's previewToken", async () => {
     makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
       queryRawSequence: [
         [{ id: TEAM_ID }],
         [{ userId: TARGET_ID }],
-        [{ id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: null }],
+        [
+          {
+            id: 'lead-1',
+            updatedAt: new Date('2026-02-01'),
+            ownerId: TARGET_ID,
+            coOwnerId: null,
+            state: 'NEW',
+            projectId: null,
+          },
+        ],
       ],
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
@@ -382,7 +447,14 @@ describe('TeamMembersService.reassignAndRemove', () => {
 
   it('400s (REPLACEMENT_REQUIRED) when leads are affected but no replacement was given', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: null },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'NEW',
+        projectId: null,
+      },
     ];
     makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
@@ -395,7 +467,9 @@ describe('TeamMembersService.reassignAndRemove', () => {
         previewToken: computePreviewToken(lockedLeads),
         replacementUserId: null,
       }),
-    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'REPLACEMENT_REQUIRED' }) });
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'REPLACEMENT_REQUIRED' }),
+    });
   });
 
   it('400s (REPLACEMENT_NOT_ALLOWED) when zero leads are affected but a replacement was given', async () => {
@@ -410,12 +484,21 @@ describe('TeamMembersService.reassignAndRemove', () => {
         previewToken: computePreviewToken([]),
         replacementUserId: 'r-1',
       }),
-    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'REPLACEMENT_NOT_ALLOWED' }) });
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'REPLACEMENT_NOT_ALLOWED' }),
+    });
   });
 
   it('400s (TARGET_NOT_TEAM_MEMBER) when the given replacement is not on this team', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: null },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'NEW',
+        projectId: null,
+      },
     ];
     makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
@@ -429,17 +512,29 @@ describe('TeamMembersService.reassignAndRemove', () => {
         previewToken: computePreviewToken(lockedLeads),
         replacementUserId: 'not-a-member',
       }),
-    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }) });
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'TARGET_NOT_TEAM_MEMBER' }),
+    });
   });
 
   it('400s (TARGET_ROLE_INELIGIBLE) when the replacement cannot own every affected state', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'VISITED', projectId: null },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'VISITED',
+        projectId: null,
+      },
     ];
     makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
       queryRawSequence: [[{ id: TEAM_ID }], [{ userId: TARGET_ID }], lockedLeads],
-      candidateMembership: { userId: 'tc-2', user: { name: 'Other Telecaller', role: 'TELECALLER' } },
+      candidateMembership: {
+        userId: 'tc-2',
+        user: { name: 'Other Telecaller', role: 'TELECALLER' },
+      },
     });
     const svc = new TeamMembersService({ $client: {} } as never, stubAccess(true));
     await expect(
@@ -448,7 +543,9 @@ describe('TeamMembersService.reassignAndRemove', () => {
         previewToken: computePreviewToken(lockedLeads),
         replacementUserId: 'tc-2',
       }),
-    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'TARGET_ROLE_INELIGIBLE' }) });
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'TARGET_ROLE_INELIGIBLE' }),
+    });
   });
 
   it('happy path: zero leads removes the membership without any transfer', async () => {
@@ -481,7 +578,14 @@ describe('TeamMembersService.reassignAndRemove', () => {
 
   it('happy path: simple owner handoff transfers ownership + audits + removes membership', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'NEW', projectId: 'proj-1' },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'NEW',
+        projectId: 'proj-1',
+      },
     ];
     const tx = makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
@@ -515,7 +619,14 @@ describe('TeamMembersService.reassignAndRemove', () => {
 
   it('happy path: promotes an existing co-owner to owner and clears coOwnerId on collision', async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: 'tc-2', state: 'NEW', projectId: null },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: 'tc-2',
+        state: 'NEW',
+        projectId: null,
+      },
     ];
     const tx = makeTx({
       team: { id: TEAM_ID, managerId: null, deletedAt: null },
@@ -541,9 +652,16 @@ describe('TeamMembersService.reassignAndRemove', () => {
     });
   });
 
-  it('happy path: the team\'s manager (no separate TeamMember row) is a valid replacement', async () => {
+  it("happy path: the team's manager (no separate TeamMember row) is a valid replacement", async () => {
     const lockedLeads = [
-      { id: 'lead-1', updatedAt: new Date('2026-02-01'), ownerId: TARGET_ID, coOwnerId: null, state: 'RNR', projectId: null },
+      {
+        id: 'lead-1',
+        updatedAt: new Date('2026-02-01'),
+        ownerId: TARGET_ID,
+        coOwnerId: null,
+        state: 'RNR',
+        projectId: null,
+      },
     ];
     const tx = makeTx({
       team: { id: TEAM_ID, managerId: 'mgr-1', deletedAt: null },

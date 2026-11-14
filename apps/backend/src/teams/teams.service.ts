@@ -37,9 +37,7 @@ export class TeamsService {
   // @Inject with an explicit token - tsx/esbuild does NOT emit
   // design:paramtypes, so bare constructor params arrive undefined at
   // runtime. PrismaService is exported from prisma.module.ts.
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   // T-TEAM-AUTHORITATIVE (2026-09-13): stateless helper, no DI needed.
   private readonly teamAccess = new TeamAccessService();
@@ -58,59 +56,51 @@ export class TeamsService {
    * role-scoped result.
    */
   async list(actor: JwtPayload): Promise<TeamListItem[]> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const isOverseer = isAdminClass(actor.role);
-        let where: { deletedAt: null; id?: { in: string[] } };
-        if (isOverseer) {
-          where = { deletedAt: null };
-        } else {
-          // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMember is
-          // the sole membership source now (User.teamId/actor.teamId are
-          // gone) - getAccessibleTeamIds (managed teams UNION TeamMember
-          // rows) is authoritative, no legacy fallback needed.
-          const teamIds = await this.teamAccess.getAccessibleTeamIds(
-            tx as never,
-            { sub: actor.sub, role: actor.role, organizationId: actor.organizationId },
-          );
-          where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
-        }
-        // T-REPORTS-TO-OWNER: every team's manager reports to the SAME org
-        // OWNER (fixed, never assignable), so one lookup covers the whole
-        // list rather than a per-row query.
-        const owner = await findOrgOwner(
-          tx as unknown as PrismaClient,
-          actor.organizationId,
-        );
-        const rows = await tx.team.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            defaultAssigneeId: true,
-            autoAssignLeads: true,
-            managerId: true,
-            manager: { select: { name: true } },
-            _count: { select: { teamMembers: true } },
-          },
-          orderBy: { name: 'asc' },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const isOverseer = isAdminClass(actor.role);
+      let where: { deletedAt: null; id?: { in: string[] } };
+      if (isOverseer) {
+        where = { deletedAt: null };
+      } else {
+        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): TeamMember is
+        // the sole membership source now (User.teamId/actor.teamId are
+        // gone) - getAccessibleTeamIds (managed teams UNION TeamMember
+        // rows) is authoritative, no legacy fallback needed.
+        const teamIds = await this.teamAccess.getAccessibleTeamIds(tx as never, {
+          sub: actor.sub,
+          role: actor.role,
+          organizationId: actor.organizationId,
         });
-        return rows.map(
-          (r): TeamListItem => ({
-            id: r.id,
-            name: r.name,
-            defaultAssigneeId: r.defaultAssigneeId,
-            memberCount: r._count.teamMembers,
-            managerId: r.managerId,
-            managerName: r.manager?.name ?? null,
-            autoAssignLeads: r.autoAssignLeads,
-            ownerName: owner?.name ?? null,
-          }),
-        );
-      },
-    );
+        where = { deletedAt: null, id: { in: teamIds.length > 0 ? teamIds : ['__none__'] } };
+      }
+      // T-REPORTS-TO-OWNER: every team's manager reports to the SAME org
+      // OWNER (fixed, never assignable), so one lookup covers the whole
+      // list rather than a per-row query.
+      const owner = await findOrgOwner(tx as unknown as PrismaClient, actor.organizationId);
+      const rows = await tx.team.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          defaultAssigneeId: true,
+          autoAssignLeads: true,
+          managerId: true,
+          manager: { select: { name: true } },
+          _count: { select: { teamMembers: true } },
+        },
+        orderBy: { name: 'asc' },
+      });
+      return rows.map((r): TeamListItem => ({
+        id: r.id,
+        name: r.name,
+        defaultAssigneeId: r.defaultAssigneeId,
+        memberCount: r._count.teamMembers,
+        managerId: r.managerId,
+        managerName: r.manager?.name ?? null,
+        autoAssignLeads: r.autoAssignLeads,
+        ownerName: owner?.name ?? null,
+      }));
+    });
   }
 
   /**
@@ -135,90 +125,80 @@ export class TeamsService {
     // below, once the team is loaded, via TeamAccessService so a manager
     // leading multiple teams isn't limited to their JWT-carried teamId.
     if (!isAdminClass(actor.role) && actor.role !== 'MANAGER') {
-      throw new ForbiddenException(
-        'Only ADMIN, OWNER, or a MANAGER can view a team roster.',
-      );
+      throw new ForbiddenException('Only ADMIN, OWNER, or a MANAGER can view a team roster.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const team = await tx.team.findUnique({
-          where: { id },
-          include: {
-            manager: { select: { id: true, name: true, email: true } },
-          },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const team = await tx.team.findUnique({
+        where: { id },
+        include: {
+          manager: { select: { id: true, name: true, email: true } },
+        },
+      });
+      // T-TEAM-CRUD: a soft-deleted team 404s like a missing one.
+      if (team === null || team.deletedAt !== null) {
+        throw new NotFoundException(`Team ${id} not found.`);
+      }
+      if (actor.role === 'MANAGER') {
+        const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(tx as never, {
+          sub: actor.sub,
+          role: actor.role,
+          organizationId: actor.organizationId,
         });
-        // T-TEAM-CRUD: a soft-deleted team 404s like a missing one.
-        if (team === null || team.deletedAt !== null) {
-          throw new NotFoundException(`Team ${id} not found.`);
+        if (!accessibleTeamIds.includes(id)) {
+          throw new ForbiddenException('You can only view a team you manage or belong to.');
         }
-        if (actor.role === 'MANAGER') {
-          const accessibleTeamIds = await this.teamAccess.getAccessibleTeamIds(
-            tx as never,
-            { sub: actor.sub, role: actor.role, organizationId: actor.organizationId },
-          );
-          if (!accessibleTeamIds.includes(id)) {
-            throw new ForbiddenException(
-              "You can only view a team you manage or belong to.",
-            );
-          }
-        }
+      }
 
-        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): membership is
-        // TeamMember rows (Team.managerId, exposed separately as
-        // `manager` below, is a distinct leadership axis - a manager
-        // doesn't necessarily have their own TeamMember row for a team
-        // they lead, matching pre-cutover behavior where the manager
-        // likewise wasn't guaranteed to appear via User.teamId).
-        const teamMembers = await tx.teamMember.findMany({
-          where: { teamId: id, user: { deletedAt: null } },
-          select: {
-            // T-AUTOASSIGN (2026-09-17): carry each member's routing weight so
-            // the roster can show/edit it.
-            weight: true,
-            // T-MAXOPENLEADS (2026-09-28): and their open-lead ceiling.
-            maxOpenLeads: true,
-            user: { select: { id: true, name: true, email: true, role: true } },
-          },
-        });
-        const members = teamMembers
-          .map((tm) => ({ ...tm.user, weight: tm.weight, maxOpenLeads: tm.maxOpenLeads }))
-          .sort((a, b) => a.name.localeCompare(b.name));
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): membership is
+      // TeamMember rows (Team.managerId, exposed separately as
+      // `manager` below, is a distinct leadership axis - a manager
+      // doesn't necessarily have their own TeamMember row for a team
+      // they lead, matching pre-cutover behavior where the manager
+      // likewise wasn't guaranteed to appear via User.teamId).
+      const teamMembers = await tx.teamMember.findMany({
+        where: { teamId: id, user: { deletedAt: null } },
+        select: {
+          // T-AUTOASSIGN (2026-09-17): carry each member's routing weight so
+          // the roster can show/edit it.
+          weight: true,
+          // T-MAXOPENLEADS (2026-09-28): and their open-lead ceiling.
+          maxOpenLeads: true,
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+      });
+      const members = teamMembers
+        .map((tm) => ({ ...tm.user, weight: tm.weight, maxOpenLeads: tm.maxOpenLeads }))
+        .sort((a, b) => a.name.localeCompare(b.name));
 
-        // T-REPORTS-TO-OWNER: this team's manager reports to the org OWNER
-        // (fixed, never assignable) - same helper used by getUser().
-        const owner = await findOrgOwner(
-          tx as unknown as PrismaClient,
-          actor.organizationId,
-        );
+      // T-REPORTS-TO-OWNER: this team's manager reports to the org OWNER
+      // (fixed, never assignable) - same helper used by getUser().
+      const owner = await findOrgOwner(tx as unknown as PrismaClient, actor.organizationId);
 
-        return {
-          id: team.id,
-          name: team.name,
-          // T-AUTOASSIGN (2026-09-17): surface the routing flag so the
-          // edit-team dialog can render the correct switch state (it was
-          // always defaulting to false before).
-          autoAssignLeads: team.autoAssignLeads ?? false,
-          manager: team.manager
-            ? {
-                id: team.manager.id,
-                name: team.manager.name,
-                email: team.manager.email,
-              }
-            : null,
-          owner,
-          members: members.map((m) => ({
-            userId: m.id,
-            name: m.name,
-            email: m.email,
-            role: m.role,
-            weight: m.weight,
-            maxOpenLeads: m.maxOpenLeads,
-          })),
-        };
-      },
-    );
+      return {
+        id: team.id,
+        name: team.name,
+        // T-AUTOASSIGN (2026-09-17): surface the routing flag so the
+        // edit-team dialog can render the correct switch state (it was
+        // always defaulting to false before).
+        autoAssignLeads: team.autoAssignLeads ?? false,
+        manager: team.manager
+          ? {
+              id: team.manager.id,
+              name: team.manager.name,
+              email: team.manager.email,
+            }
+          : null,
+        owner,
+        members: members.map((m) => ({
+          userId: m.id,
+          name: m.name,
+          email: m.email,
+          role: m.role,
+          weight: m.weight,
+          maxOpenLeads: m.maxOpenLeads,
+        })),
+      };
+    });
   }
 
   /**
@@ -232,38 +212,34 @@ export class TeamsService {
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException('Only ADMIN or OWNER can create teams.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const managerId = await this.assertManagerAssignable(
-          tx as unknown as PrismaClient,
-          dto.managerId ?? null,
-          null,
-        );
-        const created = await tx.team.create({
-          data: {
-            name: dto.name,
-            managerId,
-            organizationId: actor.organizationId,
-            // T-AUTOASSIGN (2026-09-17): default false when omitted.
-            autoAssignLeads: dto.autoAssignLeads ?? false,
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'team.create',
-            organizationId: actor.organizationId,
-            entityType: 'Team',
-            entityId: created.id,
-            after: { name: created.name, managerId: created.managerId },
-            reason: `team.create by ${actor.email} (${actor.role})`,
-          },
-        });
-        return this.toListItem(created, null);
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const managerId = await this.assertManagerAssignable(
+        tx as unknown as PrismaClient,
+        dto.managerId ?? null,
+        null,
+      );
+      const created = await tx.team.create({
+        data: {
+          name: dto.name,
+          managerId,
+          organizationId: actor.organizationId,
+          // T-AUTOASSIGN (2026-09-17): default false when omitted.
+          autoAssignLeads: dto.autoAssignLeads ?? false,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'team.create',
+          organizationId: actor.organizationId,
+          entityType: 'Team',
+          entityId: created.id,
+          after: { name: created.name, managerId: created.managerId },
+          reason: `team.create by ${actor.email} (${actor.role})`,
+        },
+      });
+      return this.toListItem(created, null);
+    });
   }
 
   /**
@@ -271,66 +247,54 @@ export class TeamsService {
    * only. Same manager-assignability guard as `create`, excluding this
    * team itself so re-saving the current manager is a no-op, not a 409.
    */
-  async update(
-    actor: JwtPayload,
-    id: string,
-    dto: UpdateTeamDto,
-  ): Promise<TeamListItem> {
+  async update(actor: JwtPayload, id: string, dto: UpdateTeamDto): Promise<TeamListItem> {
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException('Only ADMIN or OWNER can edit teams.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await tx.team.findUnique({ where: { id } });
-        if (existing === null || existing.deletedAt !== null) {
-          throw new NotFoundException(`Team ${id} not found.`);
-        }
-        const managerId =
-          dto.managerId !== undefined
-            ? await this.assertManagerAssignable(
-                tx as unknown as PrismaClient,
-                dto.managerId,
-                id,
-              )
-            : existing.managerId;
-        const updated = await tx.team.update({
-          where: { id },
-          data: {
-            ...(dto.name !== undefined ? { name: dto.name } : {}),
-            ...(dto.managerId !== undefined ? { managerId } : {}),
-            // T-AUTOASSIGN (2026-09-17): explicit `undefined` keeps the
-            // current value; only a set flag changes it. (The DTO's optional
-            // boolean means a PATCH that omits it doesn't reset the team to
-            // false.)
-            ...(dto.autoAssignLeads !== undefined ? { autoAssignLeads: dto.autoAssignLeads } : {}),
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'team.update',
-            organizationId: actor.organizationId,
-            entityType: 'Team',
-            entityId: id,
-            before: { name: existing.name, managerId: existing.managerId },
-            after: { name: updated.name, managerId: updated.managerId },
-            reason: `team.update by ${actor.email} (${actor.role})`,
-          },
-        });
-        const [manager, memberCount] = await Promise.all([
-          updated.managerId !== null
-            ? tx.user.findUnique({
-                where: { id: updated.managerId },
-                select: { name: true },
-              })
-            : Promise.resolve(null),
-          tx.teamMember.count({ where: { teamId: id, user: { deletedAt: null } } }),
-        ]);
-        return this.toListItem(updated, manager?.name ?? null, memberCount);
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await tx.team.findUnique({ where: { id } });
+      if (existing === null || existing.deletedAt !== null) {
+        throw new NotFoundException(`Team ${id} not found.`);
+      }
+      const managerId =
+        dto.managerId !== undefined
+          ? await this.assertManagerAssignable(tx as unknown as PrismaClient, dto.managerId, id)
+          : existing.managerId;
+      const updated = await tx.team.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.managerId !== undefined ? { managerId } : {}),
+          // T-AUTOASSIGN (2026-09-17): explicit `undefined` keeps the
+          // current value; only a set flag changes it. (The DTO's optional
+          // boolean means a PATCH that omits it doesn't reset the team to
+          // false.)
+          ...(dto.autoAssignLeads !== undefined ? { autoAssignLeads: dto.autoAssignLeads } : {}),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'team.update',
+          organizationId: actor.organizationId,
+          entityType: 'Team',
+          entityId: id,
+          before: { name: existing.name, managerId: existing.managerId },
+          after: { name: updated.name, managerId: updated.managerId },
+          reason: `team.update by ${actor.email} (${actor.role})`,
+        },
+      });
+      const [manager, memberCount] = await Promise.all([
+        updated.managerId !== null
+          ? tx.user.findUnique({
+              where: { id: updated.managerId },
+              select: { name: true },
+            })
+          : Promise.resolve(null),
+        tx.teamMember.count({ where: { teamId: id, user: { deletedAt: null } } }),
+      ]);
+      return this.toListItem(updated, manager?.name ?? null, memberCount);
+    });
   }
 
   /**
@@ -345,51 +309,47 @@ export class TeamsService {
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException('Only ADMIN or OWNER can delete teams.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await tx.team.findUnique({ where: { id } });
-        if (existing === null || existing.deletedAt !== null) {
-          throw new NotFoundException(`Team ${id} not found.`);
-        }
-        const memberCount = await tx.teamMember.count({
-          where: { teamId: id, user: { deletedAt: null } },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await tx.team.findUnique({ where: { id } });
+      if (existing === null || existing.deletedAt !== null) {
+        throw new NotFoundException(`Team ${id} not found.`);
+      }
+      const memberCount = await tx.teamMember.count({
+        where: { teamId: id, user: { deletedAt: null } },
+      });
+      if (memberCount > 0) {
+        throw new ConflictException(
+          `Team "${existing.name}" still has ${memberCount} member(s). ` +
+            'Reassign them to another team before deleting.',
+        );
+      }
+      if (existing.managerId !== null) {
+        const manager = await tx.user.findUnique({
+          where: { id: existing.managerId },
+          select: { name: true },
         });
-        if (memberCount > 0) {
-          throw new ConflictException(
-            `Team "${existing.name}" still has ${memberCount} member(s). ` +
-              'Reassign them to another team before deleting.',
-          );
-        }
-        if (existing.managerId !== null) {
-          const manager = await tx.user.findUnique({
-            where: { id: existing.managerId },
-            select: { name: true },
-          });
-          throw new ConflictException(
-            `Team "${existing.name}" is still led by ${manager?.name ?? 'a manager'}. ` +
-              'Reassign or clear the manager before deleting.',
-          );
-        }
-        await tx.team.update({
-          where: { id },
-          data: { deletedAt: new Date() },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'team.delete',
-            organizationId: actor.organizationId,
-            entityType: 'Team',
-            entityId: id,
-            before: { name: existing.name },
-            reason: `team.delete (soft) by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { id };
-      },
-    );
+        throw new ConflictException(
+          `Team "${existing.name}" is still led by ${manager?.name ?? 'a manager'}. ` +
+            'Reassign or clear the manager before deleting.',
+        );
+      }
+      await tx.team.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'team.delete',
+          organizationId: actor.organizationId,
+          entityType: 'Team',
+          entityId: id,
+          before: { name: existing.name },
+          reason: `team.delete (soft) by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id };
+    });
   }
 
   /**
@@ -411,93 +371,83 @@ export class TeamsService {
     if (dto.targetTeamId === id) {
       throw new BadRequestException('The target team must be different from the source team.');
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const [sourceTeam, targetTeam] = await Promise.all([
-          tx.team.findUnique({ where: { id } }),
-          tx.team.findUnique({ where: { id: dto.targetTeamId } }),
-        ]);
-        if (sourceTeam === null || sourceTeam.deletedAt !== null) {
-          throw new NotFoundException(`Team ${id} not found.`);
-        }
-        if (targetTeam === null || targetTeam.deletedAt !== null) {
-          throw new NotFoundException(`Team ${dto.targetTeamId} not found.`);
-        }
-        // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): moves TeamMember
-        // rows, not User.teamId. This legacy endpoint models a single-team
-        // "move" for staff whose only membership is this source team - each
-        // matching TeamMember row is deleted from the source team and
-        // recreated on the target (rather than added alongside, which
-        // would silently turn a "move" into an unrequested "add").
-        const memberWhere =
-          dto.userIds !== undefined
-            ? { userId: { in: dto.userIds }, teamId: id }
-            : { teamId: id };
-        const members = await tx.teamMember.findMany({
-          where: memberWhere,
-          // The role decides whether a MOVE is safe (below), so it has to be
-          // read before anything is deleted.
-          select: { userId: true, organizationId: true, user: { select: { role: true } } },
-        });
-        if (members.length === 0) {
-          throw new BadRequestException(
-            'No matching members found on this team to reassign.',
-          );
-        }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const [sourceTeam, targetTeam] = await Promise.all([
+        tx.team.findUnique({ where: { id } }),
+        tx.team.findUnique({ where: { id: dto.targetTeamId } }),
+      ]);
+      if (sourceTeam === null || sourceTeam.deletedAt !== null) {
+        throw new NotFoundException(`Team ${id} not found.`);
+      }
+      if (targetTeam === null || targetTeam.deletedAt !== null) {
+        throw new NotFoundException(`Team ${dto.targetTeamId} not found.`);
+      }
+      // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): moves TeamMember
+      // rows, not User.teamId. This legacy endpoint models a single-team
+      // "move" for staff whose only membership is this source team - each
+      // matching TeamMember row is deleted from the source team and
+      // recreated on the target (rather than added alongside, which
+      // would silently turn a "move" into an unrequested "add").
+      const memberWhere =
+        dto.userIds !== undefined ? { userId: { in: dto.userIds }, teamId: id } : { teamId: id };
+      const members = await tx.teamMember.findMany({
+        where: memberWhere,
+        // The role decides whether a MOVE is safe (below), so it has to be
+        // read before anything is deleted.
+        select: { userId: true, organizationId: true, user: { select: { role: true } } },
+      });
+      if (members.length === 0) {
+        throw new BadRequestException('No matching members found on this team to reassign.');
+      }
 
-        // ENGINEER GUARD (2026-11-07): a move is DESTRUCTIVE for an engineer.
-        // Their entire RLS surface (units, phases, progress photos) is derived
-        // from TeamMember -> ProjectTeam, so deleting their row here silently
-        // revokes access to every project staffed by this team. That is the
-        // same hazard `users.assignManager` closes with an additive branch;
-        // this endpoint is the other door into it, and it is reachable from
-        // the roster's per-member "Move to team" AND the bulk "Reassign all".
-        //
-        // Refuse the whole request rather than silently skipping the engineers:
-        // a partial move that reports `count` would leave the operator
-        // believing everyone moved. Name them so the fix is obvious - use
-        // POST /teams/:id/members (additive) or remove them from the roster.
-        const engineerIds = members
-          .filter((m) => m.user.role === 'ENGINEER')
-          .map((m) => m.userId);
-        if (engineerIds.length > 0) {
-          throw new BadRequestException(
-            `Cannot move team member(s) with role ENGINEER (${engineerIds.join(', ')}): ` +
-              'moving them off this team would revoke their access to the projects it is linked to. ' +
-              'Add them to the other team instead (Teams -> Add members), or remove them from this team deliberately.',
-          );
-        }
+      // ENGINEER GUARD (2026-11-07): a move is DESTRUCTIVE for an engineer.
+      // Their entire RLS surface (units, phases, progress photos) is derived
+      // from TeamMember -> ProjectTeam, so deleting their row here silently
+      // revokes access to every project staffed by this team. That is the
+      // same hazard `users.assignManager` closes with an additive branch;
+      // this endpoint is the other door into it, and it is reachable from
+      // the roster's per-member "Move to team" AND the bulk "Reassign all".
+      //
+      // Refuse the whole request rather than silently skipping the engineers:
+      // a partial move that reports `count` would leave the operator
+      // believing everyone moved. Name them so the fix is obvious - use
+      // POST /teams/:id/members (additive) or remove them from the roster.
+      const engineerIds = members.filter((m) => m.user.role === 'ENGINEER').map((m) => m.userId);
+      if (engineerIds.length > 0) {
+        throw new BadRequestException(
+          `Cannot move team member(s) with role ENGINEER (${engineerIds.join(', ')}): ` +
+            'moving them off this team would revoke their access to the projects it is linked to. ' +
+            'Add them to the other team instead (Teams -> Add members), or remove them from this team deliberately.',
+        );
+      }
 
-        const count = members.length;
-        await tx.teamMember.deleteMany({ where: memberWhere });
-        await tx.teamMember.createMany({
-          data: members.map((m) => ({
-            userId: m.userId,
-            teamId: dto.targetTeamId,
-            organizationId: m.organizationId,
-            assignedById: actor.sub,
-          })),
-          skipDuplicates: true,
-        });
-        // members[] is the select-typed shape (userId/organizationId/user);
-        // the audit only needs the count, which is already captured above.
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            action: 'team.reassign_members',
-            organizationId: actor.organizationId,
-            entityType: 'Team',
-            entityId: id,
-            before: { sourceTeamId: id, memberCount: count },
-            after: { targetTeamId: dto.targetTeamId },
-            reason: `team.reassign_members by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { count };
-      },
-    );
+      const count = members.length;
+      await tx.teamMember.deleteMany({ where: memberWhere });
+      await tx.teamMember.createMany({
+        data: members.map((m) => ({
+          userId: m.userId,
+          teamId: dto.targetTeamId,
+          organizationId: m.organizationId,
+          assignedById: actor.sub,
+        })),
+        skipDuplicates: true,
+      });
+      // members[] is the select-typed shape (userId/organizationId/user);
+      // the audit only needs the count, which is already captured above.
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'team.reassign_members',
+          organizationId: actor.organizationId,
+          entityType: 'Team',
+          entityId: id,
+          before: { sourceTeamId: id, memberCount: count },
+          after: { targetTeamId: dto.targetTeamId },
+          reason: `team.reassign_members by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { count };
+    });
   }
 
   /**
@@ -518,83 +468,77 @@ export class TeamsService {
       throw new ForbiddenException('Only ADMIN or OWNER can add team members.');
     }
     const userIds = [...new Set(dto.userIds)];
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const team = await tx.team.findUnique({ where: { id } });
-        // T-ORG-EXPLICIT: the org is checked here, not left to RLS. A team from
-        // another organization 404s exactly like a missing one (no probe leak).
-        if (
-          team === null ||
-          team.deletedAt !== null ||
-          team.organizationId !== actor.organizationId
-        ) {
-          throw new NotFoundException(`Team ${id} not found.`);
-        }
-        const users = await tx.user.findMany({
-          where: {
-            id: { in: userIds },
-            organizationId: actor.organizationId,
-            deletedAt: null,
-          },
-          select: { id: true, name: true, role: true },
-        });
-        const found = new Set(users.map((u) => u.id));
-        const missing = userIds.filter((u) => !found.has(u));
-        if (missing.length > 0) {
-          throw new NotFoundException(
-            `User(s) not found in this organization: ${missing.join(', ')}.`,
-          );
-        }
-        const ineligible = users.filter(
-          (u) =>
-            // Issue #7 slice 1: ENGINEER joins the team-member pool
-            // (TEAM_ONLY staff roles); managers still lead via managerId,
-            // admins are not team staff.
-            u.role !== 'TELECALLER' &&
-            u.role !== 'SALES_EXEC' &&
-            u.role !== 'ENGINEER',
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const team = await tx.team.findUnique({ where: { id } });
+      // T-ORG-EXPLICIT: the org is checked here, not left to RLS. A team from
+      // another organization 404s exactly like a missing one (no probe leak).
+      if (
+        team === null ||
+        team.deletedAt !== null ||
+        team.organizationId !== actor.organizationId
+      ) {
+        throw new NotFoundException(`Team ${id} not found.`);
+      }
+      const users = await tx.user.findMany({
+        where: {
+          id: { in: userIds },
+          organizationId: actor.organizationId,
+          deletedAt: null,
+        },
+        select: { id: true, name: true, role: true },
+      });
+      const found = new Set(users.map((u) => u.id));
+      const missing = userIds.filter((u) => !found.has(u));
+      if (missing.length > 0) {
+        throw new NotFoundException(
+          `User(s) not found in this organization: ${missing.join(', ')}.`,
         );
-        if (ineligible.length > 0) {
-          throw new BadRequestException(
-            `Only telecallers, sales execs and site engineers can be added as team members; ` +
-              `not eligible: ${ineligible.map((u) => `${u.name} (${u.role})`).join(', ')}. ` +
-              'Managers lead a team via the team manager setting.',
-          );
-        }
-        const existing = await tx.teamMember.findMany({
-          where: { teamId: id, userId: { in: userIds } },
-          select: { userId: true },
+      }
+      const ineligible = users.filter(
+        (u) =>
+          // Issue #7 slice 1: ENGINEER joins the team-member pool
+          // (TEAM_ONLY staff roles); managers still lead via managerId,
+          // admins are not team staff.
+          u.role !== 'TELECALLER' && u.role !== 'SALES_EXEC' && u.role !== 'ENGINEER',
+      );
+      if (ineligible.length > 0) {
+        throw new BadRequestException(
+          `Only telecallers, sales execs and site engineers can be added as team members; ` +
+            `not eligible: ${ineligible.map((u) => `${u.name} (${u.role})`).join(', ')}. ` +
+            'Managers lead a team via the team manager setting.',
+        );
+      }
+      const existing = await tx.teamMember.findMany({
+        where: { teamId: id, userId: { in: userIds } },
+        select: { userId: true },
+      });
+      const already = new Set(existing.map((m) => m.userId));
+      const toAdd = userIds.filter((u) => !already.has(u));
+      if (toAdd.length > 0) {
+        await tx.teamMember.createMany({
+          data: toAdd.map((userId) => ({
+            userId,
+            teamId: id,
+            organizationId: actor.organizationId,
+            assignedById: actor.sub,
+          })),
+          skipDuplicates: true,
         });
-        const already = new Set(existing.map((m) => m.userId));
-        const toAdd = userIds.filter((u) => !already.has(u));
-        if (toAdd.length > 0) {
-          await tx.teamMember.createMany({
-            data: toAdd.map((userId) => ({
-              userId,
-              teamId: id,
-              organizationId: actor.organizationId,
-              assignedById: actor.sub,
-            })),
-            skipDuplicates: true,
-          });
-          await tx.auditLog.create({
-            data: {
-              userId: actor.sub,
-              action: 'team.add_members',
-              organizationId: actor.organizationId,
-              entityType: 'Team',
-              entityId: id,
-              before: { teamId: id },
-              after: { teamId: id, addedUserIds: toAdd },
-              reason: `team.add_members by ${actor.email} (${actor.role})`,
-            },
-          });
-        }
-        return { added: toAdd.length, alreadyMembers: already.size };
-      },
-    );
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            action: 'team.add_members',
+            organizationId: actor.organizationId,
+            entityType: 'Team',
+            entityId: id,
+            before: { teamId: id },
+            after: { teamId: id, addedUserIds: toAdd },
+            reason: `team.add_members by ${actor.email} (${actor.role})`,
+          },
+        });
+      }
+      return { added: toAdd.length, alreadyMembers: already.size };
+    });
   }
 
   /**
@@ -611,10 +555,7 @@ export class TeamsService {
    * doesn't need to change.
    */
   private async assertManagerAssignable(
-    tx: Omit<
-      PrismaClient,
-      '$connect' | '$disconnect' | '$on' | '$use' | '$extends'
-    >,
+    tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$use' | '$extends'>,
     managerId: string | null,
     _excludeTeamId: string | null,
   ): Promise<string | null> {
@@ -627,9 +568,7 @@ export class TeamsService {
       throw new NotFoundException(`User ${managerId} not found.`);
     }
     if (user.role !== 'MANAGER') {
-      throw new BadRequestException(
-        `User ${managerId} is not a MANAGER and cannot lead a team.`,
-      );
+      throw new BadRequestException(`User ${managerId} is not a MANAGER and cannot lead a team.`);
     }
     return managerId;
   }

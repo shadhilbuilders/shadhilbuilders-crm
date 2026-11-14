@@ -73,7 +73,8 @@ async function mount(): Promise<string> {
 
 function mockSession(role: string | undefined, isPending = false): void {
   mocks.useSessionUser.mockReturnValue({
-    user: role === undefined ? null : { id: 'u-1', name: 'Actor', email: 'a@x', role, teamId: null },
+    user:
+      role === undefined ? null : { id: 'u-1', name: 'Actor', email: 'a@x', role, teamId: null },
     isPending,
     error: null,
   });

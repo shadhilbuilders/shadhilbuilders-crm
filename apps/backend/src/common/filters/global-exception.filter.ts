@@ -59,9 +59,10 @@ function prismaFieldTarget(err: Prisma.PrismaClientKnownRequestError): string | 
   return null;
 }
 
-function toEnvelopeForPrismaError(
-  err: Prisma.PrismaClientKnownRequestError,
-): { status: number; body: ErrorEnvelope } {
+function toEnvelopeForPrismaError(err: Prisma.PrismaClientKnownRequestError): {
+  status: number;
+  body: ErrorEnvelope;
+} {
   const status = PRISMA_STATUS_BY_CODE[err.code] ?? HttpStatus.BAD_REQUEST;
   const field = prismaFieldTarget(err);
 
@@ -158,7 +159,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     this.logger.error(`${request.method} ${request.url} UNHANDLED: ${err.message}`, err.stack);
     const body: ErrorEnvelope = {
       code: 'INTERNAL_ERROR',
-      message: 'Something went wrong on our end. Please try again, or contact support if the problem persists.',
+      message:
+        'Something went wrong on our end. Please try again, or contact support if the problem persists.',
     };
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
   }

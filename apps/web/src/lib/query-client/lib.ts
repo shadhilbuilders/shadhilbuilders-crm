@@ -63,8 +63,7 @@ const persistCache = async (qc: QueryClient) => {
   // fields (queryFn, retry, retryDelay, etc.) before we hand the
   // payload to IDB - see Round 26 in DECISION-CHANGELOG.
   const snapshot = dehydrate(qc);
-  const hasState =
-    snapshot.queries.length > 0 || snapshot.mutations.length > 0;
+  const hasState = snapshot.queries.length > 0 || snapshot.mutations.length > 0;
   if (!hasState && lastPersistedTimestamp === 0) return;
   const payload: PersistedShape = {
     timestamp: Date.now(),
@@ -104,9 +103,7 @@ export const attachQueryPersister = (qc: QueryClient): (() => void) => {
  * any critical queries so the UI shows fresh data on the next paint.
  */
 export const rehydrateQueryCache = async (qc: QueryClient): Promise<boolean> => {
-  const persisted = (await idbGet(RQ_CACHE_KEY, rqCacheStore)) as
-    | PersistedShape
-    | undefined;
+  const persisted = (await idbGet(RQ_CACHE_KEY, rqCacheStore)) as PersistedShape | undefined;
   if (!persisted || persisted.cacheState === undefined || persisted.cacheState === null) {
     return false;
   }

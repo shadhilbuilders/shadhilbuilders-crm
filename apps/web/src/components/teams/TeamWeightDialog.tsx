@@ -31,7 +31,12 @@ import {
 } from '@paalstack/react-ui';
 import { LuInfo } from '@paalstack/react-icons/lu';
 
-import { useTeam, useUpdateTeamMemberCap, useUpdateTeamMemberWeight, type TeamListItem } from '@/hooks/queries/teams';
+import {
+  useTeam,
+  useUpdateTeamMemberCap,
+  useUpdateTeamMemberWeight,
+  type TeamListItem,
+} from '@/hooks/queries/teams';
 import { labelFor } from '@/lib/labels';
 
 export function TeamWeightDialog({
@@ -66,7 +71,9 @@ export function TeamWeightDialog({
           {isLoading ? (
             <Loading content="Loading members..." />
           ) : isError || data === undefined ? (
-            <TypographyP className="text-sm">Couldn&apos;t load this team and its members.</TypographyP>
+            <TypographyP className="text-sm">
+              Couldn&apos;t load this team and its members.
+            </TypographyP>
           ) : members.length === 0 ? (
             <TypographyP className="text-muted-foreground text-sm">
               No members in this team yet.
@@ -101,11 +108,7 @@ function WeightHelpTooltip() {
           <LuInfo className="size-3.5" />
         </TooltipTrigger>
         <TooltipContent side="bottom" align="start" className="z-60 max-w-72">
-          <Box
-            as="ul"
-            className="list-disc space-y-1.5 pl-4 text-xs"
-            data-qa="team-weight-help"
-          >
+          <Box as="ul" className="list-disc space-y-1.5 pl-4 text-xs" data-qa="team-weight-help">
             <Box as="li">
               Weight is a share of new leads (2 means roughly twice the share of 1) and never a
               limit.
@@ -234,7 +237,10 @@ function WeightRow({
           </span>
         ) : (
           <div className="flex flex-col items-end gap-1">
-            <Label htmlFor={`team-weight-input-${member.userId}`} className="text-muted-foreground flex items-center gap-2 text-xs">
+            <Label
+              htmlFor={`team-weight-input-${member.userId}`}
+              className="text-muted-foreground flex items-center gap-2 text-xs"
+            >
               Weight
               <Input
                 id={`team-weight-input-${member.userId}`}
@@ -249,14 +255,17 @@ function WeightRow({
                   if (e.key === 'Enter') void commitWeight((e.target as HTMLInputElement).value);
                 }}
                 disabled={weightSaving}
-                placeholder='0'
-                className="w-16 h-7 text-right text-xs tabular-nums text-foreground"
+                placeholder="0"
+                className="text-foreground h-7 w-16 text-right text-xs tabular-nums"
                 aria-label={`Routing weight for ${member.name}`}
                 data-qa={`team-weight-input-${member.userId}`}
               />
             </Label>
             {/* T-MAXOPENLEADS (2026-09-28): the hard ceiling. Blank = no cap. */}
-            <Label htmlFor={`team-cap-input-${member.userId}`} className="text-muted-foreground flex items-center gap-2 text-xs">
+            <Label
+              htmlFor={`team-cap-input-${member.userId}`}
+              className="text-muted-foreground flex items-center gap-2 text-xs"
+            >
               Max open
               <Input
                 id={`team-cap-input-${member.userId}`}
@@ -272,7 +281,7 @@ function WeightRow({
                 }}
                 disabled={capSaving}
                 placeholder="No cap"
-                className="w-16 h-7 text-right text-xs tabular-nums text-foreground"
+                className="text-foreground h-7 w-16 text-right text-xs tabular-nums"
                 aria-label={`Maximum open leads for ${member.name}`}
                 data-qa={`team-cap-input-${member.userId}`}
               />

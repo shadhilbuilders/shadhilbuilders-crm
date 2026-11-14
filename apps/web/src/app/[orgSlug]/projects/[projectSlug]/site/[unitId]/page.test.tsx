@@ -149,7 +149,7 @@ afterEach(async () => {
 /** Pick one file through the page's own gallery input, which opens the note. */
 async function startNoteWithOnePhoto(): Promise<void> {
   const input = document.querySelector<HTMLInputElement>(
-    '[data-qa="site-file-upload"] input[type="file"]'
+    '[data-qa="site-file-upload"] input[type="file"]',
   );
   expect(input).not.toBeNull();
   const file = new File([new Uint8Array([1, 2, 3])], 'slab-1.jpg', { type: 'image/jpeg' });

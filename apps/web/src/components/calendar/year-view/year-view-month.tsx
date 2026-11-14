@@ -39,7 +39,7 @@ export function YearViewMonth({ month, events }: IProps) {
       <button
         type="button"
         onClick={handleClick}
-        className="w-full rounded-t-lg border px-3 py-2 text-sm font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="hover:bg-accent focus-visible:ring-ring w-full rounded-t-lg border px-3 py-2 text-sm font-semibold focus-visible:ring-1 focus-visible:outline-none"
       >
         {monthName}
       </button>

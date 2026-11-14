@@ -46,12 +46,12 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
 }
 
 const slugify = (name: string) =>
-  name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 
-function hookInput(
-  prisma: MockPrisma,
-  user: Record<string, unknown> = {},
-): OrgOwnerHookInput {
+function hookInput(prisma: MockPrisma, user: Record<string, unknown> = {}): OrgOwnerHookInput {
   return {
     prisma,
     user: {
@@ -102,9 +102,7 @@ describe('createOrgForSignup (T-ORG-OWNER, Gap A hardening)', () => {
 
   it('does nothing for a blank (whitespace-only) organizationName', async () => {
     const { prisma, orgCreate, userUpdate } = makePrisma();
-    const result = await createOrgForSignup(
-      hookInput(prisma, { organizationName: '   ' }),
-    );
+    const result = await createOrgForSignup(hookInput(prisma, { organizationName: '   ' }));
     expect(result).toBeUndefined();
     expect(orgCreate).not.toHaveBeenCalled();
     expect(userUpdate).not.toHaveBeenCalled();

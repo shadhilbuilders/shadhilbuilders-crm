@@ -62,9 +62,13 @@ export class OutboundService {
     visitFollowup: string;
     visitReminder: string;
   } = {
-    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY ?? 'shadhil_chat_reply',
-    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP ?? 'shadhil_visit_followup',
-    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER ?? 'shadhil_visit_reminder',
+    // `||`, not `??`: an env var set to an EMPTY string (compose
+    // `${X:-}` or a blank line in .env) is "present" to `??`, so the
+    // fallback would never fire and Meta would get templateName '' —
+    // a 132001 that names nothing useful.
+    chatReply: process.env.WA_TEMPLATE_CHAT_REPLY || 'shadhil_chat_reply',
+    visitFollowup: process.env.WA_TEMPLATE_VISIT_FOLLOWUP || 'shadhil_visit_followup',
+    visitReminder: process.env.WA_TEMPLATE_VISIT_REMINDER || 'shadhil_visit_reminder',
   };
 
   private get client(): PrismaClient {

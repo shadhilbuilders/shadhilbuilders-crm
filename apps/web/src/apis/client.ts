@@ -35,13 +35,7 @@ export class ApiError extends Error {
 }
 
 export type Role =
-  | 'OWNER'
-  | 'ADMIN'
-  | 'MANAGER'
-  | 'SALES_EXEC'
-  | 'TELECALLER'
-  | 'ENGINEER'
-  | 'CUSTOMER';
+  'OWNER' | 'ADMIN' | 'MANAGER' | 'SALES_EXEC' | 'TELECALLER' | 'ENGINEER' | 'CUSTOMER';
 
 export const STAFF_ROLES: readonly Role[] = [
   'OWNER',
@@ -148,9 +142,7 @@ export async function api<T>(
 
   if (response.status === 401) {
     // Let the proxy middleware bounce to /login on next navigation.
-    window.location.href = `/login?next=${encodeURIComponent(
-      window.location.pathname,
-    )}`;
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new ApiError('Not authenticated', 401);
   }
   if (response.status === 403) {
@@ -227,9 +219,7 @@ export async function api<T>(
 }
 
 /** Append optional list filters to a query string (skips null/undefined/''). */
-export function qs(
-  params: Record<string, string | number | boolean | null | undefined>,
-): string {
+export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === null || value === undefined || value === '') continue;

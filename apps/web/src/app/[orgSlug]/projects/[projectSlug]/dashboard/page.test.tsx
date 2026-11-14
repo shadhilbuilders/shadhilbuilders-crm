@@ -45,18 +45,18 @@ vi.mock('@/lib/session', () => ({
   // 2026-11-08: the dashboard forwards site-ONLY roles (ENGINEER) to /site.
   isSiteOnlyRole: vi.fn((role: string | undefined) => role === 'ENGINEER'),
   canApproveBookings: vi.fn(
-    (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER'
+    (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
   ),
   canScheduleVisits: vi.fn(
     (role: string) =>
-      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'TELECALLER'
+      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'TELECALLER',
   ),
   // Mirrors BookingsService.transition's HOLD -> TOKEN gate. This is the gate
   // that makes the token card DIFFERENT from the approvals card: a SALES_EXEC may
   // record a token but can never approve.
   canInitiateBookings: vi.fn(
     (role: string) =>
-      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC'
+      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC',
   ),
 }));
 
@@ -172,7 +172,7 @@ async function mount(): Promise<void> {
     root?.render(
       <QueryClientProvider client={queryClient}>
         <DashboardPage />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
   });
 }
@@ -617,7 +617,7 @@ describe('Token-payment card - HOLD bookings have somewhere to go', () => {
     await mount();
 
     const statuses = mockedUseBookings.mock.calls.flatMap(
-      (c) => (c[0] as { status?: string[] })?.status ?? []
+      (c) => (c[0] as { status?: string[] })?.status ?? [],
     );
     // TOKEN feeds approvals, HOLD feeds token payments. Both must be asked for:
     // they are different queues with different actions.

@@ -30,8 +30,7 @@ export type SyncedVisit = {
 
 const REASON_TEXT: Record<string, string> = {
   'lead-visited': 'Lead moved to Visited; the visit took place',
-  'lead-advanced':
-    'Lead advanced past the visit stage; the visit is closed to match',
+  'lead-advanced': 'Lead advanced past the visit stage; the visit is closed to match',
   'lead-terminal': 'Lead reached a terminal state; the visit can no longer be conducted',
   'visit-reverted':
     'Lead moved back from Visit booked to Visit requested; the booked visit is withdrawn',

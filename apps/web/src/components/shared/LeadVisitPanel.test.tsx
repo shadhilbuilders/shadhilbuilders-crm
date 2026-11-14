@@ -80,9 +80,7 @@ const sessionMock = vi.hoisted(() => ({
 
 vi.mock('@/hooks/queries/crm', () => ({
   useVisits: vi.fn(() => ({
-    data: [
-      { id: 'visit-1', leadId: 'lead-1', status: 'SCHEDULED' },
-    ],
+    data: [{ id: 'visit-1', leadId: 'lead-1', status: 'SCHEDULED' }],
     isLoading: false,
     error: null,
   })),
@@ -130,8 +128,7 @@ vi.mock('@paalstack/react-ui', async (importOriginal) => {
 import { LeadVisitPanel } from './LeadVisitPanel';
 import { toast } from '@paalstack/react-ui';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -195,9 +192,18 @@ describe('LeadVisitPanel offline fallback (T-D4)', () => {
 
     // The enqueue happened with the right shape.
     expect(mocks.enqueueUnique).toHaveBeenCalledTimes(1);
-    const call = (mocks.enqueueUnique.mock.calls as unknown as Array<
-      [{ dedupeKey: string; endpoint: string; method: string; body: { visitId: string; outcome: string } }]
-    >)[0];
+    const call = (
+      mocks.enqueueUnique.mock.calls as unknown as Array<
+        [
+          {
+            dedupeKey: string;
+            endpoint: string;
+            method: string;
+            body: { visitId: string; outcome: string };
+          },
+        ]
+      >
+    )[0];
     expect(call).toBeDefined();
     const arg = call![0];
     expect(arg.dedupeKey).toBe('outcome:visit-1:COMPLETED');

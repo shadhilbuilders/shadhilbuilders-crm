@@ -100,7 +100,6 @@ async function assertCanSeeData(): Promise<void> {
   );
 }
 
-
 type BrokenRow = {
   id: string;
   status: string;
@@ -158,20 +157,22 @@ async function findBroken(): Promise<BrokenRow[]> {
       unit: { select: { unitNumber: true } },
     },
   });
-  return rows
-    // The same "no amount" test the dashboard uses, so the script and the card
-    // agree on which rows are broken. `<= 0` counts: 0 is not a received token.
-    .filter((r) => r.tokenAmount === null || Number(r.tokenAmount) <= 0)
-    .map((r) => ({
-      id: r.id,
-      status: r.status,
-      tokenAmount: r.tokenAmount === null ? null : r.tokenAmount.toString(),
-      amount: r.amount.toString(),
-      leadId: r.leadId,
-      organizationId: r.organizationId,
-      leadName: r.lead?.name ?? null,
-      unitNumber: r.unit?.unitNumber ?? null,
-    }));
+  return (
+    rows
+      // The same "no amount" test the dashboard uses, so the script and the card
+      // agree on which rows are broken. `<= 0` counts: 0 is not a received token.
+      .filter((r) => r.tokenAmount === null || Number(r.tokenAmount) <= 0)
+      .map((r) => ({
+        id: r.id,
+        status: r.status,
+        tokenAmount: r.tokenAmount === null ? null : r.tokenAmount.toString(),
+        amount: r.amount.toString(),
+        leadId: r.leadId,
+        organizationId: r.organizationId,
+        leadName: r.lead?.name ?? null,
+        unitNumber: r.unit?.unitNumber ?? null,
+      }))
+  );
 }
 
 async function report(): Promise<BrokenRow[]> {
@@ -192,7 +193,9 @@ async function report(): Promise<BrokenRow[]> {
     const unit = r.unitNumber === null ? '-' : `Unit ${r.unitNumber}`;
     const lead = r.leadName ?? r.leadId;
     console.log(`  ${r.id}`);
-    console.log(`    ${unit} · ${lead} · booking ${r.amount} · tokenAmount=${String(r.tokenAmount)}`);
+    console.log(
+      `    ${unit} · ${lead} · booking ${r.amount} · tokenAmount=${String(r.tokenAmount)}`,
+    );
   }
   console.log('');
   console.log('To repair one:');
@@ -264,7 +267,9 @@ async function repairOne(
         action: 'booking.token_amount_repair',
         entityType: 'Booking',
         entityId: repair.bookingId,
-        before: { tokenAmount: current.tokenAmount === null ? null : current.tokenAmount.toString() },
+        before: {
+          tokenAmount: current.tokenAmount === null ? null : current.tokenAmount.toString(),
+        },
         after: { tokenAmount: repair.amount.toFixed(2) },
         reason:
           repair.reason ??

@@ -29,13 +29,7 @@ import { useDeletePhoto, type TimelinePhoto } from '@/hooks/queries/customer-pro
 
 import { EditNoteDialog } from './EditNoteDialog';
 
-export function ProgressPhotoActions({
-  photo,
-  unitId,
-}: {
-  photo: TimelinePhoto;
-  unitId: string;
-}) {
+export function ProgressPhotoActions({ photo, unitId }: { photo: TimelinePhoto; unitId: string }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const remove = useDeletePhoto(unitId);
@@ -67,10 +61,7 @@ export function ProgressPhotoActions({
             // component prop), so the anchor lives on the label content. A click
             // on it bubbles to the item, which is what the tests drive.
             label: (
-              <span
-                className="flex items-center gap-2"
-                data-qa={`progress-photo-edit-${photo.id}`}
-              >
+              <span className="flex items-center gap-2" data-qa={`progress-photo-edit-${photo.id}`}>
                 <LuPencil className="size-4" aria-hidden="true" /> Edit note
               </span>
             ),

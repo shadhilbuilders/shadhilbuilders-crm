@@ -9,9 +9,13 @@ import { formatDay, groupByMonth, photoAlt } from './portal-format';
 
 describe('photoAlt', () => {
   it('uses the caption when present', () => {
-    expect(photoAlt({ caption: 'Foundation October 2026', phaseName: 'Foundation', takenAt: '2026-10-26T10:00:00Z' })).toBe(
-      'Foundation October 2026',
-    );
+    expect(
+      photoAlt({
+        caption: 'Foundation October 2026',
+        phaseName: 'Foundation',
+        takenAt: '2026-10-26T10:00:00Z',
+      }),
+    ).toBe('Foundation October 2026');
   });
   it('falls back to "Construction photo, {phase}, {date}" for a blank caption', () => {
     expect(photoAlt({ caption: '   ', phaseName: 'Plinth', takenAt: '2026-10-26T10:00:00Z' })).toBe(

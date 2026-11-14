@@ -302,9 +302,7 @@ describe('listWhere - linkedUserId matches owner OR co-owner', () => {
 
   function callListWhere(dto: Record<string, unknown>, actor = admin) {
     const { service, tx } = makeService();
-    return (
-      service as unknown as { listWhere: ListWhere }
-    ).listWhere(tx, actor, dto);
+    return (service as unknown as { listWhere: ListWhere }).listWhere(tx, actor, dto);
   }
 
   it('ADMIN + linkedUserId: where.OR matches ownerId OR coOwnerId', async () => {
@@ -442,7 +440,9 @@ describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
   it('buckets: overdue NEW first, then fresh NEW, then the rest', () => {
     const sql = orderSql();
     // Bucket 0 keyed on NEW + past the 30-minute SLA.
-    expect(sql).toContain(`WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0`);
+    expect(sql).toContain(
+      `WHEN "state"='NEW' AND "createdAt" <= now() - interval '30 minutes' THEN 0`,
+    );
     expect(sql).toContain(`WHEN "state"='NEW' THEN 1`);
     expect(sql).toContain('ELSE 2');
     // The bucket CASE must be the FIRST ordering key.
@@ -478,7 +478,6 @@ describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
   });
 });
 
-
 // ---------------------------------------------------------------------------
 // T-SOFT-DELETE (2026-10-01): a lead on a soft-deleted project is not work.
 // Product decision: those leads leave lists, counts and KPIs together with the
@@ -487,7 +486,7 @@ describe('sortOrderSql - default inbox ordering (Decision 0.2)', () => {
 // asserted separately. Without this the leads page still listed (and counted)
 // work on a project the org had deleted.
 // ---------------------------------------------------------------------------
-describe("listWhere - excludes leads on soft-deleted projects (T-SOFT-DELETE)", () => {
+describe('listWhere - excludes leads on soft-deleted projects (T-SOFT-DELETE)', () => {
   type ListWhere = (
     tx: unknown,
     actor: typeof admin,

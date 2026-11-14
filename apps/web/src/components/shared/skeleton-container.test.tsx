@@ -48,9 +48,7 @@ describe('SkeletonContainer', () => {
       // transition class so the cross-fade is synchronized. If the
       // library's transition tokens change, this assertion catches
       // the drift.
-      expect(SKELETON_CONTAINER_LAYER_CLASSES).toBe(
-        SKELETON_CONTAINER_WRAPPER_CLASSES,
-      );
+      expect(SKELETON_CONTAINER_LAYER_CLASSES).toBe(SKELETON_CONTAINER_WRAPPER_CLASSES);
     });
   });
 
@@ -63,9 +61,7 @@ describe('SkeletonContainer', () => {
       );
       // The skeleton layer is the first child div and should have
       // opacity-100 (visible) and not be aria-hidden.
-      const skeletonLayer = html.match(
-        /<div[^>]*data-qa="skeleton-container-skeleton"[^>]*>/,
-      );
+      const skeletonLayer = html.match(/<div[^>]*data-qa="skeleton-container-skeleton"[^>]*>/);
       expect(skeletonLayer).not.toBeNull();
       expect(skeletonLayer![0]).toContain('opacity-100');
       expect(skeletonLayer![0]).toContain('aria-hidden="false"');
@@ -77,9 +73,7 @@ describe('SkeletonContainer', () => {
           <p>real content</p>
         </SkeletonContainer>,
       );
-      const contentLayer = html.match(
-        /<div[^>]*data-qa="skeleton-container-content"[^>]*>/,
-      );
+      const contentLayer = html.match(/<div[^>]*data-qa="skeleton-container-content"[^>]*>/);
       expect(contentLayer).not.toBeNull();
       expect(contentLayer![0]).toContain('opacity-0');
       expect(contentLayer![0]).toContain('pointer-events-none');
@@ -92,9 +86,7 @@ describe('SkeletonContainer', () => {
           <p>real content</p>
         </SkeletonContainer>,
       );
-      const contentLayer = html.match(
-        /<div[^>]*data-qa="skeleton-container-content"[^>]*>/,
-      );
+      const contentLayer = html.match(/<div[^>]*data-qa="skeleton-container-content"[^>]*>/);
       expect(contentLayer).not.toBeNull();
       expect(contentLayer![0]).toContain('opacity-100');
       expect(contentLayer![0]).toContain('aria-busy="false"');
@@ -106,9 +98,7 @@ describe('SkeletonContainer', () => {
           <p>real content</p>
         </SkeletonContainer>,
       );
-      const skeletonLayer = html.match(
-        /<div[^>]*data-qa="skeleton-container-skeleton"[^>]*>/,
-      );
+      const skeletonLayer = html.match(/<div[^>]*data-qa="skeleton-container-skeleton"[^>]*>/);
       expect(skeletonLayer).not.toBeNull();
       expect(skeletonLayer![0]).toContain('aria-hidden="true"');
       expect(skeletonLayer![0]).toContain('opacity-0');

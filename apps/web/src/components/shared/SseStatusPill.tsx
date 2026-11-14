@@ -28,11 +28,7 @@
 import { useEffect, useState } from 'react';
 import { LuCircleAlert, LuCircleCheckBig, LuCircleDot } from '@paalstack/react-icons/lu';
 
-export type SseConnectionState =
-  | 'connecting'
-  | 'open'
-  | 'reconnecting'
-  | 'offline';
+export type SseConnectionState = 'connecting' | 'open' | 'reconnecting' | 'offline';
 
 type PillProps = {
   /** API path for the SSE heartbeat. Default: `/api/sse/ping`. */

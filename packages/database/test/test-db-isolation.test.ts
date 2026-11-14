@@ -18,10 +18,8 @@ import {
   toTestDatabaseUrl,
 } from '../src/test-db-isolation';
 
-const APP_URL =
-  'postgresql://shadhil_app:appsecret@localhost:6432/shadhil_crm?schema=public';
-const OWNER_URL =
-  'postgresql://shadhil:ownersecret@localhost:5432/shadhil_crm?schema=public';
+const APP_URL = 'postgresql://shadhil_app:appsecret@localhost:6432/shadhil_crm?schema=public';
+const OWNER_URL = 'postgresql://shadhil:ownersecret@localhost:5432/shadhil_crm?schema=public';
 
 describe('toTestDatabaseUrl', () => {
   it('swaps only the database name, preserving role, password, host and query', () => {

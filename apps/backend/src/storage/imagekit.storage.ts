@@ -122,7 +122,9 @@ export class ImageKitStorage implements StorageProvider {
       }
       return buf;
     } catch (err) {
-      this.logger.warn(`[media] imagekit read error key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `[media] imagekit read error key=${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return null;
     }
   }
@@ -156,7 +158,8 @@ export class ImageKitStorage implements StorageProvider {
           ? (files as { response: unknown[] }).response
           : [];
       const match = list.find(
-        (f) => (f as { type?: string }).type === 'file' && (f as { filePath?: string }).filePath === key,
+        (f) =>
+          (f as { type?: string }).type === 'file' && (f as { filePath?: string }).filePath === key,
       ) as { fileId?: string } | undefined;
       if (!match) return; // nothing stored under this key (or already gone)
       const fileId = match.fileId;

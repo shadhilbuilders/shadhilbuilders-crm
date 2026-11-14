@@ -40,13 +40,14 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { PhasesSection } from '@/components/inventory/PhasesSection';
 import { BhkOptionsCard, FacingOptionsCard } from '@/components/inventory/ProjectOptionsSection';
 import { ProjectTeamList } from '@/components/teams/project-team-list';
-import {
-  ProjectDeleteBody,
-  ProjectFormBody,
-} from '@/components/projects/project-form-bodies';
+import { ProjectDeleteBody, ProjectFormBody } from '@/components/projects/project-form-bodies';
 import { useProjectDetail } from '@/hooks/queries';
 import { useDashboardStats } from '@/hooks/queries/dashboard';
-import { useInventoryPhases, useInventoryUnits, useProjectOptions } from '@/hooks/queries/inventory';
+import {
+  useInventoryPhases,
+  useInventoryUnits,
+  useProjectOptions,
+} from '@/hooks/queries/inventory';
 import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 import { orgHref } from '@/lib/nav';
 import { isAdminLike, useSessionUser } from '@/lib/session';
@@ -215,13 +216,34 @@ export default function AdminProjectDetailPage() {
         header={{ title: 'Details', description: 'Project identity and registry fields.' }}
         action={
           <div className="hidden items-center justify-end gap-2 sm:flex">
-            <Button variant="outline" size="sm" leftIcon={<LuPencil className="size-4" />} onClick={() => setEditOpen(true)} data-qa="project-edit" className="px-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<LuPencil className="size-4" />}
+              onClick={() => setEditOpen(true)}
+              data-qa="project-edit"
+              className="px-2.5"
+            >
               Edit
             </Button>
-            <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff" className="px-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<LuUsersRound className="size-4" />}
+              onClick={() => setMembersOpen(true)}
+              data-qa="project-staff"
+              className="px-2.5"
+            >
               Manage Teams
             </Button>
-            <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="px-2.5 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<LuTrash2 className="size-4" />}
+              className="text-destructive hover:text-destructive px-2.5"
+              onClick={() => setDeleteOpen(true)}
+              data-qa="project-delete"
+            >
               Delete
             </Button>
           </div>
@@ -232,20 +254,51 @@ export default function AdminProjectDetailPage() {
             never overflow a narrow viewport. */}
         <div className="space-y-3">
           <div className="space-y-1 text-sm">
-            <p><span className="text-muted-foreground">Name:</span> {detail.name}</p>
-            <p><span className="text-muted-foreground">Slug:</span> {detail.slug}</p>
-            <p><span className="text-muted-foreground">Address:</span> {detail.address}</p>
-            <p><span className="text-muted-foreground">RERA:</span> {detail.reraNumber ?? '-'}</p>
-            <p><span className="text-muted-foreground">CMDA:</span> {detail.cmdaNumber ?? '-'}</p>
+            <p>
+              <span className="text-muted-foreground">Name:</span> {detail.name}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Slug:</span> {detail.slug}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Address:</span> {detail.address}
+            </p>
+            <p>
+              <span className="text-muted-foreground">RERA:</span> {detail.reraNumber ?? '-'}
+            </p>
+            <p>
+              <span className="text-muted-foreground">CMDA:</span> {detail.cmdaNumber ?? '-'}
+            </p>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:hidden">
-            <Button variant="outline" size="sm" leftIcon={<LuPencil className="size-4" />} onClick={() => setEditOpen(true)} data-qa="project-edit" className="w-full px-1">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<LuPencil className="size-4" />}
+              onClick={() => setEditOpen(true)}
+              data-qa="project-edit"
+              className="w-full px-1"
+            >
               Edit
             </Button>
-            <Button variant="outline" size="sm" leftIcon={<LuUsersRound className="size-4" />} onClick={() => setMembersOpen(true)} data-qa="project-staff" className="w-full px-1">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<LuUsersRound className="size-4" />}
+              onClick={() => setMembersOpen(true)}
+              data-qa="project-staff"
+              className="w-full px-1"
+            >
               Staff
             </Button>
-            <Button variant="ghost" size="sm" leftIcon={<LuTrash2 className="size-4" />} className="w-full px-1 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-qa="project-delete">
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<LuTrash2 className="size-4" />}
+              className="text-destructive hover:text-destructive w-full px-1"
+              onClick={() => setDeleteOpen(true)}
+              data-qa="project-delete"
+            >
               Delete
             </Button>
           </div>
@@ -260,10 +313,28 @@ export default function AdminProjectDetailPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           {kpiCard('Phases', String(detail.counts.phases), LuLayers, 'inventory', 'text-info')}
           {kpiCard('Units', String(detail.counts.units), LuBuilding2, 'inventory', 'text-info')}
-          {kpiCard('Facing & BHK', String(detail.counts.options), LuCompass, 'inventory', 'text-info')}
+          {kpiCard(
+            'Facing & BHK',
+            String(detail.counts.options),
+            LuCompass,
+            'inventory',
+            'text-info',
+          )}
           {kpiCard('Teams', String(detail.counts.teams), LuUsersRound, 'total', 'text-foreground')}
-          {kpiCard('Members', String(detail.counts.teamMembers), LuUserRound, 'total', 'text-foreground')}
-          {kpiCard('Leads', String(detail.counts.leads), LuContactRound, 'leads', 'text-warning-foreground')}
+          {kpiCard(
+            'Members',
+            String(detail.counts.teamMembers),
+            LuUserRound,
+            'total',
+            'text-foreground',
+          )}
+          {kpiCard(
+            'Leads',
+            String(detail.counts.leads),
+            LuContactRound,
+            'leads',
+            'text-warning-foreground',
+          )}
           {kpiCard(
             'Bookings',
             String(detail.counts.bookings),
@@ -301,7 +372,13 @@ export default function AdminProjectDetailPage() {
             'leads',
             'text-warning-foreground',
           )}
-          {kpiCard('Leads total', String(detail.counts.leads), LuContactRound, 'total', 'text-foreground')}
+          {kpiCard(
+            'Leads total',
+            String(detail.counts.leads),
+            LuContactRound,
+            'total',
+            'text-foreground',
+          )}
         </div>
       </section>
 
@@ -322,16 +399,21 @@ export default function AdminProjectDetailPage() {
                 {leads.map((lead) => {
                   const row = lead as { id?: string; name?: string; ownerName?: string };
                   return (
-                    <li key={row.id ?? ''} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm sm:gap-4 sm:px-4">
+                    <li
+                      key={row.id ?? ''}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm sm:gap-4 sm:px-4"
+                    >
                       <span className="truncate">{row.name ?? '(no name)'}</span>
-                      <span className="shrink-0 text-muted-foreground text-xs">{row.ownerName ?? 'unassigned'}</span>
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        {row.ownerName ?? 'unassigned'}
+                      </span>
                     </li>
                   );
                 })}
               </ul>
             </div>
             <Pagination
-              className="relative z-10 mt-1 bg-background px-1 md:px-1"
+              className="bg-background relative z-10 mt-1 px-1 md:px-1"
               total={leadsEnvelope?.total ?? detail.counts.leads}
               currentPage={leadsPage}
               pageSize={LEADS_PAGE_SIZE}
@@ -354,11 +436,20 @@ export default function AdminProjectDetailPage() {
           ) : (
             <ul className="divide-border divide-y">
               {units.map((unit) => {
-                const row = unit as { id: string; unitNumber?: string; bhk?: number; facing?: string | null; status?: string };
+                const row = unit as {
+                  id: string;
+                  unitNumber?: string;
+                  bhk?: number;
+                  facing?: string | null;
+                  status?: string;
+                };
                 return (
-                  <li key={row.id} className="flex items-center justify-between gap-3 py-2 text-sm sm:gap-4">
+                  <li
+                    key={row.id}
+                    className="flex items-center justify-between gap-3 py-2 text-sm sm:gap-4"
+                  >
                     <span className="truncate">Unit {row.unitNumber ?? ''}</span>
-                    <span className="shrink-0 text-muted-foreground text-xs">
+                    <span className="text-muted-foreground shrink-0 text-xs">
                       {row.bhk ? `${row.bhk} BHK` : ''}
                       {row.facing ? ` · ${row.facing}` : ''} · {row.status ?? ''}
                     </span>
@@ -368,13 +459,25 @@ export default function AdminProjectDetailPage() {
             </ul>
           )}
         </Card>
-        <PhasesSection phases={phasesQuery.data ?? []} projectId={projectId} canManage={canManage} />
+        <PhasesSection
+          phases={phasesQuery.data ?? []}
+          projectId={projectId}
+          canManage={canManage}
+        />
       </section>
 
       {/* Options grid - one column on phones, two on desktop */}
       <section className="grid gap-4 sm:grid-cols-2 sm:gap-6">
-        <FacingOptionsCard options={optionsQuery.data ?? []} projectId={projectId} canManage={canManage} />
-        <BhkOptionsCard options={optionsQuery.data ?? []} projectId={projectId} canManage={canManage} />
+        <FacingOptionsCard
+          options={optionsQuery.data ?? []}
+          projectId={projectId}
+          canManage={canManage}
+        />
+        <BhkOptionsCard
+          options={optionsQuery.data ?? []}
+          projectId={projectId}
+          canManage={canManage}
+        />
       </section>
 
       {/* Team roster */}
@@ -395,14 +498,37 @@ export default function AdminProjectDetailPage() {
       </section>
 
       {/* Edit / Delete / Staff dialogs (reuse the registry bodies) */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen} header={{ title: 'Edit project' }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
+      <Dialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        header={{ title: 'Edit project' }}
+        trigger={<button hidden />}
+        contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg"
+      >
         <ProjectFormBody mode="edit" project={asListItem} onDone={() => setEditOpen(false)} />
       </Dialog>
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen} header={{ title: 'Delete project' }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        header={{ title: 'Delete project' }}
+        trigger={<button hidden />}
+        contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg"
+      >
         <ProjectDeleteBody project={asListItem} onDone={() => setDeleteOpen(false)} />
       </Dialog>
-      <Dialog open={membersOpen} onOpenChange={setMembersOpen} header={{ title: 'Manage Teams', description: detail.name }} trigger={<button hidden />} contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
-        <ProjectTeamList projectId={detail.id} projectName={detail.name} projectSlug={detail.slug} canManage />
+      <Dialog
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+        header={{ title: 'Manage Teams', description: detail.name }}
+        trigger={<button hidden />}
+        contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg"
+      >
+        <ProjectTeamList
+          projectId={detail.id}
+          projectName={detail.name}
+          projectSlug={detail.slug}
+          canManage
+        />
       </Dialog>
     </div>
   );

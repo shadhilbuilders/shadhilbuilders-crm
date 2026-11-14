@@ -67,17 +67,13 @@ export default function WebhookEventsPage() {
             <LuSatellite className="text-muted-foreground mx-auto size-8" />
             <p className="text-base font-medium">No webhook events yet.</p>
             <p className="text-muted-foreground text-sm">
-              Meta delivers events to /api/webhooks/whatsapp; they appear here
-              as they arrive.
+              Meta delivers events to /api/webhooks/whatsapp; they appear here as they arrive.
             </p>
           </CardContent>
         </Card>
       ) : (
         <>
-          <span
-            className="text-muted-foreground block text-xs"
-            data-qa="webhooks-total"
-          >
+          <span className="text-muted-foreground block text-xs" data-qa="webhooks-total">
             {total} {total === 1 ? 'event' : 'events'}
           </span>
           <ul

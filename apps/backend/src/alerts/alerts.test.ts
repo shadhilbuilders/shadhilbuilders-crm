@@ -18,11 +18,7 @@
 //      outbox isn't evidence Meta is healthy)
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  AlertsService,
-  type AlertsServiceOptions,
-  TelegramService,
-} from './alerts.module';
+import { AlertsService, type AlertsServiceOptions, TelegramService } from './alerts.module';
 
 import type { OutboundTickResult } from '../whatsapp/outbound.cron';
 
@@ -37,16 +33,17 @@ interface StubTelegram {
 
 /** A TelegramService we can spy on without hitting the network.
  *  We bypass the constructor's env reads and just override sendChannelMessage. */
-function makeStubTelegram(opts: {
-  botName?: string;
-  sendResult?: boolean;
-} = {}): StubTelegram {
+function makeStubTelegram(
+  opts: {
+    botName?: string;
+    sendResult?: boolean;
+  } = {},
+): StubTelegram {
   const svc = Object.create(TelegramService.prototype) as TelegramService;
   (svc as unknown as { enabled: boolean }).enabled = true;
   (svc as unknown as { botName: string }).botName = opts.botName ?? 'TestBot';
   const send = vi.fn(async (_text: string) => opts.sendResult ?? true);
-  (svc as unknown as { sendChannelMessage: typeof send }).sendChannelMessage =
-    send;
+  (svc as unknown as { sendChannelMessage: typeof send }).sendChannelMessage = send;
   return { svc, send };
 }
 
@@ -82,9 +79,10 @@ function makeAlerts(opts: {
     currentTime += ms;
   };
   const now = opts.now ?? (() => currentTime);
-  const stub = opts.telegram !== undefined
-    ? { svc: opts.telegram, send: vi.fn(async () => true) as ReturnType<typeof vi.fn> }
-    : makeStubTelegram();
+  const stub =
+    opts.telegram !== undefined
+      ? { svc: opts.telegram, send: vi.fn(async () => true) as ReturnType<typeof vi.fn> }
+      : makeStubTelegram();
   const cfg: AlertsServiceOptions = {
     threshold: opts.threshold ?? 3,
     cooldownMs: opts.cooldownMs ?? 15 * 60 * 1000,
@@ -112,8 +110,7 @@ describe('TelegramService - enabled gate', () => {
       botName: 'TestBot',
     });
     const fetchSpy = vi.fn();
-    (svc as unknown as { fetchImpl: typeof fetch }).fetchImpl =
-      fetchSpy as unknown as typeof fetch;
+    (svc as unknown as { fetchImpl: typeof fetch }).fetchImpl = fetchSpy as unknown as typeof fetch;
     const result = await svc.sendChannelMessage('hello');
     expect(result).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -126,8 +123,7 @@ describe('TelegramService - enabled gate', () => {
       botName: 'TestBot',
     });
     const fetchSpy = vi.fn();
-    (svc as unknown as { fetchImpl: typeof fetch }).fetchImpl =
-      fetchSpy as unknown as typeof fetch;
+    (svc as unknown as { fetchImpl: typeof fetch }).fetchImpl = fetchSpy as unknown as typeof fetch;
     const result = await svc.sendChannelMessage('hello');
     expect(result).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -168,10 +164,11 @@ describe('TelegramService - enabled gate', () => {
   });
 
   it('returns false when Telegram responds with a non-2xx status', async () => {
-    const fetchSpy = vi.fn(async () =>
-      new Response('{"ok":false,"description":"chat not found"}', {
-        status: 400,
-      }),
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response('{"ok":false,"description":"chat not found"}', {
+          status: 400,
+        }),
     );
     const svc = new TelegramService({
       botToken: 'TOKEN',

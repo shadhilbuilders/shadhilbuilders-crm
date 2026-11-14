@@ -91,7 +91,14 @@ beforeAll(async () => {
     [OTHER, 'MR RLS Other', 'TELECALLER'],
   ] as const) {
     await db['user']!.create({
-      data: { id, email: `${id}@x.local`, name, role, organizationId: ORG, mustChangePassword: false },
+      data: {
+        id,
+        email: `${id}@x.local`,
+        name,
+        role,
+        organizationId: ORG,
+        mustChangePassword: false,
+      },
     });
   }
   await db['team']!.create({
@@ -99,16 +106,40 @@ beforeAll(async () => {
   });
   await db['lead']!.create({
     data: {
-      id: LEAD, name: 'MRLS Customer', phone: `91${Date.now().toString().slice(-10)}`,
-      state: 'NEW', ownerId: TC, ownerType: 'TELECALLER',
-      teamId: TEAM, projectId: PROJ, organizationId: ORG,
+      id: LEAD,
+      name: 'MRLS Customer',
+      phone: `91${Date.now().toString().slice(-10)}`,
+      state: 'NEW',
+      ownerId: TC,
+      ownerType: 'TELECALLER',
+      teamId: TEAM,
+      projectId: PROJ,
+      organizationId: ORG,
     },
   });
   await db['message']!.create({
-    data: { id: NOTE, leadId: LEAD, userId: TC, direction: 'OUT', channel: 'IN_APP', kind: 'INTERNAL', body: 'loop in the exec', organizationId: ORG },
+    data: {
+      id: NOTE,
+      leadId: LEAD,
+      userId: TC,
+      direction: 'OUT',
+      channel: 'IN_APP',
+      kind: 'INTERNAL',
+      body: 'loop in the exec',
+      organizationId: ORG,
+    },
   });
   await db['message']!.create({
-    data: { id: CUST, leadId: LEAD, userId: TC, direction: 'OUT', channel: 'IN_APP', kind: 'CUSTOMER', body: 'unit details', organizationId: ORG },
+    data: {
+      id: CUST,
+      leadId: LEAD,
+      userId: TC,
+      direction: 'OUT',
+      channel: 'IN_APP',
+      kind: 'CUSTOMER',
+      body: 'unit details',
+      organizationId: ORG,
+    },
   });
   // The grant, shaped exactly as the service writes it (denormalized leadId).
   await db['messageRecipient']!.create({
@@ -117,7 +148,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const db = ownerPrisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>;
+  const db = ownerPrisma as unknown as Record<
+    string,
+    { deleteMany: (a: unknown) => Promise<unknown> }
+  >;
   // Delete the Message parents: the grant has NO delete policy, so a pooled
   // deleteMany removes nothing and silently strands the fixture. The FK's
   // ON DELETE CASCADE is the only removal path.
@@ -135,9 +169,7 @@ describe('MessageRecipient grant RLS (T-MENTION-TARGET)', () => {
     // (OTHER has no grant at all, so this is the same state.)
     return (async () => {
       expect(await countAs(ctxOf(OTHER, 'SALES_EXEC'), 'lead', { id: LEAD })).toBe(0);
-      expect(
-        await countAs(ctxOf(OTHER, 'SALES_EXEC'), 'message', { leadId: LEAD }),
-      ).toBe(0);
+      expect(await countAs(ctxOf(OTHER, 'SALES_EXEC'), 'message', { leadId: LEAD })).toBe(0);
     })();
   });
 

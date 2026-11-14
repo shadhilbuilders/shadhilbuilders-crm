@@ -112,13 +112,7 @@ export type MessageKind = z.infer<typeof MessageKindSchema>;
 // ────────────────────────────────────────────────────────────────────────────
 
 /** Booking lifecycle. HOLD → TOKEN → APPROVED is the happy path. */
-export const BookingStatusSchema = z.enum([
-  'HOLD',
-  'TOKEN',
-  'APPROVED',
-  'REJECTED',
-  'CANCELLED',
-]);
+export const BookingStatusSchema = z.enum(['HOLD', 'TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export type BookingStatus = z.infer<typeof BookingStatusSchema>;
 
 /**
@@ -232,14 +226,8 @@ export type OutboundSendType = z.infer<typeof OutboundSendTypeSchema>;
  * CONVERT or SPAM). CONVERTED links to a Lead via convertedToLeadId.
  * SPAM is a soft-delete (wrong number / bot / not interested).
  */
-export const WhatsappUnknownContactStatusSchema = z.enum([
-  'PENDING',
-  'CONVERTED',
-  'SPAM',
-]);
-export type WhatsappUnknownContactStatus = z.infer<
-  typeof WhatsappUnknownContactStatusSchema
->;
+export const WhatsappUnknownContactStatusSchema = z.enum(['PENDING', 'CONVERTED', 'SPAM']);
+export type WhatsappUnknownContactStatus = z.infer<typeof WhatsappUnknownContactStatusSchema>;
 
 // ────────────────────────────────────────────────────────────────────
 // Feedback (public submissions, 2026-09-11)

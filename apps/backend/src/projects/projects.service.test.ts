@@ -62,12 +62,8 @@ type MockTx = {
   projectTeam: { count: Mock<(args: MockArgs) => Promise<number>> };
   teamMember: { count: Mock<(args: MockArgs) => Promise<number>> };
   user: {
-    findUnique: Mock<
-      (args: MockArgs) => Promise<Record<string, unknown> | null>
-    >;
-    findMany: Mock<
-      (args: MockArgs) => Promise<Array<Record<string, unknown>>>
-    >;
+    findUnique: Mock<(args: MockArgs) => Promise<Record<string, unknown> | null>>;
+    findMany: Mock<(args: MockArgs) => Promise<Array<Record<string, unknown>>>>;
   };
   lead: {
     count: Mock<(args: MockArgs) => Promise<number>>;
@@ -121,14 +117,10 @@ function makeTx(overrides: {
       findUnique: vi.fn(async (args: MockArgs) => {
         const where = (args.where ?? {}) as { slug?: string; id?: string };
         const bySlug = where.slug !== undefined;
-        const key = bySlug
-          ? where.slug!.replace(/-\d+$/, '')
-          : where.id;
+        const key = bySlug ? where.slug!.replace(/-\d+$/, '') : where.id;
         if (overrides.projectFindUnique) return overrides.projectFindUnique(args);
         if (bySlug) return null; // slug free
-        const row = (projectRows[key as string] ?? null) as
-          | MockProjectRow
-          | null;
+        const row = (projectRows[key as string] ?? null) as MockProjectRow | null;
         // The service's remove() uses include: { _count: { select: { leads } } }
         if (row !== null && args.include?._count !== undefined) {
           return { ...row, _count: { leads: overrides.leadCount ?? 0 } };
@@ -204,21 +196,15 @@ function makeTx(overrides: {
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-                callback: (t: any) => unknown,
-      ) => {
+      async (_client: unknown, _ctx: unknown, callback: (t: any) => unknown) => {
         // The service under test receives the tx captured in beforeEach.
         return callback(txCapture.current);
       },
@@ -259,9 +245,7 @@ const telecallerActor: JwtPayload = {
 
 describe('slugifyProjectName', () => {
   it('slugifies a normal name', () => {
-    expect(slugifyProjectName('Shadhil Metro Heights')).toBe(
-      'shadhil-metro-heights',
-    );
+    expect(slugifyProjectName('Shadhil Metro Heights')).toBe('shadhil-metro-heights');
   });
 
   it('collapses punctuation and trims dashes', () => {
@@ -287,8 +271,7 @@ describe('ProjectsService.list', () => {
     const svc = new ProjectsService({ $client: {} } as never);
     await svc.list(telecallerActor);
     expect(withRlsContext).toHaveBeenCalledTimes(1);
-    const ctx = (withRlsContext as unknown as { mock: { calls: unknown[][] } })
-      .mock.calls[0]![1];
+    const ctx = (withRlsContext as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1];
     expect(ctx).toEqual({
       userId: 'tc-1',
       role: 'TELECALLER',
@@ -300,7 +283,7 @@ describe('ProjectsService.list', () => {
     const svc = new ProjectsService({ $client: {} } as never);
     const tx = txCapture.current!;
     const result = await svc.list(telecallerActor);
-    const args = (tx.project.findMany.mock.calls[0]![0] as any);
+    const args = tx.project.findMany.mock.calls[0]![0] as any;
     // T-SOFT-DELETE: only active rows; still no role/membership narrowing.
     expect(args.where).toEqual({ deletedAt: null });
     expect(args.orderBy).toEqual({ createdAt: 'asc' });
@@ -316,7 +299,7 @@ describe('ProjectsService.list', () => {
       limit: 10,
       offset: 20,
     });
-    const args = (tx.project.findMany.mock.calls[0]![0] as any);
+    const args = tx.project.findMany.mock.calls[0]![0] as any;
     // T-PROJ-SRVPG: search ANDed with deletedAt, skip/take from limit/offset.
     expect(args.where).toEqual({
       deletedAt: null,
@@ -345,7 +328,7 @@ describe('ProjectsService.create', () => {
       address: 'Whitefield, Bengaluru',
     });
     expect(row.slug).toBe('shadhil-skyline-towers');
-        const audit = (tx.auditLog.create.mock.calls[0]![0] as any);
+    const audit = tx.auditLog.create.mock.calls[0]![0] as any;
     expect(audit.data.action).toBe('project.create');
     expect(audit.data.entityType).toBe('Project');
 
@@ -380,8 +363,7 @@ describe('ProjectsService.create', () => {
         slug?: string;
         organizationId_slug?: { organizationId?: string; slug?: string };
       };
-      const slug =
-        where.organizationId_slug?.slug ?? where.slug;
+      const slug = where.organizationId_slug?.slug ?? where.slug;
       if (slug === 'shadhil-skyline-towers') {
         return {
           id: 'existing',
@@ -433,7 +415,7 @@ describe('ProjectsService.update', () => {
       name: 'Shadhil Metro Heights Phase 2',
     });
     expect(row.name).toBe('Shadhil Metro Heights Phase 2');
-        const audit = (tx.auditLog.create.mock.calls[0]![0] as any);
+    const audit = tx.auditLog.create.mock.calls[0]![0] as any;
     expect(audit.data.action).toBe('project.update');
     expect(audit.data.before.name).toBe('Shadhil Metro Heights');
   });
@@ -448,22 +430,22 @@ describe('ProjectsService.update', () => {
       ProjectsService['update']
     >[2];
     await svc.update(adminActor, 'proj-metro', hostile);
-        const args = (tx.project.update.mock.calls[0]![0] as any);
+    const args = tx.project.update.mock.calls[0]![0] as any;
     expect(args.data.slug).toBeUndefined();
   });
 
   it('MANAGER is rejected with 403', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.update(managerActor, 'proj-metro', { name: 'X' }),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(svc.update(managerActor, 'proj-metro', { name: 'X' })).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   it('unknown project id → 404', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.update(adminActor, 'proj-ghost', { name: 'X' }),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(svc.update(adminActor, 'proj-ghost', { name: 'X' })).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });
 
@@ -486,7 +468,7 @@ describe('ProjectsService.remove', () => {
         data: expect.objectContaining({ deletedAt: expect.any(Date) }),
       }),
     );
-    const audit = (tx.auditLog.create.mock.calls[0]![0] as any);
+    const audit = tx.auditLog.create.mock.calls[0]![0] as any;
     expect(audit.data.action).toBe('project.delete');
     expect(audit.data.before.leadCount).toBe(4);
   });
@@ -495,9 +477,7 @@ describe('ProjectsService.remove', () => {
     txCapture.current = makeTx({});
     const svc = new ProjectsService({ $client: {} } as never);
     const tx = txCapture.current!;
-    await expect(
-      svc.remove(telecallerActor, 'proj-metro'),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(svc.remove(telecallerActor, 'proj-metro')).rejects.toMatchObject({ status: 403 });
     expect(tx.project.update).not.toHaveBeenCalled();
   });
 
@@ -505,18 +485,14 @@ describe('ProjectsService.remove', () => {
     txCapture.current = makeTx({ bookingCount: 5 });
     const svc = new ProjectsService({ $client: {} } as never);
     const tx = txCapture.current!;
-    await expect(
-      svc.remove(ownerActor, 'proj-metro'),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(svc.remove(ownerActor, 'proj-metro')).rejects.toMatchObject({ status: 409 });
     expect(tx.project.update).not.toHaveBeenCalled();
   });
 
   it('unknown project id → 404', async () => {
     txCapture.current = makeTx({});
     const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.remove(ownerActor, 'proj-ghost'),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(svc.remove(ownerActor, 'proj-ghost')).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -556,15 +532,13 @@ describe('ProjectsService.getDetail', () => {
 
   it('rejects a non-admin (TELECALLER) with 403', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.getDetail(telecallerActor, 'proj-metro'),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(svc.getDetail(telecallerActor, 'proj-metro')).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   it('unknown project id → 404', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
-    await expect(
-      svc.getDetail(adminActor, 'proj-ghost'),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(svc.getDetail(adminActor, 'proj-ghost')).rejects.toMatchObject({ status: 404 });
   });
 });

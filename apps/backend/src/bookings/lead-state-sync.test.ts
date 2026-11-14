@@ -64,7 +64,13 @@ describe('isBookableLeadState - "lead must be NEGOTIATION or later"', () => {
   });
 
   it('refuses the pre-negotiation states', () => {
-    for (const s of ['NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED'] as const) {
+    for (const s of [
+      'NEW',
+      'CONTACTED',
+      'VISIT_REQUESTED',
+      'VISIT_SCHEDULED',
+      'VISITED',
+    ] as const) {
       expect(isBookableLeadState(s)).toBe(false);
     }
   });
@@ -78,14 +84,18 @@ describe('isBookableLeadState - "lead must be NEGOTIATION or later"', () => {
 
 describe('shouldApplyLeadState - direction guard', () => {
   it('applies a forward move', () => {
-    expect(shouldApplyLeadState('NEGOTIATION', 'BOOKING_INITIATED', { allowRegress: false })).toBe(true);
+    expect(shouldApplyLeadState('NEGOTIATION', 'BOOKING_INITIATED', { allowRegress: false })).toBe(
+      true,
+    );
     expect(shouldApplyLeadState('NEGOTIATION', 'WON', { allowRegress: false })).toBe(true);
   });
 
   it('refuses a backward move unless it is an explicit release', () => {
     expect(shouldApplyLeadState('WON', 'NEGOTIATION', { allowRegress: false })).toBe(false);
     expect(shouldApplyLeadState('WON', 'NEGOTIATION', { allowRegress: true })).toBe(true);
-    expect(shouldApplyLeadState('BOOKING_INITIATED', 'NEGOTIATION', { allowRegress: true })).toBe(true);
+    expect(shouldApplyLeadState('BOOKING_INITIATED', 'NEGOTIATION', { allowRegress: true })).toBe(
+      true,
+    );
   });
 
   it('is a no-op when the state already matches', () => {

@@ -11,7 +11,16 @@
 // client-side over the loaded page, which is wrong under server
 // pagination - so Selects (status/phase/BHK/facing) feed the query params
 // instead.
-import { Badge, Button, DataTable, Select, TypographyP, AlertDialog, DataTableRowActions, toast } from '@paalstack/react-ui';
+import {
+  Badge,
+  Button,
+  DataTable,
+  Select,
+  TypographyP,
+  AlertDialog,
+  DataTableRowActions,
+  toast,
+} from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 import Link from 'next/link';
@@ -114,8 +123,7 @@ function InventoryGrid() {
   // not query the whole project.
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const serverSearch =
-    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
+  const serverSearch = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
@@ -202,8 +210,7 @@ function InventoryGrid() {
 
   // Phase management (add/rename/delete) is MANAGER/ADMIN/OWNER; the
   // "Phases" header button is hidden for non-manager roles.
-  const canManagePhases =
-    mounted && user !== null && canManageProjectMembers(user.role);
+  const canManagePhases = mounted && user !== null && canManageProjectMembers(user.role);
 
   const isFiltered =
     statusFilter !== 'ALL' ||
@@ -287,18 +294,14 @@ function InventoryGrid() {
       {
         accessorKey: 'bhk',
         header: 'BHK',
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.bhk} BHK</span>
-        ),
+        cell: ({ row }) => <span className="text-sm">{row.original.bhk} BHK</span>,
         enableSorting: false,
       },
       {
         accessorKey: 'facing',
         header: 'Facing',
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.facing ?? '-'}
-          </span>
+          <span className="text-muted-foreground text-sm">{row.original.facing ?? '-'}</span>
         ),
         enableSorting: false,
       },
@@ -337,7 +340,9 @@ function InventoryGrid() {
               accessorKey: 'pricePerSqft',
               header: 'Per sq.ft price (₹)',
               cell: ({ row }) => (
-                <span className="text-sm tabular-nums">{formatMoney(row.original.pricePerSqft)}</span>
+                <span className="text-sm tabular-nums">
+                  {formatMoney(row.original.pricePerSqft)}
+                </span>
               ),
               enableSorting: false,
             },
@@ -408,11 +413,7 @@ function InventoryGrid() {
           if (actionItems.length === 0) return null;
           return (
             <div className="text-right">
-              <DataTableRowActions
-                row={row}
-                rowSchema={unitRowSchema}
-                actionItems={actionItems}
-              />
+              <DataTableRowActions row={row} rowSchema={unitRowSchema} actionItems={actionItems} />
             </div>
           );
         },
@@ -442,12 +443,21 @@ function InventoryGrid() {
               </Button>
             ) : null}
             {canEdit && projectId !== null ? (
-              <Button variant="outline" onClick={() => setMilestonesOpen(true)} data-qa="milestones-button">
+              <Button
+                variant="outline"
+                onClick={() => setMilestonesOpen(true)}
+                data-qa="milestones-button"
+              >
                 Milestones
               </Button>
             ) : null}
             {canEdit ? (
-              <Button as={Link} href={projectHref(orgSlug, projectSlug, '/inventory/new')} leftIcon={<LuPlus className="size-4" />} data-qa="new-unit-button">
+              <Button
+                as={Link}
+                href={projectHref(orgSlug, projectSlug, '/inventory/new')}
+                leftIcon={<LuPlus className="size-4" />}
+                data-qa="new-unit-button"
+              >
                 New unit
               </Button>
             ) : null}
@@ -464,9 +474,7 @@ function InventoryGrid() {
         >
           <p className="text-sm font-medium">Couldn&apos;t load the inventory.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {unitsQuery.error instanceof Error
-              ? unitsQuery.error.message
-              : 'Unexpected error.'}
+            {unitsQuery.error instanceof Error ? unitsQuery.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -521,9 +529,9 @@ function InventoryGrid() {
             className: 'mr-2 w-full',
           }}
           toolbarContainerClassName="flex-col sm:flex-row items-start sm:items-center gap-2"
-          toolbarRightSideContainerClassName='flex-2 justify-start'
+          toolbarRightSideContainerClassName="flex-2 justify-start"
           toolbarLeftSideContent={
-            <div className="flex flex-wrap flex-1 sm:items-center items-start justify-start sm:justify-end gap-2">
+            <div className="flex flex-1 flex-wrap items-start justify-start gap-2 sm:items-center sm:justify-end">
               <Select
                 value={statusFilter}
                 onValueChange={(next) => {
@@ -598,7 +606,7 @@ function InventoryGrid() {
           }}
           emptyContent={
             isFiltered ? (
-              <div className="rounded-lg p-10 text-center space-y-1">
+              <div className="space-y-1 rounded-lg p-10 text-center">
                 <TypographyP className="text-xl font-medium">
                   {serverSearch !== undefined
                     ? `No villa matches "${serverSearch}".`
@@ -611,7 +619,7 @@ function InventoryGrid() {
                 </TypographyP>
               </div>
             ) : (
-              <div className="rounded-lg p-10 text-center space-y-1">
+              <div className="space-y-1 rounded-lg p-10 text-center">
                 <TypographyP className="text-xl font-medium">No inventory yet.</TypographyP>
                 <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                   Units appear here as soon as they&apos;re added to a phase.
@@ -624,7 +632,11 @@ function InventoryGrid() {
       )}
 
       {canEdit && projectId !== null && milestonesOpen ? (
-        <MilestonesDialog projectId={projectId} open={milestonesOpen} onOpenChange={setMilestonesOpen} />
+        <MilestonesDialog
+          projectId={projectId}
+          open={milestonesOpen}
+          onOpenChange={setMilestonesOpen}
+        />
       ) : null}
 
       <UnitDetailSheet

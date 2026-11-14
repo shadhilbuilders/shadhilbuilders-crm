@@ -93,7 +93,11 @@ describe('TeamMemberRemovalDialogBody', () => {
       <TeamMemberRemovalDialogBody
         preview={
           previewResult({
-            error: new ApiError('1200 leads are affected, above the 1000 cap.', 409, 'TOO_MANY_AFFECTED_LEADS'),
+            error: new ApiError(
+              '1200 leads are affected, above the 1000 cap.',
+              409,
+              'TOO_MANY_AFFECTED_LEADS',
+            ),
           }) as never
         }
         staleNotice={false}
@@ -143,9 +147,7 @@ describe('TeamMemberRemovalDialogBody', () => {
       ownedCount: 9,
       coOwnedCount: 3,
       totalAffectedLeads: 12,
-      projects: [
-        { projectId: 'p1', projectName: 'Metro Heights', ownedCount: 9, coOwnedCount: 3 },
-      ],
+      projects: [{ projectId: 'p1', projectName: 'Metro Heights', ownedCount: 9, coOwnedCount: 3 }],
       eligibleReplacements: [
         { userId: 'r-1', name: 'Priya', role: 'TELECALLER', isTeamManager: false },
         { userId: 'r-2', name: 'Meera', role: 'MANAGER', isTeamManager: true },
@@ -195,7 +197,9 @@ describe('TeamMemberRemovalDialogBody', () => {
       ...basePreview,
       totalAffectedLeads: 5,
       ownedCount: 5,
-      eligibleReplacements: [{ userId: 'r-1', name: 'Priya', role: 'TELECALLER', isTeamManager: false }],
+      eligibleReplacements: [
+        { userId: 'r-1', name: 'Priya', role: 'TELECALLER', isTeamManager: false },
+      ],
     };
     const html = renderToStaticMarkup(
       <TeamMemberRemovalDialogBody

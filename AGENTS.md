@@ -25,7 +25,7 @@ first).
   health probe, auth endpoints, and signature-verified webhook receivers.
   Adding it anywhere else fails review.
 - Roles are Prisma enum values (UPPERCASE): `ADMIN | MANAGER | SALES_EXEC |
-  TELECALLER`. Never hand-roll role strings.
+TELECALLER`. Never hand-roll role strings.
 - Errors: never swallow. Each module maps its known failure classes to typed
   exceptions with what/why/fix (plan §2 zero-silent-failures rule).
 - Audit writes for high-stakes actions (reassign, state transitions, booking,

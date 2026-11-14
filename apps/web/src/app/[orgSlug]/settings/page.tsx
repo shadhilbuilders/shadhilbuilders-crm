@@ -231,11 +231,11 @@ function ProfileSection({
       <CardHeader>
         <CardTitle>Profile</CardTitle>
         <CardDescription>
-          How your name appears to teammates in the sidebar, chat mentions and
-          notifications. Your email address is managed by an administrator.
+          How your name appears to teammates in the sidebar, chat mentions and notifications. Your
+          email address is managed by an administrator.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 mt-4">
+      <CardContent className="mt-4 space-y-4">
         <Form
           form={form}
           onSubmit={onSubmit}
@@ -281,15 +281,15 @@ function ProfileSection({
         >
           <LuInfo className="size-3.5 shrink-0" aria-hidden />
           <span>
-            Email changes need an administrator because this deployment has no
-            email-verification step - a self-service change could move your login
-            to an address nobody has proven they own.
+            Email changes need an administrator because this deployment has no email-verification
+            step - a self-service change could move your login to an address nobody has proven they
+            own.
             {orgSlug !== null ? (
               <>
-              {' '}
+                {' '}
                 <Link
                   href={orgHref(orgSlug, '/admin/users')}
-                  className="underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1 underline"
                 >
                   Admin <LuArrowRight className="size-3.5" aria-hidden /> Users
                 </Link>
@@ -350,8 +350,8 @@ function PasswordSection({
       <CardHeader>
         <CardTitle>Password</CardTitle>
         <CardDescription>
-          Change the password you sign in with. You will be signed out and
-          need to log in again with your new password.
+          Change the password you sign in with. You will be signed out and need to log in again with
+          your new password.
         </CardDescription>
       </CardHeader>
       <CardContent className="mt-4">
@@ -479,11 +479,10 @@ function NotificationsSection() {
       <CardHeader>
         <CardTitle>Notifications</CardTitle>
         <CardDescription>
-          Push alerts for this browser, and where to find everything that was
-          sent to you.
+          Push alerts for this browser, and where to find everything that was sent to you.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 mt-4">
+      <CardContent className="mt-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-0.5">
             <p className="text-sm font-medium">Push on this device</p>
@@ -561,9 +560,9 @@ function NotificationsSection() {
         <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
           <LuInfo className="size-3.5 shrink-0" aria-hidden />
           <span>
-            Per-alert switches (quiet hours, one toggle per event type) are not
-            available yet. Today every alert is sent and you control the noise
-            with the inbox's mark-as-read and dismiss actions.
+            Per-alert switches (quiet hours, one toggle per event type) are not available yet. Today
+            every alert is sent and you control the noise with the inbox's mark-as-read and dismiss
+            actions.
           </span>
         </p>
       </CardContent>
@@ -591,11 +590,11 @@ function OrganizationSection({
       <CardHeader>
         <CardTitle>Organization</CardTitle>
         <CardDescription>
-          The workspace your account belongs to. Every lead, project and team you
-          see is scoped to it.
+          The workspace your account belongs to. Every lead, project and team you see is scoped to
+          it.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 mt-4">
+      <CardContent className="mt-4 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="settings-org-name">Name</Label>
@@ -631,8 +630,13 @@ function OrganizationSection({
         <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
           <LuInfo className="size-3.5 shrink-0" aria-hidden />
           <span>
-            Org name and workspace URL are fixed at signup and cannot be edited
-            yet. Roles and access are managed by an owner or admin under <span className="inline-flex items-center gap-1"> Admin <LuArrowRight className="size-3" aria-hidden /> Users</span>.
+            Org name and workspace URL are fixed at signup and cannot be edited yet. Roles and
+            access are managed by an owner or admin under{' '}
+            <span className="inline-flex items-center gap-1">
+              {' '}
+              Admin <LuArrowRight className="size-3" aria-hidden /> Users
+            </span>
+            .
           </span>
         </p>
       </CardContent>
@@ -663,7 +667,7 @@ function AppearanceSection() {
           Theme for this browser. Stored locally, so it follows this device only.
         </CardDescription>
       </CardHeader>
-      <CardContent className='mt-4'>
+      <CardContent className="mt-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {isDark ? (
@@ -691,9 +695,7 @@ function AppearanceSection() {
           </div>
         </div>
         {user !== null ? (
-          <p className="text-muted-foreground mt-4 text-xs">
-            Signed in as {user.email}.
-          </p>
+          <p className="text-muted-foreground mt-4 text-xs">Signed in as {user.email}.</p>
         ) : null}
       </CardContent>
     </Card>

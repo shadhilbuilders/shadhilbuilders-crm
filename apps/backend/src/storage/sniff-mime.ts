@@ -50,7 +50,10 @@ export function sniffMime(buf: Buffer): SniffedMime | null {
   if (
     buf.length >= 12 &&
     startsWithBytes(buf, [0x52, 0x49, 0x46, 0x46]) && // "RIFF"
-    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50 // "WEBP"
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50 // "WEBP"
   ) {
     return 'image/webp';
   }
@@ -61,9 +64,22 @@ export function sniffMime(buf: Buffer): SniffedMime | null {
   // Ordering matters: a bare `ftyp` check would classify a HEIC photo as a
   // video, which is exactly the kind of wrong-type-the-browser-drops bug this
   // module exists to prevent.
-  if (buf.length >= 12 && buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
+  if (
+    buf.length >= 12 &&
+    buf[4] === 0x66 &&
+    buf[5] === 0x74 &&
+    buf[6] === 0x79 &&
+    buf[7] === 0x70
+  ) {
     const brand = buf.subarray(8, 12).toString('latin1');
-    if (brand === 'heic' || brand === 'heix' || brand === 'heim' || brand === 'heis' || brand === 'mif1' || brand === 'msf1') {
+    if (
+      brand === 'heic' ||
+      brand === 'heix' ||
+      brand === 'heim' ||
+      brand === 'heis' ||
+      brand === 'mif1' ||
+      brand === 'msf1'
+    ) {
       return 'image/heic';
     }
     if (brand === 'avif' || brand === 'avis') return 'image/avif';

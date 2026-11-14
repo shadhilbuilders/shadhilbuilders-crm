@@ -1,6 +1,7 @@
 # Client Feedback Round 4 - 2026-08-29 (Shadhil CRM)
 
 Decision lock from this round:
+
 - ✅ Option B locked: NestJS + GraphQL + Next.js + Expo + Hostinger VPS via Coolify
 - ✅ better-auth BFF in Next.js
 - ✅ Prisma for the NestJS backend
@@ -375,35 +376,35 @@ model Lead {
   project      Project  @relation(fields: [projectId], references: [id])
   teamId       String?  // manager's team
   team         Team?    @relation(fields: [teamId], references: [id])
-  
+
   // Contact
   fullName     String
   phone        String
   email        String?
   source       String   // landing_site, walk_in, magicbricks, etc.
-  
+
   // Status
   status       LeadStatus @default(NEW)
   currentOwnerId String?  // who currently owns this lead
   currentOwner   User?  @relation("AssignedAgent", fields: [currentOwnerId], references: [id])
   createdById    String
   createdBy      User   @relation("CreatedBy", fields: [createdById], references: [id])
-  
+
   // Handoff tracking
   handoffAt       DateTime?
   handoffFromId   String?  // telecaller who handed off
   handoffToUserId String?  // manager who received
-  
+
   // Relations
   assignments   LeadAssignment[]
   siteVisits    SiteVisit[]
   activities    Activity[]
   messages      Message[]
   booking       Booking?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([projectId, status])
   @@index([teamId])
   @@index([currentOwnerId])
@@ -436,7 +437,7 @@ model LeadAssignment {
   reason     String? // "telecaller_handoff", "manager_assign", "exec_accept"
   notes      String?
   createdAt  DateTime @default(now())
-  
+
   @@index([leadId, createdAt])
 }
 
@@ -455,7 +456,7 @@ model SiteVisit {
   remindersSent   Json?    // [{sentAt, channel, templateId}]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  
+
   @@index([leadId, scheduledAt])
   @@index([salesExecId, scheduledAt])
 }
@@ -480,10 +481,10 @@ model Unit {
   basePrice   Decimal  @db.Decimal(12, 2)
   status      UnitStatus @default(AVAILABLE)
   booking     Booking?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([projectId, unitNumber])
   @@index([projectId, status])
 }
@@ -505,7 +506,7 @@ model Booking {
   tokenPaidAt DateTime?
   agreementSignedAt DateTime?
   approvedById String?  // manager who approved
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -519,7 +520,7 @@ model Activity {
   type      ActivityType
   payload   Json     // type-specific data
   createdAt DateTime @default(now())
-  
+
   @@index([leadId, createdAt])
 }
 
@@ -544,7 +545,7 @@ model Message {
   body        String
   externalId  String?  // WhatsApp message ID for dedup
   createdAt   DateTime @default(now())
-  
+
   @@unique([externalId, channel])  // dedup webhook deliveries
   @@index([leadId, createdAt])
 }
@@ -567,7 +568,7 @@ model Session {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
+
   @@index([userId])
   @@index([expiresAt])
 }
@@ -581,7 +582,7 @@ model AuditLog {
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
-  
+
   @@index([userId, createdAt])
   @@index([resource, createdAt])
   @@index([createdAt])  // for retention purges
@@ -595,7 +596,7 @@ model ManagerAssignmentRule {
   priority   Int      @default(0)
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
-  
+
   @@index([projectId, territory, active])
 }
 ```
@@ -628,6 +629,7 @@ The one open question I have for you: **which subdomain
 structure do you want for the BFF vs backend?**
 
 Option 1 (split subdomains - clean, my recommendation):
+
 - BFF (Next.js): `crm.shadhilbuilders.in`
 - Backend (NestJS): `api.crm.shadhilbuilders.in`
 - Mobile: native, no domain
@@ -636,6 +638,7 @@ Option 1 (split subdomains - clean, my recommendation):
   automatically)
 
 Option 2 (same domain, path-based - simpler):
+
 - BFF: `crm.shadhilbuilders.in` (Next.js)
 - Backend: `crm.shadhilbuilders.in/api/graphql` (NestJS
   reverse-proxied through Next.js or via a Coolify reverse
@@ -644,6 +647,7 @@ Option 2 (same domain, path-based - simpler):
 - Con: tighter coupling, harder to scale backend independently
 
 Option 3 (same domain, different paths via Coolify):
+
 - BFF: `crm.shadhilbuilders.in` (Next.js)
 - Backend: `crm.shadhilbuilders.in/backend/graphql` (Coolify
   reverse proxy)

@@ -14,10 +14,7 @@ import { currencyIntl, numberIntl } from '@/lib/format';
 import { projectHref } from '@/lib/nav';
 import { useSessionUser } from '@/lib/session';
 import { useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
-import {
-  useUnitPhotos,
-  isForbidden,
-} from '@/hooks/queries/customer-progress';
+import { useUnitPhotos, isForbidden } from '@/hooks/queries/customer-progress';
 import { AssignedEngineerRow } from './AssignedEngineerRow';
 import { UnitProgressTabContent, type ProgressUnit } from './UnitProgressTab';
 
@@ -101,7 +98,7 @@ export function UnitDetailSheet({
       onOpenChange={onOpenChange}
       trigger={null}
       side="right"
-      className='w-full data-[side=right]:sm:max-w-xl'
+      className="w-full data-[side=right]:sm:max-w-xl"
       header={{
         title: `Unit ${unit.unitNumber}`,
         description: `${unit.projectName} · ${unit.phaseName}`,
@@ -109,7 +106,12 @@ export function UnitDetailSheet({
       footer={{
         primaryAction:
           canBook && isAvailable ? (
-            <Button as={Link} href={`${projectHref(orgSlug, projectSlug, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`} rightIcon={<LuArrowRight className="size-4" />} data-qa="unit-book-button">
+            <Button
+              as={Link}
+              href={`${projectHref(orgSlug, projectSlug, '/bookings/new')}?unitId=${encodeURIComponent(unit.id)}`}
+              rightIcon={<LuArrowRight className="size-4" />}
+              data-qa="unit-book-button"
+            >
               Create booking
             </Button>
           ) : null,
@@ -163,7 +165,10 @@ function UnitDetailsPanel({ unit }: { unit: UnitRow }) {
   const { user } = useSessionUser();
   const canBook =
     user !== null &&
-    (user.role === 'ADMIN' || user.role === 'OWNER' || user.role === 'MANAGER' || user.role === 'SALES_EXEC');
+    (user.role === 'ADMIN' ||
+      user.role === 'OWNER' ||
+      user.role === 'MANAGER' ||
+      user.role === 'SALES_EXEC');
   const status = unit.status;
   const badgeVariant = inventoryStatusBadgeVariant(status);
   const isAvailable = status === 'AVAILABLE';
@@ -195,14 +200,17 @@ function UnitDetailsPanel({ unit }: { unit: UnitRow }) {
         ) : null}
       </div>
 
-      <div className="border-border divide-y divide-border rounded-lg border">
+      <div className="border-border divide-border divide-y rounded-lg border">
         <DetailRow
           label="Plot number"
           value={unit.plotNumber === null ? 'Not on the layout' : String(unit.plotNumber)}
         />
         <DetailRow label="BHK" value={`${unit.bhk} BHK`} />
         <DetailRow label="Facing" value={unit.facing ?? '-'} />
-        <DetailRow label="Plot sq.ft" value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'} />
+        <DetailRow
+          label="Plot sq.ft"
+          value={unit.sqft !== null ? numberIntl.format(unit.sqft) : '-'}
+        />
         <DetailRow label="Buildup sq.ft" value={numberIntl.format(Number(unit.buildupSqft))} />
         {/* Money is withheld for site-only roles (2026-11-08). The rows are
             omitted rather than shown as "-", which would read as a missing

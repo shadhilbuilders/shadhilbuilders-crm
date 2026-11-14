@@ -15,7 +15,11 @@ import { Prisma } from '@shadhil/database';
 
 import { GlobalExceptionFilter } from './global-exception.filter';
 
-function makeHost(): { host: ArgumentsHost; json: ReturnType<typeof vi.fn>; status: ReturnType<typeof vi.fn> } {
+function makeHost(): {
+  host: ArgumentsHost;
+  json: ReturnType<typeof vi.fn>;
+  status: ReturnType<typeof vi.fn>;
+} {
   const json = vi.fn();
   const status = vi.fn(() => ({ json }));
   const response = { status };
@@ -75,7 +79,10 @@ describe('GlobalExceptionFilter', () => {
     const filter = new GlobalExceptionFilter();
     const { host, json, status } = makeHost();
 
-    filter.catch(new Error('TypeError: cannot read property foo of undefined at /app/src/secret.ts:42'), host);
+    filter.catch(
+      new Error('TypeError: cannot read property foo of undefined at /app/src/secret.ts:42'),
+      host,
+    );
 
     expect(status).toHaveBeenCalledWith(500);
     const [body] = json.mock.calls[0] as [{ code: string; message: string }];

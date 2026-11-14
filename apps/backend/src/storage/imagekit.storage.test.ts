@@ -204,13 +204,17 @@ describe('ImageKitStorage', () => {
   it('delete(): looks the fileId up by folder+name and deletes it', async () => {
     process.env.IMAGEKIT_PUBLIC_KEY = 'pub';
     process.env.IMAGEKIT_PRIVATE_KEY = 'priv';
-    listFilesMock.mockResolvedValue({ response: [{ fileId: 'f_9', filePath: '/org-1/abc/photo.png', type: 'file' }] });
+    listFilesMock.mockResolvedValue({
+      response: [{ fileId: 'f_9', filePath: '/org-1/abc/photo.png', type: 'file' }],
+    });
     deleteFileMock.mockResolvedValue({});
 
     const s = new ImageKitStorage();
     await s.delete('/org-1/abc/photo.png');
 
-    expect(listFilesMock).toHaveBeenCalledWith(expect.objectContaining({ path: '/org-1/abc', name: 'photo.png' }));
+    expect(listFilesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/org-1/abc', name: 'photo.png' }),
+    );
     expect(deleteFileMock).toHaveBeenCalledWith('f_9');
   });
 

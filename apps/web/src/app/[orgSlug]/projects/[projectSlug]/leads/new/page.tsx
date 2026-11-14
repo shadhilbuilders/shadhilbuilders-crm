@@ -184,11 +184,7 @@ export default function NewLeadPage() {
       required: true,
       description: '10-digit mobile number. +91 is added automatically.',
       render: ({ field }) => (
-        <PhoneNumberInput
-          {...field}
-          placeholder="9876543210"
-          data-qa="lead-phone"
-        />
+        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="lead-phone" />
       ),
     },
     {
@@ -238,7 +234,8 @@ export default function NewLeadPage() {
       type: 'select',
       name: 'teamId',
       label: 'Team',
-      description: 'Which of your teams does this lead belong to? Defaults to your first team if left unset.',
+      description:
+        'Which of your teams does this lead belong to? Defaults to your first team if left unset.',
       options: [
         { value: NO_TEAM_OVERRIDE, label: 'Default (first team)' },
         ...managedTeams.map((t) => ({ value: t.id, label: t.name })),
@@ -305,8 +302,8 @@ export default function NewLeadPage() {
         onSubmit={onSubmit}
         submitText={createLead.isPending ? 'Saving...' : 'Create lead'}
         submitButtonProps={{ disabled: createLead.isPending }}
-        actionClassName='justify-end'
-        resetText='Cancel'
+        actionClassName="justify-end"
+        resetText="Cancel"
         resetButtonProps={{
           onClick: () => {
             form.reset();

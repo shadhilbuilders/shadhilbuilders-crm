@@ -14,12 +14,7 @@
 //   useMarkFeedbackSpam isn't needed - feedback triage is status-only
 //   (NEW -> REVIEWED -> ARCHIVED), no delete/spam verb.
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 
@@ -51,9 +46,7 @@ export function useFeedback(query: Partial<FeedbackListQuery> = {}) {
       total: typeof raw.total === 'number' ? raw.total : 0,
       rows: Array.isArray(raw.rows) ? raw.rows : [],
       nextCursor:
-        typeof raw.nextCursor === 'string' && raw.nextCursor.length > 0
-          ? raw.nextCursor
-          : null,
+        typeof raw.nextCursor === 'string' && raw.nextCursor.length > 0 ? raw.nextCursor : null,
     }),
     staleTime: 10_000,
     placeholderData: keepPreviousData,

@@ -42,8 +42,7 @@ export default function PhasesPage() {
   const optionsQuery = useProjectOptions(projectId ?? undefined);
   const options = optionsQuery.data ?? [];
 
-  const canManage =
-    mounted && user !== null && canManageProjectMembers(user.role);
+  const canManage = mounted && user !== null && canManageProjectMembers(user.role);
 
   return (
     <div className="space-y-6">
@@ -61,21 +60,9 @@ export default function PhasesPage() {
         <Skeleton variant="table" isOffline={false} />
       ) : (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <PhasesSection
-            phases={phases}
-            projectId={projectId}
-            canManage={canManage}
-          />
-          <FacingOptionsCard
-            options={options}
-            projectId={projectId}
-            canManage={canManage}
-          />
-          <BhkOptionsCard
-            options={options}
-            projectId={projectId}
-            canManage={canManage}
-          />
+          <PhasesSection phases={phases} projectId={projectId} canManage={canManage} />
+          <FacingOptionsCard options={options} projectId={projectId} canManage={canManage} />
+          <BhkOptionsCard options={options} projectId={projectId} canManage={canManage} />
         </div>
       )}
     </div>

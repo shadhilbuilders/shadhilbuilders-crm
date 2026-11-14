@@ -64,9 +64,7 @@ async function mountOpen(props: {
             props.settingsHref === undefined ? '/shadhil-builders/settings' : props.settingsHref
           }
           employeeHref={props.employeeHref ?? null}
-          adminHref={
-            props.adminHref === undefined ? '/shadhil-builders/admin' : props.adminHref
-          }
+          adminHref={props.adminHref === undefined ? '/shadhil-builders/admin' : props.adminHref}
           onSignOut={() => {}}
         />
       </SidebarProvider>,
@@ -92,8 +90,7 @@ afterEach(async () => {
   await unmount();
 });
 
-const qa = (value: string): HTMLElement | null =>
-  document.querySelector(`[data-qa="${value}"]`);
+const qa = (value: string): HTMLElement | null => document.querySelector(`[data-qa="${value}"]`);
 
 describe('NavUser account menu', () => {
   it('shows "Switch Admin" as a link to the org-scoped admin namespace', async () => {

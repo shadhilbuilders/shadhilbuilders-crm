@@ -202,7 +202,7 @@ export function BookingApprovalDialog({
           const msg = error instanceof Error ? error.message : 'Update failed';
           toast.error(msg);
         },
-      }
+      },
     );
   }
 

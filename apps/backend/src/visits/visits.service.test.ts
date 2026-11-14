@@ -131,10 +131,7 @@ async function cleanupAll(): Promise<void> {
   await adminSeed(async (db) => {
     const ids = [...TEST_VISIT_IDS];
     if (ids.length > 0) {
-      await db.$executeRawUnsafe(
-        `DELETE FROM "SiteVisit" WHERE id = ANY($1::text[])`,
-        ids,
-      );
+      await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE id = ANY($1::text[])`, ids);
     }
     // Any visit still hanging off a test lead. The create-eligibility suite
     // (T-VISIT-NO-SHOW-SCHEDULING) creates visits through the SERVICE, so their
@@ -143,17 +140,13 @@ async function cleanupAll(): Promise<void> {
     // silently leave rows behind. Scoped by the lead ids this suite owns, so it
     // can never reach into another suite's fixtures.
     if (TEST_LEAD_IDS.length > 0) {
-      await db.$executeRawUnsafe(
-        `DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`,
-        [...TEST_LEAD_IDS],
-      );
+      await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`, [
+        ...TEST_LEAD_IDS,
+      ]);
     }
     const leadIds = [...TEST_LEAD_IDS];
     if (leadIds.length > 0) {
-      await db.$executeRawUnsafe(
-        `DELETE FROM "Lead" WHERE id = ANY($1::text[])`,
-        leadIds,
-      );
+      await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id = ANY($1::text[])`, leadIds);
     }
   });
   TEST_LEAD_IDS.length = 0;
@@ -189,7 +182,11 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
       await db.team.upsert({
         where: { id: TEAM_ID },
         update: {},
-        create: { id: TEAM_ID, name: `VOC Test Team ${RUN}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        create: {
+          id: TEAM_ID,
+          name: `VOC Test Team ${RUN}`,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
       });
       await db.user.upsert({
         where: { id: ADMIN_ID },
@@ -290,11 +287,7 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
           where: { id: visit.leadId },
           data: {
             state: 'VISIT_SCHEDULED',
-            coOwnerId:
-              seeded !== null &&
-              seeded.ownerId === visit.userId
-                ? null
-                : visit.userId,
+            coOwnerId: seeded !== null && seeded.ownerId === visit.userId ? null : visit.userId,
           },
         });
       }
@@ -609,7 +602,6 @@ describe.skipIf(!HAS_DB)('VisitsService.updateOutcome - T-D4 idempotent replay',
     );
     expect(lead?.state).toBe('VISIT_SCHEDULED');
   });
-
 });
 
 /**
@@ -653,7 +645,10 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
   it('the projectId filter is applied, not silently dropped, for a staff role', async () => {
     const { visitId } = await seedLeadWithVisit();
     const other = await adminSeed((db) =>
-      db.lead.findUnique({ where: { id: TEST_LEAD_IDS[TEST_LEAD_IDS.length - 1] }, select: { projectId: true } }),
+      db.lead.findUnique({
+        where: { id: TEST_LEAD_IDS[TEST_LEAD_IDS.length - 1] },
+        select: { projectId: true },
+      }),
     );
     // Filter on a projectId that is definitely NOT this lead's. Before the fix
     // the filter was overwritten for staff roles and the visit came back anyway.
@@ -720,15 +715,16 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     await adminSeed((db) =>
       db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
     );
-    await adminSeed((db) =>
-      db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
-    );
+    await adminSeed((db) => db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }));
     // Schedule a fresh visit as the telecaller, naming the exec.
-    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await service.create(
+      actorFor(TC_ID, 'SALES_EXEC') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
 
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { ownerId: true, coOwnerId: true } }),
@@ -742,9 +738,7 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
 
   it('the exec can then actually READ the lead and its visits (the regression)', async () => {
     const { leadId, visitId } = await seedLeadWithVisit({ splitOwnerFromExec: true });
-    await adminSeed((db) =>
-      db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }),
-    );
+    await adminSeed((db) => db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }));
     // list() as the exec: this is the call that used to throw because `lead`
     // resolved to null for a lead they did not own.
     const page = await service.list(actorFor(SE_ID, 'SALES_EXEC'), {
@@ -767,14 +761,15 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     await adminSeed((db) =>
       db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
     );
-    await adminSeed((db) =>
-      db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }),
+    await adminSeed((db) => db.lead.update({ where: { id: leadId }, data: { coOwnerId: null } }));
+    await service.create(
+      actorFor(TC_ID, 'SALES_EXEC') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: ADMIN_ID,
+      } as never,
     );
-    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: ADMIN_ID,
-    } as never);
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
     );
@@ -790,11 +785,14 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
       db.lead.update({ where: { id: leadId }, data: { coOwnerId: ADMIN_ID } }),
     );
     await expect(
-      service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
-        leadId,
-        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-        salesExecId: SE_ID,
-      } as never),
+      service.create(
+        actorFor(TC_ID, 'SALES_EXEC') as never,
+        {
+          leadId,
+          scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+          salesExecId: SE_ID,
+        } as never,
+      ),
     ).rejects.toMatchObject({ name: 'ConflictException' });
     // The pre-existing co-owner is untouched.
     const lead = await adminSeed((db) =>
@@ -810,14 +808,15 @@ describe.skipIf(!HAS_DB)('VisitsService.list - assignee + project scoping', () =
     await adminSeed((db) =>
       db.siteVisit.updateMany({ where: { leadId }, data: { status: 'COMPLETED' } }),
     );
-    await adminSeed((db) =>
-      db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }),
+    await adminSeed((db) => db.lead.update({ where: { id: leadId }, data: { coOwnerId: SE_ID } }));
+    await service.create(
+      actorFor(TC_ID, 'SALES_EXEC') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
     );
-    await service.create(actorFor(TC_ID, 'SALES_EXEC') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { coOwnerId: true } }),
     );
@@ -922,7 +921,11 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
       await db.team.upsert({
         where: { id: TEAM_ID },
         update: {},
-        create: { id: TEAM_ID, name: `VOC Test Team ${RUN}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+        create: {
+          id: TEAM_ID,
+          name: `VOC Test Team ${RUN}`,
+          organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        },
       });
       for (const [id, role, name] of [
         [ADMIN_ID, 'ADMIN', 'VOC Test Admin'],
@@ -1003,11 +1006,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     it(`refuses a lead in ${state}`, async () => {
       const leadId = await seedLeadInState(state);
       await expect(
-        service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-          leadId,
-          scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-          salesExecId: SE_ID,
-        } as never),
+        service.create(
+          actorFor(TC_ID, 'TELECALLER') as never,
+          {
+            leadId,
+            scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+            salesExecId: SE_ID,
+          } as never,
+        ),
       ).rejects.toMatchObject({ name: 'BadRequestException' });
     });
   }
@@ -1016,11 +1022,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     // The exact user report: scheduling from the dashboard queue on a NO_SHOW
     // lead returned 400. The queue was right; the guard was wrong.
     const leadId = await seedLeadInState('NO_SHOW');
-    const row = await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    const row = await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
 
     expect(row.status).toBe('SCHEDULED');
 
@@ -1034,11 +1043,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
 
   it('ACCEPTS a RESCHEDULED lead and normalises it to VISIT_SCHEDULED', async () => {
     const leadId = await seedLeadInState('RESCHEDULED');
-    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
@@ -1047,11 +1059,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
 
   it('ACCEPTS a VISIT_REQUESTED lead and advances it (the pre-existing behaviour)', async () => {
     const leadId = await seedLeadInState('VISIT_REQUESTED');
-    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
@@ -1062,11 +1077,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     // The second-visit path (the calendar can schedule a parallel visit). The
     // lead is already where it needs to be, so the transition must not fire.
     const leadId = await seedLeadInState('VISIT_SCHEDULED');
-    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
     const lead = await adminSeed((db) =>
       db.lead.findUnique({ where: { id: leadId }, select: { state: true } }),
     );
@@ -1094,11 +1112,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
       }),
     );
 
-    const row = await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    const row = await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
     expect(row.status).toBe('SCHEDULED');
 
     // Exactly ONE row the lead panel can pick as the visit to record against:
@@ -1144,11 +1165,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
     );
 
     await expect(
-      service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-        leadId,
-        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-        salesExecId: SE_ID,
-      } as never),
+      service.create(
+        actorFor(TC_ID, 'TELECALLER') as never,
+        {
+          leadId,
+          scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+          salesExecId: SE_ID,
+        } as never,
+      ),
     ).rejects.toMatchObject({ name: 'ConflictException' });
 
     const live = await adminSeed((db) =>
@@ -1176,11 +1200,14 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
       }),
     );
 
-    await service.create(actorFor(TC_ID, 'TELECALLER') as never, {
-      leadId,
-      scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
-      salesExecId: SE_ID,
-    } as never);
+    await service.create(
+      actorFor(TC_ID, 'TELECALLER') as never,
+      {
+        leadId,
+        scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+        salesExecId: SE_ID,
+      } as never,
+    );
 
     const audits = await adminSeed((db) =>
       db.auditLog.findMany({

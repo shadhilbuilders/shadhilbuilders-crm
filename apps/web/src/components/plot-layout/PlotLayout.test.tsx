@@ -171,7 +171,7 @@ function click(selector: string) {
  */
 function clickPlot(plotNumber: number) {
   const polygon = container?.querySelector(
-    `[data-plot-number="${plotNumber}"] polygon[role="button"]`
+    `[data-plot-number="${plotNumber}"] polygon[role="button"]`,
   );
   const svg = container?.querySelector('[data-qa="plot-map"]');
   if (polygon === null || polygon === undefined) {
@@ -243,7 +243,7 @@ describe('PlotLayout', () => {
     await mount();
     expect(container?.querySelectorAll('[data-qa="plot-polygon"]')).toHaveLength(125);
     expect(
-      container?.querySelectorAll('[data-qa="plot-map-hit-areas"] polygon').length
+      container?.querySelectorAll('[data-qa="plot-map-hit-areas"] polygon').length,
     ).toBeGreaterThanOrEqual(125);
   });
 
@@ -302,13 +302,13 @@ describe('PlotLayout', () => {
     await mount();
     // available = green, blocked = gold, booked = red.
     expect(
-      container?.querySelector('[data-plot-number="5"] polygon[fill="#DC2626"]')
+      container?.querySelector('[data-plot-number="5"] polygon[fill="#DC2626"]'),
     ).not.toBeNull();
     expect(
-      container?.querySelector('[data-plot-number="17"] polygon[fill="#E3C563"]')
+      container?.querySelector('[data-plot-number="17"] polygon[fill="#E3C563"]'),
     ).not.toBeNull();
     expect(
-      container?.querySelector('[data-plot-number="1"] polygon[fill="#15803D"]')
+      container?.querySelector('[data-plot-number="1"] polygon[fill="#15803D"]'),
     ).not.toBeNull();
   });
 
@@ -374,9 +374,7 @@ describe('PlotLayout', () => {
     // The whole point of the join: the panel names the villa (by its DOOR
     // number), its state and the deal on it, and each is a link to its own
     // record rather than a dead end.
-    mockPlotStatuses.rows = [
-      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
-    ];
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked', units: [claimFixture()] }];
     await mount();
     await typeInto(searchInput(), '20');
     click('[data-qa="plot-search-match-20"]');
@@ -390,13 +388,13 @@ describe('PlotLayout', () => {
     expect(details?.textContent).toContain('Phase A');
 
     // The villa link carries the plot map's unit id into the inventory grid.
-    expect(
-      details?.querySelector('[data-qa="plot-unit-link"]')?.getAttribute('href'),
-    ).toContain('/inventory?unit=unit-a101');
+    expect(details?.querySelector('[data-qa="plot-unit-link"]')?.getAttribute('href')).toContain(
+      '/inventory?unit=unit-a101',
+    );
     // The booking and the lead each open their own record.
-    expect(
-      details?.querySelector('[data-qa="plot-booking-link"]')?.getAttribute('href'),
-    ).toContain('/bookings/booking-1');
+    expect(details?.querySelector('[data-qa="plot-booking-link"]')?.getAttribute('href')).toContain(
+      '/bookings/booking-1',
+    );
     expect(
       details?.querySelector('[data-qa="plot-booking-lead-link"]')?.getAttribute('href'),
     ).toContain('/leads/lead-1');
@@ -407,17 +405,13 @@ describe('PlotLayout', () => {
     // link on `/inventory?unit=` would send them to a wall from a surface they
     // CAN use, which is the one dead end the block is meant to avoid creating.
     mockRole.current = 'ENGINEER';
-    mockPlotStatuses.rows = [
-      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
-    ];
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked', units: [claimFixture()] }];
     await mount();
     await typeInto(searchInput(), '20');
     click('[data-qa="plot-search-match-20"]');
     await act(async () => {});
 
-    const href = container
-      ?.querySelector('[data-qa="plot-unit-link"]')
-      ?.getAttribute('href');
+    const href = container?.querySelector('[data-qa="plot-unit-link"]')?.getAttribute('href');
     expect(href).toContain('/site/unit-a101');
     expect(href).not.toContain('/inventory');
   });
@@ -453,9 +447,7 @@ describe('PlotLayout', () => {
   it('still shows the price row when the server sends a figure', async () => {
     // Positive control for the test above: the row is CONDITIONAL, not gone.
     mockRole.current = 'SALES_EXEC';
-    mockPlotStatuses.rows = [
-      { plotNumber: 20, status: 'booked', units: [claimFixture()] },
-    ];
+    mockPlotStatuses.rows = [{ plotNumber: 20, status: 'booked', units: [claimFixture()] }];
     await mount();
     await typeInto(searchInput(), '20');
     click('[data-qa="plot-search-match-20"]');
@@ -511,7 +503,7 @@ describe('PlotLayout', () => {
     clickPlot(20);
     await act(async () => {});
     expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_SELECTED_FILL
+      PLOT_SELECTED_FILL,
     );
     expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 20');
   });
@@ -526,14 +518,14 @@ describe('PlotLayout', () => {
     clickPlot(20);
     await act(async () => {});
     expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_SELECTED_FILL
+      PLOT_SELECTED_FILL,
     );
 
     clickPlot(20);
     await act(async () => {});
     // Back to the status colour, and the panel is empty again.
     expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_STATUS_FILL.booked
+      PLOT_STATUS_FILL.booked,
     );
     expect(html()).toContain('No plot selected');
   });
@@ -550,10 +542,10 @@ describe('PlotLayout', () => {
     await act(async () => {});
 
     expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_STATUS_FILL.booked
+      PLOT_STATUS_FILL.booked,
     );
     expect(container?.querySelector('[data-plot-number="21"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_SELECTED_FILL
+      PLOT_SELECTED_FILL,
     );
     expect(container?.querySelector('[data-qa="plot-details"]')?.textContent).toContain('Plot 21');
   });
@@ -582,7 +574,7 @@ describe('PlotLayout', () => {
     click('[data-qa="plot-search-match-20"]');
     await act(async () => {});
     expect(container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')).toBe(
-      PLOT_SELECTED_FILL
+      PLOT_SELECTED_FILL,
     );
 
     const trigger = container?.querySelectorAll('[role="combobox"]')[1];
@@ -592,7 +584,7 @@ describe('PlotLayout', () => {
       trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
     });
     const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
-      node.textContent?.includes('Booked')
+      node.textContent?.includes('Booked'),
     );
     expect(option).toBeDefined();
     await act(async () => {
@@ -611,7 +603,7 @@ describe('PlotLayout', () => {
     await act(async () => {});
 
     expect(
-      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')
+      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill'),
     ).not.toBe(PLOT_SELECTED_FILL);
     expect(html()).toContain('No plot selected');
   });
@@ -629,7 +621,7 @@ describe('PlotLayout', () => {
 
     expect(html()).toContain('No plot selected');
     expect(
-      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill')
+      container?.querySelector('[data-plot-number="20"] polygon')?.getAttribute('fill'),
     ).not.toBe(PLOT_SELECTED_FILL);
   });
 

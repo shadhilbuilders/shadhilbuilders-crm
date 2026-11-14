@@ -34,20 +34,10 @@ import {
 } from '@paalstack/react-ui';
 import { LuFolderKanban, LuKeyRound, LuUserCog } from '@paalstack/react-icons/lu';
 
-import {
-  useAssignManager,
-  useUser,
-  type BackendUserDetail,
-} from '@/hooks/queries/users';
+import { useAssignManager, useUser, type BackendUserDetail } from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
 import { hasReportingLine, reportsToTeamManager } from '@shadhil/api-types';
-import {
-  canManageUsers,
-  isAdminLike,
-  outranks,
-  useSessionUser,
-  type Role,
-} from '@/lib/session';
+import { canManageUsers, isAdminLike, outranks, useSessionUser, type Role } from '@/lib/session';
 import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -103,9 +93,7 @@ export function UserDetailView({ userId }: { userId: string }) {
       >
         <p className="text-sm font-medium">Couldn&apos;t load this user.</p>
         <p className="text-muted-foreground mt-1 text-xs">
-          {userQuery.error instanceof Error
-            ? userQuery.error.message
-            : 'Unexpected error.'}
+          {userQuery.error instanceof Error ? userQuery.error.message : 'Unexpected error.'}
         </p>
         <Button
           variant="outline"
@@ -155,9 +143,7 @@ function UserDetailContent({
   const canAssignManager = reportsToTeamManager(detail.role);
   // Server enforces the same rule: strictly outrank the target, not self.
   const canResetPassword =
-    isAdminLike(actorRole) &&
-    detail.id !== actorId &&
-    outranks(actorRole, detail.role);
+    isAdminLike(actorRole) && detail.id !== actorId && outranks(actorRole, detail.role);
   const [passwordOpen, setPasswordOpen] = useState(false);
 
   return (
@@ -219,7 +205,10 @@ function UserDetailContent({
                     return (
                       <ul className="space-y-0.5" data-qa="user-reports-to-list">
                         {lines.map((line) => (
-                          <li key={line.teamId === '' ? 'org-owner' : line.teamId} data-qa="user-reports-to-line">
+                          <li
+                            key={line.teamId === '' ? 'org-owner' : line.teamId}
+                            data-qa="user-reports-to-line"
+                          >
                             {line.manager ? (
                               <>
                                 <p className="text-sm font-medium">{line.manager.name}</p>
@@ -347,9 +336,7 @@ function AssignManagerButton({
         // team they are already on; the server now rejects that as a no-op but
         // the picker should never offer it.
         .filter(
-          (t) =>
-            t.managerName !== null &&
-            !(detail.teamIds ?? [detail.teamId]).includes(t.id),
+          (t) => t.managerName !== null && !(detail.teamIds ?? [detail.teamId]).includes(t.id),
         )
         .map((t) => ({ value: t.id, label: `${t.managerName} · ${t.name}` })),
     [teamsQuery.data, detail.teamId, detail.teamIds],
@@ -367,9 +354,7 @@ function AssignManagerButton({
           setOpen(false);
         },
         onError: (error) => {
-          toast.error(
-            error instanceof Error ? error.message : 'Failed to assign manager',
-          );
+          toast.error(error instanceof Error ? error.message : 'Failed to assign manager');
         },
       },
     );
@@ -405,9 +390,7 @@ function AssignManagerButton({
             onValueChange={(v) => setSelected(v ?? '')}
             options={candidates}
             placeholder={
-              candidates.length === 0
-                ? 'No other led teams available'
-                : 'Search managers...'
+              candidates.length === 0 ? 'No other led teams available' : 'Search managers...'
             }
             disabled={candidates.length === 0}
             selectOptionAsValue

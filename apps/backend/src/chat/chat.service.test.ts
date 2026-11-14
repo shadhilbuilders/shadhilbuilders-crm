@@ -69,9 +69,7 @@ function makeService(): {
     // there's no DB session). The callback's `(tx as unknown as
     // PrismaClient).message.create(...)` calls resolve to the same
     // mocks on `client` below.
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn(client),
-    ),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     // Stub the SET LOCAL calls so withRlsContext's preamble resolves.
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     lead: {
@@ -107,8 +105,9 @@ describe('list - RLS-scoped message history for a lead', () => {
   it('returns 404 when the lead is not visible to the actor', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue(null);
-    await expect(service.list(makeActor(), 'lead-x', undefined, 50))
-      .rejects.toThrow(/Lead lead-x not found/);
+    await expect(service.list(makeActor(), 'lead-x', undefined, 50)).rejects.toThrow(
+      /Lead lead-x not found/,
+    );
     expect(client.message.findMany).not.toHaveBeenCalled();
   });
 
@@ -174,7 +173,11 @@ describe('send - staff message + audit row', () => {
     // phoneE164 set so the customer thread IS a WhatsApp send, and an inbound
     // from the customer so the 24h window is OPEN - this test is about the
     // Message/audit write, not the gate (which has its own suite).
-    client.lead.findUnique.mockResolvedValue({ id: 'lead-x', name: 'Lead X', phoneE164: '919000000000' });
+    client.lead.findUnique.mockResolvedValue({
+      id: 'lead-x',
+      name: 'Lead X',
+      phoneE164: '919000000000',
+    });
     client.message.findFirst.mockResolvedValue({ createdAt: new Date() });
     client.user.findUnique.mockResolvedValue({ name: 'Asha T.' });
     client.message.create.mockResolvedValue({
@@ -237,9 +240,9 @@ describe('send - staff message + audit row', () => {
   it('returns 404 when the target lead is not visible', async () => {
     const { service, client } = makeService();
     client.lead.findUnique.mockResolvedValue(null);
-    await expect(
-      service.send(makeActor(), { leadId: 'lead-x', body: 'hi' }),
-    ).rejects.toThrow(/Lead lead-x not found/);
+    await expect(service.send(makeActor(), { leadId: 'lead-x', body: 'hi' })).rejects.toThrow(
+      /Lead lead-x not found/,
+    );
     expect(client.message.create).not.toHaveBeenCalled();
   });
 

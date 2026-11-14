@@ -103,9 +103,7 @@ describe('@shadhil/api-types - lead DTOs', () => {
     expect(r.phone).toBe('919876543210');
   });
   it('CreateLeadDto rejects too-short phone', () => {
-    expect(() =>
-      CreateLeadDtoSchema.parse({ name: 'x', phone: '123', source: 'Meta' }),
-    ).toThrow();
+    expect(() => CreateLeadDtoSchema.parse({ name: 'x', phone: '123', source: 'Meta' })).toThrow();
   });
   it('CreateLeadDto accepts empty-string email (optional, blank = not provided)', () => {
     const r = CreateLeadDtoSchema.parse({
@@ -218,9 +216,7 @@ describe('@shadhil/api-types - project DTOs', () => {
   });
 
   it('CreateProjectDto rejects empty name', () => {
-    expect(() =>
-      CreateProjectDtoSchema.parse({ name: '  ', address: 'City' }),
-    ).toThrow();
+    expect(() => CreateProjectDtoSchema.parse({ name: '  ', address: 'City' })).toThrow();
   });
 
   // Regression (2026-09-10): the edit form sends `null` to CLEAR an optional
@@ -242,9 +238,7 @@ describe('@shadhil/api-types - project DTOs', () => {
   });
 
   it('UpdateProjectDto rejects a number for reraNumber', () => {
-    expect(() =>
-      UpdateProjectDtoSchema.parse({ reraNumber: 12345 }),
-    ).toThrow();
+    expect(() => UpdateProjectDtoSchema.parse({ reraNumber: 12345 })).toThrow();
   });
 });
 
@@ -308,7 +302,9 @@ describe('@shadhil/api-types - booking DTOs', () => {
     }
   });
   it('UpdateBookingDto: amount and negotiatedRate are mutually exclusive', () => {
-    expect(UpdateBookingDtoSchema.safeParse({ amount: 100, negotiatedRate: 5 }).success).toBe(false);
+    expect(UpdateBookingDtoSchema.safeParse({ amount: 100, negotiatedRate: 5 }).success).toBe(
+      false,
+    );
     expect(UpdateBookingDtoSchema.safeParse({ negotiatedRate: null }).success).toBe(true);
     expect(UpdateBookingDtoSchema.safeParse({ amount: 100 }).success).toBe(true);
   });
@@ -325,13 +321,10 @@ describe('@shadhil/api-types - booking DTOs', () => {
         expect(missing.error.issues[0]?.path).toEqual(['reason']);
       }
       // Whitespace is not a reason.
-      expect(
-        BookingTransitionDtoSchema.safeParse({ toStatus, reason: '   ' }).success,
-      ).toBe(false);
+      expect(BookingTransitionDtoSchema.safeParse({ toStatus, reason: '   ' }).success).toBe(false);
       // A real reason passes.
       expect(
-        BookingTransitionDtoSchema.safeParse({ toStatus, reason: 'customer backed out' })
-          .success,
+        BookingTransitionDtoSchema.safeParse({ toStatus, reason: 'customer backed out' }).success,
       ).toBe(true);
     }
   });
@@ -517,15 +510,11 @@ describe('@shadhil/api-types - change-password (T-S page + zod validation)', () 
   });
 
   it('Form schema rejects newPassword under 8 chars (same rule as the server DTO)', () => {
-    expect(() =>
-      ChangePasswordFormSchema.parse({ ...valid, newPassword: 'short' }),
-    ).toThrow();
+    expect(() => ChangePasswordFormSchema.parse({ ...valid, newPassword: 'short' })).toThrow();
   });
 
   it('Form schema rejects empty confirmPassword', () => {
-    expect(() =>
-      ChangePasswordFormSchema.parse({ ...valid, confirmPassword: '' }),
-    ).toThrow();
+    expect(() => ChangePasswordFormSchema.parse({ ...valid, confirmPassword: '' })).toThrow();
   });
 
   it('Form schema rejects mismatched confirmation, attaching the error to confirmPassword', () => {
@@ -537,12 +526,8 @@ describe('@shadhil/api-types - change-password (T-S page + zod validation)', () 
     if (!result.success) {
       const paths = result.error.issues.map((i) => i.path.join('.'));
       expect(paths).toContain('confirmPassword');
-      const confirmIssue = result.error.issues.find(
-        (i) => i.path.join('.') === 'confirmPassword',
-      );
-      expect(confirmIssue?.message).toBe(
-        'New password and confirmation do not match',
-      );
+      const confirmIssue = result.error.issues.find((i) => i.path.join('.') === 'confirmPassword');
+      expect(confirmIssue?.message).toBe('New password and confirmation do not match');
     }
   });
 
@@ -632,8 +617,12 @@ describe('@shadhil/api-types - inventory DTOs', () => {
 
   it('CreateUnitDto rejects non-positive buildup sq.ft or per sq.ft price', () => {
     const base = { phaseId: PHASE_ID, unitNumber: 'A-101', bhk: 3 };
-    expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 0, pricePerSqft: 10 })).toThrow();
-    expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 10, pricePerSqft: 0 })).toThrow();
+    expect(() =>
+      CreateUnitDtoSchema.parse({ ...base, buildupSqft: 0, pricePerSqft: 10 }),
+    ).toThrow();
+    expect(() =>
+      CreateUnitDtoSchema.parse({ ...base, buildupSqft: 10, pricePerSqft: 0 }),
+    ).toThrow();
     expect(() => CreateUnitDtoSchema.parse({ ...base, buildupSqft: 10 })).toThrow();
     expect(() => CreateUnitDtoSchema.parse({ ...base, pricePerSqft: 10 })).toThrow();
   });
@@ -702,9 +691,7 @@ describe('@shadhil/api-types - inventory DTOs', () => {
   });
 
   it('T-INV-SEARCH: UnitFilterDto rejects an over-long search', () => {
-    expect(() =>
-      UnitFilterDtoSchema.parse({ search: 'x'.repeat(121) }),
-    ).toThrow();
+    expect(() => UnitFilterDtoSchema.parse({ search: 'x'.repeat(121) })).toThrow();
   });
 
   it('UnitFilterDto rejects a non-cuid2 project id', () => {
@@ -717,7 +704,6 @@ describe('@shadhil/api-types - inventory DTOs', () => {
     ).toThrow();
   });
 });
-
 
 describe('chat inbox query schema (T-WA-INBOX)', () => {
   // The BFF forwards query strings VERBATIM, so every numeric filter arrives as
@@ -785,9 +771,9 @@ describe('MarkChatReadDto - exactly one thread identity', () => {
 
 describe('SendContactMessageDto', () => {
   it('requires contactId and a non-empty body', () => {
-    expect(
-      SendContactMessageDtoSchema.parse({ contactId: 'contact-1', body: 'hello' }).body,
-    ).toBe('hello');
+    expect(SendContactMessageDtoSchema.parse({ contactId: 'contact-1', body: 'hello' }).body).toBe(
+      'hello',
+    );
     expect(() => SendContactMessageDtoSchema.parse({ contactId: 'contact-1', body: '' })).toThrow();
     expect(() => SendContactMessageDtoSchema.parse({ body: 'hello' })).toThrow();
   });

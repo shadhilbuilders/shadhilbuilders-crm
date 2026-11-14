@@ -71,9 +71,7 @@ describe('isServiceWindowOpen - Meta 24h customer-service window', () => {
 describe('serviceWindowExpiry', () => {
   it('returns the customer-inbound instant + 24h', () => {
     const last = new Date('2026-09-29T10:00:00.000Z');
-    expect(serviceWindowExpiry(last)).toEqual(
-      new Date('2026-09-30T10:00:00.000Z'),
-    );
+    expect(serviceWindowExpiry(last)).toEqual(new Date('2026-09-30T10:00:00.000Z'));
   });
 
   it('returns null when there is no window to expire', () => {
@@ -85,7 +83,9 @@ describe('serviceWindowExpiry', () => {
 
 describe('SendWelcomeMessageDto', () => {
   it('requires a cuid2 leadId', () => {
-    expect(SendWelcomeMessageDtoSchema.safeParse({ leadId: 'abc123def456ghi789jkl0' }).success).toBe(true);
+    expect(
+      SendWelcomeMessageDtoSchema.safeParse({ leadId: 'abc123def456ghi789jkl0' }).success,
+    ).toBe(true);
     expect(SendWelcomeMessageDtoSchema.safeParse({ leadId: 'not-an-id' }).success).toBe(false);
     expect(SendWelcomeMessageDtoSchema.safeParse({}).success).toBe(false);
   });

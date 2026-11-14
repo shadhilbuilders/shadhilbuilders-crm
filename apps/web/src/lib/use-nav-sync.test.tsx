@@ -25,8 +25,7 @@ import { useNavSync } from '@/lib/nav';
 
 // `globalThis.IS_REACT_ACT_ENVIRONMENT` tells React this is a test env so
 // `act` works with a raw createRoot (no @testing-library/react in this app).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function NavSyncProbe(): null {
   useNavSync();

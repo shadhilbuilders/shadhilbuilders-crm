@@ -15,8 +15,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useRemovalPreview: vi.fn(),
@@ -31,8 +30,7 @@ vi.mock('@/hooks/queries/team-members', () => ({
 }));
 
 vi.mock('@/hooks/queries/teams', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@/hooks/queries/teams')>();
+  const actual = await importOriginal<typeof import('@/hooks/queries/teams')>();
   return {
     ...actual,
     useUpdateTeamMemberWeight: mocks.useUpdateTeamMemberWeight,
@@ -54,7 +52,12 @@ async function mount(props: {
   canRemove: boolean;
   dataQaPrefix?: string;
 }): Promise<void> {
-  mocks.useRemovalPreview.mockReturnValue({ isLoading: false, error: null, data: undefined, refetch: vi.fn() });
+  mocks.useRemovalPreview.mockReturnValue({
+    isLoading: false,
+    error: null,
+    data: undefined,
+    refetch: vi.fn(),
+  });
   mocks.useReassignAndRemove.mockReturnValue({ mutate: vi.fn(), isPending: false });
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -158,7 +161,13 @@ describe('TeamRosterMemberRow', () => {
     // exec row would promise routing that no longer happens. The row says so
     // instead of offering a control.
     await mount({
-      member: { userId: 'se-1', name: 'Vikram', email: 'vikram@x.in', role: 'SALES_EXEC', weight: 3 },
+      member: {
+        userId: 'se-1',
+        name: 'Vikram',
+        email: 'vikram@x.in',
+        role: 'SALES_EXEC',
+        weight: 3,
+      },
       managerId: 'mgr-a',
       canRemove: true,
     });
@@ -206,7 +215,9 @@ describe('TeamRosterMemberRow', () => {
     const mutateAsync = vi.fn().mockResolvedValue({ userId: 'tc-1', teamId: 'team-a', weight: 5 });
     mocks.useUpdateTeamMemberWeight.mockReturnValue({ mutateAsync, isLoading: false });
     await mount({ member: { ...ordinaryMember, weight: 1 }, managerId: 'mgr-a', canRemove: true });
-    const input = container?.querySelector('[data-qa="team-member-weight-tc-1"]') as HTMLInputElement | null;
+    const input = container?.querySelector(
+      '[data-qa="team-member-weight-tc-1"]',
+    ) as HTMLInputElement | null;
     expect(input).not.toBeNull();
     await act(async () => {
       input!.value = '5';
@@ -227,7 +238,7 @@ describe('TeamRosterMemberRow', () => {
   });
 
   describe('"Reports to" (T-REPORTS-TO-OWNER, 2026-10-06)', () => {
-    it('a MANAGER row reports to the org OWNER, not this team\'s manager name', async () => {
+    it("a MANAGER row reports to the org OWNER, not this team's manager name", async () => {
       await mount({
         member: managerMember,
         managerId: 'mgr-a',
@@ -240,7 +251,7 @@ describe('TeamRosterMemberRow', () => {
       expect(row?.textContent).toContain('Deepak Owner');
     });
 
-    it('a TELECALLER/SALES_EXEC row reports to THIS team\'s manager', async () => {
+    it("a TELECALLER/SALES_EXEC row reports to THIS team's manager", async () => {
       await mount({
         member: ordinaryMember,
         managerId: 'mgr-a',
@@ -284,7 +295,7 @@ describe('TeamRosterMemberRow', () => {
     // used a NEGATIVE check ("not a manager -> show the team manager"), which
     // is exactly why the roster and the Users table disagreed for the same
     // engineer. Pinned so the shared rule keeps it correct.
-    it('an ENGINEER row reports to THIS team\'s manager', async () => {
+    it("an ENGINEER row reports to THIS team's manager", async () => {
       await mount({
         member: { userId: 'eng-1', name: 'Arjun', email: 'arjun@x.in', role: 'ENGINEER' },
         managerId: 'mgr-a',

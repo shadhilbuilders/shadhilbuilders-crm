@@ -17,12 +17,19 @@ const WEBP = Buffer.concat([
   Buffer.from([0x24, 0x00, 0x00, 0x00]),
   Buffer.from('WEBP', 'binary'),
 ]);
-const MP4 = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x18]), Buffer.from('ftypisom', 'binary')]);
+const MP4 = Buffer.concat([
+  Buffer.from([0x00, 0x00, 0x00, 0x18]),
+  Buffer.from('ftypisom', 'binary'),
+]);
 const MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x64]);
 
 /** Build an ISO-BMFF header (`....ftyp<brand>`) for the given brand. */
 function ftyp(brand: string): Buffer {
-  return Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x18]), Buffer.from('ftyp', 'binary'), Buffer.from(brand, 'binary')]);
+  return Buffer.concat([
+    Buffer.from([0x00, 0x00, 0x00, 0x18]),
+    Buffer.from('ftyp', 'binary'),
+    Buffer.from(brand, 'binary'),
+  ]);
 }
 
 const HEIC = ftyp('heic');
@@ -99,9 +106,18 @@ describe('reconcileUploadMime - bytes beat the client declaration', () => {
   });
 
   it('agrees with an honest client (no false alarms)', () => {
-    expect(reconcileUploadMime(PNG, 'image/png')).toEqual({ mimeType: 'image/png', declaredWasWrong: false });
-    expect(reconcileUploadMime(JPEG, 'image/jpeg')).toEqual({ mimeType: 'image/jpeg', declaredWasWrong: false });
-    expect(reconcileUploadMime(WEBP, 'image/webp')).toEqual({ mimeType: 'image/webp', declaredWasWrong: false });
+    expect(reconcileUploadMime(PNG, 'image/png')).toEqual({
+      mimeType: 'image/png',
+      declaredWasWrong: false,
+    });
+    expect(reconcileUploadMime(JPEG, 'image/jpeg')).toEqual({
+      mimeType: 'image/jpeg',
+      declaredWasWrong: false,
+    });
+    expect(reconcileUploadMime(WEBP, 'image/webp')).toEqual({
+      mimeType: 'image/webp',
+      declaredWasWrong: false,
+    });
   });
 
   it('ignores case and parameters in the declared type', () => {
@@ -117,9 +133,15 @@ describe('reconcileUploadMime - bytes beat the client declaration', () => {
   });
 
   it('identifies HEIC so the caller can reject it with an actionable message', () => {
-    expect(reconcileUploadMime(HEIC, 'image/heic')).toEqual({ mimeType: 'image/heic', declaredWasWrong: false });
+    expect(reconcileUploadMime(HEIC, 'image/heic')).toEqual({
+      mimeType: 'image/heic',
+      declaredWasWrong: false,
+    });
     // Even when the client calls it jpeg, the bytes win - the caller then
     // rejects it instead of storing an unrenderable photo.
-    expect(reconcileUploadMime(HEIC, 'image/jpeg')).toEqual({ mimeType: 'image/heic', declaredWasWrong: true });
+    expect(reconcileUploadMime(HEIC, 'image/jpeg')).toEqual({
+      mimeType: 'image/heic',
+      declaredWasWrong: true,
+    });
   });
 });

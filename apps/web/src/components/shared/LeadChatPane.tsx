@@ -151,12 +151,14 @@ function formatMessageTime(value: string | undefined): string {
 
 /** Initials for the avatar fallback (e.g. "Asha T." → "AT"). */
 function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('') || '?';
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  );
 }
 
 /** Human-readable byte size for the attachment preview (e.g. "1.2 MB"). */
@@ -199,7 +201,10 @@ function validateChatFile(file: File): FileValidationResult {
   const mimeType = file.type || 'application/octet-stream';
   const allowed = ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix));
   if (!allowed) {
-    return { ok: false, error: 'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.' };
+    return {
+      ok: false,
+      error: 'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.',
+    };
   }
 
   return { ok: true };
@@ -288,10 +293,7 @@ export function separatorLabel(iso: string | undefined, now: Date = new Date()):
  * lookahead rejects a longer name; the character class mirrors the name charset
  * the composer produces.
  */
-export function resolveMentionedUserIds(
-  body: string,
-  picked: Record<string, string>,
-): string[] {
+export function resolveMentionedUserIds(body: string, picked: Record<string, string>): string[] {
   // LONGEST NAME FIRST, consuming each match as it is found.
   //
   // Two teammates can share a name prefix ("Asha" and "Asha T."). A per-name
@@ -315,9 +317,8 @@ export function resolveMentionedUserIds(
     // delimiter the picker inserts after a mention.
     const token = new RegExp(`@${escaped}(?![A-Za-z.'-])`);
     if (!token.test(remaining)) continue;
-    remaining = remaining.replace(
-      new RegExp(`@${escaped}(?![A-Za-z.'-])`, 'g'),
-      (m) => ' '.repeat(m.length),
+    remaining = remaining.replace(new RegExp(`@${escaped}(?![A-Za-z.'-])`, 'g'), (m) =>
+      ' '.repeat(m.length),
     );
     const userId = picked[name];
     if (userId !== undefined && !seen.has(userId)) {
@@ -335,8 +336,14 @@ export function resolveMentionedUserIds(
 export function withDateSeparators(
   rows: MessageRow[],
   now: Date = new Date(),
-): Array<{ type: 'separator'; label: string; group: DateGroup } | { type: 'message'; row: MessageRow; index: number }> {
-  const out: Array<{ type: 'separator'; label: string; group: DateGroup } | { type: 'message'; row: MessageRow; index: number }> = [];
+): Array<
+  | { type: 'separator'; label: string; group: DateGroup }
+  | { type: 'message'; row: MessageRow; index: number }
+> {
+  const out: Array<
+    | { type: 'separator'; label: string; group: DateGroup }
+    | { type: 'message'; row: MessageRow; index: number }
+  > = [];
   let lastGroup: DateGroup | null = null;
   rows.forEach((row, index) => {
     const group = groupForDate(row.createdAt, now);
@@ -348,7 +355,6 @@ export function withDateSeparators(
   });
   return out;
 }
-
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -489,7 +495,8 @@ export function LeadChatPane({
                 ? String(apiError.details)
                 : err.message.replace(/^API \d+:\s*/, '');
             } else if (apiError.status === 415 || apiError.code === 'UNSUPPORTED_MEDIA_TYPE') {
-              message = 'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.';
+              message =
+                'Unsupported file type. Allowed: images, PDFs, text files, videos, and audio.';
             } else {
               message = err.message.replace(/^API \d+:\s*/, '');
             }
@@ -530,7 +537,8 @@ export function LeadChatPane({
     });
   }
 
-  const canSend = leadId !== null && user !== null && !sendMessage.isPending && !attachmentUploading;
+  const canSend =
+    leadId !== null && user !== null && !sendMessage.isPending && !attachmentUploading;
 
   // Enter sends; Shift+Enter inserts a newline.
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -615,7 +623,7 @@ export function LeadChatPane({
 
   return (
     <CardRoot
-      className="flex h-full min-h-80 flex-col overflow-hidden border border-border pt-0 gap-0"
+      className="border-border flex h-full min-h-80 flex-col gap-0 overflow-hidden border pt-0"
       data-qa="lead-chat-card"
     >
       {/* Conversation header - who you're talking to + thread toggle */}
@@ -649,13 +657,12 @@ export function LeadChatPane({
       </div>
 
       <CardContent className="min-h-0 flex-1 p-0">
-        <div className="h-full overflow-hidden bg-muted/20" data-qa="chat-messages">
+        <div className="bg-muted/20 h-full overflow-hidden" data-qa="chat-messages">
           {messagesQuery.isLoading ? (
-            <p className="text-muted-foreground p-4 text-xs text-center">Loading messages...</p>
+            <p className="text-muted-foreground p-4 text-center text-xs">Loading messages...</p>
           ) : messagesQuery.error !== null && messagesQuery.error !== undefined ? (
-            <p className="text-muted-foreground p-4 text-xs text-center">
-              Chat will appear when the chat module lands. (Backend not yet
-              wired for this lead.)
+            <p className="text-muted-foreground p-4 text-center text-xs">
+              Chat will appear when the chat module lands. (Backend not yet wired for this lead.)
             </p>
           ) : rows.length === 0 ? (
             // Empty state - rendered OUTSIDE the MessageScroller so there's
@@ -663,13 +670,17 @@ export function LeadChatPane({
             <div className="flex h-full items-center justify-center">
               <Empty
                 className="p-6"
-                media={isInternal ? <LuLock className="size-full" /> : <LuMessageSquare className="size-full" />}
+                media={
+                  isInternal ? (
+                    <LuLock className="size-full" />
+                  ) : (
+                    <LuMessageSquare className="size-full" />
+                  )
+                }
                 mediaVariant="icon"
                 title={isInternal ? 'No internal notes yet' : 'No messages yet'}
                 description={
-                  isInternal
-                    ? 'Loop your team with @mentions.'
-                    : 'Send the first message below.'
+                  isInternal ? 'Loop your team with @mentions.' : 'Send the first message below.'
                 }
                 // T-WA-WINDOW: the Welcome button belongs HERE, under the
                 // "Send the first message below" copy - it is the "first
@@ -717,11 +728,11 @@ export function LeadChatPane({
               />
             </div>
           ) : (
-          <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-            <MessageScroller className="flex-1">
-              <MessageScrollerViewport>
-                <MessageScrollerContent className="min-h-full justify-end gap-3 p-4 py-4 **:data-message-scroller-spacer:hidden">
-                  {grouped.map((entry) => {
+            <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+              <MessageScroller className="flex-1">
+                <MessageScrollerViewport>
+                  <MessageScrollerContent className="min-h-full justify-end gap-3 p-4 py-4 **:data-message-scroller-spacer:hidden">
+                    {grouped.map((entry) => {
                       if (entry.type === 'separator') {
                         return (
                           <MessageScrollerItem key={`sep-${entry.label}`}>
@@ -734,11 +745,8 @@ export function LeadChatPane({
                         );
                       }
                       const message = entry.row;
-                      const id =
-                        typeof message.id === 'string' ? message.id : `m-${entry.index}`;
-                      const direction: Direction = isMessageDirection(
-                        message.direction,
-                      )
+                      const id = typeof message.id === 'string' ? message.id : `m-${entry.index}`;
+                      const direction: Direction = isMessageDirection(message.direction)
                         ? message.direction
                         : 'IN';
                       const isOut = direction === 'OUT';
@@ -748,10 +756,7 @@ export function LeadChatPane({
                           id={id}
                           isOut={isOut}
                           isInternal={message.kind === 'INTERNAL'}
-                          senderName={
-                            message.senderName ??
-                            (isOut ? 'You' : 'Customer')
-                          }
+                          senderName={message.senderName ?? (isOut ? 'You' : 'Customer')}
                           body={message.body ?? ''}
                           createdAt={message.createdAt}
                           channel={message.channel}
@@ -761,23 +766,18 @@ export function LeadChatPane({
                           mediaFilename={message.mediaFilename ?? null}
                         />
                       );
-                    })
-                  }
-                </MessageScrollerContent>
-                <MessageScrollerButton direction="end" />
-              </MessageScrollerViewport>
-            </MessageScroller>
-          </MessageScrollerProvider>
-        )}
+                    })}
+                  </MessageScrollerContent>
+                  <MessageScrollerButton direction="end" />
+                </MessageScrollerViewport>
+              </MessageScroller>
+            </MessageScrollerProvider>
+          )}
         </div>
       </CardContent>
 
       <CardFooter className="flex flex-col gap-2 border-t p-2">
-        <form
-          onSubmit={onSubmit}
-          className="w-full"
-          data-qa="chat-send-form"
-        >
+        <form onSubmit={onSubmit} className="w-full" data-qa="chat-send-form">
           {/* MEDIA (2026-09-17): hidden file input driving the paperclip button. */}
           <input
             ref={fileInputRef}
@@ -795,7 +795,7 @@ export function LeadChatPane({
               <Attachment
                 state={attachmentUploading ? 'uploading' : 'idle'}
                 orientation="horizontal"
-                className="border-border rounded-md border bg-muted/30 p-2 w-auto"
+                className="border-border bg-muted/30 w-auto rounded-md border p-2"
               >
                 {pendingAttachment.file.type.startsWith('image/') ? (
                   <img
@@ -847,17 +847,16 @@ export function LeadChatPane({
               className="border-border bg-muted/40 flex items-start gap-2 rounded border p-3"
               data-qa="chat-read-only"
             >
-              <LuLock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <LuLock className="text-muted-foreground mt-0.5 size-4 shrink-0" />
               <span className="text-muted-foreground text-xs">
-                You were mentioned on this lead, so you can read the conversation -
-                but {isInternal ? 'notes on it are' : 'replies are'} written by
-                whoever owns it. Ask the lead&rsquo;s owner or your manager to
-                follow up.
+                You were mentioned on this lead, so you can read the conversation - but{' '}
+                {isInternal ? 'notes on it are' : 'replies are'} written by whoever owns it. Ask the
+                lead&rsquo;s owner or your manager to follow up.
               </span>
             </div>
           ) : !isInternal && !windowOpen ? (
             <div
-              className="border-amber-500/30 bg-amber-500/5 flex items-start gap-2 rounded border p-3"
+              className="flex items-start gap-2 rounded border border-amber-500/30 bg-amber-500/5 p-3"
               data-qa="chat-window-closed"
             >
               <LuCircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -874,103 +873,109 @@ export function LeadChatPane({
               </span>
             </div>
           ) : (
-          <InputGroup className="gap-1 items-center h-10">
-            <div className="relative min-w-0 flex-1">
-              <InputGroupTextarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(event) => {
-                  setDraft(event.currentTarget.value);
-                  // Open the mention picker when the user types `@` in the
-                  // Internal composer. `currentMentionQuery` returns the
-                  // text after the last `@` ('' for bare `@`) or null when
-                  // there's no active mention. Closing on a space lets the
-                  // picker filter as they keep typing.
-                  if (isInternal) {
-                    const q = currentMentionQuery(event.currentTarget.value);
-                    setMentionQuery(q === null ? null : q.toLowerCase());
+            <InputGroup className="h-10 items-center gap-1">
+              <div className="relative min-w-0 flex-1">
+                <InputGroupTextarea
+                  ref={textareaRef}
+                  value={draft}
+                  onChange={(event) => {
+                    setDraft(event.currentTarget.value);
+                    // Open the mention picker when the user types `@` in the
+                    // Internal composer. `currentMentionQuery` returns the
+                    // text after the last `@` ('' for bare `@`) or null when
+                    // there's no active mention. Closing on a space lets the
+                    // picker filter as they keep typing.
+                    if (isInternal) {
+                      const q = currentMentionQuery(event.currentTarget.value);
+                      setMentionQuery(q === null ? null : q.toLowerCase());
+                    }
+                  }}
+                  onInput={onInput}
+                  onKeyDown={onKeyDown}
+                  rows={1}
+                  placeholder={
+                    leadId !== null && user !== null
+                      ? isInternal
+                        ? 'Internal note... @ to mention a teammate'
+                        : 'Type a message... (Enter to send)'
+                      : 'Sign in to send a message'
                   }
-                }}
-                onInput={onInput}
-                onKeyDown={onKeyDown}
-                rows={1}
-                placeholder={
-                  leadId !== null && user !== null
-                    ? isInternal
-                      ? 'Internal note... @ to mention a teammate'
-                      : 'Type a message... (Enter to send)'
-                    : 'Sign in to send a message'
-                }
-                disabled={!canSend}
-                className="max-h-0 min-h-10 w-full resize-none py-2.5 text-sm wrap-anywhere [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                aria-label="Message body"
-                data-qa="chat-input"
-              />
-              {isInternal && mentionQuery !== null && filteredTeamMembers.length > 0 ? (
-                <div className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-lg border border-border bg-popover shadow-lg">
-                  <div className="max-h-56 overflow-y-auto p-1">
-                    <div className="text-muted-foreground px-2 py-1 text-xs font-semibold uppercase">
-                      Mention a teammate{mentionQuery && mentionQuery.length > 0 ? ` (${mentionQuery})` : ''}
-                    </div>
-                    {filteredTeamMembers.map((member) => (
-                      <button
-                        key={member.id}
-                        type="button"
-                        onClick={() => insertMention(member.name, member.id)}
-                        className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                        data-qa="mention-option"
-                      >
-                        <AvatarRoot className="h-6 w-6 shrink-0 rounded-full">
-                          <AvatarFallback className="rounded-full text-[10px]">
-                            {initials(member.name)}
-                          </AvatarFallback>
-                        </AvatarRoot>
-                        <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                        <span className="text-muted-foreground text-[10px] uppercase">
-                          {member.role}
-                        </span>
-                      </button>
-                    ))}
-                    {filteredTeamMembers.length === 0 ? (
-                      <div className="text-muted-foreground px-2 py-3 text-center text-xs">
-                        No matches
+                  disabled={!canSend}
+                  className="max-h-0 min-h-10 w-full resize-none [scrollbar-width:none] py-2.5 text-sm wrap-anywhere [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  aria-label="Message body"
+                  data-qa="chat-input"
+                />
+                {isInternal && mentionQuery !== null && filteredTeamMembers.length > 0 ? (
+                  <div className="border-border bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 rounded-lg border shadow-lg">
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      <div className="text-muted-foreground px-2 py-1 text-xs font-semibold uppercase">
+                        Mention a teammate
+                        {mentionQuery && mentionQuery.length > 0 ? ` (${mentionQuery})` : ''}
                       </div>
-                    ) : null}
+                      {filteredTeamMembers.map((member) => (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onClick={() => insertMention(member.name, member.id)}
+                          className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                          data-qa="mention-option"
+                        >
+                          <AvatarRoot className="h-6 w-6 shrink-0 rounded-full">
+                            <AvatarFallback className="rounded-full text-[10px]">
+                              {initials(member.name)}
+                            </AvatarFallback>
+                          </AvatarRoot>
+                          <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                          <span className="text-muted-foreground text-[10px] uppercase">
+                            {member.role}
+                          </span>
+                        </button>
+                      ))}
+                      {filteredTeamMembers.length === 0 ? (
+                        <div className="text-muted-foreground px-2 py-3 text-center text-xs">
+                          No matches
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </div>
-            <InputGroupAddon align="inline-end" className="p-2">
-              {/* MEDIA (2026-09-17): paperclip opens the file picker for both
-                  CUSTOMER and INTERNAL threads. */} 
-              <InputGroupButton
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!canSend}
-                aria-label="Attach a file"
-                data-qa="chat-attach-button"
-              >
-                <LuPaperclip className="size-4" />
-              </InputGroupButton>
-              <InputGroupButton
-                type="submit"
-                variant="default"
-                size="icon-sm"
-                disabled={!canSend || (draft.trim().length === 0 && pendingAttachment === null) || sendMessage.isPending || attachmentUploading}
-                data-qa="chat-send-button"
-                aria-label="Send message"
-              >
-                {sendMessage.isPending || attachmentUploading ? (
-                  <LuRefreshCw className="size-4 animate-spin" />
-                ) : (
-                  <LuArrowUp />
-                )}
-                <span className="sr-only">Send</span>
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
+                ) : null}
+              </div>
+              <InputGroupAddon align="inline-end" className="p-2">
+                {/* MEDIA (2026-09-17): paperclip opens the file picker for both
+                  CUSTOMER and INTERNAL threads. */}
+                <InputGroupButton
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!canSend}
+                  aria-label="Attach a file"
+                  data-qa="chat-attach-button"
+                >
+                  <LuPaperclip className="size-4" />
+                </InputGroupButton>
+                <InputGroupButton
+                  type="submit"
+                  variant="default"
+                  size="icon-sm"
+                  disabled={
+                    !canSend ||
+                    (draft.trim().length === 0 && pendingAttachment === null) ||
+                    sendMessage.isPending ||
+                    attachmentUploading
+                  }
+                  data-qa="chat-send-button"
+                  aria-label="Send message"
+                >
+                  {sendMessage.isPending || attachmentUploading ? (
+                    <LuRefreshCw className="size-4 animate-spin" />
+                  ) : (
+                    <LuArrowUp />
+                  )}
+                  <span className="sr-only">Send</span>
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
           )}
         </form>
       </CardFooter>
@@ -1010,7 +1015,8 @@ export function ChatMessage({
   mediaType?: string | null;
   mediaFilename?: string | null;
 }) {
-  const mediaIsImage = mediaType !== null && mediaType !== undefined && mediaType.startsWith('image/');
+  const mediaIsImage =
+    mediaType !== null && mediaType !== undefined && mediaType.startsWith('image/');
   const mediaIsPdf = mediaType === 'application/pdf';
   // MEDIA: a stored key can outlive its bytes (e.g. MEDIA_STORAGE switched
   // between local disk and imagekit - see the chat-media-storage skill note).
@@ -1022,17 +1028,13 @@ export function ChatMessage({
       <Message align={isOut ? 'end' : 'start'}>
         <MessageAvatar>
           <AvatarRoot className="h-8 w-8 shrink-0 rounded-full">
-            <AvatarFallback className="rounded-full text-xs">
-              {initials(senderName)}
-            </AvatarFallback>
+            <AvatarFallback className="rounded-full text-xs">{initials(senderName)}</AvatarFallback>
           </AvatarRoot>
         </MessageAvatar>
         <MessageContent>
           <MessageHeader
             className={
-              isOut
-                ? 'justify-end text-muted-foreground'
-                : 'justify-start text-muted-foreground'
+              isOut ? 'text-muted-foreground justify-end' : 'text-muted-foreground justify-start'
             }
           >
             <span className="text-xs font-medium">{senderName}</span>
@@ -1058,7 +1060,7 @@ export function ChatMessage({
                       <AttachmentImage
                         src={mediaUrl}
                         alt={mediaFilename ?? 'attachment'}
-                        className="max-h-56 w-auto max-w-full rounded-lg border border-border"
+                        className="border-border max-h-56 w-auto max-w-full rounded-lg border"
                         onFailed={() => setImageFailed(true)}
                       />
                     </a>
@@ -1071,7 +1073,7 @@ export function ChatMessage({
                       href={mediaUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      className="border-border bg-muted/40 flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
                       data-qa="chat-media-image-failed"
                     >
                       <LuFile className="size-4 shrink-0" />
@@ -1084,7 +1086,7 @@ export function ChatMessage({
                       href={mediaUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      className="border-border bg-muted/40 flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
                       data-qa="chat-media-doc"
                     >
                       <LuFile className="size-4 shrink-0" />
@@ -1095,7 +1097,7 @@ export function ChatMessage({
                       href={mediaUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs"
+                      className="border-border bg-muted/40 flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
                       data-qa="chat-media-file"
                     >
                       <LuFile className="size-4 shrink-0" />
@@ -1105,7 +1107,7 @@ export function ChatMessage({
                 </div>
               ) : null}
               <p
-                className="wrap-break-word text-sm"
+                className="text-sm wrap-break-word"
                 data-qa="chat-message"
                 data-direction={isOut ? 'out' : 'in'}
                 data-kind={isInternal ? 'internal' : 'customer'}
@@ -1116,9 +1118,7 @@ export function ChatMessage({
           </Bubble>
           <MessageFooter
             className={
-              isOut
-                ? 'justify-end text-muted-foreground'
-                : 'justify-start text-muted-foreground'
+              isOut ? 'text-muted-foreground justify-end' : 'text-muted-foreground justify-start'
             }
           >
             <span className="text-[10px]">

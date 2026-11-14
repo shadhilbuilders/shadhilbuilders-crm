@@ -54,7 +54,8 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
         toast.success('Milestones saved');
         onOpenChange(false);
       },
-      onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save milestones'),
+      onError: (error) =>
+        toast.error(error instanceof Error ? error.message : 'Could not save milestones'),
     });
   }
 
@@ -65,11 +66,17 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
       contentClassName="grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg"
       header={{
         title: 'Project milestones',
-        description: 'Buyers see these on their portal, in this order. Mark one reached with a date.',
+        description:
+          'Buyers see these on their portal, in this order. Mark one reached with a date.',
       }}
       footer={
         <div className="flex w-full justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={replace.isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={replace.isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -84,7 +91,10 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
         </div>
       }
     >
-      <div className="-mx-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain px-1" data-qa="milestones-editor">
+      <div
+        className="-mx-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain px-1"
+        data-qa="milestones-editor"
+      >
         {query.isPending ? (
           <p className="text-muted-foreground text-sm" role="status">
             Loading milestones...

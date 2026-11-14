@@ -12,9 +12,7 @@ function req(path: string, cookie?: string): NextRequest {
 describe('proxy session gate', () => {
   it('redirects an authenticated /login to / (the reported bug)', () => {
     // The exact production request: only the __Secure- cookie is present.
-    const res = proxy(
-      req('/login', '__Secure-better-auth.session_token=token.sig'),
-    );
+    const res = proxy(req('/login', '__Secure-better-auth.session_token=token.sig'));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toBe('https://crm.shadhilbuilders.in/');
   });
@@ -45,9 +43,7 @@ describe('proxy session gate', () => {
   });
 
   it('passes an authenticated protected path through', () => {
-    const res = proxy(
-      req('/shadhil-builders/admin', '__Secure-better-auth.session_token=t'),
-    );
+    const res = proxy(req('/shadhil-builders/admin', '__Secure-better-auth.session_token=t'));
     expect(res.headers.get('location')).toBeNull();
   });
 });

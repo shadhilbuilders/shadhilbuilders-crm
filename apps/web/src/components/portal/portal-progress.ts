@@ -36,9 +36,9 @@ export function updatedLabel(iso: string, now: number): string {
 export type PhaseGroup<T> = { key: string; label: string; rangeLabel: string; photos: T[] };
 
 /** Group a newest-first list into consecutive phase sections. */
-export function groupByPhase<T extends { phaseId: string | null; phaseName: string | null; takenAt: string }>(
-  photos: readonly T[],
-): Array<PhaseGroup<T>> {
+export function groupByPhase<
+  T extends { phaseId: string | null; phaseName: string | null; takenAt: string },
+>(photos: readonly T[]): Array<PhaseGroup<T>> {
   const buckets: Array<{ phaseId: string | null; phaseName: string | null; photos: T[] }> = [];
   for (const photo of photos) {
     const last = buckets[buckets.length - 1];
@@ -115,7 +115,10 @@ export function milestoneEntries<M extends MilestoneLike>(
   });
 }
 
-export function handoverSummary(iso: string, now: number): { dateLabel: string; countdown: string | null } {
+export function handoverSummary(
+  iso: string,
+  now: number,
+): { dateLabel: string; countdown: string | null } {
   const days = Math.ceil((new Date(iso).getTime() - now) / DAY_MS);
   let countdown: string | null = null;
   if (days >= 60) countdown = `about ${Math.round(days / 30.44)} months to go`;

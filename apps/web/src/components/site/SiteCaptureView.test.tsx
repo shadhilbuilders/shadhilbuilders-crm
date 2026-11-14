@@ -191,7 +191,7 @@ describe('SiteCaptureView states', () => {
     expect(html).toContain('data-qa="progress-empty"');
     expect(html).toContain('Add the first photo');
     expect(html).toContain(
-      'B-101 has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.'
+      'B-101 has nothing on file yet. Pick photos here, or tap Take photo to shoot one now.',
     );
     // The three-step line, and NOT the old competing affordances.
     expect(html).toContain('Shoot the unit');
@@ -384,13 +384,13 @@ describe('NOTE_DIALOG_CONTENT_CLASS', () => {
     // Thumb reach: flush to the bottom edge, full width, never taller than the
     // viewport minus a strip of context.
     expect(tokens).toEqual(
-      expect.arrayContaining(['top-auto', 'bottom-0', 'left-0', 'right-0', 'max-w-none'])
+      expect.arrayContaining(['top-auto', 'bottom-0', 'left-0', 'right-0', 'max-w-none']),
     );
     expect(tokens).toContain('max-h-[92dvh]');
     expect(tokens).toContain('rounded-b-none');
     // Desktop still gets a centred, rounded card.
     expect(tokens).toEqual(
-      expect.arrayContaining(['sm:top-1/2', 'sm:left-1/2', 'sm:max-w-lg', 'sm:rounded-xl'])
+      expect.arrayContaining(['sm:top-1/2', 'sm:left-1/2', 'sm:max-w-lg', 'sm:rounded-xl']),
     );
     // Three fixed rows: header / scrolling body / sticky footer.
     expect(tokens).toContain('grid-rows-[auto_minmax(0,1fr)_auto]');
@@ -505,7 +505,7 @@ describe('NoteDialogBody', () => {
     // vanish under the thumb that just used it.
     expect(full).toContain('aria-disabled="true"');
     expect(full).toContain(
-      `aria-label="Add photos from the gallery (${MAX_NOTE_PHOTOS} of ${MAX_NOTE_PHOTOS} added)"`
+      `aria-label="Add photos from the gallery (${MAX_NOTE_PHOTOS} of ${MAX_NOTE_PHOTOS} added)"`,
     );
     for (const testId of ['site-note-add-camera', 'site-note-add-gallery']) {
       const trigger = full.match(new RegExp(`<button[^>]*data-qa="${testId}"[^>]*>`))?.[0] ?? '';

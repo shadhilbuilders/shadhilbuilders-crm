@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
       onConfirm?: (arg: unknown) => void;
       onCancel?: () => void;
       onOpenChange?: (open: boolean) => void;
-    }): ReactNode | null => null
+    }): ReactNode | null => null,
   ),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -219,7 +219,7 @@ describe('PushEnablePrompt - consent gating', () => {
     let props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
     await act(async () => props?.onConfirm?.({}));
     expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.header?.title).toContain(
-      'Notifications are blocked'
+      'Notifications are blocked',
     );
     expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.open).toBe(true);
 

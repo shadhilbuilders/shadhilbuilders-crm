@@ -279,7 +279,9 @@ function buildDisplayRows(rows: AuditRow[], expandedBatchIds: Set<string>): Disp
     // this page: skip it here - it's inserted right after the anchor
     // above instead, in the correct expand/collapse position.
     if (consumedBatchIds.has(row.batchId)) continue;
-    const hasAnchorOnPage = (byBatch.get(row.batchId) ?? []).some((r) => r.action === 'team.member.remove');
+    const hasAnchorOnPage = (byBatch.get(row.batchId) ?? []).some(
+      (r) => r.action === 'team.member.remove',
+    );
     if (hasAnchorOnPage) continue;
     // Anchor wasn't on this page (rare - pagination/filter boundary) -
     // render the detail row plainly, unindented.
@@ -337,7 +339,10 @@ function AuditTable({
       return next;
     });
   };
-  const displayRows = useMemo(() => buildDisplayRows(rows, expandedBatchIds), [rows, expandedBatchIds]);
+  const displayRows = useMemo(
+    () => buildDisplayRows(rows, expandedBatchIds),
+    [rows, expandedBatchIds],
+  );
 
   const emptyText =
     actionFilter.length > 0
@@ -356,14 +361,12 @@ function AuditTable({
         <Combobox
           multiple
           value={actionFilter}
-          onValueChange={(next) =>
-            onActionFilterChange((next as string[]) ?? [])
-          }
+          onValueChange={(next) => onActionFilterChange((next as string[]) ?? [])}
           options={actionOptions}
           placeholder="Filter by action"
           selectOptionAsValue
           maxSelectedChips={2}
-          className="min-w-48 max-w-96"
+          className="max-w-96 min-w-48"
           data-qa="audit-action-filter"
         />
       </div>
@@ -371,10 +374,7 @@ function AuditTable({
       {isFetching && displayRows.length === 0 ? (
         <Skeleton variant="table" />
       ) : displayRows.length === 0 ? (
-        <div
-          className="rounded-lg border p-10 text-center space-y-1"
-          data-qa="audit-empty"
-        >
+        <div className="space-y-1 rounded-lg border p-10 text-center" data-qa="audit-empty">
           <TypographyP className="text-xl font-medium">{emptyText}</TypographyP>
           <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
             {emptySub}
@@ -392,10 +392,18 @@ function AuditTable({
           <TableHeader data-qa="audit-table-header">
             <TableRow className="border-border border-b">
               <TableHead className="w-10" data-qa="audit-th-expand" aria-label="Expand" />
-              <TableHead className="w-40" data-qa="audit-th-timestamp">Timestamp</TableHead>
-              <TableHead className="w-32" data-qa="audit-th-user">User</TableHead>
-              <TableHead className="w-48" data-qa="audit-th-action">Action</TableHead>
-              <TableHead className="w-48" data-qa="audit-th-entity">Entity</TableHead>
+              <TableHead className="w-40" data-qa="audit-th-timestamp">
+                Timestamp
+              </TableHead>
+              <TableHead className="w-32" data-qa="audit-th-user">
+                User
+              </TableHead>
+              <TableHead className="w-48" data-qa="audit-th-action">
+                Action
+              </TableHead>
+              <TableHead className="w-48" data-qa="audit-th-entity">
+                Entity
+              </TableHead>
               <TableHead data-qa="audit-th-before">Before → After</TableHead>
             </TableRow>
           </TableHeader>
@@ -454,8 +462,11 @@ function AuditTable({
                       </span>
                     </TableCell>
                     <TableCell data-qa="audit-user" className="min-w-0">
-                      <span className="block w-full truncate text-sm font-medium" title={r.userName?.length ? r.userName : (r.userId ?? '-')}>
-                        {r.userName?.length ? r.userName : r.userId ?? '-'}
+                      <span
+                        className="block w-full truncate text-sm font-medium"
+                        title={r.userName?.length ? r.userName : (r.userId ?? '-')}
+                      >
+                        {r.userName?.length ? r.userName : (r.userId ?? '-')}
                       </span>
                     </TableCell>
                     <TableCell data-qa="audit-action" className="min-w-0">
@@ -481,19 +492,28 @@ function AuditTable({
                               )}
                             </button>
                           ) : null}
-                          <span className="truncate text-sm font-medium" title={actionLabel(r.action)}>
+                          <span
+                            className="truncate text-sm font-medium"
+                            title={actionLabel(r.action)}
+                          >
                             {actionLabel(r.action)}
                           </span>
                         </div>
                         {actionLabel(r.action) !== r.action ? (
-                          <span className="text-muted-foreground block truncate font-mono text-xs" title={r.action}>
+                          <span
+                            className="text-muted-foreground block truncate font-mono text-xs"
+                            title={r.action}
+                          >
                             {r.action}
                           </span>
                         ) : null}
                       </div>
                     </TableCell>
                     <TableCell data-qa="audit-entity" className="min-w-0">
-                      <span className="text-muted-foreground block w-full truncate text-sm" title={r.entityType + (r.entityId ? ` · ${r.entityId}` : '')}>
+                      <span
+                        className="text-muted-foreground block w-full truncate text-sm"
+                        title={r.entityType + (r.entityId ? ` · ${r.entityId}` : '')}
+                      >
                         {r.entityType}
                         {r.entityId ? ` · ${r.entityId}` : ''}
                       </span>
@@ -528,7 +548,7 @@ function AuditTable({
                               <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wide uppercase">
                                 Before
                               </p>
-                              <pre className="text-foreground whitespace-pre-wrap break-all font-mono text-xs">
+                              <pre className="text-foreground font-mono text-xs break-all whitespace-pre-wrap">
                                 {JSON.stringify(r.before, null, 2)}
                               </pre>
                             </div>
@@ -538,7 +558,7 @@ function AuditTable({
                               <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wide uppercase">
                                 After
                               </p>
-                              <pre className="text-foreground whitespace-pre-wrap break-all font-mono text-xs">
+                              <pre className="text-foreground font-mono text-xs break-all whitespace-pre-wrap">
                                 {JSON.stringify(r.after, null, 2)}
                               </pre>
                             </div>

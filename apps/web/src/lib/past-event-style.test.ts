@@ -12,11 +12,7 @@
 // right-looking classes were typed.
 import { describe, expect, it } from 'vitest';
 
-import {
-  PAST_ACCENT_WIDTH_CLASS,
-  PAST_TEXT_ON_FILL,
-  pastEventClass,
-} from './past-event-style';
+import { PAST_ACCENT_WIDTH_CLASS, PAST_TEXT_ON_FILL, pastEventClass } from './past-event-style';
 
 const COLOURED_TONES = ['blue', 'green', 'red', 'yellow', 'purple', 'orange'] as const;
 const ALL_TONES = [...COLOURED_TONES, 'gray'] as const;
@@ -82,9 +78,7 @@ describe('pastEventClass - the history surface', () => {
     // - the two directions are independent, which is the point of keeping fill and
     // accent as separate decisions within one per-tone entry.
     for (const tone of ALL_TONES) {
-      expect(pastEventClass(tone), `${tone} has no left accent`).toContain(
-        PAST_ACCENT_WIDTH_CLASS,
-      );
+      expect(pastEventClass(tone), `${tone} has no left accent`).toContain(PAST_ACCENT_WIDTH_CLASS);
     }
   });
 

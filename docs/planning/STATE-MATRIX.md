@@ -13,12 +13,12 @@ future work) drives the same matrix against a live server.
 
 Every data-driven page must handle:
 
-| State | Component | When |
-|---|---|---|
-| **loading** | `<Skeleton variant="text">` (or `variant="user"` for the topbar user slot) | The query's `isLoading === true`. |
-| **empty** | Page-local empty message (e.g. "No pending contacts.") with a data-qa hook | Query resolved successfully, `data` is an empty array / `total === 0`. |
-| **error** | `<ModulePending error={...}>` | Query's `error !== null`. The page may also show a `ToastProvider` toast. |
-| **partial** | The full list view (no special wrapper) | Query resolved with at least one row. `Skeleton` is NOT shown while `data` exists, even on refetch. |
+| State       | Component                                                                  | When                                                                                                |
+| ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **loading** | `<Skeleton variant="text">` (or `variant="user"` for the topbar user slot) | The query's `isLoading === true`.                                                                   |
+| **empty**   | Page-local empty message (e.g. "No pending contacts.") with a data-qa hook | Query resolved successfully, `data` is an empty array / `total === 0`.                              |
+| **error**   | `<ModulePending error={...}>`                                              | Query's `error !== null`. The page may also show a `ToastProvider` toast.                           |
+| **partial** | The full list view (no special wrapper)                                    | Query resolved with at least one row. `Skeleton` is NOT shown while `data` exists, even on refetch. |
 
 `ModulePending` is the canonical "broken" surface - it covers
 loading, error, and not-yet-built-module states (see
@@ -33,11 +33,11 @@ The topbar's `SseStatusPill` exposes the live EventSource
 state. Three visual states, all in the topbar (next to the
 notification bell):
 
-| State | Color | Label |
-|---|---|---|
+| State      | Color | Label                                |
+| ---------- | ----- | ------------------------------------ |
 | connecting | amber | "Reconnecting..." (during reconnect) |
-| open | green | nothing (hidden when connected) |
-| closed | red | "Offline" (after retry exhaustion) |
+| open       | green | nothing (hidden when connected)      |
+| closed     | red   | "Offline" (after retry exhaustion)   |
 
 The pill has its own data-qa hook (`data-qa="sse-status-pill"`)
 and the test in `SseStatusPill.test.tsx` pins all three states.
@@ -47,20 +47,20 @@ and the test in `SseStatusPill.test.tsx` pins all three states.
 Each (page, state) row pins: the data-qa hook to assert, the
 expected text/element, and the test file that covers it.
 
-| Page | Hook | Loading | Empty | Error | Partial | Test file |
-|---|---|---|---|---|---|---|
-| `/` (dashboard) | TBD | TBD | TBD | TBD | TBD | _none - dashboard uses placeholder widgets_ |
-| `/leads` | `data-qa="lead-inbox"` | `<Skeleton>` rows | "No leads" | `<ModulePending>` | full list table | _none - see T-D3 vitest addition_ |
-| `/leads/new` | `data-qa="lead-form"` | _n/a (form)_ | _n/a_ | field-level errors + `<ToastProvider>` | success → `/leads/{id}` | _none - see T-D3_ |
-| `/leads/[id]` | `data-qa="lead-detail"` | `<Skeleton>` | "Lead not found" + 404 | `<ModulePending>` | full detail layout | _none - see T-D3_ |
-| `/visits` | `data-qa="visits-list"` | `<Skeleton>` | "No visits scheduled" | `<ModulePending>` | full list table | _none - see T-D3_ |
-| `/inventory` | `data-qa="inventory-list"` | `<Skeleton>` | "No inventory" | `<ModulePending>` | full list | _none - see T-D3_ |
-| `/users` | `data-qa="users-list"` | `<Skeleton>` | "No users" | `<ModulePending>` | full list | _none - see T-D3_ |
-| `/notifications` | `data-qa="notification-row"` | `<Skeleton>` | "No notifications yet" | `<ModulePending>` | list of `notification-row` | `notifications/page.test.tsx` |
-| `/audit` | `data-qa="audit-list"` | `<Skeleton>` | "No audit entries" | `<ModulePending>` | full audit list | `audit/page.test.tsx` |
-| `/bookings` | `data-qa="bookings-list"` | `<Skeleton>` | "No bookings" | `<ModulePending>` | full list | `bookings/page.test.tsx` |
-| `/bookings/new` | `data-qa="booking-form"` | _n/a (form)_ | _n/a_ | field-level errors | success → `/bookings` | `bookings/new/page.test.tsx` |
-| `/whatsapp-unknown-contacts` | `data-qa="wa-unknown-list"` | `<Skeleton>` | "No pending contacts" / "No converted contacts" / "No spam-marked contacts" | `<ModulePending>` | full list | `whatsapp-unknown-contacts/page.test.tsx` |
+| Page                         | Hook                         | Loading           | Empty                                                                       | Error                                  | Partial                    | Test file                                   |
+| ---------------------------- | ---------------------------- | ----------------- | --------------------------------------------------------------------------- | -------------------------------------- | -------------------------- | ------------------------------------------- |
+| `/` (dashboard)              | TBD                          | TBD               | TBD                                                                         | TBD                                    | TBD                        | _none - dashboard uses placeholder widgets_ |
+| `/leads`                     | `data-qa="lead-inbox"`       | `<Skeleton>` rows | "No leads"                                                                  | `<ModulePending>`                      | full list table            | _none - see T-D3 vitest addition_           |
+| `/leads/new`                 | `data-qa="lead-form"`        | _n/a (form)_      | _n/a_                                                                       | field-level errors + `<ToastProvider>` | success → `/leads/{id}`    | _none - see T-D3_                           |
+| `/leads/[id]`                | `data-qa="lead-detail"`      | `<Skeleton>`      | "Lead not found" + 404                                                      | `<ModulePending>`                      | full detail layout         | _none - see T-D3_                           |
+| `/visits`                    | `data-qa="visits-list"`      | `<Skeleton>`      | "No visits scheduled"                                                       | `<ModulePending>`                      | full list table            | _none - see T-D3_                           |
+| `/inventory`                 | `data-qa="inventory-list"`   | `<Skeleton>`      | "No inventory"                                                              | `<ModulePending>`                      | full list                  | _none - see T-D3_                           |
+| `/users`                     | `data-qa="users-list"`       | `<Skeleton>`      | "No users"                                                                  | `<ModulePending>`                      | full list                  | _none - see T-D3_                           |
+| `/notifications`             | `data-qa="notification-row"` | `<Skeleton>`      | "No notifications yet"                                                      | `<ModulePending>`                      | list of `notification-row` | `notifications/page.test.tsx`               |
+| `/audit`                     | `data-qa="audit-list"`       | `<Skeleton>`      | "No audit entries"                                                          | `<ModulePending>`                      | full audit list            | `audit/page.test.tsx`                       |
+| `/bookings`                  | `data-qa="bookings-list"`    | `<Skeleton>`      | "No bookings"                                                               | `<ModulePending>`                      | full list                  | `bookings/page.test.tsx`                    |
+| `/bookings/new`              | `data-qa="booking-form"`     | _n/a (form)_      | _n/a_                                                                       | field-level errors                     | success → `/bookings`      | `bookings/new/page.test.tsx`                |
+| `/whatsapp-unknown-contacts` | `data-qa="wa-unknown-list"`  | `<Skeleton>`      | "No pending contacts" / "No converted contacts" / "No spam-marked contacts" | `<ModulePending>`                      | full list                  | `whatsapp-unknown-contacts/page.test.tsx`   |
 
 The 7 "none" rows are gaps. T-D3 closes the largest 4: leads
 list, leads/[id] detail, users, visits. (inventory + bookings-new
@@ -69,6 +69,7 @@ already have partial coverage; the rest are stretch.)
 ## Skeleton / ModulePending contract
 
 `Skeleton` is the loading state. From `components/shared/Skeleton.tsx`:
+
 - `variant="text"` - line-shaped placeholder; one per row of
   expected content.
 - `variant="user"` - avatar + 2 text lines; for the topbar user slot.

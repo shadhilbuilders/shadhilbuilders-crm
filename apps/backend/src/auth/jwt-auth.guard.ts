@@ -110,8 +110,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new HttpException(
         {
           code: 'PASSWORD_CHANGE_REQUIRED',
-          message:
-            'You must change your password before accessing this resource',
+          message: 'You must change your password before accessing this resource',
           redirect: '/change-password',
         },
         HttpStatus.FORBIDDEN,

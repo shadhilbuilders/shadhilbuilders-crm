@@ -20,19 +20,14 @@ import { RealtimeService } from './realtime.service';
 @ApiBearerAuth('jwt')
 @Controller('realtime')
 export class RealtimeTicketController {
-  constructor(
-    @Inject(RealtimeService) private readonly realtime: RealtimeService,
-  ) {}
+  constructor(@Inject(RealtimeService) private readonly realtime: RealtimeService) {}
 
   @Post('ticket')
   @ApiOperation({
     summary:
       'Mint a 5-minute single-use stream ticket for an SSE channel (notifications | audit | chat:<leadId>).',
   })
-  async mint(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<MintTicketResponse> {
+  async mint(@Req() req: AuthedRequest, @Body() body: unknown): Promise<MintTicketResponse> {
     // Body parse: the shared Zod schema in api-types (MintTicketDtoSchema)
     // is applied in the service via parseChannel + channel checks. The
     // minimal shape check here mirrors the parseBody helper pattern.

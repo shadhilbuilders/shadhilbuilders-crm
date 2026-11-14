@@ -55,13 +55,7 @@ export function CreateUserDialog({
 
   return (
     <Dialog
-      trigger={
-        trigger ?? (
-          <Button leftIcon={<LuPlus className="h-4 w-4" />}>
-            Create user
-          </Button>
-        )
-      }
+      trigger={trigger ?? <Button leftIcon={<LuPlus className="h-4 w-4" />}>Create user</Button>}
       header={{ title: 'Create a user' }}
       open={open}
       onOpenChange={onOpenChange}

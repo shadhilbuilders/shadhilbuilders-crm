@@ -57,8 +57,7 @@ vi.mock('@/lib/session', () => ({
     isPending: false,
   })),
   canDeleteLeads: (role: string) => role === 'ADMIN' || role === 'OWNER',
-  canReassign: (role: string) =>
-    role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
+  canReassign: (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
 }));
 
 // Mock the reassign dialog (jsdom portal rule - it calls useMutation /

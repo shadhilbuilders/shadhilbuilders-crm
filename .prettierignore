@@ -1,0 +1,22 @@
+# Build output, caches and generated files. None of it is reviewed, and the root
+# `format` glob (`**/*.{ts,tsx,js,jsx,json,css,md,mdx}`) reaches all of it.
+.next/
+**/.next/
+dist/
+**/dist/
+.turbo/
+**/.turbo/
+coverage/
+**/coverage/
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+node_modules/
+
+# Generated or lockstep files that must stay byte-identical.
+pnpm-lock.yaml
+apps/web/public/sw.js
+apps/web/next-env.d.ts
+apps/web/src/generated/
+**/src/generated/

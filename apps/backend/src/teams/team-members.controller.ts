@@ -43,9 +43,7 @@ const ID_RE = z.cuid2();
 @ApiBearerAuth('jwt')
 @Controller('teams/:teamId/members/:userId')
 export class TeamMembersController {
-  constructor(
-    @Inject(TeamMembersService) private readonly teamMembers: TeamMembersService,
-  ) {}
+  constructor(@Inject(TeamMembersService) private readonly teamMembers: TeamMembersService) {}
 
   @Get('removal-preview')
   @ApiOperation({
@@ -86,7 +84,7 @@ export class TeamMembersController {
   @Patch('weight')
   @ApiOperation({
     summary:
-      'Update a member\'s auto-assign routing weight. ADMIN/OWNER or the team\'s manager only.',
+      "Update a member's auto-assign routing weight. ADMIN/OWNER or the team's manager only.",
   })
   async updateWeight(
     @Req() req: AuthedRequest,
@@ -104,8 +102,8 @@ export class TeamMembersController {
   @Patch('cap')
   @ApiOperation({
     summary:
-      'Set or clear a member\'s hard ceiling on open leads for auto-assign. ' +
-      'ADMIN/OWNER or the team\'s manager only; `maxOpenLeads: null` clears it.',
+      "Set or clear a member's hard ceiling on open leads for auto-assign. " +
+      "ADMIN/OWNER or the team's manager only; `maxOpenLeads: null` clears it.",
   })
   async updateCap(
     @Req() req: AuthedRequest,

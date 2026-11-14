@@ -1,10 +1,7 @@
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 
-import {
-  OrganizationProvider,
-  type OrgContextValue,
-} from '@/lib/tenant-context';
+import { OrganizationProvider, type OrgContextValue } from '@/lib/tenant-context';
 import { getOrganizationBySlug } from '@/lib/server/tenant';
 import { AuthenticatedShell } from '@/components/authenticated-shell';
 

@@ -17,7 +17,12 @@ import { describe, expect, it } from 'vitest';
 import { VISIT_STATUSES, labelFor } from '@/lib/labels';
 import { VISIT_STATUS_COLOR, visitStatusColor } from '@/lib/visit-status';
 
-import { VISIT_LEGEND, legendSwatchClass, PAST_ACCENT_WIDTH_CLASS, pastEventClass } from './past-event-style';
+import {
+  VISIT_LEGEND,
+  legendSwatchClass,
+  PAST_ACCENT_WIDTH_CLASS,
+  pastEventClass,
+} from './past-event-style';
 
 describe('VISIT_LEGEND', () => {
   it('covers EVERY SiteVisit status the calendar can paint', () => {
@@ -74,7 +79,9 @@ describe('VISIT_LEGEND', () => {
 
   it('gives each tone a literal swatch class', () => {
     for (const entry of VISIT_LEGEND) {
-      expect(legendSwatchClass(entry.tone)).toMatch(/^bg-(blue|green|red|yellow|purple|orange|neutral)-\d00$/);
+      expect(legendSwatchClass(entry.tone)).toMatch(
+        /^bg-(blue|green|red|yellow|purple|orange|neutral)-\d00$/,
+      );
     }
   });
 

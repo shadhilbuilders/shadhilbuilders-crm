@@ -1,13 +1,6 @@
 // Lead Detail endpoints - findOne + activities integration test.
 // Real-DB tests (no mocks), mirroring leads.reassign.test.ts.
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 import { createId } from '@paralleldrive/cuid2';
@@ -203,10 +196,7 @@ function makeLeadsService(): LeadsService {
 describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
   it('returns the full detail row for a visible lead', async () => {
     const leads = makeLeadsService();
-    const result = await leads.findOne(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN' }),
-      LEAD_ID,
-    );
+    const result = await leads.findOne(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), LEAD_ID);
     expect(result.id).toBe(LEAD_ID);
     expect(result.name).toContain('Detail Test Lead');
     expect(result.phone).toContain('91');
@@ -242,10 +232,7 @@ describe.skipIf(!HAS_DB)('LeadsService.findOne', () => {
     // hides it, so findOne surfaces a typed 404 (indistinguishable from
     // a missing row - correct for this actor).
     await expect(
-      leads.findOne(
-        actorFor({ sub: TC_B_ID, role: 'TELECALLER'}),
-        LEAD_ID,
-      ),
+      leads.findOne(actorFor({ sub: TC_B_ID, role: 'TELECALLER' }), LEAD_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -277,10 +264,7 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
       });
     });
 
-    const result = await leads.activities(
-      actorFor({ sub: ADMIN_ID, role: 'ADMIN'}),
-      LEAD_ID,
-    );
+    const result = await leads.activities(actorFor({ sub: ADMIN_ID, role: 'ADMIN' }), LEAD_ID);
     expect(result.items.length).toBeGreaterThanOrEqual(2);
     expect(result.nextCursor).toBeNull();
     // Oldest first.
@@ -305,10 +289,7 @@ describe.skipIf(!HAS_DB)('LeadsService.activities', () => {
   it('404s for a lead the actor cannot see (RLS-silent-zero)', async () => {
     const leads = makeLeadsService();
     await expect(
-      leads.activities(
-        actorFor({ sub: TC_B_ID, role: 'TELECALLER'}),
-        LEAD_ID,
-      ),
+      leads.activities(actorFor({ sub: TC_B_ID, role: 'TELECALLER' }), LEAD_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

@@ -71,7 +71,12 @@ describe('groupByPhase', () => {
 });
 
 describe('nextMilestone', () => {
-  const m = (id: string, completedAt: string | null) => ({ id, name: id, targetDate: null, completedAt });
+  const m = (id: string, completedAt: string | null) => ({
+    id,
+    name: id,
+    targetDate: null,
+    completedAt,
+  });
   it('returns the first unfinished milestone and the done count', () => {
     const r = nextMilestone([m('a', '2026-10-01T00:00:00Z'), m('b', null), m('c', null)]);
     expect(r.next?.id).toBe('b');
@@ -115,12 +120,19 @@ describe('daysUntilDay', () => {
 });
 
 describe('milestoneEntries', () => {
-  const m = (id: string, completedAt: string | null) => ({ id, name: id, targetDate: null, completedAt });
+  const m = (id: string, completedAt: string | null) => ({
+    id,
+    name: id,
+    targetDate: null,
+    completedAt,
+  });
 
   it('marks the first unfinished row "next" and everything after it upcoming', () => {
-    const states = milestoneEntries([m('a', '2026-10-01T00:00:00Z'), m('b', null), m('c', null)]).map(
-      (e) => [e.milestone.id, e.state],
-    );
+    const states = milestoneEntries([
+      m('a', '2026-10-01T00:00:00Z'),
+      m('b', null),
+      m('c', null),
+    ]).map((e) => [e.milestone.id, e.state]);
     expect(states).toEqual([
       ['a', 'reached'],
       ['b', 'next'],

@@ -22,19 +22,12 @@ import { useState, type ComponentPropsWithoutRef } from 'react';
 import { InputGroup, InputGroupButton } from '@paalstack/react-ui';
 import { LuEye, LuEyeOff } from '@paalstack/react-icons/lu';
 
-type PasswordInputProps = Omit<
-  ComponentPropsWithoutRef<'input'>,
-  'type' | 'children'
-> & {
+type PasswordInputProps = Omit<ComponentPropsWithoutRef<'input'>, 'type' | 'children'> & {
   /** data-qa for the input itself (the toggle gets `${id}-visibility`). */
   'data-qa'?: string;
 };
 
-export function PasswordInput({
-  className,
-  'data-qa': dataQa,
-  ...inputProps
-}: PasswordInputProps) {
+export function PasswordInput({ className, 'data-qa': dataQa, ...inputProps }: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
 
   return (

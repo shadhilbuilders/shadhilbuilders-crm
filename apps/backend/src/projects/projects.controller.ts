@@ -35,19 +35,13 @@ import {
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
-import {
-  ProjectsService,
-  type ProjectListResult,
-  type ProjectRow,
-} from './projects.service';
+import { ProjectsService, type ProjectListResult, type ProjectRow } from './projects.service';
 
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -61,13 +55,9 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
  */
 function parseFilter(query: Record<string, unknown>): ProjectFilterDto {
   const limit =
-    typeof query['limit'] === 'string'
-      ? Number.parseInt(query['limit'], 10)
-      : undefined;
+    typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined;
   const offset =
-    typeof query['offset'] === 'string'
-      ? Number.parseInt(query['offset'], 10)
-      : undefined;
+    typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined;
   const result = ProjectFilterDtoSchema.safeParse({
     search: typeof query['search'] === 'string' ? query['search'] : undefined,
     limit,
@@ -75,9 +65,7 @@ function parseFilter(query: Record<string, unknown>): ProjectFilterDto {
   });
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -93,9 +81,7 @@ const ID_RE = z.cuid2();
 @ApiBearerAuth('jwt')
 @Controller('projects')
 export class ProjectsController {
-  constructor(
-    @Inject(ProjectsService) private readonly projects: ProjectsService,
-  ) {}
+  constructor(@Inject(ProjectsService) private readonly projects: ProjectsService) {}
 
   @Get()
   @ApiOperation({
@@ -113,7 +99,7 @@ export class ProjectsController {
   @Get('by-slug/:slug')
   @ApiOperation({
     summary:
-      'Resolve a project by slug within the actor\'s org (for the ' +
+      "Resolve a project by slug within the actor's org (for the " +
       '[projectSlug] URL segment). Returns the project id + slug so the ' +
       'page can key id-based hooks/APIs.',
   })
@@ -123,9 +109,7 @@ export class ProjectsController {
   ): Promise<{ id: string; slug: string; name: string }> {
     const project = await this.projects.findBySlug(req.user!, slug);
     if (project === null) {
-      throw new NotFoundException(
-        'Project not found in your organization or not accessible',
-      );
+      throw new NotFoundException('Project not found in your organization or not accessible');
     }
     return project;
   }
@@ -136,10 +120,7 @@ export class ProjectsController {
       'Full project detail (identity + per-project counts) for the ' +
       'admin/owner A-Z page. ADMIN/OWNER only.',
   })
-  async detail(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<ProjectDetail> {
+  async detail(@Req() req: AuthedRequest, @Param('id') id: string): Promise<ProjectDetail> {
     if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }
@@ -150,18 +131,14 @@ export class ProjectsController {
   @ApiOperation({
     summary: 'Create a project. ADMIN/OWNER only. Slug derived from name.',
   })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<ProjectRow> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<ProjectRow> {
     const dto: CreateProjectDto = parseBody(CreateProjectDtoSchema, body);
     return this.projects.create(req.user!, dto);
   }
 
   @Patch(':id')
   @ApiOperation({
-    summary:
-      'Update a project (name / address / RERA / CMDA). ADMIN/OWNER only. Slug immutable.',
+    summary: 'Update a project (name / address / RERA / CMDA). ADMIN/OWNER only. Slug immutable.',
   })
   async update(
     @Req() req: AuthedRequest,
@@ -177,13 +154,9 @@ export class ProjectsController {
 
   @Delete(':id')
   @ApiOperation({
-    summary:
-      'Delete a project. OWNER only. 409 when bookings exist under its units.',
+    summary: 'Delete a project. OWNER only. 409 when bookings exist under its units.',
   })
-  async remove(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<{ id: string }> {
+  async remove(@Req() req: AuthedRequest, @Param('id') id: string): Promise<{ id: string }> {
     if (!ID_RE.safeParse(id).success) {
       throw new BadRequestException(`Invalid project id: ${id}`);
     }

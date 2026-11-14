@@ -40,7 +40,7 @@ const DIAGONAL_PENALTY = 2;
 export function findNeighbour(
   plots: readonly Plot[],
   fromPlotNumber: number,
-  direction: PlotDirection
+  direction: PlotDirection,
 ): number | null {
   const origin = plots.find((plot) => plot.plotNumber === fromPlotNumber);
   if (origin === undefined) return null;

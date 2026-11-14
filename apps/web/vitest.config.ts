@@ -37,15 +37,7 @@ export default defineConfig({
     // `test.describe(...)` and fail with "Playwright Test did not
     // expect test.describe() to be called here".
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: [
-      'node_modules',
-      'dist',
-      '.next',
-      '.idea',
-      '.git',
-      '.cache',
-      'src/test/e2e/**',
-    ],
+    exclude: ['node_modules', 'dist', '.next', '.idea', '.git', '.cache', 'src/test/e2e/**'],
     // Polyfill IndexedDB for tests that use @shadhil/offline-store.
     setupFiles: ['./src/test/idb-setup.ts'],
     coverage: {

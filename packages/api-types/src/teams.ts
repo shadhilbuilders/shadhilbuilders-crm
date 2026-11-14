@@ -109,9 +109,13 @@ export type TeamDetail = z.infer<typeof TeamDetailSchema>;
  * enforces both, this schema only validates shape.
  */
 export const CreateTeamDtoSchema = z.object({
-  name: z.string({
-    error: 'Name is required',
-  }).trim().min(1).max(120),
+  name: z
+    .string({
+      error: 'Name is required',
+    })
+    .trim()
+    .min(1)
+    .max(120),
   managerId: z.cuid2().nullable().optional(),
   // T-AUTOASSIGN (2026-09-17): how this team routes NEW leads. When true,
   // new leads auto-assign to the least-loaded telecaller across ALL project

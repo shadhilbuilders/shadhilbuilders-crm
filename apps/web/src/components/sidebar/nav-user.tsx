@@ -35,12 +35,14 @@ import Link from 'next/link';
 import { ADMIN_LAUNCHER, EMPLOYEE_LAUNCHER } from '@/lib/nav';
 
 function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('') || '?';
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  );
 }
 
 export function NavUser({
@@ -81,21 +83,17 @@ export function NavUser({
             render={
               <SidebarMenuButton
                 size="lg"
-                className="cursor-pointer data-[state=open]:bg-sidebar-accent-normal data-[state=open]:text-sidebar-accent-normal-foreground min-w-0"
+                className="data-[state=open]:bg-sidebar-accent-normal data-[state=open]:text-sidebar-accent-normal-foreground min-w-0 cursor-pointer"
                 data-qa="sidebar-user-trigger"
                 aria-label="Account menu"
                 title={name}
               >
                 <AvatarRoot className="h-8 w-8 shrink-0 rounded-lg">
-                  <AvatarFallback className="rounded-lg text-xs">
-                    {initials(name)}
-                  </AvatarFallback>
+                  <AvatarFallback className="rounded-lg text-xs">{initials(name)}</AvatarFallback>
                 </AvatarRoot>
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {email}
-                  </span>
+                  <span className="text-muted-foreground truncate text-xs">{email}</span>
                 </div>
               </SidebarMenuButton>
             }
@@ -104,16 +102,12 @@ export function NavUser({
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <AvatarRoot className="h-8 w-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg text-xs">
-                    {initials(name)}
-                  </AvatarFallback>
+                  <AvatarFallback className="rounded-lg text-xs">{initials(name)}</AvatarFallback>
                 </AvatarRoot>
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {email}
-                  </span>
-                  <span className="text-muted-foreground truncate text-[10px] uppercase tracking-wide">
+                  <span className="text-muted-foreground truncate text-xs">{email}</span>
+                  <span className="text-muted-foreground truncate text-[10px] tracking-wide uppercase">
                     {role.replace(/_/g, ' ')}
                   </span>
                 </div>
@@ -165,23 +159,19 @@ export function NavUser({
             ) : (
               // Org slug not resolved yet: render the row without a target
               // rather than linking to a bare `/settings` (which 404s).
-              <DropdownMenuItem
-                data-qa="sidebar-user-settings"
-                disabled
-                className="gap-2"
-              >
+              <DropdownMenuItem data-qa="sidebar-user-settings" disabled className="gap-2">
                 <LuSettings className="size-4 shrink-0" />
                 Settings
               </DropdownMenuItem>
             )}
-           
+
             <DropdownMenuSeparator />
             <DropdownMenuItem
               data-qa="sidebar-user-signout"
               onClick={() => {
                 onSignOut();
               }}
-              className="gap-2 cursor-pointer"
+              className="cursor-pointer gap-2"
             >
               <LuLogOut className="size-4 shrink-0" />
               Sign out

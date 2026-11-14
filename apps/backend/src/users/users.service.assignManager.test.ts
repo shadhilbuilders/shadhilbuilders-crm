@@ -43,7 +43,7 @@ const ownerActor = actor({ sub: 'owner-1', role: 'OWNER' });
 const adminActor = actor({ sub: 'admin-1', role: 'ADMIN' });
 const managerActor = actor({ sub: 'mgr-1', role: 'MANAGER' });
 const otherManagerActor = actor({ sub: 'mgr-2', role: 'MANAGER' });
-const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER'});
+const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER' });
 
 const salesExecTarget = {
   id: 'exec-1',
@@ -79,9 +79,9 @@ function makeService(opts: {
   const userFindUnique = vi.fn().mockResolvedValue(opts.user);
   // assignManager() treats a soft-deleted team as absent, so default the
   // fixture team to active unless a test explicitly sets deletedAt.
-  const teamFindUnique = vi.fn().mockResolvedValue(
-    opts.team == null ? null : { deletedAt: null, ...opts.team },
-  );
+  const teamFindUnique = vi
+    .fn()
+    .mockResolvedValue(opts.team == null ? null : { deletedAt: null, ...opts.team });
   const auditCreate = vi.fn().mockResolvedValue({});
   // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): assignManager()
   // replaces the target's ordinary TeamMember row(s) instead of writing
@@ -223,7 +223,7 @@ describe('assignManager - ADMIN/OWNER scope', () => {
     });
     expect(mocks.teamMemberCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ userId: salesExecTarget.id}),
+        data: expect.objectContaining({ userId: salesExecTarget.id }),
       }),
     );
     expect(mocks.auditCreate).toHaveBeenCalledWith(

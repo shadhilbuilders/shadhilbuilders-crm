@@ -22,10 +22,7 @@ describe('orderTeamsForRotation', () => {
   });
 
   it('puts never-routed teams (null) before any routed team', () => {
-    const ordered = orderTeamsForRotation([
-      T('b', new Date('2026-10-08T10:00:00Z')),
-      T('a', null),
-    ]);
+    const ordered = orderTeamsForRotation([T('b', new Date('2026-10-08T10:00:00Z')), T('a', null)]);
     expect(ordered.map((t) => t.teamId)).toEqual(['a', 'b']);
   });
 
@@ -40,12 +37,14 @@ describe('orderTeamsForRotation', () => {
 
   it('breaks ties (same timestamp, or both null) by teamId for determinism', () => {
     const at = new Date('2026-10-08T10:00:00Z');
-    expect(
-      orderTeamsForRotation([T('z', at), T('m', at)]).map((t) => t.teamId),
-    ).toEqual(['m', 'z']);
-    expect(
-      orderTeamsForRotation([T('z', null), T('m', null)]).map((t) => t.teamId),
-    ).toEqual(['m', 'z']);
+    expect(orderTeamsForRotation([T('z', at), T('m', at)]).map((t) => t.teamId)).toEqual([
+      'm',
+      'z',
+    ]);
+    expect(orderTeamsForRotation([T('z', null), T('m', null)]).map((t) => t.teamId)).toEqual([
+      'm',
+      'z',
+    ]);
   });
 
   it('does not mutate its input and returns a new array', () => {
@@ -104,19 +103,15 @@ describe('pickAutoAssignCandidate', () => {
   it('breaks true ties deterministically by userId, not by array order', () => {
     const a: AutoAssignCandidate = { userId: 'tc-a', openLeads: 2, weight: 1 };
     const b: AutoAssignCandidate = { userId: 'tc-b', openLeads: 2, weight: 1 };
-    expect(
-      pickAutoAssignCandidate([b, a]),
-    ).toMatchObject({ kind: 'picked', userId: 'tc-a' });
-    expect(
-      pickAutoAssignCandidate([a, b]),
-    ).toMatchObject({ kind: 'picked', userId: 'tc-a' });
+    expect(pickAutoAssignCandidate([b, a])).toMatchObject({ kind: 'picked', userId: 'tc-a' });
+    expect(pickAutoAssignCandidate([a, b])).toMatchObject({ kind: 'picked', userId: 'tc-a' });
   });
 
   it('returns no-eligible when the pool is empty or all weights are <= 0', () => {
     expect(pickAutoAssignCandidate([])).toEqual({ kind: 'no-eligible' });
-    expect(
-      pickAutoAssignCandidate([{ userId: 'tc-0', openLeads: 1, weight: 0 }]),
-    ).toEqual({ kind: 'no-eligible' });
+    expect(pickAutoAssignCandidate([{ userId: 'tc-0', openLeads: 1, weight: 0 }])).toEqual({
+      kind: 'no-eligible',
+    });
   });
 
   it('ignores a member who opted out with weight 0 instead of treating them as idle', () => {
@@ -174,9 +169,10 @@ describe('T-MAXOPENLEADS: the cap is an eligibility gate, not a score penalty', 
 
   it('null and undefined ceilings are uncapped (every pre-existing row)', () => {
     // The opt-in contract: an un-migrated/undefined cap must never exclude.
-    expect(
-      pickAutoAssignCandidate([TC('tc-null', 99, null)]),
-    ).toMatchObject({ kind: 'picked', userId: 'tc-null' });
+    expect(pickAutoAssignCandidate([TC('tc-null', 99, null)])).toMatchObject({
+      kind: 'picked',
+      userId: 'tc-null',
+    });
     expect(
       pickAutoAssignCandidate([{ userId: 'tc-undef', openLeads: 99, weight: 1 }]),
     ).toMatchObject({ kind: 'picked', userId: 'tc-undef' });
@@ -185,11 +181,7 @@ describe('T-MAXOPENLEADS: the cap is an eligibility gate, not a score penalty', 
   it('returns no-eligible when EVERY candidate is at their ceiling', () => {
     // The caller turns this into the manager handoff (pending), never a
     // sales-exec pick and never an over-cap assignment.
-    const pool: AutoAssignCandidate[] = [
-      TC('tc-a', 3, 3),
-      TC('tc-b', 7, 7),
-      TC('tc-c', 1, 1),
-    ];
+    const pool: AutoAssignCandidate[] = [TC('tc-a', 3, 3), TC('tc-b', 7, 7), TC('tc-c', 1, 1)];
     expect(pickAutoAssignCandidate(pool)).toEqual({ kind: 'no-eligible' });
   });
 

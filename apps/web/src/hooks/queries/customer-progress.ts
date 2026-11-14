@@ -137,10 +137,21 @@ export function useUpdatePhoto(unitId: string) {
   return useMutation({
     // PARTIAL by design: a stage-only correction must not clear the caption,
     // and a caption-only correction must not clear the stage.
-    mutationFn: ({ photoId, caption, stage }: { photoId: string; caption?: string; stage?: ConstructionStage }) =>
+    mutationFn: ({
+      photoId,
+      caption,
+      stage,
+    }: {
+      photoId: string;
+      caption?: string;
+      stage?: ConstructionStage;
+    }) =>
       api<TimelinePhoto>(`/customer-progress/photos/${photoId}`, {
         method: 'PATCH',
-        json: { ...(caption !== undefined ? { caption } : {}), ...(stage !== undefined ? { stage } : {}) },
+        json: {
+          ...(caption !== undefined ? { caption } : {}),
+          ...(stage !== undefined ? { stage } : {}),
+        },
       }),
     onSuccess: () => {
       // The response carries the corrected DTO, but the row's place in the

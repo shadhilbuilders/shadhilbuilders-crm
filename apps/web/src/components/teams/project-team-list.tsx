@@ -79,9 +79,7 @@ export function ProjectTeamList({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <TypographyP className="text-muted-foreground text-sm">
-          {teams.length === 1
-            ? '1 linked team'
-            : `${teams.length} linked teams`}
+          {teams.length === 1 ? '1 linked team' : `${teams.length} linked teams`}
         </TypographyP>
         {canManage ? (
           <Button
@@ -144,21 +142,19 @@ export function ProjectTeamList({
             <AccordionItem
               key={row.teamId}
               value={row.teamId}
-              className="rounded-lg border data-open:bg-muted"
+              className="data-open:bg-muted rounded-lg border"
             >
-              <div className="flex items-center justify-between gap-2 pl-3 pr-2 [&>h3]:flex-1 hover:bg-muted rounded-lg">
+              <div className="hover:bg-muted flex items-center justify-between gap-2 rounded-lg pr-2 pl-3 [&>h3]:flex-1">
                 <AccordionTrigger
                   className="min-w-0 flex-1 px-3 py-2.5 **:data-[slot=accordion-trigger-icon]:hidden **:data-[slot=accordion-trigger-icon-up]:hidden"
                   data-qa={`project-team-toggle-${row.teamId}`}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {row.teamName}
-                    </span>
+                    <span className="block truncate font-medium">{row.teamName}</span>
                     <span className="text-muted-foreground block truncate text-xs font-normal">
-                      {row.manager?.name ?? 'No manager'} · {row.memberCount}{' '}
-                      member{row.memberCount === 1 ? '' : 's'} ·{' '}
-                      {row.leadCount} lead{row.leadCount === 1 ? '' : 's'}
+                      {row.manager?.name ?? 'No manager'} · {row.memberCount} member
+                      {row.memberCount === 1 ? '' : 's'} · {row.leadCount} lead
+                      {row.leadCount === 1 ? '' : 's'}
                     </span>
                   </span>
                 </AccordionTrigger>
@@ -171,7 +167,7 @@ export function ProjectTeamList({
                   />
                 ) : null}
               </div>
-              <AccordionContent className="pt-2 pb-3 bg-background rounded-b-lg">
+              <AccordionContent className="bg-background rounded-b-lg pt-2 pb-3">
                 <MemberRoster members={row.members} projectId={projectId} canManage={canManage} />
               </AccordionContent>
             </AccordionItem>
@@ -193,10 +189,7 @@ function TeamListSkeleton() {
   return (
     <div className="space-y-2" aria-hidden="true">
       {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="border-border h-14 animate-pulse rounded-lg border"
-        />
+        <div key={i} className="border-border h-14 animate-pulse rounded-lg border" />
       ))}
     </div>
   );
@@ -213,9 +206,7 @@ function MemberRoster({
 }) {
   if (members.length === 0) {
     return (
-      <TypographyP className="text-muted-foreground pl-6 text-sm">
-        No members yet.
-      </TypographyP>
+      <TypographyP className="text-muted-foreground pl-6 text-sm">No members yet.</TypographyP>
     );
   }
   // Manager first (design doc: "pins the team's manager first").
@@ -242,7 +233,12 @@ function MemberRoster({
               every member row is safe: `canManage` is still OWNER/ADMIN, and
               setPhotoLead re-checks isAdminClass server-side. */}
           {canManage ? (
-            <PhotoLeadToggle memberId={m.userId} memberName={m.name} projectId={projectId} photoLead={m.photoLead} />
+            <PhotoLeadToggle
+              memberId={m.userId}
+              memberName={m.name}
+              projectId={projectId}
+              photoLead={m.photoLead}
+            />
           ) : null}
         </div>
       ))}
@@ -283,7 +279,9 @@ function PhotoLeadToggle({
             { userId: memberId, photoLead: checked },
             {
               onSuccess: () =>
-                toast.success(`${memberName} ${checked ? 'can now' : 'can no longer'} edit other members' site photos on this project.`),
+                toast.success(
+                  `${memberName} ${checked ? 'can now' : 'can no longer'} edit other members' site photos on this project.`,
+                ),
               onError: (error: unknown) =>
                 toast.error(error instanceof Error ? error.message : 'Photo-lead update failed'),
             },

@@ -121,12 +121,24 @@ async function buildFixture(): Promise<void> {
   await adminPrisma.project.upsert({
     where: { id: PROJ_A_ID },
     update: {},
-    create: { id: PROJ_A_ID, name: 'Fixture Project A', slug: PROJ_A_ID, address: '123 A', organizationId: ORG_ID },
+    create: {
+      id: PROJ_A_ID,
+      name: 'Fixture Project A',
+      slug: PROJ_A_ID,
+      address: '123 A',
+      organizationId: ORG_ID,
+    },
   });
   await adminPrisma.project.upsert({
     where: { id: PROJ_B_ID },
     update: {},
-    create: { id: PROJ_B_ID, name: 'Fixture Project B', slug: PROJ_B_ID, address: '123 B', organizationId: ORG_ID },
+    create: {
+      id: PROJ_B_ID,
+      name: 'Fixture Project B',
+      slug: PROJ_B_ID,
+      address: '123 B',
+      organizationId: ORG_ID,
+    },
   });
   await adminPrisma.phase.upsert({
     where: { id: PHASE_A_ID },
@@ -201,8 +213,18 @@ async function buildFixture(): Promise<void> {
   // project-membership join, not the org gate. Units here are THIS suite's
   // own fixture rows (created above), not the matrix fixture's.
   for (const p of [
-    { id: PHOTO_SELF_ID, unitId: 'cq9kvh1p2m7n3r8s4t5u6vwi', phaseId: PHASE_A_ID, createdBy: ENG_A_ID },
-    { id: PHOTO_OTHER_ID, unitId: 'cq9kvh1p2m7n3r8s4t5u6vwj', phaseId: PHASE_B_ID, createdBy: ENG_B_ID },
+    {
+      id: PHOTO_SELF_ID,
+      unitId: 'cq9kvh1p2m7n3r8s4t5u6vwi',
+      phaseId: PHASE_A_ID,
+      createdBy: ENG_A_ID,
+    },
+    {
+      id: PHOTO_OTHER_ID,
+      unitId: 'cq9kvh1p2m7n3r8s4t5u6vwj',
+      phaseId: PHASE_B_ID,
+      createdBy: ENG_B_ID,
+    },
   ]) {
     await adminPrisma.progressPhoto.upsert({
       where: { id: p.id },
@@ -301,7 +323,10 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
       tx.progressPhoto.create({
         data: {
           id: PHOTO_ADMIN_ID,
-          unitId: (await tx.unit.findFirst({ where: { id: 'cq9kvh1p2m7n3r8s4t5u6vwi' }, select: { id: true } }))!.id,
+          unitId: (await tx.unit.findFirst({
+            where: { id: 'cq9kvh1p2m7n3r8s4t5u6vwi' },
+            select: { id: true },
+          }))!.id,
           phaseId: PHASE_A_ID,
           organizationId: ORG_ID,
           key: `progress/${PHOTO_ADMIN_ID}.jpg`,
@@ -323,7 +348,10 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
         tx.progressPhoto.create({
           data: {
             id: 'cq9kvh1p2m7n3r8s4t5u6vwh',
-            unitId: (await tx.unit.findFirst({ where: { id: 'cq9kvh1p2m7n3r8s4t5u6vwi' }, select: { id: true } }))!.id,
+            unitId: (await tx.unit.findFirst({
+              where: { id: 'cq9kvh1p2m7n3r8s4t5u6vwi' },
+              select: { id: true },
+            }))!.id,
             phaseId: PHASE_A_ID,
             organizationId: ORG_ID,
             key: `progress/forge.jpg`,
@@ -394,7 +422,12 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     await expect(
       withRlsContext(prisma, plA, async (tx) =>
         tx.projectStaffRole.create({
-          data: { userId: ENG_N_ID, projectId: PROJ_B_ID, kind: 'PHOTO_LEAD', organizationId: ORG_ID },
+          data: {
+            userId: ENG_N_ID,
+            projectId: PROJ_B_ID,
+            kind: 'PHOTO_LEAD',
+            organizationId: ORG_ID,
+          },
         }),
       ),
     ).rejects.toThrow();
@@ -469,7 +502,9 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     // Member context: label resolves + photo-lead flag false (eng-A has no
     // PHOTO_LEAD row on project A).
     const label = await withRlsContext(prisma, engA, async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ creator_name: string | null; creator_is_photo_lead: boolean | null }>>`
+      const rows = await tx.$queryRaw<
+        Array<{ creator_name: string | null; creator_is_photo_lead: boolean | null }>
+      >`
         SELECT creator_name, creator_is_photo_lead FROM progress_photo_creator_label(${PHOTO_SELF_ID})`;
       return rows;
     });
@@ -497,8 +532,11 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     // rows for a caller who cannot read the photo (RETURN without
     // RETURN QUERY). Assert the exact empty contract - a leaked creator
     // name here would be a cross-membership information leak.
-    const nullLabel = await withRlsContext(prisma, engN, async (tx) =>
-      tx.$queryRaw<Array<{ creator_name: string | null }>>`
+    const nullLabel = await withRlsContext(
+      prisma,
+      engN,
+      async (tx) =>
+        tx.$queryRaw<Array<{ creator_name: string | null }>>`
         SELECT creator_name FROM progress_photo_creator_label(${PHOTO_SELF_ID})`,
     );
     expect(nullLabel).toHaveLength(0);
@@ -558,9 +596,11 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     // And the direct arm the same service path leans on: the Team row
     // itself must be readable by a member engineer (team_select_engineer).
     const teamRows = await withRlsContext(prisma, engA, async (tx) =>
-      (tx as unknown as {
-        team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
-      }).team.findMany({ where: { id: TEAM_A_ID } }),
+      (
+        tx as unknown as {
+          team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+        }
+      ).team.findMany({ where: { id: TEAM_A_ID } }),
     );
     expect(teamRows).toHaveLength(1);
 
@@ -590,9 +630,11 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     expect(nonMemberJoin).toBeNull();
 
     const nonMemberTeam = await withRlsContext(prisma, engN, async (tx) =>
-      (tx as unknown as {
-        team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
-      }).team.findMany({ where: { id: TEAM_A_ID } }),
+      (
+        tx as unknown as {
+          team: { findMany: (a: { where: { id: string } }) => Promise<Array<{ id: string }>> };
+        }
+      ).team.findMany({ where: { id: TEAM_A_ID } }),
     );
     expect(nonMemberTeam).toHaveLength(0);
   });
@@ -662,20 +704,33 @@ maybe('Customer progress RLS (issue #7 slice 1)', () => {
     }
   });
 
-  it('protects= project_unit_ids() resolves a project\'s units even for an engineer who cannot read them', async () => {
-    const ids = await withRlsContext(prisma, engN, async (tx) =>
-      (tx as unknown as {
-        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<Array<{ project_unit_ids: string }>>;
-      }).$queryRaw`SELECT project_unit_ids(${PROJ_A_ID}) AS project_unit_ids`,
+  it("protects= project_unit_ids() resolves a project's units even for an engineer who cannot read them", async () => {
+    const ids = await withRlsContext(
+      prisma,
+      engN,
+      async (tx) =>
+        (
+          tx as unknown as {
+            $queryRaw: (
+              s: TemplateStringsArray,
+              ...v: unknown[]
+            ) => Promise<Array<{ project_unit_ids: string }>>;
+          }
+        ).$queryRaw`SELECT project_unit_ids(${PROJ_A_ID}) AS project_unit_ids`,
     );
     const set = ids.map((r) => r.project_unit_ids);
     expect(set).toContain(UNIT_A_ID);
     expect(set).toContain(UNASSIGNED_UNIT_ID);
     // Org-scoped: a project of another org (or none) yields nothing.
-    const none = await withRlsContext(prisma, engN, async (tx) =>
-      (tx as unknown as {
-        $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
-      }).$queryRaw`SELECT project_unit_ids('no-such-project') AS project_unit_ids`,
+    const none = await withRlsContext(
+      prisma,
+      engN,
+      async (tx) =>
+        (
+          tx as unknown as {
+            $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
+          }
+        ).$queryRaw`SELECT project_unit_ids('no-such-project') AS project_unit_ids`,
     );
     expect(none).toHaveLength(0);
   });

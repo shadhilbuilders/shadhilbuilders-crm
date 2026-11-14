@@ -6,7 +6,16 @@
 // Auth: global JwtAuthGuard (NOT @Public). Buyers read milestones through
 // /customer-portal/me; a buyer token that reaches GET here is still confined by
 // RLS (customer_can_read_project) to its own project, and PUT is ADMIN-only.
-import { BadRequestException, Body, Controller, Get, Inject, Param, Put, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Put,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ReplaceMilestonesDtoSchema,
@@ -33,7 +42,10 @@ export class MilestonesController {
 
   @Get(':projectId')
   @ApiOperation({ summary: "A project's buyer-visible milestones, in staff order." })
-  async list(@Req() req: AuthedRequest, @Param('projectId') projectId: string): Promise<ProjectMilestoneRow[]> {
+  async list(
+    @Req() req: AuthedRequest,
+    @Param('projectId') projectId: string,
+  ): Promise<ProjectMilestoneRow[]> {
     return this.milestones.list(req.user!, projectIdOf(projectId));
   }
 

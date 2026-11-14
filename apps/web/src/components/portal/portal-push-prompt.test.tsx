@@ -74,7 +74,8 @@ function unmount(): void {
   root = null;
 }
 
-const prompt = (el: HTMLElement): Element | null => el.querySelector('[data-qa="portal-push-prompt"]');
+const prompt = (el: HTMLElement): Element | null =>
+  el.querySelector('[data-qa="portal-push-prompt"]');
 const button = (el: HTMLElement, qa: string): HTMLButtonElement | null =>
   el.querySelector<HTMLButtonElement>(`[data-qa="${qa}"]`);
 

@@ -27,9 +27,7 @@ function parseQuery<T>(schema: z.ZodType<T>, query: Record<string, unknown>): T 
   const result = schema.safeParse(query);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'query'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'query'}: ${i.message}`),
     );
   }
   return result.data;
@@ -39,9 +37,7 @@ function parseQuery<T>(schema: z.ZodType<T>, query: Record<string, unknown>): T 
 @ApiBearerAuth('jwt')
 @Controller('dashboard')
 export class DashboardController {
-  constructor(
-    @Inject(DashboardService) private readonly dashboard: DashboardService,
-  ) {}
+  constructor(@Inject(DashboardService) private readonly dashboard: DashboardService) {}
 
   @Get('stats')
   @ApiOperation({

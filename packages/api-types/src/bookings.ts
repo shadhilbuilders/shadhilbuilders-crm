@@ -66,25 +66,23 @@ export function isTokenWithinTotal(
 }
 
 /** Message used wherever the cap is enforced, so the wording cannot drift. */
-export const TOKEN_EXCEEDS_TOTAL_MESSAGE =
-  'Token amount cannot be more than the booking total';
+export const TOKEN_EXCEEDS_TOTAL_MESSAGE = 'Token amount cannot be more than the booking total';
 
 /**
  * POST /api/bookings - start a new booking (HOLD state).
  * Sales Exec initiates. Manager approves later via /approve.
  */
-export const CreateBookingDtoSchema = z
-  .object({
-    leadId: z.string().cuid2(),
-    unitId: z.string().cuid2(),
-    // The booking total is DERIVED server-side: the unit total, or - when a
-    // negotiated per-sq.ft rate is supplied - buildup sq.ft x that rate. The
-    // client never sends an amount, so it cannot be spoofed. The token-vs-total
-    // cap is therefore enforced in BookingsService (it knows the total).
-    negotiatedRate: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
-    tokenAmount: TokenAmountSchema.optional(),
-    notes: z.string().trim().max(2000).optional(),
-  });
+export const CreateBookingDtoSchema = z.object({
+  leadId: z.string().cuid2(),
+  unitId: z.string().cuid2(),
+  // The booking total is DERIVED server-side: the unit total, or - when a
+  // negotiated per-sq.ft rate is supplied - buildup sq.ft x that rate. The
+  // client never sends an amount, so it cannot be spoofed. The token-vs-total
+  // cap is therefore enforced in BookingsService (it knows the total).
+  negotiatedRate: z.number().positive().max(MAX_RATE_PER_SQFT).optional(),
+  tokenAmount: TokenAmountSchema.optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
 export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
 
 /**
@@ -96,11 +94,7 @@ export type CreateBookingDto = z.infer<typeof CreateBookingDtoSchema>;
  */
 export const UpdateBookingDtoSchema = z
   .object({
-    amount: z
-      .number()
-      .positive()
-      .max(1_000_000_000, 'Amount too large (cap ₹100 Cr)')
-      .optional(),
+    amount: z.number().positive().max(1_000_000_000, 'Amount too large (cap ₹100 Cr)').optional(),
     /**
      * Set/replace the negotiated per-sq.ft rate (the server recomputes the
      * negotiated total and `amount`), or `null` to clear the negotiation and fall
@@ -127,7 +121,8 @@ export const UpdateBookingDtoSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['amount'],
-        message: 'Send either amount or negotiatedRate, not both: the amount is derived from the rate',
+        message:
+          'Send either amount or negotiatedRate, not both: the amount is derived from the rate',
       });
     }
     // T-TOKEN-GATE cap: both fields can arrive together, and when they do the
@@ -244,9 +239,7 @@ export const BookingFilterDtoSchema = z.object({
   // Project.id is always a real cuid2 (seed/fixture slug ids were purged),
   // so filter strictly - a non-cuid2 value is a 400.
   projectId: z.cuid2().optional(),
-  status: z
-    .union([BookingStatusSchema, z.array(BookingStatusSchema)])
-    .optional(),
+  status: z.union([BookingStatusSchema, z.array(BookingStatusSchema)]).optional(),
   approvedById: z.string().cuid2().optional(),
   // Server-side search over the parent Lead's name/phone (the booking has
   // no name of its own). Mirrors the leads D9 contract (≥2 chars).

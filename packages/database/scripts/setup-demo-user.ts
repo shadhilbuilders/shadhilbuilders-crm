@@ -214,11 +214,51 @@ async function main() {
   // one, every plot on /plots reads available and there is nothing to link to.
   // It is a different identifier from `unitNumber` (the door number).
   const unitDefs = [
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-101', plotNumber: 5, bhk: 2, facing: 'North', sqft: 1050, price: 4_200_000 },
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-102', plotNumber: 17, bhk: 3, facing: 'East', sqft: 1450, price: 5_800_000 },
-    { phaseId: DEMO_PHASE_A, unitNumber: 'D-103', plotNumber: 20, bhk: 3, facing: 'South', sqft: 1480, price: 5_950_000 },
-    { phaseId: DEMO_PHASE_B, unitNumber: 'D-201', plotNumber: 37, bhk: 3, facing: 'West', sqft: 1500, price: 6_100_000 },
-    { phaseId: DEMO_PHASE_B, unitNumber: 'D-202', plotNumber: 114, bhk: 4, facing: 'North', sqft: 1900, price: 8_400_000 },
+    {
+      phaseId: DEMO_PHASE_A,
+      unitNumber: 'D-101',
+      plotNumber: 5,
+      bhk: 2,
+      facing: 'North',
+      sqft: 1050,
+      price: 4_200_000,
+    },
+    {
+      phaseId: DEMO_PHASE_A,
+      unitNumber: 'D-102',
+      plotNumber: 17,
+      bhk: 3,
+      facing: 'East',
+      sqft: 1450,
+      price: 5_800_000,
+    },
+    {
+      phaseId: DEMO_PHASE_A,
+      unitNumber: 'D-103',
+      plotNumber: 20,
+      bhk: 3,
+      facing: 'South',
+      sqft: 1480,
+      price: 5_950_000,
+    },
+    {
+      phaseId: DEMO_PHASE_B,
+      unitNumber: 'D-201',
+      plotNumber: 37,
+      bhk: 3,
+      facing: 'West',
+      sqft: 1500,
+      price: 6_100_000,
+    },
+    {
+      phaseId: DEMO_PHASE_B,
+      unitNumber: 'D-202',
+      plotNumber: 114,
+      bhk: 4,
+      facing: 'North',
+      sqft: 1900,
+      price: 8_400_000,
+    },
   ];
   for (const u of unitDefs) {
     await prisma.unit.upsert({
@@ -255,19 +295,91 @@ async function main() {
   // variety, owned by the demo user's team (RLS scopes by owner/team/org).
   // 12 leads = 2 pages (page size 10) so pagination tests can assert page 2.
   const leadDefs = [
-    { id: DEMO_LEAD_1, name: 'Demo Priya', phone: '9876510001', state: 'NEW' as const, source: 'META_AD' as const },
-    { id: DEMO_LEAD_2, name: 'Demo Arjun', phone: '9876510002', state: 'CONTACTED' as const, source: 'LANDING' as const },
-    { id: DEMO_LEAD_3, name: 'Demo Kavya', phone: '9876510003', state: 'VISIT_SCHEDULED' as const, source: 'REFERRAL' as const },
-    { id: DEMO_LEAD_4, name: 'Demo Rahul', phone: '9876510004', state: 'NEGOTIATION' as const, source: 'WALK_IN' as const },
-    { id: DEMO_LEAD_5, name: 'Demo Meera', phone: '9876510005', state: 'BOOKING_INITIATED' as const, source: 'META_AD' as const },
-    { id: DEMO_LEAD_WON, name: 'Demo Vikram', phone: '9876510006', state: 'WON' as const, source: 'REFERRAL' as const },
+    {
+      id: DEMO_LEAD_1,
+      name: 'Demo Priya',
+      phone: '9876510001',
+      state: 'NEW' as const,
+      source: 'META_AD' as const,
+    },
+    {
+      id: DEMO_LEAD_2,
+      name: 'Demo Arjun',
+      phone: '9876510002',
+      state: 'CONTACTED' as const,
+      source: 'LANDING' as const,
+    },
+    {
+      id: DEMO_LEAD_3,
+      name: 'Demo Kavya',
+      phone: '9876510003',
+      state: 'VISIT_SCHEDULED' as const,
+      source: 'REFERRAL' as const,
+    },
+    {
+      id: DEMO_LEAD_4,
+      name: 'Demo Rahul',
+      phone: '9876510004',
+      state: 'NEGOTIATION' as const,
+      source: 'WALK_IN' as const,
+    },
+    {
+      id: DEMO_LEAD_5,
+      name: 'Demo Meera',
+      phone: '9876510005',
+      state: 'BOOKING_INITIATED' as const,
+      source: 'META_AD' as const,
+    },
+    {
+      id: DEMO_LEAD_WON,
+      name: 'Demo Vikram',
+      phone: '9876510006',
+      state: 'WON' as const,
+      source: 'REFERRAL' as const,
+    },
     // Additional leads for pagination (page size 10 → 12 total = 2 pages)
-    { id: 'hki6tw8qj15qpw55ol9rmc30', name: 'Demo Sneha', phone: '9876510007', state: 'NEW' as const, source: 'LANDING' as const },
-    { id: 'ds531k56sxtfhiafzc9x4on0', name: 'Demo Rohan', phone: '9876510008', state: 'CONTACTED' as const, source: 'REFERRAL' as const },
-    { id: 'njbo3jgz1jtw4d5mahuu8961', name: 'Demo Anjali', phone: '9876510009', state: 'VISIT_SCHEDULED' as const, source: 'META_AD' as const },
-    { id: 'vmrm6cadajiv36z7j596zpl1', name: 'Demo Karan', phone: '9876510010', state: 'NEGOTIATION' as const, source: 'WALK_IN' as const },
-    { id: 'ruj788er1ilinxdazl8lq74n', name: 'Demo Deepa', phone: '9876510011', state: 'BOOKING_INITIATED' as const, source: 'LANDING' as const },
-    { id: 'kavsu6r8uxqi6rnninmxwqi6', name: 'Demo Amit', phone: '9876510012', state: 'LOST' as const, source: 'REFERRAL' as const },
+    {
+      id: 'hki6tw8qj15qpw55ol9rmc30',
+      name: 'Demo Sneha',
+      phone: '9876510007',
+      state: 'NEW' as const,
+      source: 'LANDING' as const,
+    },
+    {
+      id: 'ds531k56sxtfhiafzc9x4on0',
+      name: 'Demo Rohan',
+      phone: '9876510008',
+      state: 'CONTACTED' as const,
+      source: 'REFERRAL' as const,
+    },
+    {
+      id: 'njbo3jgz1jtw4d5mahuu8961',
+      name: 'Demo Anjali',
+      phone: '9876510009',
+      state: 'VISIT_SCHEDULED' as const,
+      source: 'META_AD' as const,
+    },
+    {
+      id: 'vmrm6cadajiv36z7j596zpl1',
+      name: 'Demo Karan',
+      phone: '9876510010',
+      state: 'NEGOTIATION' as const,
+      source: 'WALK_IN' as const,
+    },
+    {
+      id: 'ruj788er1ilinxdazl8lq74n',
+      name: 'Demo Deepa',
+      phone: '9876510011',
+      state: 'BOOKING_INITIATED' as const,
+      source: 'LANDING' as const,
+    },
+    {
+      id: 'kavsu6r8uxqi6rnninmxwqi6',
+      name: 'Demo Amit',
+      phone: '9876510012',
+      state: 'LOST' as const,
+      source: 'REFERRAL' as const,
+    },
   ];
   for (const l of leadDefs) {
     await prisma.lead.upsert({
@@ -506,21 +618,15 @@ async function main() {
   }
 
   // eslint-disable-next-line no-console
-  console.log(
-    `[demo-user] org "${demoOrg.name}" (${demoOrg.slug}, ${demoOrg.id}) ready`,
-  );
+  console.log(`[demo-user] org "${demoOrg.name}" (${demoOrg.slug}, ${demoOrg.id}) ready`);
   // eslint-disable-next-line no-console
-  console.log(
-    `[demo-user] user ${DEMO_EMAIL} (OWNER) password "${DEMO_PASSWORD}"`,
-  );
+  console.log(`[demo-user] user ${DEMO_EMAIL} (OWNER) password "${DEMO_PASSWORD}"`);
   // eslint-disable-next-line no-console
   console.log(
     `[demo-user] seeded ${unitDefs.length} units, ${leadDefs.length} leads, ${leadDefs.length} chat messages, 3 notifications`,
   );
   // eslint-disable-next-line no-console
-  console.log(
-    `[demo-user] sign in at /${DEMO_ORG_SLUG}/projects/${DEMO_PROJECT_SLUG}`,
-  );
+  console.log(`[demo-user] sign in at /${DEMO_ORG_SLUG}/projects/${DEMO_PROJECT_SLUG}`);
 
   await prisma.$disconnect();
 }

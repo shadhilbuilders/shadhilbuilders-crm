@@ -129,9 +129,7 @@ export const createMutationQueue = () => {
      * for the status code classification. Returns counts for UI to show
      * "3 synced, 1 failed, 2 retrying" toasts.
      */
-    async replay(
-      fetcher: (m: Mutation) => Promise<{ status: number }>,
-    ): Promise<ReplayResult> {
+    async replay(fetcher: (m: Mutation) => Promise<{ status: number }>): Promise<ReplayResult> {
       const all = await loadAll();
       const succeeded: Mutation[] = [];
       const failed: Mutation[] = [];

@@ -258,9 +258,9 @@ describe('withDateSeparators - date grouping (WIREFRAMES.md:334)', () => {
     ] as never;
 
     const out = withDateSeparators(rows, now);
-    const older = out.find((e) => e.type === 'separator' && (e as { group: DateGroup }).group === 'Older') as
-      | { label: string }
-      | undefined;
+    const older = out.find(
+      (e) => e.type === 'separator' && (e as { group: DateGroup }).group === 'Older',
+    ) as { label: string } | undefined;
     expect(older).toBeDefined();
     // 2026-09-01 → "1 Sep 2026" (date-fns MMM = "Sep")
     expect(older!.label).toContain('Sep');
@@ -413,9 +413,7 @@ describe('resolveMentionedUserIds - who a draft addresses', () => {
 
   it('is deterministic (a stable payload for the same draft)', () => {
     const body = '@Ravi Kumar and @Asha T. and @Asha';
-    expect(resolveMentionedUserIds(body, picked)).toEqual(
-      resolveMentionedUserIds(body, picked),
-    );
+    expect(resolveMentionedUserIds(body, picked)).toEqual(resolveMentionedUserIds(body, picked));
   });
 });
 

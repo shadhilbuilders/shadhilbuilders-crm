@@ -30,7 +30,7 @@ that does the job, no matter how good the metrics are.
 ## Demand Evidence
 
 Honest accounting. Demand for the product is settled - Shadhil is a paying client with `DESIGN.md` v3.1
-signed off. Demand for *this change* is the owner's instruction, not observed staff behaviour.
+signed off. Demand for _this change_ is the owner's instruction, not observed staff behaviour.
 
 What is evidenced is the problem, not the solution:
 
@@ -208,7 +208,7 @@ Breaks 1-3 above are the entire job.
   distrust. The row expansion links to the lead's own page instead.
 - **Visit outcome roles (owner ruling, 2026-09-16).** Only SALES_EXEC (and MANAGER/ADMIN) mark a visit
   COMPLETED, and that is the sole path to VISITED (`visits.service.ts:477-480` drives `toState:
-  'VISITED'` only on `outcome === 'COMPLETED'`). TELECALLER records NO_SHOW only. Enforce per-button
+'VISITED'` only on `outcome === 'COMPLETED'`). TELECALLER records NO_SHOW only. Enforce per-button
   with `canLogVisitOutcome(role, outcome)` (`lib/session.ts:145-154`). No row may offer a route to
   VISITED.
 - **The generic transition endpoint still allows TELECALLER VISIT_SCHEDULED → VISITED**
@@ -226,7 +226,7 @@ be corrected, because the dashboard's expansion renders them:
   SCHEDULED, mapped to `ForbiddenException` (`visits.service.ts:441-448`). The correct helper,
   `canLogVisitOutcome`, exists and is imported nowhere in the web app - dead code. **Fix: gate each
   outcome button on `canLogVisitOutcome(role, outcome)`.**
-- **`LeadActionPanel`.** Its own header documents that it exposes *all* outgoing edges and lets the
+- **`LeadActionPanel`.** Its own header documents that it exposes _all_ outgoing edges and lets the
   server reject with 403 (`LeadActionPanel.tsx:12-15`), rendering the raw `TRANSITIONS` mirror
   (`:75-88`) unfiltered (`:346-362`). **Fix: the dashboard renders a role-filtered transition set.**
   If that means an optional `allowedStates` prop on `LeadActionPanel`, it must default to current
@@ -247,10 +247,11 @@ R1 specified four buckets: overdue NEW → NEW → VISIT_REQUESTED → VISIT_SCH
 
 **Resolution, stated honestly in the build:** the queue uses the **existing server order** (overdue NEW,
 then NEW, then the rest), followed by a **documented client-side refinement limited to the loaded page**
+
 - the page size must be named in the code, and the refinement must say so in a comment rather than
-pretending to be server-side. Bucket 4 is dropped from the queue; a lead with a visit today appears in
-the **visits panel**, where that data actually lives. This keeps "real backend data, never
-client-side-only filtering" honest by naming the limit instead of hiding it.
+  pretending to be server-side. Bucket 4 is dropped from the queue; a lead with a visit today appears in
+  the **visits panel**, where that data actually lives. This keeps "real backend data, never
+  client-side-only filtering" honest by naming the limit instead of hiding it.
 
 ## Decision 4 (REQUIRED) - the age staircase is NEW-only, and R1 overclaimed
 
@@ -274,7 +275,7 @@ premise 5 was corrected twice (first by the R2 review, then re-confirmed by the 
 ruling); premise 6 was narrowed after review; premise 10 records the ruling that closed the assignment fork.
 
 1. The dashboard is a **work queue**, not a metrics page. Its competitor is Excel plus WhatsApp.
-2. The **30-minute first-touch SLA is the organizing principle** of the NEW rows. Most urgent first *is*
+2. The **30-minute first-touch SLA is the organizing principle** of the NEW rows. Most urgent first _is_
    the interface - which keeps the page calm **without hiding anything a user needs on a given pass**.
    Rare, negative actions are deliberately deferred to the expansion.
 3. **Ordering does the work** the original "reveal segment by segment" proposal was reaching for -
@@ -286,10 +287,10 @@ ruling); premise 6 was narrowed after review; premise 10 records the ruling that
    **CONFIRMED TRUE by the owner's 2026-09-16 ruling**, with three caveats found by tracing it: the exec
    picker must be fed from `/api/users/team` (frontend only), and two backend changes are required for the
    exec half (Decision 1, Breaks 2 and 3). The no-backend-change claim was wrong; the workflow is correct.
-6. **Reveal happens in place** by expanding a row - never by navigating away. *Caveat accepted from the
+6. **Reveal happens in place** by expanding a row - never by navigating away. _Caveat accepted from the
    review: a modal is still the correct host for a multi-field form that genuinely needs one
    (scheduling), because an inline date-time plus assignee form inside a queue row is worse for a novice
-   than a dialog. The rule governs reads and one-tap actions.*
+   than a dialog. The rule governs reads and one-tap actions._
 7. Scope is confined to the **dashboard route plus the named shared-component corrections and the two
    disclosed backend changes**; all other pages untouched.
 8. **Only a sales exec (or manager/admin) marks a visit COMPLETED, and that is the sole path to
@@ -306,11 +307,11 @@ ruling); premise 6 was narrowed after review; premise 10 records the ruling that
 Independent cold read (subagent, no access to this conversation; asked for a steelman, key insight,
 challenged premise, prototype suggestion).
 
-**Key insight, verbatim:** *"the biggest risk is that the hero surface contains a chat pane that silently
+**Key insight, verbatim:** _"the biggest risk is that the hero surface contains a chat pane that silently
 fails... the telecaller sees a customer waiting, types a reply, watches it render as sent, and the
 customer never receives it. That turns tolerated data-entry into active distrust, on the exact surface
 you are betting adoption on... Note also that a 30 minute SLA must never be hidden behind a click: sort
-by time to breach and keep the clock visible at all times."*
+by time to breach and keep the clock visible at all times."_
 
 **Challenged premise:** that consolidating into one page changes where staff work while chat stays out of
 scope - the reviewer judges it likely false, arguing adoption is blocked not by navigation but by the CRM
@@ -370,8 +371,8 @@ contents, the counts, and which action is permitted on each row.
 
 **Telecaller view, top to bottom:**
 
-1. **Count strip - three real numbers, not four.** *Needs a call now* (overdue count), *New today*,
-   *Visits today*. Each is a **filter control**. Two corrections from review:
+1. **Count strip - three real numbers, not four.** _Needs a call now_ (overdue count), _New today_,
+   _Visits today_. Each is a **filter control**. Two corrections from review:
    - `KpiStrip` cannot do this as written: `Kpi` is `{label, value, sub}` with no handler and the markup
      is a plain paragraph grid (`dashboard-shared.tsx:20-24, 35-61`). **Fix: add an optional `onClick` to
      `Kpi`**, defaulting to current behaviour - `dashboard-shared.tsx` is also imported by the admin
@@ -381,7 +382,7 @@ contents, the counts, and which action is permitted on each row.
    - Mobile: `KpiStrip` renders `grid-cols-2` with `text-3xl` values (`:37, :46`) - two tall rows before
      the queue starts. **Fix: collapse to a single scrollable chip row under `sm`**, to protect the
      "urgent lead on screen without scrolling" criterion.
-3. **"Call these now"** - the queue, in **server order** plus the documented page-limited refinement
+2. **"Call these now"** - the queue, in **server order** plus the documented page-limited refinement
    (Decision 3). It contains NEW and CONTACTED leads, plus VISIT_REQUESTED and the re-engagement states,
    so a row the telecaller just acted on does not vanish mid-task.
 3. **Row anatomy** (identifying column first, per standing preference): lead name + phone → status badge
@@ -389,14 +390,14 @@ contents, the counts, and which action is permitted on each row.
    **Name truncates** with `line-clamp-1` and a `title` attribute.
 4. **Primary action by state**, telecaller lane:
 
-   | State | Primary (on the row) | Secondary |
-   |---|---|---|
-   | NEW | Called (→ CONTACTED) | Wants a visit (→ VISIT_REQUESTED) |
-   | CONTACTED | Wants a visit (→ VISIT_REQUESTED) | - |
-   | VISIT_REQUESTED | Schedule visit (opens `ScheduleVisitDialog`, **exec required**) | - |
-   | VISIT_SCHEDULED | No show | Reschedule |
-   | RESCHEDULED | Schedule visit | - |
-   | NO_SHOW | Schedule visit | - |
+   | State           | Primary (on the row)                                            | Secondary                         |
+   | --------------- | --------------------------------------------------------------- | --------------------------------- |
+   | NEW             | Called (→ CONTACTED)                                            | Wants a visit (→ VISIT_REQUESTED) |
+   | CONTACTED       | Wants a visit (→ VISIT_REQUESTED)                               | -                                 |
+   | VISIT_REQUESTED | Schedule visit (opens `ScheduleVisitDialog`, **exec required**) | -                                 |
+   | VISIT_SCHEDULED | No show                                                         | Reschedule                        |
+   | RESCHEDULED     | Schedule visit                                                  | -                                 |
+   | NO_SHOW         | Schedule visit                                                  | -                                 |
 
    **Scheduling must require the exec.** `ScheduleVisitDialog` is fed from `/api/users/team` filtered to
    `SALES_EXEC | MANAGER` (Decision 1, Break 1); the field is mandatory, not optional, because an absent
@@ -406,7 +407,7 @@ contents, the counts, and which action is permitted on each row.
    LOST and COLD are absent deliberately: rare, negative, reason-required, therefore expansion-only.
    **No row offers a route to VISITED.** Two mechanisms must be named in the code, because "No show" and
    "Reschedule" each exist twice with different effects:
-   - **No show** on a row: the *lead* transition (allowed for telecallers,
+   - **No show** on a row: the _lead_ transition (allowed for telecallers,
      `leads.state-machine.ts:53, 103-104`). It writes `Lead` plus an audit row only, so the `SiteVisit`
      row stays SCHEDULED. **Say so in a comment**; do not imply the visit row changed.
    - **Reschedule** on a row: **must route through `POST /visits/:id/reschedule`**
@@ -416,6 +417,7 @@ contents, the counts, and which action is permitted on each row.
      again (`create()` accepts RESCHEDULED at `visits.service.ts:217`, the dialog permits it at
      `ScheduleVisitDialog.tsx:33`, and auto-advance only fires for VISIT_REQUESTED), producing two open
      visits.
+
 5. **Expansion, in place.** Clicking the row expands it, revealing tap-to-call phone, status, owner,
    **role-filtered transitions** (Decision 2), `LeadVisitPanel` (with the Decision 2 gate fix), and a link
    to the lead's own page. One row expanded at a time.
@@ -491,7 +493,7 @@ Each must be specified in the build, not left to the implementer:
    has watched it. The observation settles this.
 5. **Chat-send ceiling (accepted debt).** Scope A fixes page-hopping and leaves the duplicate typing.
    Marked in code at the point of the cut as `gstack-shortcut(dec-office-hours-D4A): scope A, upgrade when
-   a telecaller reports retyping the same message twice`.
+a telecaller reports retyping the same message twice`.
 6. **Lead identifier for the queue.** The standing preference is unit/villa number first, name second -
    that is a booking's identifier. A lead at NEW has no unit yet, so the queue uses name + phone. Confirm
    that matches how telecallers look a lead up.
@@ -581,7 +583,7 @@ Recorded rather than resolved, per the review loop's convergence rule:
   transition buttons and leave the panel untouched.
 - **R1's central claim was wrong twice over.** R1 said the telecaller lane needed no backend change. The
   R2 review showed the create path rejects a telecaller assignee; the owner's ruling then showed the
-  real answer (supply an exec, no create-path change) and tracing it found that the *exec* half needs two
+  real answer (supply an exec, no create-path change) and tracing it found that the _exec_ half needs two
   backend changes instead. Same wrong claim, different end of the same workflow. Retracted in place.
 - **Two reviews, two different failure sets.** The first review missed the scheduling defect entirely and
   focused on the chat pane; the second found the scheduling defect and the sort/edge-case gaps. Neither is
@@ -589,15 +591,15 @@ Recorded rather than resolved, per the review loop's convergence rule:
 
 ## What I noticed about how you think
 
-- You described the failure before the fix: *"we can't show all the information in single round, the page
-  will become messy."* Recognising that a screen has a capacity limit is a design instinct, and the right
+- You described the failure before the fix: _"we can't show all the information in single round, the page
+  will become messy."_ Recognising that a screen has a capacity limit is a design instinct, and the right
   diagnosis for a page showing six charts and zero actions.
-- You scoped to the outcome rather than the tool: *"user should do every action within one dashboard, they
-  don't need to go to different pages."* That is a statement about the user's day, not a feature list.
-- You held the other pages: *"but keeps the other pages."* You refused the cheaper-looking option of
+- You scoped to the outcome rather than the tool: _"user should do every action within one dashboard, they
+  don't need to go to different pages."_ That is a statement about the user's day, not a feature list.
+- You held the other pages: _"but keeps the other pages."_ You refused the cheaper-looking option of
   deleting old surfaces.
-- You corrected the design at the right level: *"sales_exec only mark as VISITED, don't change the core
-  design plan."* You ruled on the one ambiguous case and refused the bigger refactor it could have
+- You corrected the design at the right level: _"sales_exec only mark as VISITED, don't change the core
+  design plan."_ You ruled on the one ambiguous case and refused the bigger refactor it could have
   justified - and that ruling surfaced a live defect in code that already disagreed with the signed-off
   design.
 - You widened the audience and held the scope in the same message: all three roles, still one route, still

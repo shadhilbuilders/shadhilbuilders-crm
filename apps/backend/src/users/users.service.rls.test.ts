@@ -32,14 +32,15 @@
 //      cannot do it at all.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { PrismaService } from '../prisma/prisma.module';
@@ -71,9 +72,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function actorFor(
-  overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>,
-): JwtPayload {
+function actorFor(overrides: Partial<JwtPayload> & Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
@@ -159,8 +158,12 @@ afterAll(async () => {
     await db.auditLog.deleteMany({ where: { entityId: ENGINEER_ID } });
     await db.teamMember.deleteMany({ where: { userId: TELECALLER_ID } });
     await db.teamMember.deleteMany({ where: { userId: ENGINEER_ID } });
-    await db.teamMember.deleteMany({ where: { teamId: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } } });
-    await db.team.deleteMany({ where: { id: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } } });
+    await db.teamMember.deleteMany({
+      where: { teamId: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } },
+    });
+    await db.team.deleteMany({
+      where: { id: { in: [TEAM_A_ID, TEAM_B_ID, TEAM_DEAD_ID, TEAM_C_ID] } },
+    });
     await db.user.deleteMany({
       where: { id: { in: [ADMIN_ID, MANAGER_A_ID, MANAGER_B_ID, TELECALLER_ID, ENGINEER_ID] } },
     });
@@ -181,10 +184,20 @@ beforeEach(async () => {
     await db.auditLog.deleteMany({ where: { entityId: ENGINEER_ID } });
     await db.teamMember.deleteMany({ where: { userId: ENGINEER_ID } });
     await db.teamMember.create({
-      data: { userId: ENGINEER_ID, teamId: TEAM_A_ID, organizationId: ORG, assignedAt: new Date(Date.now() - 60_000) },
+      data: {
+        userId: ENGINEER_ID,
+        teamId: TEAM_A_ID,
+        organizationId: ORG,
+        assignedAt: new Date(Date.now() - 60_000),
+      },
     });
     await db.teamMember.create({
-      data: { userId: ENGINEER_ID, teamId: TEAM_B_ID, organizationId: ORG, assignedAt: new Date(Date.now() - 30_000) },
+      data: {
+        userId: ENGINEER_ID,
+        teamId: TEAM_B_ID,
+        organizationId: ORG,
+        assignedAt: new Date(Date.now() - 30_000),
+      },
     });
   });
 });
@@ -354,9 +367,7 @@ describe.skipIf(!HAS_DB)('UsersService.assignManager - real DB / RLS', () => {
     );
     // THE assertion: three rows, nothing lost. A move-semantics regression
     // here means an engineer silently loses access to two projects.
-    expect(after.map((m) => m.teamId).sort()).toEqual(
-      [TEAM_A_ID, TEAM_B_ID, TEAM_C_ID].sort(),
-    );
+    expect(after.map((m) => m.teamId).sort()).toEqual([TEAM_A_ID, TEAM_B_ID, TEAM_C_ID].sort());
   }, 30_000);
 
   it('audits the full membership set for an ENGINEER add (before/after teamIds)', async () => {
@@ -477,9 +488,7 @@ describe.skipIf(!HAS_DB)('UsersService.create - real DB / RLS', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
 
     // The transaction must have rolled back - no half-created user.
-    const orphan = await adminSeed(async (db) =>
-      db.user.findFirst({ where: { email } }),
-    );
+    const orphan = await adminSeed(async (db) => db.user.findFirst({ where: { email } }));
     expect(orphan).toBeNull();
   }, 30_000);
 

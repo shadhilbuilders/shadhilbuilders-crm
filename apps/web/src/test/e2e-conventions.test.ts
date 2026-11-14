@@ -117,7 +117,10 @@ describe('e2e conventions - never wait for `load` on an authenticated page', () 
         }
       }
     }
-    expect(offenders, `waitForURL defaults to waiting for \`load\`, which an SSE page never fires:\n${offenders.join('\n')}`).toEqual([]);
+    expect(
+      offenders,
+      `waitForURL defaults to waiting for \`load\`, which an SSE page never fires:\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 
   it('every page.goto passes waitUntil (directly or via ...NAV)', () => {
@@ -130,15 +133,22 @@ describe('e2e conventions - never wait for `load` on an authenticated page', () 
         }
       }
     }
-    expect(offenders, `page.goto defaults to waiting for \`load\`:\n${offenders.join('\n')}`).toEqual([]);
+    expect(
+      offenders,
+      `page.goto defaults to waiting for \`load\`:\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 
   it('the check actually rejects a bare call (negative control)', () => {
     // Without this, a bug in `callArguments` or the regex could make every
     // assertion above pass while policing nothing.
-    expect(waitsForDomContentLoaded("page.waitForURL(/x/, { timeout: 15_000 })")).toBe(false);
-    expect(waitsForDomContentLoaded("page.waitForURL(/x/, { ...NAV, timeout: 15_000 })")).toBe(true);
-    expect(waitsForDomContentLoaded("page.waitForURL(/x/, { waitUntil: 'domcontentloaded' })")).toBe(true);
+    expect(waitsForDomContentLoaded('page.waitForURL(/x/, { timeout: 15_000 })')).toBe(false);
+    expect(waitsForDomContentLoaded('page.waitForURL(/x/, { ...NAV, timeout: 15_000 })')).toBe(
+      true,
+    );
+    expect(
+      waitsForDomContentLoaded("page.waitForURL(/x/, { waitUntil: 'domcontentloaded' })"),
+    ).toBe(true);
 
     // Paren-balancing: a nested call must not truncate the slice.
     const nested = 'await page.waitForURL(new RegExp(`${a}b$`), { ...NAV, timeout: 5 });';
@@ -166,7 +176,10 @@ describe('e2e conventions - never wait for `load` on an authenticated page', () 
     const offenders: string[] = [];
     for (const file of files) {
       const source = stripLineComments(readFileSync(join(E2E_DIR, file), 'utf8'));
-      for (const call of [...callArguments(source, 'waitForURL'), ...callArguments(source, '.goto')]) {
+      for (const call of [
+        ...callArguments(source, 'waitForURL'),
+        ...callArguments(source, '.goto'),
+      ]) {
         // `...NAV, timeout: <n>` where n is below 45_000.
         for (const match of call.matchAll(/\.\.\.NAV\s*,\s*timeout\s*:\s*([\d_]+)/g)) {
           const value = Number((match[1] ?? '').replace(/_/g, ''));
@@ -176,6 +189,9 @@ describe('e2e conventions - never wait for `load` on an authenticated page', () 
         }
       }
     }
-    expect(offenders, `a navigation timeout below the configured ceiling fails on a cold route:\n${offenders.join('\n')}`).toEqual([]);
+    expect(
+      offenders,
+      `a navigation timeout below the configured ceiling fails on a cold route:\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 });

@@ -126,7 +126,10 @@ export function PortalPushPrompt() {
       <div className="flex items-start gap-3 pr-8">
         <LuBell className="mt-0.5 size-5 flex-none text-[var(--portal-navy)]" aria-hidden="true" />
         <div className="space-y-1">
-          <p className="text-base font-medium text-[var(--portal-navy)]" data-qa="portal-push-title">
+          <p
+            className="text-base font-medium text-[var(--portal-navy)]"
+            data-qa="portal-push-title"
+          >
             Get a notification when new photos arrive
           </p>
           <p className="text-sm text-[var(--portal-ink-2)]">

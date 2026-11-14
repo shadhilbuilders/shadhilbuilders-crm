@@ -138,20 +138,20 @@ describe('plotMatchesFilters', () => {
     expect(plotMatchesFilters(plot20!, { category: 'all', status: 'all', query: '2' })).toBe(true);
     expect(plotMatchesFilters(plot20!, { category: 'all', status: 'all', query: '20' })).toBe(true);
     expect(plotMatchesFilters(plot20!, { category: 'all', status: 'all', query: '21' })).toBe(
-      false
+      false,
     );
   });
 
   it('narrows by category and status', () => {
     expect(plotMatchesFilters(ewsPlot!, { category: 'ews', status: 'all', query: '' })).toBe(true);
     expect(plotMatchesFilters(ewsPlot!, { category: 'regular', status: 'all', query: '' })).toBe(
-      false
+      false,
     );
     expect(plotMatchesFilters(plot20!, { category: 'all', status: 'booked', query: '' })).toBe(
-      true
+      true,
     );
     expect(plotMatchesFilters(plot20!, { category: 'all', status: 'available', query: '' })).toBe(
-      false
+      false,
     );
   });
 });

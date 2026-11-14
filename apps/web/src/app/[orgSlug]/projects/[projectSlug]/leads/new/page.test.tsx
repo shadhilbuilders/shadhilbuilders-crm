@@ -12,8 +12,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
@@ -97,7 +96,16 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
       user: { id: 'mgr-1', name: 'Meera', email: 'm@x', role: 'MANAGER', teamId: 'team-a' },
     });
     mocks.useTeams.mockReturnValue({
-      data: [{ id: 'team-a', name: 'Metro Sales', defaultAssigneeId: null, memberCount: 5, managerId: 'mgr-1', managerName: 'Meera' }],
+      data: [
+        {
+          id: 'team-a',
+          name: 'Metro Sales',
+          defaultAssigneeId: null,
+          memberCount: 5,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
+      ],
     });
     await mount();
     expect(container?.querySelector('[data-qa="form-field-teamId"]')).toBeNull();
@@ -109,7 +117,16 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
       user: { id: 'tc-1', name: 'Priya', email: 'p@x', role: 'TELECALLER', teamId: 'team-a' },
     });
     mocks.useTeams.mockReturnValue({
-      data: [{ id: 'team-a', name: 'Metro Sales', defaultAssigneeId: null, memberCount: 5, managerId: 'mgr-1', managerName: 'Meera' }],
+      data: [
+        {
+          id: 'team-a',
+          name: 'Metro Sales',
+          defaultAssigneeId: null,
+          memberCount: 5,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
+      ],
     });
     await mount();
     expect(container?.querySelector('[data-qa="form-field-teamId"]')).toBeNull();
@@ -122,11 +139,32 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
     });
     mocks.useTeams.mockReturnValue({
       data: [
-        { id: 'team-a', name: 'Metro Sales', defaultAssigneeId: null, memberCount: 5, managerId: 'mgr-1', managerName: 'Meera' },
-        { id: 'team-b', name: 'Launch Support', defaultAssigneeId: null, memberCount: 3, managerId: 'mgr-1', managerName: 'Meera' },
+        {
+          id: 'team-a',
+          name: 'Metro Sales',
+          defaultAssigneeId: null,
+          memberCount: 5,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
+        {
+          id: 'team-b',
+          name: 'Launch Support',
+          defaultAssigneeId: null,
+          memberCount: 3,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
         // Accessible (ordinary membership) but NOT managed - must be
         // excluded, since leads.service.ts 403s on a non-managed teamId.
-        { id: 'team-c', name: 'Weekend Enquiries', defaultAssigneeId: null, memberCount: 2, managerId: 'mgr-2', managerName: 'Arjun' },
+        {
+          id: 'team-c',
+          name: 'Weekend Enquiries',
+          defaultAssigneeId: null,
+          memberCount: 2,
+          managerId: 'mgr-2',
+          managerName: 'Arjun',
+        },
       ],
     });
     await mount();
@@ -143,15 +181,29 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
     expect(container?.querySelector('#teamId[role="combobox"]')).not.toBeNull();
   });
 
-  it('the Team field\'s hidden form value defaults to the sentinel (let the backend pick), not a specific team', async () => {
+  it("the Team field's hidden form value defaults to the sentinel (let the backend pick), not a specific team", async () => {
     baseMocks();
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'mgr-1', name: 'Meera', email: 'm@x', role: 'MANAGER', teamId: 'team-a' },
     });
     mocks.useTeams.mockReturnValue({
       data: [
-        { id: 'team-a', name: 'Metro Sales', defaultAssigneeId: null, memberCount: 5, managerId: 'mgr-1', managerName: 'Meera' },
-        { id: 'team-b', name: 'Launch Support', defaultAssigneeId: null, memberCount: 3, managerId: 'mgr-1', managerName: 'Meera' },
+        {
+          id: 'team-a',
+          name: 'Metro Sales',
+          defaultAssigneeId: null,
+          memberCount: 5,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
+        {
+          id: 'team-b',
+          name: 'Launch Support',
+          defaultAssigneeId: null,
+          memberCount: 3,
+          managerId: 'mgr-1',
+          managerName: 'Meera',
+        },
       ],
     });
     await mount();
@@ -166,7 +218,19 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
       user: { id: 'tc-1', name: 'Priya', email: 'p@x', role: 'TELECALLER', teamId: 'team-a' },
     });
     mocks.useUsers.mockReturnValue({
-      data: { rows: [{ id: 'u1', name: 'Arjun', email: 'arjun@x', role: 'TELECALLER', teamId: 'team-a', projects: [] }], total: 1 },
+      data: {
+        rows: [
+          {
+            id: 'u1',
+            name: 'Arjun',
+            email: 'arjun@x',
+            role: 'TELECALLER',
+            teamId: 'team-a',
+            projects: [],
+          },
+        ],
+        total: 1,
+      },
     });
     await mount();
     expect(container?.querySelector('[data-qa="form-field-assignedOwnerId"]')).toBeNull();
@@ -180,9 +244,30 @@ describe('NewLeadPage - team picker for multi-team managers', () => {
     mocks.useUsers.mockReturnValue({
       data: {
         rows: [
-          { id: 'u1', name: 'Arjun', email: 'arjun@x', role: 'TELECALLER', teamId: 'team-a', projects: [] },
-          { id: 'u2', name: 'Sana', email: 'sana@x', role: 'SALES_EXEC', teamId: 'team-a', projects: [] },
-          { id: 'm3', name: 'Meera', email: 'meera@x', role: 'MANAGER', teamId: 'team-a', projects: [] },
+          {
+            id: 'u1',
+            name: 'Arjun',
+            email: 'arjun@x',
+            role: 'TELECALLER',
+            teamId: 'team-a',
+            projects: [],
+          },
+          {
+            id: 'u2',
+            name: 'Sana',
+            email: 'sana@x',
+            role: 'SALES_EXEC',
+            teamId: 'team-a',
+            projects: [],
+          },
+          {
+            id: 'm3',
+            name: 'Meera',
+            email: 'meera@x',
+            role: 'MANAGER',
+            teamId: 'team-a',
+            projects: [],
+          },
         ],
         total: 3,
       },

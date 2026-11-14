@@ -161,10 +161,7 @@ export function shouldRedirect(url: string | undefined): url is string {
  */
 export function createDirectPrismaClient(): PrismaClient {
   const directUrl = process.env['DIRECT_DATABASE_URL'] ?? '';
-  const url =
-    directUrl !== ''
-      ? directUrl
-      : (process.env['DATABASE_URL'] ?? '');
+  const url = directUrl !== '' ? directUrl : (process.env['DATABASE_URL'] ?? '');
   return new PrismaClient({
     adapter: new PrismaPg({ connectionString: url }),
   });

@@ -28,12 +28,19 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
-  withRlsContext, rlsContextFrom,
+  withRlsContext,
+  rlsContextFrom,
   type BookingStatus,
   type PrismaClient,
 } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { TransitionReasonRequired, isTokenWithinTotal, TOKEN_EXCEEDS_TOTAL_MESSAGE, computeNegotiatedTotal, MAX_BOOKING_TOTAL } from '@shadhil/api-types';
+import {
+  TransitionReasonRequired,
+  isTokenWithinTotal,
+  TOKEN_EXCEEDS_TOTAL_MESSAGE,
+  computeNegotiatedTotal,
+  MAX_BOOKING_TOTAL,
+} from '@shadhil/api-types';
 import type {
   BookingFilterDto,
   BookingTransitionDto,
@@ -164,11 +171,7 @@ const BOOKABLE_UNIT_STATUSES = ['AVAILABLE'] as const;
  * created for the same unit (including a race between two concurrent creates).
  */
 function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: unknown }).code === 'P2002'
-  );
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002';
 }
 
 @Injectable()
@@ -196,118 +199,108 @@ export class BookingsService {
    * via teamId lookup, TELECALLER/SALES_EXEC see own leads via the
    * parent Lead's ownerId.
    */
-  async list(
-    actor: JwtPayload,
-    dto: BookingFilterDto,
-  ): Promise<BookingListResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {};
-        if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
-        if (dto.unitId !== undefined) where['unitId'] = dto.unitId;
-        // T-ProjectSwitch: filter by the active project via the parent
-        // Lead (Booking has no projectId of its own; its unit's project
-        // always matches the lead's project in practice).
-        if (dto.projectId !== undefined) {
-          where['lead'] = { ...(where['lead'] as object | undefined), projectId: dto.projectId };
-        }
-        if (dto.approvedById !== undefined)
-          where['approvedById'] = dto.approvedById;
-        if (dto.status !== undefined) {
-          where['status'] = Array.isArray(dto.status)
-            ? { in: dto.status }
-            : dto.status;
-        }
-        // Server-side search over the parent Lead's name/phone (the
-        // booking has no name of its own). Mirrors the leads D9 contract.
-        if (dto.search !== undefined && dto.search.length > 0) {
-          where['lead'] = {
-            ...(where['lead'] as object | undefined),
-            OR: [
-              { name: { contains: dto.search, mode: 'insensitive' } },
-              { phone: { contains: dto.search } },
-            ],
-          };
-        }
-
-        // Role scoping via parent Lead. The booking policies already
-        // JOIN to Lead - the role-scoped lane just narrows the `where`
-        // further for staff. Merge with any existing lead filter (search,
-        // projectId) so staff search still applies.
-        if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
-          where['lead'] = {
-            ...(where['lead'] as object | undefined),
-            ownerId: actor.sub,
-          };
-        } else if (actor.role === 'MANAGER') {
-          const teamIds = await this.teamAccess.getManagedTeamIds(
-            tx as never,
-            actor.sub,
-            actor.organizationId,
-          );
-          where['lead'] = {
-            ...(where['lead'] as object | undefined),
-            teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
-          };
-        }
-
-        const [rows, total] = await Promise.all([
-          (tx as unknown as PrismaClient).booking.findMany({
-            where,
-            take: dto.limit,
-            skip: dto.offset,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              leadId: true,
-              unitId: true,
-              userId: true,
-              amount: true,
-              listAmount: true,
-              negotiatedRate: true,
-              negotiatedAmount: true,
-              tokenAmount: true,
-              status: true,
-              approvedById: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-              lead: { select: { name: true } },
-              unit: { select: { unitNumber: true } },
-              user: { select: { name: true } },
-              approvedBy: { select: { name: true } },
-            },
-          }),
-          (tx as unknown as PrismaClient).booking.count({ where }),
-        ]);
-
-        return {
-          total,
-          rows: rows.map((r) => ({
-            id: r.id,
-            leadId: r.leadId,
-            leadName: r.lead.name,
-            unitId: r.unitId,
-            unitNumber: r.unit.unitNumber,
-            userId: r.userId,
-            userName: r.user.name,
-            amount: r.amount.toString(),
-            listAmount: r.listAmount.toString(),
-            negotiatedRate: r.negotiatedRate?.toString() ?? null,
-            negotiatedAmount: r.negotiatedAmount?.toString() ?? null,
-            tokenAmount: r.tokenAmount?.toString() ?? null,
-            status: r.status,
-            approvedById: r.approvedById,
-            approvedByName: r.approvedBy?.name ?? null,
-            notes: r.notes,
-            createdAt: r.createdAt.toISOString(),
-            updatedAt: r.updatedAt.toISOString(),
-          })),
+  async list(actor: JwtPayload, dto: BookingFilterDto): Promise<BookingListResult> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {};
+      if (dto.leadId !== undefined) where['leadId'] = dto.leadId;
+      if (dto.unitId !== undefined) where['unitId'] = dto.unitId;
+      // T-ProjectSwitch: filter by the active project via the parent
+      // Lead (Booking has no projectId of its own; its unit's project
+      // always matches the lead's project in practice).
+      if (dto.projectId !== undefined) {
+        where['lead'] = { ...(where['lead'] as object | undefined), projectId: dto.projectId };
+      }
+      if (dto.approvedById !== undefined) where['approvedById'] = dto.approvedById;
+      if (dto.status !== undefined) {
+        where['status'] = Array.isArray(dto.status) ? { in: dto.status } : dto.status;
+      }
+      // Server-side search over the parent Lead's name/phone (the
+      // booking has no name of its own). Mirrors the leads D9 contract.
+      if (dto.search !== undefined && dto.search.length > 0) {
+        where['lead'] = {
+          ...(where['lead'] as object | undefined),
+          OR: [
+            { name: { contains: dto.search, mode: 'insensitive' } },
+            { phone: { contains: dto.search } },
+          ],
         };
-      },
-    );
+      }
+
+      // Role scoping via parent Lead. The booking policies already
+      // JOIN to Lead - the role-scoped lane just narrows the `where`
+      // further for staff. Merge with any existing lead filter (search,
+      // projectId) so staff search still applies.
+      if (actor.role === 'TELECALLER' || actor.role === 'SALES_EXEC') {
+        where['lead'] = {
+          ...(where['lead'] as object | undefined),
+          ownerId: actor.sub,
+        };
+      } else if (actor.role === 'MANAGER') {
+        const teamIds = await this.teamAccess.getManagedTeamIds(
+          tx as never,
+          actor.sub,
+          actor.organizationId,
+        );
+        where['lead'] = {
+          ...(where['lead'] as object | undefined),
+          teamId: teamIds.length > 0 ? { in: teamIds } : '__no_team__',
+        };
+      }
+
+      const [rows, total] = await Promise.all([
+        (tx as unknown as PrismaClient).booking.findMany({
+          where,
+          take: dto.limit,
+          skip: dto.offset,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            leadId: true,
+            unitId: true,
+            userId: true,
+            amount: true,
+            listAmount: true,
+            negotiatedRate: true,
+            negotiatedAmount: true,
+            tokenAmount: true,
+            status: true,
+            approvedById: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+            lead: { select: { name: true } },
+            unit: { select: { unitNumber: true } },
+            user: { select: { name: true } },
+            approvedBy: { select: { name: true } },
+          },
+        }),
+        (tx as unknown as PrismaClient).booking.count({ where }),
+      ]);
+
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          leadId: r.leadId,
+          leadName: r.lead.name,
+          unitId: r.unitId,
+          unitNumber: r.unit.unitNumber,
+          userId: r.userId,
+          userName: r.user.name,
+          amount: r.amount.toString(),
+          listAmount: r.listAmount.toString(),
+          negotiatedRate: r.negotiatedRate?.toString() ?? null,
+          negotiatedAmount: r.negotiatedAmount?.toString() ?? null,
+          tokenAmount: r.tokenAmount?.toString() ?? null,
+          status: r.status,
+          approvedById: r.approvedById,
+          approvedByName: r.approvedBy?.name ?? null,
+          notes: r.notes,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      };
+    });
   }
 
   /**
@@ -316,12 +309,176 @@ export class BookingsService {
    * 404s (findUnique returns null under RLS).
    */
   async findOne(actor: JwtPayload, bookingId: string): Promise<BookingRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const row = await (tx as unknown as PrismaClient).booking.findUnique({
-          where: { id: bookingId },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const row = await (tx as unknown as PrismaClient).booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          status: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
+      if (row === null) {
+        throw new NotFoundException(`Booking ${bookingId} not found`);
+      }
+      return {
+        id: row.id,
+        leadId: row.leadId,
+        leadName: row.lead.name,
+        unitId: row.unitId,
+        unitNumber: row.unit.unitNumber,
+        userId: row.userId,
+        userName: row.user.name,
+        amount: row.amount.toString(),
+        listAmount: row.listAmount.toString(),
+        negotiatedRate: row.negotiatedRate?.toString() ?? null,
+        negotiatedAmount: row.negotiatedAmount?.toString() ?? null,
+        tokenAmount: row.tokenAmount?.toString() ?? null,
+        status: row.status,
+        approvedById: row.approvedById,
+        approvedByName: row.approvedBy?.name ?? null,
+        notes: row.notes,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * POST /api/bookings - start a new booking in HOLD state. The
+   * booking_write_team RLS policy gates the INSERT via the parent
+   * Lead's team/owner.
+   */
+  async create(actor: JwtPayload, dto: CreateBookingDto): Promise<BookingRow> {
+    // T-BOOK-ROLES (2026-09-15): creating a booking IS initiating one
+    // (it lands in HOLD), so it carries the same role gate as HOLD → TOKEN.
+    // TELECALLER is excluded per DESIGN.md §4 ("Initiate booking" ❌). The web
+    // form already hides itself from TELECALLER; this is the enforcement
+    // layer, and the RLS write policy only scopes by lead owner/team - it does
+    // not know about roles.
+    if (actor.role !== 'MANAGER' && actor.role !== 'SALES_EXEC' && !isAdminClass(actor.role)) {
+      throw new ForbiddenException(
+        `Only MANAGER/SALES_EXEC/ADMIN/OWNER can create a booking (actor is ${actor.role})`,
+      );
+    }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const lead = await (tx as unknown as PrismaClient).lead.findUnique({
+        where: { id: dto.leadId },
+        select: { id: true, state: true },
+      });
+      if (lead === null) {
+        throw new NotFoundException(`Lead ${dto.leadId} not found`);
+      }
+
+      // T-BOOK-LEADSYNC (2026-09-15): a booking starts the deal, so the lead
+      // must already be under negotiation. Without this guard a booking could
+      // be opened on a lead still at NEW/CONTACTED/VISIT_*, skipping the
+      // whole sales conversation - and the leads page would show "New" for a
+      // customer with a villa on hold.
+      if (!isBookableLeadState(lead.state)) {
+        throw new ConflictException(
+          `Lead is ${lead.state} - a booking can only start from ` +
+            `${BOOKABLE_LEAD_STATES.join(', ')}. Move the lead to NEGOTIATION first.`,
+        );
+      }
+      const unit = await (tx as unknown as PrismaClient).unit.findUnique({
+        where: { id: dto.unitId },
+        // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): `price` is
+        // selected so the server can DERIVE the amount rather than trust the
+        // client. See the amount handling below.
+        select: {
+          id: true,
+          unitNumber: true,
+          status: true,
+          price: true,
+          buildupSqft: true,
+        },
+      });
+      if (unit === null) {
+        throw new NotFoundException(`Unit ${dto.unitId} not found`);
+      }
+
+      // T-INV-SYNC: a unit already occupied by an active booking cannot take
+      // a second one. The partial unique index
+      // (one_active_booking_per_unit) is the hard guarantee - this guard
+      // exists to return a readable 409 instead of a raw constraint error.
+      if (!(BOOKABLE_UNIT_STATUSES as readonly string[]).includes(unit.status)) {
+        throw new ConflictException(
+          `Unit ${unit.unitNumber} is ${unit.status} and cannot take a new booking. ` +
+            'Pick an AVAILABLE unit, or clear the existing booking on this one.',
+        );
+      }
+
+      // Pricing (owner ruling 2026-10-09, reverses the 2026-09-16 "amount ==
+      // unit price" rule): the unit total is the LIST amount; when the buyer
+      // negotiated, the sales exec supplies a per-sq.ft rate and the server
+      // derives negotiatedAmount = buildup sq.ft x rate. The effective booking
+      // `amount` is the negotiated total when present, else the list amount.
+      // The client never sends an amount, so it cannot disagree with the unit.
+      const listAmount = Number(unit.price);
+      if (!Number.isFinite(listAmount) || listAmount <= 0) {
+        throw new ConflictException(
+          `Unit ${unit.unitNumber} has no usable price (got ${String(unit.price)}), so a booking ` +
+            'amount cannot be derived. Set buildup sq.ft and price per sq.ft on the unit first.',
+        );
+      }
+      const pricing = resolveBookingPricing({
+        unitNumber: unit.unitNumber,
+        listAmount,
+        buildupSqft: Number(unit.buildupSqft),
+        negotiatedRate: dto.negotiatedRate ?? null,
+      });
+      const unitPrice = pricing.amount;
+
+      // T-TOKEN-GATE (2026-09-29): enforce the token cap HERE, not only in the
+      // DTO. `create()` wrote `dto.tokenAmount` straight through, so the rule
+      // held only for callers that went through the schema - a direct service
+      // call, an older client, or a seeded row could create a booking whose
+      // token exceeds its own total (the shape that reached production). The
+      // service is the authority for the amount already; the token is the same
+      // kind of money invariant and belongs in the same place.
+      if (dto.tokenAmount !== undefined && !isTokenWithinTotal(dto.tokenAmount, unitPrice)) {
+        throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
+      }
+
+      let created;
+      try {
+        created = await (tx as unknown as PrismaClient).booking.create({
+          data: {
+            leadId: dto.leadId,
+            organizationId: actor.organizationId,
+            unitId: dto.unitId,
+            userId: actor.sub,
+            // Effective total (negotiated when set, else list). Derived
+            // server-side from the unit - see resolveBookingPricing.
+            // Prisma Decimal - pass as a string to avoid float drift.
+            listAmount: listAmount.toFixed(2),
+            ...(pricing.negotiatedRate !== null
+              ? {
+                  negotiatedRate: pricing.negotiatedRate.toFixed(2),
+                  negotiatedAmount: pricing.amount.toFixed(2),
+                }
+              : {}),
+            amount: unitPrice.toFixed(2),
+            ...(dto.tokenAmount !== undefined ? { tokenAmount: dto.tokenAmount.toFixed(2) } : {}),
+            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+            status: 'HOLD',
+          },
           select: {
             id: true,
             leadId: true,
@@ -343,265 +500,79 @@ export class BookingsService {
             approvedBy: { select: { name: true } },
           },
         });
-        if (row === null) {
-          throw new NotFoundException(`Booking ${bookingId} not found`);
+      } catch (err) {
+        // Race: another request created an active booking for this unit
+        // between the guard above and this INSERT.
+        if (isUniqueViolation(err)) {
+          throw new ConflictException(`Unit ${unit.unitNumber} already has an active booking.`);
         }
-        return {
-          id: row.id,
-          leadId: row.leadId,
-          leadName: row.lead.name,
-          unitId: row.unitId,
-          unitNumber: row.unit.unitNumber,
-          userId: row.userId,
-          userName: row.user.name,
-          amount: row.amount.toString(),
-          listAmount: row.listAmount.toString(),
-          negotiatedRate: row.negotiatedRate?.toString() ?? null,
-          negotiatedAmount: row.negotiatedAmount?.toString() ?? null,
-          tokenAmount: row.tokenAmount?.toString() ?? null,
-          status: row.status,
-          approvedById: row.approvedById,
-          approvedByName: row.approvedBy?.name ?? null,
-          notes: row.notes,
-          createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString(),
-        };
-      },
-    );
-  }
+        throw err;
+      }
 
-  /**
-   * POST /api/bookings - start a new booking in HOLD state. The
-   * booking_write_team RLS policy gates the INSERT via the parent
-   * Lead's team/owner.
-   */
-  async create(
-    actor: JwtPayload,
-    dto: CreateBookingDto,
-  ): Promise<BookingRow> {
-    // T-BOOK-ROLES (2026-09-15): creating a booking IS initiating one
-    // (it lands in HOLD), so it carries the same role gate as HOLD → TOKEN.
-    // TELECALLER is excluded per DESIGN.md §4 ("Initiate booking" ❌). The web
-    // form already hides itself from TELECALLER; this is the enforcement
-    // layer, and the RLS write policy only scopes by lead owner/team - it does
-    // not know about roles.
-    if (
-      actor.role !== 'MANAGER' &&
-      actor.role !== 'SALES_EXEC' &&
-      !isAdminClass(actor.role)
-    ) {
-      throw new ForbiddenException(
-        `Only MANAGER/SALES_EXEC/ADMIN/OWNER can create a booking (actor is ${actor.role})`,
-      );
-    }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const lead = await (tx as unknown as PrismaClient).lead.findUnique({
-          where: { id: dto.leadId },
-          select: { id: true, state: true },
-        });
-        if (lead === null) {
-          throw new NotFoundException(`Lead ${dto.leadId} not found`);
-        }
+      // T-INV-SYNC: the Unit.status change (AVAILABLE → HOLD) is applied by
+      // the unit_status_sync_booking trigger on "Booking" - a SECURITY
+      // DEFINER function, so it works for EVERY role. Application code no
+      // longer writes Unit.status on the booking path: the previous
+      // service-level update silently matched zero rows for
+      // MANAGER/SALES_EXEC/TELECALLER (Unit UPDATE was ADMIN-only under
+      // RLS), which is exactly how the two pages drifted apart.
 
-        // T-BOOK-LEADSYNC (2026-09-15): a booking starts the deal, so the lead
-        // must already be under negotiation. Without this guard a booking could
-        // be opened on a lead still at NEW/CONTACTED/VISIT_*, skipping the
-        // whole sales conversation - and the leads page would show "New" for a
-        // customer with a villa on hold.
-        if (!isBookableLeadState(lead.state)) {
-          throw new ConflictException(
-            `Lead is ${lead.state} - a booking can only start from ` +
-              `${BOOKABLE_LEAD_STATES.join(', ')}. Move the lead to NEGOTIATION first.`,
-          );
-        }
-        const unit = await (tx as unknown as PrismaClient).unit.findUnique({
-          where: { id: dto.unitId },
-          // T-BOOKING-AMOUNT-FROM-UNIT (2026-09-16, owner ruling): `price` is
-          // selected so the server can DERIVE the amount rather than trust the
-          // client. See the amount handling below.
-          select: {
-            id: true,
-            unitNumber: true,
-            status: true,
-            price: true,
-            buildupSqft: true,
+      // T-BOOK-LEADSYNC: a new HOLD moves the lead along the pipeline in the
+      // same transaction. Forward-only (allowRegress false) - a new booking
+      // never pulls a lead backwards.
+      await this.syncLeadState(tx, created.leadId, { allowRegress: false, actor });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'booking.create',
+          entityType: 'Booking',
+          entityId: created.id,
+          after: {
+            leadId: created.leadId,
+            unitId: created.unitId,
+            amount: created.amount.toString(),
+            listAmount: created.listAmount.toString(),
+            negotiatedRate: created.negotiatedRate?.toString() ?? null,
+            negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
+            status: created.status,
           },
-        });
-        if (unit === null) {
-          throw new NotFoundException(`Unit ${dto.unitId} not found`);
-        }
+          reason: `Booking created by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        // T-INV-SYNC: a unit already occupied by an active booking cannot take
-        // a second one. The partial unique index
-        // (one_active_booking_per_unit) is the hard guarantee - this guard
-        // exists to return a readable 409 instead of a raw constraint error.
-        if (!(BOOKABLE_UNIT_STATUSES as readonly string[]).includes(unit.status)) {
-          throw new ConflictException(
-            `Unit ${unit.unitNumber} is ${unit.status} and cannot take a new booking. ` +
-              'Pick an AVAILABLE unit, or clear the existing booking on this one.',
-          );
-        }
+      // Notify the booking owner that their booking is on hold awaiting
+      // manager approval.
+      this.emitBestEffort(created.userId, {
+        type: 'booking.created',
+        title: 'Booking on hold',
+        body: `Booking for ${created.lead.name} (${created.amount.toString()}) is awaiting approval.`,
+        leadId: created.leadId,
+        bookingId: created.id,
+      });
 
-        // Pricing (owner ruling 2026-10-09, reverses the 2026-09-16 "amount ==
-        // unit price" rule): the unit total is the LIST amount; when the buyer
-        // negotiated, the sales exec supplies a per-sq.ft rate and the server
-        // derives negotiatedAmount = buildup sq.ft x rate. The effective booking
-        // `amount` is the negotiated total when present, else the list amount.
-        // The client never sends an amount, so it cannot disagree with the unit.
-        const listAmount = Number(unit.price);
-        if (!Number.isFinite(listAmount) || listAmount <= 0) {
-          throw new ConflictException(
-            `Unit ${unit.unitNumber} has no usable price (got ${String(unit.price)}), so a booking ` +
-              'amount cannot be derived. Set buildup sq.ft and price per sq.ft on the unit first.',
-          );
-        }
-        const pricing = resolveBookingPricing({
-          unitNumber: unit.unitNumber,
-          listAmount,
-          buildupSqft: Number(unit.buildupSqft),
-          negotiatedRate: dto.negotiatedRate ?? null,
-        });
-        const unitPrice = pricing.amount;
-
-        // T-TOKEN-GATE (2026-09-29): enforce the token cap HERE, not only in the
-        // DTO. `create()` wrote `dto.tokenAmount` straight through, so the rule
-        // held only for callers that went through the schema - a direct service
-        // call, an older client, or a seeded row could create a booking whose
-        // token exceeds its own total (the shape that reached production). The
-        // service is the authority for the amount already; the token is the same
-        // kind of money invariant and belongs in the same place.
-        if (
-          dto.tokenAmount !== undefined &&
-          !isTokenWithinTotal(dto.tokenAmount, unitPrice)
-        ) {
-          throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
-        }
-
-        let created;
-        try {
-          created = await (tx as unknown as PrismaClient).booking.create({
-            data: {
-              leadId: dto.leadId,
-              organizationId: actor.organizationId,
-              unitId: dto.unitId,
-              userId: actor.sub,
-              // Effective total (negotiated when set, else list). Derived
-              // server-side from the unit - see resolveBookingPricing.
-              // Prisma Decimal - pass as a string to avoid float drift.
-              listAmount: listAmount.toFixed(2),
-              ...(pricing.negotiatedRate !== null
-                ? {
-                    negotiatedRate: pricing.negotiatedRate.toFixed(2),
-                    negotiatedAmount: pricing.amount.toFixed(2),
-                  }
-                : {}),
-              amount: unitPrice.toFixed(2),
-              ...(dto.tokenAmount !== undefined
-                ? { tokenAmount: dto.tokenAmount.toFixed(2) }
-                : {}),
-              ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-              status: 'HOLD',
-            },
-            select: {
-              id: true,
-              leadId: true,
-              unitId: true,
-              userId: true,
-              amount: true,
-              listAmount: true,
-              negotiatedRate: true,
-              negotiatedAmount: true,
-              tokenAmount: true,
-              status: true,
-              approvedById: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-              lead: { select: { name: true } },
-              unit: { select: { unitNumber: true } },
-              user: { select: { name: true } },
-              approvedBy: { select: { name: true } },
-            },
-          });
-        } catch (err) {
-          // Race: another request created an active booking for this unit
-          // between the guard above and this INSERT.
-          if (isUniqueViolation(err)) {
-            throw new ConflictException(
-              `Unit ${unit.unitNumber} already has an active booking.`,
-            );
-          }
-          throw err;
-        }
-
-        // T-INV-SYNC: the Unit.status change (AVAILABLE → HOLD) is applied by
-        // the unit_status_sync_booking trigger on "Booking" - a SECURITY
-        // DEFINER function, so it works for EVERY role. Application code no
-        // longer writes Unit.status on the booking path: the previous
-        // service-level update silently matched zero rows for
-        // MANAGER/SALES_EXEC/TELECALLER (Unit UPDATE was ADMIN-only under
-        // RLS), which is exactly how the two pages drifted apart.
-
-        // T-BOOK-LEADSYNC: a new HOLD moves the lead along the pipeline in the
-        // same transaction. Forward-only (allowRegress false) - a new booking
-        // never pulls a lead backwards.
-        await this.syncLeadState(tx, created.leadId, { allowRegress: false, actor });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'booking.create',
-            entityType: 'Booking',
-            entityId: created.id,
-            after: {
-              leadId: created.leadId,
-              unitId: created.unitId,
-              amount: created.amount.toString(),
-              listAmount: created.listAmount.toString(),
-              negotiatedRate: created.negotiatedRate?.toString() ?? null,
-              negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
-              status: created.status,
-            },
-            reason: `Booking created by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        // Notify the booking owner that their booking is on hold awaiting
-        // manager approval.
-        this.emitBestEffort(created.userId, {
-          type: 'booking.created',
-          title: 'Booking on hold',
-          body: `Booking for ${created.lead.name} (${created.amount.toString()}) is awaiting approval.`,
-          leadId: created.leadId,
-          bookingId: created.id,
-        });
-
-        return {
-          id: created.id,
-          leadId: created.leadId,
-          leadName: created.lead.name,
-          unitId: created.unitId,
-          unitNumber: created.unit.unitNumber,
-          userId: created.userId,
-          userName: created.user.name,
-          amount: created.amount.toString(),
-          listAmount: created.listAmount.toString(),
-          negotiatedRate: created.negotiatedRate?.toString() ?? null,
-          negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
-          tokenAmount: created.tokenAmount?.toString() ?? null,
-          status: created.status,
-          approvedById: created.approvedById,
-          approvedByName: created.approvedBy?.name ?? null,
-          notes: created.notes,
-          createdAt: created.createdAt.toISOString(),
-          updatedAt: created.updatedAt.toISOString(),
-        };
-      },
-    );
+      return {
+        id: created.id,
+        leadId: created.leadId,
+        leadName: created.lead.name,
+        unitId: created.unitId,
+        unitNumber: created.unit.unitNumber,
+        userId: created.userId,
+        userName: created.user.name,
+        amount: created.amount.toString(),
+        listAmount: created.listAmount.toString(),
+        negotiatedRate: created.negotiatedRate?.toString() ?? null,
+        negotiatedAmount: created.negotiatedAmount?.toString() ?? null,
+        tokenAmount: created.tokenAmount?.toString() ?? null,
+        status: created.status,
+        approvedById: created.approvedById,
+        approvedByName: created.approvedBy?.name ?? null,
+        notes: created.notes,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -614,273 +585,262 @@ export class BookingsService {
     bookingId: string,
     dto: BookingTransitionDto,
   ): Promise<BookingRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).booking.findUnique(
-          {
-            where: { id: bookingId },
-            select: {
-              id: true,
-              status: true,
-              leadId: true,
-              unitId: true,
-              userId: true,
-              amount: true,
-              listAmount: true,
-              negotiatedRate: true,
-              negotiatedAmount: true,
-              tokenAmount: true,
-              approvedById: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-              lead: { select: { name: true } },
-              unit: { select: { unitNumber: true } },
-              user: { select: { name: true } },
-              approvedBy: { select: { name: true } },
-            },
-          },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          status: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Booking ${bookingId} not found`);
+      }
+
+      const allowed = legalNextStates(existing.status);
+      if (!allowed.includes(dto.toStatus)) {
+        throw new BadRequestException(
+          `Cannot transition booking from ${existing.status} to ${dto.toStatus} (allowed: ${allowed.join(', ') || '<none - terminal>'})`,
         );
-        if (existing === null) {
-          throw new NotFoundException(`Booking ${bookingId} not found`);
+      }
+
+      // T-BOOK-ROLES (2026-09-15): role gates per DESIGN.md §4. Before this,
+      // the ONLY gate was on APPROVED and it omitted OWNER; HOLD → TOKEN (the
+      // "initiate booking" step) had NO role gate at all, so a TELECALLER who
+      // owned the lead could advance a booking.
+      //
+      //   Initiate booking (HOLD → TOKEN):  ADMIN/OWNER/MANAGER/SALES_EXEC
+      //     - TELECALLER is excluded (DESIGN.md §4 "Initiate booking" ❌).
+      //   Approve booking (→ APPROVED/REJECTED): ADMIN/OWNER only.
+      //     - MANAGER was revoked 2026-09-24 (owner decision): approving is an
+      //       admin/owner act, not a manager one. DESIGN.md §4 + the module
+      //       table were updated in the same change (AGENTS.md: the plan is
+      //       the spec, so code and matrix must move together).
+      //     - Uses isAdminClass() so OWNER is included: OWNER downcasts to
+      //       ADMIN at the RLS layer, and the permission matrix grants Super
+      //       Admin ✅. An earlier literal `!== 'ADMIN'` check let an owner
+      //       press Approve and get a 400 saying they were neither.
+      //     - RLS is deliberately NOT involved: role rules stay in the service
+      //       (see references/authorization-role-gates.md). booking_write_admin
+      //       already covers ADMIN/OWNER at the row level.
+      //
+      // The full plan §0.11 approval flow (separate modal + audit reason)
+      // ships later; for now the gate lives here, in the same transaction as
+      // the status write.
+      if (
+        dto.toStatus === 'TOKEN' &&
+        actor.role !== 'MANAGER' &&
+        actor.role !== 'SALES_EXEC' &&
+        !isAdminClass(actor.role)
+      ) {
+        throw new ForbiddenException(
+          `Only MANAGER/SALES_EXEC/ADMIN/OWNER can start a booking (actor is ${actor.role})`,
+        );
+      }
+
+      if (
+        (dto.toStatus === 'APPROVED' || dto.toStatus === 'REJECTED') &&
+        !isAdminClass(actor.role)
+      ) {
+        throw new ForbiddenException(
+          `Only ADMIN/OWNER can approve or reject a booking (actor is ${actor.role})`,
+        );
+      }
+
+      // A cancel or reject must carry an operator-supplied reason: the audit
+      // row and the customer follow-up depend on it, and a generated
+      // "moved by <email>" string is not a reason. The DTO's superRefine
+      // already rejects a blank reason, but the service refuses it too so a
+      // direct service call (or an older client) cannot slip through - the
+      // live service accepted exactly that before this guard.
+      if (TransitionReasonRequired.has(dto.toStatus) && (dto.reason ?? '').trim().length === 0) {
+        throw new BadRequestException(
+          `A reason is required when moving a booking to ${dto.toStatus}`,
+        );
+      }
+
+      // T-TOKEN-GATE (2026-09-28): the invariant behind HOLD → TOKEN is that
+      // the token WAS received, and `tokenAmount` is the only record of how
+      // much. The DTO requires it from a client, but the service enforces the
+      // INVARIANT too, so a direct service call or a racing older client
+      // cannot leave a booking marked token-received with no amount - which is
+      // both unverifiable and actively misread downstream (the admin "Booking
+      // money" card renders a NULL token as "HOLD - no token", i.e. money
+      // still with the customer).
+      //
+      // Tolerant where the DTO is strict: an amount recorded at HOLD time
+      // (CreateBookingDto accepts one) already satisfies the invariant, so a
+      // transition that omits it is fine as long as the stored value is
+      // positive. The rule is "one must EXIST", not "one must be sent".
+      const stored = existing.tokenAmount === null ? 0 : Number(existing.tokenAmount);
+      const incoming = dto.tokenAmount;
+      if (incoming !== undefined && !(incoming > 0)) {
+        throw new BadRequestException(
+          'Token amount must be greater than zero when marking the token as received',
+        );
+      }
+      if (dto.toStatus === 'TOKEN' && incoming === undefined && !(stored > 0)) {
+        throw new BadRequestException(
+          'A token amount is required to mark the token as received. Enter the amount received (or record it on the booking first).',
+        );
+      }
+
+      // T-TOKEN-GATE (2026-09-28, owner instruction): "Don't approve booking
+      // without token amount".
+      //
+      // Approving asserts that the token was RECEIVED, so it is only meaningful
+      // against a recorded amount - and approving without one is exactly how a
+      // money figure gets lost. Until this, `TOKEN → APPROVED` was reachable on
+      // a booking whose `tokenAmount` was NULL (the very rows the old transition
+      // produced), which meant the deal could be closed with the payment
+      // permanently unrecorded: the "Booking money" card then reports a paid
+      // booking as "no token".
+      //
+      // Checked independently of the HOLD → TOKEN rule above, because the two
+      // are different holes: that one prevents CREATING the defect, this one
+      // prevents CEMENTING an existing one. A booking already in TOKEN with a
+      // NULL amount (from production data) therefore cannot be approved until
+      // its amount is recorded - the bookings edit form writes that field, and
+      // `update()` refuses to clear it again.
+      if (dto.toStatus === 'APPROVED' && !(stored > 0)) {
+        throw new BadRequestException(
+          'A token amount must be recorded before this booking can be approved. Enter the amount actually received on the booking first.',
+        );
+      }
+
+      // T-TOKEN-GATE cap (owner instruction): the token is a PART payment, so
+      // it can never be more than the booking's total. Checked here (not only
+      // in the DTO) because this is the path that sets a token on an EXISTING
+      // booking, where the total is the stored `amount` rather than something
+      // in the payload. Approving an over-token is refused too: the payment
+      // figure is what the approval is FOR, so waving it through would record
+      // more money than the unit costs.
+      if (incoming !== undefined) {
+        const total = Number(existing.amount);
+        if (!isTokenWithinTotal(incoming, total)) {
+          throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
         }
+      }
 
-        const allowed = legalNextStates(existing.status);
-        if (!allowed.includes(dto.toStatus)) {
-          throw new BadRequestException(
-            `Cannot transition booking from ${existing.status} to ${dto.toStatus} (allowed: ${allowed.join(', ') || '<none - terminal>'})`,
-          );
-        }
+      const updated = await (tx as unknown as PrismaClient).booking.update({
+        where: { id: bookingId },
+        data: {
+          status: dto.toStatus,
+          ...(dto.toStatus === 'APPROVED' ? { approvedById: actor.sub } : {}),
+          // Written in the SAME update as the status, so the two can never
+          // drift into "TOKEN with no amount". `toFixed(2)` matches how the
+          // column is written everywhere else (Prisma Decimal over a string).
+          ...(dto.toStatus === 'TOKEN' && incoming !== undefined
+            ? { tokenAmount: incoming.toFixed(2) }
+            : {}),
+        },
+        select: {
+          id: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          status: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true, state: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
 
-        // T-BOOK-ROLES (2026-09-15): role gates per DESIGN.md §4. Before this,
-        // the ONLY gate was on APPROVED and it omitted OWNER; HOLD → TOKEN (the
-        // "initiate booking" step) had NO role gate at all, so a TELECALLER who
-        // owned the lead could advance a booking.
-        //
-        //   Initiate booking (HOLD → TOKEN):  ADMIN/OWNER/MANAGER/SALES_EXEC
-        //     - TELECALLER is excluded (DESIGN.md §4 "Initiate booking" ❌).
-        //   Approve booking (→ APPROVED/REJECTED): ADMIN/OWNER only.
-        //     - MANAGER was revoked 2026-09-24 (owner decision): approving is an
-        //       admin/owner act, not a manager one. DESIGN.md §4 + the module
-        //       table were updated in the same change (AGENTS.md: the plan is
-        //       the spec, so code and matrix must move together).
-        //     - Uses isAdminClass() so OWNER is included: OWNER downcasts to
-        //       ADMIN at the RLS layer, and the permission matrix grants Super
-        //       Admin ✅. An earlier literal `!== 'ADMIN'` check let an owner
-        //       press Approve and get a 400 saying they were neither.
-        //     - RLS is deliberately NOT involved: role rules stay in the service
-        //       (see references/authorization-role-gates.md). booking_write_admin
-        //       already covers ADMIN/OWNER at the row level.
-        //
-        // The full plan §0.11 approval flow (separate modal + audit reason)
-        // ships later; for now the gate lives here, in the same transaction as
-        // the status write.
-        if (
-          dto.toStatus === 'TOKEN' &&
-          actor.role !== 'MANAGER' &&
-          actor.role !== 'SALES_EXEC' &&
-          !isAdminClass(actor.role)
-        ) {
-          throw new ForbiddenException(
-            `Only MANAGER/SALES_EXEC/ADMIN/OWNER can start a booking (actor is ${actor.role})`,
-          );
-        }
+      // T-INV-SYNC: the Unit.status follow-through (APPROVED → SOLD,
+      // CANCELLED/REJECTED → back to AVAILABLE/HOLD/TOKEN depending on the
+      // unit's remaining bookings) is applied by the
+      // unit_status_sync_booking trigger on "Booking". The service used to
+      // do it here and the write silently matched zero rows for every
+      // non-ADMIN role under RLS - the trigger is role-independent, so the
+      // inventory grid is now correct for whoever advances the booking.
 
-        if (
-          (dto.toStatus === 'APPROVED' || dto.toStatus === 'REJECTED') &&
-          !isAdminClass(actor.role)
-        ) {
-          throw new ForbiddenException(
-            `Only ADMIN/OWNER can approve or reject a booking (actor is ${actor.role})`,
-          );
-        }
+      // T-BOOK-LEADSYNC: keep the lead in step with the booking. A cancel or
+      // reject RELEASES the deal, so allowRegress is true for those - the lead
+      // re-enters the pipeline at NEGOTIATION instead of staying parked on
+      // WON. Ordinary progressions stay forward-only.
+      await this.syncLeadState(tx, updated.leadId, {
+        allowRegress: dto.toStatus === 'CANCELLED' || dto.toStatus === 'REJECTED',
+        actor,
+      });
 
-        // A cancel or reject must carry an operator-supplied reason: the audit
-        // row and the customer follow-up depend on it, and a generated
-        // "moved by <email>" string is not a reason. The DTO's superRefine
-        // already rejects a blank reason, but the service refuses it too so a
-        // direct service call (or an older client) cannot slip through - the
-        // live service accepted exactly that before this guard.
-        if (
-          TransitionReasonRequired.has(dto.toStatus) &&
-          (dto.reason ?? '').trim().length === 0
-        ) {
-          throw new BadRequestException(
-            `A reason is required when moving a booking to ${dto.toStatus}`,
-          );
-        }
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'booking.transition',
+          entityType: 'Booking',
+          entityId: updated.id,
+          before: { status: existing.status },
+          after: { status: updated.status, approvedById: updated.approvedById },
+          // For a cancel/reject the reason is guaranteed non-blank by the
+          // guard above (and by the DTO), so it is always the operator's own
+          // words here. The generated fallback remains for the moves that
+          // legitimately have no reason (HOLD → TOKEN, → APPROVED).
+          reason:
+            dto.reason ??
+            `Booking ${existing.status} → ${updated.status} by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        // T-TOKEN-GATE (2026-09-28): the invariant behind HOLD → TOKEN is that
-        // the token WAS received, and `tokenAmount` is the only record of how
-        // much. The DTO requires it from a client, but the service enforces the
-        // INVARIANT too, so a direct service call or a racing older client
-        // cannot leave a booking marked token-received with no amount - which is
-        // both unverifiable and actively misread downstream (the admin "Booking
-        // money" card renders a NULL token as "HOLD - no token", i.e. money
-        // still with the customer).
-        //
-        // Tolerant where the DTO is strict: an amount recorded at HOLD time
-        // (CreateBookingDto accepts one) already satisfies the invariant, so a
-        // transition that omits it is fine as long as the stored value is
-        // positive. The rule is "one must EXIST", not "one must be sent".
-        const stored = existing.tokenAmount === null ? 0 : Number(existing.tokenAmount);
-        const incoming = dto.tokenAmount;
-        if (incoming !== undefined && !(incoming > 0)) {
-          throw new BadRequestException(
-            'Token amount must be greater than zero when marking the token as received',
-          );
-        }
-        if (dto.toStatus === 'TOKEN' && incoming === undefined && !(stored > 0)) {
-          throw new BadRequestException(
-            'A token amount is required to mark the token as received. Enter the amount received (or record it on the booking first).',
-          );
-        }
-
-        // T-TOKEN-GATE (2026-09-28, owner instruction): "Don't approve booking
-        // without token amount".
-        //
-        // Approving asserts that the token was RECEIVED, so it is only meaningful
-        // against a recorded amount - and approving without one is exactly how a
-        // money figure gets lost. Until this, `TOKEN → APPROVED` was reachable on
-        // a booking whose `tokenAmount` was NULL (the very rows the old transition
-        // produced), which meant the deal could be closed with the payment
-        // permanently unrecorded: the "Booking money" card then reports a paid
-        // booking as "no token".
-        //
-        // Checked independently of the HOLD → TOKEN rule above, because the two
-        // are different holes: that one prevents CREATING the defect, this one
-        // prevents CEMENTING an existing one. A booking already in TOKEN with a
-        // NULL amount (from production data) therefore cannot be approved until
-        // its amount is recorded - the bookings edit form writes that field, and
-        // `update()` refuses to clear it again.
-        if (dto.toStatus === 'APPROVED' && !(stored > 0)) {
-          throw new BadRequestException(
-            'A token amount must be recorded before this booking can be approved. Enter the amount actually received on the booking first.',
-          );
-        }
-
-        // T-TOKEN-GATE cap (owner instruction): the token is a PART payment, so
-        // it can never be more than the booking's total. Checked here (not only
-        // in the DTO) because this is the path that sets a token on an EXISTING
-        // booking, where the total is the stored `amount` rather than something
-        // in the payload. Approving an over-token is refused too: the payment
-        // figure is what the approval is FOR, so waving it through would record
-        // more money than the unit costs.
-        if (incoming !== undefined) {
-          const total = Number(existing.amount);
-          if (!isTokenWithinTotal(incoming, total)) {
-            throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
-          }
-        }
-
-        const updated = await (tx as unknown as PrismaClient).booking.update({
-          where: { id: bookingId },
-          data: {
-            status: dto.toStatus,
-            ...(dto.toStatus === 'APPROVED'
-              ? { approvedById: actor.sub }
-              : {}),
-            // Written in the SAME update as the status, so the two can never
-            // drift into "TOKEN with no amount". `toFixed(2)` matches how the
-            // column is written everywhere else (Prisma Decimal over a string).
-            ...(dto.toStatus === 'TOKEN' && incoming !== undefined
-              ? { tokenAmount: incoming.toFixed(2) }
-              : {}),
-          },
-          select: {
-            id: true,
-            leadId: true,
-            unitId: true,
-            userId: true,
-            amount: true,
-            listAmount: true,
-            negotiatedRate: true,
-            negotiatedAmount: true,
-            tokenAmount: true,
-            status: true,
-            approvedById: true,
-            notes: true,
-            createdAt: true,
-            updatedAt: true,
-            lead: { select: { name: true, state: true } },
-            unit: { select: { unitNumber: true } },
-            user: { select: { name: true } },
-            approvedBy: { select: { name: true } },
-          },
-        });
-
-        // T-INV-SYNC: the Unit.status follow-through (APPROVED → SOLD,
-        // CANCELLED/REJECTED → back to AVAILABLE/HOLD/TOKEN depending on the
-        // unit's remaining bookings) is applied by the
-        // unit_status_sync_booking trigger on "Booking". The service used to
-        // do it here and the write silently matched zero rows for every
-        // non-ADMIN role under RLS - the trigger is role-independent, so the
-        // inventory grid is now correct for whoever advances the booking.
-
-        // T-BOOK-LEADSYNC: keep the lead in step with the booking. A cancel or
-        // reject RELEASES the deal, so allowRegress is true for those - the lead
-        // re-enters the pipeline at NEGOTIATION instead of staying parked on
-        // WON. Ordinary progressions stay forward-only.
-        await this.syncLeadState(tx, updated.leadId, {
-          allowRegress: dto.toStatus === 'CANCELLED' || dto.toStatus === 'REJECTED',
-          actor,
-        });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'booking.transition',
-            entityType: 'Booking',
-            entityId: updated.id,
-            before: { status: existing.status },
-            after: { status: updated.status, approvedById: updated.approvedById },
-            // For a cancel/reject the reason is guaranteed non-blank by the
-            // guard above (and by the DTO), so it is always the operator's own
-            // words here. The generated fallback remains for the moves that
-            // legitimately have no reason (HOLD → TOKEN, → APPROVED).
-            reason:
-              dto.reason ??
-              `Booking ${existing.status} → ${updated.status} by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        // Notify the booking owner that its status changed (e.g. approved,
-        // rejected). Skip when the actor IS the owner (they made the change).
-        if (updated.userId !== actor.sub) {
-          this.emitBestEffort(updated.userId, {
-            type: 'booking.transition',
-            title: 'Booking status changed',
-            body: `Booking for ${updated.lead.name} moved to ${updated.status}.`,
-            leadId: updated.leadId,
-            bookingId: updated.id,
-          });
-        }
-
-        return {
-          id: updated.id,
+      // Notify the booking owner that its status changed (e.g. approved,
+      // rejected). Skip when the actor IS the owner (they made the change).
+      if (updated.userId !== actor.sub) {
+        this.emitBestEffort(updated.userId, {
+          type: 'booking.transition',
+          title: 'Booking status changed',
+          body: `Booking for ${updated.lead.name} moved to ${updated.status}.`,
           leadId: updated.leadId,
-          leadName: updated.lead.name,
-          unitId: updated.unitId,
-          unitNumber: updated.unit.unitNumber,
-          userId: updated.userId,
-          userName: updated.user.name,
-          amount: updated.amount.toString(),
-          listAmount: updated.listAmount.toString(),
-          negotiatedRate: updated.negotiatedRate?.toString() ?? null,
-          negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
-          tokenAmount: updated.tokenAmount?.toString() ?? null,
-          status: updated.status,
-          approvedById: updated.approvedById,
-          approvedByName: updated.approvedBy?.name ?? null,
-          notes: updated.notes,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
-    );
+          bookingId: updated.id,
+        });
+      }
+
+      return {
+        id: updated.id,
+        leadId: updated.leadId,
+        leadName: updated.lead.name,
+        unitId: updated.unitId,
+        unitNumber: updated.unit.unitNumber,
+        userId: updated.userId,
+        userName: updated.user.name,
+        amount: updated.amount.toString(),
+        listAmount: updated.listAmount.toString(),
+        negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+        negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
+        tokenAmount: updated.tokenAmount?.toString() ?? null,
+        status: updated.status,
+        approvedById: updated.approvedById,
+        approvedByName: updated.approvedBy?.name ?? null,
+        notes: updated.notes,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -890,199 +850,188 @@ export class BookingsService {
    * they can see; TELECALLER/SALES_EXEC can edit only their own
    * (the RLS write policy already scopes by parent Lead owner/team).
    */
-  async update(
-    actor: JwtPayload,
-    bookingId: string,
-    dto: UpdateBookingDto,
-  ): Promise<BookingRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).booking.findUnique(
-          {
-            where: { id: bookingId },
-            select: {
-              id: true,
-              status: true,
-              leadId: true,
-              unitId: true,
-              userId: true,
-              amount: true,
-              listAmount: true,
-              negotiatedRate: true,
-              negotiatedAmount: true,
-              tokenAmount: true,
-              approvedById: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-              lead: { select: { name: true } },
-              unit: { select: { unitNumber: true } },
-              user: { select: { name: true } },
-              approvedBy: { select: { name: true } },
-            },
-          },
-        );
-        if (existing === null) {
-          throw new NotFoundException(`Booking ${bookingId} not found`);
-        }
+  async update(actor: JwtPayload, bookingId: string, dto: UpdateBookingDto): Promise<BookingRow> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          status: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Booking ${bookingId} not found`);
+      }
 
-        const data: Record<string, unknown> = {};
-        // `newAmount` is the total this request would leave on the booking: a
-        // manual correction (legacy, only for un-negotiated bookings) or the
-        // server-derived figure from a negotiated rate.
-        let newAmount: number | undefined = dto.amount;
-        if (dto.amount !== undefined && existing.negotiatedRate) {
+      const data: Record<string, unknown> = {};
+      // `newAmount` is the total this request would leave on the booking: a
+      // manual correction (legacy, only for un-negotiated bookings) or the
+      // server-derived figure from a negotiated rate.
+      let newAmount: number | undefined = dto.amount;
+      if (dto.amount !== undefined && existing.negotiatedRate) {
+        throw new BadRequestException(
+          'This booking has a negotiated rate, so its total is derived from it. ' +
+            'Edit the negotiated rate (or clear it) instead of the amount.',
+        );
+      }
+      if (dto.amount !== undefined) data['amount'] = dto.amount.toFixed(2);
+      if (dto.negotiatedRate !== undefined) {
+        const unit = await (tx as unknown as PrismaClient).unit.findUnique({
+          where: { id: existing.unitId },
+          select: { unitNumber: true, buildupSqft: true },
+        });
+        if (unit === null) {
+          throw new NotFoundException(`Unit ${existing.unitId} not found`);
+        }
+        const pricing = resolveBookingPricing({
+          unitNumber: unit.unitNumber,
+          listAmount: Number(existing.listAmount),
+          buildupSqft: Number(unit.buildupSqft),
+          negotiatedRate: dto.negotiatedRate,
+        });
+        newAmount = pricing.amount;
+        data['amount'] = pricing.amount.toFixed(2);
+        data['negotiatedRate'] = pricing.negotiatedRate?.toFixed(2) ?? null;
+        data['negotiatedAmount'] =
+          pricing.negotiatedRate === null ? null : pricing.amount.toFixed(2);
+      }
+      if (dto.tokenAmount !== undefined) {
+        // T-TOKEN-GATE (2026-09-28): a booking that is already TOKEN was marked
+        // token-received because money came in - its amount is therefore
+        // REQUIRED, and clearing it here re-creates exactly the anomaly the
+        // transition rule exists to prevent (an unverifiable "paid" booking
+        // that the admin "Booking money" card reads as "no token", i.e. money
+        // still with the customer). Without this guard the edit form could
+        // silently undo a repair made from this same form.
+        //
+        // Correcting the amount is still allowed; only REMOVING it is not.
+        if (existing.status === 'TOKEN' && dto.tokenAmount === null) {
           throw new BadRequestException(
-            'This booking has a negotiated rate, so its total is derived from it. ' +
-              'Edit the negotiated rate (or clear it) instead of the amount.',
+            'This booking is marked as token received, so the token amount cannot be cleared. Enter the amount actually received instead.',
           );
         }
-        if (dto.amount !== undefined) data['amount'] = dto.amount.toFixed(2);
-        if (dto.negotiatedRate !== undefined) {
-          const unit = await (tx as unknown as PrismaClient).unit.findUnique({
-            where: { id: existing.unitId },
-            select: { unitNumber: true, buildupSqft: true },
-          });
-          if (unit === null) {
-            throw new NotFoundException(`Unit ${existing.unitId} not found`);
-          }
-          const pricing = resolveBookingPricing({
-            unitNumber: unit.unitNumber,
-            listAmount: Number(existing.listAmount),
-            buildupSqft: Number(unit.buildupSqft),
-            negotiatedRate: dto.negotiatedRate,
-          });
-          newAmount = pricing.amount;
-          data['amount'] = pricing.amount.toFixed(2);
-          data['negotiatedRate'] = pricing.negotiatedRate?.toFixed(2) ?? null;
-          data['negotiatedAmount'] =
-            pricing.negotiatedRate === null ? null : pricing.amount.toFixed(2);
+        // T-TOKEN-GATE cap: the token must fit inside the booking's total even
+        // when only ONE of the two figures is being edited - so compare against
+        // whichever side this request is not supplying. The DTO can only check
+        // the case where both arrive together.
+        const effectiveTotal = newAmount ?? Number(existing.amount);
+        const effectiveToken =
+          dto.tokenAmount ?? (existing.tokenAmount === null ? null : Number(existing.tokenAmount));
+        if (!isTokenWithinTotal(effectiveToken, effectiveTotal)) {
+          throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
         }
-        if (dto.tokenAmount !== undefined) {
-          // T-TOKEN-GATE (2026-09-28): a booking that is already TOKEN was marked
-          // token-received because money came in - its amount is therefore
-          // REQUIRED, and clearing it here re-creates exactly the anomaly the
-          // transition rule exists to prevent (an unverifiable "paid" booking
-          // that the admin "Booking money" card reads as "no token", i.e. money
-          // still with the customer). Without this guard the edit form could
-          // silently undo a repair made from this same form.
-          //
-          // Correcting the amount is still allowed; only REMOVING it is not.
-          if (existing.status === 'TOKEN' && dto.tokenAmount === null) {
-            throw new BadRequestException(
-              'This booking is marked as token received, so the token amount cannot be cleared. Enter the amount actually received instead.',
-            );
-          }
-          // T-TOKEN-GATE cap: the token must fit inside the booking's total even
-          // when only ONE of the two figures is being edited - so compare against
-          // whichever side this request is not supplying. The DTO can only check
-          // the case where both arrive together.
-          const effectiveTotal = newAmount ?? Number(existing.amount);
-          const effectiveToken = dto.tokenAmount ?? (existing.tokenAmount === null ? null : Number(existing.tokenAmount));
-          if (!isTokenWithinTotal(effectiveToken, effectiveTotal)) {
-            throw new BadRequestException(TOKEN_EXCEEDS_TOTAL_MESSAGE);
-          }
-          data['tokenAmount'] =
-            dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
-        } else if (newAmount !== undefined) {
-          // Lowering the TOTAL can strand an existing token above it, so the cap
-          // has to hold from this direction too - otherwise a booking could be
-          // edited into "token 5L of a 4L unit" one field at a time.
-          const existingToken =
-            existing.tokenAmount === null ? null : Number(existing.tokenAmount);
-          if (!isTokenWithinTotal(existingToken, newAmount)) {
-            throw new BadRequestException(
-              `${TOKEN_EXCEEDS_TOTAL_MESSAGE}. Raise the booking total or lower the token first.`,
-            );
-          }
+        data['tokenAmount'] = dto.tokenAmount === null ? null : dto.tokenAmount.toFixed(2);
+      } else if (newAmount !== undefined) {
+        // Lowering the TOTAL can strand an existing token above it, so the cap
+        // has to hold from this direction too - otherwise a booking could be
+        // edited into "token 5L of a 4L unit" one field at a time.
+        const existingToken = existing.tokenAmount === null ? null : Number(existing.tokenAmount);
+        if (!isTokenWithinTotal(existingToken, newAmount)) {
+          throw new BadRequestException(
+            `${TOKEN_EXCEEDS_TOTAL_MESSAGE}. Raise the booking total or lower the token first.`,
+          );
         }
-        if (dto.notes !== undefined) data['notes'] = dto.notes;
+      }
+      if (dto.notes !== undefined) data['notes'] = dto.notes;
 
-        const updated = await (tx as unknown as PrismaClient).booking.update({
-          where: { id: bookingId },
-          data,
-          select: {
-            id: true,
-            leadId: true,
-            unitId: true,
-            userId: true,
-            amount: true,
-            listAmount: true,
-            negotiatedRate: true,
-            negotiatedAmount: true,
-            tokenAmount: true,
-            status: true,
-            approvedById: true,
-            notes: true,
-            createdAt: true,
-            updatedAt: true,
-            lead: { select: { name: true } },
-            unit: { select: { unitNumber: true } },
-            user: { select: { name: true } },
-            approvedBy: { select: { name: true } },
+      const updated = await (tx as unknown as PrismaClient).booking.update({
+        where: { id: bookingId },
+        data,
+        select: {
+          id: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          status: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'booking.update',
+          entityType: 'Booking',
+          entityId: updated.id,
+          before: {
+            amount: existing.amount.toString(),
+            listAmount: existing.listAmount.toString(),
+            negotiatedRate: existing.negotiatedRate?.toString() ?? null,
+            negotiatedAmount: existing.negotiatedAmount?.toString() ?? null,
+            tokenAmount: existing.tokenAmount?.toString() ?? null,
+            notes: existing.notes,
           },
-        });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'booking.update',
-            entityType: 'Booking',
-            entityId: updated.id,
-            before: {
-              amount: existing.amount.toString(),
-              listAmount: existing.listAmount.toString(),
-              negotiatedRate: existing.negotiatedRate?.toString() ?? null,
-              negotiatedAmount: existing.negotiatedAmount?.toString() ?? null,
-              tokenAmount: existing.tokenAmount?.toString() ?? null,
-              notes: existing.notes,
-            },
-            after: {
-              amount: updated.amount.toString(),
-              listAmount: updated.listAmount.toString(),
-              negotiatedRate: updated.negotiatedRate?.toString() ?? null,
-              negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
-              tokenAmount: updated.tokenAmount?.toString() ?? null,
-              notes: updated.notes,
-            },
-            // T-TOKEN-GATE (2026-09-29): prefer an operator-supplied reason. This
-            // is a MONEY write path (amount / tokenAmount), so "updated by
-            // <email>" is not enough to explain a change to a payment figure -
-            // the caller must be able to record WHICH bank entry or receipt the
-            // corrected number came from. Falls back to the generated string for
-            // an ordinary edit that supplied no reason.
-            reason:
-              (dto.reason ?? '').trim().length > 0
-                ? (dto.reason as string)
-                : `Booking ${updated.id} updated by ${actor.email} (${actor.role})`,
+          after: {
+            amount: updated.amount.toString(),
+            listAmount: updated.listAmount.toString(),
+            negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+            negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
+            tokenAmount: updated.tokenAmount?.toString() ?? null,
+            notes: updated.notes,
           },
-        });
+          // T-TOKEN-GATE (2026-09-29): prefer an operator-supplied reason. This
+          // is a MONEY write path (amount / tokenAmount), so "updated by
+          // <email>" is not enough to explain a change to a payment figure -
+          // the caller must be able to record WHICH bank entry or receipt the
+          // corrected number came from. Falls back to the generated string for
+          // an ordinary edit that supplied no reason.
+          reason:
+            (dto.reason ?? '').trim().length > 0
+              ? (dto.reason as string)
+              : `Booking ${updated.id} updated by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        return {
-          id: updated.id,
-          leadId: updated.leadId,
-          leadName: updated.lead.name,
-          unitId: updated.unitId,
-          unitNumber: updated.unit.unitNumber,
-          userId: updated.userId,
-          userName: updated.user.name,
-          amount: updated.amount.toString(),
-          listAmount: updated.listAmount.toString(),
-          negotiatedRate: updated.negotiatedRate?.toString() ?? null,
-          negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
-          tokenAmount: updated.tokenAmount?.toString() ?? null,
-          status: updated.status,
-          approvedById: updated.approvedById,
-          approvedByName: updated.approvedBy?.name ?? null,
-          notes: updated.notes,
-          createdAt: updated.createdAt.toISOString(),
-          updatedAt: updated.updatedAt.toISOString(),
-        };
-      },
-    );
+      return {
+        id: updated.id,
+        leadId: updated.leadId,
+        leadName: updated.lead.name,
+        unitId: updated.unitId,
+        unitNumber: updated.unit.unitNumber,
+        userId: updated.userId,
+        userName: updated.user.name,
+        amount: updated.amount.toString(),
+        listAmount: updated.listAmount.toString(),
+        negotiatedRate: updated.negotiatedRate?.toString() ?? null,
+        negotiatedAmount: updated.negotiatedAmount?.toString() ?? null,
+        tokenAmount: updated.tokenAmount?.toString() ?? null,
+        status: updated.status,
+        approvedById: updated.approvedById,
+        approvedByName: updated.approvedBy?.name ?? null,
+        notes: updated.notes,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -1097,74 +1046,68 @@ export class BookingsService {
         `Only ADMIN/OWNER can delete a booking (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).booking.findUnique(
-          {
-            where: { id: bookingId },
-            select: {
-              id: true,
-              leadId: true,
-              unitId: true,
-              userId: true,
-              amount: true,
-              listAmount: true,
-              negotiatedRate: true,
-              negotiatedAmount: true,
-              tokenAmount: true,
-              status: true,
-              approvedById: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-              lead: { select: { name: true } },
-              unit: { select: { unitNumber: true } },
-              user: { select: { name: true } },
-              approvedBy: { select: { name: true } },
-            },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          leadId: true,
+          unitId: true,
+          userId: true,
+          amount: true,
+          listAmount: true,
+          negotiatedRate: true,
+          negotiatedAmount: true,
+          tokenAmount: true,
+          status: true,
+          approvedById: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          lead: { select: { name: true } },
+          unit: { select: { unitNumber: true } },
+          user: { select: { name: true } },
+          approvedBy: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Booking ${bookingId} not found`);
+      }
+
+      await (tx as unknown as PrismaClient).booking.delete({
+        where: { id: bookingId },
+      });
+
+      // T-INV-SYNC: freeing the unit is handled by the
+      // unit_status_sync_booking trigger on "Booking" (AFTER DELETE):
+      // Unit.status recomputes from the unit's remaining active bookings
+      // (SOLD > TOKEN > HOLD > AVAILABLE). Role-independent, unlike the
+      // admin-only Unit UPDATE policy this code used to rely on.
+
+      // T-BOOK-LEADSYNC: the booking is gone, so the lead re-syncs from
+      // whatever bookings remain (none → NEGOTIATION). allowRegress because
+      // removing the booking is a release, not a progression.
+      await this.syncLeadState(tx, existing.leadId, { allowRegress: true, actor });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'booking.delete',
+          entityType: 'Booking',
+          entityId: bookingId,
+          before: {
+            leadId: existing.leadId,
+            unitId: existing.unitId,
+            amount: existing.amount.toString(),
+            status: existing.status,
           },
-        );
-        if (existing === null) {
-          throw new NotFoundException(`Booking ${bookingId} not found`);
-        }
+          reason: `Booking ${bookingId} deleted by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        await (tx as unknown as PrismaClient).booking.delete({
-          where: { id: bookingId },
-        });
-
-        // T-INV-SYNC: freeing the unit is handled by the
-        // unit_status_sync_booking trigger on "Booking" (AFTER DELETE):
-        // Unit.status recomputes from the unit's remaining active bookings
-        // (SOLD > TOKEN > HOLD > AVAILABLE). Role-independent, unlike the
-        // admin-only Unit UPDATE policy this code used to rely on.
-
-        // T-BOOK-LEADSYNC: the booking is gone, so the lead re-syncs from
-        // whatever bookings remain (none → NEGOTIATION). allowRegress because
-        // removing the booking is a release, not a progression.
-        await this.syncLeadState(tx, existing.leadId, { allowRegress: true, actor });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'booking.delete',
-            entityType: 'Booking',
-            entityId: bookingId,
-            before: {
-              leadId: existing.leadId,
-              unitId: existing.unitId,
-              amount: existing.amount.toString(),
-              status: existing.status,
-            },
-            reason: `Booking ${bookingId} deleted by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        return { id: bookingId };
-      },
-    );
+      return { id: bookingId };
+    });
   }
 
   /**

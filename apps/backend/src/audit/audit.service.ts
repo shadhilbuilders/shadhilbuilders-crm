@@ -14,15 +14,8 @@
 // entityId / action / from / to / limit / offset. We pass the
 // supplied filters through to the where clause as-is; the RLS
 // policy applies the visibility filter on top.
-import {
-  Inject,
-  Injectable,
-} from '@nestjs/common';
-import {
-  withRlsContext,
-  rlsContextFrom,
-  type PrismaClient,
-} from '@shadhil/database';
+import { Inject, Injectable } from '@nestjs/common';
+import { withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
 import type { AuditLogQueryDto } from '@shadhil/api-types';
 
@@ -58,9 +51,7 @@ export interface AuditListResult {
 
 @Injectable()
 export class AuditService {
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -71,74 +62,65 @@ export class AuditService {
    * - filterable audit log. The auditlog_select_admin_or_owner RLS
    * policy applies visibility on top.
    */
-  async list(
-    actor: JwtPayload,
-    dto: AuditLogQueryDto,
-  ): Promise<AuditListResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {};
-        if (dto.userId !== undefined) where['userId'] = dto.userId;
-        if (dto.entityType !== undefined) where['entityType'] = dto.entityType;
-        if (dto.entityId !== undefined) where['entityId'] = dto.entityId;
-        if (dto.action !== undefined) {
-          // Multi-select actions arrive as an array (WHERE action IN (...));
-          // a single action stays an exact match.
-          where['action'] = Array.isArray(dto.action)
-            ? { in: dto.action }
-            : dto.action;
-        }
-        if (dto.from !== undefined || dto.to !== undefined) {
-          where['createdAt'] = {
-            ...(dto.from !== undefined ? { gte: new Date(dto.from) } : {}),
-            ...(dto.to !== undefined ? { lte: new Date(dto.to) } : {}),
-          };
-        }
-
-        const [rows, total] = await Promise.all([
-          (tx as unknown as PrismaClient).auditLog.findMany({
-            where,
-            orderBy: { createdAt: 'desc' },
-            take: dto.limit,
-            skip: dto.offset,
-            select: {
-              id: true,
-              userId: true,
-              action: true,
-              entityType: true,
-              entityId: true,
-              before: true,
-              after: true,
-              reason: true,
-              createdAt: true,
-              batchId: true,
-              user: { select: { name: true } },
-            },
-          }),
-          (tx as unknown as PrismaClient).auditLog.count({ where }),
-        ]);
-
-        return {
-          total,
-          rows: rows.map((r) => ({
-            id: r.id,
-            userId: r.userId,
-            userName: r.user?.name ?? null,
-            action: r.action,
-            entityType: r.entityType,
-            entityId: r.entityId,
-            // Prisma JSON columns return as objects; cast to unknown
-            // for the wire shape. Callers can JSON.parse if needed.
-            before: r.before as unknown,
-            after: r.after as unknown,
-            reason: r.reason,
-            createdAt: r.createdAt.toISOString(),
-            batchId: r.batchId,
-          })),
+  async list(actor: JwtPayload, dto: AuditLogQueryDto): Promise<AuditListResult> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {};
+      if (dto.userId !== undefined) where['userId'] = dto.userId;
+      if (dto.entityType !== undefined) where['entityType'] = dto.entityType;
+      if (dto.entityId !== undefined) where['entityId'] = dto.entityId;
+      if (dto.action !== undefined) {
+        // Multi-select actions arrive as an array (WHERE action IN (...));
+        // a single action stays an exact match.
+        where['action'] = Array.isArray(dto.action) ? { in: dto.action } : dto.action;
+      }
+      if (dto.from !== undefined || dto.to !== undefined) {
+        where['createdAt'] = {
+          ...(dto.from !== undefined ? { gte: new Date(dto.from) } : {}),
+          ...(dto.to !== undefined ? { lte: new Date(dto.to) } : {}),
         };
-      },
-    );
+      }
+
+      const [rows, total] = await Promise.all([
+        (tx as unknown as PrismaClient).auditLog.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: dto.limit,
+          skip: dto.offset,
+          select: {
+            id: true,
+            userId: true,
+            action: true,
+            entityType: true,
+            entityId: true,
+            before: true,
+            after: true,
+            reason: true,
+            createdAt: true,
+            batchId: true,
+            user: { select: { name: true } },
+          },
+        }),
+        (tx as unknown as PrismaClient).auditLog.count({ where }),
+      ]);
+
+      return {
+        total,
+        rows: rows.map((r) => ({
+          id: r.id,
+          userId: r.userId,
+          userName: r.user?.name ?? null,
+          action: r.action,
+          entityType: r.entityType,
+          entityId: r.entityId,
+          // Prisma JSON columns return as objects; cast to unknown
+          // for the wire shape. Callers can JSON.parse if needed.
+          before: r.before as unknown,
+          after: r.after as unknown,
+          reason: r.reason,
+          createdAt: r.createdAt.toISOString(),
+          batchId: r.batchId,
+        })),
+      };
+    });
   }
 }

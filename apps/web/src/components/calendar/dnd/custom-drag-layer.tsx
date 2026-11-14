@@ -14,15 +14,16 @@ interface IDragItem {
 }
 
 export function CustomDragLayer() {
-  const { isDragging, item, currentOffset, initialOffset, initialClientOffset } =
-    useDragLayer((monitor) => ({
+  const { isDragging, item, currentOffset, initialOffset, initialClientOffset } = useDragLayer(
+    (monitor) => ({
       item: monitor.getItem() as IDragItem | null,
       itemType: monitor.getItemType(),
       isDragging: monitor.isDragging(),
       currentOffset: monitor.getClientOffset(),
       initialOffset: monitor.getInitialSourceClientOffset(),
       initialClientOffset: monitor.getInitialClientOffset(),
-    }));
+    }),
+  );
 
   if (!isDragging || !item || !currentOffset || !initialOffset || !initialClientOffset) {
     return null;

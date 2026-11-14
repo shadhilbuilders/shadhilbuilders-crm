@@ -21,11 +21,12 @@ and push token storage.
 
 12 distinct staff triggers, all going through the same push
 infrastructure. Each trigger has:
-  - Who receives (specific user, role, or team)
-  - What they see (title, body, icon, click target)
-  - When they get it (real-time, batched, snoozed, etc.)
-  - Quiet hours respect (no push 22:00-07:00 local time)
-  - Audit log entry
+
+- Who receives (specific user, role, or team)
+- What they see (title, body, icon, click target)
+- When they get it (real-time, batched, snoozed, etc.)
+- Quiet hours respect (no push 22:00-07:00 local time)
+- Audit log entry
 
 **One push service. Three surfaces (web, iOS, Android). One
 schema. One cron.** Real-world cross-platform patterns baked in.
@@ -35,6 +36,7 @@ schema. One cron.** Real-world cross-platform patterns baked in.
 ## Why Expo Push as the universal service
 
 The naive approach is three separate push services:
+
 - APNs (Apple Push Notification service) for iOS
 - FCM (Firebase Cloud Messaging) for Android
 - Web Push API + VAPID for web
@@ -43,6 +45,7 @@ That means three SDKs, three sets of credentials, three
 delivery paths, three sets of errors to handle. Painful.
 
 **Expo Push abstracts all three behind one API:**
+
 - `expoPushToken` format works for iOS, Android, and web
 - One backend call sends to all three
 - Expo routes to APNs/FCM/Web Push based on the token
@@ -72,20 +75,20 @@ backend:
 4. Expo Push routes to APNs/FCM/Web Push as appropriate
 5. Logs the push to `PushNotification` table + AuditLog
 
-| # | Trigger | Recipients | Title | Body | Click target |
-|---|---|---|---|---|---|
-| 1 | New lead assigned to me | The assigned telecaller | "New lead: {{name}}" | "{{phone}} · {{source}}" | `/leads/{id}` |
-| 2 | Lead handed off to me (manager) | The manager | "Handoff: {{lead.name}}" | "Telecaller {{user.name}} handed off a lead" | `/leads/{id}` |
-| 3 | Lead handed off to my team | All managers in the team | "Team handoff" | "{{user.name}} handed off a lead to your team" | `/leads/{id}?team=mine` |
-| 4 | Lead assigned to me (exec) | The assigned exec | "New lead for you" | "Manager {{user.name}} assigned a lead" | `/leads/{id}` |
-| 5 | Site visit in 2 hours (pre-visit staff) | The sales exec | "Site visit soon" | "{{lead.name}} in 2 hours at {{time}}" | `/leads/{id}/visits/{visitId}` |
-| 6 | Site visit no-show | Sales exec + manager | "No-show: {{lead.name}}" | "Visit at {{time}} - no outcome logged" | `/leads/{id}/visits/{visitId}` |
-| 7 | Customer replied to chat (when staff is away) | Lead's current owner | "{{lead.name}} replied" | "{{message preview, truncated 80 chars}}" | `/leads/{id}#chat` |
-| 8 | Booking awaiting my approval | The manager | "Booking: {{lead.name}}" | "{{unit.number}} · ₹{{token.amount}}" | `/leads/{id}/bookings/{bookingId}` |
-| 9 | Booking approved / rejected | The sales exec | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}" | `/leads/{id}/bookings/{bookingId}` |
-| 10 | Customer rescheduled the visit | Sales exec (or telecaller if pre-handoff) | "Reschedule: {{lead.name}}" | "New time: {{newTime}}" | `/leads/{id}/visits/{visitId}` |
-| 11 | Mentioned in a note or chat | The mentioned user | "{{user.name}} mentioned you" | "{{context, truncated 100 chars}}" | `/leads/{id}#note-{noteId}` or `#msg-{msgId}` |
-| 12 | Daily summary at 8 AM | Manager + admin (opt-out) | "Yesterday's summary" | "{{n}} new leads, {{m}} visits, {{k}} bookings" | `/dashboard` |
+| #   | Trigger                                       | Recipients                                | Title                                         | Body                                            | Click target                                  |
+| --- | --------------------------------------------- | ----------------------------------------- | --------------------------------------------- | ----------------------------------------------- | --------------------------------------------- |
+| 1   | New lead assigned to me                       | The assigned telecaller                   | "New lead: {{name}}"                          | "{{phone}} · {{source}}"                        | `/leads/{id}`                                 |
+| 2   | Lead handed off to me (manager)               | The manager                               | "Handoff: {{lead.name}}"                      | "Telecaller {{user.name}} handed off a lead"    | `/leads/{id}`                                 |
+| 3   | Lead handed off to my team                    | All managers in the team                  | "Team handoff"                                | "{{user.name}} handed off a lead to your team"  | `/leads/{id}?team=mine`                       |
+| 4   | Lead assigned to me (exec)                    | The assigned exec                         | "New lead for you"                            | "Manager {{user.name}} assigned a lead"         | `/leads/{id}`                                 |
+| 5   | Site visit in 2 hours (pre-visit staff)       | The sales exec                            | "Site visit soon"                             | "{{lead.name}} in 2 hours at {{time}}"          | `/leads/{id}/visits/{visitId}`                |
+| 6   | Site visit no-show                            | Sales exec + manager                      | "No-show: {{lead.name}}"                      | "Visit at {{time}} - no outcome logged"         | `/leads/{id}/visits/{visitId}`                |
+| 7   | Customer replied to chat (when staff is away) | Lead's current owner                      | "{{lead.name}} replied"                       | "{{message preview, truncated 80 chars}}"       | `/leads/{id}#chat`                            |
+| 8   | Booking awaiting my approval                  | The manager                               | "Booking: {{lead.name}}"                      | "{{unit.number}} · ₹{{token.amount}}"           | `/leads/{id}/bookings/{bookingId}`            |
+| 9   | Booking approved / rejected                   | The sales exec                            | "Booking approved" or "Booking needs changes" | "{{unit.number}} · {{reason}}"                  | `/leads/{id}/bookings/{bookingId}`            |
+| 10  | Customer rescheduled the visit                | Sales exec (or telecaller if pre-handoff) | "Reschedule: {{lead.name}}"                   | "New time: {{newTime}}"                         | `/leads/{id}/visits/{visitId}`                |
+| 11  | Mentioned in a note or chat                   | The mentioned user                        | "{{user.name}} mentioned you"                 | "{{context, truncated 100 chars}}"              | `/leads/{id}#note-{noteId}` or `#msg-{msgId}` |
+| 12  | Daily summary at 8 AM                         | Manager + admin (opt-out)                 | "Yesterday's summary"                         | "{{n}} new leads, {{m}} visits, {{k}} bookings" | `/dashboard`                                  |
 
 Triggers 5, 6, 10 are the reminder-driven ones (v9).
 Triggers 1, 2, 3, 4, 8, 9 are state-transition ones.
@@ -104,21 +107,21 @@ model PushSubscription {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
-  
+
   // Expo push token (works for iOS, Android, Web)
   expoPushToken String @unique
-  
+
   // Platform metadata (for analytics + targeted features)
   platform    PushPlatform  // IOS, ANDROID, WEB
   deviceName  String?       // "iPhone 15 Pro", "MacBook Safari", etc.
   appVersion  String?       // "1.0.0"
-  
+
   // Lifecycle
   isActive    Boolean  @default(true)
   lastSeenAt  DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   @@index([userId, isActive])
   @@index([expoPushToken])
 }
@@ -132,22 +135,22 @@ enum PushPlatform {
 // Every push sent (for audit + dedup + analytics)
 model PushNotification {
   id              String   @id @default(cuid())
-  
+
   // What triggered this push
   triggerType     String   // "lead.assigned", "site_visit.pre_visit", etc.
   triggerRefId    String?  // leadId, siteVisitId, etc. for dedup
-  
+
   // Who received it
   userId          String
   user            User     @relation(fields: [userId], references: [id])
   subscriptionId  String?
   subscription    PushSubscription? @relation(fields: [subscriptionId], references: [id])
-  
+
   // Content
   title           String
   body            String
   data            Json?   // { leadId, visitId, deepLink, etc. }
-  
+
   // Delivery
   status          PushStatus @default(PENDING)
   sentAt          DateTime?
@@ -155,14 +158,14 @@ model PushNotification {
   clickedAt       DateTime?
   failedAt        DateTime?
   errorMessage    String?
-  
+
   // Quiet hours
   suppressedByQuietHours Boolean @default(false)
   rescheduledFor         DateTime?
-  
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  
+
   @@index([userId, createdAt])
   @@index([triggerType, triggerRefId])  // dedup
   @@index([status, scheduledFor])       // cron picks pending pushes
@@ -179,12 +182,13 @@ enum PushStatus {
 ```
 
 Also add to `User`:
+
 ```prisma
 model User {
   // ... existing fields
   pushSubscriptions PushSubscription[]
   pushNotifications PushNotification[]
-  
+
   // Reminder/push settings (from v9, kept consistent)
   pushSettings     Json?  // { quietHoursStart, quietHoursEnd, dailySummaryOptIn, etc. }
 }
@@ -197,6 +201,7 @@ model User {
 ### Step 1: User grants permission + registers token
 
 **On web:**
+
 - Service worker registered in the app
 - User clicks "Enable notifications" in Settings
 - Browser requests permission
@@ -205,12 +210,14 @@ model User {
 - Backend stores in `PushSubscription` table
 
 **On iOS:**
+
 - Expo app requests permission at first launch (configurable)
 - Expo push token is created automatically by the Expo client
 - Expo SDK sends the token to backend
 - Backend stores it
 
 **On Android:**
+
 - Same as iOS. Expo handles FCM token registration.
 
 ### Step 2: Backend sends a push
@@ -223,7 +230,7 @@ backend:
 async sendTriggerPush(trigger: PushTrigger) {
   // 1. Identify recipients
   const recipients = await this.identifyRecipients(trigger);
-  
+
   // 2. Look up their push subscriptions
   const subscriptions = await prisma.pushSubscription.findMany({
     where: {
@@ -231,18 +238,18 @@ async sendTriggerPush(trigger: PushTrigger) {
       isActive: true,
     },
   });
-  
+
   if (subscriptions.length === 0) {
     // No devices registered - fall back to in-app only
     return;
   }
-  
+
   // 3. Check quiet hours
   const now = new Date();
   const messages = subscriptions.map(sub => {
     const userSettings = sub.user.pushSettings || {};
     const isQuiet = isInQuietHours(now, userSettings);
-    
+
     return {
       to: sub.expoPushToken,
       title: trigger.title,
@@ -251,12 +258,12 @@ async sendTriggerPush(trigger: PushTrigger) {
       sound: 'default',
       badge: 1,
       // If quiet hours: schedule for the start of next active hours
-      ...(isQuiet && { 
+      ...(isQuiet && {
         // Expo doesn't have a "send at" parameter; we handle in our cron
       }),
     };
   });
-  
+
   // 4. Send via Expo Push API
   const result = await fetch('https://exp.host/--/api/v2/push/send', {
     method: 'POST',
@@ -267,7 +274,7 @@ async sendTriggerPush(trigger: PushTrigger) {
     },
     body: JSON.stringify(messages),
   });
-  
+
   // 5. Log to PushNotification table
   for (const sub of subscriptions) {
     await prisma.pushNotification.create({
@@ -305,6 +312,7 @@ follow-up), we DO respect quiet hours because they're
 time-flexible.
 
 **Logic:**
+
 ```typescript
 function shouldRespectQuietHours(trigger: PushTrigger): boolean {
   return [
@@ -319,6 +327,7 @@ function shouldRespectQuietHours(trigger: PushTrigger): boolean {
 ### Step 4: Web Push specific
 
 Web Push is a special case because:
+
 - iOS Safari only supports Web Push for home-screen-installed PWAs
 - Chrome/Edge/Firefox support Web Push for normal browser tabs
 - Service worker must be registered
@@ -326,6 +335,7 @@ Web Push is a special case because:
 
 For our v1 (web = Next.js, not yet a PWA), the simplest
 implementation:
+
 - Web app requests notification permission on user action
 - (Optional) The web app can be installed as a PWA via
   "Add to home screen" for better iOS Safari support
@@ -357,7 +367,7 @@ async pollPushReceipts() {
     },
     take: 100,
   });
-  
+
   for (const push of recent) {
     const receipt = await fetch(
       `https://exp.host/--/api/v2/push/getReceipts`,
@@ -441,12 +451,14 @@ alerts. The push is a duplicate of the in-app notification.
 ### Concern 2: Token rotation
 
 Push tokens change:
+
 - iOS: rarely, but on app reinstall
 - Android: every time FCM token is refreshed
 - Web: when the service worker is unregistered, or the
   user clears browser data
 
 The backend must handle this:
+
 - On token registration, if the token already exists,
   update `lastSeenAt` and `isActive = true`
 - If a push fails with "InvalidToken" or "DeviceNotRegistered",
@@ -462,6 +474,7 @@ The backend must handle this:
 
 12 triggers is a lot. The CRM will feel "noisy" if every
 event pings the staff. Recommend:
+
 - v1 ships triggers 1-10 (the operational ones)
 - Trigger 11 (mentions) deferred to v1.1
 - Trigger 12 (daily summary) opt-in, default off
@@ -489,15 +502,16 @@ v9 (Reminders module) + the CLIENT-DECISIONS.md (16
 resolved questions) into DESIGN.md v3 in one pass.
 
 The new v3 will have:
-  - §2 modules (8 modules, including new Reminders)
-  - §5 entities (14 models, including new Reminder,
-    PushSubscription, PushNotification, plus better-auth
-    Account + Verification from v8)
-  - §6 integrations (Expo Push as primary, Web Push as
-    web fallback, email as last-resort fallback)
-  - §10 push notifications (full design with 12 triggers)
-  - §12 timeline (12 weeks)
-  - §13 open questions: REMOVED (all resolved)
-  - New: §15 Notification triggers table (the 12 triggers)
-  - New: §16 Push reliability design (token rotation,
-    quiet hours, fallback chain)
+
+- §2 modules (8 modules, including new Reminders)
+- §5 entities (14 models, including new Reminder,
+  PushSubscription, PushNotification, plus better-auth
+  Account + Verification from v8)
+- §6 integrations (Expo Push as primary, Web Push as
+  web fallback, email as last-resort fallback)
+- §10 push notifications (full design with 12 triggers)
+- §12 timeline (12 weeks)
+- §13 open questions: REMOVED (all resolved)
+- New: §15 Notification triggers table (the 12 triggers)
+- New: §16 Push reliability design (token rotation,
+  quiet hours, fallback chain)

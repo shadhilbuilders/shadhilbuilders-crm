@@ -86,9 +86,7 @@ export function leadStateForBookingStatus(status: BookingStatusForLead): LeadSta
  * (one_active_booking_per_unit). When no booking is active the deal is back in
  * NEGOTIATION (user rule for CANCELLED/REJECTED).
  */
-export function leadStateForBookings(
-  statuses: readonly BookingStatusForLead[],
-): LeadState {
+export function leadStateForBookings(statuses: readonly BookingStatusForLead[]): LeadState {
   const active = statuses.filter(
     (s): s is BookingStatusForLead => s === 'HOLD' || s === 'TOKEN' || s === 'APPROVED',
   );

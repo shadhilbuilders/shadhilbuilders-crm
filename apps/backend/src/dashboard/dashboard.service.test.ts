@@ -131,7 +131,11 @@ function makeTx(overrides: {
     },
     team: {
       findFirst: vi.fn(async () =>
-        overrides.teamId === undefined ? { id: 'team-1' } : overrides.teamId === null ? null : { id: overrides.teamId },
+        overrides.teamId === undefined
+          ? { id: 'team-1' }
+          : overrides.teamId === null
+            ? null
+            : { id: overrides.teamId },
       ),
       // T-TEAM-AUTHORITATIVE (2026-09-13): managerTeamIds() resolves via
       // TeamAccessService.getManagedTeamIds(), which calls findMany (a
@@ -151,9 +155,7 @@ function makeTx(overrides: {
       ]),
     },
     $queryRaw: vi.fn(async () =>
-      overrides.deltaMin === undefined
-        ? [{ deltaMin: 45 }]
-        : [{ deltaMin: overrides.deltaMin }],
+      overrides.deltaMin === undefined ? [{ deltaMin: 45 }] : [{ deltaMin: overrides.deltaMin }],
     ),
   } as unknown as MockTx;
 }
@@ -161,24 +163,18 @@ function makeTx(overrides: {
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     Prisma: {
       raw: (sql: string) => sql,
     },
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: unknown) => unknown,
-      ) => {
+      async (_client: unknown, _ctx: unknown, callback: (t: unknown) => unknown) => {
         return callback(txCapture.current);
       },
     ),

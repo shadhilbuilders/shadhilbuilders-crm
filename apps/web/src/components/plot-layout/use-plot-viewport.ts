@@ -72,7 +72,7 @@ export function clampViewport(viewport: PlotViewport): PlotViewport {
 export function zoomAtPoint(
   viewport: PlotViewport,
   factor: number,
-  anchor: PlotVertex
+  anchor: PlotVertex,
 ): PlotViewport {
   const zoom = Math.min(Math.max(viewport.zoom * factor, MIN_PLOT_ZOOM), MAX_PLOT_ZOOM);
   const ratio = zoom / viewport.zoom;
@@ -121,7 +121,7 @@ export function usePlotViewport(): UsePlotViewportResult {
     // Centre at an explicit zoom, or keep the user's current zoom when they
     // are already zoomed in past the focus level.
     setViewport((current) =>
-      clampViewport(centreOnPoint(point, zoom ?? Math.max(current.zoom, FOCUS_ZOOM)))
+      clampViewport(centreOnPoint(point, zoom ?? Math.max(current.zoom, FOCUS_ZOOM))),
     );
   }, []);
 

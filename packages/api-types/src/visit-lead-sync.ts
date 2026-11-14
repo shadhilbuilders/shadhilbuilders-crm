@@ -26,10 +26,7 @@ export const OPEN_VISIT_STATUSES = ['SCHEDULED'] as const;
 
 /** True when a visit is live work (still to be conducted). */
 export function isOpenVisitStatus(status: string | null | undefined): boolean {
-  return (
-    typeof status === 'string' &&
-    (OPEN_VISIT_STATUSES as readonly string[]).includes(status)
-  );
+  return typeof status === 'string' && (OPEN_VISIT_STATUSES as readonly string[]).includes(status);
 }
 
 /** What an open visit becomes when its lead's state changes. */

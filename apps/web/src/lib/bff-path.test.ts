@@ -16,9 +16,7 @@ describe('buildBackendPath', () => {
     const path = buildBackendPath(segments);
 
     // The key's slashes stay percent-encoded, so Nest sees ONE :key segment.
-    expect(path).toBe(
-      'media/%2Fceid01lpfe1esm8jwsxid41k28%2F86a69e29%2FHero.jpg',
-    );
+    expect(path).toBe('media/%2Fceid01lpfe1esm8jwsxid41k28%2F86a69e29%2FHero.jpg');
     // The regression: a literal leading slash right after the separator.
     expect(path).not.toContain('media//');
   });

@@ -89,6 +89,11 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Formatting gate, first because it is the cheapest check here (~15s) and
+      # because the repo spent months with a `format` script that could not resolve
+      # its own plugin while `--check` still exited 0. A formatter nobody can run is
+      # not a convention; this step is what makes it one.
+      - run: pnpm format:check
       - run: pnpm --filter @shadhil/database generate
       - run: pnpm lint
 
@@ -104,6 +109,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: node scripts/check-bare-prisma.mjs
+
+  # Added 2026-11-12. Impeccable's deterministic design detector: 59 rules, no
+  # LLM, no API key, ~2s on this tree (336 files). Blocking as of the same day:
+  # the scan exits 0 on this tree, because the two `side-tab` hits it used to
+  # report (SiteHome phase rail, past-visit card accent) were narrowed from 4px
+  # to a hairline. Test files are excluded in .impeccable/config.json, since
+  # fixture JSX is where the false positives came from.
+  design-detect:
+    name: Design detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design:detect:ci
 
   test:
     name: Unit Tests

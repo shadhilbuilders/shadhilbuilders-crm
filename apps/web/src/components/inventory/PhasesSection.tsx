@@ -8,13 +8,7 @@
 // preference: never fire a destructive mutation on a button click).
 import { useState } from 'react';
 
-import {
-  AlertDialog,
-  Badge,
-  Button,
-  Card,
-  toast,
-} from '@paalstack/react-ui';
+import { AlertDialog, Badge, Button, Card, toast } from '@paalstack/react-ui';
 import { LuPencil, LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 
 import { useDeletePhase, type PhaseRow } from '@/hooks/queries/inventory';
@@ -64,12 +58,9 @@ export function PhasesSection({
           {canManage ? ' Add the first phase to start building inventory.' : ''}
         </p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-border divide-y">
           {phases.map((phase) => (
-            <li
-              key={phase.id}
-              className="flex items-center justify-between gap-4 py-2"
-            >
+            <li key={phase.id} className="flex items-center justify-between gap-4 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{phase.name}</span>
                 <Badge variant="muted" data-qa="phase-unit-count">

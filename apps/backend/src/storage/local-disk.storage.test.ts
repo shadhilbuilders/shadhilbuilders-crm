@@ -68,7 +68,11 @@ describe('LocalDiskStorage.delete', () => {
 
     const scoped = new LocalDiskStorage(root);
     // Every shape that used to escape.
-    for (const key of ['../media-evil/secret.txt', '../media-evil/secret.txt', '..%2Fmedia-evil/secret.txt']) {
+    for (const key of [
+      '../media-evil/secret.txt',
+      '../media-evil/secret.txt',
+      '..%2Fmedia-evil/secret.txt',
+    ]) {
       expect(await scoped.read(key)).toBeNull();
     }
     // The sibling file is untouched.
@@ -114,7 +118,9 @@ describe('LocalDiskStorage.delete', () => {
 
   it('protects= delete never throws on an unreadable path (best-effort contract)', async () => {
     // A directory where a file is expected: rm handles it via recursive:true.
-    await import('node:fs/promises').then((fs) => fs.mkdir(join(dir, 'org-9/adir'), { recursive: true }));
+    await import('node:fs/promises').then((fs) =>
+      fs.mkdir(join(dir, 'org-9/adir'), { recursive: true }),
+    );
     await expect(storage.delete('org-9/adir')).resolves.toBeUndefined();
   });
 });

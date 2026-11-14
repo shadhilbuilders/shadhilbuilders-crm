@@ -10,7 +10,12 @@
 // "Showing the first 200 units" instead of a number.
 import type { UnitRow } from '@/hooks/queries/inventory';
 import { constructionStageLabel } from '@/lib/labels';
-import { stalenessLabel, unitPhotoState, unitPhotoStateRank, type UnitPhotoState } from '@/lib/site-photos';
+import {
+  stalenessLabel,
+  unitPhotoState,
+  unitPhotoStateRank,
+  type UnitPhotoState,
+} from '@/lib/site-photos';
 
 /** The server's `UnitFilterDto` limit cap. */
 export const SITE_LIST_CAP = 200;
@@ -134,6 +139,10 @@ export function groupByPhase(units: readonly UnitRow[]): SitePhaseGroup[] {
  * The phase rail accent, cycling by phase index. This is the ONLY decorative
  * colour in the product: it is stable per phase (the same rail on every visit)
  * and it stays on the rail and the phase heading.
+ *
+ * The rail is 4px by design (`docs/designs/2026-11-08-site-capture-redesign.prompt.md`).
+ * The design detector's `side-tab` rule flags that shape; the waiver and the
+ * reason live at the call site in `SiteHome.tsx`, next to the class string.
  */
 const PHASE_ACCENTS = ['sky', 'violet', 'teal', 'amber'] as const;
 export type PhaseAccent = (typeof PHASE_ACCENTS)[number];
@@ -205,9 +214,10 @@ export const SITE_SCOPE_COPY = {
 } as const;
 
 /** The empty-state copy for a scope (admin/owner see the generic one). */
-export function siteEmptyCopyFor(
-  scope: 'ASSIGNED' | 'MANAGED' | 'ALL' | null | undefined,
-): { title: string; body: string } {
+export function siteEmptyCopyFor(scope: 'ASSIGNED' | 'MANAGED' | 'ALL' | null | undefined): {
+  title: string;
+  body: string;
+} {
   if (scope === 'ASSIGNED') return SITE_EMPTY_COPY.noAssignments;
   if (scope === 'MANAGED') return SITE_EMPTY_COPY.noManaged;
   return SITE_EMPTY_COPY.noUnits;

@@ -113,7 +113,9 @@ describe('SitePhotoViewer', () => {
 describe('PortalStageStepper', () => {
   it('renders one segment per stage, in enum order', () => {
     const html = renderToStaticMarkup(<PortalStageStepper currentStage="STRUCTURE" />);
-    const segments = [...html.matchAll(/data-qa="portal-stage-segment-([a-z_]+)"/g)].map((m) => m[1]);
+    const segments = [...html.matchAll(/data-qa="portal-stage-segment-([a-z_]+)"/g)].map(
+      (m) => m[1],
+    );
     expect(segments).toEqual(CONSTRUCTION_STAGE_ORDER.map((s) => s.toLowerCase()));
   });
 

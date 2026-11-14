@@ -19,11 +19,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
@@ -59,9 +55,7 @@ async function seedAdmin<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function teamlessActor(
-  overrides: Pick<JwtPayload, 'sub' | 'role'>,
-): JwtPayload {
+function teamlessActor(overrides: Pick<JwtPayload, 'sub' | 'role'>): JwtPayload {
   return {
     sub: overrides.sub,
     email: `${overrides.sub}@test.local`,
@@ -136,15 +130,12 @@ afterAll(async () => {
 describe('LeadsService.create - teamless ADMIN/OWNER (T-TEAMLESS-CREATE)', () => {
   it('ADMIN with no teamId creates a lead in the default team', async () => {
     if (prisma === null) return; // skip if no DB
-    const lead = await service.create(
-      teamlessActor({ sub: ADMIN_ID, role: 'ADMIN' }),
-      {
-        name: `Teamless Admin Lead ${RUN_TAG}`,
-        phone: `9199${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
-        source: 'REFERRAL',
-        projectId: PROJECT_ID,
-      },
-    );
+    const lead = await service.create(teamlessActor({ sub: ADMIN_ID, role: 'ADMIN' }), {
+      name: `Teamless Admin Lead ${RUN_TAG}`,
+      phone: `9199${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
+      source: 'REFERRAL',
+      projectId: PROJECT_ID,
+    });
     LEAD_IDS.push(lead.id);
     expect(lead.id).toBeTruthy();
     // The created lead must be stamped into a real team (the default one),
@@ -167,15 +158,12 @@ describe('LeadsService.create - teamless ADMIN/OWNER (T-TEAMLESS-CREATE)', () =>
       expect(OWNER_ID).toBeTruthy();
       return;
     }
-    const lead = await service.create(
-      teamlessActor({ sub: OWNER_ID, role: 'OWNER' }),
-      {
-        name: `Teamless Owner Lead ${RUN_TAG}`,
-        phone: `9198${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
-        source: 'WALK_IN',
-        projectId: PROJECT_ID,
-      },
-    );
+    const lead = await service.create(teamlessActor({ sub: OWNER_ID, role: 'OWNER' }), {
+      name: `Teamless Owner Lead ${RUN_TAG}`,
+      phone: `9198${RUN_TAG.replace(/\D/g, '').slice(-8)}`,
+      source: 'WALK_IN',
+      projectId: PROJECT_ID,
+    });
     LEAD_IDS.push(lead.id);
     expect(lead.id).toBeTruthy();
     const row = await seedAdmin((db) =>

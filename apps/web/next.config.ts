@@ -27,7 +27,8 @@ const SECURITY_HEADERS = [
  * missing var cannot silently produce an unlisted-host crash.
  */
 function mediaCdnPattern(): NonNullable<NonNullable<NextConfig['images']>['remotePatterns']> {
-  const endpoint = process.env.MEDIA_CDN_URL ?? process.env.IMAGEKIT_URL_ENDPOINT ?? 'https://ik.imagekit.io';
+  const endpoint =
+    process.env.MEDIA_CDN_URL ?? process.env.IMAGEKIT_URL_ENDPOINT ?? 'https://ik.imagekit.io';
   try {
     const url = new URL(endpoint);
     return [
@@ -133,15 +134,11 @@ const nextConfig: NextConfig = {
     // scoped to /leads/* and /visits/* (the field-data entry points).
     {
       source: '/leads/:path*',
-      headers: [
-        { key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self)' },
-      ],
+      headers: [{ key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self)' }],
     },
     {
       source: '/visits/:path*',
-      headers: [
-        { key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self)' },
-      ],
+      headers: [{ key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self)' }],
     },
   ],
 
@@ -183,7 +180,7 @@ export default withSerwistInit({
         // keep the poisoned entry, so salt the revision to force a re-fetch.
         revision:
           e.url === '/sw.js'
-            ? process.env.BUILD_ID ?? 'local'
+            ? (process.env.BUILD_ID ?? 'local')
             : e.url === '/cmda-plan.svg'
               ? `${e.revision ?? ''}-public-v2`
               : e.revision,
@@ -191,5 +188,3 @@ export default withSerwistInit({
     }),
   ],
 })(nextConfig);
-
-

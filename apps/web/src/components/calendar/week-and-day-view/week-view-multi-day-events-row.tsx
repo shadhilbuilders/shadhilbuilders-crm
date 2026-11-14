@@ -55,8 +55,8 @@ export function WeekViewMultiDayEventsRow({ selectedDate, multiDayEvents }: IPro
     const rows: (typeof processedEvents)[] = [];
 
     processedEvents.forEach((event) => {
-      let rowIndex = rows.findIndex(
-        (row) => row.every((e) => e.endIndex < event.startIndex || e.startIndex > event.endIndex),
+      let rowIndex = rows.findIndex((row) =>
+        row.every((e) => e.endIndex < event.startIndex || e.startIndex > event.endIndex),
       );
 
       if (rowIndex === -1) {

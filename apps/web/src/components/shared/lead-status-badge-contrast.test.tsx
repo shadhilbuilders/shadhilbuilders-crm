@@ -46,16 +46,11 @@ function srgbToLinear(channel: number): number {
 
 function relativeLuminance(rgb: [number, number, number]): number {
   return (
-    0.2126 * srgbToLinear(rgb[0]) +
-    0.7152 * srgbToLinear(rgb[1]) +
-    0.0722 * srgbToLinear(rgb[2])
+    0.2126 * srgbToLinear(rgb[0]) + 0.7152 * srgbToLinear(rgb[1]) + 0.0722 * srgbToLinear(rgb[2])
   );
 }
 
-function contrastRatio(
-  fg: [number, number, number],
-  bg: [number, number, number],
-): number {
+function contrastRatio(fg: [number, number, number], bg: [number, number, number]): number {
   const lFg = relativeLuminance(fg);
   const lBg = relativeLuminance(bg);
   const lighter = Math.max(lFg, lBg);
@@ -130,7 +125,11 @@ const BADGE_PAIRS = [
 // `node_modules/@paalstack/react-ui/dist/base.css` (library defaults).
 type RgbTriple = [number, number, number];
 
-interface Oklch { l: number; c: number; h: number }
+interface Oklch {
+  l: number;
+  c: number;
+  h: number;
+}
 
 /** Convert an Oklch color to gamma-encoded sRGB (0-1 per channel). */
 function oklchToSrgb({ l, c, h }: Oklch): RgbTriple {
@@ -168,35 +167,32 @@ function toRgbBytes([r, g, b]: RgbTriple): RgbTriple {
 // defaults. See the comment block above for the source-of-truth.
 const RESOLVED_TOKENS: Record<string, Oklch> = {
   // ── Library defaults (untouched by T-D8) ──
-  'success-soft':         { l: 0.96,  c: 0.035, h: 160 },
-  'warning':               { l: 0.72,  c: 0.17,  h: 70  },
-  'warning-foreground':    { l: 0.25,  c: 0.04,  h: 70  },
-  'warning-soft':         { l: 0.97,  c: 0.04,  h: 90  },
-  'destructive-soft':     { l: 0.96,  c: 0.035, h: 25  },
-  'info-soft':             { l: 0.96,  c: 0.035, h: 255 },
-  'secondary':             { l: 0.684, c: 0.178, h: 136.1 },
-  'secondary-foreground':  { l: 0.145, c: 0,     h: 0   },
+  'success-soft': { l: 0.96, c: 0.035, h: 160 },
+  warning: { l: 0.72, c: 0.17, h: 70 },
+  'warning-foreground': { l: 0.25, c: 0.04, h: 70 },
+  'warning-soft': { l: 0.97, c: 0.04, h: 90 },
+  'destructive-soft': { l: 0.96, c: 0.035, h: 25 },
+  'info-soft': { l: 0.96, c: 0.035, h: 255 },
+  secondary: { l: 0.684, c: 0.178, h: 136.1 },
+  'secondary-foreground': { l: 0.145, c: 0, h: 0 },
   // Library's near-white foregrounds (the strong-variant fg).
   // T-D8 didn't change these - it darkened the BG instead. They
   // are still oklch(0.99 0 0) (near-white) and only pass AA on
   // the now-darker (T-D8-overridden) bg values.
-  'success-foreground':     { l: 0.99,  c: 0,     h: 0   },
-  'destructive-foreground': { l: 0.99,  c: 0,     h: 0   },
-  'info-foreground':         { l: 0.99,  c: 0,     h: 0   },
+  'success-foreground': { l: 0.99, c: 0, h: 0 },
+  'destructive-foreground': { l: 0.99, c: 0, h: 0 },
+  'info-foreground': { l: 0.99, c: 0, h: 0 },
   // ── T-D8 overrides (commit d2a3dcd) ──
-  'success':               { l: 0.530, c: 0.16,  h: 160 },
-  'destructive':           { l: 0.585, c: 0.21,  h: 25  },
-  'info':                   { l: 0.560, c: 0.19,  h: 255 },
-  'success-soft-fg':        { l: 0.495, c: 0.16,  h: 160 },
-  'destructive-soft-fg':   { l: 0.495, c: 0.21,  h: 25  },
-  'info-soft-fg':           { l: 0.495, c: 0.19,  h: 255 },
+  success: { l: 0.53, c: 0.16, h: 160 },
+  destructive: { l: 0.585, c: 0.21, h: 25 },
+  info: { l: 0.56, c: 0.19, h: 255 },
+  'success-soft-fg': { l: 0.495, c: 0.16, h: 160 },
+  'destructive-soft-fg': { l: 0.495, c: 0.21, h: 25 },
+  'info-soft-fg': { l: 0.495, c: 0.19, h: 255 },
 };
 
 const lightTokens: Record<string, RgbTriple> = Object.fromEntries(
-  Object.entries(RESOLVED_TOKENS).map(([name, oklch]) => [
-    name,
-    toRgbBytes(oklchToSrgb(oklch)),
-  ]),
+  Object.entries(RESOLVED_TOKENS).map(([name, oklch]) => [name, toRgbBytes(oklchToSrgb(oklch))]),
 );
 
 function pairContrast(
@@ -285,9 +281,6 @@ describe('T-D8: brand color contrast (foreground/background pairings the UI actu
     const navy: [number, number, number] = [0x00, 0x1a, 0x4c];
     const white: [number, number, number] = [255, 255, 255];
     const ratio = contrastRatio(white, navy);
-    expect(
-      ratio,
-      `white text on #001a4c is ${ratio.toFixed(2)}:1`,
-    ).toBeGreaterThanOrEqual(7.0);
+    expect(ratio, `white text on #001a4c is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(7.0);
   });
 });

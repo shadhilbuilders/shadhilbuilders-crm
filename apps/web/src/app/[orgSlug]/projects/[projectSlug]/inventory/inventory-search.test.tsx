@@ -50,7 +50,7 @@ const src = stripLineComments(raw);
 
 describe('inventory search - DataTable wiring in the page source', () => {
   it('the comment stripper does not eat real code (guard for the guard)', () => {
-    const sample = "a//comment\nconst x = 1; // trailing";
+    const sample = 'a//comment\nconst x = 1; // trailing';
     const out = stripLineComments(sample);
     expect(out).toContain('const x = 1;');
     expect(out).not.toContain('comment');

@@ -12,7 +12,8 @@ export function useProjectMilestones(projectId: string | null) {
   return useQuery({
     queryKey: key(projectId ?? ''),
     enabled: projectId !== null,
-    queryFn: ({ signal }) => api<ProjectMilestoneRow[]>(`/milestones/${projectId as string}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<ProjectMilestoneRow[]>(`/milestones/${projectId as string}`, { signal }),
     staleTime: 30_000,
   });
 }

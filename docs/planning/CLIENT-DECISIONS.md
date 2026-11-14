@@ -14,23 +14,23 @@ the client, full rationale in §2.
 
 ## 1. At-a-glance decisions (send to client)
 
-| # | Question | **Our answer** | Rationale tag |
-|---|---|---|---|
-| Q0 | WhatsApp Business number | **New production-approved number, separate from landing site.** | Reliability |
-| Q1 | Concurrent users (v1 / v2) | **v1: 5-15. v2 (year 2): scale to 50-200.** | Scalability |
-| Q2 | Booking-to-agreement flow | **Lawyer-mediated today; CRM v1 captures the handoff, v1.1 adds agreement generation.** | Adaptability |
-| Q3 | RERA / TN compliance | **RERA Tamil Nadu: 5-year audit log retention, DPDP Act consent capture, both built into v1.** | Reliability (legal) |
-| Q4 | Leads/month | **v1: 100-500/month (single project). v2: 1,000+/month (multi-project).** | Scalability |
-| Q5 | Mobile vs desktop | **PWA in v1 + Expo in v1.1 (not optional, both ship).** | Adaptability |
-| Q8 | Manager dashboard KPIs | **Funnel + handoff latency + per-exec bookings + source ROI.** v1 ships all 4. | Adaptability |
-| Q9 | Manager account creation | **Admin in-app creates all roles including first manager.** | Adaptability |
-| Q10 | Telephony vendor | **FreJun** (already locked). | Scalability |
-| Q11 | Call recording on cloud number | **Yes, recording ON by default. AI transcription too.** | Reliability (oversight) |
-| Q12 | Audit log retention | **7 years (RERA upper bound). Immutable, R2-archived.** | Reliability (legal) |
-| Q13 | Manager visibility scope | **Per-team ONLY.** Cross-team visibility is Admin only. | Reliability (RBAC) |
-| Q14 | Sites in v1 | **Mudichur only. Data model multi-site from day 1, UI gates.** | Scalability |
-| Q15 | Handoff trigger | **Automatic on visit outcome (Model C). ManagerAssignmentRule picks the exec. Telecaller cannot manually trigger handoff - there is no manual handoff.** *(Supersedes original "one-click from telecaller" decision; see CLIENT-FEEDBACK-v12 for Model C rationale.)* | Adaptability |
-| Q16 | Confirm FreJun | **Confirmed (recommended).** | (locked) |
+| #   | Question                       | **Our answer**                                                                                                                                                                                                                                                        | Rationale tag           |
+| --- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Q0  | WhatsApp Business number       | **New production-approved number, separate from landing site.**                                                                                                                                                                                                       | Reliability             |
+| Q1  | Concurrent users (v1 / v2)     | **v1: 5-15. v2 (year 2): scale to 50-200.**                                                                                                                                                                                                                           | Scalability             |
+| Q2  | Booking-to-agreement flow      | **Lawyer-mediated today; CRM v1 captures the handoff, v1.1 adds agreement generation.**                                                                                                                                                                               | Adaptability            |
+| Q3  | RERA / TN compliance           | **RERA Tamil Nadu: 5-year audit log retention, DPDP Act consent capture, both built into v1.**                                                                                                                                                                        | Reliability (legal)     |
+| Q4  | Leads/month                    | **v1: 100-500/month (single project). v2: 1,000+/month (multi-project).**                                                                                                                                                                                             | Scalability             |
+| Q5  | Mobile vs desktop              | **PWA in v1 + Expo in v1.1 (not optional, both ship).**                                                                                                                                                                                                               | Adaptability            |
+| Q8  | Manager dashboard KPIs         | **Funnel + handoff latency + per-exec bookings + source ROI.** v1 ships all 4.                                                                                                                                                                                        | Adaptability            |
+| Q9  | Manager account creation       | **Admin in-app creates all roles including first manager.**                                                                                                                                                                                                           | Adaptability            |
+| Q10 | Telephony vendor               | **FreJun** (already locked).                                                                                                                                                                                                                                          | Scalability             |
+| Q11 | Call recording on cloud number | **Yes, recording ON by default. AI transcription too.**                                                                                                                                                                                                               | Reliability (oversight) |
+| Q12 | Audit log retention            | **7 years (RERA upper bound). Immutable, R2-archived.**                                                                                                                                                                                                               | Reliability (legal)     |
+| Q13 | Manager visibility scope       | **Per-team ONLY.** Cross-team visibility is Admin only.                                                                                                                                                                                                               | Reliability (RBAC)      |
+| Q14 | Sites in v1                    | **Mudichur only. Data model multi-site from day 1, UI gates.**                                                                                                                                                                                                        | Scalability             |
+| Q15 | Handoff trigger                | **Automatic on visit outcome (Model C). ManagerAssignmentRule picks the exec. Telecaller cannot manually trigger handoff - there is no manual handoff.** _(Supersedes original "one-click from telecaller" decision; see CLIENT-FEEDBACK-v12 for Model C rationale.)_ | Adaptability            |
+| Q16 | Confirm FreJun                 | **Confirmed (recommended).**                                                                                                                                                                                                                                          | (locked)                |
 
 ---
 
@@ -76,6 +76,7 @@ we can avoid by provisioning a separate number.
 a small team for v1. But "200+ projects delivered" and the UAE
 branch suggest Shadhil may grow this internally. Building for
 50-200 from day 1 means:
+
 - PgBouncer in session pooling mode (already designed)
 - NestJS behind a reverse proxy with health checks (Coolify
   handles this)
@@ -120,6 +121,7 @@ template generation and e-sign.
 
 **Why:** v1 needs to support the EXISTING workflow (lawyer-mediated
 agreement), not replace it. The CRM's job is to:
+
 - Mark a lead as `BOOKING_INITIATED` when token is received
 - Capture token amount + date
 - Track which lawyer is handling the agreement
@@ -142,6 +144,7 @@ Ship fast, optimize later.
 
 **Decision:** RERA Tamil Nadu + DPDP Act requirements built into
 v1. Specifically:
+
 - 5-year minimum audit log retention (Q12: 7 years to be safe)
 - DPDP Act consent capture on the landing site lead form AND
   in the CRM when capturing customer PII
@@ -173,6 +176,7 @@ optional.
 **Why:** The client's stated requirement is "every agent uses
 the app." Field sales execs are on their personal phones. A
 responsive web app in a phone browser has real friction:
+
 - No home-screen icon (visually buried in browser tabs)
 - No push notifications on iOS (Apple restriction on PWA push)
 - "Add to home screen" prompt confuses non-technical users
@@ -193,6 +197,7 @@ pushes adoption to 95%+.
 ### Q8 - Manager dashboard KPIs
 
 **Decision:** v1 ships 4 widgets, not 1:
+
 1. **Funnel** - leads by status (NEW → CONTACTED → VISITED →
    WON/LOST), with conversion % between stages
 2. **Handoff latency** - median time from VISIT_REQUESTED to
@@ -206,6 +211,7 @@ pushes adoption to 95%+.
 "monitor by application." One funnel widget isn't enough
 oversight. These 4 are the minimum for a manager to do their
 job. All 4 are simple Prisma aggregations on existing tables
+
 - no new schema needed.
 
 **"Should not fail even 1 ms" impact:** Manager oversight IS
@@ -281,6 +287,7 @@ transitions, messages sent/received, calls placed/received,
 consent captures, booking events, agreement uploads.
 
 Storage plan:
+
 - Hot (queryable): last 90 days in Postgres
   (`AuditLog` table with proper indexes)
 - Warm: 90 days - 1 year in Postgres (partitioned or
@@ -380,6 +387,7 @@ No change. See Q10 + CLIENT-FEEDBACK-v6 for rationale.
 ## 3. What this changes in DESIGN.md
 
 When applied:
+
 - §1 Roles: no change (Q9 locked)
 - §2 Modules: no change
 - §3 Lifecycle: handoff is automatic on visit outcome, Model C (Q15 - v3.1 update, supersedes one-click from telecaller)
@@ -418,25 +426,26 @@ require multi-region, which is out of scope for v1.
 
 ### What breaks the "no failure" promise and how we prevent it
 
-| Failure mode | How it happens | Prevention |
-|---|---|---|
-| **VPS goes down** | Hardware failure, network, OOM, kernel panic | Hostinger SLA 99.9%, Coolify auto-restart, health check every 30s, swap if VPS dies (separate VPS, same DB) |
-| **Postgres crashes** | Disk full, OOM, corruption | Daily `pg_dump` to R2, `pg_basebackup` weekly, 7-day point-in-time via WAL archiving, replica in v2 |
-| **Redis crashes** | OOM, disk full | AOF persistence, maxmemory policy = `noeviction` for pub/sub (don't drop messages), restart and resubscribe |
-| **NestJS app crashes** | Unhandled exception, OOM | Coolify restart policy, 3 retry, health check at `/health`, multi-instance in v2 |
-| **Next.js app crashes** | Same | Same |
-| **WhatsApp webhook delivery fails** | Network blip, app down | FreJun + WhatsApp both retry with exponential backoff. We log every webhook attempt. Dead-letter queue in Redis for failed processing. |
-| **FreJun call webhook fails** | Same | Same. Calls are recorded on FreJun's side anyway; webhook failure means we miss the metadata, not the recording. |
-| **Database connection pool exhausted** | Too many concurrent requests | PgBouncer in transaction pooling mode (v2). v1 uses session pooling. Hard limit on Prisma pool size per instance. |
-| **Cert expires** | Let's Encrypt 90-day cert | Coolify auto-renews. Monitor expiry with UptimeRobot or similar. |
-| **Deploy breaks production** | Bad migration, bad config | Coolify blue/green deploys (zero-downtime), health check before traffic, automatic rollback on health check fail |
-| **Disk fills up** | Logs grow, Postgres WAL, recordings | Log rotation, log shipping to R2, recording archive to R2 after 90 days, alert at 70% disk usage |
-| **Meta API rate limit** | Too many WhatsApp sends | Token-bucket rate limiter in NestJS, queue sends, retry on 429 |
-| **Backups fail silently** | Cron dies, R2 credentials expire | Backup runs log to a Slack/Telegram channel. Weekly restore test (cron + manual verify). |
+| Failure mode                           | How it happens                               | Prevention                                                                                                                             |
+| -------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **VPS goes down**                      | Hardware failure, network, OOM, kernel panic | Hostinger SLA 99.9%, Coolify auto-restart, health check every 30s, swap if VPS dies (separate VPS, same DB)                            |
+| **Postgres crashes**                   | Disk full, OOM, corruption                   | Daily `pg_dump` to R2, `pg_basebackup` weekly, 7-day point-in-time via WAL archiving, replica in v2                                    |
+| **Redis crashes**                      | OOM, disk full                               | AOF persistence, maxmemory policy = `noeviction` for pub/sub (don't drop messages), restart and resubscribe                            |
+| **NestJS app crashes**                 | Unhandled exception, OOM                     | Coolify restart policy, 3 retry, health check at `/health`, multi-instance in v2                                                       |
+| **Next.js app crashes**                | Same                                         | Same                                                                                                                                   |
+| **WhatsApp webhook delivery fails**    | Network blip, app down                       | FreJun + WhatsApp both retry with exponential backoff. We log every webhook attempt. Dead-letter queue in Redis for failed processing. |
+| **FreJun call webhook fails**          | Same                                         | Same. Calls are recorded on FreJun's side anyway; webhook failure means we miss the metadata, not the recording.                       |
+| **Database connection pool exhausted** | Too many concurrent requests                 | PgBouncer in transaction pooling mode (v2). v1 uses session pooling. Hard limit on Prisma pool size per instance.                      |
+| **Cert expires**                       | Let's Encrypt 90-day cert                    | Coolify auto-renews. Monitor expiry with UptimeRobot or similar.                                                                       |
+| **Deploy breaks production**           | Bad migration, bad config                    | Coolify blue/green deploys (zero-downtime), health check before traffic, automatic rollback on health check fail                       |
+| **Disk fills up**                      | Logs grow, Postgres WAL, recordings          | Log rotation, log shipping to R2, recording archive to R2 after 90 days, alert at 70% disk usage                                       |
+| **Meta API rate limit**                | Too many WhatsApp sends                      | Token-bucket rate limiter in NestJS, queue sends, retry on 429                                                                         |
+| **Backups fail silently**              | Cron dies, R2 credentials expire             | Backup runs log to a Slack/Telegram channel. Weekly restore test (cron + manual verify).                                               |
 
 ### The "high availability" plan for v1 (single VPS)
 
 Single VPS is not true HA. For 99.95% uptime, we need:
+
 - Primary VPS in Mumbai (Hostinger India)
 - Backup VPS in Singapore (Hostinger APAC) - same DB,
   read-only standby, promoted on primary failure
@@ -451,6 +460,7 @@ tests + 99.9% uptime target. v2 adds the standby VPS +
 ### The "should not fail" monitoring stack
 
 Every service emits metrics to a monitoring system:
+
 - Coolify's built-in health checks (HTTP `/health` endpoints)
 - Better Stack (free tier) for uptime monitoring + alerting
 - Sentry for error tracking (free tier, 5K events/month)
@@ -506,6 +516,7 @@ conversation, not v1.
 
 "Adapt" is the word I'd push on hardest. The system
 needs to be MODIFIABLE, not just available. That means:
+
 - Code is organized so a new module (say, broker network
   management in v1.1) is a 2-week add, not a 2-month
   refactor

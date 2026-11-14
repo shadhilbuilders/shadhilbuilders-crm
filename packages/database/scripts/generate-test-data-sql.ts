@@ -129,16 +129,66 @@ function ahead(hours: number): string {
 
 // ── Name pools (deterministic, realistic) ───────────────────────────────────
 const FIRST = [
-  'Priya', 'Arjun', 'Kavya', 'Rahul', 'Anita', 'Sanjay', 'Deepa', 'Vikram',
-  'Meera', 'Rohan', 'Sneha', 'Karthik', 'Divya', 'Ajay', 'Lakshmi', 'Suresh',
-  'Nithya', 'Gopal', 'Aishwarya', 'Hari', 'Pooja', 'Naveen', 'Shalini', 'Manoj',
-  'Revathi', 'Senthil', 'Bhavana', 'Praveen', 'Yamini', 'Dinesh', 'Charu',
-  'Ashwin', 'Gayathri', 'Ravi', 'Nandini', 'Suresh Kumar', 'Tejaswini', 'Vignesh',
+  'Priya',
+  'Arjun',
+  'Kavya',
+  'Rahul',
+  'Anita',
+  'Sanjay',
+  'Deepa',
+  'Vikram',
+  'Meera',
+  'Rohan',
+  'Sneha',
+  'Karthik',
+  'Divya',
+  'Ajay',
+  'Lakshmi',
+  'Suresh',
+  'Nithya',
+  'Gopal',
+  'Aishwarya',
+  'Hari',
+  'Pooja',
+  'Naveen',
+  'Shalini',
+  'Manoj',
+  'Revathi',
+  'Senthil',
+  'Bhavana',
+  'Praveen',
+  'Yamini',
+  'Dinesh',
+  'Charu',
+  'Ashwin',
+  'Gayathri',
+  'Ravi',
+  'Nandini',
+  'Suresh Kumar',
+  'Tejaswini',
+  'Vignesh',
 ];
 const LAST = [
-  'Sharma', 'Reddy', 'Iyer', 'Verma', 'Krishnan', 'Patel', 'Nair', 'Singh',
-  'Joshi', 'Gupta', 'Rao', 'Menon', 'Balan', 'Pillai', 'Subramanian', 'Kumar',
-  'Naidu', 'Chettiar', 'Mudaliar', 'Desai',
+  'Sharma',
+  'Reddy',
+  'Iyer',
+  'Verma',
+  'Krishnan',
+  'Patel',
+  'Nair',
+  'Singh',
+  'Joshi',
+  'Gupta',
+  'Rao',
+  'Menon',
+  'Balan',
+  'Pillai',
+  'Subramanian',
+  'Kumar',
+  'Naidu',
+  'Chettiar',
+  'Mudaliar',
+  'Desai',
 ];
 function personName(i: number): string {
   return `${FIRST[i % FIRST.length]!} ${LAST[(i * 7 + 3) % LAST.length]!}`;
@@ -290,9 +340,18 @@ for (const spec of unitSpec) {
 
 // ── Leads ───────────────────────────────────────────────────────────────────
 const LEAD_STATES = [
-  'NEW', 'CONTACTED', 'VISIT_REQUESTED', 'VISIT_SCHEDULED', 'VISITED',
-  'NEGOTIATION', 'BOOKING_INITIATED', 'WON', 'LOST', 'RNR',
-  'RESCHEDULED', 'NO_SHOW',
+  'NEW',
+  'CONTACTED',
+  'VISIT_REQUESTED',
+  'VISIT_SCHEDULED',
+  'VISITED',
+  'NEGOTIATION',
+  'BOOKING_INITIATED',
+  'WON',
+  'LOST',
+  'RNR',
+  'RESCHEDULED',
+  'NO_SHOW',
 ] as const;
 const SOURCES = ['META_AD', 'LANDING', 'REFERRAL', 'WALK_IN', 'GOOGLE', 'WEBSITE'];
 
@@ -402,7 +461,17 @@ ${insert(
 -- ── Test OWNER user (exists; kept for a standalone re-provision) ────────────
 ${insert(
   'User',
-  ['id', 'email', 'name', 'role', 'organizationId', 'emailVerified', 'mustChangePassword', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'email',
+    'name',
+    'role',
+    'organizationId',
+    'emailVerified',
+    'mustChangePassword',
+    'createdAt',
+    'updatedAt',
+  ],
   [
     `(${q(TEST_USER_ID)}, ${q(TEST_USER_EMAIL)}, ${q(TEST_USER_NAME)}, 'OWNER'::"Role", ${q(ORG_ID)}, true, false, NOW(), NOW())`,
   ],
@@ -423,7 +492,17 @@ ${insert(
 -- ── ${N_TELE + N_SALES + N_MGR} staff users (${N_TELE} telecallers, ${N_SALES} sales execs, ${N_MGR} managers) ──
 ${insert(
   'User',
-  ['id', 'email', 'name', 'role', 'organizationId', 'emailVerified', 'mustChangePassword', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'email',
+    'name',
+    'role',
+    'organizationId',
+    'emailVerified',
+    'mustChangePassword',
+    'createdAt',
+    'updatedAt',
+  ],
   staff
     .filter((u) => u.role !== 'ADMIN')
     .map(
@@ -439,7 +518,17 @@ ${insert(
 -- ── ${N_ADMIN} admin users (org-wide; no team) ───────────────────────────────
 ${insert(
   'User',
-  ['id', 'email', 'name', 'role', 'organizationId', 'emailVerified', 'mustChangePassword', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'email',
+    'name',
+    'role',
+    'organizationId',
+    'emailVerified',
+    'mustChangePassword',
+    'createdAt',
+    'updatedAt',
+  ],
   admins.map(
     (u, i) =>
       `(${q(u.id)}, ${q(u.email)}, ${q(u.name)}, 'ADMIN'::"Role", ${q(ORG_ID)}, true, false, ${ago(24 * 20 + i * 5)}, NOW())`,
@@ -466,7 +555,9 @@ ${insert(
 ${insert(
   'Team',
   ['id', 'name', 'managerId', 'organizationId', 'autoAssignLeads', 'createdAt'],
-  teams.map((t) => `(${q(t.id)}, ${q(t.name)}, ${q(t.managerId)}, ${q(ORG_ID)}, true, ${ago(24 * 29)})`),
+  teams.map(
+    (t) => `(${q(t.id)}, ${q(t.name)}, ${q(t.managerId)}, ${q(ORG_ID)}, true, ${ago(24 * 29)})`,
+  ),
   { cols: ['organizationId', 'name'], update: ['name', 'managerId', 'organizationId'] },
 )}
 
@@ -536,7 +627,19 @@ ${insert(
 -- ── ${N_UNITS} units (status is trigger-derived from bookings - never seeded) ─
 ${insert(
   'Unit',
-  ['id', 'phaseId', 'organizationId', 'unitNumber', 'bhk', 'facing', 'sqft', 'buildupSqft', 'pricePerSqft', 'price', 'createdAt'],
+  [
+    'id',
+    'phaseId',
+    'organizationId',
+    'unitNumber',
+    'bhk',
+    'facing',
+    'sqft',
+    'buildupSqft',
+    'pricePerSqft',
+    'price',
+    'createdAt',
+  ],
   units.map(
     (u) =>
       `(${q(u.id)}, ${q(u.phaseId)}, ${q(ORG_ID)}, ${q(u.unitNumber)}, ${u.bhk}, ${q(u.facing)}, ${u.sqft}, ${n(u.sqft)}, ${n(u.pps)}, ${n(Math.round(u.sqft * u.pps * 100) / 100)}, ${ago(24 * 26)})`,
@@ -550,14 +653,43 @@ ${insert(
 -- ── ${N_LEADS} leads (12 per LeadState - every state populated) ─────────────
 ${insert(
   'Lead',
-  ['id', 'name', 'phone', 'phoneE164', 'email', 'source', 'state', 'ownerId', 'ownerType', 'coOwnerId', 'teamId', 'organizationId', 'projectId', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'name',
+    'phone',
+    'phoneE164',
+    'email',
+    'source',
+    'state',
+    'ownerId',
+    'ownerType',
+    'coOwnerId',
+    'teamId',
+    'organizationId',
+    'projectId',
+    'createdAt',
+    'updatedAt',
+  ],
   leads.map((l, i) => {
     const coOwner = i % 5 === 0 ? tele[(i + 7) % tele.length]! : null;
     return `(${q(l.id)}, ${q(l.name)}, ${q(l.phone)}, ${q('91' + l.phone)}, ${q(`lead${i + 1}@example.in`)}, ${q(l.source)}, ${q(l.state)}::"LeadState", ${q(l.ownerId)}, ${q(l.ownerType)}::"LeadOwnerType", ${q(coOwner?.id ?? null)}, ${q(l.teamId)}, ${q(ORG_ID)}, ${q(l.projectId)}, ${ago(l.ageHours)}, ${ago(Math.max(1, l.ageHours - 6))})`;
   }),
   {
     cols: ['phone'],
-    update: ['name', 'phoneE164', 'email', 'source', 'state', 'ownerId', 'ownerType', 'coOwnerId', 'teamId', 'organizationId', 'projectId', 'updatedAt'],
+    update: [
+      'name',
+      'phoneE164',
+      'email',
+      'source',
+      'state',
+      'ownerId',
+      'ownerType',
+      'coOwnerId',
+      'teamId',
+      'organizationId',
+      'projectId',
+      'updatedAt',
+    ],
   },
 )}
 
@@ -590,14 +722,15 @@ ${insert(
 ${insert(
   'Message',
   ['id', 'leadId', 'organizationId', 'userId', 'direction', 'channel', 'kind', 'body', 'createdAt'],
-  leads.flatMap((l) =>
-    [
-      `(${q(detId(`msg:${l.id}:0`))}, ${q(l.id)}, ${q(ORG_ID)}, NULL, 'IN'::"MessageDirection", 'WHATSAPP'::"MessageChannel", 'CUSTOMER'::"MessageKind", 'Hi, I saw your project listing. Can you share the price for a 3BHK?', ${ago(l.ageHours)})`,
-      `(${q(detId(`msg:${l.id}:1`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(l.ownerId)}, 'OUT'::"MessageDirection", 'WHATSAPP'::"MessageChannel", 'CUSTOMER'::"MessageKind", 'Thanks for reaching out! Sharing the price sheet and floor plans now.', ${ago(Math.max(1, l.ageHours - 1))})`,
-      `(${q(detId(`msg:${l.id}:2`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(l.ownerId)}, 'OUT'::"MessageDirection", 'IN_APP'::"MessageChannel", 'INTERNAL'::"MessageKind", 'Internal note: buyer is comparing two projects - follow up tomorrow.', ${ago(Math.max(1, l.ageHours - 2))})`,
-    ],
-  ),
-  { cols: ['id'], update: ['leadId', 'organizationId', 'userId', 'direction', 'channel', 'kind', 'body'] },
+  leads.flatMap((l) => [
+    `(${q(detId(`msg:${l.id}:0`))}, ${q(l.id)}, ${q(ORG_ID)}, NULL, 'IN'::"MessageDirection", 'WHATSAPP'::"MessageChannel", 'CUSTOMER'::"MessageKind", 'Hi, I saw your project listing. Can you share the price for a 3BHK?', ${ago(l.ageHours)})`,
+    `(${q(detId(`msg:${l.id}:1`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(l.ownerId)}, 'OUT'::"MessageDirection", 'WHATSAPP'::"MessageChannel", 'CUSTOMER'::"MessageKind", 'Thanks for reaching out! Sharing the price sheet and floor plans now.', ${ago(Math.max(1, l.ageHours - 1))})`,
+    `(${q(detId(`msg:${l.id}:2`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(l.ownerId)}, 'OUT'::"MessageDirection", 'IN_APP'::"MessageChannel", 'INTERNAL'::"MessageKind", 'Internal note: buyer is comparing two projects - follow up tomorrow.', ${ago(Math.max(1, l.ageHours - 2))})`,
+  ]),
+  {
+    cols: ['id'],
+    update: ['leadId', 'organizationId', 'userId', 'direction', 'channel', 'kind', 'body'],
+  },
 )}
 
 -- ── Site visits: one per lead (${N_LEADS}), all 5 VisitStatus, both projects ─
@@ -613,7 +746,19 @@ ${insert(
 -- that, and the id is keyed to the lead INDEX so re-runs update in place.)
 ${insert(
   'SiteVisit',
-  ['id', 'leadId', 'organizationId', 'userId', 'scheduledFor', 'status', 'outcome', 'notes', 'reminderSentAt', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'leadId',
+    'organizationId',
+    'userId',
+    'scheduledFor',
+    'status',
+    'outcome',
+    'notes',
+    'reminderSentAt',
+    'createdAt',
+    'updatedAt',
+  ],
   leads.map((l, i) => {
     const plan = VISIT_PLAN[l.state] ?? { status: 'CANCELLED', open: false };
     // Open visits sit on a future business hour (the calendar is an hourly
@@ -628,12 +773,23 @@ ${insert(
           ? 'Customer did not turn up and gave no prior notice.'
           : null;
     // reminderSentAt only makes sense for a visit that already happened.
-    const reminderSentAt = plan.status === 'COMPLETED' || (plan.status === 'NO_SHOW' && i % 2 === 0) ? remindsAt : null;
+    const reminderSentAt =
+      plan.status === 'COMPLETED' || (plan.status === 'NO_SHOW' && i % 2 === 0) ? remindsAt : null;
     return `(${q(detId(`visit:${i}`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(sales[i % sales.length]!.id)}, ${when}, ${q(plan.status)}::"VisitStatus", ${q(outcome)}, ${q(`Seeded ${plan.status.toLowerCase()} visit for ${l.name}`)}, ${reminderSentAt ?? 'NULL'}, ${ago(24 * (10 + (i % 20)))}, NOW())`;
   }),
   {
     cols: ['id'],
-    update: ['leadId', 'organizationId', 'userId', 'scheduledFor', 'status', 'outcome', 'notes', 'reminderSentAt', 'updatedAt'],
+    update: [
+      'leadId',
+      'organizationId',
+      'userId',
+      'scheduledFor',
+      'status',
+      'outcome',
+      'notes',
+      'reminderSentAt',
+      'updatedAt',
+    ],
   },
 )}
 
@@ -643,7 +799,21 @@ ${insert(
 -- unique index one_active_booking_per_unit is satisfied.
 ${insert(
   'Booking',
-  ['id', 'leadId', 'unitId', 'organizationId', 'userId', 'amount', 'listAmount', 'tokenAmount', 'approvedById', 'status', 'notes', 'createdAt', 'updatedAt'],
+  [
+    'id',
+    'leadId',
+    'unitId',
+    'organizationId',
+    'userId',
+    'amount',
+    'listAmount',
+    'tokenAmount',
+    'approvedById',
+    'status',
+    'notes',
+    'createdAt',
+    'updatedAt',
+  ],
   units.slice(0, N_BOOKINGS).map((u, i) => {
     const l = leads[i]!;
     const st = ['HOLD', 'TOKEN', 'APPROVED', 'REJECTED', 'CANCELLED'][i % 5]!;
@@ -653,7 +823,22 @@ ${insert(
     const creator = i % 3 === 0 ? staff[i % N_TELE]!.id : sales[i % sales.length]!.id;
     return `(${q(detId(`booking:${u.id}`))}, ${q(l.id)}, ${q(u.id)}, ${q(ORG_ID)}, ${q(creator)}, ${n(price)}, ${n(price)}, ${token === null ? 'NULL' : n(token)}, ${approver}, ${q(st)}::"BookingStatus", ${q(`Seeded ${st.toLowerCase()} booking for ${u.unitNumber}`)}, ${ago(24 * (2 + i))}, NOW())`;
   }),
-  { cols: ['id'], update: ['leadId', 'unitId', 'organizationId', 'userId', 'amount', 'listAmount', 'tokenAmount', 'approvedById', 'status', 'notes', 'updatedAt'] },
+  {
+    cols: ['id'],
+    update: [
+      'leadId',
+      'unitId',
+      'organizationId',
+      'userId',
+      'amount',
+      'listAmount',
+      'tokenAmount',
+      'approvedById',
+      'status',
+      'notes',
+      'updatedAt',
+    ],
+  },
 )}
 
 -- ── Notifications for the test owner (>100, read + unread mix) ───────────────
@@ -662,7 +847,13 @@ ${insert(
   ['id', 'userId', 'organizationId', 'type', 'title', 'body', 'leadId', 'read', 'createdAt'],
   Array.from({ length: 120 }, (_, i) => {
     const l = leads[i % leads.length]!;
-    const type = ['lead.assigned', 'visit.scheduled', 'booking.requested', 'chat.mention', 'lead.overdue'][i % 5]!;
+    const type = [
+      'lead.assigned',
+      'visit.scheduled',
+      'booking.requested',
+      'chat.mention',
+      'lead.overdue',
+    ][i % 5]!;
     const title =
       type === 'lead.assigned'
         ? `New lead: ${l.name}`
@@ -684,34 +875,79 @@ ${insert(
   ['id', 'leadId', 'organizationId', 'userId', 'type', 'status', 'scheduledFor', 'createdAt'],
   Array.from({ length: 120 }, (_, i) => {
     const l = leads[i % leads.length]!;
-    const type = ['PRE_VISIT_STAFF', 'PRE_VISIT_CUSTOMER', 'RESCHEDULE_FOLLOWUP', 'NO_SHOW_STAFF'][i % 4]!;
+    const type = ['PRE_VISIT_STAFF', 'PRE_VISIT_CUSTOMER', 'RESCHEDULE_FOLLOWUP', 'NO_SHOW_STAFF'][
+      i % 4
+    ]!;
     const status = ['SCHEDULED', 'SENT', 'CANCELLED', 'FAILED'][i % 4]!;
     return `(${q(detId(`reminder:${i}`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(l.ownerId)}, ${q(type)}::"ReminderType", ${q(status)}::"ReminderStatus", ${status === 'SCHEDULED' ? ahead(6 + i) : ago(24 + i)}, ${ago(24 * 3)})`;
   }),
-  { cols: ['id'], update: ['leadId', 'organizationId', 'userId', 'type', 'status', 'scheduledFor'] },
+  {
+    cols: ['id'],
+    update: ['leadId', 'organizationId', 'userId', 'type', 'status', 'scheduledFor'],
+  },
 )}
 
 -- ── Consents (1 per lead; all 3 ConsentType) ─────────────────────────────────
 ${insert(
   'Consent',
-  ['id', 'leadId', 'organizationId', 'consentType', 'granted', 'grantedAt', 'ipAddress', 'source', 'createdAt'],
+  [
+    'id',
+    'leadId',
+    'organizationId',
+    'consentType',
+    'granted',
+    'grantedAt',
+    'ipAddress',
+    'source',
+    'createdAt',
+  ],
   leads.map((l, i) => {
     const ct = ['MARKETING', 'DATA_PROCESSING', 'COMMUNICATION'][i % 3]!;
     return `(${q(detId(`consent:${l.id}`))}, ${q(l.id)}, ${q(ORG_ID)}, ${q(ct)}::"ConsentType", ${i % 4 !== 0 ? 'true' : 'false'}, ${ago(l.ageHours)}, '203.0.113.10', 'web_form', NOW())`;
   }),
-  { cols: ['id'], update: ['leadId', 'organizationId', 'consentType', 'granted', 'grantedAt', 'ipAddress', 'source'] },
+  {
+    cols: ['id'],
+    update: [
+      'leadId',
+      'organizationId',
+      'consentType',
+      'granted',
+      'grantedAt',
+      'ipAddress',
+      'source',
+    ],
+  },
 )}
 
 -- ── AuditLog (>100 rows so the audit page paginates) ────────────────────────
 ${insert(
   'AuditLog',
-  ['id', 'userId', 'organizationId', 'action', 'entityType', 'entityId', 'before', 'after', 'createdAt'],
+  [
+    'id',
+    'userId',
+    'organizationId',
+    'action',
+    'entityType',
+    'entityId',
+    'before',
+    'after',
+    'createdAt',
+  ],
   Array.from({ length: 120 }, (_, i) => {
     const l = leads[i % leads.length]!;
-    const action = ['lead.update', 'lead.reassign', 'booking.create', 'booking.approve', 'visit.schedule'][i % 5]!;
+    const action = [
+      'lead.update',
+      'lead.reassign',
+      'booking.create',
+      'booking.approve',
+      'visit.schedule',
+    ][i % 5]!;
     return `(${q(detId(`audit:${i}`))}, ${TEST_USER_REF}, ${q(ORG_ID)}, ${q(action)}, 'Lead', ${q(l.id)}, NULL, '{}'::jsonb, ${ago(i * 4 + 2)})`;
   }),
-  { cols: ['id'], update: ['userId', 'organizationId', 'action', 'entityType', 'entityId', 'before', 'after'] },
+  {
+    cols: ['id'],
+    update: ['userId', 'organizationId', 'action', 'entityType', 'entityId', 'before', 'after'],
+  },
 )}
 
 COMMIT;
@@ -728,7 +964,8 @@ COMMIT;
 `);
 
 const outArgIdx = process.argv.indexOf('--out');
-const invokedDirectly = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 // Writing the file is a CLI side effect ONLY - importing this module (which
 // seed-test-user.ts does, to run the same statements through Prisma) must not

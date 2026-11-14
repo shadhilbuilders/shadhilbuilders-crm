@@ -47,6 +47,7 @@ A web + mobile CRM for Shadhil Metro Heights and any future RERA + CMDA approved
 - **Compliance:** RERA Tamil Nadu + CMDA Act built into v1 (consent capture, right-to-erasure, audit log)
 
 **What you get at v1 launch (Week 13):**
+
 - Every agent has a login, sees their own queue, logs activity in the system
 - Manager sees the funnel, handoff latency, per-exec bookings, source ROI in real time
 - WhatsApp messages flow through the CRM number (new, separate from landing site)
@@ -57,6 +58,7 @@ A web + mobile CRM for Shadhil Metro Heights and any future RERA + CMDA approved
 - CMDA right-to-erasure workflow available to Admin
 
 **Success metrics PaalStack is committing to (DESIGN.md §13):**
+
 - Time-to-first-touch: <30 min median by Day 30, <15 min by Day 90
 - No-show rate: <25% by Day 60, <20% by Day 90 (industry baseline 30–40%)
 - Handoff response latency: <30 min by Day 30, <15 min by Day 60
@@ -93,15 +95,15 @@ These are the 6 inputs that block build. PaalStack can wait for answers on the o
 
 ## Cost summary
 
-| Line item | Monthly | Notes |
-|---|---|---|
-| Hostinger VPS 8GB (India) | ~₹2,500 | Coolify handles SSL, backups, deploys |
-| Backblaze B2 / Cloudflare R2 | ~₹500 | Postgres dumps + call recording archive |
-| FreJun telephony | ~₹15,300 | At 10 users: plan + usage + 1 number |
-| Expo Push | Free | Up to 1M pushes/month on free tier |
-| Better Stack uptime monitoring | Free | Free tier sufficient for v1 |
-| Sentry error tracking | Free | Free tier sufficient for v1 |
-| **Total recurring** | **~₹18,300/month** | At 10 users |
+| Line item                      | Monthly            | Notes                                   |
+| ------------------------------ | ------------------ | --------------------------------------- |
+| Hostinger VPS 8GB (India)      | ~₹2,500            | Coolify handles SSL, backups, deploys   |
+| Backblaze B2 / Cloudflare R2   | ~₹500              | Postgres dumps + call recording archive |
+| FreJun telephony               | ~₹15,300           | At 10 users: plan + usage + 1 number    |
+| Expo Push                      | Free               | Up to 1M pushes/month on free tier      |
+| Better Stack uptime monitoring | Free               | Free tier sufficient for v1             |
+| Sentry error tracking          | Free               | Free tier sufficient for v1             |
+| **Total recurring**            | **~₹18,300/month** | At 10 users                             |
 
 One-time: ~₹60,000–₹80,000 PaalStack delivery for v1. v1.1 scoped separately.
 
@@ -129,11 +131,11 @@ Per DESIGN.md §19:
 
 ## Sign-off
 
-| Role | Name | Signature | Date |
-|---|---|---|---|
-| Shadhil promoter | | | |
-| Shadhil sales lead | | | |
-| Shadhil finance lead | | | |
-| PaalStack delivery | | | |
+| Role                 | Name | Signature | Date |
+| -------------------- | ---- | --------- | ---- |
+| Shadhil promoter     |      |           |      |
+| Shadhil sales lead   |      |           |      |
+| Shadhil finance lead |      |           |      |
+| PaalStack delivery   |      |           |      |
 
 By signing, Shadhil commits to the 6 inputs above and to enforcing the Model C process. PaalStack commits to the 13-week timeline and the success metrics in DESIGN.md §13.

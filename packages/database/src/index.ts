@@ -33,9 +33,7 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'test') {
   // Loud, but not fatal - failing here would break DB-less imports (seed
   // tooling, auth smoke tests). The first query fails with a clear pg
   // error either way; verifyPoolMode() gates the API at boot.
-  console.warn(
-    '[shadhil/database] DATABASE_URL is not set - Prisma will fail on first query',
-  );
+  console.warn('[shadhil/database] DATABASE_URL is not set - Prisma will fail on first query');
 }
 
 // Explicit type so the cross-package inference doesn't reach into the

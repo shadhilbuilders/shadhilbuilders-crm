@@ -199,7 +199,7 @@ describe('UserLeadsCard - rendering', () => {
     expect(text).toContain('Palm Grove');
   });
 
-  it("links each row to its OWN lead detail page (not a foreign entity)", async () => {
+  it('links each row to its OWN lead detail page (not a foreign entity)', async () => {
     await mount(<UserLeadsCard userId="user-42" />);
     const anchors = Array.from(container?.querySelectorAll('a') ?? []);
     const hrefs = anchors.map((a) => a.getAttribute('href') ?? '');

@@ -41,13 +41,7 @@ import {
 import type { DataTableColumnDef, FormFieldItemType } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  LuEllipsis,
-  LuKeyRound,
-  LuPencil,
-  LuTrash2,
-  LuUserCog,
-} from '@paalstack/react-icons/lu';
+import { LuEllipsis, LuKeyRound, LuPencil, LuTrash2, LuUserCog } from '@paalstack/react-icons/lu';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import Link from 'next/link';
@@ -68,11 +62,7 @@ import { useTeams } from '@/hooks/queries/teams';
 import type { Role } from '@/apis/client';
 import { STAFF_ROLES } from '@/apis/client';
 import { orgHref } from '@/lib/nav';
-import {
-  isAdminLike,
-  outranks,
-  useSessionUser,
-} from '@/lib/session';
+import { isAdminLike, outranks, useSessionUser } from '@/lib/session';
 import { useOrgSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -87,11 +77,24 @@ import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 //
 // Issue #8 slice 2: CUSTOMER (a buyer's portal login) is likewise admin class
 // only; the form then requires the lead it belongs to.
-const CREATABLE_FOR_OWNER = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const;
-const CREATABLE_FOR_ADMIN = ['MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER', 'CUSTOMER'] as const;
+const CREATABLE_FOR_OWNER = [
+  'ADMIN',
+  'MANAGER',
+  'TELECALLER',
+  'SALES_EXEC',
+  'ENGINEER',
+  'CUSTOMER',
+] as const;
+const CREATABLE_FOR_ADMIN = [
+  'MANAGER',
+  'TELECALLER',
+  'SALES_EXEC',
+  'ENGINEER',
+  'CUSTOMER',
+] as const;
 const CREATABLE_FOR_MANAGER = ['TELECALLER', 'SALES_EXEC'] as const;
 
-  type UserRow = {
+type UserRow = {
   id: string;
   name: string;
   email: string;
@@ -116,8 +119,7 @@ export default function UsersPage() {
   // @paalstack/react-hooks debounces the input so the API isn't hit on
   // every keystroke (300ms).
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const serverSearch =
-    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
+  const serverSearch = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
   // Server-side pagination (T-SRVPG, mirrors leads): page is 1-indexed
   // (the DataTable Pagination is 1-indexed); offset = (page - 1) * pageSize.
   const [page, setPage] = useState(1);
@@ -183,9 +185,7 @@ export default function UsersPage() {
         ? CREATABLE_FOR_ADMIN
         : CREATABLE_FOR_MANAGER;
 
-  const users = Array.isArray(usersQuery.data?.rows)
-    ? usersQuery.data?.rows ?? []
-    : [];
+  const users = Array.isArray(usersQuery.data?.rows) ? (usersQuery.data?.rows ?? []) : [];
   const total = usersQuery.data?.total ?? 0;
 
   return (
@@ -194,9 +194,7 @@ export default function UsersPage() {
         title="Users"
         breadcrumb={[{ label: 'Admin' }, { label: 'Users' }]}
         subtitle={
-          isAdminLike(user.role)
-            ? 'All users across the organization.'
-            : 'Your team members.'
+          isAdminLike(user.role) ? 'All users across the organization.' : 'Your team members.'
         }
         action={
           <CreateUserDialog
@@ -220,9 +218,7 @@ export default function UsersPage() {
         >
           <p className="text-sm font-medium">Couldn&apos;t load users.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {usersQuery.error instanceof Error
-              ? usersQuery.error.message
-              : 'Unexpected error.'}
+            {usersQuery.error instanceof Error ? usersQuery.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -295,10 +291,7 @@ export default function UsersPage() {
         onClose={() => setRoleTarget(null)}
       />
 
-      <ResetPasswordDialog
-        target={passwordTarget}
-        onClose={() => setPasswordTarget(null)}
-      />
+      <ResetPasswordDialog target={passwordTarget} onClose={() => setPasswordTarget(null)} />
     </div>
   );
 }
@@ -343,8 +336,7 @@ function UserRowActions({
   // Reason an action is disabled (shown in the hover tooltip).
   const reason = (action: string): string | undefined => {
     if (isSelf) return `You can't ${action} your own user`;
-    if (!outranksTarget)
-      return `You can't ${action} a ${labelFor('role', target.role)} user`;
+    if (!outranksTarget) return `You can't ${action} a ${labelFor('role', target.role)} user`;
     return undefined;
   };
 
@@ -352,7 +344,7 @@ function UserRowActions({
   const roleReason = reason('change the role of');
   // Delete: only ADMIN/OWNER may soft-delete (and never the OWNER / self).
   const deleteReason = !canDelete
-    ? "Only ADMIN or OWNER can delete users"
+    ? 'Only ADMIN or OWNER can delete users'
     : target.role === 'OWNER'
       ? "You can't delete the OWNER"
       : reason('delete');
@@ -424,7 +416,7 @@ function UserRowActions({
                       data-qa="data-table-row-action-item"
                     >
                       <item.icon
-                        className="mr-2 size-4 text-muted-foreground"
+                        className="text-muted-foreground mr-2 size-4"
                         data-qa="data-table-row-action-item-icon"
                       />
                       {item.label}
@@ -440,7 +432,7 @@ function UserRowActions({
                 data-qa="data-table-row-action-item"
               >
                 <item.icon
-                  className="mr-2 size-4 text-muted-foreground"
+                  className="text-muted-foreground mr-2 size-4"
                   data-qa="data-table-row-action-item-icon"
                 />
                 {item.label}
@@ -536,9 +528,7 @@ function UserTable({
         accessorKey: 'email',
         header: 'Email',
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.email}
-          </span>
+          <span className="text-muted-foreground text-sm">{row.original.email}</span>
         ),
         enableSorting: true,
       },
@@ -550,9 +540,7 @@ function UserTable({
         // the Actions column (Change role → confirm dialog), not an inline
         // Select that fires on change.
         cell: ({ row }) => (
-          <span className="text-sm font-medium">
-            {labelFor('role', row.original.role)}
-          </span>
+          <span className="text-sm font-medium">{labelFor('role', row.original.role)}</span>
         ),
         enableSorting: false,
       },
@@ -583,7 +571,9 @@ function UserTable({
               {lines.map((line) => (
                 <Tooltip
                   key={line.teamId === '' ? 'org-owner' : line.teamId}
-                  content={line.manager ? line.manager.email : `${line.teamName} has no manager yet`}
+                  content={
+                    line.manager ? line.manager.email : `${line.teamName} has no manager yet`
+                  }
                   side="top"
                   trigger={
                     <span className="text-sm" data-qa="user-reports-to-name">
@@ -611,11 +601,7 @@ function UserTable({
         cell: ({ row }) => {
           const { projects } = row.original;
           if (projects.length === 0) {
-            return (
-              <span className="text-muted-foreground text-sm">
-                0 projects
-              </span>
-            );
+            return <span className="text-muted-foreground text-sm">0 projects</span>;
           }
           return (
             <Tooltip
@@ -669,7 +655,7 @@ function UserTable({
           placeholder: 'Search by name or email...',
           searchValue: search,
           onSearchValueChange: onSearchChange,
-          className: 'mr-2'
+          className: 'mr-2',
         }}
         showPagination
         paginationProps={{
@@ -709,25 +695,21 @@ function UserTable({
             placeholder="Filter by role"
             selectOptionAsValue
             maxSelectedChips={2}
-            className="min-w-48 max-w-96"
+            className="max-w-96 min-w-48"
             data-qa="users-role-filter"
           />
         }
         emptyContent={
           isSearchActive ? (
-            <div className="rounded-lg p-10 text-center space-y-1">
-              <TypographyP className="text-xl font-medium">
-                No users match your search.
-              </TypographyP>
+            <div className="space-y-1 rounded-lg p-10 text-center">
+              <TypographyP className="text-xl font-medium">No users match your search.</TypographyP>
               <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                 Check the spelling or try a different name or email.
               </TypographyP>
             </div>
           ) : (
-            <div className="rounded-lg p-10 text-center space-y-1">
-              <TypographyP className="text-xl font-medium">
-                No users yet.
-              </TypographyP>
+            <div className="space-y-1 rounded-lg p-10 text-center">
+              <TypographyP className="text-xl font-medium">No users yet.</TypographyP>
               <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                 Create a user to get started.
               </TypographyP>
@@ -808,7 +790,7 @@ function EditUserDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
@@ -939,9 +921,7 @@ function ChangeRoleDialog({
           onClose();
         },
         onError: (error) => {
-          toast.error(
-            error instanceof Error ? error.message : 'Role change failed',
-          );
+          toast.error(error instanceof Error ? error.message : 'Role change failed');
         },
       },
     );
@@ -964,15 +944,18 @@ function ChangeRoleDialog({
       header={{
         title: `Change role for ${target?.name ?? 'user'}`,
         description:
-          target === null
-            ? undefined
-            : <>Current role: <TypographyStrong>{labelFor('role', target.role)}</TypographyStrong>. Permissions take effect as soon as you confirm.</>,
+          target === null ? undefined : (
+            <>
+              Current role: <TypographyStrong>{labelFor('role', target.role)}</TypographyStrong>.
+              Permissions take effect as soon as you confirm.
+            </>
+          ),
       }}
       open={target !== null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="outline" onClick={onClose}>

@@ -265,13 +265,13 @@ export function CreateUserForm({
   }
 
   return (
-      <Form
-        id={formId}
-        form={form}
-        onSubmit={onSubmit}
-        hideSubmitButton
-        hideResetButton
-        fields={fields}
-      />
+    <Form
+      id={formId}
+      form={form}
+      onSubmit={onSubmit}
+      hideSubmitButton
+      hideResetButton
+      fields={fields}
+    />
   );
 }

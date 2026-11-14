@@ -168,7 +168,7 @@ test.describe('visits - Show past visits uses the Switch component', () => {
  * `demo-visit-past-1` re-pointed at a WON lead. If the fixture is missing, this
  * fails loudly rather than passing on an empty calendar.
  */
-test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
+test.describe("visits - a settled deal's visit is not upcoming work", () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     await gotoApp(page, VISITS);
@@ -200,7 +200,7 @@ test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
     );
   }
 
-  test('hides a WON lead\'s open visit by default, and reveals it under Show past', async ({
+  test("hides a WON lead's open visit by default, and reveals it under Show past", async ({
     page,
   }) => {
     const toggle = page.locator('[data-qa="visits-show-past"]').first();
@@ -209,12 +209,10 @@ test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
     const off = await calendarText(page);
     // The live deal's visit IS upcoming work - it must be there, or the assertion
     // below would pass simply because nothing rendered.
-    expect(off, 'live lead\'s visit should be in the default view').toContain('Demo Meera');
+    expect(off, "live lead's visit should be in the default view").toContain('Demo Meera');
     // The settled deal's open visit is NOT. This is the fix.
     // The seeded WON lead is Demo Vikram (see setup-demo-user.ts DEMO_LEAD_WON).
-    expect(off, 'a WON lead\'s open visit must not read as upcoming').not.toContain(
-      'Demo Vikram',
-    );
+    expect(off, "a WON lead's open visit must not read as upcoming").not.toContain('Demo Vikram');
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('data-checked', '');
@@ -222,6 +220,6 @@ test.describe('visits - a settled deal\'s visit is not upcoming work', () => {
 
     const on = await calendarText(page);
     // Reachable, not deleted: history still holds it.
-    expect(on, 'Show past must reveal the settled deal\'s visit').toContain('Demo Vikram');
+    expect(on, "Show past must reveal the settled deal's visit").toContain('Demo Vikram');
   });
 });

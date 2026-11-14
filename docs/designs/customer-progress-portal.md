@@ -8,29 +8,34 @@ Mode: Startup (client product)
 Supersedes: paalstack-main-design-20260916-014221.md
 
 ## Problem Statement
+
 Homebuyers with Shadhil Builders have no way to see construction progress on their
 unit. Today a buyer emails the site manager and waits for a reply; there is no
 self-service view, no photos, no status. The buyer's actual question is one:
 "where is my house at, show me."
 
 ## Demand Evidence
+
 - The demand signal the user named: customers email the site manager asking about
   unit progress. That is a real, observed request, not a hypothetical.
 - Frequency and volume are not yet measured (see Open Questions). The direction is
   confirmed; the volume is not.
 
 ## Status Quo
+
 Nothing happens. The user verified there is no existing workflow and no workaround
 in place. This means any self-service loop is an improvement, and there is no
 legacy behavior to migrate or preserve.
 
 ## Target User & Narrowest Wedge
+
 The buyer of one specific unit. One-time customer for the duration of construction
 (roughly 18-24 months), then gone. The wedge is still the photo timeline; the
 umbrella is the full customer portal the user chose (Approach C) because the client
 wants the complete surface.
 
 ## Premises (user confirmed all four)
+
 1. Web app, mobile-first, PWA-installable. Not a native app. The planned Expo
    `apps/mobile` stays for staff use, not customers.
 2. Customers get their own logins in the existing better-auth system, with a new
@@ -43,17 +48,21 @@ wants the complete surface.
    an empty docs tab but a live photo timeline still got value.
 
 ## Approaches Considered
+
 ### A) Photo timeline only
+
 Site manager uploads site photos per unit from their phone; customer sees a photo
 timeline with phase labels, web push on new upload. Smallest diff, ships days.
 Rejected by the user in favor of C; its upload loop becomes Slice 1 of C.
 
 ### B) Weekly automated status link
+
 Weekly email/link showing phase status from CRM data, no photos. Zero staff work,
 ships fastest. Rejected: no photos means no emotional payoff; "phase 4 complete"
 is not what a buyer wants to see.
 
 ### C) Full customer portal (CHOSEN)
+
 Progress timeline + booking docs + payment views + messages under one customer
 login. Most professional, one auth surface, absorbs A and B as slices.
 
@@ -92,6 +101,7 @@ MANAGER-role users and NOT via the sales CRM pages.
   photo's project.
 
 ## Recommended Approach
+
 Approach C, sequenced into three slices so value lands early:
 
 - Slice 1 (upload + staff preview): new backend module `customer-progress` (NestJS,
@@ -133,6 +143,7 @@ three images (web Vercel, backend + realtime-sse on the VPS via Coolify); push t
 main auto-deploys. No new distribution channel.
 
 ## Open Questions
+
 - How often do buyers actually email for progress? (Sets push frequency and SLA
   expectations; does not change the architecture.)
 - Which object storage is already in use for CRM file uploads? Slice 1 must match
@@ -143,6 +154,7 @@ main auto-deploys. No new distribution channel.
 ## Design Specification (from /plan-design-review, 2026-10-26 — all decisions approved)
 
 ### Information hierarchy
+
 ```
 STAFF: unit page (CRM, org-scoped, existing) gains a "Progress" tab
   1st: camera/upload button (primary, thumb-reach on phone)
@@ -159,10 +171,12 @@ Navigation flow:
   /login → staff → existing CRM
 Desktop-for-customers: out of scope (premises target phones).
 ```
+
 Constraint worship: on the customer home there is no search, no filter, no
 settings — one unit, zero choice.
 
 ### Interaction states
+
 ```
 FEATURE              | LOADING          | EMPTY                    | ERROR                | SUCCESS            | PARTIAL
 ---------------------|------------------|--------------------------|----------------------|--------------------|------------------
@@ -183,6 +197,7 @@ Portal loading       | splash w/ brand  | —                        | —      
 ```
 
 ### Journey storyboard
+
 ```
 STEP | USER DOES                    | USER FEELS              | PLAN SPECIFIES?
 -----|------------------------------|-------------------------|------------------------------
@@ -197,15 +212,18 @@ STEP | USER DOES                    | USER FEELS              | PLAN SPECIFIES?
 5    | Construction slows/monsoon   | Anxiety, then relief    | Phase chip on every photo
 6    | Handover                     | Gratitude, closure      | "Ready to move in" phase chip
 ```
+
 One authored motion moment: photo entrance on upload-push deep-link,
 ease-out; prefers-reduced-motion honored.
 
 ### Anti-slop constraint
+
 Portal screens: timeline rows (list, not cards), phase chip + date + photo
 per row; no decorative cards anywhere; the photo is the visual anchor; one
 accent (green) used only for the current phase chip and CTA.
 
 ### Design system mapping (brand.css is the source of truth; no DESIGN.md)
+
 - Phase chip: existing status-badge soft variants (AA-override set);
   green for current phase only, neutral for past phases
 - Photo surface: `--background`; borders `--border` (not `--input`)
@@ -215,6 +233,7 @@ accent (green) used only for the current phase chip and CTA.
   toast — as lead-timeline.tsx already imports)
 
 ### Responsive & accessibility
+
 - Viewports: phone 360-430px primary; tablet 768px secondary; desktop
   1024px+ centers timeline at max-w-lg
 - Touch targets ≥44px; photo tap = lightbox, swipe to dismiss
@@ -225,6 +244,7 @@ accent (green) used only for the current phase chip and CTA.
   aria-live=polite; contrast inherits the brand.css AA compliance set
 
 ### Pass-7 decisions
+
 - D4: Multi-unit customer → unit switcher chip on home timeline
 - D5: Push tap after cold start → deep-link straight to the photo,
   full-bleed
@@ -232,6 +252,7 @@ accent (green) used only for the current phase chip and CTA.
   may edit
 
 ## Success Criteria
+
 - A customer can log in, see their unit, and see the latest construction photos
   within one login. Measured: first login to last photo in under a minute on a
   mid-range Android phone.
@@ -246,6 +267,7 @@ accent (green) used only for the current phase chip and CTA.
   a photoLead member can: RLS + service tests pass.
 
 ## Dependencies
+
 - New ENGINEER + CUSTOMER roles + RLS policies (database-first tests per repo
   convention; each role ships as one complete four-touchpoint migration).
 - TeamMember.photoLead column + ProgressPhoto policies in the same batch.
@@ -256,6 +278,7 @@ accent (green) used only for the current phase chip and CTA.
   subscriptions; confirm when push activates in Slice 2.
 
 ## The Assignment
+
 Write the slice-1 spec as a backlog-ready issue: the upload flow (site manager's
 phone, per-unit, phase label from the existing Phase records), the ProgressPhoto
 Prisma model, and the staff/admin preview timeline inside existing CRM auth. The
@@ -264,6 +287,7 @@ spec where the Customer role and login exist. Run it through /spec so it is
 committable, then implement Slice 1 only.
 
 ## What I noticed about how you think
+
 - You said "Currently nothing happens, we have build a new system with all
   possible useful scenerios." That is a green-field answer: no workaround to
   respect, no migration. It freed the design to pick the smallest feed first.
@@ -273,6 +297,7 @@ committable, then implement Slice 1 only.
 - You asked "mobile apps or web apps" before anything else. Platform-first
   thinkers get architecture right and scope wrong sometimes; the premise doc
   exists to hold that line: web app, staff keep the native app.
+
 ## Design Review Completion Summary
 
 ```
@@ -301,6 +326,7 @@ committable, then implement Slice 1 only.
 ```
 
 ## NOT in scope
+
 - Mockup generation and iteration: designer binary unavailable in this
   environment; visual QA moves to /design-review after implementation.
 - Desktop-customer navigation design: premises target phones; desktop
@@ -309,6 +335,7 @@ committable, then implement Slice 1 only.
   recorded with its reason; design follows when that slice opens.
 
 ## What already exists
+
 - packages/ui-tokens/src/brand.css: locked navy/green tokens, AA overrides
   enforced by a compliance test — all portal styling inherits this.
 - packages/ui-tokens/src/contrast.ts: WCAG contrast math, test-pinned.
@@ -322,29 +349,29 @@ committable, then implement Slice 1 only.
 ## Implementation Tasks
 
 - [ ] **TD1 (P1, human: ~2h / CC: ~15min)** — apps/web — bottom tab bar
-  `<nav aria-label="Portal">` + role-routed /login for customers
+      `<nav aria-label="Portal">` + role-routed /login for customers
   - Surfaced by: Pass 1 information hierarchy
   - Files: apps/web/src/app/(portal)/layout.tsx, apps/web login routing
   - Verify: keyboard-only nav walk; focus order top-to-bottom
 - [ ] **TD2 (P1, human: ~2h / CC: ~15min)** — apps/web — timeline component
-  with adopted states (skeleton, warm empty, error banner, hasMore)
+      with adopted states (skeleton, warm empty, error banner, hasMore)
   - Surfaced by: Pass 2 state table
   - Files: apps/web/src/app/(portal)/timeline (component set)
   - Verify: state-table walkthrough at 360px and 430px
 - [ ] **TD3 (P2, human: ~1h / CC: ~10min)** — apps/web — staff upload flow:
-  camera-first button, phase picker, queued-retry on failure
+      camera-first button, phase picker, queued-retry on failure
   - Surfaced by: Pass 2 staff rows + eng T5
   - Files: apps/web/[orgSlug] unit page Progress tab
   - Verify: upload under 30s target on mid-range device
 - [ ] **TD4 (P3, human: ~1h / CC: ~10min)** — apps/web — lightbox + deep-link
-  cold-start landing on full-bleed photo
+      cold-start landing on full-bleed photo
   - Surfaced by: D5 + Pass 6 touch specs
   - Files: portal photo components
   - Verify: push tap with app closed lands on photo
 - [ ] **TD5 (P2, human: ~1.5h / CC: ~15min)** — apps/web — site-staff admin
-  mechanics: ENGINEER option in Admin > Users role Select (ADMIN/OWNER-only),
-  "Progress lead" toggle in project-team-list.tsx expandable member rows
-  (ADMIN/OWNER-only), siteMemberLabel() helper
+      mechanics: ENGINEER option in Admin > Users role Select (ADMIN/OWNER-only),
+      "Progress lead" toggle in project-team-list.tsx expandable member rows
+      (ADMIN/OWNER-only), siteMemberLabel() helper
   - Surfaced by: Site-staff model amendment (photoLead set in UI, two existing screens)
   - Files: apps/web/src/app/[orgSlug]/admin/users/page.tsx (or its row component),
     apps/web/src/components/teams/project-team-list.tsx, new lib/labels helper
@@ -352,13 +379,13 @@ committable, then implement Slice 1 only.
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 2 | clean | prior scope decisions (2026-09-04) |
-| Outside Review | independent spec review (office-hours, 3 rounds) | Independent 2nd opinion | 3 | completed | 19 findings, 1 blocking verified fixed post-cap |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 8 issues, 0 critical gaps (2026-10-26, predates design spec additions — interaction-state and portal-routing decisions should re-verify T6 scope at slice-2 implementation) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 2 | clean | 3/10 → 8/10, 9 decisions |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Review         | Trigger                                          | Why                             | Runs | Status    | Findings                                                                                                                                                                    |
+| -------------- | ------------------------------------------------ | ------------------------------- | ---- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`                               | Scope & strategy                | 2    | clean     | prior scope decisions (2026-09-04)                                                                                                                                          |
+| Outside Review | independent spec review (office-hours, 3 rounds) | Independent 2nd opinion         | 3    | completed | 19 findings, 1 blocking verified fixed post-cap                                                                                                                             |
+| Eng Review     | `/plan-eng-review`                               | Architecture & tests (required) | 1    | clean     | 8 issues, 0 critical gaps (2026-10-26, predates design spec additions — interaction-state and portal-routing decisions should re-verify T6 scope at slice-2 implementation) |
+| Design Review  | `/plan-design-review`                            | UI/UX gaps                      | 2    | clean     | 3/10 → 8/10, 9 decisions                                                                                                                                                    |
+| DX Review      | `/plan-devex-review`                             | Developer experience gaps       | 0    | —         | —                                                                                                                                                                           |
 
 OUTSIDE COVERAGE: design-stage 3-round independent spec review completed
 (glm-5.3-flash subagents, office-hours phase); Outside Voice not run this

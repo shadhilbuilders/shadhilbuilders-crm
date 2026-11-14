@@ -9,11 +9,7 @@
 // Indian (INR, en-IN), so we construct configured instances here and export
 // them. Consumers import from '@/lib/format' instead of the library directly.
 import { enIN } from 'date-fns/locale';
-import {
-  CurrencyIntl,
-  DateIntl,
-  NumberIntl,
-} from '@paalstack/react-ui/lib';
+import { CurrencyIntl, DateIntl, NumberIntl } from '@paalstack/react-ui/lib';
 
 /** Indian-rupee currency formatter (₹58,00,000.00). */
 export const currencyIntl = new CurrencyIntl({

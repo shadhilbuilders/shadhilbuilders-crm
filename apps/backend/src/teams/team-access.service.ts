@@ -55,11 +55,7 @@ export class TeamAccessService {
    * as a Team.managerId, though in practice only MANAGER accounts are
    * assigned there (teams.service.ts enforces that at write time).
    */
-  async getManagedTeamIds(
-    tx: RlsTx,
-    userId: string,
-    organizationId: string,
-  ): Promise<string[]> {
+  async getManagedTeamIds(tx: RlsTx, userId: string, organizationId: string): Promise<string[]> {
     const rows = await tx.team.findMany({
       // T-ORG-EXPLICIT: `managerId` alone is NOT org-unique (a user id from one
       // org can only exist in that org, but relying on an RLS policy to imply the

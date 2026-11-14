@@ -23,13 +23,7 @@
 // first line of abuse defense; an in-process per-IP fixed-window limiter
 // here is the second (cheap, no Redis dependency).
 
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -91,9 +85,7 @@ function allowPublicSubmit(ip: string): boolean {
 // Cursor encoding: base64url(`${createdAt.toISOString()}|${id}`). Opaque
 // to the client - server re-parses. `createdAt|id` uniquely orders rows.
 function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString(
-    'base64url',
-  );
+  return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString('base64url');
 }
 
 function decodeCursor(cursor: string): { createdAt: Date; id: string } | null {
@@ -144,9 +136,7 @@ function rowToJson(row: {
 export class FeedbacksService {
   private readonly logger = new Logger(FeedbacksService.name);
 
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -210,9 +200,7 @@ export class FeedbacksService {
       },
     );
 
-    this.logger.log(
-      `[feedback] public submit id=${id} rating=${dto.rating} ip=${meta.ip}`,
-    );
+    this.logger.log(`[feedback] public submit id=${id} rating=${dto.rating} ip=${meta.ip}`);
     return { ok: true, id };
   }
 
@@ -220,54 +208,43 @@ export class FeedbacksService {
   // GET /api/feedback. Admin-class (ADMIN/OWNER). Cursor pagination ordered
   // by createdAt DESC (most recent first); total count returned so the UI
   // shows "N total" without paginating everything.
-  async list(
-    actor: JwtPayload,
-    query: FeedbackListQuery,
-  ): Promise<FeedbackListResult> {
+  async list(actor: JwtPayload, query: FeedbackListQuery): Promise<FeedbackListResult> {
     const status: FeedbackStatus | undefined = query.status;
     const limit = query.limit;
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
 
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {};
-        if (status !== undefined) where.status = status;
-        if (cursor !== null) {
-          where.OR = [
-            { createdAt: { lt: cursor.createdAt } },
-            {
-              AND: [
-                { createdAt: cursor.createdAt },
-                { id: { lt: cursor.id } },
-              ],
-            },
-          ];
-        }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {};
+      if (status !== undefined) where.status = status;
+      if (cursor !== null) {
+        where.OR = [
+          { createdAt: { lt: cursor.createdAt } },
+          {
+            AND: [{ createdAt: cursor.createdAt }, { id: { lt: cursor.id } }],
+          },
+        ];
+      }
 
-        const rows = await (tx as unknown as PrismaClient).feedback.findMany({
-          where,
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: limit + 1, // +1 to detect a next page
-        });
-        const total = await (tx as unknown as PrismaClient).feedback.count({
-          where: { status },
-        });
+      const rows = await (tx as unknown as PrismaClient).feedback.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1, // +1 to detect a next page
+      });
+      const total = await (tx as unknown as PrismaClient).feedback.count({
+        where: { status },
+      });
 
-        const hasMore = rows.length > limit;
-        const pageRows = hasMore ? rows.slice(0, limit) : rows;
-        const last = pageRows[pageRows.length - 1];
-        const nextCursor =
-          hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+      const hasMore = rows.length > limit;
+      const pageRows = hasMore ? rows.slice(0, limit) : rows;
+      const last = pageRows[pageRows.length - 1];
+      const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
 
-        return {
-          total,
-          rows: pageRows.map(rowToJson),
-          nextCursor,
-        };
-      },
-    );
+      return {
+        total,
+        rows: pageRows.map(rowToJson),
+        nextCursor,
+      };
+    });
   }
 
   // ── updateStatus ──────────────────────────────────────────────────────
@@ -280,36 +257,32 @@ export class FeedbacksService {
     id: string,
     dto: UpdateFeedbackStatusDto,
   ): Promise<UpdateFeedbackResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).feedback.findUnique({
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).feedback.findUnique({
+        where: { id },
+        select: { id: true, status: true },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Feedback ${id} not found`);
+      }
+      if (existing.status === dto.status) {
+        // Idempotent - applying the same status is a no-op, return as-is.
+        const row = await (tx as unknown as PrismaClient).feedback.findUniqueOrThrow({
           where: { id },
-          select: { id: true, status: true },
         });
-        if (existing === null) {
-          throw new NotFoundException(`Feedback ${id} not found`);
-        }
-        if (existing.status === dto.status) {
-          // Idempotent - applying the same status is a no-op, return as-is.
-          const row = await (tx as unknown as PrismaClient).feedback.findUniqueOrThrow({
-            where: { id },
-          });
-          return { row: rowToJson(row) };
-        }
+        return { row: rowToJson(row) };
+      }
 
-        const updated = await (tx as unknown as PrismaClient).feedback.update({
-          where: { id },
-          data: { status: dto.status },
-        });
+      const updated = await (tx as unknown as PrismaClient).feedback.update({
+        where: { id },
+        data: { status: dto.status },
+      });
 
-        this.logger.log(
-          `[feedback] status id=${id} ${existing.status}->${dto.status} by=${actor.sub}`,
-        );
-        return { row: rowToJson(updated) };
-      },
-    );
+      this.logger.log(
+        `[feedback] status id=${id} ${existing.status}->${dto.status} by=${actor.sub}`,
+      );
+      return { row: rowToJson(updated) };
+    });
   }
 }
 

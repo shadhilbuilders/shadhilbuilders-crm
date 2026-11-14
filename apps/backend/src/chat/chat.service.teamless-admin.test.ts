@@ -22,11 +22,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { ChatService } from './chat.service';
 
@@ -98,7 +94,11 @@ beforeAll(async () => {
     await db.team.upsert({
       where: { id: TEAM_ID },
       update: {},
-      create: { id: TEAM_ID, name: `Chat Admin Test Team ${RUN_TAG}`, organizationId: 'ceid01lpfe1esm8jwsxid41k28' },
+      create: {
+        id: TEAM_ID,
+        name: `Chat Admin Test Team ${RUN_TAG}`,
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+      },
     });
     await db.user.upsert({
       where: { id: ADMIN_ID },

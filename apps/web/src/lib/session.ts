@@ -5,10 +5,7 @@ import { useCallback } from 'react';
 
 import { authClient } from '@/lib/auth-client';
 
-import {
-  sessionUserFromSession,
-  type SessionUser,
-} from '@/apis/client';
+import { sessionUserFromSession, type SessionUser } from '@/apis/client';
 
 type SessionResult = {
   user: SessionUser | null;
@@ -35,10 +32,7 @@ export function useSessionUser(): SessionResult {
   return {
     user,
     isPending: data.isPending === true,
-    error:
-      data.error !== null && data.error !== undefined
-        ? 'Session unavailable'
-        : null,
+    error: data.error !== null && data.error !== undefined ? 'Session unavailable' : null,
     // better-auth 1.7's react client exposes `refetch` on the same object that
     // carries `data`/`isPending` (verified in
     // better-auth/dist/client/react/index.d.mts). Needed after a self-profile
@@ -84,9 +78,7 @@ export function canManageProjectMembers(role: Role | undefined): boolean {
  * admin/owner's "work" on a project in this model.
  */
 export function isLinkableStaffRole(role: Role | undefined): boolean {
-  return (
-    role === 'TELECALLER' || role === 'SALES_EXEC' || role === 'MANAGER'
-  );
+  return role === 'TELECALLER' || role === 'SALES_EXEC' || role === 'MANAGER';
 }
 
 /** Cross-role lead moves are ADMIN/OWNER/MANAGER only. */
@@ -143,9 +135,7 @@ export function canDeleteLeads(role: Role | undefined): boolean {
  * CONVERTED → Lead, or PENDING → SPAM). TELECALLER / SALES_EXEC
  * see the converted leads in the regular Lead Inbox instead.
  */
-export function canConvertWhatsappUnknownContact(
-  role: Role | undefined,
-): boolean {
+export function canConvertWhatsappUnknownContact(role: Role | undefined): boolean {
   return isAdminLike(role) || role === 'MANAGER';
 }
 
@@ -237,10 +227,10 @@ export function canCaptureSitePhotos(role: Role | undefined): boolean {
   return role === 'ENGINEER';
 }
 
-/** Telecaller is the only role that schedules + confirms visits (Model C). */export function canScheduleVisits(role: Role | undefined): boolean {
-  return (
-    isAdminLike(role) || role === 'MANAGER' || role === 'TELECALLER'
-  );
+/** Telecaller is the only role that schedules + confirms visits (Model C). */ export function canScheduleVisits(
+  role: Role | undefined,
+): boolean {
+  return isAdminLike(role) || role === 'MANAGER' || role === 'TELECALLER';
 }
 
 /**

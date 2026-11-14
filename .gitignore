@@ -100,6 +100,13 @@ apps/backend/media/
 
 apps/web/playwright-report/
 
+# Impeccable working files. Shared artefacts stay tracked:
+# .impeccable/config.json, design.json, surfaces/*.md, critique/*.md.
+.impeccable/config.local.json
+.impeccable/*.cache.json
+.impeccable/*.png
+.impeccable/live/
+
 .cursor/
 
 brain/

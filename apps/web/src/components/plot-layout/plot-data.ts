@@ -19,7 +19,7 @@ import type { Plot, PlotGeometry, PlotStatus } from './plot-types';
  */
 export function buildPlots(
   geometry: readonly PlotGeometry[],
-  rows: readonly PlotStatusRow[]
+  rows: readonly PlotStatusRow[],
 ): Plot[] {
   const byPlotNumber = new Map<number, PlotStatusRow>();
   for (const row of rows) byPlotNumber.set(row.plotNumber, row);
@@ -59,7 +59,7 @@ export function countByStatus(plots: readonly Plot[]): Record<PlotStatus, number
  */
 export function plotMatchesFilters(
   plot: Plot,
-  filters: { category: Plot['category'] | 'all'; status: PlotStatus | 'all'; query: string }
+  filters: { category: Plot['category'] | 'all'; status: PlotStatus | 'all'; query: string },
 ): boolean {
   if (filters.category !== 'all' && plot.category !== filters.category) return false;
   if (filters.status !== 'all' && plot.status !== filters.status) return false;

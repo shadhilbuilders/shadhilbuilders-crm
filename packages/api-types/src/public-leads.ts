@@ -60,13 +60,7 @@ export const PublicCreateLeadDtoSchema = z.object({
     .string({ error: 'phone is required' })
     .min(7, 'Please enter a valid phone number')
     .max(20, 'Please enter a valid phone number'),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(254)
-    .optional()
-    .or(z.literal('')),
+  email: z.string().trim().toLowerCase().max(254).optional().or(z.literal('')),
   requirement: z.string().trim().max(2000).optional().or(z.literal('')),
   message: z.string().trim().max(2000).optional().or(z.literal('')),
   contactMethod: z.string().trim().max(20).optional().or(z.literal('')),

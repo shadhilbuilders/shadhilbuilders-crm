@@ -230,5 +230,4 @@ test.describe('inventory role gate - an ENGINEER never sees villa money', () => 
     }
     expect(claimsChecked).toBeGreaterThan(0);
   });
-
 });

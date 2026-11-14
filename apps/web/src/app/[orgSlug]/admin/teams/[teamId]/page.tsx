@@ -168,9 +168,7 @@ export default function TeamRosterPage() {
         >
           <p className="text-sm font-medium">Couldn&apos;t load this team.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {teamQuery.error instanceof Error
-              ? teamQuery.error.message
-              : 'Unexpected error.'}
+            {teamQuery.error instanceof Error ? teamQuery.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -290,21 +288,21 @@ function TeamHeaderActions({
             onClick={() => onEditOpenChange(true)}
             data-qa="team-header-action-edit"
           >
-            <LuPencil className="mr-2 size-4 text-muted-foreground" />
+            <LuPencil className="text-muted-foreground mr-2 size-4" />
             Edit team
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onReassignOpenChange(true)}
             data-qa="team-header-action-reassign"
           >
-            <LuUsersRound className="mr-2 size-4 text-muted-foreground" />
+            <LuUsersRound className="text-muted-foreground mr-2 size-4" />
             Reassign all members
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onDeleteOpenChange(true)}
             data-qa="team-header-action-delete"
           >
-            <LuTrash2 className="mr-2 size-4 text-muted-foreground" />
+            <LuTrash2 className="text-muted-foreground mr-2 size-4" />
             Delete team
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -337,11 +335,7 @@ function TeamHeaderActions({
         confirmButtonProps={{ disabled: !targetTeamId || reassignMembers.isPending }}
         onConfirm={handleReassignConfirm}
       >
-        <TeamTargetPicker
-          excludeTeamId={team.id}
-          value={targetTeamId}
-          onChange={setTargetTeamId}
-        />
+        <TeamTargetPicker excludeTeamId={team.id} value={targetTeamId} onChange={setTargetTeamId} />
       </AlertDialog>
 
       <Dialog
@@ -427,13 +421,7 @@ function MemberCard({
  * the single-member counterpart to the header's "Reassign all members".
  * POST /api/teams/:id/reassign-members with userIds=[member.userId].
  */
-function MoveToTeamButton({
-  teamId,
-  member,
-}: {
-  teamId: string;
-  member: TeamMemberRow;
-}) {
+function MoveToTeamButton({ teamId, member }: { teamId: string; member: TeamMemberRow }) {
   const [open, setOpen] = useState(false);
   const reassignMembers = useReassignTeamMembers(teamId);
   const [targetTeamId, setTargetTeamId] = useState('');
@@ -483,16 +471,11 @@ function MoveToTeamButton({
         confirmButtonProps={{ disabled: !targetTeamId || reassignMembers.isPending }}
         onConfirm={handleConfirm}
       >
-        <TeamTargetPicker
-          excludeTeamId={teamId}
-          value={targetTeamId}
-          onChange={setTargetTeamId}
-        />
+        <TeamTargetPicker excludeTeamId={teamId} value={targetTeamId} onChange={setTargetTeamId} />
       </AlertDialog>
     </>
   );
 }
-
 
 function RosterTable({
   orgSlug,
@@ -543,17 +526,19 @@ function RosterTable({
           placeholder: 'Search members...',
           searchValue: search,
           onSearchValueChange: (v) => setSearch(String(v ?? '')),
-          className: 'mr-2'
+          className: 'mr-2',
         }}
         isLoading={false}
         loadingContent={<Loading content="Loading members..." />}
         emptyContent={
-          <div className="rounded-lg p-10 text-center space-y-1">
-           <TypographyP className="text-xl font-medium">
+          <div className="space-y-1 rounded-lg p-10 text-center">
+            <TypographyP className="text-xl font-medium">
               {search.trim() ? 'No members match your search.' : 'No members in this team.'}
             </TypographyP>
             <TypographyP className="text-muted-foreground text-sm">
-              {search.trim() ? 'Try a different search.' : 'Assign users to this team to see them here.'}
+              {search.trim()
+                ? 'Try a different search.'
+                : 'Assign users to this team to see them here.'}
             </TypographyP>
           </div>
         }

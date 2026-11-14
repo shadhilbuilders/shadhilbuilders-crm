@@ -33,12 +33,14 @@ import { assertAuthEnv } from './env';
 
 /** Normalize a free-text org name into a URL-safe slug ("Acme Co." -> "acme-co"). */
 function slugifyOrgName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 96) || 'organization';
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 96) || 'organization'
+  );
 }
 
 const env = assertAuthEnv();
@@ -73,9 +75,7 @@ export const auth: any = betterAuth({
   //
   // The CI e2e job sets it (see .github/workflows/ci.yml). Nothing else does, so
   // a real deployment keeps the limiter even if it somehow shares an env with CI.
-  ...(process.env['E2E_DISABLE_RATE_LIMIT'] === 'true'
-    ? { rateLimit: { enabled: false } }
-    : {}),
+  ...(process.env['E2E_DISABLE_RATE_LIMIT'] === 'true' ? { rateLimit: { enabled: false } } : {}),
 
   // SECOND-ROUND AUDIT B4a (2026-08-31): the Prisma `User.role` column is a
   // NOT NULL Role enum with no default - better-auth's signUpEmail inserts a
@@ -185,8 +185,8 @@ export const auth: any = betterAuth({
     // talks to :3000 (BFF and SSE are proxied server-side), so one entry is
     // enough. Without it better-auth rejects sign-in with 403 INVALID_ORIGIN.
     'http://100.81.0.50:3000', // WSL tailnet IP (mobile testing)
-    'https://crm.shadhilbuilders.in',           // user-facing app
-    'https://api.crm.shadhilbuilders.in',       // backend API
+    'https://crm.shadhilbuilders.in', // user-facing app
+    'https://api.crm.shadhilbuilders.in', // backend API
   ],
 
   // T-PERF-2 #1: cookie scope (plan Decision Audit #37).

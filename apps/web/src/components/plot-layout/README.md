@@ -34,12 +34,12 @@ The status fill is OPAQUE, and each plot carries its number on top of it, in
 a colour that reads against that particular fill. The three facts belong
 together:
 
-| status    | fill     | number  | meaning                              |
-| --------- | -------- | ------- | ------------------------------------ |
-| available | `#15803D` green | white | free to sell                |
-| blocked   | `#E3C563` gold  | dark  | held, not gone           |
-| booked    | `#DC2626` red   | white | sold, gone                |
-| selected  | `#2563EB` blue  | white | the plot the panel is showing |
+| status    | fill            | number | meaning                       |
+| --------- | --------------- | ------ | ----------------------------- |
+| available | `#15803D` green | white  | free to sell                  |
+| blocked   | `#E3C563` gold  | dark   | held, not gone                |
+| booked    | `#DC2626` red   | white  | sold, gone                    |
+| selected  | `#2563EB` blue  | white  | the plot the panel is showing |
 
 `PLOT_STATUS_FILL` in `plot-colors.ts` is the only place those live. The map
 fill, the legend swatch, the hover tooltip's dot and the details panel's badge

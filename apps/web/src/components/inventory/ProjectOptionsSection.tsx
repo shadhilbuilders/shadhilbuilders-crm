@@ -14,19 +14,10 @@
 // (categorical labels), so there is no edit action.
 import { useState } from 'react';
 
-import {
-  AlertDialog,
-  Badge,
-  Button,
-  Card,
-  toast,
-} from '@paalstack/react-ui';
+import { AlertDialog, Badge, Button, Card, toast } from '@paalstack/react-ui';
 import { LuPlus, LuTrash2 } from '@paalstack/react-icons/lu';
 
-import {
-  useDeleteProjectOption,
-  type ProjectOptionRow,
-} from '@/hooks/queries/inventory';
+import { useDeleteProjectOption, type ProjectOptionRow } from '@/hooks/queries/inventory';
 
 import { ProjectOptionManageDialog, type OptionType } from './ProjectOptionManageDialog';
 
@@ -73,12 +64,9 @@ function OptionGroup({
           {canManage ? ` Add the first ${label.toLowerCase()} for the project pickers.` : ''}
         </p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-border divide-y">
           {rows.map((opt) => (
-            <li
-              key={opt.id}
-              className="flex items-center justify-between gap-4 py-2"
-            >
+            <li key={opt.id} className="flex items-center justify-between gap-4 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
                   {type === 'BHK' ? `${opt.value} BHK` : opt.value}

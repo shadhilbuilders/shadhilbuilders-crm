@@ -61,25 +61,21 @@ const tx = {
 vi.mock('@shadhil/database', () => {
   return {
     prisma: {},
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'org',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'org',
+      }),
+    ),
     Prisma: {
       raw: (sql: string) => ({ raw: sql }),
-      sql: (strings: TemplateStringsArray, ...args: unknown[]) => ({ sql: String.raw({ raw: strings }, ...args) }),
+      sql: (strings: TemplateStringsArray, ...args: unknown[]) => ({
+        sql: String.raw({ raw: strings }, ...args),
+      }),
     },
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: unknown) => unknown,
-      ) => callback(tx),
+      async (_client: unknown, _ctx: unknown, callback: (t: unknown) => unknown) => callback(tx),
     ),
   };
 });
@@ -107,16 +103,32 @@ describe('DashboardService.getExceptions', () => {
 
   it('rejects a MANAGER (non admin/owner) before running any query', async () => {
     const svc = new DashboardService({ $client: {} } as never);
-    await expect(svc.getExceptions(managerActor)).rejects.toThrow(
-      /Only ADMIN or OWNER/,
-    );
+    await expect(svc.getExceptions(managerActor)).rejects.toThrow(/Only ADMIN or OWNER/);
     expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('idleLeads sorts oldest first, buckets by age, carries projectId', async () => {
     fixture.idle.push([
-      { id: 'l-b', name: 'Old', phone: '9', state: 'CONTACTED', ownerId: 'u-1', projectId: 'p-1', updatedAt: daysAgo(20), ownerName: 'Priya' },
-      { id: 'l-a', name: 'Fresh', phone: '8', state: 'CONTACTED', ownerId: 'u-2', projectId: 'p-2', updatedAt: daysAgo(2), ownerName: 'Arjun' },
+      {
+        id: 'l-b',
+        name: 'Old',
+        phone: '9',
+        state: 'CONTACTED',
+        ownerId: 'u-1',
+        projectId: 'p-1',
+        updatedAt: daysAgo(20),
+        ownerName: 'Priya',
+      },
+      {
+        id: 'l-a',
+        name: 'Fresh',
+        phone: '8',
+        state: 'CONTACTED',
+        ownerId: 'u-2',
+        projectId: 'p-2',
+        updatedAt: daysAgo(2),
+        ownerName: 'Arjun',
+      },
     ]);
     fixture.team.push([]);
     const svc = new DashboardService({ $client: {} } as never);
@@ -134,7 +146,16 @@ describe('DashboardService.getExceptions', () => {
 
   it('a NEW lead past the 30-minute SLA is bucketed overdue', async () => {
     fixture.idle.push([
-      { id: 'l-new', name: 'Overdue New', phone: '7', state: 'NEW', ownerId: 'u-1', projectId: 'p-1', updatedAt: new Date(NOW.getTime() - 2 * 60 * 60 * 1000), ownerName: null },
+      {
+        id: 'l-new',
+        name: 'Overdue New',
+        phone: '7',
+        state: 'NEW',
+        ownerId: 'u-1',
+        projectId: 'p-1',
+        updatedAt: new Date(NOW.getTime() - 2 * 60 * 60 * 1000),
+        ownerName: null,
+      },
     ]);
     fixture.team.push([]);
     const svc = new DashboardService({ $client: {} } as never);
@@ -144,12 +165,30 @@ describe('DashboardService.getExceptions', () => {
 
   it('visitRisk flags open visits today-or-past with the correct reason', async () => {
     fixture.visits.push([
-      { id: 'v-past', leadId: 'l-1', lead: { name: 'Lead Past', projectId: 'p-1', state: 'NEGOTIATION' }, scheduledFor: daysAgo(1), status: 'SCHEDULED', user: { name: null } },
+      {
+        id: 'v-past',
+        leadId: 'l-1',
+        lead: { name: 'Lead Past', projectId: 'p-1', state: 'NEGOTIATION' },
+        scheduledFor: daysAgo(1),
+        status: 'SCHEDULED',
+        user: { name: null },
+      },
       // MIDNIGHT, not "now minus an hour": the service splits on start-of-today,
       // so a one-hour-ago instant lands on YESTERDAY when the suite runs shortly
       // after midnight and the reason flips to 'overdue-past-due'. Midnight is
       // both "today" and "not after now" at every hour (observed at 00:37).
-      { id: 'v-today', leadId: 'l-2', lead: { name: 'Lead Today', projectId: 'p-2', state: 'VISIT_SCHEDULED' }, scheduledFor: (() => { const d = new Date(NOW); d.setHours(0, 0, 0, 0); return d; })(), status: 'RESCHEDULED', user: { name: 'Exec' } },
+      {
+        id: 'v-today',
+        leadId: 'l-2',
+        lead: { name: 'Lead Today', projectId: 'p-2', state: 'VISIT_SCHEDULED' },
+        scheduledFor: (() => {
+          const d = new Date(NOW);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        })(),
+        status: 'RESCHEDULED',
+        user: { name: 'Exec' },
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);
@@ -192,7 +231,14 @@ describe('DashboardService.getExceptions', () => {
     // Guards against over-filtering: re-engagement states are ACTIVE, and a visit
     // on such a lead genuinely needs attention. Only WON/LOST/RNR are excluded.
     fixture.visits.push([
-      { id: 'v-re', leadId: 'l-3', lead: { name: 'Re-engage', projectId: 'p-1', state: 'NO_SHOW' }, scheduledFor: daysAgo(2), status: 'RESCHEDULED', user: { name: 'Exec' } },
+      {
+        id: 'v-re',
+        leadId: 'l-3',
+        lead: { name: 'Re-engage', projectId: 'p-1', state: 'NO_SHOW' },
+        scheduledFor: daysAgo(2),
+        status: 'RESCHEDULED',
+        user: { name: 'Exec' },
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);
@@ -207,8 +253,15 @@ describe('DashboardService.getExceptions', () => {
     // from anyone looking for them. Naming it separately is what makes them
     // findable and fixable.
     fixture.bookings.push([
-      { id: 'b-broken', lead: { name: 'Missing', projectId: 'p-1' }, unit: { unitNumber: 'C3' },
-        amount: { toString: () => '4100000.00' }, tokenAmount: null, status: 'TOKEN', createdAt: daysAgo(4) },
+      {
+        id: 'b-broken',
+        lead: { name: 'Missing', projectId: 'p-1' },
+        unit: { unitNumber: 'C3' },
+        amount: { toString: () => '4100000.00' },
+        tokenAmount: null,
+        status: 'TOKEN',
+        createdAt: daysAgo(4),
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);
@@ -220,8 +273,15 @@ describe('DashboardService.getExceptions', () => {
     // The new reason must not swallow the legitimate case: a HOLD booking simply
     // has no token yet, which is normal work rather than a data defect.
     fixture.bookings.push([
-      { id: 'b-hold', lead: { name: 'Waiting', projectId: 'p-1' }, unit: { unitNumber: 'C4' },
-        amount: { toString: () => '5100000.00' }, tokenAmount: null, status: 'HOLD', createdAt: daysAgo(2) },
+      {
+        id: 'b-hold',
+        lead: { name: 'Waiting', projectId: 'p-1' },
+        unit: { unitNumber: 'C4' },
+        amount: { toString: () => '5100000.00' },
+        tokenAmount: null,
+        status: 'HOLD',
+        createdAt: daysAgo(2),
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);
@@ -230,8 +290,24 @@ describe('DashboardService.getExceptions', () => {
 
   it('bookingMoney distinguishes token-paid (awaiting approval) from hold-no-token', async () => {
     fixture.bookings.push([
-      { id: 'b-tok', lead: { name: 'Paid', projectId: 'p-1' }, unit: { unitNumber: 'A1' }, amount: { toString: () => '4200000.00' }, tokenAmount: { toString: () => '400000.00' }, status: 'TOKEN', createdAt: daysAgo(3) },
-      { id: 'b-hold', lead: { name: 'Unpaid', projectId: 'p-2' }, unit: { unitNumber: 'B2' }, amount: { toString: () => '5100000.00' }, tokenAmount: null, status: 'HOLD', createdAt: daysAgo(5) },
+      {
+        id: 'b-tok',
+        lead: { name: 'Paid', projectId: 'p-1' },
+        unit: { unitNumber: 'A1' },
+        amount: { toString: () => '4200000.00' },
+        tokenAmount: { toString: () => '400000.00' },
+        status: 'TOKEN',
+        createdAt: daysAgo(3),
+      },
+      {
+        id: 'b-hold',
+        lead: { name: 'Unpaid', projectId: 'p-2' },
+        unit: { unitNumber: 'B2' },
+        amount: { toString: () => '5100000.00' },
+        tokenAmount: null,
+        status: 'HOLD',
+        createdAt: daysAgo(5),
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(adminActor);
@@ -244,8 +320,20 @@ describe('DashboardService.getExceptions', () => {
 
   it('teamHealth flags a quiet staff member (newest touch >=1 day) and skips active ones', async () => {
     fixture.team.push([
-      { userId: 'u-quiet', userName: 'Quiet TC', role: 'TELECALLER', activeLeadCount: 3, maxTouch: daysAgo(4) },
-      { userId: 'u-active', userName: 'Active TC', role: 'TELECALLER', activeLeadCount: 2, maxTouch: new Date(NOW.getTime() - 60 * 60 * 1000) },
+      {
+        userId: 'u-quiet',
+        userName: 'Quiet TC',
+        role: 'TELECALLER',
+        activeLeadCount: 3,
+        maxTouch: daysAgo(4),
+      },
+      {
+        userId: 'u-active',
+        userName: 'Active TC',
+        role: 'TELECALLER',
+        activeLeadCount: 2,
+        maxTouch: new Date(NOW.getTime() - 60 * 60 * 1000),
+      },
     ]);
     const svc = new DashboardService({ $client: {} } as never);
     const result = await svc.getExceptions(ownerActor);

@@ -46,7 +46,8 @@ const base: PortalTimelineProps = {
   onLoadMore: () => undefined,
   onOpenPhoto: () => undefined,
 };
-const render = (over: Partial<PortalTimelineProps>) => renderToStaticMarkup(<PortalTimeline {...base} {...over} />);
+const render = (over: Partial<PortalTimelineProps>) =>
+  renderToStaticMarkup(<PortalTimeline {...base} {...over} />);
 
 const DATA = [
   photo('p3', 'ph2', 'Plinth', '2026-11-03T08:00:00Z'),
@@ -65,7 +66,7 @@ describe('PortalTimeline states', () => {
   it('empty: warm copy, forward looking', () => {
     const html = render({});
     expect(html).toContain('First photos coming soon');
-    expect(html).toContain("We&#x27;ll notify you when the first photo lands.");
+    expect(html).toContain('We&#x27;ll notify you when the first photo lands.');
   });
 
   // 2026-11-09: the error state moved OUT of this component. A failed timeline
@@ -101,7 +102,9 @@ describe('PortalTimeline design contract', () => {
   });
 
   it('every image has non-empty alt; first two eager, the rest lazy', () => {
-    const html = render({ photos: [...DATA, photo('p0', 'ph1', 'Foundation', '2026-09-30T08:00:00Z', ' ')] });
+    const html = render({
+      photos: [...DATA, photo('p0', 'ph1', 'Foundation', '2026-09-30T08:00:00Z', ' ')],
+    });
     const imgs = html.match(/<img[^>]*>/g) ?? [];
     expect(imgs).toHaveLength(4);
     for (const img of imgs) expect(img).toMatch(/alt="[^"]+"/);
@@ -124,7 +127,12 @@ describe('PortalTimeline design contract', () => {
     expect(html.match(/data-qa="portal-photo-row"/g)).toHaveLength(3);
 
     const many = Array.from({ length: 60 }, (_, i) =>
-      photo(`x${i}`, 'ph1', 'Foundation', `2026-10-${String((i % 28) + 1).padStart(2, '0')}T08:00:00Z`),
+      photo(
+        `x${i}`,
+        'ph1',
+        'Foundation',
+        `2026-10-${String((i % 28) + 1).padStart(2, '0')}T08:00:00Z`,
+      ),
     );
     expect(render({ photos: many }).match(/data-qa="portal-photo-row"/g)).toHaveLength(60);
   });
@@ -145,7 +153,15 @@ describe('PortalTimeline design contract', () => {
   // this assertion fails the moment that column disappears again.
   it('renders the note under the photo, without a tap', () => {
     const html = render({
-      photos: [photo('p1', 'ph1', 'Foundation', '2026-11-05T08:00:00Z', 'Plinth poured, curing until Friday')],
+      photos: [
+        photo(
+          'p1',
+          'ph1',
+          'Foundation',
+          '2026-11-05T08:00:00Z',
+          'Plinth poured, curing until Friday',
+        ),
+      ],
     });
     expect(html).toContain('Plinth poured, curing until Friday');
     expect(html).toContain('data-qa="portal-photo-caption"');

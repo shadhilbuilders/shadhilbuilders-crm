@@ -16,10 +16,12 @@ const OWNER = 'wwj8bwawdwawkr0917f0z57u';
 
 type Recorded = { leadId: string; dto: Record<string, unknown> };
 
-function harness(options: {
-  recordedApplies?: boolean;
-  createdLead?: { id: string };
-} = {}) {
+function harness(
+  options: {
+    recordedApplies?: boolean;
+    createdLead?: { id: string };
+  } = {},
+) {
   const recorded: Recorded[] = [];
 
   const tx = {
@@ -69,7 +71,6 @@ function harness(options: {
 
   return { service, recorded, createInTransaction, recordInTransaction };
 }
-
 
 describe('PublicLeadsService - the landing enquiry produces an email fact', () => {
   const env = process.env;
@@ -144,9 +145,7 @@ describe('PublicLeadsService - the landing enquiry produces an email fact', () =
     // must still exist, and the refusal must be visible in the log rather than
     // swallowed.
     expect(result.ok).toBe(true);
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining('email fact NOT applied'),
-    );
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('email fact NOT applied'));
   });
 });
 
@@ -200,4 +199,3 @@ describe('PublicLeadsService - inbound channels other than the landing page', ()
     expect(await sourceOf('some-new-portal-2027')).toBe('OTHER');
   });
 });
-

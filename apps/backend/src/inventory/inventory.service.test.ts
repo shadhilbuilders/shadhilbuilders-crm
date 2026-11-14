@@ -62,9 +62,7 @@ function makeService(): {
   };
 } {
   const client = {
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn(client),
-    ),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     unit: {
       findMany: vi.fn(),
@@ -329,10 +327,7 @@ describe('list - unit ordering (HOLD first, then AVAILABLE, then SOLD)', () => {
   it('sorts an unrecognised status last instead of throwing', async () => {
     // Defensive: a status the rank map does not know must not 500 the grid -
     // it sorts to the tail, where it is visible as a wrong order but harmless.
-    const { result } = await listWithKeys([
-      keyRow('u-weird', 'MYSTERY'),
-      keyRow('u-hold', 'HOLD'),
-    ]);
+    const { result } = await listWithKeys([keyRow('u-weird', 'MYSTERY'), keyRow('u-hold', 'HOLD')]);
     expect(result.rows.map((r) => r.id)).toEqual(['u-hold', 'u-weird']);
   });
 
@@ -420,15 +415,11 @@ describe('list - search by villa number', () => {
     await service.list(makeActor(), { search: 'b-2', limit: 10, offset: 0 });
 
     const keyCall = client.unit.findMany.mock.calls[0]![0]!;
-    expect(keyCall.where.OR).toEqual([
-      { unitNumber: { contains: 'b-2', mode: 'insensitive' } },
-    ]);
+    expect(keyCall.where.OR).toEqual([{ unitNumber: { contains: 'b-2', mode: 'insensitive' } }]);
     // The count must carry the SAME filter, or the pagination total would
     // advertise rows the grid cannot show.
     const countCall = client.unit.count.mock.calls[0]![0]!;
-    expect(countCall.where.OR).toEqual([
-      { unitNumber: { contains: 'b-2', mode: 'insensitive' } },
-    ]);
+    expect(countCall.where.OR).toEqual([{ unitNumber: { contains: 'b-2', mode: 'insensitive' } }]);
   });
 
   it('combines search with the other filters instead of replacing them', async () => {
@@ -478,7 +469,9 @@ describe('list - search by villa number', () => {
         keyRow('u-avail', 'AVAILABLE', 'phase-1', 'A-103'),
       ])
       .mockImplementationOnce(async (args: { where: { id: { in: string[] } } }) =>
-        args.where.id.in.map((id) => pageRow(id, id === 'u-hold' ? 'HOLD' : id === 'u-sold' ? 'SOLD' : 'AVAILABLE')),
+        args.where.id.in.map((id) =>
+          pageRow(id, id === 'u-hold' ? 'HOLD' : id === 'u-sold' ? 'SOLD' : 'AVAILABLE'),
+        ),
       );
     client.unit.count.mockResolvedValue(3);
 
@@ -516,9 +509,7 @@ describe('findOne - unit detail', () => {
   it('returns 404 when the unit does not exist', async () => {
     const { service, client } = makeService();
     client.unit.findFirst.mockResolvedValue(null);
-    await expect(service.findOne(makeActor(), 'missing')).rejects.toThrow(
-      /Unit missing not found/,
-    );
+    await expect(service.findOne(makeActor(), 'missing')).rejects.toThrow(/Unit missing not found/);
   });
 });
 
@@ -531,9 +522,7 @@ describe('phases - list phases with unit counts', () => {
       { id: 'phase-1', projectId: 'proj-1', name: 'Phase A', _count: { units: 5 } },
     ]);
     const result = await service.phases(makeActor(), 'proj-1');
-    expect(result).toEqual([
-      { id: 'phase-1', projectId: 'proj-1', name: 'Phase A', unitCount: 5 },
-    ]);
+    expect(result).toEqual([{ id: 'phase-1', projectId: 'proj-1', name: 'Phase A', unitCount: 5 }]);
     expect(client.phase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { projectId: 'proj-1' } }),
     );
@@ -731,9 +720,7 @@ describe('deletePhase - remove a phase (MANAGER/ADMIN/OWNER only)', () => {
       name: 'Phase A',
     });
     client.unit.count.mockResolvedValue(3);
-    await expect(service.deletePhase(makeActor(), 'phase-1')).rejects.toThrow(
-      /still has 3 unit/,
-    );
+    await expect(service.deletePhase(makeActor(), 'phase-1')).rejects.toThrow(/still has 3 unit/);
     expect(client.phase.delete).not.toHaveBeenCalled();
   });
 });
@@ -1024,9 +1011,9 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
     client.unit.findUnique.mockResolvedValue(unitRow({ status: 'AVAILABLE' }));
     client.booking.findMany.mockResolvedValue([{ status: 'APPROVED' }]);
 
-    await expect(
-      service.update(makeActor(), 'unit-1', { status: 'AVAILABLE' }),
-    ).rejects.toThrow(/live booking/);
+    await expect(service.update(makeActor(), 'unit-1', { status: 'AVAILABLE' })).rejects.toThrow(
+      /live booking/,
+    );
     expect(client.unit.update).not.toHaveBeenCalled();
   });
 
@@ -1101,9 +1088,9 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
   it('returns 404 when the unit does not exist', async () => {
     const { service, client } = makeService();
     client.unit.findUnique.mockResolvedValue(null);
-    await expect(
-      service.update(makeActor(), 'missing', { status: 'SOLD' }),
-    ).rejects.toThrow(/Unit missing not found/);
+    await expect(service.update(makeActor(), 'missing', { status: 'SOLD' })).rejects.toThrow(
+      /Unit missing not found/,
+    );
     expect(client.unit.update).not.toHaveBeenCalled();
   });
 
@@ -1117,9 +1104,9 @@ describe('update - partial unit update (ADMIN/OWNER only)', () => {
       ),
     );
 
-    await expect(
-      service.update(makeActor(), 'unit-1', { unitNumber: 'A-102' }),
-    ).rejects.toThrow(/already exists in this phase/);
+    await expect(service.update(makeActor(), 'unit-1', { unitNumber: 'A-102' })).rejects.toThrow(
+      /already exists in this phase/,
+    );
     expect(client.auditLog.create).not.toHaveBeenCalled();
   });
 });
@@ -1174,9 +1161,7 @@ describe('delete - remove a unit (ADMIN/OWNER only)', () => {
   it('returns 404 when the unit does not exist', async () => {
     const { service, client } = makeService();
     client.unit.findUnique.mockResolvedValue(null);
-    await expect(service.delete(makeActor(), 'missing')).rejects.toThrow(
-      /Unit missing not found/,
-    );
+    await expect(service.delete(makeActor(), 'missing')).rejects.toThrow(/Unit missing not found/);
     expect(client.unit.delete).not.toHaveBeenCalled();
   });
 
@@ -1197,9 +1182,7 @@ describe('delete - remove a unit (ADMIN/OWNER only)', () => {
       phase: { name: 'Phase A' },
     });
     client.booking.count.mockResolvedValue(2);
-    await expect(service.delete(makeActor(), 'unit-1')).rejects.toThrow(
-      /has 2 booking/,
-    );
+    await expect(service.delete(makeActor(), 'unit-1')).rejects.toThrow(/has 2 booking/);
     expect(client.unit.delete).not.toHaveBeenCalled();
   });
 });
@@ -1210,19 +1193,34 @@ describe('options - list a project option set', () => {
   it('returns the project options with real unit counts, narrowed by type', async () => {
     const { service, client } = makeService();
     client.projectOption.findMany.mockResolvedValue([
-      { id: 'opt-1', projectId: 'proj-1', type: 'FACING', value: 'North', createdAt: new Date('2026-01-01T00:00:00Z') },
+      {
+        id: 'opt-1',
+        projectId: 'proj-1',
+        type: 'FACING',
+        value: 'North',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
     ]);
     client.unit.count.mockResolvedValue(3);
     const result = await service.options(makeActor(), { projectId: 'proj-1', type: 'FACING' });
     expect(result).toEqual([
-      { id: 'opt-1', projectId: 'proj-1', type: 'FACING', value: 'North', unitCount: 3, createdAt: '2026-01-01T00:00:00.000Z' },
+      {
+        id: 'opt-1',
+        projectId: 'proj-1',
+        type: 'FACING',
+        value: 'North',
+        unitCount: 3,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
     ]);
     // The count query scopes to units in THIS project using the facing.
     expect(client.unit.count).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ facing: 'North' }) }),
     );
     expect(client.projectOption.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ projectId: 'proj-1', type: 'FACING' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ projectId: 'proj-1', type: 'FACING' }),
+      }),
     );
   });
 
@@ -1264,7 +1262,10 @@ describe('createOption - add a project option (MANAGER/ADMIN/OWNER only)', () =>
     );
     expect(client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ action: 'inventory.option.create', entityType: 'ProjectOption' }),
+        data: expect.objectContaining({
+          action: 'inventory.option.create',
+          entityType: 'ProjectOption',
+        }),
       }),
     );
   });
@@ -1330,7 +1331,10 @@ describe('deleteOption - remove a project option (MANAGER/ADMIN/OWNER only)', ()
     );
     expect(client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ action: 'inventory.option.delete', entityType: 'ProjectOption' }),
+        data: expect.objectContaining({
+          action: 'inventory.option.delete',
+          entityType: 'ProjectOption',
+        }),
       }),
     );
   });
@@ -1380,8 +1384,6 @@ describe('deleteOption - remove a project option (MANAGER/ADMIN/OWNER only)', ()
     expect(client.projectOption.delete).not.toHaveBeenCalled();
   });
 });
-
-
 
 describe('unit total is always derived (buildup x per sq.ft price)', () => {
   it('deriveUnitPrice multiplies exactly and formats 2 decimals', () => {

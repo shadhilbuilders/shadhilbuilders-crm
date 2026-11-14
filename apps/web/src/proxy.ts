@@ -34,9 +34,9 @@ const PUBLIC_PATHS = [
   '/login',
   '/api/auth',
   '/api/health',
-  '/icons',         // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
+  '/icons', // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
   '/cmda-plan.svg', // approved plot-layout artwork: the SW precaches it from /login with no session, so it must never redirect to /login
-  '/brand',         // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)
+  '/brand', // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)
   '/manifest.webmanifest',
   '/manifest.json',
   '/offline',

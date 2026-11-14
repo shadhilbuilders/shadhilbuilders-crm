@@ -21,10 +21,7 @@ describe('ActivityType', () => {
   it('includes ASSIGNMENT and matches the Prisma enum', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const schema = readFileSync(
-      join(__dirname, '../../database/prisma/schema.prisma'),
-      'utf8',
-    );
+    const schema = readFileSync(join(__dirname, '../../database/prisma/schema.prisma'), 'utf8');
     const block = /enum ActivityType \{([^}]*)\}/.exec(schema)?.[1] ?? '';
     const prisma = block.split(/\s+/).filter(Boolean).sort();
     expect([...ActivityTypeSchema.options].sort()).toEqual(prisma);

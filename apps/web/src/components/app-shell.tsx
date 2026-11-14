@@ -145,22 +145,22 @@ export function AppShell() {
           >
             {isCollapsed ? (
               <Image
-               src="/icons/brand-icon.png"
-               alt="Shadhil Builders"
-               width={28}
-               height={28}
-               className="size-10 object-contain"
-               data-qa="sidebar-brand-icon-collapsed"
-             />
+                src="/icons/brand-icon.png"
+                alt="Shadhil Builders"
+                width={28}
+                height={28}
+                className="size-10 object-contain"
+                data-qa="sidebar-brand-icon-collapsed"
+              />
             ) : (
-            <Image
-              src="/brand/logo-bg.png"
-              alt="Shadhil Builders"
-              width={130}
-              height={34}
-              className="w-38 h-auto object-contain"
-              data-qa="sidebar-brand-logo-expanded"
-              loading="eager"
+              <Image
+                src="/brand/logo-bg.png"
+                alt="Shadhil Builders"
+                width={130}
+                height={34}
+                className="h-auto w-38 object-contain"
+                data-qa="sidebar-brand-logo-expanded"
+                loading="eager"
               />
             )}
           </Link>
@@ -505,7 +505,7 @@ function NavMenuSubmenu({
   activeProjectSlug: string | null;
 }) {
   const [defaultOpen] = useState(() =>
-    children.some((c) => isNavItemActive(c.href, stripProjectSegmentForNav(pathname)))
+    children.some((c) => isNavItemActive(c.href, stripProjectSegmentForNav(pathname))),
   );
   const Icon = item.icon;
   return (

@@ -80,11 +80,7 @@ export function navigateDate(
   return operations[view](date, 1);
 }
 
-export function getEventsCount(
-  events: IEvent[],
-  date: Date,
-  view: TCalendarView,
-): number {
+export function getEventsCount(events: IEvent[], date: Date, view: TCalendarView): number {
   const compareFns = {
     agenda: isSameMonth,
     year: isSameYear,
@@ -93,9 +89,7 @@ export function getEventsCount(
     month: isSameMonth,
   };
 
-  return events.filter((event) =>
-    compareFns[view](new Date(event.startDate), date),
-  ).length;
+  return events.filter((event) => compareFns[view](new Date(event.startDate), date)).length;
 }
 
 // ================ Week and day view helper functions ================ //
@@ -169,21 +163,14 @@ export function getEventBlockStyle(
   return { top: `${top}%`, width: `${width}%`, left: `${left}%` };
 }
 
-export function isWorkingHour(
-  day: Date,
-  hour: number,
-  workingHours: TWorkingHours,
-) {
+export function isWorkingHour(day: Date, hour: number, workingHours: TWorkingHours) {
   const dayIndex = day.getDay() as keyof typeof workingHours;
   const dayHours = workingHours[dayIndex];
   if (!dayHours) return false;
   return hour >= dayHours.from && hour < dayHours.to;
 }
 
-export function getVisibleHours(
-  visibleHours: TVisibleHours,
-  singleDayEvents: IEvent[],
-) {
+export function getVisibleHours(visibleHours: TVisibleHours, singleDayEvents: IEvent[]) {
   let earliestEventHour = visibleHours.from;
   let latestEventHour = visibleHours.to;
 
@@ -211,10 +198,8 @@ export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
   const currentYear = selectedDate.getFullYear();
   const currentMonth = selectedDate.getMonth();
 
-  const getDaysInMonth = (year: number, month: number) =>
-    new Date(year, month + 1, 0).getDate();
-  const getFirstDayOfMonth = (year: number, month: number) =>
-    new Date(year, month, 1).getDay();
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDayOfMonth = getFirstDayOfMonth(currentYear, currentMonth);
@@ -224,11 +209,7 @@ export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
   const prevMonthCells = Array.from({ length: firstDayOfMonth }, (_, i) => ({
     day: daysInPrevMonth - firstDayOfMonth + i + 1,
     currentMonth: false,
-    date: new Date(
-      currentYear,
-      currentMonth - 1,
-      daysInPrevMonth - firstDayOfMonth + i + 1,
-    ),
+    date: new Date(currentYear, currentMonth - 1, daysInPrevMonth - firstDayOfMonth + i + 1),
   }));
 
   const currentMonthCells = Array.from({ length: daysInMonth }, (_, i) => ({
@@ -237,14 +218,11 @@ export function getCalendarCells(selectedDate: Date): ICalendarCell[] {
     date: new Date(currentYear, currentMonth, i + 1),
   }));
 
-  const nextMonthCells = Array.from(
-    { length: (7 - (totalDays % 7)) % 7 },
-    (_, i) => ({
-      day: i + 1,
-      currentMonth: false,
-      date: new Date(currentYear, currentMonth + 1, i + 1),
-    }),
-  );
+  const nextMonthCells = Array.from({ length: (7 - (totalDays % 7)) % 7 }, (_, i) => ({
+    day: i + 1,
+    currentMonth: false,
+    date: new Date(currentYear, currentMonth + 1, i + 1),
+  }));
 
   return [...prevMonthCells, ...currentMonthCells, ...nextMonthCells];
 }
@@ -266,17 +244,10 @@ export function calculateMonthEventPositions(
 
   const sortedEvents = [
     ...multiDayEvents.sort((a, b) => {
-      const aDuration = differenceInDays(
-        parseISO(a.endDate),
-        parseISO(a.startDate),
-      );
-      const bDuration = differenceInDays(
-        parseISO(b.endDate),
-        parseISO(b.startDate),
-      );
+      const aDuration = differenceInDays(parseISO(a.endDate), parseISO(a.startDate));
+      const bDuration = differenceInDays(parseISO(b.endDate), parseISO(b.startDate));
       return (
-        bDuration - aDuration ||
-        parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
+        bDuration - aDuration || parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
       );
     }),
     ...singleDayEvents.sort(

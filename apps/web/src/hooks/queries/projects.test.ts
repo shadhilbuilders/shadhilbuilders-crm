@@ -33,10 +33,7 @@ describe('pickDefaultProject', () => {
   });
 
   it('falls back to the first row when Metro Heights is absent', () => {
-    const rows = [
-      project({ id: 'first', slug: 'alpha' }),
-      project({ id: 'second', slug: 'beta' }),
-    ];
+    const rows = [project({ id: 'first', slug: 'alpha' }), project({ id: 'second', slug: 'beta' })];
     expect(pickDefaultProject(rows)?.id).toBe('first');
   });
 

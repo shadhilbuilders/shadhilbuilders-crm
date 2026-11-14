@@ -97,11 +97,7 @@ export default function TeamsPage() {
         subtitle="Create, rename, and delete teams. Deleting a team with members or an active manager is blocked."
         action={
           <Dialog
-            trigger={
-              <Button leftIcon={<LuPlus className="h-4 w-4" />}>
-                New team
-              </Button>
-            }
+            trigger={<Button leftIcon={<LuPlus className="h-4 w-4" />}>New team</Button>}
             header={{ title: 'Create a team' }}
             open={createOpen}
             onOpenChange={setCreateOpen}
@@ -121,9 +117,7 @@ export default function TeamsPage() {
         >
           <p className="text-sm font-medium">Couldn&apos;t load teams.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {teams.error instanceof Error
-              ? teams.error.message
-              : 'Unexpected error.'}
+            {teams.error instanceof Error ? teams.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -220,35 +214,23 @@ function TeamRowActions({
             onClick={() => onAddMembers(target)}
             data-qa="data-table-row-action-item"
           >
-            <LuUserPlus className="mr-2 size-4 text-muted-foreground" />
+            <LuUserPlus className="text-muted-foreground mr-2 size-4" />
             Add members
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onWeight(target)}
-            data-qa="data-table-row-action-item"
-          >
-            <LuWeight className="mr-2 size-4 text-muted-foreground" />
+          <DropdownMenuItem onClick={() => onWeight(target)} data-qa="data-table-row-action-item">
+            <LuWeight className="text-muted-foreground mr-2 size-4" />
             Manage weights
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onEdit(target)}
-            data-qa="data-table-row-action-item"
-          >
-            <LuPencil className="mr-2 size-4 text-muted-foreground" />
+          <DropdownMenuItem onClick={() => onEdit(target)} data-qa="data-table-row-action-item">
+            <LuPencil className="text-muted-foreground mr-2 size-4" />
             Edit
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onReassign(target)}
-            data-qa="data-table-row-action-item"
-          >
-            <LuUsersRound className="mr-2 size-4 text-muted-foreground" />
+          <DropdownMenuItem onClick={() => onReassign(target)} data-qa="data-table-row-action-item">
+            <LuUsersRound className="text-muted-foreground mr-2 size-4" />
             Reassign all members
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onDelete(target)}
-            data-qa="data-table-row-action-item"
-          >
-            <LuTrash2 className="mr-2 size-4 text-muted-foreground" />
+          <DropdownMenuItem onClick={() => onDelete(target)} data-qa="data-table-row-action-item">
+            <LuTrash2 className="text-muted-foreground mr-2 size-4" />
             Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -322,7 +304,7 @@ function TeamsTable({
         header: 'Reports to',
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">
-            {row.original.managerName !== null ? row.original.ownerName ?? '—' : '—'}
+            {row.original.managerName !== null ? (row.original.ownerName ?? '—') : '—'}
           </span>
         ),
         enableSorting: true,
@@ -330,9 +312,7 @@ function TeamsTable({
       {
         accessorKey: 'memberCount',
         header: 'Members',
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.memberCount}</span>
-        ),
+        cell: ({ row }) => <span className="text-sm">{row.original.memberCount}</span>,
         enableSorting: true,
       },
       {
@@ -381,8 +361,8 @@ function TeamsTable({
         }}
         loadingContent={<Loading content="Loading teams..." />}
         emptyContent={
-          <div className="rounded-lg p-10 text-center space-y-1">
-            <LuUsersRound className="mx-auto size-8 text-muted-foreground" />
+          <div className="space-y-1 rounded-lg p-10 text-center">
+            <LuUsersRound className="text-muted-foreground mx-auto size-8" />
             <TypographyP className="text-xl font-medium">No teams yet.</TypographyP>
             <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
               Create a team to get started.
@@ -399,13 +379,7 @@ function TeamsTable({
 // Edit dialog (reuses TeamFormBody - separately exported, rule 7c)
 // ---------------------------------------------------------------------------
 
-function EditTeamDialog({
-  target,
-  onClose,
-}: {
-  target: TeamListItem | null;
-  onClose: () => void;
-}) {
+function EditTeamDialog({ target, onClose }: { target: TeamListItem | null; onClose: () => void }) {
   return (
     <Dialog
       trigger={<button hidden />}
@@ -416,9 +390,7 @@ function EditTeamDialog({
       }}
       contentClassName="sm:max-w-lg"
     >
-      {target !== null ? (
-        <TeamFormBody mode="edit" team={target} onDone={onClose} />
-      ) : null}
+      {target !== null ? <TeamFormBody mode="edit" team={target} onDone={onClose} /> : null}
     </Dialog>
   );
 }

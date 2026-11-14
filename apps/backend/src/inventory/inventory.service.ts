@@ -28,7 +28,21 @@ import {
 } from '@nestjs/common';
 import { Prisma, withRlsContext, rlsContextFrom, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import { ACTIVE_BOOKING_STATUSES, BOOKING_STATUS_BINDING_ORDER, bookingClaimRank, computeUnitTotal, MAX_UNIT_TOTAL, plotStatusFromUnitStatus, mostBindingPlotStatus, unitClaimRank, UnitStatusSchema, type PlotBookingRef, type PlotStatusListResult, type PlotStatusRow, type PlotUnitClaim } from '@shadhil/api-types';
+import {
+  ACTIVE_BOOKING_STATUSES,
+  BOOKING_STATUS_BINDING_ORDER,
+  bookingClaimRank,
+  computeUnitTotal,
+  MAX_UNIT_TOTAL,
+  plotStatusFromUnitStatus,
+  mostBindingPlotStatus,
+  unitClaimRank,
+  UnitStatusSchema,
+  type PlotBookingRef,
+  type PlotStatusListResult,
+  type PlotStatusRow,
+  type PlotUnitClaim,
+} from '@shadhil/api-types';
 
 import { isSoftDeleted } from '../common/soft-delete-filters';
 import type {
@@ -48,11 +62,7 @@ import type {
 import { PrismaService } from '../prisma/prisma.module';
 import { UNIT_ROW_SELECT, unitRowSelectFor, toUnitRow } from './unit-row';
 import { unitStatusRank } from './unit-status-rank';
-import {
-  canManageProjectMembers,
-  canSeeUnitMoney,
-  isAdminClass,
-} from '../users/roles';
+import { canManageProjectMembers, canSeeUnitMoney, isAdminClass } from '../users/roles';
 
 /**
  * Unit total = buildup sq.ft x price per sq.ft, as a 2-decimal string. Throws a
@@ -116,9 +126,7 @@ function compareClaimBookings(a: ClaimBookingSource, b: ClaimBookingSource): num
  * first row anyway: if a duplicate ever exists, the panel must show the
  * approved deal, not whichever row the database happened to return first.
  */
-export function pickClaimBooking(
-  bookings: readonly ClaimBookingSource[],
-): PlotBookingRef | null {
+export function pickClaimBooking(bookings: readonly ClaimBookingSource[]): PlotBookingRef | null {
   // Only statuses that still claim the unit. The query filters to these
   // already; repeating it here means a terminal booking (a cancelled or
   // rejected deal) can never be presented as the reason a villa is gone,
@@ -170,7 +178,7 @@ export function unitConflictMessage(
   if (described.includes('plotNumber')) {
     return (
       `Plot ${identifying.plotNumber ?? '?'} is already assigned to another unit in this phase. ` +
-      'Clear that unit\'s plot number first, or pick a different plot.'
+      "Clear that unit's plot number first, or pick a different plot."
     );
   }
   return `Unit ${identifying.unitNumber} already exists in this phase`;
@@ -178,9 +186,7 @@ export function unitConflictMessage(
 
 @Injectable()
 export class InventoryService {
-  constructor(
-    @Inject(PrismaService) private readonly prismaService: PrismaService,
-  ) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -191,111 +197,98 @@ export class InventoryService {
    * - role-scoped grid. Every authenticated role can read (the RLS
    * SELECT policy is open); the service narrows by the filters.
    */
-  async list(
-    actor: JwtPayload,
-    dto: UnitFilterDto,
-  ): Promise<UnitListResult> {
+  async list(actor: JwtPayload, dto: UnitFilterDto): Promise<UnitListResult> {
     // Money audience (2026-11-08): a site-only role reads these villas for
     // documentation and never receives a rupee figure. The redaction happens in
     // the SELECT, not in the grid's columns - hiding a column still shipped
     // the number in the JSON.
     const canSeeMoney = canSeeUnitMoney(actor.role);
     const select = unitRowSelectFor(canSeeMoney);
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {};
-        // T-SOFT-DELETE (2026-10-01): a unit in a soft-deleted project is not
-        // sellable inventory. The filter nests under `phase` alongside the
-        // projectId filter below, so it cannot clobber the top-level `OR`
-        // the search clause owns.
-        where['phase'] = { project: { deletedAt: null } };
-        if (dto.projectId !== undefined) {
-          where['phase'] = { projectId: dto.projectId, project: { deletedAt: null } };
-        }
-        if (dto.phaseId !== undefined) where['phaseId'] = dto.phaseId;
-        if (dto.assignedEngineerId !== undefined) {
-          where['assignedEngineerId'] = dto.assignedEngineerId;
-        }
-        if (dto.bhk !== undefined) where['bhk'] = dto.bhk;
-        if (dto.facing !== undefined) {
-          where['facing'] = { equals: dto.facing, mode: 'insensitive' };
-        }
-        if (dto.status !== undefined) {
-          where['status'] = Array.isArray(dto.status)
-            ? { in: dto.status }
-            : dto.status;
-        }
-        // T-INV-SEARCH: match the villa number, case-insensitively. The villa
-        // number is the identifier staff read off a booking sheet or a
-        // brochure, so this is the one field that needs free-text lookup.
-        //
-        // `OR` is a top-level key here and nothing else in this `where`
-        // claims it (the project filter nests under `phase`), so there is no
-        // risk of one clause overwriting another - the trap users.service.ts
-        // carries a warning about, where the search block re-assigned an `OR`
-        // that already held the project scope.
-        if (dto.search !== undefined && dto.search.length > 0) {
-          where['OR'] = [
-            { unitNumber: { contains: dto.search, mode: 'insensitive' } },
-          ];
-        }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {};
+      // T-SOFT-DELETE (2026-10-01): a unit in a soft-deleted project is not
+      // sellable inventory. The filter nests under `phase` alongside the
+      // projectId filter below, so it cannot clobber the top-level `OR`
+      // the search clause owns.
+      where['phase'] = { project: { deletedAt: null } };
+      if (dto.projectId !== undefined) {
+        where['phase'] = { projectId: dto.projectId, project: { deletedAt: null } };
+      }
+      if (dto.phaseId !== undefined) where['phaseId'] = dto.phaseId;
+      if (dto.assignedEngineerId !== undefined) {
+        where['assignedEngineerId'] = dto.assignedEngineerId;
+      }
+      if (dto.bhk !== undefined) where['bhk'] = dto.bhk;
+      if (dto.facing !== undefined) {
+        where['facing'] = { equals: dto.facing, mode: 'insensitive' };
+      }
+      if (dto.status !== undefined) {
+        where['status'] = Array.isArray(dto.status) ? { in: dto.status } : dto.status;
+      }
+      // T-INV-SEARCH: match the villa number, case-insensitively. The villa
+      // number is the identifier staff read off a booking sheet or a
+      // brochure, so this is the one field that needs free-text lookup.
+      //
+      // `OR` is a top-level key here and nothing else in this `where`
+      // claims it (the project filter nests under `phase`), so there is no
+      // risk of one clause overwriting another - the trap users.service.ts
+      // carries a warning about, where the search block re-assigned an `OR`
+      // that already held the project scope.
+      if (dto.search !== undefined && dto.search.length > 0) {
+        where['OR'] = [{ unitNumber: { contains: dto.search, mode: 'insensitive' } }];
+      }
 
-        // T-INV-SORT: on-hold first, then available, then the rest.
-        //
-        // Ordering MUST happen server-side: this grid is paginated (page size
-        // 10 of 16+ units), so sorting the loaded page in the browser would
-        // order 10 rows and scatter the rest across the wrong pages.
-        //
-        // Prisma cannot express it: `orderBy: { status: 'asc' }` sorts by the
-        // enum's DECLARATION order (AVAILABLE, HOLD, TOKEN, SOLD) - nearly the
-        // reverse. Rather than hand-build a raw WHERE (which silently drops
-        // filters if it drifts), the matching rows' SORT KEYS are read through
-        // Prisma, ranked here, then the page is hydrated by id. The villa
-        // inventory is hundreds of rows, so reading the keys is cheap and the
-        // filter handling stays exactly as Prisma builds it.
-        const keys = await (tx as unknown as PrismaClient).unit.findMany({
-          where,
-          select: { id: true, status: true, phaseId: true, unitNumber: true },
-        });
+      // T-INV-SORT: on-hold first, then available, then the rest.
+      //
+      // Ordering MUST happen server-side: this grid is paginated (page size
+      // 10 of 16+ units), so sorting the loaded page in the browser would
+      // order 10 rows and scatter the rest across the wrong pages.
+      //
+      // Prisma cannot express it: `orderBy: { status: 'asc' }` sorts by the
+      // enum's DECLARATION order (AVAILABLE, HOLD, TOKEN, SOLD) - nearly the
+      // reverse. Rather than hand-build a raw WHERE (which silently drops
+      // filters if it drifts), the matching rows' SORT KEYS are read through
+      // Prisma, ranked here, then the page is hydrated by id. The villa
+      // inventory is hundreds of rows, so reading the keys is cheap and the
+      // filter handling stays exactly as Prisma builds it.
+      const keys = await (tx as unknown as PrismaClient).unit.findMany({
+        where,
+        select: { id: true, status: true, phaseId: true, unitNumber: true },
+      });
 
-        const ranked = [...keys].sort((a, b) => {
-          const ra = unitStatusRank(a.status);
-          const rb = unitStatusRank(b.status);
-          if (ra !== rb) return ra - rb;
-          if (a.phaseId !== b.phaseId) return a.phaseId < b.phaseId ? -1 : 1;
-          return a.unitNumber.localeCompare(b.unitNumber);
-        });
-        const pageIds = ranked
-          .slice(dto.offset, dto.offset + dto.limit)
-          .map((r) => r.id);
+      const ranked = [...keys].sort((a, b) => {
+        const ra = unitStatusRank(a.status);
+        const rb = unitStatusRank(b.status);
+        if (ra !== rb) return ra - rb;
+        if (a.phaseId !== b.phaseId) return a.phaseId < b.phaseId ? -1 : 1;
+        return a.unitNumber.localeCompare(b.unitNumber);
+      });
+      const pageIds = ranked.slice(dto.offset, dto.offset + dto.limit).map((r) => r.id);
 
-        const [rows, total] = await Promise.all([
-          pageIds.length === 0
-            ? Promise.resolve([])
-            : (tx as unknown as PrismaClient).unit.findMany({
-                // Re-assert `where`: the ids are already scoped, and keeping
-                // the filters makes this read safe on its own.
-                where: { ...where, id: { in: pageIds } },
-                select,
-              }),
-          (tx as unknown as PrismaClient).unit.count({ where }),
-        ]);
+      const [rows, total] = await Promise.all([
+        pageIds.length === 0
+          ? Promise.resolve([])
+          : (tx as unknown as PrismaClient).unit.findMany({
+              // Re-assert `where`: the ids are already scoped, and keeping
+              // the filters makes this read safe on its own.
+              where: { ...where, id: { in: pageIds } },
+              select,
+            }),
+        (tx as unknown as PrismaClient).unit.count({ where }),
+      ]);
 
-        // `in:` does not preserve array order - restore the ranked order so the
-        // page renders HOLD -> AVAILABLE -> TOKEN -> SOLD.
-        const byId = new Map(rows.map((r) => [r.id, r]));
-        const orderedRows = pageIds
-          .map((id) => byId.get(id))
-          .filter((r): r is (typeof rows)[number] => r !== undefined);
+      // `in:` does not preserve array order - restore the ranked order so the
+      // page renders HOLD -> AVAILABLE -> TOKEN -> SOLD.
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const orderedRows = pageIds
+        .map((id) => byId.get(id))
+        .filter((r): r is (typeof rows)[number] => r !== undefined);
 
-        return {
-          total,
-          rows: orderedRows.map((r) => toUnitRow(r, canSeeMoney)),
-        };
-      },
-    );
+      return {
+        total,
+        rows: orderedRows.map((r) => toUnitRow(r, canSeeMoney)),
+      };
+    });
   }
 
   /**
@@ -306,24 +299,20 @@ export class InventoryService {
     // Same audience rule as `list`: the detail panel's money rows are fed by
     // this projection, so an engineer gets nulls, not a hidden DOM node.
     const canSeeMoney = canSeeUnitMoney(actor.role);
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // `findFirst`, not `findUnique`: the org term needs a compound where.
-        // Without it, any authenticated caller could read another tenant's unit
-        // by id - Unit's SELECT policy (unit_select_any_authenticated) checks
-        // the ROLE only, so the query is the only thing holding that line.
-        const unit = await (tx as unknown as PrismaClient).unit.findFirst({
-          where: { id: unitId, organizationId: actor.organizationId },
-          select: unitRowSelectFor(canSeeMoney),
-        });
-        if (unit === null) {
-          throw new NotFoundException(`Unit ${unitId} not found`);
-        }
-        return toUnitRow(unit, canSeeMoney);
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // `findFirst`, not `findUnique`: the org term needs a compound where.
+      // Without it, any authenticated caller could read another tenant's unit
+      // by id - Unit's SELECT policy (unit_select_any_authenticated) checks
+      // the ROLE only, so the query is the only thing holding that line.
+      const unit = await (tx as unknown as PrismaClient).unit.findFirst({
+        where: { id: unitId, organizationId: actor.organizationId },
+        select: unitRowSelectFor(canSeeMoney),
+      });
+      if (unit === null) {
+        throw new NotFoundException(`Unit ${unitId} not found`);
+      }
+      return toUnitRow(unit, canSeeMoney);
+    });
   }
 
   /**
@@ -331,30 +320,26 @@ export class InventoryService {
    * with its unit count (for the filter + detail panel).
    */
   async phases(actor: JwtPayload, projectId?: string): Promise<PhaseRow[]> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const where: Record<string, unknown> = {};
-        if (projectId !== undefined) where['projectId'] = projectId;
-        const phases = await (tx as unknown as PrismaClient).phase.findMany({
-          where,
-          orderBy: { name: 'asc' },
-          select: {
-            id: true,
-            projectId: true,
-            name: true,
-            _count: { select: { units: true } },
-          },
-        });
-        return phases.map((p) => ({
-          id: p.id,
-          projectId: p.projectId,
-          name: p.name,
-          unitCount: p._count.units,
-        }));
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const where: Record<string, unknown> = {};
+      if (projectId !== undefined) where['projectId'] = projectId;
+      const phases = await (tx as unknown as PrismaClient).phase.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          projectId: true,
+          name: true,
+          _count: { select: { units: true } },
+        },
+      });
+      return phases.map((p) => ({
+        id: p.id,
+        projectId: p.projectId,
+        name: p.name,
+        unitCount: p._count.units,
+      }));
+    });
   }
 
   /**
@@ -382,101 +367,97 @@ export class InventoryService {
     // to you" - and it skips a query that could only return data we must not
     // send.
     const canSeeMoney = canSeeUnitMoney(actor.role);
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const client = tx as unknown as PrismaClient;
-        // Filter to the units that HAVE a plot number and to the ACTOR's
-        // organization. Both terms earn their place:
-        //   - `plotNumber`: only units somebody has placed on the layout are
-        //     plots at all, so a project's whole unit list never crosses the
-        //     wire just to be thrown away in JS.
-        //   - `organizationId`: `projectId` arrives from the query string, and
-        //     Unit's SELECT policy (unit_select_any_authenticated, migration
-        //     20260910000000_inventory_rls) checks the ROLE only. Without this
-        //     term a caller could pass another tenant's project and read their
-        //     villa numbers, areas and prices.
-        const where: Prisma.UnitWhereInput = {
-          plotNumber: { not: null },
-          organizationId: actor.organizationId,
-        };
-        if (projectId !== undefined) where.phase = { projectId };
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const client = tx as unknown as PrismaClient;
+      // Filter to the units that HAVE a plot number and to the ACTOR's
+      // organization. Both terms earn their place:
+      //   - `plotNumber`: only units somebody has placed on the layout are
+      //     plots at all, so a project's whole unit list never crosses the
+      //     wire just to be thrown away in JS.
+      //   - `organizationId`: `projectId` arrives from the query string, and
+      //     Unit's SELECT policy (unit_select_any_authenticated, migration
+      //     20260910000000_inventory_rls) checks the ROLE only. Without this
+      //     term a caller could pass another tenant's project and read their
+      //     villa numbers, areas and prices.
+      const where: Prisma.UnitWhereInput = {
+        plotNumber: { not: null },
+        organizationId: actor.organizationId,
+      };
+      if (projectId !== undefined) where.phase = { projectId };
 
-        const units = await client.unit.findMany({
-          where,
-          select: unitRowSelectFor(canSeeMoney),
-          orderBy: { plotNumber: 'asc' },
+      const units = await client.unit.findMany({
+        where,
+        select: unitRowSelectFor(canSeeMoney),
+        orderBy: { plotNumber: 'asc' },
+      });
+
+      // Every live booking for those units in ONE query. A per-unit lookup
+      // would be up to 125 round trips on a fully plot-numbered project.
+      //
+      // Skipped entirely for a money-blind actor: the booking ref carries the
+      // deal amount and the buyer's name, so there is nothing in it we could
+      // send. `booking: null` then renders the panel's existing "not visible
+      // to you" line, which is the honest statement rather than a second
+      // vocabulary for the same thing.
+      const bookings: ClaimBookingSource[] =
+        units.length === 0 || !canSeeMoney
+          ? []
+          : await client.booking.findMany({
+              where: {
+                unitId: { in: units.map((unit) => unit.id) },
+                status: { in: [...ACTIVE_BOOKING_STATUSES] },
+              },
+              select: CLAIM_BOOKING_SELECT,
+            });
+
+      const bookingsByUnit = new Map<string, ClaimBookingSource[]>();
+      for (const booking of bookings) {
+        const forUnit = bookingsByUnit.get(booking.unitId) ?? [];
+        forUnit.push(booking);
+        bookingsByUnit.set(booking.unitId, forUnit);
+      }
+
+      const byPlot = new Map<number, PlotUnitClaim[]>();
+      for (const unit of units) {
+        const parsedStatus = UnitStatusSchema.safeParse(unit.status);
+        if (!parsedStatus.success) {
+          // The database holds a UnitStatus the shared contract does not
+          // know, so every downstream surface would be guessing. Fail loudly
+          // instead of painting an unknown state as available.
+          throw new InternalServerErrorException(
+            `Unit ${unit.unitNumber} has status "${String(unit.status)}", which is not a known UnitStatus. ` +
+              'The database and the generated Prisma client have drifted - run `pnpm --filter @shadhil/database generate` ' +
+              'and redeploy the API.',
+          );
+        }
+        const plotNumber = unit.plotNumber;
+        // Defensive: the SQL filter should already have excluded these.
+        if (plotNumber === null) continue;
+        const claims = byPlot.get(plotNumber) ?? [];
+        claims.push({
+          unit: toUnitRow(unit, canSeeMoney),
+          booking: pickClaimBooking(bookingsByUnit.get(unit.id) ?? []),
         });
+        byPlot.set(plotNumber, claims);
+      }
 
-        // Every live booking for those units in ONE query. A per-unit lookup
-        // would be up to 125 round trips on a fully plot-numbered project.
-        //
-        // Skipped entirely for a money-blind actor: the booking ref carries the
-        // deal amount and the buyer's name, so there is nothing in it we could
-        // send. `booking: null` then renders the panel's existing "not visible
-        // to you" line, which is the honest statement rather than a second
-        // vocabulary for the same thing.
-        const bookings: ClaimBookingSource[] =
-          units.length === 0 || !canSeeMoney
-            ? []
-            : await client.booking.findMany({
-                where: {
-                  unitId: { in: units.map((unit) => unit.id) },
-                  status: { in: [...ACTIVE_BOOKING_STATUSES] },
-                },
-                select: CLAIM_BOOKING_SELECT,
-              });
+      const rows: PlotStatusRow[] = [...byPlot.entries()]
+        .map(([plotNumber, claims]) => {
+          // Most binding claim first, so the unit the plot's colour came from
+          // is the one the details panel leads with.
+          const ordered = [...claims].sort(comparePlotClaims);
+          return {
+            plotNumber,
+            status: mostBindingPlotStatus(
+              ordered.map((claim) => plotStatusFromUnitStatus(claim.unit.status)),
+            ),
+            units: ordered,
+          };
+        })
+        .sort((a, b) => a.plotNumber - b.plotNumber);
 
-        const bookingsByUnit = new Map<string, ClaimBookingSource[]>();
-        for (const booking of bookings) {
-          const forUnit = bookingsByUnit.get(booking.unitId) ?? [];
-          forUnit.push(booking);
-          bookingsByUnit.set(booking.unitId, forUnit);
-        }
-
-        const byPlot = new Map<number, PlotUnitClaim[]>();
-        for (const unit of units) {
-          const parsedStatus = UnitStatusSchema.safeParse(unit.status);
-          if (!parsedStatus.success) {
-            // The database holds a UnitStatus the shared contract does not
-            // know, so every downstream surface would be guessing. Fail loudly
-            // instead of painting an unknown state as available.
-            throw new InternalServerErrorException(
-              `Unit ${unit.unitNumber} has status "${String(unit.status)}", which is not a known UnitStatus. ` +
-                'The database and the generated Prisma client have drifted - run `pnpm --filter @shadhil/database generate` ' +
-                'and redeploy the API.',
-            );
-          }
-          const plotNumber = unit.plotNumber;
-          // Defensive: the SQL filter should already have excluded these.
-          if (plotNumber === null) continue;
-          const claims = byPlot.get(plotNumber) ?? [];
-          claims.push({
-            unit: toUnitRow(unit, canSeeMoney),
-            booking: pickClaimBooking(bookingsByUnit.get(unit.id) ?? []),
-          });
-          byPlot.set(plotNumber, claims);
-        }
-
-        const rows: PlotStatusRow[] = [...byPlot.entries()]
-          .map(([plotNumber, claims]) => {
-            // Most binding claim first, so the unit the plot's colour came from
-            // is the one the details panel leads with.
-            const ordered = [...claims].sort(comparePlotClaims);
-            return {
-              plotNumber,
-              status: mostBindingPlotStatus(
-                ordered.map((claim) => plotStatusFromUnitStatus(claim.unit.status)),
-              ),
-              units: ordered,
-            };
-          })
-          .sort((a, b) => a.plotNumber - b.plotNumber);
-
-        return { rows };
-      },
-    );
+      return { rows };
+    });
   }
 
   /**
@@ -485,97 +466,82 @@ export class InventoryService {
    * inventory" + the manager-write widening). Audit row records the
    * actor + phase.
    */
-  async createPhase(
-    actor: JwtPayload,
-    dto: CreatePhaseDto,
-  ): Promise<PhaseRow> {
+  async createPhase(actor: JwtPayload, dto: CreatePhaseDto): Promise<PhaseRow> {
     if (!canManageProjectMembers(actor.role)) {
       throw new ForbiddenException(
         `Only MANAGER/ADMIN/OWNER can create phases (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
-        // its where, so load the flag and reject a soft-deleted project -
-        // otherwise a held tab could keep adding phases/options to a project
-        // the org has deleted.
-        const project = await (tx as unknown as PrismaClient).project.findUnique({
-          where: { id: dto.projectId },
-          select: { id: true, deletedAt: true },
-        });
-        if (project === null || isSoftDeleted(project)) {
-          throw new NotFoundException(`Project ${dto.projectId} not found`);
-        }
-        const created = await (tx as unknown as PrismaClient).phase.create({
-          data: { projectId: dto.projectId, name: dto.name, organizationId: actor.organizationId },
-          select: { id: true, projectId: true, name: true },
-        });
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.phase.create',
-            entityType: 'Phase',
-            entityId: created.id,
-            after: { projectId: created.projectId, name: created.name },
-            reason: `Phase ${created.name} created by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { id: created.id, projectId: created.projectId, name: created.name, unitCount: 0 };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
+      // its where, so load the flag and reject a soft-deleted project -
+      // otherwise a held tab could keep adding phases/options to a project
+      // the org has deleted.
+      const project = await (tx as unknown as PrismaClient).project.findUnique({
+        where: { id: dto.projectId },
+        select: { id: true, deletedAt: true },
+      });
+      if (project === null || isSoftDeleted(project)) {
+        throw new NotFoundException(`Project ${dto.projectId} not found`);
+      }
+      const created = await (tx as unknown as PrismaClient).phase.create({
+        data: { projectId: dto.projectId, name: dto.name, organizationId: actor.organizationId },
+        select: { id: true, projectId: true, name: true },
+      });
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.phase.create',
+          entityType: 'Phase',
+          entityId: created.id,
+          after: { projectId: created.projectId, name: created.name },
+          reason: `Phase ${created.name} created by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id: created.id, projectId: created.projectId, name: created.name, unitCount: 0 };
+    });
   }
 
   /**
    * PATCH /api/inventory/phases/:id - rename a phase. MANAGER/ADMIN/OWNER
    * only. Audit row with before/after.
    */
-  async updatePhase(
-    actor: JwtPayload,
-    phaseId: string,
-    dto: UpdatePhaseDto,
-  ): Promise<PhaseRow> {
+  async updatePhase(actor: JwtPayload, phaseId: string, dto: UpdatePhaseDto): Promise<PhaseRow> {
     if (!canManageProjectMembers(actor.role)) {
       throw new ForbiddenException(
         `Only MANAGER/ADMIN/OWNER can update phases (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).phase.findUnique({
-          where: { id: phaseId },
-          select: { id: true, projectId: true, name: true },
-        });
-        if (existing === null) {
-          throw new NotFoundException(`Phase ${phaseId} not found`);
-        }
-        const data: Record<string, unknown> = {};
-        if (dto.name !== undefined) data['name'] = dto.name;
-        const updated = await (tx as unknown as PrismaClient).phase.update({
-          where: { id: phaseId },
-          data,
-          select: { id: true, projectId: true, name: true },
-        });
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.phase.update',
-            entityType: 'Phase',
-            entityId: phaseId,
-            before: { name: existing.name },
-            after: { name: updated.name },
-            reason: `Phase ${existing.name} renamed to ${updated.name} by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { id: updated.id, projectId: updated.projectId, name: updated.name, unitCount: 0 };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).phase.findUnique({
+        where: { id: phaseId },
+        select: { id: true, projectId: true, name: true },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Phase ${phaseId} not found`);
+      }
+      const data: Record<string, unknown> = {};
+      if (dto.name !== undefined) data['name'] = dto.name;
+      const updated = await (tx as unknown as PrismaClient).phase.update({
+        where: { id: phaseId },
+        data,
+        select: { id: true, projectId: true, name: true },
+      });
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.phase.update',
+          entityType: 'Phase',
+          entityId: phaseId,
+          before: { name: existing.name },
+          after: { name: updated.name },
+          reason: `Phase ${existing.name} renamed to ${updated.name} by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id: updated.id, projectId: updated.projectId, name: updated.name, unitCount: 0 };
+    });
   }
 
   /**
@@ -585,52 +551,45 @@ export class InventoryService {
    * guard gives the operator a readable reason. Audit row records the
    * deleted phase.
    */
-  async deletePhase(
-    actor: JwtPayload,
-    phaseId: string,
-  ): Promise<{ id: string }> {
+  async deletePhase(actor: JwtPayload, phaseId: string): Promise<{ id: string }> {
     if (!canManageProjectMembers(actor.role)) {
       throw new ForbiddenException(
         `Only MANAGER/ADMIN/OWNER can delete phases (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).phase.findUnique({
-          where: { id: phaseId },
-          select: { id: true, projectId: true, name: true },
-        });
-        if (existing === null) {
-          throw new NotFoundException(`Phase ${phaseId} not found`);
-        }
-        const unitCount = await (tx as unknown as PrismaClient).unit.count({
-          where: { phaseId },
-        });
-        if (unitCount > 0) {
-          throw new ConflictException(
-            `Phase "${existing.name}" still has ${unitCount} unit(s). ` +
-              'Move or delete the units before deleting the phase.',
-          );
-        }
-        await (tx as unknown as PrismaClient).phase.delete({
-          where: { id: phaseId },
-        });
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.phase.delete',
-            entityType: 'Phase',
-            entityId: phaseId,
-            before: { projectId: existing.projectId, name: existing.name },
-            reason: `Phase ${existing.name} deleted by ${actor.email} (${actor.role})`,
-          },
-        });
-        return { id: phaseId };
-      },
-    );
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).phase.findUnique({
+        where: { id: phaseId },
+        select: { id: true, projectId: true, name: true },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Phase ${phaseId} not found`);
+      }
+      const unitCount = await (tx as unknown as PrismaClient).unit.count({
+        where: { phaseId },
+      });
+      if (unitCount > 0) {
+        throw new ConflictException(
+          `Phase "${existing.name}" still has ${unitCount} unit(s). ` +
+            'Move or delete the units before deleting the phase.',
+        );
+      }
+      await (tx as unknown as PrismaClient).phase.delete({
+        where: { id: phaseId },
+      });
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.phase.delete',
+          entityType: 'Phase',
+          entityId: phaseId,
+          before: { projectId: existing.projectId, name: existing.name },
+          reason: `Phase ${existing.name} deleted by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id: phaseId };
+    });
   }
 
   /**
@@ -638,49 +597,42 @@ export class InventoryService {
    * sets (facing/BHK). Every authenticated role can read (the pickers
    * load them). `type` optionally narrows to a single set.
    */
-  async options(
-    actor: JwtPayload,
-    dto: ProjectOptionFilterDto,
-  ): Promise<ProjectOptionRow[]> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const rows = await (tx as unknown as PrismaClient).projectOption.findMany({
-          where: {
-            projectId: dto.projectId,
-            ...(dto.type !== undefined ? { type: dto.type } : {}),
-          },
-          orderBy: [{ type: 'asc' }, { value: 'asc' }],
-          select: {
-            id: true,
-            projectId: true,
-            type: true,
-            value: true,
-            createdAt: true,
-          },
-        });
-        // Real unit count per option: how many units in this project use
-        // the value. Facing is a string field; BHK is stored as an int.
-        const counts = await Promise.all(
-          rows.map(async (r) => {
-            const where =
-              r.type === 'FACING'
-                ? { facing: r.value, phase: { projectId: r.projectId } }
-                : { bhk: Number(r.value), phase: { projectId: r.projectId } };
-            return (tx as unknown as PrismaClient).unit.count({ where });
-          }),
-        );
-        return rows.map((r, i) => ({
-          id: r.id,
-          projectId: r.projectId,
-          type: r.type,
-          value: r.value,
-          unitCount: counts[i],
-          createdAt: r.createdAt.toISOString(),
-        }));
-      },
-    );
+  async options(actor: JwtPayload, dto: ProjectOptionFilterDto): Promise<ProjectOptionRow[]> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const rows = await (tx as unknown as PrismaClient).projectOption.findMany({
+        where: {
+          projectId: dto.projectId,
+          ...(dto.type !== undefined ? { type: dto.type } : {}),
+        },
+        orderBy: [{ type: 'asc' }, { value: 'asc' }],
+        select: {
+          id: true,
+          projectId: true,
+          type: true,
+          value: true,
+          createdAt: true,
+        },
+      });
+      // Real unit count per option: how many units in this project use
+      // the value. Facing is a string field; BHK is stored as an int.
+      const counts = await Promise.all(
+        rows.map(async (r) => {
+          const where =
+            r.type === 'FACING'
+              ? { facing: r.value, phase: { projectId: r.projectId } }
+              : { bhk: Number(r.value), phase: { projectId: r.projectId } };
+          return (tx as unknown as PrismaClient).unit.count({ where });
+        }),
+      );
+      return rows.map((r, i) => ({
+        id: r.id,
+        projectId: r.projectId,
+        type: r.type,
+        value: r.value,
+        unitCount: counts[i],
+        createdAt: r.createdAt.toISOString(),
+      }));
+    });
   }
 
   /**
@@ -689,65 +641,61 @@ export class InventoryService {
    * guards duplicates (Prisma raises, surfaced as a readable 409 below).
    * Audit row records the actor + option.
    */
-  async createOption(
-    actor: JwtPayload,
-    dto: CreateProjectOptionDto,
-  ): Promise<ProjectOptionRow> {
+  async createOption(actor: JwtPayload, dto: CreateProjectOptionDto): Promise<ProjectOptionRow> {
     if (!canManageProjectMembers(actor.role)) {
       throw new ForbiddenException(
         `Only MANAGER/ADMIN/OWNER can add options (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
-        // its where, so load the flag and reject a soft-deleted project -
-        // otherwise a held tab could keep adding phases/options to a project
-        // the org has deleted.
-        const project = await (tx as unknown as PrismaClient).project.findUnique({
-          where: { id: dto.projectId },
-          select: { id: true, deletedAt: true },
-        });
-        if (project === null || isSoftDeleted(project)) {
-          throw new NotFoundException(`Project ${dto.projectId} not found`);
-        }
-        let created;
-        try {
-          created = await (tx as unknown as PrismaClient).projectOption.create({
-            data: { projectId: dto.projectId, type: dto.type, value: dto.value, organizationId: actor.organizationId },
-            select: { id: true, projectId: true, type: true, value: true, createdAt: true },
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            throw new ConflictException(
-              `Option "${dto.value}" already exists for this project`,
-            );
-          }
-          throw err;
-        }
-        await (tx as unknown as PrismaClient).auditLog.create({
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // T-SOFT-DELETE (2026-10-01): findUnique cannot carry `deletedAt` in
+      // its where, so load the flag and reject a soft-deleted project -
+      // otherwise a held tab could keep adding phases/options to a project
+      // the org has deleted.
+      const project = await (tx as unknown as PrismaClient).project.findUnique({
+        where: { id: dto.projectId },
+        select: { id: true, deletedAt: true },
+      });
+      if (project === null || isSoftDeleted(project)) {
+        throw new NotFoundException(`Project ${dto.projectId} not found`);
+      }
+      let created;
+      try {
+        created = await (tx as unknown as PrismaClient).projectOption.create({
           data: {
-            userId: actor.sub,
+            projectId: dto.projectId,
+            type: dto.type,
+            value: dto.value,
             organizationId: actor.organizationId,
-            action: 'inventory.option.create',
-            entityType: 'ProjectOption',
-            entityId: created.id,
-            after: { projectId: created.projectId, type: created.type, value: created.value },
-            reason: `Option ${created.type}:${created.value} added by ${actor.email} (${actor.role})`,
           },
+          select: { id: true, projectId: true, type: true, value: true, createdAt: true },
         });
-        return {
-          id: created.id,
-          projectId: created.projectId,
-          type: created.type,
-          value: created.value,
-          unitCount: 0,
-          createdAt: created.createdAt.toISOString(),
-        };
-      },
-    );
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException(`Option "${dto.value}" already exists for this project`);
+        }
+        throw err;
+      }
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.option.create',
+          entityType: 'ProjectOption',
+          entityId: created.id,
+          after: { projectId: created.projectId, type: created.type, value: created.value },
+          reason: `Option ${created.type}:${created.value} added by ${actor.email} (${actor.role})`,
+        },
+      });
+      return {
+        id: created.id,
+        projectId: created.projectId,
+        type: created.type,
+        value: created.value,
+        unitCount: 0,
+        createdAt: created.createdAt.toISOString(),
+      };
+    });
   }
 
   /**
@@ -758,68 +706,61 @@ export class InventoryService {
    * those units first, otherwise the picker would offer a value that no
    * longer matches any stored unit. Audit row records the deleted option.
    */
-  async deleteOption(
-    actor: JwtPayload,
-    optionId: string,
-  ): Promise<{ id: string }> {
+  async deleteOption(actor: JwtPayload, optionId: string): Promise<{ id: string }> {
     if (!canManageProjectMembers(actor.role)) {
       throw new ForbiddenException(
         `Only MANAGER/ADMIN/OWNER can delete options (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).projectOption.findUnique({
-          where: { id: optionId },
-          select: { id: true, projectId: true, type: true, value: true },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).projectOption.findUnique({
+        where: { id: optionId },
+        select: { id: true, projectId: true, type: true, value: true },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`ProjectOption ${optionId} not found`);
+      }
+      if (existing.type === 'FACING') {
+        const inUse = await (tx as unknown as PrismaClient).unit.count({
+          where: { facing: existing.value, phase: { projectId: existing.projectId } },
         });
-        if (existing === null) {
-          throw new NotFoundException(`ProjectOption ${optionId} not found`);
+        if (inUse > 0) {
+          throw new ConflictException(
+            `Facing "${existing.value}" is used by ${inUse} unit(s) in this project. ` +
+              'Reassign them before removing this option.',
+          );
         }
-        if (existing.type === 'FACING') {
-          const inUse = await (tx as unknown as PrismaClient).unit.count({
-            where: { facing: existing.value, phase: { projectId: existing.projectId } },
-          });
-          if (inUse > 0) {
-            throw new ConflictException(
-              `Facing "${existing.value}" is used by ${inUse} unit(s) in this project. ` +
-                'Reassign them before removing this option.',
-            );
-          }
-        } else {
-          const inUse = await (tx as unknown as PrismaClient).unit.count({
-            where: { bhk: Number(existing.value), phase: { projectId: existing.projectId } },
-          });
-          if (inUse > 0) {
-            throw new ConflictException(
-              `BHK ${existing.value} is used by ${inUse} unit(s) in this project. ` +
-                'Reassign them before removing this option.',
-            );
-          }
-        }
-        await (tx as unknown as PrismaClient).projectOption.delete({
-          where: { id: optionId },
+      } else {
+        const inUse = await (tx as unknown as PrismaClient).unit.count({
+          where: { bhk: Number(existing.value), phase: { projectId: existing.projectId } },
         });
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.option.delete',
-            entityType: 'ProjectOption',
-            entityId: optionId,
-            before: {
-              projectId: existing.projectId,
-              type: existing.type,
-              value: existing.value,
-            },
-            reason: `Option ${existing.type}:${existing.value} removed by ${actor.email} (${actor.role})`,
+        if (inUse > 0) {
+          throw new ConflictException(
+            `BHK ${existing.value} is used by ${inUse} unit(s) in this project. ` +
+              'Reassign them before removing this option.',
+          );
+        }
+      }
+      await (tx as unknown as PrismaClient).projectOption.delete({
+        where: { id: optionId },
+      });
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.option.delete',
+          entityType: 'ProjectOption',
+          entityId: optionId,
+          before: {
+            projectId: existing.projectId,
+            type: existing.type,
+            value: existing.value,
           },
-        });
-        return { id: optionId };
-      },
-    );
+          reason: `Option ${existing.type}:${existing.value} removed by ${actor.email} (${actor.role})`,
+        },
+      });
+      return { id: optionId };
+    });
   }
 
   /**
@@ -847,233 +788,221 @@ export class InventoryService {
           'Create it as AVAILABLE and raise a booking instead.',
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const phase = await (tx as unknown as PrismaClient).phase.findUnique({
-          where: { id: dto.phaseId },
-          // Only an existence check: the row returned below comes from the unit
-          // itself (UNIT_ROW_SELECT carries the phase/project names).
-          select: { id: true },
-        });
-        if (phase === null) {
-          throw new NotFoundException(`Phase ${dto.phaseId} not found`);
-        }
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const phase = await (tx as unknown as PrismaClient).phase.findUnique({
+        where: { id: dto.phaseId },
+        // Only an existence check: the row returned below comes from the unit
+        // itself (UNIT_ROW_SELECT carries the phase/project names).
+        select: { id: true },
+      });
+      if (phase === null) {
+        throw new NotFoundException(`Phase ${dto.phaseId} not found`);
+      }
 
-        let created;
-        try {
-          created = await (tx as unknown as PrismaClient).unit.create({
-            data: {
-              phaseId: dto.phaseId,
-              organizationId: actor.organizationId,
-              unitNumber: dto.unitNumber,
-              // Optional: a project without a traced layout has no plots, and a
-              // unit can be entered before someone assigns its plot.
-              plotNumber: dto.plotNumber ?? null,
-              bhk: dto.bhk,
-              facing: dto.facing ?? null,
-              sqft: dto.sqft ?? null,
-              // Prisma Decimal - pass as a string to avoid float drift.
-              // `price` is DERIVED (buildup x rate), never taken from the client.
-              buildupSqft: dto.buildupSqft.toFixed(2),
-              pricePerSqft: dto.pricePerSqft.toFixed(2),
-              price: deriveUnitPrice(dto.buildupSqft, dto.pricePerSqft),
-              // T-INV-SYNC: the DTO already restricts this to AVAILABLE|SOLD,
-              // but the service refuses a booking-owned status outright so a
-              // direct service call (or an older client) cannot create a unit
-              // stuck in HOLD with no booking behind it - the trigger only fires
-              // on Booking writes, so nothing would ever correct it.
-              status: dto.status ?? 'AVAILABLE',
-            },
-            select: UNIT_ROW_SELECT,
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            throw new ConflictException(
-              unitConflictMessage(err.meta?.target, {
-                unitNumber: dto.unitNumber,
-                plotNumber: dto.plotNumber ?? null,
-              }),
-            );
-          }
-          throw err;
-        }
-
-        await (tx as unknown as PrismaClient).auditLog.create({
+      let created;
+      try {
+        created = await (tx as unknown as PrismaClient).unit.create({
           data: {
-            userId: actor.sub,
+            phaseId: dto.phaseId,
             organizationId: actor.organizationId,
-            action: 'inventory.unit.create',
-            entityType: 'Unit',
-            entityId: created.id,
-            after: {
-              phaseId: created.phaseId,
-              unitNumber: created.unitNumber,
-              plotNumber: created.plotNumber,
-              bhk: created.bhk,
-              price: created.price.toString(),
-              status: created.status,
-            },
-            reason: `Unit ${created.unitNumber} created by ${actor.email} (${actor.role})`,
+            unitNumber: dto.unitNumber,
+            // Optional: a project without a traced layout has no plots, and a
+            // unit can be entered before someone assigns its plot.
+            plotNumber: dto.plotNumber ?? null,
+            bhk: dto.bhk,
+            facing: dto.facing ?? null,
+            sqft: dto.sqft ?? null,
+            // Prisma Decimal - pass as a string to avoid float drift.
+            // `price` is DERIVED (buildup x rate), never taken from the client.
+            buildupSqft: dto.buildupSqft.toFixed(2),
+            pricePerSqft: dto.pricePerSqft.toFixed(2),
+            price: deriveUnitPrice(dto.buildupSqft, dto.pricePerSqft),
+            // T-INV-SYNC: the DTO already restricts this to AVAILABLE|SOLD,
+            // but the service refuses a booking-owned status outright so a
+            // direct service call (or an older client) cannot create a unit
+            // stuck in HOLD with no booking behind it - the trigger only fires
+            // on Booking writes, so nothing would ever correct it.
+            status: dto.status ?? 'AVAILABLE',
           },
+          select: UNIT_ROW_SELECT,
         });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException(
+            unitConflictMessage(err.meta?.target, {
+              unitNumber: dto.unitNumber,
+              plotNumber: dto.plotNumber ?? null,
+            }),
+          );
+        }
+        throw err;
+      }
 
-        // ADMIN/OWNER only above, so this actor always sees money; the flag is
-        // passed explicitly rather than assumed so the mapper has one contract.
-        return toUnitRow(created, canSeeUnitMoney(actor.role));
-      },
-    );
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.unit.create',
+          entityType: 'Unit',
+          entityId: created.id,
+          after: {
+            phaseId: created.phaseId,
+            unitNumber: created.unitNumber,
+            plotNumber: created.plotNumber,
+            bhk: created.bhk,
+            price: created.price.toString(),
+            status: created.status,
+          },
+          reason: `Unit ${created.unitNumber} created by ${actor.email} (${actor.role})`,
+        },
+      });
+
+      // ADMIN/OWNER only above, so this actor always sees money; the flag is
+      // passed explicitly rather than assumed so the mapper has one contract.
+      return toUnitRow(created, canSeeUnitMoney(actor.role));
+    });
   }
 
   /**
    * PATCH /api/inventory/units/:id - partial update. ADMIN/OWNER only.
    * Audit row with before/after.
    */
-  async update(
-    actor: JwtPayload,
-    unitId: string,
-    dto: UpdateUnitDto,
-  ): Promise<UnitRow> {
+  async update(actor: JwtPayload, unitId: string, dto: UpdateUnitDto): Promise<UnitRow> {
     if (!isAdminClass(actor.role)) {
       throw new ForbiddenException(
         `Only ADMIN/OWNER can update inventory units (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).unit.findUnique({
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).unit.findUnique({
+        where: { id: unitId },
+        select: UNIT_ROW_SELECT,
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Unit ${unitId} not found`);
+      }
+
+      const data: Record<string, unknown> = {};
+      if (dto.unitNumber !== undefined) data['unitNumber'] = dto.unitNumber;
+      // `null` clears the assignment and takes the villa off the layout;
+      // omitting the field keeps the number it already has.
+      if (dto.plotNumber !== undefined) data['plotNumber'] = dto.plotNumber;
+      if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
+      if (dto.facing !== undefined) data['facing'] = dto.facing;
+      if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
+      // Buyer-visible handover estimate; `null` clears it.
+      if (dto.expectedHandoverDate !== undefined) {
+        data['expectedHandoverDate'] =
+          dto.expectedHandoverDate === null ? null : new Date(dto.expectedHandoverDate);
+      }
+      // The unit total is DERIVED: recompute from the effective buildup/rate
+      // whenever either changes. A client `price` is not part of the DTO.
+      if (dto.buildupSqft !== undefined || dto.pricePerSqft !== undefined) {
+        const buildup = dto.buildupSqft ?? Number(existing.buildupSqft);
+        const rate = dto.pricePerSqft ?? Number(existing.pricePerSqft);
+        if (dto.buildupSqft !== undefined) data['buildupSqft'] = buildup.toFixed(2);
+        if (dto.pricePerSqft !== undefined) data['pricePerSqft'] = rate.toFixed(2);
+        data['price'] = deriveUnitPrice(buildup, rate);
+      }
+
+      // T-INV-SYNC: Unit.status is DERIVED from the booking lifecycle (a
+      // trigger on "Booking" recomputes it; see migration
+      // 20260915060000_unit_status_sync). The only manual override left is
+      // the off-pipeline mark: AVAILABLE (no live booking) or SOLD (sold
+      // outside this pipeline). Anything the live bookings already state -
+      // HOLD/TOKEN from an active booking, SOLD from an approved one - is
+      // refused with a 409 instead of being silently contradicted.
+      if (dto.status !== undefined) {
+        // Widened to `string` on purpose: the DTO already rejects HOLD/TOKEN
+        // (UpdateUnitStatusSchema), but the service must still refuse them
+        // with a readable 409 if a bad value ever reaches it - e.g. an
+        // older client, or a direct service call.
+        const requested: string = dto.status;
+        const liveBookings = await (tx as unknown as PrismaClient).booking.findMany({
+          where: {
+            unitId,
+            status: { in: [...ACTIVE_BOOKING_STATUSES] },
+          },
+          select: { status: true },
+        });
+        if (liveBookings.length > 0) {
+          const derived = liveBookings.some((b) => b.status === 'APPROVED')
+            ? 'SOLD'
+            : liveBookings.some((b) => b.status === 'TOKEN')
+              ? 'TOKEN'
+              : 'HOLD';
+          if (requested !== derived) {
+            throw new ConflictException(
+              `Unit ${existing.unitNumber} is ${derived} because of its live booking(s). ` +
+                `Clear or cancel them before setting it to ${requested}.`,
+            );
+          }
+        } else if (requested === 'HOLD' || requested === 'TOKEN') {
+          throw new ConflictException(
+            `Unit ${existing.unitNumber} has no live booking, so it cannot be set to ${requested}. ` +
+              'HOLD/TOKEN come from a booking - create one instead.',
+          );
+        }
+        data['status'] = dto.status;
+      }
+
+      let updated;
+      try {
+        updated = await (tx as unknown as PrismaClient).unit.update({
           where: { id: unitId },
+          data,
           select: UNIT_ROW_SELECT,
         });
-        if (existing === null) {
-          throw new NotFoundException(`Unit ${unitId} not found`);
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException(
+            unitConflictMessage(err.meta?.target, {
+              unitNumber: dto.unitNumber ?? existing.unitNumber,
+              plotNumber: dto.plotNumber ?? existing.plotNumber,
+            }),
+          );
         }
+        throw err;
+      }
 
-        const data: Record<string, unknown> = {};
-        if (dto.unitNumber !== undefined) data['unitNumber'] = dto.unitNumber;
-        // `null` clears the assignment and takes the villa off the layout;
-        // omitting the field keeps the number it already has.
-        if (dto.plotNumber !== undefined) data['plotNumber'] = dto.plotNumber;
-        if (dto.bhk !== undefined) data['bhk'] = dto.bhk;
-        if (dto.facing !== undefined) data['facing'] = dto.facing;
-        if (dto.sqft !== undefined) data['sqft'] = dto.sqft;
-        // Buyer-visible handover estimate; `null` clears it.
-        if (dto.expectedHandoverDate !== undefined) {
-          data['expectedHandoverDate'] =
-            dto.expectedHandoverDate === null ? null : new Date(dto.expectedHandoverDate);
-        }
-        // The unit total is DERIVED: recompute from the effective buildup/rate
-        // whenever either changes. A client `price` is not part of the DTO.
-        if (dto.buildupSqft !== undefined || dto.pricePerSqft !== undefined) {
-          const buildup = dto.buildupSqft ?? Number(existing.buildupSqft);
-          const rate = dto.pricePerSqft ?? Number(existing.pricePerSqft);
-          if (dto.buildupSqft !== undefined) data['buildupSqft'] = buildup.toFixed(2);
-          if (dto.pricePerSqft !== undefined) data['pricePerSqft'] = rate.toFixed(2);
-          data['price'] = deriveUnitPrice(buildup, rate);
-        }
-
-        // T-INV-SYNC: Unit.status is DERIVED from the booking lifecycle (a
-        // trigger on "Booking" recomputes it; see migration
-        // 20260915060000_unit_status_sync). The only manual override left is
-        // the off-pipeline mark: AVAILABLE (no live booking) or SOLD (sold
-        // outside this pipeline). Anything the live bookings already state -
-        // HOLD/TOKEN from an active booking, SOLD from an approved one - is
-        // refused with a 409 instead of being silently contradicted.
-        if (dto.status !== undefined) {
-          // Widened to `string` on purpose: the DTO already rejects HOLD/TOKEN
-          // (UpdateUnitStatusSchema), but the service must still refuse them
-          // with a readable 409 if a bad value ever reaches it - e.g. an
-          // older client, or a direct service call.
-          const requested: string = dto.status;
-          const liveBookings = await (tx as unknown as PrismaClient).booking.findMany({
-            where: {
-              unitId,
-              status: { in: [...ACTIVE_BOOKING_STATUSES] },
-            },
-            select: { status: true },
-          });
-          if (liveBookings.length > 0) {
-            const derived = liveBookings.some((b) => b.status === 'APPROVED')
-              ? 'SOLD'
-              : liveBookings.some((b) => b.status === 'TOKEN')
-                ? 'TOKEN'
-                : 'HOLD';
-            if (requested !== derived) {
-              throw new ConflictException(
-                `Unit ${existing.unitNumber} is ${derived} because of its live booking(s). ` +
-                  `Clear or cancel them before setting it to ${requested}.`,
-              );
-            }
-          } else if (requested === 'HOLD' || requested === 'TOKEN') {
-            throw new ConflictException(
-              `Unit ${existing.unitNumber} has no live booking, so it cannot be set to ${requested}. ` +
-                'HOLD/TOKEN come from a booking - create one instead.',
-            );
-          }
-          data['status'] = dto.status;
-        }
-
-        let updated;
-        try {
-          updated = await (tx as unknown as PrismaClient).unit.update({
-            where: { id: unitId },
-            data,
-            select: UNIT_ROW_SELECT,
-          });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            throw new ConflictException(
-              unitConflictMessage(err.meta?.target, {
-                unitNumber: dto.unitNumber ?? existing.unitNumber,
-                plotNumber: dto.plotNumber ?? existing.plotNumber,
-              }),
-            );
-          }
-          throw err;
-        }
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.unit.update',
-            entityType: 'Unit',
-            entityId: updated.id,
-            before: {
-              unitNumber: existing.unitNumber,
-              plotNumber: existing.plotNumber,
-              bhk: existing.bhk,
-              facing: existing.facing,
-              sqft: existing.sqft,
-              buildupSqft: existing.buildupSqft.toString(),
-              pricePerSqft: existing.pricePerSqft.toString(),
-              price: existing.price.toString(),
-              status: existing.status,
-              expectedHandoverDate: existing.expectedHandoverDate?.toISOString() ?? null,
-            },
-            after: {
-              unitNumber: updated.unitNumber,
-              plotNumber: updated.plotNumber,
-              bhk: updated.bhk,
-              facing: updated.facing,
-              sqft: updated.sqft,
-              buildupSqft: updated.buildupSqft.toString(),
-              pricePerSqft: updated.pricePerSqft.toString(),
-              price: updated.price.toString(),
-              status: updated.status,
-              expectedHandoverDate: updated.expectedHandoverDate?.toISOString() ?? null,
-            },
-            reason: `Unit ${updated.unitNumber} updated by ${actor.email} (${actor.role})`,
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.unit.update',
+          entityType: 'Unit',
+          entityId: updated.id,
+          before: {
+            unitNumber: existing.unitNumber,
+            plotNumber: existing.plotNumber,
+            bhk: existing.bhk,
+            facing: existing.facing,
+            sqft: existing.sqft,
+            buildupSqft: existing.buildupSqft.toString(),
+            pricePerSqft: existing.pricePerSqft.toString(),
+            price: existing.price.toString(),
+            status: existing.status,
+            expectedHandoverDate: existing.expectedHandoverDate?.toISOString() ?? null,
           },
-        });
+          after: {
+            unitNumber: updated.unitNumber,
+            plotNumber: updated.plotNumber,
+            bhk: updated.bhk,
+            facing: updated.facing,
+            sqft: updated.sqft,
+            buildupSqft: updated.buildupSqft.toString(),
+            pricePerSqft: updated.pricePerSqft.toString(),
+            price: updated.price.toString(),
+            status: updated.status,
+            expectedHandoverDate: updated.expectedHandoverDate?.toISOString() ?? null,
+          },
+          reason: `Unit ${updated.unitNumber} updated by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        // ADMIN/OWNER only above - see the note on `create`.
-        return toUnitRow(updated, canSeeUnitMoney(actor.role));
-      },
-    );
+      // ADMIN/OWNER only above - see the note on `create`.
+      return toUnitRow(updated, canSeeUnitMoney(actor.role));
+    });
   }
 
   /**
@@ -1089,70 +1018,66 @@ export class InventoryService {
         `Only ADMIN/OWNER can delete inventory units (actor is ${actor.role})`,
       );
     }
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).unit.findUnique({
-          where: { id: unitId },
-          select: {
-            id: true,
-            phaseId: true,
-            unitNumber: true,
-            bhk: true,
-            facing: true,
-            sqft: true,
-            buildupSqft: true,
-            pricePerSqft: true,
-            price: true,
-            status: true,
-            createdAt: true,
-            phase: { select: { name: true } },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).unit.findUnique({
+        where: { id: unitId },
+        select: {
+          id: true,
+          phaseId: true,
+          unitNumber: true,
+          bhk: true,
+          facing: true,
+          sqft: true,
+          buildupSqft: true,
+          pricePerSqft: true,
+          price: true,
+          status: true,
+          createdAt: true,
+          phase: { select: { name: true } },
+        },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`Unit ${unitId} not found`);
+      }
+
+      const bookingCount = await (tx as unknown as PrismaClient).booking.count({
+        where: { unitId },
+      });
+      if (bookingCount > 0) {
+        throw new ConflictException(
+          `Unit ${existing.unitNumber} has ${bookingCount} booking(s). ` +
+            'Move or delete the bookings before deleting the unit.',
+        );
+      }
+
+      await (tx as unknown as PrismaClient).unit.delete({
+        where: { id: unitId },
+      });
+
+      await (tx as unknown as PrismaClient).auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: actor.organizationId,
+          action: 'inventory.unit.delete',
+          entityType: 'Unit',
+          entityId: unitId,
+          before: {
+            phaseId: existing.phaseId,
+            phaseName: existing.phase.name,
+            unitNumber: existing.unitNumber,
+            bhk: existing.bhk,
+            facing: existing.facing,
+            sqft: existing.sqft,
+            buildupSqft: existing.buildupSqft.toString(),
+            pricePerSqft: existing.pricePerSqft.toString(),
+            price: existing.price.toString(),
+            status: existing.status,
           },
-        });
-        if (existing === null) {
-          throw new NotFoundException(`Unit ${unitId} not found`);
-        }
+          reason: `Unit ${existing.unitNumber} deleted by ${actor.email} (${actor.role})`,
+        },
+      });
 
-        const bookingCount = await (tx as unknown as PrismaClient).booking.count({
-          where: { unitId },
-        });
-        if (bookingCount > 0) {
-          throw new ConflictException(
-            `Unit ${existing.unitNumber} has ${bookingCount} booking(s). ` +
-              'Move or delete the bookings before deleting the unit.',
-          );
-        }
-
-        await (tx as unknown as PrismaClient).unit.delete({
-          where: { id: unitId },
-        });
-
-        await (tx as unknown as PrismaClient).auditLog.create({
-          data: {
-            userId: actor.sub,
-            organizationId: actor.organizationId,
-            action: 'inventory.unit.delete',
-            entityType: 'Unit',
-            entityId: unitId,
-            before: {
-              phaseId: existing.phaseId,
-              phaseName: existing.phase.name,
-              unitNumber: existing.unitNumber,
-              bhk: existing.bhk,
-              facing: existing.facing,
-              sqft: existing.sqft,
-              buildupSqft: existing.buildupSqft.toString(),
-              pricePerSqft: existing.pricePerSqft.toString(),
-              price: existing.price.toString(),
-              status: existing.status,
-            },
-            reason: `Unit ${existing.unitNumber} deleted by ${actor.email} (${actor.role})`,
-          },
-        });
-
-        return { id: unitId };
-      },
-    );
+      return { id: unitId };
+    });
   }
 }

@@ -4,10 +4,7 @@ import { notFound } from 'next/navigation';
 
 import { DOCUMENT_TITLE_SUFFIX } from '@/lib/document-title';
 import { getProjectBySlug } from '@/lib/server/tenant';
-import {
-  ProjectProvider,
-  type ProjectContextValue,
-} from '@/lib/tenant-context';
+import { ProjectProvider, type ProjectContextValue } from '@/lib/tenant-context';
 
 export const dynamic = 'force-dynamic';
 

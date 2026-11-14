@@ -4,15 +4,15 @@ Platform-agnostic offline data store for the Shadhil CRM. Provides the primitive
 
 ## What it provides
 
-| Export | Purpose |
-| --- | --- |
-| `createMutationQueue()` | IDB-backed FIFO queue of pending mutations; replay on reconnect |
-| `createPhotoStore()` | IDB blob store with quota-error retry + oldest-evict |
-| `normalizeToWebP(blob, quality)` | Client-side image conversion (iOS HEIC → WebP) |
-| `normalizeOnIdle(blob, quality)` | `requestIdleCallback` wrapper for normalize (avoids 100-300ms main-thread stalls on cheap Android) |
-| `resolveLWW(client, server)` | Last-Write-Wins conflict resolver (default; pluggable per mutation type) |
-| `mutationStore`, `photoStore` (raw `idb-keyval` stores) | Direct access for the TanStack Query persister + Serwist replay handler |
-| `types.ts` | `Mutation`, `OfflineState`, `ReplayResult`, `QueuedItem` |
+| Export                                                  | Purpose                                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `createMutationQueue()`                                 | IDB-backed FIFO queue of pending mutations; replay on reconnect                                    |
+| `createPhotoStore()`                                    | IDB blob store with quota-error retry + oldest-evict                                               |
+| `normalizeToWebP(blob, quality)`                        | Client-side image conversion (iOS HEIC → WebP)                                                     |
+| `normalizeOnIdle(blob, quality)`                        | `requestIdleCallback` wrapper for normalize (avoids 100-300ms main-thread stalls on cheap Android) |
+| `resolveLWW(client, server)`                            | Last-Write-Wins conflict resolver (default; pluggable per mutation type)                           |
+| `mutationStore`, `photoStore` (raw `idb-keyval` stores) | Direct access for the TanStack Query persister + Serwist replay handler                            |
+| `types.ts`                                              | `Mutation`, `OfflineState`, `ReplayResult`, `QueuedItem`                                           |
 
 ## IDB schema
 

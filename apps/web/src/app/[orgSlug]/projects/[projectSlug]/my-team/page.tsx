@@ -52,7 +52,11 @@ export default function MyTeamPage() {
       <PageHeader
         title="My Team"
         breadcrumb={[
-          { label: 'Work', href: orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work' },
+          {
+            label: 'Work',
+            href:
+              orgSlug && projectSlug ? projectHref(orgSlug, projectSlug, '/dashboard') : '/work',
+          },
           { label: 'My Team' },
         ]}
         subtitle="Teams you manage, and teams you're a member of."
@@ -61,7 +65,10 @@ export default function MyTeamPage() {
       {teams.isLoading ? (
         <Skeleton variant="table" />
       ) : teams.error !== undefined && teams.error !== null ? (
-        <div role="alert" className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center">
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
+        >
           <p className="text-sm font-medium">Couldn&apos;t load your teams.</p>
           <p className="text-muted-foreground mt-1 text-xs">
             {teams.error instanceof Error ? teams.error.message : 'Unexpected error.'}
@@ -69,14 +76,21 @@ export default function MyTeamPage() {
         </div>
       ) : rows.length === 0 ? (
         <div className="border-border rounded-lg border p-10 text-center text-sm">
-          <TypographyP className="text-xl font-medium">You don&apos;t lead or belong to a team yet.</TypographyP>
+          <TypographyP className="text-xl font-medium">
+            You don&apos;t lead or belong to a team yet.
+          </TypographyP>
           <TypographyP className="text-muted-foreground mt-1 text-sm">
             Ask an admin to assign you as a team&apos;s manager, or add you as a member.
           </TypographyP>
         </div>
       ) : (
         <div className="space-y-6">
-          <TeamSection title="You manage" teams={managed} baseHref={baseHref} emptyText="You don't manage any team yet." />
+          <TeamSection
+            title="You manage"
+            teams={managed}
+            baseHref={baseHref}
+            emptyText="You don't manage any team yet."
+          />
           <TeamSection
             title="You're a member of"
             teams={member}
@@ -108,14 +122,20 @@ function TeamSection({
       ) : (
         <ItemGroup className="gap-2">
           {teams.map((team) => (
-            <Link key={team.id} href={`${baseHref}/my-team/${team.id}`} data-qa={`my-team-row-${team.id}`}>
+            <Link
+              key={team.id}
+              href={`${baseHref}/my-team/${team.id}`}
+              data-qa={`my-team-row-${team.id}`}
+            >
               <Item
                 variant="outline"
                 size="sm"
                 title={
                   <span className="flex items-center gap-2">
                     {team.name}
-                    {team.managerId !== null ? <Badge variant="secondary">Manager: {team.managerName}</Badge> : null}
+                    {team.managerId !== null ? (
+                      <Badge variant="secondary">Manager: {team.managerName}</Badge>
+                    ) : null}
                   </span>
                 }
                 description={`${team.memberCount} member${team.memberCount === 1 ? '' : 's'}`}

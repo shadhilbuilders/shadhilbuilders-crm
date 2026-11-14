@@ -21,12 +21,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import {
-  getChartShape,
-  Skeleton,
-  SKELETON_SHAPES,
-  type ChartDataHint,
-} from './Skeleton';
+import { getChartShape, Skeleton, SKELETON_SHAPES, type ChartDataHint } from './Skeleton';
 
 describe('Skeleton', () => {
   describe('shape-count contract (T32)', () => {
@@ -78,26 +73,18 @@ describe('Skeleton', () => {
     it('navItems renders 5 icon+label rows by default (T32 pin)', () => {
       const html = renderToStaticMarkup(<Skeleton variant="navItems" />);
       expect(html).toContain('data-qa="skeleton-nav-items"');
-      const rows = html.match(
-        /<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g,
-      );
+      const rows = html.match(/<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g);
       expect(rows?.length ?? 0).toBe(SKELETON_SHAPES.navItems.count);
     });
 
     it('navItems respects the count override', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="navItems" count={3} />,
-      );
-      const rows = html.match(
-        /<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="navItems" count={3} />);
+      const rows = html.match(/<li[^>]*class="flex items-center gap-2 rounded-md p-2"/g);
       expect(rows?.length ?? 0).toBe(3);
     });
 
     it('projectSwitcher renders 1 icon + 2 lines + chevron', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="projectSwitcher" />,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="projectSwitcher" />);
       expect(html).toContain('data-qa="skeleton-project-switcher"');
       expect(html).toContain('h-8 w-8 shrink-0 rounded-lg');
       expect(html).toContain('h-3 w-32');
@@ -117,12 +104,8 @@ describe('Skeleton', () => {
       const cards = html.match(/bg-card flex flex-col gap-4 p-4/g);
       expect(cards?.length ?? 0).toBe(SKELETON_SHAPES.overview.count);
       // Each card has a label (h-3 w-20) and value (h-8 w-24).
-      expect(html.match(/h-3 w-20/g)?.length ?? 0).toBe(
-        SKELETON_SHAPES.overview.count,
-      );
-      expect(html.match(/h-8 w-24/g)?.length ?? 0).toBe(
-        SKELETON_SHAPES.overview.count,
-      );
+      expect(html.match(/h-3 w-20/g)?.length ?? 0).toBe(SKELETON_SHAPES.overview.count);
+      expect(html.match(/h-8 w-24/g)?.length ?? 0).toBe(SKELETON_SHAPES.overview.count);
       // Each card has a badge (h-5 w-16 rounded-full).
       expect(html.match(/h-5 w-16 rounded-full/g)?.length ?? 0).toBe(
         SKELETON_SHAPES.overview.count,
@@ -153,9 +136,7 @@ describe('Skeleton', () => {
     });
 
     it('chart with dataHint="bar" renders 5 bars (T32 pin)', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="chart" dataHint="bar" />,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="chart" dataHint="bar" />);
       // 5 bars - each is a `bg-muted-foreground/20 w-8 rounded-t` div
       // with an inline `style="height:NN%"`.
       const bars = html.match(/bg-muted-foreground\/20 w-8 rounded-t/g);
@@ -163,24 +144,18 @@ describe('Skeleton', () => {
     });
 
     it('chart with dataHint="pie" renders 1 circle', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="chart" dataHint="pie" />,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="chart" dataHint="pie" />);
       expect(html).toContain('data-qa="skeleton-pie"');
       expect(html).toContain('h-32 w-32 rounded-full');
     });
 
     it('chart with dataHint="line" renders a polyline SVG', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="chart" dataHint="line" />,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="chart" dataHint="line" />);
       expect(html).toContain('<polyline');
     });
 
     it('chart with dataHint="area" renders an SVG path', () => {
-      const html = renderToStaticMarkup(
-        <Skeleton variant="chart" dataHint="area" />,
-      );
+      const html = renderToStaticMarkup(<Skeleton variant="chart" dataHint="area" />);
       expect(html).toContain('<path');
     });
 

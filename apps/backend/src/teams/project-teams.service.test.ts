@@ -9,21 +9,16 @@ import type { JwtPayload } from '@shadhil/auth';
 
 vi.mock('@shadhil/database', () => {
   return {
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: unknown) => unknown,
-      ) => callback((globalThis as { __tx?: unknown }).__tx),
+      async (_client: unknown, _ctx: unknown, callback: (t: unknown) => unknown) =>
+        callback((globalThis as { __tx?: unknown }).__tx),
     ),
   };
 });
@@ -67,22 +62,34 @@ type TxMock = {
   auditLog: { create: ReturnType<typeof vi.fn> };
 };
 
-function makeTx(overrides: Partial<{
-  projects: Record<string, { id: string; deletedAt: Date | null; organizationId: string } | null>;
-  teams: Record<
-    string,
-    { id: string; name: string; deletedAt: Date | null; managerId: string | null; organizationId: string } | null
-  >;
-  projectTeamLinks: Array<{
-    teamId: string;
-    team: { name: string; manager: { id: string; name: string } | null };
-  }>;
-  projectTeamLink: { teamId: string; projectId: string } | null;
-  teamMembers: Array<{ userId: string; assignedAt: Date; user: { name: string; email: string; role: string } }>;
-  photoLeads: Array<{ userId: string }>;
-  leadCount: number;
-  managers: Record<string, { id: string; name: string } | null>;
-}> = {}): TxMock {
+function makeTx(
+  overrides: Partial<{
+    projects: Record<string, { id: string; deletedAt: Date | null; organizationId: string } | null>;
+    teams: Record<
+      string,
+      {
+        id: string;
+        name: string;
+        deletedAt: Date | null;
+        managerId: string | null;
+        organizationId: string;
+      } | null
+    >;
+    projectTeamLinks: Array<{
+      teamId: string;
+      team: { name: string; manager: { id: string; name: string } | null };
+    }>;
+    projectTeamLink: { teamId: string; projectId: string } | null;
+    teamMembers: Array<{
+      userId: string;
+      assignedAt: Date;
+      user: { name: string; email: string; role: string };
+    }>;
+    photoLeads: Array<{ userId: string }>;
+    leadCount: number;
+    managers: Record<string, { id: string; name: string } | null>;
+  }> = {},
+): TxMock {
   const projects = overrides.projects ?? {};
   const teams = overrides.teams ?? {};
   const tx: TxMock = {
@@ -99,7 +106,9 @@ function makeTx(overrides: Partial<{
         if (args.select !== undefined) {
           const managerId = t.managerId;
           const manager =
-            managerId !== null ? (overrides.managers?.[managerId] ?? { id: managerId, name: 'Manager' }) : null;
+            managerId !== null
+              ? (overrides.managers?.[managerId] ?? { id: managerId, name: 'Manager' })
+              : null;
           return { manager };
         }
         return t;
@@ -123,7 +132,9 @@ function makeTx(overrides: Partial<{
       count: vi.fn(async () => overrides.leadCount ?? 0),
     },
     user: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => overrides.managers?.[where.id] ?? null),
+      findUnique: vi.fn(
+        async ({ where }: { where: { id: string } }) => overrides.managers?.[where.id] ?? null,
+      ),
     },
     auditLog: { create: vi.fn(async () => ({})) },
   };
@@ -162,7 +173,13 @@ describe('ProjectTeamsService.list', () => {
         },
       ],
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: 'mgr-a', organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: 'mgr-a',
+          organizationId: ORG,
+        },
       },
       managers: { 'mgr-a': { id: 'mgr-a', name: 'Meera' } },
       leadCount: 0,
@@ -186,7 +203,13 @@ describe('ProjectTeamsService.list', () => {
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       projectTeamLinks: [{ teamId: 'team-a', team: { name: 'Metro Sales', manager: null } }],
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       teamMembers: [
         {
@@ -214,11 +237,15 @@ describe('ProjectTeamsService.list', () => {
   it('canUnlink is false for a non-admin actor even with zero leads', async () => {
     makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
-      projectTeamLinks: [
-        { teamId: 'team-a', team: { name: 'Metro Sales', manager: null } },
-      ],
+      projectTeamLinks: [{ teamId: 'team-a', team: { name: 'Metro Sales', manager: null } }],
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       leadCount: 0,
     });
@@ -230,11 +257,15 @@ describe('ProjectTeamsService.list', () => {
   it('canUnlink is false when the team still has leads on this project', async () => {
     makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
-      projectTeamLinks: [
-        { teamId: 'team-a', team: { name: 'Metro Sales', manager: null } },
-      ],
+      projectTeamLinks: [{ teamId: 'team-a', team: { name: 'Metro Sales', manager: null } }],
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       leadCount: 3,
     });
@@ -249,20 +280,20 @@ describe('ProjectTeamsService.link', () => {
   it('rejects non-ADMIN/OWNER actors', async () => {
     makeTx();
     const svc = new ProjectTeamsService({ $client: {} } as never);
-    await expect(
-      svc.link(managerActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({ name: 'CodedForbiddenException' });
-    await expect(
-      svc.link(telecallerActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({ name: 'CodedForbiddenException' });
+    await expect(svc.link(managerActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
+      name: 'CodedForbiddenException',
+    });
+    await expect(svc.link(telecallerActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
+      name: 'CodedForbiddenException',
+    });
   });
 
   it('404s when the project is missing', async () => {
     makeTx({ projects: { 'proj-1': null } });
     const svc = new ProjectTeamsService({ $client: {} } as never);
-    await expect(
-      svc.link(adminActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
+    await expect(svc.link(adminActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
+      name: 'NotFoundException',
+    });
   });
 
   it('404s when the team is missing or soft-deleted', async () => {
@@ -271,9 +302,9 @@ describe('ProjectTeamsService.link', () => {
       teams: { 'team-a': null },
     });
     const svc = new ProjectTeamsService({ $client: {} } as never);
-    await expect(
-      svc.link(adminActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({ name: 'NotFoundException' });
+    await expect(svc.link(adminActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
+      name: 'NotFoundException',
+    });
   });
 
   it('rejects a team from a different organization (400 PROJECT_TEAM_CROSS_ORG)', async () => {
@@ -290,9 +321,7 @@ describe('ProjectTeamsService.link', () => {
       },
     });
     const svc = new ProjectTeamsService({ $client: {} } as never);
-    await expect(
-      svc.link(adminActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({
+    await expect(svc.link(adminActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'PROJECT_TEAM_CROSS_ORG' }),
     });
   });
@@ -301,13 +330,17 @@ describe('ProjectTeamsService.link', () => {
     makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       teams: {
-        'team-a': { id: 'team-a', name: 'Orphan Team', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Orphan Team',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
     });
     const svc = new ProjectTeamsService({ $client: {} } as never);
-    await expect(
-      svc.link(ownerActor, 'proj-1', { teamId: 'team-a' }),
-    ).rejects.toMatchObject({
+    await expect(svc.link(ownerActor, 'proj-1', { teamId: 'team-a' })).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'TEAM_MANAGERLESS' }),
     });
   });
@@ -316,7 +349,13 @@ describe('ProjectTeamsService.link', () => {
     const tx = makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: 'mgr-a', organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: 'mgr-a',
+          organizationId: ORG,
+        },
       },
       managers: { 'mgr-a': { id: 'mgr-a', name: 'Meera' } },
       leadCount: 0,
@@ -352,7 +391,13 @@ describe('ProjectTeamsService.unlink', () => {
     makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       projectTeamLink: null,
     });
@@ -366,14 +411,23 @@ describe('ProjectTeamsService.unlink', () => {
     makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       projectTeamLink: { teamId: 'team-a', projectId: 'proj-1' },
       leadCount: 5,
     });
     const svc = new ProjectTeamsService({ $client: {} } as never);
     await expect(svc.unlink(adminActor, 'proj-1', 'team-a')).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'PROJECT_TEAM_HAS_LEADS', details: { leadCount: 5 } }),
+      response: expect.objectContaining({
+        code: 'PROJECT_TEAM_HAS_LEADS',
+        details: { leadCount: 5 },
+      }),
     });
   });
 
@@ -381,7 +435,13 @@ describe('ProjectTeamsService.unlink', () => {
     const tx = makeTx({
       projects: { 'proj-1': { id: 'proj-1', deletedAt: null, organizationId: ORG } },
       teams: {
-        'team-a': { id: 'team-a', name: 'Metro Sales', deletedAt: null, managerId: null, organizationId: ORG },
+        'team-a': {
+          id: 'team-a',
+          name: 'Metro Sales',
+          deletedAt: null,
+          managerId: null,
+          organizationId: ORG,
+        },
       },
       projectTeamLink: { teamId: 'team-a', projectId: 'proj-1' },
       leadCount: 0,

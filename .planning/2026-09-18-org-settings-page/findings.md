@@ -19,7 +19,7 @@ Record material discoveries from documentation, searches, code exploration, or o
 Record significant architecture and implementation choices with their rationale.
 
 | Decision | Rationale |
-|----------|-----------|
+| -------- | --------- |
 |          |           |
 
 ## Issues Encountered
@@ -27,7 +27,7 @@ Record significant architecture and implementation choices with their rationale.
 Record blockers or unexpected problems and how they were resolved.
 
 | Issue | Resolution |
-|-------|------------|
+| ----- | ---------- |
 |       |            |
 
 ## Resources
@@ -44,4 +44,4 @@ Capture relevant facts from images, PDFs, dashboards, and browser results as tex
 
 ---
 
-*Update this file after significant discoveries so important evidence remains available.*
+_Update this file after significant discoveries so important evidence remains available._

@@ -69,9 +69,7 @@ describe('lead-status badge coverage', () => {
   it('every LeadState has its own badge class', () => {
     // `STATE_BADGE_CLASS[status] ?? UNKNOWN` means a missing entry silently
     // renders the neutral UNKNOWN pill - correct-looking, but wrong.
-    const missing = LEAD_STATES.filter(
-      (state) => STATE_BADGE_CLASS[state] === undefined,
-    );
+    const missing = LEAD_STATES.filter((state) => STATE_BADGE_CLASS[state] === undefined);
     expect(missing).toEqual([]);
   });
 
@@ -80,9 +78,7 @@ describe('lead-status badge coverage', () => {
     // neutral one, so assert presence directly rather than comparing values:
     // NEW and RNR legitimately reuse the neutral pair, and a value comparison
     // would flag them as "missing".
-    const implicit = LEAD_STATES.filter(
-      (state) => !Object.hasOwn(STATE_BADGE_CLASS, state),
-    );
+    const implicit = LEAD_STATES.filter((state) => !Object.hasOwn(STATE_BADGE_CLASS, state));
     expect(implicit).toEqual([]);
   });
 });

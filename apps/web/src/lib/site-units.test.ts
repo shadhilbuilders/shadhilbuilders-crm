@@ -86,21 +86,17 @@ describe('siteUnits', () => {
   const all = [FRESH, WEEK, STALE, NONE];
 
   it('sorts the most neglected first: stale, then none, then week, then today', () => {
-    expect(siteUnits(all, { filter: 'all', search: '', now: NOW }).map((u) => u.unitNumber)).toEqual([
-      'B-103',
-      'B-104',
-      'B-102',
-      'B-101',
-    ]);
+    expect(
+      siteUnits(all, { filter: 'all', search: '', now: NOW }).map((u) => u.unitNumber),
+    ).toEqual(['B-103', 'B-104', 'B-102', 'B-101']);
   });
 
   it('breaks ties inside a state by unit number', () => {
     const a = unit({ unitNumber: 'B-110' });
     const b = unit({ unitNumber: 'B-102' });
-    expect(siteUnits([a, b], { filter: 'all', search: '', now: NOW }).map((u) => u.unitNumber)).toEqual([
-      'B-102',
-      'B-110',
-    ]);
+    expect(
+      siteUnits([a, b], { filter: 'all', search: '', now: NOW }).map((u) => u.unitNumber),
+    ).toEqual(['B-102', 'B-110']);
   });
 
   it('puts each filter bucket in the right set', () => {
@@ -115,9 +111,9 @@ describe('siteUnits', () => {
     expect(
       siteUnits(all, { filter: 'all', search: 'b-10', now: NOW }).map((u) => u.unitNumber),
     ).toEqual(['B-103', 'B-104', 'B-102', 'B-101']);
-    expect(siteUnits(all, { filter: 'all', search: '103', now: NOW }).map((u) => u.unitNumber)).toEqual([
-      'B-103',
-    ]);
+    expect(
+      siteUnits(all, { filter: 'all', search: '103', now: NOW }).map((u) => u.unitNumber),
+    ).toEqual(['B-103']);
   });
 
   it('never mutates the input array', () => {
@@ -184,7 +180,10 @@ describe('siteRowMeta', () => {
     ).toBe('3 BHK · East · Structure · 3 days ago');
     // A null stage is "not recorded" - it must not render "Not started".
     expect(
-      siteRowMeta(unit({ unitNumber: 'x', photoCount: 1, lastPhotoAt: ago(3), lastPhotoStage: null }), NOW),
+      siteRowMeta(
+        unit({ unitNumber: 'x', photoCount: 1, lastPhotoAt: ago(3), lastPhotoStage: null }),
+        NOW,
+      ),
     ).toBe('3 BHK · East · 3 days ago');
   });
 });

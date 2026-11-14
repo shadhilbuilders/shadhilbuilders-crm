@@ -157,9 +157,7 @@ export class WebhooksController {
   // a temporarily-failing handler.
   @Public()
   @Post('whatsapp')
-  async whatsappInbound(
-    @Body() body: MetaEnvelope,
-  ): Promise<ProcessingResult> {
+  async whatsappInbound(@Body() body: MetaEnvelope): Promise<ProcessingResult> {
     const result: ProcessingResult = {
       received: true,
       deduped: 0,
@@ -209,8 +207,7 @@ export class WebhooksController {
             else if (r === 'unknown-contact-message') {
               result.messagesCreated += 1;
               result.unknownContactsUpserted += 1;
-            }
-            else if (r === 'unknown-contact') result.unknownContactsUpserted += 1;
+            } else if (r === 'unknown-contact') result.unknownContactsUpserted += 1;
             else result.ignored += 1;
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -249,7 +246,11 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      {
+        userId: 'CRON_SERVICE',
+        role: 'CRON_SERVICE',
+        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+      },
       async (tx) => {
         const updated = await tx.$executeRawUnsafe(
           `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
@@ -276,20 +277,18 @@ export class WebhooksController {
   // 'unknown-contact' (unknown number, WhatsappUnknownContact row
   // upserted), 'deduped' (already processed), 'ignored' (e.g. not a
   // text/message-supported media type, or no message id).
-  private async handleInboundMessage(
-    message: {
-      from?: string;
-      id?: string;
-      timestamp?: string | number;
-      type?: string;
-      image?: { id?: string; mime_type?: string };
-      video?: { id?: string; mime_type?: string };
-      audio?: { id?: string; mime_type?: string };
-      document?: { id?: string; mime_type?: string; filename?: string };
-      text?: { body?: string };
-      [k: string]: unknown;
-    },
-  ): Promise<'message' | 'unknown-contact' | 'unknown-contact-message' | 'deduped' | 'ignored'> {
+  private async handleInboundMessage(message: {
+    from?: string;
+    id?: string;
+    timestamp?: string | number;
+    type?: string;
+    image?: { id?: string; mime_type?: string };
+    video?: { id?: string; mime_type?: string };
+    audio?: { id?: string; mime_type?: string };
+    document?: { id?: string; mime_type?: string; filename?: string };
+    text?: { body?: string };
+    [k: string]: unknown;
+  }): Promise<'message' | 'unknown-contact' | 'unknown-contact-message' | 'deduped' | 'ignored'> {
     if (!message.id || !message.from) return 'ignored';
     const externalId = message.id;
     const phoneE164 = toE164(message.from);
@@ -301,7 +300,11 @@ export class WebhooksController {
 
     return withRlsContext(
       barePrisma,
-      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: process.env['PUBLIC_ORG_ID'] ?? '' },
+      {
+        userId: 'CRON_SERVICE',
+        role: 'CRON_SERVICE',
+        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+      },
       async (tx) => {
         // 1) Dedup via WebhookEvent.externalId unique constraint.
         try {
@@ -476,7 +479,9 @@ export class WebhooksController {
         filename: media.filename ?? file.filename,
       };
     } catch (err) {
-      this.logger.warn(`[whatsapp] inbound media store failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `[whatsapp] inbound media store failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return null;
     }
   }
@@ -535,9 +540,7 @@ function extractMedia(message: {
  *   Meta:    read      → ours: READ
  *   Meta:    failed    → ours: FAILED
  */
-function mapMetaStatus(
-  meta: string,
-): 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null {
+function mapMetaStatus(meta: string): 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null {
   switch (meta) {
     case 'sent':
       return 'SENT';

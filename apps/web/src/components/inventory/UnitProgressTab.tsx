@@ -138,7 +138,13 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
             {upload.error instanceof Error ? upload.error.message : 'Upload failed'}
             {isForbidden(upload.error) ? ' - you are not assigned to this project.' : ''}
           </span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => upload.reset()} data-qa="progress-error-dismiss">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => upload.reset()}
+            data-qa="progress-error-dismiss"
+          >
             Dismiss
           </Button>
         </div>
@@ -147,7 +153,10 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
       {photosQuery.isLoading ? (
         <div className="space-y-2" data-qa="progress-skeleton">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="border-border bg-muted-soft h-20 animate-pulse rounded-lg border" />
+            <div
+              key={i}
+              className="border-border bg-muted-soft h-20 animate-pulse rounded-lg border"
+            />
           ))}
         </div>
       ) : photosQuery.isError ? (
@@ -157,19 +166,32 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
           className="text-destructive bg-destructive-soft flex items-center gap-2 rounded-md px-3 py-2 text-sm"
         >
           <span className="flex-1">Could not load the timeline.</span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void photosQuery.refetch()} data-qa="progress-load-retry">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void photosQuery.refetch()}
+            data-qa="progress-load-retry"
+          >
             <LuRefreshCw className="size-4" /> Retry
           </Button>
         </div>
       ) : photos.length === 0 ? (
-        <div className="border-border text-muted-foreground rounded-lg border border-dashed p-6 text-center text-sm" data-qa="progress-empty">
+        <div
+          className="border-border text-muted-foreground rounded-lg border border-dashed p-6 text-center text-sm"
+          data-qa="progress-empty"
+        >
           No photos yet. The first site photo lands here.
         </div>
       ) : (
         <>
           <ol className="space-y-3" data-qa="progress-timeline">
             {photos.map((p, idx) => (
-              <li key={p.id} className="border-border rounded-lg border" data-qa="progress-photo-row">
+              <li
+                key={p.id}
+                className="border-border rounded-lg border"
+                data-qa="progress-photo-row"
+              >
                 <div className="flex items-start gap-3 p-3">
                   {/* Same-origin BFF media URL — cookie-authenticated, so
                       next/image's optimizer would drop the session. Plain
@@ -195,10 +217,16 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
                         </Badge>
                       ) : null}
                       <span className="text-muted-foreground text-xs" data-qa="progress-date">
-                        {new Date(p.takenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {new Date(p.takenAt).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </span>
                     </div>
-                    <p className="mt-1 truncate text-sm" data-qa="progress-caption">{p.caption}</p>
+                    <p className="mt-1 truncate text-sm" data-qa="progress-caption">
+                      {p.caption}
+                    </p>
                     <p className="text-muted-foreground text-xs" data-qa="progress-uploader">
                       {siteMemberLabel(p.creatorName, p.creatorIsPhotoLead)}
                     </p>
@@ -211,7 +239,8 @@ export function UnitProgressTabContent({ unit }: { unit: ProgressUnit }) {
               </li>
             ))}
           </ol>
-          {photosQuery.data && photosQuery.data.pages[photosQuery.data.pages.length - 1]?.nextCursor ? (
+          {photosQuery.data &&
+          photosQuery.data.pages[photosQuery.data.pages.length - 1]?.nextCursor ? (
             <Button
               type="button"
               variant="outline"

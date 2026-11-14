@@ -33,8 +33,7 @@ export type ProjectTeamsResponse = {
   teams: ProjectTeamRow[];
 };
 
-const PROJECT_TEAMS_KEY = (projectId: string) =>
-  ['projects', 'teams', projectId] as const;
+const PROJECT_TEAMS_KEY = (projectId: string) => ['projects', 'teams', projectId] as const;
 
 /** GET /api/projects/:id/teams - linked teams with roster + capabilities. */
 export function useProjectTeams(projectId: string | undefined) {

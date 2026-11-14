@@ -122,75 +122,76 @@ export function SitePhotoViewerPanel({
   onNext: () => void;
 }) {
   const note = photo.caption.trim();
-  const alt = note.length > 0 ? `Unit ${unitNumber}, "${note}"` : `Unit ${unitNumber} progress photo`;
+  const alt =
+    note.length > 0 ? `Unit ${unitNumber}, "${note}"` : `Unit ${unitNumber} progress photo`;
 
   return (
-      <div className="relative flex h-dvh w-full flex-col" data-qa="site-photo-viewer">
-        <div className="relative z-10 flex items-center justify-between px-2 py-2">
-          <span className="sr-only">Photo viewer</span>
-          <div className="flex gap-1">
-            {hasPrevious ? (
-              <IconButton
-                type="button"
-                variant="ghost"
-                className="size-11"
-                icon={<LuChevronLeft className="size-5" aria-hidden="true" />}
-                aria-label="Previous photo"
-                onClick={onPrevious}
-                data-qa="site-photo-previous"
-              />
-            ) : null}
-            {hasNext ? (
-              <IconButton
-                type="button"
-                variant="ghost"
-                className="size-11"
-                icon={<LuChevronRight className="size-5" aria-hidden="true" />}
-                aria-label="Next photo"
-                onClick={onNext}
-                data-qa="site-photo-next"
-              />
-            ) : null}
-          </div>
-          <IconButton
-            type="button"
-            variant="ghost"
-            className="size-11"
-            icon={<LuX className="size-5" aria-hidden="true" />}
-            aria-label="Close photo"
-            onClick={onClose}
-            data-qa="site-photo-close"
-          />
+    <div className="relative flex h-dvh w-full flex-col" data-qa="site-photo-viewer">
+      <div className="relative z-10 flex items-center justify-between px-2 py-2">
+        <span className="sr-only">Photo viewer</span>
+        <div className="flex gap-1">
+          {hasPrevious ? (
+            <IconButton
+              type="button"
+              variant="ghost"
+              className="size-11"
+              icon={<LuChevronLeft className="size-5" aria-hidden="true" />}
+              aria-label="Previous photo"
+              onClick={onPrevious}
+              data-qa="site-photo-previous"
+            />
+          ) : null}
+          {hasNext ? (
+            <IconButton
+              type="button"
+              variant="ghost"
+              className="size-11"
+              icon={<LuChevronRight className="size-5" aria-hidden="true" />}
+              aria-label="Next photo"
+              onClick={onNext}
+              data-qa="site-photo-next"
+            />
+          ) : null}
         </div>
+        <IconButton
+          type="button"
+          variant="ghost"
+          className="size-11"
+          icon={<LuX className="size-5" aria-hidden="true" />}
+          aria-label="Close photo"
+          onClick={onClose}
+          data-qa="site-photo-close"
+        />
+      </div>
 
-        {/* Keyed so zoom resets when moving to another photo. The image is
+      {/* Keyed so zoom resets when moving to another photo. The image is
             clipped to this region: before, it overflowed over the header and
             swallowed taps on Back/Close. */}
-        <ZoomableImage key={photo.id} src={photo.mediaUrl} alt={alt} />
+      <ZoomableImage key={photo.id} src={photo.mediaUrl} alt={alt} />
 
-        <div className="bg-background/95 border-border border-t px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-          {note.length > 0 ? (
-            <p className="text-foreground text-sm leading-snug" data-qa="site-photo-note">
-              {note}
-            </p>
-          ) : null}
-          <p className="text-muted-foreground mt-1 text-xs">
-            <span data-qa="site-photo-full-date">{fullCaptureTime(photo.takenAt)}</span>
-            {photo.creatorName !== null ? (
-              <>
-                {' · '}
-                <span data-qa="site-photo-uploader">{photo.creatorName}</span>
-              </>
-            ) : null}
-            {photo.phaseName !== null ? (
-              <>
-                {' · '}
-                <span>{photo.phaseName}</span>
-              </>
-            ) : null}
-            <span className="sr-only">{formatDay(photo.takenAt)}</span>
+      <div className="bg-background/95 border-border border-t px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+        {note.length > 0 ? (
+          <p className="text-foreground text-sm leading-snug" data-qa="site-photo-note">
+            {note}
           </p>
-        </div>
+        ) : null}
+        <p className="text-muted-foreground mt-1 text-xs">
+          <span data-qa="site-photo-full-date">{fullCaptureTime(photo.takenAt)}</span>
+          {photo.creatorName !== null ? (
+            <>
+              {' · '}
+              <span data-qa="site-photo-uploader">{photo.creatorName}</span>
+            </>
+          ) : null}
+          {photo.phaseName !== null ? (
+            <>
+              {' · '}
+              <span>{photo.phaseName}</span>
+            </>
+          ) : null}
+          <span className="sr-only">{formatDay(photo.takenAt)}</span>
+        </p>
       </div>
+    </div>
   );
 }

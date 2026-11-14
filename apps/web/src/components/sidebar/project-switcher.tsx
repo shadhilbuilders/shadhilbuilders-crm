@@ -84,8 +84,7 @@ export function ProjectSwitcher({
   const router = useRouter();
   const pathname = usePathname();
 
-  const active =
-    projects.find((p) => p.slug === activeProjectSlug) ?? projects[0] ?? null;
+  const active = projects.find((p) => p.slug === activeProjectSlug) ?? projects[0] ?? null;
 
   // Determine the current work surface from the pathname.
   // Slug scheme: /[orgSlug]/projects/[projectSlug]/<surface>. The work
@@ -110,17 +109,15 @@ export function ProjectSwitcher({
             render={
               <SidebarMenuButton
                 size="lg"
-                className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
                 data-qa="project-switcher-trigger"
                 aria-label="Switch project"
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                   <LuBuilding2 className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">
-                    {active?.name ?? 'No project'}
-                  </span>
+                  <span className="truncate font-medium">{active?.name ?? 'No project'}</span>
                   <span className="truncate text-xs">
                     {active !== null ? active.slug : 'Select a project'}
                   </span>
@@ -155,11 +152,7 @@ export function ProjectSwitcher({
                   onClick={() => {
                     // Switch: navigate to the SAME work surface under the
                     // new project's slug, within the active org's slug.
-                    const targetHref = projectHref(
-                      activeOrgSlug,
-                      project.slug,
-                      currentWorkSurface,
-                    );
+                    const targetHref = projectHref(activeOrgSlug, project.slug, currentWorkSurface);
                     router.push(targetHref);
                   }}
                 >
@@ -168,10 +161,7 @@ export function ProjectSwitcher({
                   </div>
                   {project.name}
                   {project.id === active?.id ? (
-                    <span
-                      aria-hidden
-                      className="text-muted-foreground ml-auto text-xs"
-                    >
+                    <span aria-hidden className="text-muted-foreground ml-auto text-xs">
                       Active
                     </span>
                   ) : null}
@@ -186,9 +176,7 @@ export function ProjectSwitcher({
                   className="cursor-pointer gap-2 p-2"
                   onClick={() => {
                     router.push(
-                      activeOrgSlug
-                        ? `/${activeOrgSlug}/admin/projects`
-                        : '/admin/projects',
+                      activeOrgSlug ? `/${activeOrgSlug}/admin/projects` : '/admin/projects',
                     );
                   }}
                 >

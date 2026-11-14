@@ -43,7 +43,12 @@ import {
   type WhatsappUnknownContactStatus,
   CreateLeadDtoSchema,
 } from '@shadhil/api-types';
-import { prisma as barePrisma, type PrismaClient, withRlsContext, rlsContextFrom } from '@shadhil/database';
+import {
+  prisma as barePrisma,
+  type PrismaClient,
+  withRlsContext,
+  rlsContextFrom,
+} from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 
@@ -137,51 +142,41 @@ export class WhatsappUnknownContactsService {
     const limit = query.limit;
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
 
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // Build the cursor predicate: rows STRICTLY OLDER than the
-        // (createdAt, id) tuple we last returned. We use (createdAt, id)
-        // because createdAt has microsecond precision but the cursor
-        // id breaks ties when two rows share a timestamp.
-        const where: Record<string, unknown> = { status };
-        if (cursor !== null) {
-          where.OR = [
-            { createdAt: { lt: cursor.createdAt } },
-            {
-              AND: [
-                { createdAt: cursor.createdAt },
-                { id: { lt: cursor.id } },
-              ],
-            },
-          ];
-        }
-
-        const rows = await (tx as unknown as PrismaClient).whatsappUnknownContact.findMany(
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Build the cursor predicate: rows STRICTLY OLDER than the
+      // (createdAt, id) tuple we last returned. We use (createdAt, id)
+      // because createdAt has microsecond precision but the cursor
+      // id breaks ties when two rows share a timestamp.
+      const where: Record<string, unknown> = { status };
+      if (cursor !== null) {
+        where.OR = [
+          { createdAt: { lt: cursor.createdAt } },
           {
-            where,
-            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-            take: limit + 1, // fetch one extra to know if there's a next page
+            AND: [{ createdAt: cursor.createdAt }, { id: { lt: cursor.id } }],
           },
-        );
-        const total = await (tx as unknown as PrismaClient).whatsappUnknownContact.count({
-          where: { status },
-        });
+        ];
+      }
 
-        const hasMore = rows.length > limit;
-        const pageRows = hasMore ? rows.slice(0, limit) : rows;
-        const last = pageRows[pageRows.length - 1];
-        const nextCursor =
-          hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+      const rows = await (tx as unknown as PrismaClient).whatsappUnknownContact.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1, // fetch one extra to know if there's a next page
+      });
+      const total = await (tx as unknown as PrismaClient).whatsappUnknownContact.count({
+        where: { status },
+      });
 
-        return {
-          total,
-          rows: pageRows.map(rowToJson),
-          nextCursor,
-        };
-      },
-    );
+      const hasMore = rows.length > limit;
+      const pageRows = hasMore ? rows.slice(0, limit) : rows;
+      const last = pageRows[pageRows.length - 1];
+      const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+
+      return {
+        total,
+        rows: pageRows.map(rowToJson),
+        nextCursor,
+      };
+    });
   }
 
   // ── convert ───────────────────────────────────────────────────────
@@ -209,146 +204,122 @@ export class WhatsappUnknownContactsService {
       source: 'WHATSAPP',
     });
 
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        // Lock the contact row so a concurrent convert/spam on the
-        // same contact is serialized. findUnique + status check
-        // (instead of an explicit SELECT FOR UPDATE) is fine for v1
-        // because the workload is "a few staff at a time" - true
-        // high-concurrency would need a different pattern.
-        const contact = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique(
-          {
-            where: { id: contactId },
-            select: { id: true, status: true, phoneE164: true, convertedToLeadId: true },
-          },
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      // Lock the contact row so a concurrent convert/spam on the
+      // same contact is serialized. findUnique + status check
+      // (instead of an explicit SELECT FOR UPDATE) is fine for v1
+      // because the workload is "a few staff at a time" - true
+      // high-concurrency would need a different pattern.
+      const contact = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
+        where: { id: contactId },
+        select: { id: true, status: true, phoneE164: true, convertedToLeadId: true },
+      });
+      if (contact === null) {
+        throw new NotFoundException(`WhatsAppUnknownContact ${contactId} not found`);
+      }
+      if (contact.status !== 'PENDING') {
+        throw new ConflictException(
+          `Contact ${contactId} is already ${contact.status} - cannot convert again`,
         );
-        if (contact === null) {
-          throw new NotFoundException(
-            `WhatsAppUnknownContact ${contactId} not found`,
-          );
-        }
-        if (contact.status !== 'PENDING') {
-          throw new ConflictException(
-            `Contact ${contactId} is already ${contact.status} - cannot convert again`,
-          );
-        }
+      }
 
-        // Create the Lead. LeadsService.createInTransaction runs
-        // inside our caller-owned transaction (so the lead insert
-        // + manager assignment + audit log + the contact update
-        // below all commit atomically) and returns the richer
-        // CreatedLead shape (phoneE164, state, teamId) so the
-        // convert response has the new lead's state.
-        const lead = await this.leadsService.createInTransaction(
-          actor,
-          normalizedDto,
-          tx as unknown as PrismaClient,
-        );
+      // Create the Lead. LeadsService.createInTransaction runs
+      // inside our caller-owned transaction (so the lead insert
+      // + manager assignment + audit log + the contact update
+      // below all commit atomically) and returns the richer
+      // CreatedLead shape (phoneE164, state, teamId) so the
+      // convert response has the new lead's state.
+      const lead = await this.leadsService.createInTransaction(
+        actor,
+        normalizedDto,
+        tx as unknown as PrismaClient,
+      );
 
-        // Flip the contact to CONVERTED. The unique constraint on
-        // `convertedToLeadId` means we never link the same contact
-        // to two leads (the existing 1:1 invariant from the T-E2b
-        // inbound commit).
-        const updated = await (tx as unknown as PrismaClient).whatsappUnknownContact.update(
-          {
-            where: { id: contactId },
-            data: {
-              status: 'CONVERTED',
-              convertedToLeadId: lead.id,
-            },
-            select: {
-              id: true,
-              phoneE164: true,
-              firstMessageAt: true,
-              lastMessageAt: true,
-              messageCount: true,
-              firstMessageBody: true,
-              status: true,
-              convertedToLeadId: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          },
-        );
+      // Flip the contact to CONVERTED. The unique constraint on
+      // `convertedToLeadId` means we never link the same contact
+      // to two leads (the existing 1:1 invariant from the T-E2b
+      // inbound commit).
+      const updated = await (tx as unknown as PrismaClient).whatsappUnknownContact.update({
+        where: { id: contactId },
+        data: {
+          status: 'CONVERTED',
+          convertedToLeadId: lead.id,
+        },
+        select: {
+          id: true,
+          phoneE164: true,
+          firstMessageAt: true,
+          lastMessageAt: true,
+          messageCount: true,
+          firstMessageBody: true,
+          status: true,
+          convertedToLeadId: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
 
-        this.logger.log(
-          `[wa-unknown] convert id=${contactId} lead=${lead.id} by=${actor.sub}`,
-        );
+      this.logger.log(`[wa-unknown] convert id=${contactId} lead=${lead.id} by=${actor.sub}`);
 
-        return {
-          lead: {
-            id: lead.id,
-            name: lead.name,
-            phone: lead.phone,
-            phoneE164: lead.phoneE164,
-            state: lead.state,
-            ownerId: lead.ownerId,
-            teamId: lead.teamId,
-            createdAt: lead.createdAt.toISOString(),
-          },
-          contact: rowToJson(updated),
-        };
-      },
-    );
+      return {
+        lead: {
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          phoneE164: lead.phoneE164,
+          state: lead.state,
+          ownerId: lead.ownerId,
+          teamId: lead.teamId,
+          createdAt: lead.createdAt.toISOString(),
+        },
+        contact: rowToJson(updated),
+      };
+    });
   }
 
   // ── markSpam ──────────────────────────────────────────────────────
   // One-click status flip. No Lead required. Idempotent - calling
   // it on an already-SPAM contact is a no-op (still returns the row).
-  async markSpam(
-    actor: JwtPayload,
-    contactId: string,
-  ): Promise<SpamUnknownContactResult> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const existing = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique(
-          { where: { id: contactId }, select: { id: true, status: true } },
+  async markSpam(actor: JwtPayload, contactId: string): Promise<SpamUnknownContactResult> {
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const existing = await (tx as unknown as PrismaClient).whatsappUnknownContact.findUnique({
+        where: { id: contactId },
+        select: { id: true, status: true },
+      });
+      if (existing === null) {
+        throw new NotFoundException(`WhatsAppUnknownContact ${contactId} not found`);
+      }
+      if (existing.status === 'CONVERTED') {
+        // Refuse to mark a converted contact as spam - that would
+        // orphan the linked Lead. Caller can update notes instead.
+        throw new ConflictException(
+          `Contact ${contactId} is CONVERTED (linked to a Lead) - cannot mark as spam`,
         );
-        if (existing === null) {
-          throw new NotFoundException(
-            `WhatsAppUnknownContact ${contactId} not found`,
-          );
-        }
-        if (existing.status === 'CONVERTED') {
-          // Refuse to mark a converted contact as spam - that would
-          // orphan the linked Lead. Caller can update notes instead.
-          throw new ConflictException(
-            `Contact ${contactId} is CONVERTED (linked to a Lead) - cannot mark as spam`,
-          );
-        }
+      }
 
-        const updated = await (tx as unknown as PrismaClient).whatsappUnknownContact.update(
-          {
-            where: { id: contactId },
-            data: { status: 'SPAM' },
-            select: {
-              id: true,
-              phoneE164: true,
-              firstMessageAt: true,
-              lastMessageAt: true,
-              messageCount: true,
-              firstMessageBody: true,
-              status: true,
-              convertedToLeadId: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          },
-        );
+      const updated = await (tx as unknown as PrismaClient).whatsappUnknownContact.update({
+        where: { id: contactId },
+        data: { status: 'SPAM' },
+        select: {
+          id: true,
+          phoneE164: true,
+          firstMessageAt: true,
+          lastMessageAt: true,
+          messageCount: true,
+          firstMessageBody: true,
+          status: true,
+          convertedToLeadId: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
 
-        this.logger.log(
-          `[wa-unknown] spam id=${contactId} by=${actor.sub}`,
-        );
+      this.logger.log(`[wa-unknown] spam id=${contactId} by=${actor.sub}`);
 
-        return { contact: rowToJson(updated) };
-      },
-    );
+      return { contact: rowToJson(updated) };
+    });
   }
 }
 

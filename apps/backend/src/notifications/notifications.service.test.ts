@@ -40,9 +40,7 @@ function makeService(): {
   };
 } {
   const client = {
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn(client),
-    ),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     notification: {
       findMany: vi.fn(),
@@ -218,10 +216,7 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
     // Both anchors are in the filter: a lead row OR a unit row of this project.
     expect(where).toMatchObject({
-      OR: [
-        { leadId: { in: ['l-1'] } },
-        { unitId: { in: ['unit-1'] } },
-      ],
+      OR: [{ leadId: { in: ['l-1'] } }, { unitId: { in: ['unit-1'] } }],
     });
     // Nothing else in the where is a top-level OR, so the arms cannot clobber.
     expect(where).not.toHaveProperty('leadId');
@@ -270,7 +265,12 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     client.notification.findMany.mockResolvedValue([]);
     client.notification.count.mockResolvedValue(0);
 
-    await service.list(makeActor(), { unreadOnly: false, projectId: 'proj-1', limit: 50, offset: 0 });
+    await service.list(makeActor(), {
+      unreadOnly: false,
+      projectId: 'proj-1',
+      limit: 50,
+      offset: 0,
+    });
 
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
     expect(client.unit.findMany).not.toHaveBeenCalled();
@@ -482,10 +482,15 @@ describe('emit - service hook for notification creation', () => {
     );
   });
 
-  it('stamps the recipient\'s own organization, never PUBLIC_ORG_ID', async () => {
+  it("stamps the recipient's own organization, never PUBLIC_ORG_ID", async () => {
     const { service, client } = makeService();
     client.notification.create.mockResolvedValue({
-      id: 'n-org', type: 't', title: 't', body: 'b', leadId: null, read: false,
+      id: 'n-org',
+      type: 't',
+      title: 't',
+      body: 'b',
+      leadId: null,
+      read: false,
       createdAt: new Date('2026-01-01T00:00:00Z'),
     });
     await service.emit('recipient-1', { type: 't', title: 't', body: 'b' });
@@ -507,11 +512,19 @@ describe('emit - service hook for notification creation', () => {
   it('uses an explicit organizationId without looking the user up', async () => {
     const { service, client } = makeService();
     client.notification.create.mockResolvedValue({
-      id: 'n-org2', type: 't', title: 't', body: 'b', leadId: null, read: false,
+      id: 'n-org2',
+      type: 't',
+      title: 't',
+      body: 'b',
+      leadId: null,
+      read: false,
       createdAt: new Date('2026-01-01T00:00:00Z'),
     });
     await service.emit('recipient-1', {
-      type: 't', title: 't', body: 'b', organizationId: 'org-explicit',
+      type: 't',
+      title: 't',
+      body: 'b',
+      organizationId: 'org-explicit',
     });
     expect(client.user.findUnique).not.toHaveBeenCalled();
     expect(client.notification.create).toHaveBeenCalledWith(
@@ -524,9 +537,9 @@ describe('emit - service hook for notification creation', () => {
   it('fails loudly when the recipient or their organization cannot be resolved', async () => {
     const { service, client } = makeService();
     client.user.findUnique.mockResolvedValue(null);
-    await expect(
-      service.emit('ghost', { type: 't', title: 't', body: 'b' }),
-    ).rejects.toThrow(/Cannot resolve the organization/);
+    await expect(service.emit('ghost', { type: 't', title: 't', body: 'b' })).rejects.toThrow(
+      /Cannot resolve the organization/,
+    );
     expect(client.notification.create).not.toHaveBeenCalled();
   });
 });

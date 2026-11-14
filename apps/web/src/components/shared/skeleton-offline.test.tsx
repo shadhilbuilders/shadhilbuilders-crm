@@ -11,9 +11,7 @@ import { Skeleton } from './Skeleton';
 
 describe('Skeleton.isOffline (T25)', () => {
   it('does NOT render the offline hint when isOffline is false', () => {
-    const html = renderToStaticMarkup(
-      <Skeleton variant="list" isOffline={false} />,
-    );
+    const html = renderToStaticMarkup(<Skeleton variant="list" isOffline={false} />);
     expect(html).not.toContain('Will sync when online');
     expect(html).not.toContain('data-qa="skeleton-offline-hint"');
   });
@@ -24,9 +22,7 @@ describe('Skeleton.isOffline (T25)', () => {
   });
 
   it('renders the offline hint above the list rows when isOffline is true', () => {
-    const html = renderToStaticMarkup(
-      <Skeleton variant="list" isOffline />,
-    );
+    const html = renderToStaticMarkup(<Skeleton variant="list" isOffline />);
     expect(html).toContain('data-qa="skeleton-offline-hint"');
     expect(html).toContain('Will sync when online');
     // The hint must appear before the first <li> so the user reads
@@ -42,9 +38,7 @@ describe('Skeleton.isOffline (T25)', () => {
     // The "text" variant is a flat list of placeholder lines - the
     // offline hint is intentionally not shown there because the
     // surface is too small. (Documented in the Skeleton prop type.)
-    const html = renderToStaticMarkup(
-      <Skeleton variant="text" isOffline />,
-    );
+    const html = renderToStaticMarkup(<Skeleton variant="text" isOffline />);
     expect(html).not.toContain('Will sync when online');
   });
 });

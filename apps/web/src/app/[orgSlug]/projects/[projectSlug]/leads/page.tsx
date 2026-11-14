@@ -26,8 +26,22 @@
 //   Row actions: View / Edit (LeadEditDialog) / Delete (canDeleteLeads
 //     only, D14) with AlertDialog confirm (Cancel gets initial focus).
 //   URL state (D23): search survives back-navigation via useSearchParams.
-import { Button, Combobox, TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger, TypographyP, toast } from '@paalstack/react-ui';
-import { AlertDialog, DataTable, DataTableColumnHeaderToggle, DataTableRowActions } from '@paalstack/react-ui';
+import {
+  Button,
+  Combobox,
+  TooltipContent,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
+  TypographyP,
+  toast,
+} from '@paalstack/react-ui';
+import {
+  AlertDialog,
+  DataTable,
+  DataTableColumnHeaderToggle,
+  DataTableRowActions,
+} from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
 import Link from 'next/link';
@@ -40,11 +54,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
 
-import {
-  useDeleteLead,
-  useLeads,
-  useLeadsEnvelope,
-} from '@/hooks/queries/crm';
+import { useDeleteLead, useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { canDeleteLeads, canReassign, useSessionUser } from '@/lib/session';
@@ -177,8 +187,7 @@ function LeadInboxPageInner() {
 
   const canDelete = user !== null && canDeleteLeads(user.role);
   const canAssign = user !== null && canReassign(user.role);
-  const staffLane =
-    user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC');
+  const staffLane = user !== null && (user.role === 'TELECALLER' || user.role === 'SALES_EXEC');
 
   const [editTarget, setEditTarget] = useState<LeadRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeadRow | null>(null);
@@ -226,14 +235,22 @@ function LeadInboxPageInner() {
             : 'Team lead queue with overdue-first sorting.'
         }
         action={
-          <Button leftIcon={<LuPlus className="size-4" />} as={Link} href={projectHref(orgSlug, projectSlug, '/leads/new')} data-qa="new-lead-button">
+          <Button
+            leftIcon={<LuPlus className="size-4" />}
+            as={Link}
+            href={projectHref(orgSlug, projectSlug, '/leads/new')}
+            data-qa="new-lead-button"
+          >
             New lead
           </Button>
         }
       />
 
       {/* D12: calm summary line - the queue's one question answered first. */}
-      <div className="text-muted-foreground flex flex-wrap items-center gap-2 px-1 text-sm" data-qa="leads-summary">
+      <div
+        className="text-muted-foreground flex flex-wrap items-center gap-2 px-1 text-sm"
+        data-qa="leads-summary"
+      >
         <span>{summaryLine}</span>
         <TooltipProvider>
           <TooltipRoot>
@@ -247,13 +264,12 @@ function LeadInboxPageInner() {
             <TooltipContent side="right" className="max-w-64">
               <div className="space-y-1.5 text-xs">
                 <p>
-                  <span className="font-medium">Overdue</span> - NEW leads that
-                  haven't been contacted within 30 minutes of creation (the
-                  time-to-first-touch SLA).
+                  <span className="font-medium">Overdue</span> - NEW leads that haven't been
+                  contacted within 30 minutes of creation (the time-to-first-touch SLA).
                 </p>
                 <p>
-                  <span className="font-medium">New today</span> - leads created
-                  since midnight that are still in the NEW state.
+                  <span className="font-medium">New today</span> - leads created since midnight that
+                  are still in the NEW state.
                 </p>
               </div>
             </TooltipContent>
@@ -272,9 +288,7 @@ function LeadInboxPageInner() {
         >
           <p className="text-sm font-medium">Couldn&apos;t load the lead queue.</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {leadsQuery.error instanceof Error
-              ? leadsQuery.error.message
-              : 'Unexpected error.'}
+            {leadsQuery.error instanceof Error ? leadsQuery.error.message : 'Unexpected error.'}
           </p>
           <Button
             variant="outline"
@@ -357,8 +371,7 @@ function LeadInboxPageInner() {
             },
             onError: (error) => {
               // Server copy arrives verbatim (409 guidance, 403 reason).
-              const msg =
-                error instanceof Error ? error.message : 'Delete failed';
+              const msg = error instanceof Error ? error.message : 'Delete failed';
               toast.error(msg);
             },
           });
@@ -419,7 +432,6 @@ function DeleteConfirmDialog({
       }}
       onConfirm={() => onConfirm()}
       onCancel={() => onCancel()}
-      
     />
   );
 }
@@ -502,17 +514,14 @@ function LeadTable({
           <div className="min-w-45">
             <Button
               as={Link}
-              variant='link'
+              variant="link"
               href={projectHref(orgSlug, projectSlug, `/leads/${row.original.id}`)}
               className="text-link"
             >
               {row.original.name}
             </Button>
-            {typeof row.original.phone === 'string' &&
-            row.original.phone.length > 0 ? (
-              <span className="text-muted-foreground block text-xs">
-                {row.original.phone}
-              </span>
+            {typeof row.original.phone === 'string' && row.original.phone.length > 0 ? (
+              <span className="text-muted-foreground block text-xs">{row.original.phone}</span>
             ) : null}
           </div>
         ),
@@ -559,9 +568,7 @@ function LeadTable({
         accessorKey: 'ownerName',
         header: 'Owner',
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.ownerName ?? '-'}
-          </span>
+          <span className="text-muted-foreground text-sm">{row.original.ownerName ?? '-'}</span>
         ),
         enableSorting: false,
       },
@@ -593,8 +600,7 @@ function LeadTable({
                 { label: 'Delete', value: 'delete', onClick: () => onDelete(row.original) },
               ].filter(
                 (item) =>
-                  (item.value !== 'assign' || canAssign) &&
-                  (item.value !== 'delete' || canDelete),
+                  (item.value !== 'assign' || canAssign) && (item.value !== 'delete' || canDelete),
               )}
             />
           </div>
@@ -662,7 +668,7 @@ function LeadTable({
         placeholder: 'Search by name or phone...',
         searchValue: search,
         onSearchValueChange: onSearchChange,
-        className: 'mr-2'
+        className: 'mr-2',
       }}
       // Server-driven status filter (T-SRVPG): the DataTable's built-in
       // facet filter is client-side over the loaded page, which is wrong
@@ -677,7 +683,7 @@ function LeadTable({
           placeholder="Filter by status"
           selectOptionAsValue
           maxSelectedChips={2}
-          className="min-w-48 max-w-96"
+          className="max-w-96 min-w-48"
           data-qa="leads-status-filter"
         />
       }
@@ -693,18 +699,18 @@ function LeadTable({
       }}
       emptyContent={
         isFiltered ? (
-          <div className="rounded-lg p-10 text-center space-y-1">
+          <div className="space-y-1 rounded-lg p-10 text-center">
             <TypographyP className="text-xl font-medium">No leads match this search.</TypographyP>
             <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
               Check the spelling or try a different number.
             </TypographyP>
           </div>
         ) : (
-          <div className="rounded-lg p-10 text-center space-y-1">
+          <div className="space-y-1 rounded-lg p-10 text-center">
             <TypographyP className="text-xl font-medium">No leads yet.</TypographyP>
             <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
-              They&apos;ll appear here as soon as the landing-site webhook fires
-              or a lead is created manually.
+              They&apos;ll appear here as soon as the landing-site webhook fires or a lead is
+              created manually.
             </TypographyP>
           </div>
         )

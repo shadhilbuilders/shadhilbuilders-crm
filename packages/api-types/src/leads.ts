@@ -7,11 +7,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import {
-  LeadStateSchema,
-  LeadOwnerTypeSchema,
-  ActivityTypeSchema,
-} from './enums';
+import { LeadStateSchema, LeadOwnerTypeSchema, ActivityTypeSchema } from './enums';
 import { PhoneSchema } from './common';
 
 /**
@@ -33,16 +29,18 @@ const sourceSchema = z.string().trim().min(1).max(80);
  * validates the id against the target org, sets it. Internal only.
  */
 export const CreateLeadDtoSchema = z.object({
-  name: z.string({
-    error: 'Name is required',
-  }).trim().min(1).max(120),
+  name: z
+    .string({
+      error: 'Name is required',
+    })
+    .trim()
+    .min(1)
+    .max(120),
   phone: PhoneSchema,
   // Email is optional but .optional() only allows undefined/missing, not
   // ''. Several clients (new-lead form, landing mirror) may send ''
   // for a blank optional field, so accept '' as "not provided" too.
-  email: z
-    .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
-    .optional(),
+  email: z.union([z.literal(''), z.email().trim().toLowerCase().max(254)]).optional(),
   source: sourceSchema,
   /**
    * T-LEAD-PROJECT-REQUIRED (2026-09-16, owner ruling): REQUIRED. `Lead.projectId`
@@ -99,9 +97,7 @@ export const LeadStateTransitionDtoSchema = z.object({
   reason: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
-export type LeadStateTransitionDto = z.infer<
-  typeof LeadStateTransitionDtoSchema
->;
+export type LeadStateTransitionDto = z.infer<typeof LeadStateTransitionDtoSchema>;
 
 /**
  * POST /api/leads/:id/reassign - move ownership to another user. Reason is
@@ -138,9 +134,7 @@ export type SetLeadCoOwnerDto = z.infer<typeof SetLeadCoOwnerDtoSchema>;
  * to a single owner; `teamId` filters to a team (manager view).
  */
 export const LeadFilterDtoSchema = z.object({
-  state: z
-    .union([LeadStateSchema, z.array(LeadStateSchema)])
-    .optional(),
+  state: z.union([LeadStateSchema, z.array(LeadStateSchema)]).optional(),
   ownerId: z.string().cuid2().optional(),
   teamId: z.cuid2().optional(),
   // T-USER-LEADS (2026-09-24): match a lead the user is LINKED to, meaning

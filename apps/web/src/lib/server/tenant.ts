@@ -101,9 +101,7 @@ async function backendGet<T>(
  * Resolve an organization by slug (the `[orgSlug]` URL segment). Returns
  * null when unauthenticated or the org is not visible to the caller.
  */
-export async function getOrganizationBySlug(
-  slug: string,
-): Promise<OrgLookup | null> {
+export async function getOrganizationBySlug(slug: string): Promise<OrgLookup | null> {
   try {
     const res = await backendGet<OrgLookup>(
       `/api/organizations/by-slug/${encodeURIComponent(slug)}`,

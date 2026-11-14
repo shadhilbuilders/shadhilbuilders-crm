@@ -88,6 +88,7 @@ the read returns nothing and the answer is 404 - never 403, which would confirm 
 exists. That keeps one statement of the rule and makes drift impossible.
 
 **Two deliberate choices:**
+
 - Caption is the ONLY editable field. `phaseId` is a property of the unit (the upload
   stops asking), `takenAt` is evidence of when site work happened, `unitId` would move
   a buyer's photo to another home. zod strips the others, so the DTO cannot carry them.
@@ -129,6 +130,7 @@ revoked from the UI at all — a one-way door.
 ### ~~Media bytes are org-scoped, not row-scoped~~ — FIXED 2026-11-07
 
 **What:** `GET /api/media/:key` now enforces two walls:
+
 1. the key's first path segment must be the caller's org
    (`media-key-scope.ts`, 12 tests);
 2. an owning row must be visible to the caller under their own RLS context

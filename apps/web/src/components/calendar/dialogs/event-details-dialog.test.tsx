@@ -150,9 +150,7 @@ describe('EventDetailsDialog status chip - coloured by the LEAD state it labels'
     // their lead states differ - the direct falsification of "the chip reads the
     // visit", which is what the old code did.
     const visit = { status: 'COMPLETED', outcome: 'COMPLETED' } as const;
-    const noShow = chipTone(
-      await openDialog({ ...visit, leadId: 'l', leadState: 'NO_SHOW' }),
-    );
+    const noShow = chipTone(await openDialog({ ...visit, leadId: 'l', leadState: 'NO_SHOW' }));
     await act(async () => {
       root?.unmount();
     });

@@ -44,7 +44,7 @@ const ownerActor = actor({ sub: 'owner-1', role: 'OWNER' });
 const adminActor = actor({ sub: 'admin-1', role: 'ADMIN' });
 const managerActor = actor({ sub: 'mgr-1', role: 'MANAGER' });
 const otherManagerActor = actor({ sub: 'mgr-2', role: 'MANAGER' });
-const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER'});
+const telecallerActor = actor({ sub: 'tc-1', role: 'TELECALLER' });
 
 /** T-REPORTS-TO-OWNER: the org's single OWNER row - findOrgOwner()'s
  * fixture (a MANAGER/ADMIN's fixed "Reports to" target). */
@@ -154,11 +154,13 @@ function makeService(opts: {
    * per-target lookup below). */
   managerTeamId?: string | null;
 }) {
-  const userFindUnique = vi.fn().mockResolvedValue(
-    opts.user === null
-      ? null
-      : { id: opts.user.id, email: opts.user.email, name: opts.user.name, role: opts.user.role },
-  );
+  const userFindUnique = vi
+    .fn()
+    .mockResolvedValue(
+      opts.user === null
+        ? null
+        : { id: opts.user.id, email: opts.user.email, name: opts.user.name, role: opts.user.role },
+    );
   // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): two DISTINCT
   // team.findFirst-shaped consumers now share this table:
   //   1. resolveDisplayTeamId(target) - `where: { managerId: target.id }` -
@@ -186,11 +188,13 @@ function makeService(opts: {
     );
   // resolveDisplayTeamId's non-MANAGER branch: the fixture user's own
   // (single, newest) TeamMember row.
-  const teamMemberFindFirst = vi.fn().mockResolvedValue(
-    opts.user?.role !== 'MANAGER' && opts.user?.team !== null && opts.user !== null
-      ? { teamId: opts.user.team!.id }
-      : null,
-  );
+  const teamMemberFindFirst = vi
+    .fn()
+    .mockResolvedValue(
+      opts.user?.role !== 'MANAGER' && opts.user?.team !== null && opts.user !== null
+        ? { teamId: opts.user.team!.id }
+        : null,
+    );
   // 2026-11-07: getUser() also returns `teamIds` (EVERY membership, newest
   // first) so the assign-manager picker can exclude teams the user is already
   // on. Same single-team fixture as findFirst unless a test overrides it.
@@ -312,9 +316,9 @@ describe('getUser - MANAGER scope', () => {
 
   it('MANAGER viewing a user outside their team → ForbiddenException', async () => {
     const { service } = makeService({ user: salesExec, managerTeamId: 'team-9' });
-    await expect(
-      service.getUser(otherManagerActor, salesExec.id),
-    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    await expect(service.getUser(otherManagerActor, salesExec.id)).rejects.toMatchObject({
+      name: 'ForbiddenException',
+    });
   });
 
   it('MANAGER can always view themselves, even without leading a team', async () => {
@@ -327,9 +331,9 @@ describe('getUser - MANAGER scope', () => {
 describe('getUser - staff scope', () => {
   it('TELECALLER viewing another user → ForbiddenException', async () => {
     const { service } = makeService({ user: managerRow });
-    await expect(
-      service.getUser(telecallerActor, managerRow.id),
-    ).rejects.toMatchObject({ name: 'ForbiddenException' });
+    await expect(service.getUser(telecallerActor, managerRow.id)).rejects.toMatchObject({
+      name: 'ForbiddenException',
+    });
   });
 
   it('TELECALLER viewing themselves → allowed', async () => {
@@ -341,7 +345,7 @@ describe('getUser - staff scope', () => {
 });
 
 describe('getUser - "Reports to" depends on the TARGET role (T-REPORTS-TO-OWNER)', () => {
-  it('a MANAGER row reports to the org OWNER, NOT its resolvable team\'s manager', async () => {
+  it("a MANAGER row reports to the org OWNER, NOT its resolvable team's manager", async () => {
     const { service, mocks } = makeService({ user: managerRow });
     const result = await service.getUser(adminActor, managerRow.id);
     expect(result.manager).toEqual(orgOwner);
@@ -436,17 +440,33 @@ describe('getUser - "Reports to" depends on the TARGET role (T-REPORTS-TO-OWNER)
     mocks.teamMemberFindMany.mockResolvedValue([
       {
         teamId: 'team-2',
-        team: { name: 'Skyline Crew', deletedAt: null, manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' } },
+        team: {
+          name: 'Skyline Crew',
+          deletedAt: null,
+          manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' },
+        },
       },
       {
         teamId: 'team-1',
-        team: { name: 'Metro Crew', deletedAt: null, manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' } },
+        team: {
+          name: 'Metro Crew',
+          deletedAt: null,
+          manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' },
+        },
       },
     ]);
     const result = await service.getUser(adminActor, engineerRow.id);
     expect(result.reportsTo).toEqual([
-      { teamId: 'team-2', teamName: 'Skyline Crew', manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' } },
-      { teamId: 'team-1', teamName: 'Metro Crew', manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' } },
+      {
+        teamId: 'team-2',
+        teamName: 'Skyline Crew',
+        manager: { id: 'm2', name: 'Suresh', email: 'suresh@x' },
+      },
+      {
+        teamId: 'team-1',
+        teamName: 'Metro Crew',
+        manager: { id: 'm1', name: 'Ramesh', email: 'ramesh@x' },
+      },
     ]);
   });
 

@@ -81,7 +81,7 @@ export function PortalNav({
     <nav
       aria-label="Portal"
       data-qa="portal-nav"
-      className="sticky bottom-0 z-40 border-t border-(--portal-hair) bg-(--portal-paper) pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2"
+      className="sticky bottom-0 z-40 border-t border-(--portal-hair) bg-(--portal-paper) pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
     >
       <div className="mx-auto flex max-w-md items-center justify-center gap-1 px-4">
         {hasLinks ? (

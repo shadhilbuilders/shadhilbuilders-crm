@@ -30,9 +30,7 @@ import type {
 } from '@shadhil/api-types';
 
 /** Invalidate both sides of the unit/booking status relationship. */
-function invalidateInventoryAndBookings(
-  queryClient: ReturnType<typeof useQueryClient>,
-) {
+function invalidateInventoryAndBookings(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'units'] });
   void queryClient.invalidateQueries({ queryKey: ['inventory', 'phases'] });
   // The plot map paints each plot from its unit's status, so it is a third
@@ -181,8 +179,7 @@ export function useInventoryUnitsEnvelope(filter: InventoryFilter = {}): number 
 export function useInventoryPhases(projectId?: string) {
   return useQuery({
     queryKey: ['inventory', 'phases', projectId ?? ''] as const,
-    queryFn: ({ signal }) =>
-      api<PhaseRow[]>(`/inventory/phases${qs({ projectId })}`, { signal }),
+    queryFn: ({ signal }) => api<PhaseRow[]>(`/inventory/phases${qs({ projectId })}`, { signal }),
     staleTime: 30_000,
   });
 }
@@ -301,8 +298,7 @@ export function useSiteUnits(projectId: string | undefined) {
 export function useDeleteUnit() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api<{ id: string }>(`/inventory/units/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api<{ id: string }>(`/inventory/units/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidateInventoryAndBookings(queryClient);
     },
@@ -358,17 +354,11 @@ export type ProjectOptionRow = {
 };
 
 /** The active project's option sets, optionally narrowed by type. */
-export function useProjectOptions(
-  projectId: string | undefined,
-  type?: 'FACING' | 'BHK',
-) {
+export function useProjectOptions(projectId: string | undefined, type?: 'FACING' | 'BHK') {
   return useQuery({
     queryKey: ['inventory', 'options', projectId ?? '', type ?? ''] as const,
     queryFn: ({ signal }) =>
-      api<ProjectOptionRow[]>(
-        `/inventory/options${qs({ projectId, type })}`,
-        { signal },
-      ),
+      api<ProjectOptionRow[]>(`/inventory/options${qs({ projectId, type })}`, { signal }),
     enabled: projectId !== undefined,
     staleTime: 30_000,
   });

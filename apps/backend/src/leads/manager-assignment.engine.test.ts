@@ -259,15 +259,16 @@ describe('T-ARM #2: criteria combinations', () => {
       ),
     ).toEqual({ kind: 'rule', ruleId: 'r-wildcard', userId: 'se-1', priority: 0 });
     // Lead with no language/region → r-hi-tn excluded (lead.language missing) → r-wildcard.
-    expect(
-      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK),
-    ).toEqual({ kind: 'rule', ruleId: 'r-wildcard', userId: 'se-1', priority: 0 });
+    expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
+      kind: 'rule',
+      ruleId: 'r-wildcard',
+      userId: 'se-1',
+      priority: 0,
+    });
   });
 
   it('rules for OTHER teams do not match - team-scoped', () => {
-    const rules = [
-      rule({ id: 'r-team-b', teamId: 'team-b', targetUserId: 'tc-1' }),
-    ];
+    const rules = [rule({ id: 'r-team-b', teamId: 'team-b', targetUserId: 'tc-1' })];
     const result = evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK);
     expect(result).toEqual({ kind: 'fallback', userId: FALLBACK });
   });
@@ -298,10 +299,12 @@ describe('T-ARM #3: team.defaultAssigneeId fallback', () => {
   it('rules exist but none match (wrong source) → team default wins', () => {
     const rules = [rule({ id: 'r-meta', source: 'META_AD', targetUserId: 'tc-1' })];
     // Lead has source REFERRAL - no rule matches → team default.
-    expect(evaluateAssignment(rules, TEAM_A_WITH_DEFAULT, leadREFERRAL, resolve, FALLBACK)).toEqual({
-      kind: 'team-default',
-      userId: 'se-1',
-    });
+    expect(evaluateAssignment(rules, TEAM_A_WITH_DEFAULT, leadREFERRAL, resolve, FALLBACK)).toEqual(
+      {
+        kind: 'team-default',
+        userId: 'se-1',
+      },
+    );
   });
 
   it('team default pointing at ADMIN → rejected, falls through to actor fallback', () => {
@@ -315,9 +318,10 @@ describe('T-ARM #3: team.defaultAssigneeId fallback', () => {
       id: 'team-a',
       defaultAssigneeId: 'deleted-user',
     };
-    expect(
-      evaluateAssignment([], teamDeletedDefault, leadMETA, resolve, FALLBACK),
-    ).toEqual({ kind: 'fallback', userId: FALLBACK });
+    expect(evaluateAssignment([], teamDeletedDefault, leadMETA, resolve, FALLBACK)).toEqual({
+      kind: 'fallback',
+      userId: FALLBACK,
+    });
   });
 
   it('no team default AND no matching rule → actor fallback', () => {
@@ -379,9 +383,7 @@ describe('T-ARM #5: ADMIN/MANAGER-target rejection', () => {
   });
 
   it('only ADMIN-targeting rules + no default → fallback', () => {
-    const rules = [
-      rule({ id: 'r-admin', targetUserId: 'admin-1' }),
-    ];
+    const rules = [rule({ id: 'r-admin', targetUserId: 'admin-1' })];
     expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
       kind: 'fallback',
       userId: FALLBACK,
@@ -408,9 +410,7 @@ describe('T-ARM #5: ADMIN/MANAGER-target rejection', () => {
 
 describe('T-ARM #6: inactive rule excluded', () => {
   it('inactive rule → skipped entirely (no audit row, no return)', () => {
-    const rules = [
-      rule({ id: 'r-inactive', active: false, targetUserId: 'tc-1' }),
-    ];
+    const rules = [rule({ id: 'r-inactive', active: false, targetUserId: 'tc-1' })];
     // With no team default either → fallback.
     expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
       kind: 'fallback',
@@ -464,9 +464,12 @@ describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-
       rule({ id: 'r-se', priority: 1, targetUserId: 'se-1' }),
       rule({ id: 'r-tc', priority: 5, targetUserId: 'tc-1' }),
     ];
-    expect(
-      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
-    ).toEqual({ kind: 'rule', ruleId: 'r-tc', userId: 'tc-1', priority: 5 });
+    expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead')).toEqual({
+      kind: 'rule',
+      ruleId: 'r-tc',
+      userId: 'tc-1',
+      priority: 5,
+    });
     // ...whereas the default mode (a caller whose own contract named the
     // target) still honors the operator's exec rule.
     expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK)).toEqual({
@@ -479,9 +482,10 @@ describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-
 
   it('only a sales-exec rule + no telecaller rule → actor fallback, never the exec', () => {
     const rules = [rule({ id: 'r-se', targetUserId: 'se-1' })];
-    expect(
-      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
-    ).toEqual({ kind: 'fallback', userId: FALLBACK });
+    expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead')).toEqual({
+      kind: 'fallback',
+      userId: FALLBACK,
+    });
   });
 
   it('a sales-exec team default does NOT own a NEW lead', () => {
@@ -490,16 +494,18 @@ describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-
     expect(
       evaluateAssignment([], TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK, 'new-lead'),
     ).toEqual({ kind: 'fallback', userId: FALLBACK });
-    expect(
-      evaluateAssignment([], TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK),
-    ).toEqual({ kind: 'team-default', userId: 'se-1' });
+    expect(evaluateAssignment([], TEAM_A_WITH_DEFAULT, leadMETA, resolve, FALLBACK)).toEqual({
+      kind: 'team-default',
+      userId: 'se-1',
+    });
   });
 
   it('a telecaller team default still wins on a NEW lead', () => {
     const team: Team = { id: 'team-a', defaultAssigneeId: 'tc-1' };
-    expect(
-      evaluateAssignment([], team, leadMETA, resolve, FALLBACK, 'new-lead'),
-    ).toEqual({ kind: 'team-default', userId: 'tc-1' });
+    expect(evaluateAssignment([], team, leadMETA, resolve, FALLBACK, 'new-lead')).toEqual({
+      kind: 'team-default',
+      userId: 'tc-1',
+    });
   });
 
   it('new-lead mode still honours a telecaller rule and a telecaller default', () => {
@@ -514,9 +520,12 @@ describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-
       rule({ id: 'r-admin', priority: 1, targetUserId: 'admin-1' }),
       rule({ id: 'r-tc', priority: 9, targetUserId: 'tc-1' }),
     ];
-    expect(
-      evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead'),
-    ).toEqual({ kind: 'rule', ruleId: 'r-tc', userId: 'tc-1', priority: 9 });
+    expect(evaluateAssignment(rules, TEAM_A, leadMETA, resolve, FALLBACK, 'new-lead')).toEqual({
+      kind: 'rule',
+      ruleId: 'r-tc',
+      userId: 'tc-1',
+      priority: 9,
+    });
   });
 
   it('canUserBeAssignedTo stays role-widest - the rule form may still record an exec target', () => {
@@ -528,7 +537,7 @@ describe('T-ARM #8: new-lead mode never routes a NEW lead to a sales exec (2026-
 });
 
 describe('extractCriteriaFromSource - T-ARM Week-8 placeholder', () => {
-  it('returns empty object for today\'s free-form sources (META_AD / LANDING / REFERRAL / WALK_IN)', () => {
+  it("returns empty object for today's free-form sources (META_AD / LANDING / REFERRAL / WALK_IN)", () => {
     expect(extractCriteriaFromSource('META_AD')).toEqual({});
     expect(extractCriteriaFromSource('LANDING')).toEqual({});
     expect(extractCriteriaFromSource('REFERRAL')).toEqual({});

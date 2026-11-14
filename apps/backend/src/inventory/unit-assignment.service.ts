@@ -67,14 +67,19 @@ function villaLabel(numbers: readonly string[]): string {
   if (numbers.length === 1) return `Villa ${numbers[0]}`;
   const shown = numbers.slice(0, 3).join(', ');
   const rest = numbers.length - 3;
-  return rest > 0 ? `${numbers.length} villas (${shown} +${rest} more)` : `${numbers.length} villas (${shown})`;
+  return rest > 0
+    ? `${numbers.length} villas (${shown} +${rest} more)`
+    : `${numbers.length} villas (${shown})`;
 }
 
 /** Group per-unit transitions into one notice per (recipient, type). */
 export function groupNotices(
   transitions: readonly { unit: UnitForAssign; from: string | null; to: string | null }[],
 ): PendingNotice[] {
-  const buckets = new Map<string, { notice: Omit<PendingNotice, 'unitIds' | 'unitNumbers'>; ids: string[]; nums: string[] }>();
+  const buckets = new Map<
+    string,
+    { notice: Omit<PendingNotice, 'unitIds' | 'unitNumbers'>; ids: string[]; nums: string[] }
+  >();
   const push = (recipientId: string, type: PendingNotice['type'], unit: UnitForAssign) => {
     const key = `${recipientId}|${type}|${unit.phase.projectId}`;
     const bucket = buckets.get(key) ?? {
@@ -175,8 +180,16 @@ export class UnitAssignmentService {
         await this.writeAssignments(db, actor, toAdd, dto.engineerId);
         await this.writeAssignments(db, actor, toRemove, null);
         const transitions = [
-          ...toAdd.map((unit) => ({ unit, from: unit.assignedEngineerId, to: dto.engineerId as string | null })),
-          ...toRemove.map((unit) => ({ unit, from: unit.assignedEngineerId, to: null as string | null })),
+          ...toAdd.map((unit) => ({
+            unit,
+            from: unit.assignedEngineerId,
+            to: dto.engineerId as string | null,
+          })),
+          ...toRemove.map((unit) => ({
+            unit,
+            from: unit.assignedEngineerId,
+            to: null as string | null,
+          })),
         ];
         return {
           notices: groupNotices(transitions),

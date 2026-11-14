@@ -62,7 +62,7 @@ export function AuthenticatedShell({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider defaultOpen={isDesktop}>
       <AppShell />
-      <SidebarInset className='md:peer-data-[variant=inset]:mt-0'>
+      <SidebarInset className="md:peer-data-[variant=inset]:mt-0">
         {fullBleed ? null : (
           <Suspense fallback={<Skeleton variant="text" count={1} className="h-14 w-full" />}>
             <AppHeader />
@@ -72,7 +72,7 @@ export function AuthenticatedShell({ children }: { children: ReactNode }) {
           className={
             fullBleed
               ? 'w-full flex-1'
-              : 'w-full flex-1 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6'
+              : 'w-full flex-1 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]'
           }
         >
           {children}

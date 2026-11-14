@@ -42,7 +42,8 @@ export const OfflineQueueBadge = () => {
   if (items.length === 0) return null;
 
   const failedCount = items.filter((m) => m.lastError).length;
-  const showBackgroundHint = items.filter((m) => (m.retries ?? 0) >= RETRY_THRESHOLD).length >= RETRY_THRESHOLD;
+  const showBackgroundHint =
+    items.filter((m) => (m.retries ?? 0) >= RETRY_THRESHOLD).length >= RETRY_THRESHOLD;
 
   const handleRetry = async () => {
     try {
@@ -99,7 +100,7 @@ export const OfflineQueueBadge = () => {
           <button
             type="button"
             aria-label={`${items.length} pending offline change${items.length === 1 ? '' : 's'}`}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            className="hover:bg-muted focus-visible:ring-ring relative inline-flex h-11 w-11 items-center justify-center rounded-md focus-visible:ring-2"
           >
             <LuCloudOff className="h-4 w-4" aria-hidden="true" />
             <Badge
@@ -129,12 +130,18 @@ export const OfflineQueueBadge = () => {
             return (
               <li
                 key={m.id}
-                className="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+                className="hover:bg-muted/50 flex items-start gap-2 rounded px-2 py-1.5 text-sm"
               >
                 {isFailed ? (
-                  <LuCircleAlert className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <LuCircleAlert
+                    className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <LuClock className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <LuClock
+                    className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate">
@@ -155,7 +162,7 @@ export const OfflineQueueBadge = () => {
           })}
         </ul>
         {showBackgroundHint ? (
-          <div className="border-t bg-muted/30 p-2">
+          <div className="bg-muted/30 border-t p-2">
             <p className="text-muted-foreground mb-1.5 text-xs">
               <LuSettings className="mr-1 inline h-3 w-3" aria-hidden="true" />
               Background sync may be limited on this device

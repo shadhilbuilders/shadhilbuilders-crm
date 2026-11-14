@@ -122,7 +122,9 @@ describe('UpdatePhotoSchema', () => {
 
 describe('updatePhoto', () => {
   it('protects= an authorised actor changes the caption and the change is audited', async () => {
-    const result = await svc().updatePhoto(actor('ENGINEER'), 'photo-1', { caption: 'Corrected caption' });
+    const result = await svc().updatePhoto(actor('ENGINEER'), 'photo-1', {
+      caption: 'Corrected caption',
+    });
 
     expect(mocks.tx.progressPhoto.update).toHaveBeenCalledWith({
       where: { id: 'photo-1' },
@@ -160,9 +162,9 @@ describe('updatePhoto', () => {
 
   it('fails_when= the row is written without an audit entry', async () => {
     mocks.tx.auditLog.create.mockRejectedValueOnce(new Error('audit down'));
-    await expect(
-      svc().updatePhoto(actor('ADMIN'), 'photo-1', { caption: 'ok' }),
-    ).rejects.toThrow(/audit down/);
+    await expect(svc().updatePhoto(actor('ADMIN'), 'photo-1', { caption: 'ok' })).rejects.toThrow(
+      /audit down/,
+    );
   });
 });
 
@@ -217,7 +219,9 @@ describe('deletePhoto', () => {
   // that surfaces as a 500.
   it('fails_when= a denied row surfaces as a server error instead of a 404', async () => {
     mocks.tx.progressPhoto.deleteMany.mockResolvedValue({ count: 0 });
-    const err = await svc().deletePhoto(actor('ADMIN'), 'photo-1').catch((e: unknown) => e);
+    const err = await svc()
+      .deletePhoto(actor('ADMIN'), 'photo-1')
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NotFoundException);
     expect(mocks.storageDelete).not.toHaveBeenCalled();
   });

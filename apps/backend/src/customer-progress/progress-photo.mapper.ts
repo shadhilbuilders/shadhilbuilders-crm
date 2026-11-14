@@ -62,7 +62,9 @@ export interface TimelineResponseDto {
 
 /** Cursor codec: opaque base64 JSON {takenAt, id}. */
 export function encodeCursor(takenAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ takenAt: takenAt.toISOString(), id }), 'utf8').toString('base64url');
+  return Buffer.from(JSON.stringify({ takenAt: takenAt.toISOString(), id }), 'utf8').toString(
+    'base64url',
+  );
 }
 
 export function decodeCursor(raw: string | undefined): { takenAt: Date; id: string } | null {
@@ -197,9 +199,7 @@ export async function readTimelinePage(
     where: {
       unitId: args.unitId,
       organizationId: args.organizationId,
-      ...(args.onlyPhotoId !== undefined
-        ? { id: args.onlyPhotoId }
-        : {}),
+      ...(args.onlyPhotoId !== undefined ? { id: args.onlyPhotoId } : {}),
       ...(cursor !== null
         ? {
             OR: [
@@ -252,9 +252,7 @@ export async function readTimelinePage(
     ]),
   );
 
-  const photos = page.map((r) =>
-    toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope),
-  );
+  const photos = page.map((r) => toTimelinePhotoDto(r, labelById.get(r.id) ?? null, args.scope));
   const last = page[page.length - 1];
   return {
     photos,

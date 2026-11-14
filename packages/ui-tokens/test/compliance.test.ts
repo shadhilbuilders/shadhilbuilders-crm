@@ -14,12 +14,7 @@ import {
   getCmdaInfo,
   getReraInfo,
 } from '../src/compliance';
-import {
-  type Oklch,
-  WCAG_AA_NORMAL,
-  contrastRatio,
-  evaluateContrast,
-} from '../src/contrast';
+import { type Oklch, WCAG_AA_NORMAL, contrastRatio, evaluateContrast } from '../src/contrast';
 
 const VALID_ENV = {
   NEXT_PUBLIC_RERA_NUMBER: 'TN/29/2017',
@@ -132,29 +127,29 @@ const SHADHIL_AA_OVERRIDES = {
   // Only the 3 that failed AA under the library defaults are overridden
   // (success / destructive / info). Warning already passed at 6.29
   // with the library's dark amber foreground, so it's left alone.
-  'success':             { l: 0.530, c: 0.16,  h: 160 },
-  'success-foreground':  { l: 0.99,  c: 0,     h: 0   },
-  'warning':             { l: 0.72,  c: 0.17,  h: 70  },
-  'warning-foreground':  { l: 0.25,  c: 0.04,  h: 70  },
-  'destructive':         { l: 0.545, c: 0.21,  h: 25  },
-  'destructive-foreground': { l: 0.99, c: 0,    h: 0   },
-  'info':                { l: 0.560, c: 0.19,  h: 255 },
-  'info-foreground':     { l: 0.99,  c: 0,     h: 0   },
+  success: { l: 0.53, c: 0.16, h: 160 },
+  'success-foreground': { l: 0.99, c: 0, h: 0 },
+  warning: { l: 0.72, c: 0.17, h: 70 },
+  'warning-foreground': { l: 0.25, c: 0.04, h: 70 },
+  destructive: { l: 0.545, c: 0.21, h: 25 },
+  'destructive-foreground': { l: 0.99, c: 0, h: 0 },
+  info: { l: 0.56, c: 0.19, h: 255 },
+  'info-foreground': { l: 0.99, c: 0, h: 0 },
   // Soft variants (dark text on the light tint).
   // Library defaults give soft backgrounds but pair them with the
   // white text-foreground (CR ~1.1, essentially invisible). Override
   // the foregrounds with a darker variant of the same hue.
-  'success-soft':         { l: 0.96,  c: 0.035, h: 160 },
+  'success-soft': { l: 0.96, c: 0.035, h: 160 },
   // Muted surface pair: the library default missed AA at 12px (4.34:1).
-  'muted':                { l: 0.968, c: 0.007, h: 247.895 },
-  'muted-foreground':     { l: 0.525, c: 0.041, h: 257.44  },
-  'success-soft-fg':      { l: 0.495, c: 0.16,  h: 160 },
-  'warning-soft':         { l: 0.97,  c: 0.04,  h: 90  },
-  'warning-soft-fg':      { l: 0.25,  c: 0.04,  h: 70  },
-  'destructive-soft':     { l: 0.96,  c: 0.035, h: 25  },
-  'destructive-soft-fg':  { l: 0.495, c: 0.21,  h: 25  },
-  'info-soft':            { l: 0.96,  c: 0.035, h: 255 },
-  'info-soft-fg':         { l: 0.495, c: 0.19,  h: 255 },
+  muted: { l: 0.968, c: 0.007, h: 247.895 },
+  'muted-foreground': { l: 0.525, c: 0.041, h: 257.44 },
+  'success-soft-fg': { l: 0.495, c: 0.16, h: 160 },
+  'warning-soft': { l: 0.97, c: 0.04, h: 90 },
+  'warning-soft-fg': { l: 0.25, c: 0.04, h: 70 },
+  'destructive-soft': { l: 0.96, c: 0.035, h: 25 },
+  'destructive-soft-fg': { l: 0.495, c: 0.21, h: 25 },
+  'info-soft': { l: 0.96, c: 0.035, h: 255 },
+  'info-soft-fg': { l: 0.495, c: 0.19, h: 255 },
 } as const satisfies Record<string, Oklch>;
 
 /** Pairs the audit runs against. fg = text color, bg = badge bg.
@@ -170,19 +165,69 @@ const STATUS_PAIRS: ReadonlyArray<{
   fg: Oklch;
   bg: Oklch;
 }> = [
-  { name: 'success', surface: 'WON badge', fg: SHADHIL_AA_OVERRIDES['success-foreground'], bg: SHADHIL_AA_OVERRIDES['success'] },
-  { name: 'warning', surface: 'VISIT_SCHEDULED badge', fg: SHADHIL_AA_OVERRIDES['warning-foreground'], bg: SHADHIL_AA_OVERRIDES['warning'] },
-  { name: 'destructive', surface: 'LOST / NO_SHOW badge', fg: SHADHIL_AA_OVERRIDES['destructive-foreground'], bg: SHADHIL_AA_OVERRIDES['destructive'] },
-  { name: 'info', surface: 'CONTACTED badge', fg: SHADHIL_AA_OVERRIDES['info-foreground'], bg: SHADHIL_AA_OVERRIDES['info'] },
-  { name: 'success-soft', surface: 'VISITED / BOOKING_INITIATED badge', fg: SHADHIL_AA_OVERRIDES['success-soft-fg'], bg: SHADHIL_AA_OVERRIDES['success-soft'] },
-  { name: 'warning-soft', surface: 'VISIT_REQUESTED / RESCHEDULED badge', fg: SHADHIL_AA_OVERRIDES['warning-soft-fg'], bg: SHADHIL_AA_OVERRIDES['warning-soft'] },
-  { name: 'destructive-soft', surface: 'LOST-soft badge', fg: SHADHIL_AA_OVERRIDES['destructive-soft-fg'], bg: SHADHIL_AA_OVERRIDES['destructive-soft'] },
-  { name: 'info-soft', surface: 'CONTACTED-soft badge', fg: SHADHIL_AA_OVERRIDES['info-soft-fg'], bg: SHADHIL_AA_OVERRIDES['info-soft'] },
+  {
+    name: 'success',
+    surface: 'WON badge',
+    fg: SHADHIL_AA_OVERRIDES['success-foreground'],
+    bg: SHADHIL_AA_OVERRIDES['success'],
+  },
+  {
+    name: 'warning',
+    surface: 'VISIT_SCHEDULED badge',
+    fg: SHADHIL_AA_OVERRIDES['warning-foreground'],
+    bg: SHADHIL_AA_OVERRIDES['warning'],
+  },
+  {
+    name: 'destructive',
+    surface: 'LOST / NO_SHOW badge',
+    fg: SHADHIL_AA_OVERRIDES['destructive-foreground'],
+    bg: SHADHIL_AA_OVERRIDES['destructive'],
+  },
+  {
+    name: 'info',
+    surface: 'CONTACTED badge',
+    fg: SHADHIL_AA_OVERRIDES['info-foreground'],
+    bg: SHADHIL_AA_OVERRIDES['info'],
+  },
+  {
+    name: 'success-soft',
+    surface: 'VISITED / BOOKING_INITIATED badge',
+    fg: SHADHIL_AA_OVERRIDES['success-soft-fg'],
+    bg: SHADHIL_AA_OVERRIDES['success-soft'],
+  },
+  {
+    name: 'warning-soft',
+    surface: 'VISIT_REQUESTED / RESCHEDULED badge',
+    fg: SHADHIL_AA_OVERRIDES['warning-soft-fg'],
+    bg: SHADHIL_AA_OVERRIDES['warning-soft'],
+  },
+  {
+    name: 'destructive-soft',
+    surface: 'LOST-soft badge',
+    fg: SHADHIL_AA_OVERRIDES['destructive-soft-fg'],
+    bg: SHADHIL_AA_OVERRIDES['destructive-soft'],
+  },
+  {
+    name: 'info-soft',
+    surface: 'CONTACTED-soft badge',
+    fg: SHADHIL_AA_OVERRIDES['info-soft-fg'],
+    bg: SHADHIL_AA_OVERRIDES['info-soft'],
+  },
   // 2026-11-08: the site home's "No photos" badge and the stat-tile labels are
   // muted text on the muted surface. The library pair measured 4.34:1.
-  { name: 'muted', surface: 'site state badge "No photos", stat-tile labels', fg: SHADHIL_AA_OVERRIDES['muted-foreground'], bg: SHADHIL_AA_OVERRIDES['muted'] },
+  {
+    name: 'muted',
+    surface: 'site state badge "No photos", stat-tile labels',
+    fg: SHADHIL_AA_OVERRIDES['muted-foreground'],
+    bg: SHADHIL_AA_OVERRIDES['muted'],
+  },
   // 2026-11-09: `bg-muted-soft` tint (state badges, empty hero, note chips).
-  { name: 'muted-soft', surface: 'site empty hero, note sheet chips', fg: SHADHIL_AA_OVERRIDES['muted-foreground'], bg: { l: 0.975, c: 0.010, h: 258 } },
+  {
+    name: 'muted-soft',
+    surface: 'site empty hero, note sheet chips',
+    fg: SHADHIL_AA_OVERRIDES['muted-foreground'],
+    bg: { l: 0.975, c: 0.01, h: 258 },
+  },
   // 2026-11-08: the Badge component's `destructive` variant is a 10% tint of
   // --destructive behind --destructive text, NOT a solid fill. That pair
   // measured 4.02:1 (the "Sold" status on the capture header) until the token
@@ -218,9 +263,9 @@ describe('T-D8 - WCAG AA status badge contrast', () => {
   it('dark mode: every *-soft-fg token passes AA on its dark tint', () => {
     // Mirrors the `.dark` block in brand.css; tints are the library's dark values.
     const DARK_PAIRS: ReadonlyArray<{ name: string; fg: Oklch; bg: Oklch }> = [
-      { name: 'success-soft', fg: { l: 0.86, c: 0.10, h: 160 }, bg: { l: 0.23, c: 0.055, h: 160 } },
-      { name: 'warning-soft', fg: { l: 0.90, c: 0.08, h: 70 }, bg: { l: 0.25, c: 0.055, h: 70 } },
-      { name: 'destructive-soft', fg: { l: 0.86, c: 0.10, h: 25 }, bg: { l: 0.25, c: 0.06, h: 25 } },
+      { name: 'success-soft', fg: { l: 0.86, c: 0.1, h: 160 }, bg: { l: 0.23, c: 0.055, h: 160 } },
+      { name: 'warning-soft', fg: { l: 0.9, c: 0.08, h: 70 }, bg: { l: 0.25, c: 0.055, h: 70 } },
+      { name: 'destructive-soft', fg: { l: 0.86, c: 0.1, h: 25 }, bg: { l: 0.25, c: 0.06, h: 25 } },
       { name: 'info-soft', fg: { l: 0.86, c: 0.09, h: 255 }, bg: { l: 0.24, c: 0.055, h: 255 } },
     ];
     const failures = DARK_PAIRS.filter(
@@ -235,22 +280,22 @@ describe('T-D8 - WCAG AA status badge contrast', () => {
     // library upgrade "fixes" them, this test will start passing and the
     // shadhil-crm override can be removed.
     const LIB_DEFAULTS = {
-      'success':             { l: 0.63, c: 0.16,  h: 160 },
-      'success-foreground':  { l: 0.99, c: 0,     h: 0   },
-      'warning':             { l: 0.72, c: 0.17,  h: 70  },
-      'warning-foreground':  { l: 0.25, c: 0.04,  h: 70  },
-      'destructive':         { l: 0.62, c: 0.21,  h: 25  },
-      'destructive-foreground': { l: 0.99, c: 0,  h: 0   },
-      'info':                { l: 0.58, c: 0.19,  h: 255 },
-      'info-foreground':     { l: 0.99, c: 0,     h: 0   },
-      'success-soft':         { l: 0.96, c: 0.035, h: 160 },
-      'success-soft-fg':      { l: 0.99, c: 0,     h: 0   },
-      'warning-soft':         { l: 0.97, c: 0.04,  h: 90  },
-      'warning-soft-fg':      { l: 0.25, c: 0.04,  h: 70  },
-      'destructive-soft':     { l: 0.96, c: 0.035, h: 25  },
-      'destructive-soft-fg':  { l: 0.99, c: 0,     h: 0   },
-      'info-soft':            { l: 0.96, c: 0.035, h: 255 },
-      'info-soft-fg':         { l: 0.99, c: 0,     h: 0   },
+      success: { l: 0.63, c: 0.16, h: 160 },
+      'success-foreground': { l: 0.99, c: 0, h: 0 },
+      warning: { l: 0.72, c: 0.17, h: 70 },
+      'warning-foreground': { l: 0.25, c: 0.04, h: 70 },
+      destructive: { l: 0.62, c: 0.21, h: 25 },
+      'destructive-foreground': { l: 0.99, c: 0, h: 0 },
+      info: { l: 0.58, c: 0.19, h: 255 },
+      'info-foreground': { l: 0.99, c: 0, h: 0 },
+      'success-soft': { l: 0.96, c: 0.035, h: 160 },
+      'success-soft-fg': { l: 0.99, c: 0, h: 0 },
+      'warning-soft': { l: 0.97, c: 0.04, h: 90 },
+      'warning-soft-fg': { l: 0.25, c: 0.04, h: 70 },
+      'destructive-soft': { l: 0.96, c: 0.035, h: 25 },
+      'destructive-soft-fg': { l: 0.99, c: 0, h: 0 },
+      'info-soft': { l: 0.96, c: 0.035, h: 255 },
+      'info-soft-fg': { l: 0.99, c: 0, h: 0 },
     } as const;
 
     const failingPairs: string[] = [];
@@ -258,9 +303,7 @@ describe('T-D8 - WCAG AA status badge contrast', () => {
       // Cast: the as-const map's exact key types are too narrow for
       // dynamic lookup; the data is checked by the test itself.
       const libMap = LIB_DEFAULTS as Record<string, Oklch>;
-      const fgKey = pair.name.includes('-soft')
-        ? `${pair.name}-fg`
-        : `${pair.name}-foreground`;
+      const fgKey = pair.name.includes('-soft') ? `${pair.name}-fg` : `${pair.name}-foreground`;
       const fg = libMap[fgKey];
       const bg = libMap[pair.name];
       if (fg === undefined) continue;

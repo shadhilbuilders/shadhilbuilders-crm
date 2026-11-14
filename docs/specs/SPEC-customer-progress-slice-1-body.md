@@ -9,6 +9,7 @@ spec_worktree_path:
 ---
 
 # feat(customer-progress): slice 1 - photo upload + staff preview timeline
+
 ## Context
 
 Buyers of Shadhil Builders have no way to see construction progress; they email the site manager and wait. This is slice 1 of the approved Customer Progress Portal design (docs/designs/customer-progress-portal.md; eng + design reviews CLEARED 2026-10-26): give site staff a phone-first photo upload per unit, labeled by phase, with a staff-facing preview timeline. Slice 2 (separate spec) adds customer logins, portal routes and push against this same data.
@@ -16,6 +17,7 @@ Buyers of Shadhil Builders have no way to see construction progress; they email 
 ## Current State
 
 Verified 2026-10-26 (main @ f3c5490):
+
 - No ProgressPhoto model, no customer-progress module (grep clean across apps/backend/src, packages/database).
 - One sibling commit cbca47a proves the photo blob path works in this stack (offline consumer wiring test).
 - Storage: apps/backend/src/storage has StorageProvider interface (storage.provider.ts:35-53), local-disk + imagekit adapters, media.controller.ts:59 @Post upload with MIME allowlist + MAX_UPLOAD_BYTES.
@@ -28,6 +30,7 @@ Verified 2026-10-26 (main @ f3c5490):
 Slice 1 = upload + staff preview, no customer surface.
 
 Architecture (data flow):
+
 ```
 [site staff phone: unit Progress (inside UnitDetailSheet or its own subroute; see UI note)]
   | POST /api/customer-progress/units/:unitId/photos (any staff JWT; authorization = role x project-access matrix below)
@@ -44,6 +47,7 @@ Architecture (data flow):
 ### Implementation Details
 
 Schema (one migration):
+
 ```prisma
 enum Role { ... existing 5 ... ENGINEER }
 
@@ -66,7 +70,9 @@ model ProgressPhoto {
   @@index([organizationId])
 }
 ```
+
 Plus a NEW per-project authority table (replaces the per-team photoLead idea; per-team leaks to sibling projects when one team links to multiple projects):
+
 ```prisma
 model ProjectStaffRole {
   userId         String
@@ -82,9 +88,11 @@ model ProjectStaffRole {
   @@index([projectId])
 }
 ```
+
 RLS: SELECT own rows + rows in own org for ADMIN/OWNER; INSERT/DELETE for ADMIN/OWNER org-wide (per-project authority, exactly what the flag needed; no sibling-project leak; multi-team users unambiguous). Reverse relations to add in the same migration: Unit.progressPhotos ProgressPhoto[], Phase.progressPhotos ProgressPhoto[], User.createdProgressPhotos ProgressPhoto[] @relation("ProgressPhotoCreator") Phase/Unit/User FK onDelete: Unit=Cascade (unit gone -> photos gone), Phase=SetNull (photos survive; caption retains the last label text; createdBy is String? + creator relation SetNull so label falls back "Unknown").
 
 SIX-touchpoint ENGINEER migration (ONE migration, ONE release; adding any one alone fail-closes all RLS contexts or breaks JWT verification). The closed role set is referenced in MORE places than the design doc's "four": at minimum:
+
 1. Prisma enum Role += ENGINEER (packages/database/prisma/schema.prisma)
 2. packages/database/src/rls.ts ROLES list += 'ENGINEER' (throws on unknown at runtime)
 3. packages/auth-client/src/jwt.ts:25 ROLES const (JWT verification rejects unlisted roles) + roles.ts exhaustive check honored
@@ -94,23 +102,24 @@ SIX-touchpoint ENGINEER migration (ONE migration, ONE release; adding any one al
    a. Dependency reads for ENGINEER (so the feature is usable at all): policies EXPLICITLY SCOPED, never org-wide: SELECT on Project for projects where EXISTS(ProjectTeam pt JOIN TeamMember tm ON tm.teamId=pt.teamId AND tm.userId=current_setting('app.user_id'), same organizationId) - membership alone, role-agnostic (the actor's role is already ENGINEER by the outer policy predicate); identical pattern on Unit (unit.projectId), Phase (phase.projectId), ProjectTeam (rows of the engineer's teams), TeamMember (own rows only). Existing policies on those tables enumerate roles today; EXTEND them with the join-shaped ENGINEER clause, NOT a bare role name (a bare ENGINEER addition would expose all org units). Pattern for the join: progressphoto policy below. GRANTs to shadhil_app for every touched table in the same migration.
    b. ProgressPhoto: SELECT/INSERT for ENGINEER with WITH CHECK/USING: EXISTS(ProjectTeam pt WHERE pt.projectId = unit's project AND EXISTS(TeamMember tm WHERE tm.teamId = pt.teamId AND tm.userId = app.user_id AND tm.organizationId = app.user_org_id)) — the join is EXPLICIT in the policy text (ProjectTeam -> TeamMember on teamId+userId); org-wide engineer visibility is forbidden.
    c. ProgressPhoto UPDATE/DELETE (final rule): creator may update/delete their OWN photo (createdBy = app.user_id, any role); other-member photos require a ProjectStaffRole(userId=actor, projectId=photo's project, kind='PHOTO_LEAD') row. ADMIN (which includesOWNER via downcast): UPDATE/DELETE + SELECT + INSERT org-wide, no membership needed. Non-member staff of any role: service 403 + RLS empty.
-Impl step: grep the current 5 role strings at start; every hit site is a touchpoint. Verified in code: apps/web/src/apis/client.ts has ROLES/STAFF_ROLES + normalizeRole() that DEFAULTS unknown roles to TELECALLER (change to THROW); apps/backend/src/users/roles.ts has exhaustive Record<Role,...> maps incl. assertCanCreateRole/assertCanChangeRole (ENGINEER creatable/assignable by OWNER/ADMIN ONLY, never MANAGER regardless of canManageUsers); apps/web/src/lib/session.ts exhaustive maps (+ENGINEER, rank below SALES_EXEC, weight inert); AddTeamMembersDialog role filter (+ENGINEER). Exhaustiveness checks make every missed mirror a build failure.
+   Impl step: grep the current 5 role strings at start; every hit site is a touchpoint. Verified in code: apps/web/src/apis/client.ts has ROLES/STAFF_ROLES + normalizeRole() that DEFAULTS unknown roles to TELECALLER (change to THROW); apps/backend/src/users/roles.ts has exhaustive Record<Role,...> maps incl. assertCanCreateRole/assertCanChangeRole (ENGINEER creatable/assignable by OWNER/ADMIN ONLY, never MANAGER regardless of canManageUsers); apps/web/src/lib/session.ts exhaustive maps (+ENGINEER, rank below SALES_EXEC, weight inert); AddTeamMembersDialog role filter (+ENGINEER). Exhaustiveness checks make every missed mirror a build failure.
 
 Module: apps/backend/src/customer-progress/{module,controller,service}.ts registered in app.module.ts. Every business query inside withRlsContext(); comment header "Scoping (per JWT): every read/write flows through withRlsContext".
 
 Endpoints:
+
 - POST /api/customer-progress/units/:unitId/photos (upload)
 - GET /api/customer-progress/units/:unitId/photos (staff timeline; cursor pagination, LIMIT 50, takenAt desc, include phase + createdByUser name)
 - POST /api/customer-progress/projects/:projectId/members/:userId/photo-lead (body { photoLead: boolean }: true upserts ProjectStaffRole(userId, projectId, kind='PHOTO_LEAD'); false deletes that row; response DTO { userId, projectId, photoLead: boolean } (NOT a TeamMember row); AUTHORIZATION: service guard role in (OWNER, ADMIN) exactly; MANAGER excluded; toggle renders only for OWNER/ADMIN sessions; ADMIN/OWNER-ONLY per withRlsContext note below)
 - ENGINEER TeamMember eligibility: do NOT touch lead-assignment lists (isLinkableStaffRole at apps/web/src/lib/session.ts:86 and CANDIDATE_ROLES at apps/backend/src/teams/team-members.service.ts:66 stay WITHOUT ENGINEER so lead co-owner/replacement never see engineers). ENGINEER is added ONLY to team-membership add paths (the teams module addMembers role allowlist and AddTeamMembersDialog filter gain a separate TEAM_ONLY_STAFF_ROLES list = current staff roles + ENGINEER). auto-assign pool untouched (only TELECALLER routed). assertCanCreateRole/assertCanChangeRole (users/roles.ts): ENGINEER assignable by OWNER/ADMIN only. Seed: +one demo engineer + one demo photo-lead manager (with a ProjectStaffRole row) per demo project. Member add reuses the existing team addMembers endpoint.
-Authorization matrix (single source of truth; service asserts, RLS enforces):
-| Role            | Upload | Read timeline | Set/clear photoLead | Notes |
-|-----------------|--------|---------------|---------------------|-------|
-| ENGINEER        | yes, own-project units only | yes, own-project only | no | zero other surfaces |
-| MANAGER         | yes, if ProjectTeam member of that project | yes, same rule | no | |
-| SALES_EXEC/TELECALLER | yes, if ProjectTeam member | yes, same rule | no | sales staff on project teams keep upload (they already see units via existing access) |
-| ADMIN/OWNER     | yes, org-wide (role travel) | yes, org-wide | yes | no membership row needed |
-Non-member staff (MANAGER/SALES_EXEC/TELECALLER/ENGINEER, no ProjectTeam row for the unit's project): 403 by service AND empty by RLS; only ADMIN/OWNER are membership-exempt.
+  Authorization matrix (single source of truth; service asserts, RLS enforces):
+  | Role                                                                                                                                                                           | Upload                                     | Read timeline         | Set/clear photoLead | Notes                                                                                 |
+  | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ | --------------------- | ------------------- | ------------------------------------------------------------------------------------- |
+  | ENGINEER                                                                                                                                                                       | yes, own-project units only                | yes, own-project only | no                  | zero other surfaces                                                                   |
+  | MANAGER                                                                                                                                                                        | yes, if ProjectTeam member of that project | yes, same rule        | no                  |                                                                                       |
+  | SALES_EXEC/TELECALLER                                                                                                                                                          | yes, if ProjectTeam member                 | yes, same rule        | no                  | sales staff on project teams keep upload (they already see units via existing access) |
+  | ADMIN/OWNER                                                                                                                                                                    | yes, org-wide (role travel)                | yes, org-wide         | yes                 | no membership row needed                                                              |
+  | Non-member staff (MANAGER/SALES_EXEC/TELECALLER/ENGINEER, no ProjectTeam row for the unit's project): 403 by service AND empty by RLS; only ADMIN/OWNER are membership-exempt. |
 - Upload DTO (zod, in @shadhil/api-types): { phaseId: string(cuid), base64: string, mimeType: string, filename: string(<=180), takenAt: ISO datetime string, clientDeviceHint: optional enum(camera|gallery) }. takenAt is client-captured local time converted to UTC (phone clock acceptable; caption uses server month).
 - MIME allowlist for THIS route: image/jpeg, image/png, image/webp. HEIC is REJECTED at validation with message "please use JPEG"; iOS Safari camera <input accept="image/*"> with a converter is a slice-2 concern (rendering stack decision); slice 1 keeps the storage+render path single-MIME. guessMime serving .heic as octet-stream is untouched (boundary).
 - Size cap: 10MB. media.controller.ts MAX_UPLOAD_BYTES is a module-local const today (line 39): this slice EXPORTS it from a new shared const module apps/backend/src/storage/storage.limits.ts and imports it in BOTH media.controller and customer-progress (one definition, two consumers; behavior unchanged for chat).
@@ -122,6 +131,7 @@ Non-member staff (MANAGER/SALES_EXEC/TELECALLER/ENGINEER, no ProjectTeam row for
 Phase source: UploadDto requires phaseId validated to belong to the unit's project. No new taxonomy.
 
 Web UI: units live at inventory; unit detail is UnitDetailSheet (apps/web/src/components/inventory/UnitDetailSheet.tsx) opened from the inventory table. Progress ships as a tab INSIDE UnitDetailSheet (no new route needed; the sheet already has unit context and is reachable by the exact staff who hold unit access), with sheet-level role gating hiding the tab from roles without project access.
+
 - camera-first CTA ("Add first photo" empty state; "Add photo" otherwise), `<input type="file" accept="image/*" capture>`
 - phase Select over the unit's project phases (zod-validated DTO)
 - preview timeline: newest first, phase chip (green = the phase of the unit's most recent photo in the loaded set; neutral otherwise), uploader label via siteMemberLabel(creatorName, creatorIsPhotoLead) rendering ONLY the server-precomputed DTO fields (contract in the endpoints section; no client-side team lookups), date
@@ -129,6 +139,7 @@ Web UI: units live at inventory; unit detail is UnitDetailSheet (apps/web/src/co
 - hidden from roles without project access: the Progress tab visibility data source is the SAME membership query the timeline uses (GET returns 403 without membership; the sheet renders the tab only on 2xx). Nav for ENGINEER: only inventory (unit list) + the Progress tab inside the sheet; every other nav item (leads, work, admin, settings) is filtered out for role ENGINEER by the existing nav config (grep role-gated nav maps at impl; the nav route list for ENGINEER is: inventory only).
 
 Admin mechanics:
+
 - Admin > Users role Select (ADMIN/OWNER-only per canManageUsers tightening for ENGINEER assignment): + ENGINEER option
 - project-team-list.tsx expandable member rows: "Progress lead" toggle, ADMIN/OWNER-only, ADMIN-only RLS write path (inherits existing wall)
 - siteMemberLabel(creatorName, creatorIsPhotoLead) in web lib = pure renderer of the DTO's precomputed fields (label = creatorIsPhotoLead true ? "Site Manager" : creatorName null ? "Unknown" : "Site Engineer"); no client-side team resolution: TeamMember RLS hides other members' rows by design; label authority is the server helper above.
@@ -147,11 +158,11 @@ Each test states its card: protects=<observable>; fails_when=<wrong result it re
 
 ## Testing Plan
 
-| Layer       | What                                                     | Count |
-|-------------|----------------------------------------------------------|-------|
-| Unit        | upload guards, pagination, phase validation, siteMemberLabel | +8   |
-| Integration | DB-first RLS isolation (engineer, photoLead, cross-project) | +4   |
-| E2E (manual, slice gate) | phone camera flow under 30s; timeline renders            | +1   |
+| Layer                    | What                                                         | Count |
+| ------------------------ | ------------------------------------------------------------ | ----- |
+| Unit                     | upload guards, pagination, phase validation, siteMemberLabel | +8    |
+| Integration              | DB-first RLS isolation (engineer, photoLead, cross-project)  | +4    |
+| E2E (manual, slice gate) | phone camera flow under 30s; timeline renders                | +1    |
 
 ## Rules for the implementing agent
 
@@ -176,23 +187,23 @@ Single PR revert removes endpoints, tab, and admin controls. The migration is fo
 - DB-first RLS isolation tests: ~4h
 - Web Progress tab + upload flow + states: ~6h
 - Admin mechanics (role option, toggle, label helper): ~2.5h
-Total: ~20h human-equivalent (CC-assisted: ~2h)
+  Total: ~20h human-equivalent (CC-assisted: ~2h)
 
 ## Files Reference
 
-| File | Change |
-|------|--------|
-| packages/database/prisma/schema.prisma | +ENGINEER enum, +ProgressPhoto, +TeamMember.photoLead |
-| packages/database/prisma/migrations/<new> | one migration: enum + column + policies |
-| packages/database/src/rls.ts:104-112 | ROLES += ENGINEER |
-| packages/auth-client/src/auth.ts | verify role passthrough; touch only if needed |
-| packages/database/test/progress-rls.test.ts (new; database vitest includes test/** only per vitest.config.ts:7) | DB-first isolation tests |
-| apps/backend/src/customer-progress/* (new) | module, controller, service + tests |
-| apps/backend/src/app.module.ts | register module |
-| apps/web/src/components/inventory/UnitDetailSheet.tsx | + Progress tab (upload flow, timeline, states) |
-| apps/web/src/components/teams/project-team-list.tsx | Progress lead toggle |
-| apps/web/src/app/[orgSlug]/admin/users/ | ENGINEER role option guard |
-| apps/web/src/lib/labels.ts | siteMemberLabel() |
+| File                                                                                                            | Change                                                |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| packages/database/prisma/schema.prisma                                                                          | +ENGINEER enum, +ProgressPhoto, +TeamMember.photoLead |
+| packages/database/prisma/migrations/<new>                                                                       | one migration: enum + column + policies               |
+| packages/database/src/rls.ts:104-112                                                                            | ROLES += ENGINEER                                     |
+| packages/auth-client/src/auth.ts                                                                                | verify role passthrough; touch only if needed         |
+| packages/database/test/progress-rls.test.ts (new; database vitest includes test/** only per vitest.config.ts:7) | DB-first isolation tests                              |
+| apps/backend/src/customer-progress/* (new)                                                                      | module, controller, service + tests                   |
+| apps/backend/src/app.module.ts                                                                                  | register module                                       |
+| apps/web/src/components/inventory/UnitDetailSheet.tsx                                                           | + Progress tab (upload flow, timeline, states)        |
+| apps/web/src/components/teams/project-team-list.tsx                                                             | Progress lead toggle                                  |
+| apps/web/src/app/[orgSlug]/admin/users/                                                                         | ENGINEER role option guard                            |
+| apps/web/src/lib/labels.ts                                                                                      | siteMemberLabel()                                     |
 
 ## Out of Scope
 

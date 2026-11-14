@@ -44,7 +44,7 @@ import Link from 'next/link';
 const LoginFormSchema = z.object({
   email: z
     .email({
-      error: 'Enter a valid email address'
+      error: 'Enter a valid email address',
     })
     .trim()
     .toLowerCase()
@@ -126,9 +126,7 @@ export function LoginForm() {
     <Card className="w-full max-w-sm">
       <div className="mb-6 text-center">
         <Heading className="mb-1">Shadhil CRM</Heading>
-        <TypographyP className="text-muted-foreground text-sm">
-          Sign in to your account
-        </TypographyP>
+        <TypographyP className="text-muted-foreground text-sm">Sign in to your account</TypographyP>
       </div>
 
       <Form

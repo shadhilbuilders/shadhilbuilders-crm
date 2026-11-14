@@ -33,9 +33,7 @@ function makeService(): {
   };
 } {
   const client = {
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn(client),
-    ),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
     auditLog: {
       findMany: vi.fn(),

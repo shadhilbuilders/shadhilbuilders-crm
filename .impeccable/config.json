@@ -1,0 +1,13 @@
+{
+  "$schema": "https://impeccable.style/schema/config.json",
+  "detector": {
+    "ignoreFiles": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/__screenshots__/**",
+      "**/test-results/**"
+    ]
+  }
+}

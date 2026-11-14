@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe('backendPackageRoot', () => {
-  it('resolves the @shadhil/backend package from this file\'s own location', () => {
+  it("resolves the @shadhil/backend package from this file's own location", () => {
     const root = backendPackageRoot();
     expect(root.endsWith(join('apps', 'backend'))).toBe(true);
     // It is an absolute path, not a relative one that could shift with CWD.

@@ -34,10 +34,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import {
-  ChangePasswordFormSchema,
-  type ChangePasswordFormValues,
-} from '@shadhil/api-types';
+import { ChangePasswordFormSchema, type ChangePasswordFormValues } from '@shadhil/api-types';
 import { Card, Form, Heading, toast } from '@paalstack/react-ui';
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
@@ -119,16 +116,13 @@ export default function ChangePasswordPage() {
     // runs - the inline FieldError messages render under each input.
     // Keep the length guard as defense-in-depth; the API call body is
     // ChangePasswordDto-shaped (confirmPassword is client-only).
-    void api<ChangePasswordResponse>(
-      `/users/${user!.id}/change-password`,
-      {
-        method: 'POST',
-        json: {
-          oldPassword: values.oldPassword,
-          newPassword: values.newPassword,
-        },
+    void api<ChangePasswordResponse>(`/users/${user!.id}/change-password`, {
+      method: 'POST',
+      json: {
+        oldPassword: values.oldPassword,
+        newPassword: values.newPassword,
       },
-    ).then(
+    }).then(
       () => {
         toast.success('Password changed');
         void router.replace('/');
@@ -145,9 +139,7 @@ export default function ChangePasswordPage() {
     <Card className="w-full max-w-md">
       <div className="mb-6 text-center">
         <Heading className="mb-1">Change password</Heading>
-        <p className="text-muted-foreground text-sm">
-          Set a new password for your account.
-        </p>
+        <p className="text-muted-foreground text-sm">Set a new password for your account.</p>
       </div>
 
       <Form
@@ -156,7 +148,7 @@ export default function ChangePasswordPage() {
         submitText="Change password"
         submitButtonProps={{ type: 'submit' }}
         resetText="Cancel"
-        actionClassName='justify-end'
+        actionClassName="justify-end"
         resetButtonProps={{
           onClick: () => {
             form.reset();

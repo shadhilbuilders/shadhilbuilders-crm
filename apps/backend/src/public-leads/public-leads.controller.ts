@@ -41,9 +41,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -52,9 +50,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 @ApiTags('public')
 @Controller('public')
 export class PublicLeadsController {
-  constructor(
-    @Inject(PublicLeadsService) private readonly service: PublicLeadsService,
-  ) {}
+  constructor(@Inject(PublicLeadsService) private readonly service: PublicLeadsService) {}
 
   @Public()
   @UseGuards(new ApiKeyGuard('PUBLIC_API_KEY'))
@@ -65,10 +61,7 @@ export class PublicLeadsController {
       'Source is forced to LANDING; the lead is auto-assigned via the ' +
       'manager-assignment engine.',
   })
-  async create(
-    @Body() body: unknown,
-    @Req() req: AuthedRequest,
-  ): Promise<PublicCreateLeadResult> {
+  async create(@Body() body: unknown, @Req() req: AuthedRequest): Promise<PublicCreateLeadResult> {
     const dto: PublicCreateLeadDto = parseBody(PublicCreateLeadDtoSchema, body);
     return this.service.createLead(dto);
   }

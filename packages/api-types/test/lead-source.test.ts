@@ -6,11 +6,7 @@
 // sends the lead to whatever the fallback owner is.
 import { describe, expect, it } from 'vitest';
 
-import {
-  LEAD_SOURCES,
-  LeadSourceSchema,
-  normalizeLeadSource,
-} from '../src/lead-source';
+import { LEAD_SOURCES, LeadSourceSchema, normalizeLeadSource } from '../src/lead-source';
 
 describe('LEAD_SOURCES', () => {
   it('accepts every canonical token', () => {
@@ -69,9 +65,7 @@ describe('normalizeLeadSource', () => {
 
   it('always returns a value the enum accepts', () => {
     for (const raw of [undefined, 'fb', 'housing.com', 'nonsense', ' META ']) {
-      expect(LeadSourceSchema.safeParse(normalizeLeadSource(raw)).success).toBe(
-        true,
-      );
+      expect(LeadSourceSchema.safeParse(normalizeLeadSource(raw)).success).toBe(true);
     }
   });
 });

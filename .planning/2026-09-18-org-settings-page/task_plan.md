@@ -78,7 +78,6 @@ unasked would be worse than reporting it.
 Ask the owner: did they commit/push it, or is a hook/tool doing it? Then decide how the two
 test fixes land.
 
-
 ### Phase 4: Verification — complete
 
 - [x] Unit tests at each seam (schema, service, controller route order, page) - 93 backend + 17 web
@@ -118,8 +117,6 @@ latency in production), otherwise waits a bounded 3s then returns null so caller
 "unsupported" instead of spinning. Verified in the real browser: the badge now reads
 "Not supported here" with no dead Enable button.
 
-
-
 ## Key Questions
 
 1. Does better-auth's react client expose a way to re-read the session after a write? -> YES,
@@ -129,18 +126,18 @@ latency in production), otherwise waits a bounded 3s then returns null so caller
 
 ## Decisions Made
 
-| Decision | Rationale |
-|----------|-----------|
-| Org section read-only in v1 | `Organization` is FORCE RLS with SELECT-own/INSERT-public/CRON only. No UPDATE policy => a write is a silent 0-row update. Rename = security-policy migration, deferred by owner. |
+| Decision                       | Rationale                                                                                                                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Org section read-only in v1    | `Organization` is FORCE RLS with SELECT-own/INSERT-public/CRON only. No UPDATE policy => a write is a silent 0-row update. Rename = security-policy migration, deferred by owner.                 |
 | Self-profile write = name only | Name has real consumers everywhere; phone is read by no feature (inert); email is excluded because no email-verification flow exists, so a self-edit could move a login to an unverified address. |
-| Quiet hours deferred to v1.1 | No columns, no enforcement anywhere. A toggle with no server effect is fake UI (honest-state contract). Decision #26 already defers per-trigger notification settings. |
-| No new sidebar nav item | Settings is reached from the user menus by design, and `lib/nav.test.ts` asserts exact nav arrays - a new row would break them for no benefit. |
-| Single scrolling page, no tabs | Matches every other page in this repo; tabs would add URL state with no gain. |
+| Quiet hours deferred to v1.1   | No columns, no enforcement anywhere. A toggle with no server effect is fake UI (honest-state contract). Decision #26 already defers per-trigger notification settings.                            |
+| No new sidebar nav item        | Settings is reached from the user menus by design, and `lib/nav.test.ts` asserts exact nav arrays - a new row would break them for no benefit.                                                    |
+| Single scrolling page, no tabs | Matches every other page in this repo; tabs would add URL state with no gain.                                                                                                                     |
 
 ## Errors Encountered
 
 | Error | Attempt | Resolution |
-|-------|---------|------------|
+| ----- | ------- | ---------- |
 |       | 1       |            |
 
 ## Notes

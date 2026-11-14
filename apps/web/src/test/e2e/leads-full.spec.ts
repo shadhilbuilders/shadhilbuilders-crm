@@ -51,10 +51,7 @@ test('leads inbox: no hydration mismatch on load', async ({ page }) => {
   await gotoLeads(page);
   await page.waitForTimeout(2_500);
 
-  expect(
-    hydrationErrors.length,
-    `leads hydration errors: ${hydrationErrors.join(' | ')}`,
-  ).toBe(0);
+  expect(hydrationErrors.length, `leads hydration errors: ${hydrationErrors.join(' | ')}`).toBe(0);
 });
 
 test('leads inbox: pagination shows 6 pages and page 2 returns different rows', async ({
@@ -76,11 +73,7 @@ test('leads inbox: pagination shows 6 pages and page 2 returns different rows', 
   expect(page1Rows).toBeGreaterThan(0);
 
   // Capture the first row name on page 1.
-  const firstRowPage1 = page
-    .locator('[data-qa=data-table-row]')
-    .first()
-    .locator('a')
-    .first();
+  const firstRowPage1 = page.locator('[data-qa=data-table-row]').first().locator('a').first();
   const namePage1 = (await firstRowPage1.innerText()).trim();
 
   // Click "next" and wait for the refetch to page 2. On mobile the pagination
@@ -95,11 +88,7 @@ test('leads inbox: pagination shows 6 pages and page 2 returns different rows', 
   expect(page2Rows).toBeLessThanOrEqual(10);
 
   // Page 2's first row should differ from page 1's.
-  const firstRowPage2 = page
-    .locator('[data-qa=data-table-row]')
-    .first()
-    .locator('a')
-    .first();
+  const firstRowPage2 = page.locator('[data-qa=data-table-row]').first().locator('a').first();
   await expect(firstRowPage2).not.toHaveText(namePage1);
 });
 
@@ -178,7 +167,9 @@ test('leads inbox: sort by last activity asc/desc', async ({ page }) => {
     .locator('[data-qa=data-table-column-header-toggle-button]');
 
   const firstRowName = async () =>
-    (await page.locator('[data-qa=data-table-row]').first().locator('a').first().innerText()).trim();
+    (
+      await page.locator('[data-qa=data-table-row]').first().locator('a').first().innerText()
+    ).trim();
 
   const unsorted = await firstRowName();
 

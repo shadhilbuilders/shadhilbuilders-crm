@@ -86,9 +86,7 @@ export function usePushSubscription(): PushCapability {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [checked, setChecked] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>(() =>
-    typeof window !== 'undefined' && 'Notification' in window
-      ? Notification.permission
-      : 'default',
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
   );
   const subRef = useRef<PushSubscription | null>(null);
 

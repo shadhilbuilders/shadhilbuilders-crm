@@ -1,5 +1,13 @@
 'use client';
 
+// impeccable-disable side-tab -- the phase card's 4px rail is the one flagged
+// shape in this file: it is a FUNCTIONAL phase marker, pinned by
+// docs/designs/2026-11-08-site-capture-redesign.prompt.md and by the accent table
+// in lib/site-units.ts. A 1px hairline was rendered against the real cards and
+// merged into the neutral frame, so the weight stays and the rule is waived here
+// rather than in the shared detector config. Any other side-tab in this file is a
+// defect and belongs in review.
+
 // SiteHome (2026-11-08): the site engineer's first screen.
 //
 // WHY IT EXISTS: the engineer used to land on `/inventory` - a sales grid of
@@ -141,13 +149,13 @@ function StatTile({
 
 function StateBadge({ state }: { state: UnitPhotoState }) {
   return (
-        <Badge
-          variant={unitPhotoStateBadgeVariant(state)}
-          data-qa="site-unit-state-badge"
-          data-state={state}
-        >
-          {unitPhotoStateLabel(state)}
-        </Badge>
+    <Badge
+      variant={unitPhotoStateBadgeVariant(state)}
+      data-qa="site-unit-state-badge"
+      data-state={state}
+    >
+      {unitPhotoStateLabel(state)}
+    </Badge>
   );
 }
 
@@ -167,10 +175,7 @@ function UnitRowItem({
   return (
     <Item asChild variant="default" className="px-3">
       <Link href={href} data-qa="site-unit-row">
-        <ItemMedia
-          variant="icon"
-          className={`size-10 rounded-lg ${unitPhotoStateSurface(state)}`}
-        >
+        <ItemMedia variant="icon" className={`size-10 rounded-lg ${unitPhotoStateSurface(state)}`}>
           {state === 'none' ? (
             <LuCamera className="size-5" aria-hidden="true" />
           ) : (
@@ -265,7 +270,10 @@ export function SiteHome({
         <>
           {/* Counts are computed from the returned rows, so a capped list says
               so instead of showing an undercount as a total. */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2" aria-label="Photo coverage">
+          <div
+            className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2"
+            aria-label="Photo coverage"
+          >
             <StatTile
               label="Needs a photo"
               value={capped ? null : counts.needs}
@@ -337,7 +345,10 @@ export function SiteHome({
           ) : visible.length === 0 ? (
             // A filter that matches nothing is a DIFFERENT fact from a project
             // with no villas. One quiet line, not the same hero.
-            <p className="text-muted-foreground py-8 text-center text-sm" data-qa="site-filter-empty">
+            <p
+              className="text-muted-foreground py-8 text-center text-sm"
+              data-qa="site-filter-empty"
+            >
               {SITE_EMPTY_COPY.filtered.title}
             </p>
           ) : (
@@ -353,10 +364,7 @@ export function SiteHome({
                         h1 "Site updates" → h2 per phase. Shipping h1 → h3 skips a
                         level (axe: heading-order), and the phases ARE the
                         sections of this page. */}
-                    <CardTitle
-                      as="h2"
-                      className="flex items-baseline gap-2 text-base"
-                    >
+                    <CardTitle as="h2" className="flex items-baseline gap-2 text-base">
                       {group.phaseName}
                       {/* The count is a sibling span, so the visual gap comes
                           from the flex gap (it measured 8px). Without a text

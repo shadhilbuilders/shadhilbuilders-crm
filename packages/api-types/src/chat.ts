@@ -7,11 +7,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import {
-  MessageChannelSchema,
-  MessageDirectionSchema,
-  MessageKindSchema,
-} from './enums';
+import { MessageChannelSchema, MessageDirectionSchema, MessageKindSchema } from './enums';
 
 /**
  * POST /api/chat/send - staff sends a message to a lead.
@@ -144,12 +140,9 @@ export function isServiceWindowOpen(
 }
 
 /** When the window closes, or null if it was never opened / is unparseable. */
-export function serviceWindowExpiry(
-  lastInboundAt: string | Date | null | undefined,
-): Date | null {
+export function serviceWindowExpiry(lastInboundAt: string | Date | null | undefined): Date | null {
   if (lastInboundAt === null || lastInboundAt === undefined) return null;
-  const last =
-    lastInboundAt instanceof Date ? lastInboundAt : new Date(lastInboundAt);
+  const last = lastInboundAt instanceof Date ? lastInboundAt : new Date(lastInboundAt);
   if (Number.isNaN(last.getTime())) return null;
   return new Date(last.getTime() + WHATSAPP_SERVICE_WINDOW_MS);
 }
@@ -198,7 +191,6 @@ export const MessageEventSchema = z.object({
   mentionedUserIds: z.array(z.string()).optional(),
 });
 export type MessageEvent = z.infer<typeof MessageEventSchema>;
-
 
 // ────────────────────────────────────────────────────────────────────────────
 // WhatsApp inbox (T-WA-INBOX, 2026-09-25)
@@ -306,8 +298,7 @@ export const MarkChatReadDtoSchema = z
     leadId: z.string().cuid2().optional(),
     contactId: z.string().min(1).max(60).optional(),
   })
-  .refine(
-    (v) => (v.leadId === undefined) !== (v.contactId === undefined),
-    { message: 'Provide exactly one of leadId or contactId' },
-  );
+  .refine((v) => (v.leadId === undefined) !== (v.contactId === undefined), {
+    message: 'Provide exactly one of leadId or contactId',
+  });
 export type MarkChatReadDto = z.infer<typeof MarkChatReadDtoSchema>;

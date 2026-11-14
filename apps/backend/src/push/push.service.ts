@@ -91,11 +91,7 @@ export class PushService {
    * the PushNotification write satisfy their owner-scoped RLS policies
    * (app.user_id = recipient).
    */
-  async sendToUser(
-    userId: string,
-    payload: PushPayload,
-    organizationId: string,
-  ): Promise<number> {
+  async sendToUser(userId: string, payload: PushPayload, organizationId: string): Promise<number> {
     return this.sendAs(userId, 'TELECALLER', payload, organizationId);
   }
 
@@ -133,27 +129,23 @@ export class PushService {
     organizationId: string,
   ): Promise<number> {
     if (!this.enabled) return 0;
-    return withRlsContext(
-      this.client,
-      { userId, role, organizationId },
-      async (tx) => {
-        const subs = await (tx as unknown as PrismaClient).pushSubscription.findMany({
-          where: { userId, platform: 'WEB' },
-        });
-        for (const sub of subs) {
-          await this.deliver(
-            tx as unknown as PrismaClient,
-            userId,
-            organizationId,
-            sub.endpoint,
-            sub.p256dh,
-            sub.auth,
-            payload,
-          );
-        }
-        return subs.length;
-      },
-    );
+    return withRlsContext(this.client, { userId, role, organizationId }, async (tx) => {
+      const subs = await (tx as unknown as PrismaClient).pushSubscription.findMany({
+        where: { userId, platform: 'WEB' },
+      });
+      for (const sub of subs) {
+        await this.deliver(
+          tx as unknown as PrismaClient,
+          userId,
+          organizationId,
+          sub.endpoint,
+          sub.p256dh,
+          sub.auth,
+          payload,
+        );
+      }
+      return subs.length;
+    });
   }
 
   private async deliver(

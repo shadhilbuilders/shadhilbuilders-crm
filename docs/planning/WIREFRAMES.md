@@ -58,6 +58,7 @@
 ```
 
 **Notes:**
+
 - KPI strip = 4 numbers in a single row, **not** a card grid. `Box` with `gap-4`, each KPI is a `Stack` with number + label + thin progress line + trend arrow.
 - Team pipeline = `DataTable` from `@paalstack/react-ui`. Three sections on the same page, each with "See all →" deep link.
 - Status badges use semantic colors: green for VISITED, red for NO_SHOW, amber for pending.
@@ -104,6 +105,7 @@
 ```
 
 **Notes:**
+
 - KPI cards are swipeable (`Animated.View` + `useAnimatedScrollOffset`). One KPI per page = full attention per metric.
 - Visits list = `FlashList` (`estimatedItemSize: 80`). NOT ScrollView-mapped.
 - Bottom tab bar: native tabs (NOT `@react-navigation/bottom-tabs`).
@@ -149,6 +151,7 @@
 ```
 
 **Notes:**
+
 - Same KPI strip pattern as Manager Dashboard. Different metrics.
 - Team Lead Counts = `DataTable` with badge columns. "View →" deep-links to filtered Lead Inbox.
 - Recent admin actions = live audit stream (last 10). Critical for Admin oversight.
@@ -184,6 +187,7 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 ```
 
 **Notes:**
+
 - **Default sort: Overdue first-touch → New → Most recent activity** (Decision 0.2). The first row IS the action.
 - ⚠ icon + "12m overdue" badge surfaces overdue leads at the top of the list. Visual urgency.
 - No "Reassign" button visible to Telecaller (Admin/Manager only - per §18).
@@ -235,6 +239,7 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 ```
 
 **Notes:**
+
 - Two-column layout: left = lead info + tabs, right = embedded chat pane. Chat is permanently visible on desktop.
 - Status badge top-left = the current state. Background color = semantic state color.
 - "Co-owner: Vikram E." chip shows shared visibility (Model C - per Decision 0.3). Only visible when lead is in VISIT_SCHEDULED state.
@@ -290,6 +295,7 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 ```
 
 **Notes:**
+
 - 5-tab bottom nav (per Decision 0.1): Overview · Chat · Visits · Bookings · Notes.
 - Chat is its own tab (not embedded) on mobile - full-screen dedicated view.
 - T-2h sticky banner above the tabs is always visible (Decision 0.10).
@@ -329,6 +335,7 @@ The Telecaller's home is the Lead Inbox, **not** a KPI dashboard. Default sort s
 ```
 
 **Notes:**
+
 - Dropdown panel = max 5-7 items + "See all →" deep link.
 - Filled circle ● = unread. Hollow ○ = read.
 - Date grouping: Today / Yesterday / This week / Older.
@@ -369,6 +376,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
+
 - Built with `Sheet` from `@paalstack/react-ui` (side drawer, right-aligned).
 - Two radio options (Telecaller vs Sales exec) - matches the cross-role move allowed per §18 D2.
 - Dropdown filtered: Admin sees all teams; Manager sees own team only.
@@ -412,6 +420,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
+
 - 3-step `Stepper`: Hold → Token receipt → Admin/Owner approval.
 - Visual stepper shows current state + completed states.
 - Upload area uses `Form` + `Input type="file"` from `@paalstack/react-ui`.
@@ -443,6 +452,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
+
 - Calendar grid: 7 days × hourly slots. Color-coded by exec (Vikram = blue, Anjali = green).
 - "Schedule visit" button opens a `Dialog` modal with date/time picker + lead selector.
 - For v1: minimal calendar. v1.1: drag-and-drop scheduling, conflict detection.
@@ -473,6 +483,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
+
 - DataTable with sortable columns.
 - Filters stack horizontally. Every filter is `MultiSelect` or `DateRangePicker`.
 - "Export CSV" + "Export JSON" use the same RERA export mechanism (per §9) - Postgres COPY + cursor pagination.
@@ -516,6 +527,7 @@ Triggered from Lead Inbox (Admin/Manager only):
 ```
 
 **Notes:**
+
 - Full-screen list (not dropdown - that's web only).
 - Filter tabs use `@expo/ui` `SegmentedControl` for native iOS/Android look.
 - `FlashList` for the list (`estimatedItemSize: 120` - taller rows than web dropdown).
@@ -526,23 +538,23 @@ Triggered from Lead Inbox (Admin/Manager only):
 
 ## Summary of locked design decisions in these wireframes
 
-| Decision | Source | Effect |
-|---|---|---|
-| KPI strip not card grid | §4 + §15 | Numbers are inline in a row, not cards |
-| 5-tab mobile bottom nav | Decision 0.1 | Overview / Chat / Visits / Bookings / Notes |
-| Default sort = overdue first | Decision 0.2 | First row IS the action |
-| Co-owner chip | Decision 0.3 | Visible in VISIT_SCHEDULED state |
-| 4 Manager KPIs | Decision 0.4 | Time-to-first-touch, visits, approvals, no-show rate |
-| T-2h sticky banner | Decision 0.10 | Always visible above tabs |
-| Manager-only full-screen modal | Decision 0.11 | Booking approval context |
-| Admin cross-team reassign | §18 D1 + D2 | Reassign dialog shows all teams |
-| Reassign requires reason | §18 audit | UI blocks submit if empty |
-| Cross-role reassign allowed | §18 D2 | Radio: Telecaller / Sales exec |
-| Manual bypasses ManagerAssignmentRule | §18 D3 | Manual wins |
-| LeadAssignmentHistory table | §18 A10 | New table for reassign analytics |
-| Transactional audit | §18 A2 | prisma.$transaction |
-| RLS policy per role | §1 + §18 | Admin = all teams; Manager = own team; others = own rows |
-| 18 Prisma models | §7 (InAppNotification dropped) | Final schema |
-| NestJS 12 | eng review A1 | Updated from DESIGN.md NestJS 10 |
+| Decision                              | Source                         | Effect                                                   |
+| ------------------------------------- | ------------------------------ | -------------------------------------------------------- |
+| KPI strip not card grid               | §4 + §15                       | Numbers are inline in a row, not cards                   |
+| 5-tab mobile bottom nav               | Decision 0.1                   | Overview / Chat / Visits / Bookings / Notes              |
+| Default sort = overdue first          | Decision 0.2                   | First row IS the action                                  |
+| Co-owner chip                         | Decision 0.3                   | Visible in VISIT_SCHEDULED state                         |
+| 4 Manager KPIs                        | Decision 0.4                   | Time-to-first-touch, visits, approvals, no-show rate     |
+| T-2h sticky banner                    | Decision 0.10                  | Always visible above tabs                                |
+| Manager-only full-screen modal        | Decision 0.11                  | Booking approval context                                 |
+| Admin cross-team reassign             | §18 D1 + D2                    | Reassign dialog shows all teams                          |
+| Reassign requires reason              | §18 audit                      | UI blocks submit if empty                                |
+| Cross-role reassign allowed           | §18 D2                         | Radio: Telecaller / Sales exec                           |
+| Manual bypasses ManagerAssignmentRule | §18 D3                         | Manual wins                                              |
+| LeadAssignmentHistory table           | §18 A10                        | New table for reassign analytics                         |
+| Transactional audit                   | §18 A2                         | prisma.$transaction                                      |
+| RLS policy per role                   | §1 + §18                       | Admin = all teams; Manager = own team; others = own rows |
+| 18 Prisma models                      | §7 (InAppNotification dropped) | Final schema                                             |
+| NestJS 12                             | eng review A1                  | Updated from DESIGN.md NestJS 10                         |
 
 **These wireframes are the canonical reference for implementation. Engineer reads plan §4 (component vocabulary) + this doc for visual reference + §13.1 (perf budgets) + §19 (test plan).**

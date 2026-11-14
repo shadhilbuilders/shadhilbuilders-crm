@@ -58,7 +58,9 @@ describe('notificationInboxCopy', () => {
     for (const role of [...OTHER_ROLES, undefined]) {
       const copy = notificationInboxCopy(role);
       expect(copy.popoverTitle).toBe('Notifications');
-      expect(copy.emptyHintUnread).toBe('New leads, handoffs, and reminders land here automatically.');
+      expect(copy.emptyHintUnread).toBe(
+        'New leads, handoffs, and reminders land here automatically.',
+      );
       expect(copy.emptyHintFiltered).toBe('Try switching to the All tab.');
     }
   });

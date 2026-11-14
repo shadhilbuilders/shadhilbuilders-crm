@@ -46,7 +46,9 @@ export class PortalNotifier {
           organizationId: notice.organizationId,
         },
         (tx) =>
-          tx.$queryRaw<Array<{ id: string }>>`SELECT unit_customer_user_ids(${notice.unitId}) AS id`,
+          tx.$queryRaw<
+            Array<{ id: string }>
+          >`SELECT unit_customer_user_ids(${notice.unitId}) AS id`,
       );
       if (rows.length === 0) return 0;
 

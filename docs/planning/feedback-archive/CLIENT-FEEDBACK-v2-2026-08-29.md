@@ -39,12 +39,12 @@ audit any call." This is what most Indian real-estate CRMs do.
 often means a senior salesperson (a job title), not an operations lead. Use
 **Manager** everywhere. Renames:
 
-| Old | New |
-|---|---|
-| Admin | **Admin** (unchanged) |
-| Director | **Manager** |
+| Old                       | New                                              |
+| ------------------------- | ------------------------------------------------ |
+| Admin                     | **Admin** (unchanged)                            |
+| Director                  | **Manager**                                      |
 | Sales Agent (single role) | **Telecaller** + **Sales Executive** (two roles) |
-| Marketing (read-only) | (drop - not in v1) |
+| Marketing (read-only)     | (drop - not in v1)                               |
 
 `DESIGN.md` §1 needs a full rewrite using these names.
 
@@ -59,6 +59,7 @@ the right direction. But there's a tradeoff on the ORM.
 ### 3a. Supabase instead of Neon - TAKE (clearly)
 
 **YES, take this.** Supabase:
+
 - Gives us Postgres + free tier + Mumbai region + dashboard + RLS.
 - RLS (Row-Level Security) is the right enforcement layer for ABAC. Neon
   doesn't ship it.
@@ -91,6 +92,7 @@ schema-first migration model is similar.
 ### 3c. better-auth instead of Supabase Auth - TAKE (clearly)
 
 **YES, take this.** better-auth is:
+
 - MIT, self-hosted, no per-user pricing (Supabase Auth charges per MAU
   past 50K).
 - Users live in YOUR database, not Supabase's auth schema. Means you
@@ -174,7 +176,7 @@ Reasons:
 **But: design the data model so v1.1 "smart routing" is cheap.**
 
 - `ManagerAssignmentRule` table: `{ manager_id, territory, project_id,
-  priority }`. Empty in v1, populated in v1.1.
+priority }`. Empty in v1, populated in v1.1.
 - When telecaller clicks "Ready for handoff," the system looks up the
   rule and **suggests** a sales exec. Manager can confirm or override.
 - v1.1: if the rule is set + manager approves auto-assign, the
@@ -244,21 +246,22 @@ ownership, or plan limits. For Shadhil CRM:
 
 ### RBAC (coarse-grained: who can do what operation)
 
-| Operation | Admin | Manager | Telecaller | Sales Exec |
-|---|---|---|---|---|
-| Create manager account | seed | ❌ | ❌ | ❌ |
-| Create telecaller/exec | ✅ | ❌ | ❌ | ❌ |
-| View any lead | ✅ | their team | own only | own only |
-| Assign telecaller to lead | ✅ | ✅ | ❌ | ❌ |
-| Receive handoff | ✅ | ✅ | n/a | n/a |
-| Assign exec | ✅ | ✅ | ❌ | ❌ |
-| Book a unit | ✅ | ✅ (approve) | ❌ | ✅ (initiate) |
-| Read chat on any lead | ✅ | their team | own leads | own leads |
-| View reports | ✅ | their team | own KPIs | own KPIs |
+| Operation                 | Admin | Manager      | Telecaller | Sales Exec    |
+| ------------------------- | ----- | ------------ | ---------- | ------------- |
+| Create manager account    | seed  | ❌           | ❌         | ❌            |
+| Create telecaller/exec    | ✅    | ❌           | ❌         | ❌            |
+| View any lead             | ✅    | their team   | own only   | own only      |
+| Assign telecaller to lead | ✅    | ✅           | ❌         | ❌            |
+| Receive handoff           | ✅    | ✅           | n/a        | n/a           |
+| Assign exec               | ✅    | ✅           | ❌         | ❌            |
+| Book a unit               | ✅    | ✅ (approve) | ❌         | ✅ (initiate) |
+| Read chat on any lead     | ✅    | their team   | own leads  | own leads     |
+| View reports              | ✅    | their team   | own KPIs   | own KPIs      |
 
 ### ABAC (fine-grained: who can access THIS specific resource)
 
 Attributes that get checked at query time:
+
 - `user_id` - the actor's ID
 - `role` - the actor's role
 - `team_id` - which manager's team the actor belongs to
@@ -271,6 +274,7 @@ Attributes that get checked at query time:
 ### Enforcement: Postgres RLS (Supabase)
 
 Set session variables in middleware:
+
 ```sql
 SET LOCAL app.current_user_id = '...';
 SET LOCAL app.current_user_role = 'manager';
@@ -296,16 +300,19 @@ skill flags this as the #1 retrofit pain.
 ## What changes in DESIGN.md when you accept this
 
 §1 Roles: rename Director → Manager, split Sales Agent into Telecaller
-+ Sales Executive, drop Marketing.
+
+- Sales Executive, drop Marketing.
 
 §2 Modules: 5 modules change. New list:
+
 1. Lead Inbox
 2. Lead Detail (with embedded Chat Pane + Site Visit widget)
 3. Site Visit Scheduler (with no-show/reschedule outcomes)
 4. Inventory / Unit availability
 5. In-app Chat (new - replaces WhatsApp/Call activity log)
-+ Audit Log (writes in v1, UI in vNext)
-+ Thin Booking slice
+
+- Audit Log (writes in v1, UI in vNext)
+- Thin Booking slice
 
 §3 Lifecycle: rewrite for two-stage ownership + no-show/reschedule
 states.

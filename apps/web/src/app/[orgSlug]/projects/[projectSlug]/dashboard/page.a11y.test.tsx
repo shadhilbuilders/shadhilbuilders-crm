@@ -41,11 +41,11 @@ vi.mock('@/lib/session', () => ({
   // site-ONLY, so only ENGINEER is forwarded away from the queue.
   isSiteOnlyRole: vi.fn((role: string | undefined) => role === 'ENGINEER'),
   canApproveBookings: vi.fn(
-    (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER'
+    (role: string) => role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER',
   ),
   canScheduleVisits: vi.fn(
     (role: string) =>
-      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'TELECALLER'
+      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'TELECALLER',
   ),
   // T-HOLD-VISIBLE: the token-payment card's gate. Mirrors
   // BookingsService.transition's HOLD -> TOKEN check (note it is WIDER than
@@ -54,7 +54,7 @@ vi.mock('@/lib/session', () => ({
   // token card.
   canInitiateBookings: vi.fn(
     (role: string) =>
-      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC'
+      role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER' || role === 'SALES_EXEC',
   ),
 }));
 
@@ -144,7 +144,7 @@ async function mount(): Promise<void> {
     root?.render(
       <QueryClientProvider client={queryClient}>
         <DashboardPage />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
   });
 }
@@ -286,7 +286,7 @@ describe('Work dashboard - axe-core audit', () => {
     ];
     await mount();
     const controls = Array.from(
-      container?.querySelectorAll('button, a[href]') ?? []
+      container?.querySelectorAll('button, a[href]') ?? [],
     ) as HTMLElement[];
     expect(controls.length).toBeGreaterThan(4);
     for (const el of controls) {
@@ -318,7 +318,7 @@ describe('Work dashboard - axe-core audit', () => {
     ];
     await mount();
     const raw = Array.from(
-      container?.querySelectorAll('button:not([data-qa]), a[href]') ?? []
+      container?.querySelectorAll('button:not([data-qa]), a[href]') ?? [],
     ) as HTMLElement[];
     for (const el of raw) {
       const cls = el.className;

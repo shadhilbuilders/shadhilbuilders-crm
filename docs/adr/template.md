@@ -17,6 +17,7 @@ The change, in one to three sentences, present tense. Start with what the code a
 Delete this section when there was no genuine alternative, rather than inventing one.
 
 ### Alternative name
+
 - **Pros**: what it bought.
 - **Cons**: what it cost.
 - **Why not**: the specific reason it lost.
@@ -26,10 +27,13 @@ Delete this section when there was no genuine alternative, rather than inventing
 Delete any subheading that would be empty.
 
 ### Positive
+
 - What becomes easier.
 
 ### Negative
+
 - What becomes harder or has to be maintained twice.
 
 ### Risks
+
 - What could go wrong later, and how the code already guards against it.

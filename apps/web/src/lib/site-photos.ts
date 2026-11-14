@@ -184,10 +184,7 @@ export function stalenessLabel(lastPhotoAt: string | null, now: Date): string {
 }
 
 /** The one-line summary above the capture feed: `8 photos · last added today`. */
-export function photoSummaryLine(
-  photos: readonly { takenAt: string }[],
-  now: Date,
-): string | null {
+export function photoSummaryLine(photos: readonly { takenAt: string }[], now: Date): string | null {
   if (photos.length === 0) return null;
   const first = photos[0];
   if (first === undefined) return null;

@@ -13,7 +13,7 @@ Your three decisions are defensible, but they have a real cost you should
 see clearly before locking them in. Summary, then details:
 
 1. **"Easy and best stack for CRM"** - depends on whether you mean
-   *fastest to ship* or *most scalable long-term*. They pull in opposite
+   _fastest to ship_ or _most scalable long-term_. They pull in opposite
    directions. I've laid out the real tradeoffs below. For a 5-50 user
    internal CRM, the conventional full-stack (Next.js OR a single
    backend) ships faster than a split NestJS+GraphQL+separate-frontend
@@ -32,14 +32,15 @@ see clearly before locking them in. Summary, then details:
 3. **"Best and easy"** - for THIS scope, the honest answer is "easy"
    wins. You can refactor to a more complex stack at 10K users. You
    can't un-spend 8 weeks of dev time on architecture that didn't
-   need to exist yet. But if the *learning* is part of the value
+   need to exist yet. But if the _learning_ is part of the value
    (NestJS + GraphQL is a marketable skill), the cost is worth
    paying for that reason.
 
 I'll lay out three concrete stack options below, with honest pros/cons
 and a recommendation. The recommendation is not "what I usually pick"
+
 - it's "what fits this specific project, your stated constraints, and
-the cost of getting it wrong."
+  the cost of getting it wrong."
 
 ---
 
@@ -67,6 +68,7 @@ Dev time:  4-6 weeks to MVP
 ```
 
 **Pros (real-world, not PaalStack-flavored):**
+
 - One frontend codebase (Next.js), one mobile codebase (Expo), zero
   separate backend. Shared `lib/` between web and mobile.
 - Supabase Realtime gives you a working chat pane in 50 lines of
@@ -83,6 +85,7 @@ Dev time:  4-6 weeks to MVP
   (Cal.com, Supabase itself) run production on Next.js + Supabase.
 
 **Cons (honest):**
+
 - Vendor lock-in. If Supabase dies or you outgrow the free tier,
   you migrate. Mitigation: Supabase is Postgres, the schema is
   yours, you can `pg_dump` and move.
@@ -117,6 +120,7 @@ Dev time:  8-12 weeks to MVP
 ```
 
 **Pros (real-world):**
+
 - Full control. No vendor. You own every byte. You can read the
   source. You can patch things at 2 AM.
 - NestJS is genuinely a pleasure to develop in if you like
@@ -290,6 +294,7 @@ is the v1 ask and better-auth's permission plugin is already
 built. Migrate to option 2 in v1.1 if you need more control.
 
 VPS sizing for Hostinger:
+
 - 2GB plan: too small. NestJS + Postgres + Redis + MinIO + Coolify
   needs at least 4GB.
 - 4GB plan: works for development, tight for production.
@@ -301,23 +306,23 @@ VPS sizing for Hostinger:
 ## Updated timeline, real-world, if you go Option B
 
 Week 1: VPS setup (Coolify install, DNS, SSL), NestJS scaffold,
-        Next.js scaffold, monorepo setup, codegen skeleton.
+Next.js scaffold, monorepo setup, codegen skeleton.
 Week 2: Postgres schema (Drizzle or Prisma), first migration,
-        RLS policies written, NestJS GraphQL resolvers for
-        `User`, `Team`, `Project`.
+RLS policies written, NestJS GraphQL resolvers for
+`User`, `Team`, `Project`.
 Week 3: better-auth (or Passport) wired in, login/logout working
-        on web and mobile, RLS session-var middleware proven.
+on web and mobile, RLS session-var middleware proven.
 Week 4: Lead CRUD via GraphQL, Lead Inbox page on web.
 Week 5: Chat pane + Supabase Realtime OR graphql-ws subscriptions
-        (pick before week 1, this drives 2 weeks of work either
-        way). WhatsApp webhook handler.
+(pick before week 1, this drives 2 weeks of work either
+way). WhatsApp webhook handler.
 Week 6: Site Visit entity + scheduler UI, no-show/reschedule
-        outcomes, Exotel webhook handler.
+outcomes, Exotel webhook handler.
 Week 7: Inventory grid, booking slice, audit log writer.
 Week 8: Manager handoff flow, role permissions tested end-to-end,
-        seed data, deploy to Hostinger, first smoke test.
+seed data, deploy to Hostinger, first smoke test.
 Week 9-10: Bug fixes, real WhatsApp/Exotel testing (needs Meta
-           production approval, that's been pending since Aug 27).
+production approval, that's been pending since Aug 27).
 
 Real-world: 10 weeks to v1, not 6-8 weeks. The 8-week number
 assumes the codegen, RLS, and real-time chat patterns are

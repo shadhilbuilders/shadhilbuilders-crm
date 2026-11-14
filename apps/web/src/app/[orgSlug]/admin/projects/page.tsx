@@ -40,34 +40,18 @@ import {
 } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import {
-  LuEllipsis,
-  LuPencil,
-  LuPlus,
-  LuTrash2,
-  LuUsersRound,
-} from '@paalstack/react-icons/lu';
+import { LuEllipsis, LuPencil, LuPlus, LuTrash2, LuUsersRound } from '@paalstack/react-icons/lu';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
-import {
-  useProjectsTable,
-  type ProjectListItem,
-  type ProjectsFilter,
-} from '@/hooks/queries';
+import { useProjectsTable, type ProjectListItem, type ProjectsFilter } from '@/hooks/queries';
 import { orgHref } from '@/lib/nav';
 import { useOrgSlug } from '@/lib/tenant-context';
 import { dateIntl } from '@/lib/format';
-import {
-  isAdminLike,
-  useSessionUser,
-} from '@/lib/session';
+import { isAdminLike, useSessionUser } from '@/lib/session';
 
 import { Skeleton } from '@/components/shared/Skeleton';
-import {
-  ProjectDeleteBody,
-  ProjectFormBody,
-} from '@/components/projects/project-form-bodies';
+import { ProjectDeleteBody, ProjectFormBody } from '@/components/projects/project-form-bodies';
 import { ProjectTeamList } from '@/components/teams/project-team-list';
 import { PageHeader } from '@/components/shared/PageHeader';
 import Link from 'next/link';
@@ -79,8 +63,7 @@ export default function ProjectsPage() {
   // Server-side search (mirrors users): debounced 300ms, fires at ≥2 chars.
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const serverSearch =
-    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
+  const serverSearch = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
 
   // Server-side pagination (1-indexed DataTable page → offset).
   const [page, setPage] = useState(1);
@@ -93,12 +76,8 @@ export default function ProjectsPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectListItem | null>(null);
-  const [membersTarget, setMembersTarget] = useState<ProjectListItem | null>(
-    null,
-  );
-  const [deleteTarget, setDeleteTarget] = useState<ProjectListItem | null>(
-    null,
-  );
+  const [membersTarget, setMembersTarget] = useState<ProjectListItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectListItem | null>(null);
   const [mounted, setMounted] = useState(false);
 
   // Better-auth's useSession resolves from the cookie synchronously on the
@@ -130,9 +109,7 @@ export default function ProjectsPage() {
   const canDelete = isAdminLike(user.role);
   const canManageMembers = isAdminLike(user.role);
 
-  const projects = Array.isArray(projectsQuery.data?.projects)
-    ? projectsQuery.data.projects
-    : [];
+  const projects = Array.isArray(projectsQuery.data?.projects) ? projectsQuery.data.projects : [];
   const total = projectsQuery.data?.total ?? 0;
 
   return (
@@ -147,20 +124,13 @@ export default function ProjectsPage() {
         }
         action={
           <Dialog
-            trigger={
-              <Button leftIcon={<LuPlus className="h-4 w-4" />}>
-                New project
-              </Button>
-            }
+            trigger={<Button leftIcon={<LuPlus className="h-4 w-4" />}>New project</Button>}
             header={{ title: 'Create a project' }}
             open={createOpen}
             onOpenChange={setCreateOpen}
             contentClassName="sm:max-w-lg"
           >
-            <ProjectFormBody
-              mode="create"
-              onDone={() => setCreateOpen(false)}
-            />
+            <ProjectFormBody mode="create" onDone={() => setCreateOpen(false)} />
           </Dialog>
         }
       />
@@ -214,15 +184,9 @@ export default function ProjectsPage() {
         />
       )}
 
-      <EditProjectDialog
-        target={editTarget}
-        onClose={() => setEditTarget(null)}
-      />
+      <EditProjectDialog target={editTarget} onClose={() => setEditTarget(null)} />
 
-      <DeleteProjectDialog
-        target={deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-      />
+      <DeleteProjectDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
 
       <Dialog
         trigger={<button hidden />}
@@ -285,9 +249,7 @@ function ProjectRowActions({
     {
       label: 'Edit',
       icon: LuPencil,
-      disabledReason: !canDelete
-        ? 'Only ADMIN or OWNER can edit projects'
-        : undefined,
+      disabledReason: !canDelete ? 'Only ADMIN or OWNER can edit projects' : undefined,
       onClick: () => onEdit(target),
     },
     {
@@ -336,7 +298,7 @@ function ProjectRowActions({
                       data-qa="data-table-row-action-item"
                     >
                       <item.icon
-                        className="mr-2 size-4 text-muted-foreground"
+                        className="text-muted-foreground mr-2 size-4"
                         data-qa="data-table-row-action-item-icon"
                       />
                       {item.label}
@@ -352,7 +314,7 @@ function ProjectRowActions({
                 data-qa="data-table-row-action-item"
               >
                 <item.icon
-                  className="mr-2 size-4 text-muted-foreground"
+                  className="text-muted-foreground mr-2 size-4"
                   data-qa="data-table-row-action-item-icon"
                 />
                 {item.label}
@@ -420,7 +382,9 @@ function ProjectTable({
               {row.original.name}
             </Link>
             {row.original.slug === 'shadhil-metro-heights' ? (
-              <Badge className="ml-2 text-xs" variant="muted">Default</Badge>
+              <Badge className="ml-2 text-xs" variant="muted">
+                Default
+              </Badge>
             ) : null}
           </div>
         ),
@@ -500,7 +464,7 @@ function ProjectTable({
           placeholder: 'Search by name or slug...',
           searchValue: search,
           onSearchValueChange: onSearchChange,
-          className: 'mr-2'
+          className: 'mr-2',
         }}
         // Whole-row click → admin project detail. Name cell keeps its Link
         // (middle-click / cmd-click / keyboard). Skip interactive controls
@@ -511,9 +475,7 @@ function ProjectTable({
             const target = event.target;
             if (!(target instanceof Element)) return;
             if (target.closest('a, button, [role="menuitem"]')) return;
-            router.push(
-              orgHref(orgSlug, `/admin/projects/${row.original.id}`),
-            );
+            router.push(orgHref(orgSlug, `/admin/projects/${row.original.id}`));
           },
         }}
         showPagination
@@ -531,7 +493,7 @@ function ProjectTable({
         loadingContent={<Loading content="Loading projects..." />}
         emptyContent={
           isSearchActive ? (
-            <div className="rounded-lg p-10 text-center space-y-1">
+            <div className="space-y-1 rounded-lg p-10 text-center">
               <TypographyP className="text-xl font-medium">
                 No projects match your search.
               </TypographyP>
@@ -540,18 +502,13 @@ function ProjectTable({
               </TypographyP>
             </div>
           ) : (
-            <div className="rounded-lg p-10 text-center space-y-1">
-              <TypographyP className="text-xl font-medium">
-                No projects yet.
-              </TypographyP>
+            <div className="space-y-1 rounded-lg p-10 text-center">
+              <TypographyP className="text-xl font-medium">No projects yet.</TypographyP>
               <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
                 Create the first project to get started.
               </TypographyP>
               <div className="flex justify-center pt-2">
-                <Button
-                  leftIcon={<LuPlus className="h-4 w-4" />}
-                  onClick={onCreate}
-                >
+                <Button leftIcon={<LuPlus className="h-4 w-4" />} onClick={onCreate}>
                   New project
                 </Button>
               </div>
@@ -582,11 +539,9 @@ function EditProjectDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
     >
-      {target !== null ? (
-        <ProjectFormBody mode="edit" project={target} onDone={onClose} />
-      ) : null}
+      {target !== null ? <ProjectFormBody mode="edit" project={target} onDone={onClose} /> : null}
     </Dialog>
   );
 }
@@ -610,11 +565,9 @@ function DeleteProjectDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      contentClassName='sm:max-w-lg'
+      contentClassName="sm:max-w-lg"
     >
-      {target !== null ? (
-        <ProjectDeleteBody project={target} onDone={onClose} />
-      ) : null}
+      {target !== null ? <ProjectDeleteBody project={target} onDone={onClose} /> : null}
     </Dialog>
   );
 }

@@ -40,9 +40,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw new BadRequestException(
-      result.error.issues.map(
-        (i) => `${i.path.join('.') || 'body'}: ${i.message}`,
-      ),
+      result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
     );
   }
   return result.data;
@@ -52,9 +50,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 @ApiBearerAuth('jwt')
 @Controller('visits')
 export class VisitsController {
-  constructor(
-    @Inject(VisitsService) private readonly visits: VisitsService,
-  ) {}
+  constructor(@Inject(VisitsService) private readonly visits: VisitsService) {}
 
   @Get()
   @ApiOperation({
@@ -83,10 +79,7 @@ export class VisitsController {
     summary:
       'Schedule a new site visit. Lead must be in SCHEDULABLE_LEAD_STATES (VISIT_REQUESTED, VISIT_SCHEDULED, RESCHEDULED, NO_SHOW).',
   })
-  async create(
-    @Req() req: AuthedRequest,
-    @Body() body: unknown,
-  ): Promise<VisitRow> {
+  async create(@Req() req: AuthedRequest, @Body() body: unknown): Promise<VisitRow> {
     const dto: CreateSiteVisitDto = parseBody(CreateSiteVisitDtoSchema, body);
     return this.visits.create(req.user!, dto);
   }

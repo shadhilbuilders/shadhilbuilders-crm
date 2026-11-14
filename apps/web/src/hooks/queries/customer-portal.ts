@@ -92,7 +92,9 @@ export function useCustomerTimeline(unitId: string | null) {
     queryKey: [...TIMELINE_KEY, unitId ?? ''],
     enabled: unitId !== null,
     queryFn: ({ pageParam }: { pageParam?: string }) =>
-      api<TimelineResponse>(`/customer-portal/units/${unitId as string}/photos${cursorQs(pageParam)}`),
+      api<TimelineResponse>(
+        `/customer-portal/units/${unitId as string}/photos${cursorQs(pageParam)}`,
+      ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     retry: false,

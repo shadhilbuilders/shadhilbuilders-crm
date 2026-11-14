@@ -27,11 +27,7 @@ import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
 
-import {
-  useFeedback,
-  useUpdateFeedbackStatus,
-  type FeedbackRow,
-} from '@/hooks/queries/feedback';
+import { useFeedback, useUpdateFeedbackStatus, type FeedbackRow } from '@/hooks/queries/feedback';
 
 import { dateIntl } from '@/lib/format';
 import { labelFor } from '@/lib/labels';
@@ -95,13 +91,10 @@ export default function FeedbackPage() {
       { id: row.id, status },
       {
         onSuccess: () => {
-          toast.success(
-            `Feedback ${labelFor('feedback', status).toLowerCase()}`,
-          );
+          toast.success(`Feedback ${labelFor('feedback', status).toLowerCase()}`);
         },
         onError: (error) => {
-          const msg =
-            error instanceof Error ? error.message : 'Update failed';
+          const msg = error instanceof Error ? error.message : 'Update failed';
           toast.error(msg);
         },
       },
@@ -139,10 +132,7 @@ export default function FeedbackPage() {
             {item.label}
           </Button>
         ))}
-        <span
-          className="text-muted-foreground ml-2 text-xs"
-          data-qa="feedback-total"
-        >
+        <span className="text-muted-foreground ml-2 text-xs" data-qa="feedback-total">
           {total} {total === 1 ? 'item' : 'items'}
         </span>
       </div>
@@ -221,29 +211,18 @@ function Row({ row, tab, pendingStatusId, onStatus }: RowProps) {
         <div className="flex flex-wrap items-center gap-2">
           <StarRating rating={row.rating} />
           <p className="text-sm font-medium">
-            {row.name !== null && row.name.trim().length > 0
-              ? row.name
-              : '(anonymous)'}
+            {row.name !== null && row.name.trim().length > 0 ? row.name : '(anonymous)'}
           </p>
           {row.project !== null && row.project.trim().length > 0 ? (
-            <span className="text-muted-foreground text-xs">
-              · {row.project}
-            </span>
+            <span className="text-muted-foreground text-xs">· {row.project}</span>
           ) : null}
           {row.phone !== null && row.phone.length > 0 ? (
-            <span className="text-muted-foreground text-xs">
-              · {row.phone}
-            </span>
+            <span className="text-muted-foreground text-xs">· {row.phone}</span>
           ) : null}
         </div>
 
-        <p
-          className="text-muted-foreground mt-1 line-clamp-3 text-sm"
-          data-qa="feedback-message"
-        >
-          {row.message !== null && row.message.trim().length > 0
-            ? row.message
-            : '(no message)'}
+        <p className="text-muted-foreground mt-1 line-clamp-3 text-sm" data-qa="feedback-message">
+          {row.message !== null && row.message.trim().length > 0 ? row.message : '(no message)'}
         </p>
 
         <p
@@ -300,10 +279,7 @@ function StarRating({ rating }: { rating: number }) {
         <LuStar
           key={n}
           className={
-            `size-3.5 ` +
-            (n <= rating
-              ? 'fill-warning text-warning'
-              : 'text-muted-foreground')
+            `size-3.5 ` + (n <= rating ? 'fill-warning text-warning' : 'text-muted-foreground')
           }
         />
       ))}

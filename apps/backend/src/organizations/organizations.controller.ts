@@ -17,10 +17,7 @@ import {
   Patch,
   Req,
 } from '@nestjs/common';
-import {
-  UpdateOrganizationSettingsSchema,
-  type OrganizationSettings,
-} from '@shadhil/api-types';
+import { UpdateOrganizationSettingsSchema, type OrganizationSettings } from '@shadhil/api-types';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import type { AuthedRequest } from '../auth/jwt-auth.guard';

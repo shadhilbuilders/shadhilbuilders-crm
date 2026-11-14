@@ -95,9 +95,7 @@ export interface RotationTeam {
  * `lastAssignedAt` first; ties break by teamId so the same input always yields
  * the same order. Returns a NEW array - the input is never mutated.
  */
-export function orderTeamsForRotation<T extends RotationTeam>(
-  teams: readonly T[],
-): T[] {
+export function orderTeamsForRotation<T extends RotationTeam>(teams: readonly T[]): T[] {
   return [...teams].sort((a, b) => {
     const at = a.lastAssignedAt === null ? Number.NEGATIVE_INFINITY : a.lastAssignedAt.getTime();
     const bt = b.lastAssignedAt === null ? Number.NEGATIVE_INFINITY : b.lastAssignedAt.getTime();
@@ -166,9 +164,7 @@ function withinCap(c: AutoAssignCandidate): boolean {
 export function pickAutoAssignCandidate(
   candidates: readonly AutoAssignCandidate[],
 ): AutoAssignResult {
-  const eligible = candidates.filter(
-    (c) => c.weight > 0 && c.openLeads >= 0 && withinCap(c),
-  );
+  const eligible = candidates.filter((c) => c.weight > 0 && c.openLeads >= 0 && withinCap(c));
   if (eligible.length === 0) return { kind: 'no-eligible' };
 
   let best: AutoAssignCandidate = eligible[0]!;
@@ -181,9 +177,7 @@ export function pickAutoAssignCandidate(
       (score === bestScore && c.openLeads < best.openLeads) ||
       // Fully deterministic tie-break so the same input always picks the same
       // person (stable across calls / tests).
-      (score === bestScore &&
-        c.openLeads === best.openLeads &&
-        c.userId < best.userId);
+      (score === bestScore && c.openLeads === best.openLeads && c.userId < best.userId);
     if (better) {
       best = c;
       bestScore = c.openLeads / c.weight;

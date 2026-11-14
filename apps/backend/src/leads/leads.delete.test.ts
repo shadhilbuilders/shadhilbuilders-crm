@@ -13,24 +13,10 @@
 //   7. Cascade reality: children gone, AuditLog survives.
 //   8. WhatsappUnknownContact.convertedToLeadId nulled in the same tx (D19).
 
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
-import {
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
@@ -62,8 +48,7 @@ const ORG = 'ceid01lpfe1esm8jwsxid41k28';
 // digits are Date.now(), so slice(0,7) collides when two runs land in
 // the same second (the WhatsApp phoneE164 unique key caught this). Use
 // the full digit-stripped tag (Date.now + random suffix) for entropy.
-const PHONE = (n: number) =>
-  `92${RUN_TAG.replace(/\D/g, '').slice(0, 10)}${n}`;
+const PHONE = (n: number) => `92${RUN_TAG.replace(/\D/g, '').slice(0, 10)}${n}`;
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
@@ -77,9 +62,7 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   );
 }
 
-function actorFor(
-  role: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC',
-): JwtPayload {
+function actorFor(role: 'ADMIN' | 'MANAGER' | 'TELECALLER' | 'SALES_EXEC'): JwtPayload {
   const sub =
     role === 'ADMIN'
       ? ADMIN_ID
@@ -321,30 +304,28 @@ describe.skipIf(!HAS_DB)('DELETE /leads/:id (leads.service.delete)', () => {
 
   it('403: TELECALLER cannot delete (even their own lead)', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.delete(actorFor('TELECALLER'), LEAD_CONVERTED),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.delete(actorFor('TELECALLER'), LEAD_CONVERTED)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('403: SALES_EXEC cannot delete', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.delete(actorFor('SALES_EXEC'), LEAD_CONVERTED),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.delete(actorFor('SALES_EXEC'), LEAD_CONVERTED)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('403: MANAGER cannot delete (D14 - RLS lead_delete_admin is ADMIN-only; a wider gate here would 500 via P2025)', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.delete(actorFor('MANAGER'), LEAD_CONVERTED),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.delete(actorFor('MANAGER'), LEAD_CONVERTED)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('409: WON lead cannot be deleted (close as LOST instead)', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.delete(actorFor('ADMIN'), LEAD_WON),
-    ).rejects.toThrow(ConflictException);
+    await expect(service.delete(actorFor('ADMIN'), LEAD_WON)).rejects.toThrow(ConflictException);
     // Row still there.
     const still = await adminSeed((db) => db.lead.findUnique({ where: { id: LEAD_WON } }));
     expect(still).not.toBeNull();
@@ -352,9 +333,7 @@ describe.skipIf(!HAS_DB)('DELETE /leads/:id (leads.service.delete)', () => {
 
   it('409: lead with a TOKEN booking cannot be deleted (D13: ANY booking blocks; TOKEN pins the CONFIRMED-status regression)', async () => {
     const service = makeLeadsService();
-    await expect(
-      service.delete(actorFor('ADMIN'), LEAD_BOOKED),
-    ).rejects.toThrow(ConflictException);
+    await expect(service.delete(actorFor('ADMIN'), LEAD_BOOKED)).rejects.toThrow(ConflictException);
     const still = await adminSeed((db) => db.lead.findUnique({ where: { id: LEAD_BOOKED } }));
     expect(still).not.toBeNull();
     const booking = await adminSeed((db) =>
@@ -373,18 +352,14 @@ describe.skipIf(!HAS_DB)('DELETE /leads/:id (leads.service.delete)', () => {
   it('404: second delete (already deleted) throws typed NotFoundException', async () => {
     const service = makeLeadsService();
     // LEAD_OK was deleted by the happy-path test.
-    await expect(
-      service.delete(actorFor('ADMIN'), LEAD_OK),
-    ).rejects.toThrow(NotFoundException);
+    await expect(service.delete(actorFor('ADMIN'), LEAD_OK)).rejects.toThrow(NotFoundException);
   });
 
   it('cascade reality: converted lead delete removes the row; WhatsApp convert pointer nulled in the same tx (D19)', async () => {
     const service = makeLeadsService();
     await service.delete(actorFor('ADMIN'), LEAD_CONVERTED);
 
-    const gone = await adminSeed((db) =>
-      db.lead.findUnique({ where: { id: LEAD_CONVERTED } }),
-    );
+    const gone = await adminSeed((db) => db.lead.findUnique({ where: { id: LEAD_CONVERTED } }));
     expect(gone).toBeNull();
 
     const contact = await adminSeed((db) =>

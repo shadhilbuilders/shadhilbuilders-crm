@@ -17,8 +17,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
@@ -183,7 +182,7 @@ describe('TeamRosterPage - org team roster', () => {
     expect(html).toContain('Move to team');
   });
 
-  it('T-REPORTS-TO-OWNER: subtitle names the org owner, and a TELECALLER row\'s secondary line names the team\'s manager', async () => {
+  it("T-REPORTS-TO-OWNER: subtitle names the org owner, and a TELECALLER row's secondary line names the team's manager", async () => {
     baseMocks();
     mocks.useSessionUser.mockReturnValue({
       user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },

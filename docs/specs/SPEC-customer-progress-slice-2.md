@@ -6,6 +6,7 @@ Slice 1 shipped: PR #8, main `198e335`, closed out in PR #13, main `349b9e4`.
 
 Amended 2026-11-07 during the completion pass, where the code and this document had
 diverged:
+
 - **D3** now describes what ships: `UsersService.create` arms `mustChangePassword` for a
   CUSTOMER, so the provisioned password must be rotated on first login. It previously
   claimed the gate already did this; it did not (the column defaults false and only the
@@ -28,7 +29,7 @@ the customer's own booking by RLS, and web push on each new upload. Slice 3 adds
 booking details, payments and documents on the same shell.
 
 The reason this is a spec and not a patch: slice 2 is the first surface in this repo
-where a read is authorized by *owning a booking* rather than by team membership. There
+where a read is authorized by _owning a booking_ rather than by team membership. There
 is no existing pattern to copy and no customer identity in the database yet, so the
 join has to be designed before any code is written.
 
@@ -36,24 +37,24 @@ join has to be designed before any code is written.
 
 Verified 2026-11-06 on `main` @ `349b9e4`.
 
-| Fact | Evidence |
-|---|---|
-| No customer identity exists anywhere in the schema | `grep -nE "customerId|customerUserId|buyerId" packages/database/prisma/schema.prisma` returns nothing |
-| `Booking` hangs off `Lead`, with no `User` link for the buyer | `Booking.leadId`, `Booking.unitId`, `Booking.userId` (the staff member who created it), `Booking.approvedById` |
-| `Lead` has buyer contact fields but no `User` relation | `Lead.name`, `Lead.phone` (`@unique`), `Lead.phoneE164` (`@unique`), `Lead.email String?` |
-| `Booking.status` has 5 values, none of which mean "customer may see this" | `enum BookingStatus { HOLD TOKEN APPROVED REJECTED CANCELLED }` |
-| Role enum has 6 values, ENGINEER added in slice 1 | `packages/database/prisma/schema.prisma` `enum Role` |
-| The closed role set is enforced in 6 places, each of which throws or fails to compile when one is missed | schema enum; `packages/database/src/rls.ts:96-104` `ROLES`; `packages/auth-client/src/jwt.ts:25-31` `ROLES`; `packages/api-types/src/enums.ts:20-26` `RoleSchema` + `:36` `AssignableRoleSchema`; `apps/web/src/lib/session.ts` `ROLE_RANK` + role helpers; `apps/web/src/lib/labels.ts:280-296` |
-| Auth is email/password only. No phone, OTP, SMS or magic-link provider exists in the repo | `packages/auth-client/src/auth.ts:52` `emailAndPassword`, `:130` `plugins` = `jwt` + `admin` |
-| Sign-in is global by email, not org-scoped | documented on `User.email` in `schema.prisma` |
-| `/login` routes to `/`, which resolves the org slug and enters the CRM shell with no role branch | `apps/web/src/app/page.tsx` |
-| No portal routes exist | `apps/web/src/app` contains `(guest)`, `[orgSlug]`, `api` only |
-| Push plumbing exists and is wired to VAPID, but nothing enqueues on upload | `apps/backend/src/push/push.service.ts:16-30`, `sendToUser:86`, `deliver:115` |
-| Push tables are owner-only under RLS | `policies.sql:840-890` `push_subscription_*` / `push_notification_*` |
-| ProgressPhoto has 4 staff policies and no customer arm | `policies.sql:1617-1692`; migration `20261026160800_customer_progress_slice1` |
-| `Unit`/`Phase`/`Project` engineer policies exist only in the slice-1 migration, not in `policies.sql` | `unit_select_team_member`, `phase_select_team_member`, `project_select_team_member`, `project_team_select_engineer` are created in migration `20261026160800`; `grep 'ON "Unit"' packages/database/prisma/rls/policies.sql` finds only subqueries inside ProgressPhoto policies |
-| Display fields for unit identity exist | `Unit.unitNumber`, `Phase.name`, `Project.name` |
-| The two role-rank tables disagree on ENGINEER | backend `RANK` (`apps/backend/src/users/roles.ts:18-26`) puts ENGINEER at 1 on a lower-is-more-authority scale, equal to TELECALLER; web `ROLE_RANK` (`apps/web/src/lib/session.ts:183-190`) puts ENGINEER at 0 on a higher-is-more-authority scale, below TELECALLER. So a telecaller sees edit controls for an engineer row that the backend then rejects. |
+| Fact                                                                                                     | Evidence                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No customer identity exists anywhere in the schema                                                       | `grep -nE "customerId                                                                                                                                                                                                                                                                                                                                        | customerUserId | buyerId" packages/database/prisma/schema.prisma` returns nothing |
+| `Booking` hangs off `Lead`, with no `User` link for the buyer                                            | `Booking.leadId`, `Booking.unitId`, `Booking.userId` (the staff member who created it), `Booking.approvedById`                                                                                                                                                                                                                                               |
+| `Lead` has buyer contact fields but no `User` relation                                                   | `Lead.name`, `Lead.phone` (`@unique`), `Lead.phoneE164` (`@unique`), `Lead.email String?`                                                                                                                                                                                                                                                                    |
+| `Booking.status` has 5 values, none of which mean "customer may see this"                                | `enum BookingStatus { HOLD TOKEN APPROVED REJECTED CANCELLED }`                                                                                                                                                                                                                                                                                              |
+| Role enum has 6 values, ENGINEER added in slice 1                                                        | `packages/database/prisma/schema.prisma` `enum Role`                                                                                                                                                                                                                                                                                                         |
+| The closed role set is enforced in 6 places, each of which throws or fails to compile when one is missed | schema enum; `packages/database/src/rls.ts:96-104` `ROLES`; `packages/auth-client/src/jwt.ts:25-31` `ROLES`; `packages/api-types/src/enums.ts:20-26` `RoleSchema` + `:36` `AssignableRoleSchema`; `apps/web/src/lib/session.ts` `ROLE_RANK` + role helpers; `apps/web/src/lib/labels.ts:280-296`                                                             |
+| Auth is email/password only. No phone, OTP, SMS or magic-link provider exists in the repo                | `packages/auth-client/src/auth.ts:52` `emailAndPassword`, `:130` `plugins` = `jwt` + `admin`                                                                                                                                                                                                                                                                 |
+| Sign-in is global by email, not org-scoped                                                               | documented on `User.email` in `schema.prisma`                                                                                                                                                                                                                                                                                                                |
+| `/login` routes to `/`, which resolves the org slug and enters the CRM shell with no role branch         | `apps/web/src/app/page.tsx`                                                                                                                                                                                                                                                                                                                                  |
+| No portal routes exist                                                                                   | `apps/web/src/app` contains `(guest)`, `[orgSlug]`, `api` only                                                                                                                                                                                                                                                                                               |
+| Push plumbing exists and is wired to VAPID, but nothing enqueues on upload                               | `apps/backend/src/push/push.service.ts:16-30`, `sendToUser:86`, `deliver:115`                                                                                                                                                                                                                                                                                |
+| Push tables are owner-only under RLS                                                                     | `policies.sql:840-890` `push_subscription_*` / `push_notification_*`                                                                                                                                                                                                                                                                                         |
+| ProgressPhoto has 4 staff policies and no customer arm                                                   | `policies.sql:1617-1692`; migration `20261026160800_customer_progress_slice1`                                                                                                                                                                                                                                                                                |
+| `Unit`/`Phase`/`Project` engineer policies exist only in the slice-1 migration, not in `policies.sql`    | `unit_select_team_member`, `phase_select_team_member`, `project_select_team_member`, `project_team_select_engineer` are created in migration `20261026160800`; `grep 'ON "Unit"' packages/database/prisma/rls/policies.sql` finds only subqueries inside ProgressPhoto policies                                                                              |
+| Display fields for unit identity exist                                                                   | `Unit.unitNumber`, `Phase.name`, `Project.name`                                                                                                                                                                                                                                                                                                              |
+| The two role-rank tables disagree on ENGINEER                                                            | backend `RANK` (`apps/backend/src/users/roles.ts:18-26`) puts ENGINEER at 1 on a lower-is-more-authority scale, equal to TELECALLER; web `ROLE_RANK` (`apps/web/src/lib/session.ts:183-190`) puts ENGINEER at 0 on a higher-is-more-authority scale, below TELECALLER. So a telecaller sees edit controls for an engineer row that the backend then rejects. |
 
 Three findings worth stating plainly, because they change the shape of this slice:
 
@@ -293,16 +294,16 @@ what is deployed. No behaviour change; the migration already ran.
 Adding CUSTOMER alone to any one of these either fail-closes every RLS context or
 silently lets a customer into the CRM.
 
-| # | File | Change |
-|---|---|---|
-| 1 | `packages/database/prisma/schema.prisma` | `Role += CUSTOMER`; `User.customerLeadId` + relation; `Lead.customerUsers` |
-| 2 | `packages/database/src/rls.ts:96-104` | `ROLES += 'CUSTOMER'` (the list throws on an unknown role, fail closed) |
-| 3 | `packages/auth-client/src/jwt.ts:25-31` | `ROLES += 'CUSTOMER'` (JWT verification rejects unlisted roles) |
-| 4 | `packages/api-types/src/enums.ts:20-26` | `RoleSchema += 'CUSTOMER'`; `:36` `AssignableRoleSchema` keeps OWNER excluded |
-| 5 | `apps/web/src/lib/labels.ts:280-296` | `ROLES += 'CUSTOMER'`, `ROLE_LABELS.CUSTOMER = 'Customer'` |
-| 6 | `apps/web/src/lib/session.ts:183-190`, `apps/web/src/lib/nav.ts:331-341` | `ROLE_RANK.CUSTOMER = 0`; CUSTOMER excluded from `isLinkableStaffRole` (`session.ts:86`), from the `AddTeamMembersDialog` role filter and from every nav list (`nav.ts` role-gated sections). Fix `ROLE_RANK.ENGINEER` from 0 to 1 so it ties with TELECALLER like the backend does |
-| 7 | `apps/backend/src/users/roles.ts:18-26` | `RANK.CUSTOMER = 1` (tie with TELECALLER, lowest); `assertCanCreateRole`/`assertCanChangeRole`: CUSTOMER is OWNER/ADMIN only, and MANAGER may never change a CUSTOMER |
-| 8 | `apps/web/src/proxy.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/[orgSlug]/layout.tsx` | `/portal` behind the session gate; `/` branches to `/portal` for CUSTOMER; `[orgSlug]` layout bounces CUSTOMER to `/portal` |
+| #   | File                                                                                          | Change                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `packages/database/prisma/schema.prisma`                                                      | `Role += CUSTOMER`; `User.customerLeadId` + relation; `Lead.customerUsers`                                                                                                                                                                                                          |
+| 2   | `packages/database/src/rls.ts:96-104`                                                         | `ROLES += 'CUSTOMER'` (the list throws on an unknown role, fail closed)                                                                                                                                                                                                             |
+| 3   | `packages/auth-client/src/jwt.ts:25-31`                                                       | `ROLES += 'CUSTOMER'` (JWT verification rejects unlisted roles)                                                                                                                                                                                                                     |
+| 4   | `packages/api-types/src/enums.ts:20-26`                                                       | `RoleSchema += 'CUSTOMER'`; `:36` `AssignableRoleSchema` keeps OWNER excluded                                                                                                                                                                                                       |
+| 5   | `apps/web/src/lib/labels.ts:280-296`                                                          | `ROLES += 'CUSTOMER'`, `ROLE_LABELS.CUSTOMER = 'Customer'`                                                                                                                                                                                                                          |
+| 6   | `apps/web/src/lib/session.ts:183-190`, `apps/web/src/lib/nav.ts:331-341`                      | `ROLE_RANK.CUSTOMER = 0`; CUSTOMER excluded from `isLinkableStaffRole` (`session.ts:86`), from the `AddTeamMembersDialog` role filter and from every nav list (`nav.ts` role-gated sections). Fix `ROLE_RANK.ENGINEER` from 0 to 1 so it ties with TELECALLER like the backend does |
+| 7   | `apps/backend/src/users/roles.ts:18-26`                                                       | `RANK.CUSTOMER = 1` (tie with TELECALLER, lowest); `assertCanCreateRole`/`assertCanChangeRole`: CUSTOMER is OWNER/ADMIN only, and MANAGER may never change a CUSTOMER                                                                                                               |
+| 8   | `apps/web/src/proxy.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/[orgSlug]/layout.tsx` | `/portal` behind the session gate; `/` branches to `/portal` for CUSTOMER; `[orgSlug]` layout bounces CUSTOMER to `/portal`                                                                                                                                                         |
 
 ### Backend
 
@@ -337,7 +338,7 @@ Authorization, all in the service, RLS as the second wall:
 
 - `notifyNewPhoto({ organizationId, unitId, unitNumber, photoId, caption })`.
 - Resolves recipients with an explicit service RLS context: `{ userId:
-  'portal-notifier', role: 'CRON_SERVICE', organizationId }`, calling the SECURITY
+'portal-notifier', role: 'CRON_SERVICE', organizationId }`, calling the SECURITY
   DEFINER helper `unit_customer_user_ids(unitId)`. Delivery then happens per recipient
   under THAT recipient's own context (`PushService.sendToUsers`), so the service
   identity never touches `PushSubscription` and no new policy is needed.
@@ -441,12 +442,12 @@ rejects>; no_claim=<what green does not prove>`.
 
 ## Testing Plan
 
-| Layer | What | Count |
-|---|---|---|
-| DB RLS (`packages/database/test/customer-portal-rls.test.ts`) | customer-vs-customer isolation on 5 tables; sales-table denial on 6; 5 booking statuses; helper fail-closed without GUCs; cross-org pointer; no write arms | +16 |
-| Unit (backend) | `me` ordering + empty case; timeline cursor parity with the staff route; 403/403/404/200 matrix; notifier recipient selection; notifier swallows failure; push delivery contract (410/404 drop the row, transient keeps it, failure never escapes) | +16 |
-| Unit (web) | portal layout role guards (3 cases); timeline states (4); unit switcher visible only for 2+ units; lock screen for null pointer; push prompt gating, dismissal durability, denied-permission guidance | +15 |
-| E2E (manual, slice gate) | seeded customer logs in on Android Chrome with a temporary password, is forced through `/change-password`, sees their unit timeline, enables notifications from the portal card, receives a push on the next engineer upload and the tap opens the photo | +1 |
+| Layer                                                         | What                                                                                                                                                                                                                                                     | Count |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| DB RLS (`packages/database/test/customer-portal-rls.test.ts`) | customer-vs-customer isolation on 5 tables; sales-table denial on 6; 5 booking statuses; helper fail-closed without GUCs; cross-org pointer; no write arms                                                                                               | +16   |
+| Unit (backend)                                                | `me` ordering + empty case; timeline cursor parity with the staff route; 403/403/404/200 matrix; notifier recipient selection; notifier swallows failure; push delivery contract (410/404 drop the row, transient keeps it, failure never escapes)       | +16   |
+| Unit (web)                                                    | portal layout role guards (3 cases); timeline states (4); unit switcher visible only for 2+ units; lock screen for null pointer; push prompt gating, dismissal durability, denied-permission guidance                                                    | +15   |
+| E2E (manual, slice gate)                                      | seeded customer logs in on Android Chrome with a temporary password, is forced through `/change-password`, sees their unit timeline, enables notifications from the portal card, receives a push on the next engineer upload and the tap opens the photo | +1    |
 
 ## Rules for the implementing agent
 
@@ -480,37 +481,37 @@ policies in a hotfix: absent policies deny, which is the safe direction.
 - PortalNotifier + push service-path + enqueue on upload: ~3h
 - Web portal (layout, timeline, switcher, lock, hooks): ~6h
 - DB-first RLS tests + backend/web unit tests: ~6h
-Total: ~26h human-equivalent.
+  Total: ~26h human-equivalent.
 
 ## Files Reference
 
-| File | Change |
-|---|---|
-| `packages/database/prisma/schema.prisma` | `Role += CUSTOMER`, `User.customerLeadId`, `Lead.customerUsers` |
-| `packages/database/prisma/migrations/<new>_customer_portal_slice2/migration.sql` | enum, column, FK, index, 2 helpers, 6 policies, grants |
-| `packages/database/prisma/rls/policies.sql` | mirror the 4 slice-1 policies, then the 6 new ones |
-| `packages/database/src/rls.ts:96-104` | `ROLES += 'CUSTOMER'` |
-| `packages/database/test/customer-portal-rls.test.ts` | new: 14 DB-first cases |
-| `packages/auth-client/src/jwt.ts:25-31` | `ROLES += 'CUSTOMER'` |
-| `packages/api-types/src/enums.ts:20-26,36` | `RoleSchema += 'CUSTOMER'` |
-| `apps/backend/src/app.module.ts` | register `CustomerPortalModule` |
-| `apps/backend/src/customer-portal/*` | new module, controller, service, portal-notifier |
-| `apps/backend/src/customer-progress/progress-photo.mapper.ts` | extracted from `customer-progress.service.ts`, no behaviour change |
-| `apps/backend/src/customer-progress/customer-progress.service.ts` | call `PortalNotifier.notifyNewPhoto` after commit |
-| `apps/backend/src/users/roles.ts:18-26,85-130` | `RANK.CUSTOMER`, admin-only create/change guards |
-| `apps/backend/src/users/users.service.ts` | `customerLeadId` validation on create and role change |
-| `apps/backend/src/push/push.service.ts` | `sendToUsers(organizationId, userIds, payload)` on the service path |
-| `apps/web/src/lib/session.ts:86,183-190`, `apps/web/src/lib/nav.ts:331-341` | `ROLE_RANK.CUSTOMER = 0`, ENGINEER corrected to 1, CUSTOMER out of linkable-staff and nav lists |
-| `apps/web/src/lib/labels.ts:280-296` | CUSTOMER label |
-| `apps/web/src/app/page.tsx` | CUSTOMER branch to `/portal` |
-| `apps/web/src/app/[orgSlug]/layout.tsx` | bounce CUSTOMER to `/portal` |
-| `apps/web/src/proxy.ts` | `/portal` behind the session gate |
-| `apps/web/src/app/(portal)/layout.tsx`, `portal/page.tsx` | new portal shell and timeline route |
-| `apps/web/src/components/portal/*` | timeline, unit switcher, lock screen, nav, push prompt |
-| `apps/web/src/app/(portal)/portal/page.tsx` | mounts `<PortalPushPrompt />` above the timeline (the buyer's only push opt-in) |
-| `apps/web/src/hooks/queries/customer-portal.ts` | new query hooks |
-| `apps/web/src/app/[orgSlug]/admin/users/components/CreateUserForm.tsx` | CUSTOMER option + required lead picker |
-| `packages/database/src/seed.ts` | demo customer + APPROVED booking |
+| File                                                                             | Change                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `packages/database/prisma/schema.prisma`                                         | `Role += CUSTOMER`, `User.customerLeadId`, `Lead.customerUsers`                                 |
+| `packages/database/prisma/migrations/<new>_customer_portal_slice2/migration.sql` | enum, column, FK, index, 2 helpers, 6 policies, grants                                          |
+| `packages/database/prisma/rls/policies.sql`                                      | mirror the 4 slice-1 policies, then the 6 new ones                                              |
+| `packages/database/src/rls.ts:96-104`                                            | `ROLES += 'CUSTOMER'`                                                                           |
+| `packages/database/test/customer-portal-rls.test.ts`                             | new: 14 DB-first cases                                                                          |
+| `packages/auth-client/src/jwt.ts:25-31`                                          | `ROLES += 'CUSTOMER'`                                                                           |
+| `packages/api-types/src/enums.ts:20-26,36`                                       | `RoleSchema += 'CUSTOMER'`                                                                      |
+| `apps/backend/src/app.module.ts`                                                 | register `CustomerPortalModule`                                                                 |
+| `apps/backend/src/customer-portal/*`                                             | new module, controller, service, portal-notifier                                                |
+| `apps/backend/src/customer-progress/progress-photo.mapper.ts`                    | extracted from `customer-progress.service.ts`, no behaviour change                              |
+| `apps/backend/src/customer-progress/customer-progress.service.ts`                | call `PortalNotifier.notifyNewPhoto` after commit                                               |
+| `apps/backend/src/users/roles.ts:18-26,85-130`                                   | `RANK.CUSTOMER`, admin-only create/change guards                                                |
+| `apps/backend/src/users/users.service.ts`                                        | `customerLeadId` validation on create and role change                                           |
+| `apps/backend/src/push/push.service.ts`                                          | `sendToUsers(organizationId, userIds, payload)` on the service path                             |
+| `apps/web/src/lib/session.ts:86,183-190`, `apps/web/src/lib/nav.ts:331-341`      | `ROLE_RANK.CUSTOMER = 0`, ENGINEER corrected to 1, CUSTOMER out of linkable-staff and nav lists |
+| `apps/web/src/lib/labels.ts:280-296`                                             | CUSTOMER label                                                                                  |
+| `apps/web/src/app/page.tsx`                                                      | CUSTOMER branch to `/portal`                                                                    |
+| `apps/web/src/app/[orgSlug]/layout.tsx`                                          | bounce CUSTOMER to `/portal`                                                                    |
+| `apps/web/src/proxy.ts`                                                          | `/portal` behind the session gate                                                               |
+| `apps/web/src/app/(portal)/layout.tsx`, `portal/page.tsx`                        | new portal shell and timeline route                                                             |
+| `apps/web/src/components/portal/*`                                               | timeline, unit switcher, lock screen, nav, push prompt                                          |
+| `apps/web/src/app/(portal)/portal/page.tsx`                                      | mounts `<PortalPushPrompt />` above the timeline (the buyer's only push opt-in)                 |
+| `apps/web/src/hooks/queries/customer-portal.ts`                                  | new query hooks                                                                                 |
+| `apps/web/src/app/[orgSlug]/admin/users/components/CreateUserForm.tsx`           | CUSTOMER option + required lead picker                                                          |
+| `packages/database/src/seed.ts`                                                  | demo customer + APPROVED booking                                                                |
 
 ## Out of Scope
 

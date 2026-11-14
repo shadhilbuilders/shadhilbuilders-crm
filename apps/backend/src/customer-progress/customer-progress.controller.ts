@@ -68,9 +68,7 @@ export class CustomerProgressController {
   ): Promise<unknown> {
     const parsed = UploadPhotoSchema.safeParse(body);
     if (!parsed.success) {
-      const msg = parsed.error.issues
-        .map((i) => `${i.path.join('.')}: ${i.message}`)
-        .join('; ');
+      const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
       throw new BadRequestException(msg || 'Invalid upload payload');
     }
     return this.service.upload(req.user!, unitId, parsed.data);
@@ -87,7 +85,9 @@ export class CustomerProgressController {
   }
 
   @Post('projects/:projectId/members/:userId/photo-lead')
-  @ApiOperation({ summary: 'Grant/revoke the per-project photo-lead authority (OWNER/ADMIN only).' })
+  @ApiOperation({
+    summary: 'Grant/revoke the per-project photo-lead authority (OWNER/ADMIN only).',
+  })
   async setPhotoLead(
     @Req() req: AuthedRequest,
     @Param('projectId') projectId: string,
@@ -125,7 +125,8 @@ export class CustomerProgressController {
 
   @Delete('photos/:photoId')
   @ApiOperation({
-    summary: 'Delete a photo and its stored bytes (ADMIN, the uploader, or the project photo lead).',
+    summary:
+      'Delete a photo and its stored bytes (ADMIN, the uploader, or the project photo lead).',
   })
   async deletePhoto(
     @Req() req: AuthedRequest,

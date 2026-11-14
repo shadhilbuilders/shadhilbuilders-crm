@@ -36,7 +36,7 @@ const render = (visits: unknown[], isExec = false) =>
       isExec={isExec}
       orgSlug="demo"
       projectSlug="demo-villas"
-    />
+    />,
   );
 
 describe('TodayVisitsCard', () => {
@@ -48,7 +48,7 @@ describe('TodayVisitsCard', () => {
     // pattern happily matches the `underline` inside `hover:underline`, which is
     // the string we want to keep.
     const classTokens = [...html.matchAll(/class="([^"]*)"/g)].flatMap((m) =>
-      (m[1] ?? '').split(/\s+/).filter((t) => t.length > 0)
+      (m[1] ?? '').split(/\s+/).filter((t) => t.length > 0),
     );
     expect(classTokens).not.toContain('underline');
     expect(classTokens).toContain('hover:underline');

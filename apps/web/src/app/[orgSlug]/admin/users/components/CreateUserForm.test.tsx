@@ -16,8 +16,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -49,13 +48,9 @@ import { CreateUserForm, CreateUserFormSchema } from './CreateUserForm';
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
-async function mount(creatableRoles: string[] = [
-  'ADMIN',
-  'MANAGER',
-  'TELECALLER',
-  'SALES_EXEC',
-  'ENGINEER',
-]): Promise<void> {
+async function mount(
+  creatableRoles: string[] = ['ADMIN', 'MANAGER', 'TELECALLER', 'SALES_EXEC', 'ENGINEER'],
+): Promise<void> {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -112,8 +107,6 @@ afterEach(async () => {
 });
 
 describe('CreateUserForm silent-submit regression', () => {
-
-
   it('valid submit fires the mutation once with the typed payload and shows no alert', async () => {
     await mount();
     // Act on the REAL inputs so RHF registration + zod see actual values.
@@ -260,7 +253,8 @@ describe('CreateUserForm team-required error renders INLINE (not a toast)', () =
     expect(inline?.textContent ?? '').toContain('Select a team for this user');
     // Guards the duplicate: the Combobox's own message must NOT be present.
     expect(teamField?.querySelector('[data-qa="combobox-error-message"]')).toBeNull();
-    const occurrences = (teamField?.textContent ?? '').split('Select a team for this user').length - 1;
+    const occurrences =
+      (teamField?.textContent ?? '').split('Select a team for this user').length - 1;
     expect(occurrences).toBe(1);
 
     // The picker is marked invalid so it reads as an error, not a hint.

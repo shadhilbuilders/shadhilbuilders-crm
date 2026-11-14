@@ -51,18 +51,20 @@ vi.mock('@shadhil/database', () => {
       // (where: { managerId, deletedAt }, select: { id: true } only) and
       // TeamsService.list()'s own final query (where: { deletedAt } or
       // { deletedAt, id: { in } }, with the full select shape).
-      findMany: vi.fn(async (args: { where?: { managerId?: string; id?: { in: string[] } } } = {}) => {
-        const where = args.where ?? {};
-        if (where.managerId !== undefined) {
-          return allTeamRows
-            .filter((t) => t.managerId === where.managerId)
-            .map((t) => ({ id: t.id }));
-        }
-        if (where.id !== undefined) {
-          return allTeamRows.filter((t) => where.id!.in.includes(t.id));
-        }
-        return allTeamRows;
-      }),
+      findMany: vi.fn(
+        async (args: { where?: { managerId?: string; id?: { in: string[] } } } = {}) => {
+          const where = args.where ?? {};
+          if (where.managerId !== undefined) {
+            return allTeamRows
+              .filter((t) => t.managerId === where.managerId)
+              .map((t) => ({ id: t.id }));
+          }
+          if (where.id !== undefined) {
+            return allTeamRows.filter((t) => where.id!.in.includes(t.id));
+          }
+          return allTeamRows;
+        },
+      ),
       findUnique: vi.fn(async (args: { where: { id: string } }) => {
         if (args.where.id === 'team-missing') return null;
         if (args.where.id === 'team-real-estate') {
@@ -87,27 +89,29 @@ vi.mock('@shadhil/database', () => {
     // TeamMember row, so [] there); getTeam() asks for
     // `select: { user: {...} } }` and gets the roster's ordinary members.
     teamMember: {
-      findMany: vi.fn(async (args: { select?: { user?: unknown }; where?: { userId?: string } } = {}) => {
-        if (args.select?.user !== undefined) {
-          return [
-            {
-              user: {
-                id: 'u-tc',
-                name: 'Tele Caller One',
-                email: 'tc1@x',
-                role: 'TELECALLER',
+      findMany: vi.fn(
+        async (args: { select?: { user?: unknown }; where?: { userId?: string } } = {}) => {
+          if (args.select?.user !== undefined) {
+            return [
+              {
+                user: {
+                  id: 'u-tc',
+                  name: 'Tele Caller One',
+                  email: 'tc1@x',
+                  role: 'TELECALLER',
+                },
               },
-            },
-          ];
-        }
-        // TeamAccessService.getOrdinaryMemberTeamIds(userId) shape
-        // (select: { teamId: true }) - the telecaller fixture is an
-        // ordinary member of team-construction via this row.
-        if (args.where?.userId === 'tc-1') {
-          return [{ teamId: 'team-construction' }];
-        }
-        return [];
-      }),
+            ];
+          }
+          // TeamAccessService.getOrdinaryMemberTeamIds(userId) shape
+          // (select: { teamId: true }) - the telecaller fixture is an
+          // ordinary member of team-construction via this row.
+          if (args.where?.userId === 'tc-1') {
+            return [{ teamId: 'team-construction' }];
+          }
+          return [];
+        },
+      ),
     },
     user: {
       findUnique: vi.fn(async (args: { where: { id: string } }) => {
@@ -129,21 +133,15 @@ vi.mock('@shadhil/database', () => {
   };
   return {
     prisma: {},
-    rlsContextFrom: vi.fn((actor: {
-      sub: string;
-      role: string;
-      organizationId?: string | null;
-    }) => ({
-      userId: actor.sub,
-      role: actor.role,
-      organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
-    })),
+    rlsContextFrom: vi.fn(
+      (actor: { sub: string; role: string; organizationId?: string | null }) => ({
+        userId: actor.sub,
+        role: actor.role,
+        organizationId: actor.organizationId ?? 'ceid01lpfe1esm8jwsxid41k28',
+      }),
+    ),
     withRlsContext: vi.fn(
-      async (
-        _client: unknown,
-        _ctx: unknown,
-        callback: (t: typeof tx) => unknown,
-      ) => {
+      async (_client: unknown, _ctx: unknown, callback: (t: typeof tx) => unknown) => {
         txCapture.current = tx;
         return callback(tx);
       },
@@ -194,8 +192,7 @@ describe('TeamsService.list', () => {
     const svc = new TeamsService({ $client: {} } as never);
     await svc.list(ownerActor);
     expect(withRlsContext).toHaveBeenCalledTimes(1);
-    const ctx = (withRlsContext as unknown as { mock: { calls: unknown[][] } })
-      .mock.calls[0]![1];
+    const ctx = (withRlsContext as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1];
     expect(ctx).toEqual({
       userId: 'owner-1',
       role: 'OWNER',
@@ -301,9 +298,7 @@ describe('TeamsService.getTeam', () => {
 
   it('throws 404 when the team does not exist', async () => {
     const svc = new TeamsService({ $client: {} } as never);
-    await expect(svc.getTeam(ownerActor, 'team-missing')).rejects.toThrow(
-      /not found/,
-    );
+    await expect(svc.getTeam(ownerActor, 'team-missing')).rejects.toThrow(/not found/);
   });
 
   it('returns manager + members (no per-member projects field - retired with ProjectMember) + the fixed org owner', async () => {

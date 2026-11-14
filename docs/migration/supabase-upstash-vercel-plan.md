@@ -18,7 +18,8 @@ silently. Everything else is config + comments.
 
 ## Gates (must solve before cutover)
 
-### Gate 1 — Supabase pooler vs RLS session mode  (HIGH)
+### Gate 1 — Supabase pooler vs RLS session mode (HIGH)
+
 - The app REQUIRES session-mode pooling. `apps/backend/src/main.ts` calls
   `verifyPoolMode()` and refuses to boot unless `POOL_MODE=session`
   (`packages/database/src/boot-check.ts`). RLS uses `SET LOCAL app.user_id/role/org_id`
@@ -30,14 +31,15 @@ silently. Everything else is config + comments.
   it, every tenant policy silently stops enforcing. Migrations must run as owner;
   the app must NOT.
   → Create a non-owner role `shadhil_app` in Supabase with the same shape as
-    `docker/postgres-init/00-init.sql` (NOSUPERUSER NOBYPASSRLS, no table
-    ownership, schema USAGE + the GRANTs from `prisma/rls/policies.sql`), and use
-    Supavisor's role-scoped username `shadhil_app.<ref>` on :5432.
+  `docker/postgres-init/00-init.sql` (NOSUPERUSER NOBYPASSRLS, no table
+  ownership, schema USAGE + the GRANTs from `prisma/rls/policies.sql`), and use
+  Supavisor's role-scoped username `shadhil_app.<ref>` on :5432.
   → **Acceptance test:** as `shadhil_app` with `app.user_org_id = OrgA`, a raw
-    `SELECT * FROM "Lead"` must return 0 rows of OrgB. If it returns any, RLS is
-    bypassed — stop.
+  `SELECT * FROM "Lead"` must return 0 rows of OrgB. If it returns any, RLS is
+  bypassed — stop.
 
-### Gate 2 — Web on Vercel connects to Postgres DIRECTLY  (HIGH)
+### Gate 2 — Web on Vercel connects to Postgres DIRECTLY (HIGH)
+
 - `apps/web/src/lib/server/tenant.ts` and `apps/web/src/app/api/bff/[...path]/route.ts`
   both `import { prisma } from '@shadhil/database'` and query `session`. So Vercel
   needs a DB connection — it is not purely a BFF proxy.
@@ -45,15 +47,16 @@ silently. Everything else is config + comments.
   no RLS policies) so they do NOT need session mode.
 - But Vercel is serverless: many short-lived instances → connection exhaustion.
   → Web's `DATABASE_URL` must be the **transaction pooler (:6543)** with a per-
-    instance cap. With the Prisma 7 `@prisma/adapter-pg` driver adapter the cap is
-    `DB_POOL_MAX` (not `connection_limit=1`); set `DB_POOL_MAX=1` for web.
+  instance cap. With the Prisma 7 `@prisma/adapter-pg` driver adapter the cap is
+  `DB_POOL_MAX` (not `connection_limit=1`); set `DB_POOL_MAX=1` for web.
   → Web also requires `DIRECT_DATABASE_URL` to pass `env.ts` validation
-    (`z.url()`), even though it never connects with it at build. Point it at the
-    Supabase session string.
+  (`z.url()`), even though it never connects with it at build. Point it at the
+  Supabase session string.
 
-### Gate 3 — Postgres version + dump restore  (MEDIUM)
+### Gate 3 — Postgres version + dump restore (MEDIUM)
+
 - Local prod is PG 16 (`postgres:16-alpine`; dump header `PostgreSQL database
-  format 16.15`). Confirm the Supabase project is Postgres **>= 16** before
+format 16.15`). Confirm the Supabase project is Postgres **>= 16** before
   restoring, or the restore/migrate can fail on version-specific SQL.
 - Restore path: `prisma migrate deploy` (creates schema) OR restore the
   age-encrypted `pg_dump` (data). For a live cutover, dump-then-restore preserves
@@ -83,6 +86,7 @@ VPS (unchanged)   → api    (NestJS)          → Supabase (session pooler 5432
 api + sse         → Upstash Redis (rediss://)
 VPS: postgres, pgbouncer, redis, web  → STOPPED (commented out, not deleted)
 ```
+
 Traefik still fronts api.crm + sse.crm on the VPS (unchanged). Vercel serves
 crm.shadhilbuilders.in and BFFs to https://api.crm.shadhilbuilders.in.
 
@@ -92,7 +96,7 @@ Rule: **never delete a service block, never delete an env value.** Comment with
 an explicit banner; keep the old values adjacent.
 
 1. Snapshot the current compose verbatim:
-   `docker/coolify-compose.full.yml`  ← the "everything on VPS" version.
+   `docker/coolify-compose.full.yml` ← the "everything on VPS" version.
 2. Active compose = `docker/coolify-compose.yml` with the four blocks wrapped:
    ```
    # ==========================================================================
@@ -118,6 +122,7 @@ an explicit banner; keep the old values adjacent.
    local copy of the data, so reverting restores the old DB as it was at cutover.
 
 Switchback = 3 steps, ~2 min:
+
 ```
 cp docker/coolify-compose.full.yml docker/coolify-compose.yml
 PATCH that compose to the Coolify service + restore [REVERT] env values
@@ -127,6 +132,7 @@ restart the service
 ## Change list (when approved)
 
 Repo:
+
 - `docker/coolify-compose.full.yml` (new, snapshot)
 - `docker/coolify-compose.yml` (comment out 4 blocks + `[REVERT]` banners)
 - `docs/migration/cutover.md` (new: old/new env values, runbook, revert steps)
@@ -134,6 +140,7 @@ Repo:
   (monorepo root dir + `pnpm --filter @shadhil/web build`).
 
 Coolify (VPS), via API PATCH:
+
 - PATCH service compose (commented version)
 - Set api + sse env: `DATABASE_URL` → Supabase shadhil_app session :5432,
   `DIRECT_DATABASE_URL` → Supabase owner session :5432, `REDIS_URL` → Upstash.
@@ -141,6 +148,7 @@ Coolify (VPS), via API PATCH:
 - Restart service; api+sse come back pointed at Supabase/Upstash.
 
 Vercel (web project `prj_xZlhyl...`):
+
 - Root Directory = `apps/web` (it's currently at repo root — this is the main
   build change). Install: `pnpm install` (root); Build: `pnpm --filter @shadhil/web build`.
 - Env: `DATABASE_URL` (transaction pooler :6543, `DB_POOL_MAX=1`),
@@ -152,6 +160,7 @@ Vercel (web project `prj_xZlhyl...`):
   (comment it, per the same rule).
 
 Migrations:
+
 - Run once against Supabase: `prisma migrate deploy` (+ `00-init.sql` role/policies
   if not restoring a dump), then load data if restoring.
 - Deploy workflow still runs `migrate deploy` in the api container — keep

@@ -50,12 +50,8 @@ describe('isOverdue', () => {
   });
 
   it('false: non-NEW states are exempt even when ancient', () => {
-    expect(
-      isOverdue({ status: 'CONTACTED', createdAt: minutesAgo(7 * 24 * 60) }),
-    ).toBe(false);
-    expect(
-      isOverdue({ status: 'RNR', createdAt: minutesAgo(7 * 24 * 60) }),
-    ).toBe(false);
+    expect(isOverdue({ status: 'CONTACTED', createdAt: minutesAgo(7 * 24 * 60) })).toBe(false);
+    expect(isOverdue({ status: 'RNR', createdAt: minutesAgo(7 * 24 * 60) })).toBe(false);
   });
 
   it('false: missing createdAt (fail-closed)', () => {
@@ -83,8 +79,7 @@ describe('isOverdue', () => {
 describe('leadAgeTier', () => {
   const NOW = Date.parse('2026-09-15T12:00:00.000Z');
   /** ISO createdAt for a NEW lead created `min` minutes before NOW. */
-  const createdMinAgo = (min: number) =>
-    new Date(NOW - min * 60_000).toISOString();
+  const createdMinAgo = (min: number) => new Date(NOW - min * 60_000).toISOString();
 
   function tier(minAgo: number, status = 'NEW') {
     return leadAgeTier({ status, createdAt: createdMinAgo(minAgo) }, NOW);
@@ -162,8 +157,6 @@ describe('leadAgeTier', () => {
 
   it('the warn tier is a deeper yellow than the age tier', () => {
     const shade = (cls: string) => Number(/-(\d{2,3})\b/.exec(cls)?.[1] ?? 0);
-    expect(shade(LEAD_AGE_TIER_CLASS.warn)).toBeGreaterThan(
-      shade(LEAD_AGE_TIER_CLASS.age),
-    );
+    expect(shade(LEAD_AGE_TIER_CLASS.warn)).toBeGreaterThan(shade(LEAD_AGE_TIER_CLASS.age));
   });
 });

@@ -54,14 +54,17 @@ export function GuestTopBar() {
           59px inset, which lifts the lockup from 8px of air either side to 10px,
           matching AppHeader's controls. */}
       <div className="container mx-auto flex h-[calc(4.75rem+min(1.5rem,env(safe-area-inset-top)))] w-full max-w-7xl items-center justify-between gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-2 h-15" data-qa="guest-brand">
+        <div className="flex h-15 min-w-0 items-center gap-2" data-qa="guest-brand">
           {/* Transparent lockup (logo.png - tight 4% padding, wordmark +
               tagline) on a FIXED LIGHT chip: the PNG's navy letters are
               hard-coded, so the surface behind them must stay light in
               both themes. bg-card is theme-dependent (near-black in dark
               mode → navy-on-navy contrast failure, found in-browser);
               bg-white + a subtle border reads as a brand plate instead. */}
-          <Link href="/" className="border-border bg-white my-1 inline-flex h-full items-center overflow-hidden rounded-lg border px-3 py-2 dark:bg-white">
+          <Link
+            href="/"
+            className="border-border my-1 inline-flex h-full items-center overflow-hidden rounded-lg border bg-white px-3 py-2 dark:bg-white"
+          >
             <Image
               src="/brand/logo.png"
               alt="Shadhil Builders"

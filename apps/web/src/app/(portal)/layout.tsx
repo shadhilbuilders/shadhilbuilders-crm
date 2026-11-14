@@ -67,7 +67,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={`${PORTAL_FONT_VARIABLES} portal-theme portal-grain relative flex min-h-dvh flex-col bg-(--portal-paper) text-foreground antialiased`}
+      className={`${PORTAL_FONT_VARIABLES} portal-theme portal-grain text-foreground relative flex min-h-dvh flex-col bg-(--portal-paper) antialiased`}
     >
       <PortalHeader name={user?.name} />
       <main className="relative z-10 mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-10 text-[0.9375rem] sm:px-10">

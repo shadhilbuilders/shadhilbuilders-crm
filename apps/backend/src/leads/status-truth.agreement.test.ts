@@ -28,11 +28,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { JwtPayload } from '@shadhil/auth';
-import {
-  prisma as runtimePrisma,
-  type PrismaClient,
-  withRlsContext,
-} from '@shadhil/database';
+import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 import { OVERDUE_AFTER_MIN } from '@shadhil/api-types';
 
 import { DashboardService } from '../dashboard/dashboard.service';
@@ -111,11 +107,27 @@ const CAN_DISCRIMINATE = DISCRIMINATOR_AT.getTime() > BAND_START.getTime();
 
 const FIXTURE: FixtureRow[] = [
   { id: `statustruth-l-fresh-${RUN}`, state: 'NEW', createdAt: new Date(NOW.getTime() - 5 * MIN) },
-  { id: `statustruth-l-overdue-${RUN}`, state: 'NEW', createdAt: new Date(NOW.getTime() - 45 * MIN) },
+  {
+    id: `statustruth-l-overdue-${RUN}`,
+    state: 'NEW',
+    createdAt: new Date(NOW.getTime() - 45 * MIN),
+  },
   { id: `statustruth-l-latenight-${RUN}`, state: 'NEW', createdAt: DISCRIMINATOR_AT },
-  { id: `statustruth-l-won-${RUN}`, state: 'WON', createdAt: new Date(MIDNIGHT.getTime() + 60 * MIN) },
-  { id: `statustruth-l-lost-${RUN}`, state: 'LOST', createdAt: new Date(MIDNIGHT.getTime() + 90 * MIN) },
-  { id: `statustruth-l-contacted-${RUN}`, state: 'CONTACTED', createdAt: new Date(MIDNIGHT.getTime() + 30 * MIN) },
+  {
+    id: `statustruth-l-won-${RUN}`,
+    state: 'WON',
+    createdAt: new Date(MIDNIGHT.getTime() + 60 * MIN),
+  },
+  {
+    id: `statustruth-l-lost-${RUN}`,
+    state: 'LOST',
+    createdAt: new Date(MIDNIGHT.getTime() + 90 * MIN),
+  },
+  {
+    id: `statustruth-l-contacted-${RUN}`,
+    state: 'CONTACTED',
+    createdAt: new Date(MIDNIGHT.getTime() + 30 * MIN),
+  },
 ];
 
 /**
@@ -308,22 +320,23 @@ async function bothSurfaces() {
 }
 
 describe('the two endpoints agree on "new today"', () => {
-  it.skipIf(!CAN_DISCRIMINATE)('the fixture can actually tell the two definitions apart', async () => {
-    // Guards the guard. The rolling-24h bug is only detectable if the
-    // discriminator lead sits inside `[now - 24h, midnight)`. If it does not,
-    // this suite would pass against the bug - the worst possible outcome for a
-    // regression test - so assert the preconditions explicitly and fail loudly
-    // rather than reporting green.
-    //
-    // Skipped (visibly) in the last minute before midnight, when the band is
-    // empty and no fixture can discriminate. That is the one honest option: a
-    // pass there would be a lie and a failure would be a false alarm.
-    expect(DISCRIMINATOR_AT.getTime()).toBeLessThan(MIDNIGHT.getTime());
-    expect(DISCRIMINATOR_AT.getTime()).toBeGreaterThan(NOW.getTime() - 24 * 60 * MIN);
-    expect(EXPECTED_NEW_TODAY).toBeLessThan(
-      FIXTURE.filter((r) => r.state === 'NEW').length,
-    );
-  });
+  it.skipIf(!CAN_DISCRIMINATE)(
+    'the fixture can actually tell the two definitions apart',
+    async () => {
+      // Guards the guard. The rolling-24h bug is only detectable if the
+      // discriminator lead sits inside `[now - 24h, midnight)`. If it does not,
+      // this suite would pass against the bug - the worst possible outcome for a
+      // regression test - so assert the preconditions explicitly and fail loudly
+      // rather than reporting green.
+      //
+      // Skipped (visibly) in the last minute before midnight, when the band is
+      // empty and no fixture can discriminate. That is the one honest option: a
+      // pass there would be a lie and a failure would be a false alarm.
+      expect(DISCRIMINATOR_AT.getTime()).toBeLessThan(MIDNIGHT.getTime());
+      expect(DISCRIMINATOR_AT.getTime()).toBeGreaterThan(NOW.getTime() - 24 * 60 * MIN);
+      expect(EXPECTED_NEW_TODAY).toBeLessThan(FIXTURE.filter((r) => r.state === 'NEW').length);
+    },
+  );
 
   it('dashboard KPI === leads page count, and both equal the fixture truth', async () => {
     const { envelope, stats } = await bothSurfaces();
@@ -360,7 +373,9 @@ describe('the two endpoints agree on "new today"', () => {
     // any time of day: before the fix, marking a deal WON today made the number
     // go UP by one.
     const dashboard = new DashboardService(new PrismaService());
-    const target = FIXTURE.find((r) => r.state === 'NEW' && r.createdAt.getTime() >= MIDNIGHT.getTime());
+    const target = FIXTURE.find(
+      (r) => r.state === 'NEW' && r.createdAt.getTime() >= MIDNIGHT.getTime(),
+    );
     // Only meaningful when a today-created NEW lead exists (i.e. not in the
     // first minutes after midnight, when the fixture has none).
     if (target === undefined) return;

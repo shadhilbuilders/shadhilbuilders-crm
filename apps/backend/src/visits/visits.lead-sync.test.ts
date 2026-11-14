@@ -45,8 +45,10 @@ const TC_ID = `test-lsc-tc-${RUN}`;
 
 async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
   if (prisma === null) throw new Error('prisma missing');
-  return withRlsContext(prisma, { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID }, async (tx) =>
-    fn(tx as unknown as PrismaClient),
+  return withRlsContext(
+    prisma,
+    { userId: ADMIN_ID, role: 'ADMIN', organizationId: ORG_ID },
+    async (tx) => fn(tx as unknown as PrismaClient),
   );
 }
 
@@ -98,7 +100,14 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
         await db.user.upsert({
           where: { id },
           update: { role },
-          create: { id, email: `${id}@example.com`, name, role, mustChangePassword: false, organizationId: ORG_ID },
+          create: {
+            id,
+            email: `${id}@example.com`,
+            name,
+            role,
+            mustChangePassword: false,
+            organizationId: ORG_ID,
+          },
         });
       }
     });
@@ -108,7 +117,9 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
     if (prisma === null) return;
     await adminSeed(async (db) => {
       if (LEAD_IDS.length > 0) {
-        await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`, [...LEAD_IDS]);
+        await db.$executeRawUnsafe(`DELETE FROM "SiteVisit" WHERE "leadId" = ANY($1::text[])`, [
+          ...LEAD_IDS,
+        ]);
         await db.$executeRawUnsafe(`DELETE FROM "Lead" WHERE id = ANY($1::text[])`, [...LEAD_IDS]);
       }
     });

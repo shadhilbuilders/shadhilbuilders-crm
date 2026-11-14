@@ -31,27 +31,16 @@
 // non-throwing on the landing side (mirror pattern). This endpoint is that
 // write.
 
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 import { withRlsContext, type PrismaClient } from '@shadhil/database';
-import {
-  CreateLeadDtoSchema,
-  normalizeLeadSource,
-} from '@shadhil/api-types';
+import { CreateLeadDtoSchema, normalizeLeadSource } from '@shadhil/api-types';
 
 import { LeadsService } from '../leads/leads.service';
 import { LeadFactsService } from '../leads/lead-facts.service';
 import { PrismaService } from '../prisma/prisma.module';
 
-import type {
-  PublicCreateLeadDto,
-  PublicCreateLeadResult,
-} from '@shadhil/api-types';
+import type { PublicCreateLeadDto, PublicCreateLeadResult } from '@shadhil/api-types';
 
 // Service-account RLS context for the public-leads slug lookups. All of
 // Organization / Project (and Lead) are FORCE ROW LEVEL SECURITY; reading
@@ -97,19 +86,13 @@ export class PublicLeadsService {
     // Validate an optional caller-supplied owner against the resolved org.
     // When valid it overrides the engine; when invalid we ignore it and let
     // the engine assign (never trust an arbitrary staff id blind).
-    const forcedOwnerId = await this.validateOwner(
-      dto.ownerId ?? '',
-      orgId,
-    );
+    const forcedOwnerId = await this.validateOwner(dto.ownerId ?? '', orgId);
     if (forcedOwnerId !== null) {
-      this.logger.log(
-        `[public-leads] ownerOverride org=${orgId} owner=${forcedOwnerId}`,
-      );
+      this.logger.log(`[public-leads] ownerOverride org=${orgId} owner=${forcedOwnerId}`);
     }
 
     // Resolve the configured fallback owner (engine's no-match fallback).
-    const fallbackOwnerId =
-      process.env['LEADS_FALLBACK_OWNER_ID'] ?? '';
+    const fallbackOwnerId = process.env['LEADS_FALLBACK_OWNER_ID'] ?? '';
     if (fallbackOwnerId === '') {
       throw new BadRequestException(
         'LEADS_FALLBACK_OWNER_ID is not configured - cannot create a landing lead without a destination owner',
@@ -165,11 +148,7 @@ export class PublicLeadsService {
       async (tx) => {
         const client = tx as unknown as PrismaClient;
 
-        const created = await this.leadsService.createInTransaction(
-          actor,
-          createDto,
-          client,
-        );
+        const created = await this.leadsService.createInTransaction(actor, createDto, client);
 
         const email = (dto.email ?? '').trim();
         if (email !== '') {
@@ -257,10 +236,7 @@ export class PublicLeadsService {
    *  created a project-less lead - the exact corruption this change removes.
    *  Misconfiguration now fails loudly (see the throws below) instead of
    *  producing data that no project surface can ever show. */
-  private async resolveProjectId(
-    slug: string | undefined,
-    orgId: string,
-  ): Promise<string> {
+  private async resolveProjectId(slug: string | undefined, orgId: string): Promise<string> {
     const fallback = process.env['LEADS_FALLBACK_PROJECT_ID'] ?? '';
     if (slug && slug.trim().length > 0) {
       const project = await withRlsContext(
@@ -314,10 +290,7 @@ export class PublicLeadsService {
    *  caller never forces an owner). Invalid ids are ignored, not rejected, so
    *  a bad/malicious ownerId can't block lead capture or dump leads onto
    *  unrelated staff. */
-  private async validateOwner(
-    ownerId: string,
-    orgId: string,
-  ): Promise<string | null> {
+  private async validateOwner(ownerId: string, orgId: string): Promise<string | null> {
     const id = ownerId.trim();
     if (id === '') return null;
     const user = await this.prisma.$client.user.findUnique({
