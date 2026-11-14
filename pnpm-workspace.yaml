@@ -25,6 +25,19 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.11.7'
   - '@turbo/windows-arm64@2.11.7'
   - turbo@2.11.7
+  - '@better-auth/core@1.7.23'
+  - '@better-auth/drizzle-adapter@1.7.23'
+  - '@better-auth/kysely-adapter@1.7.23'
+  - '@better-auth/memory-adapter@1.7.23'
+  - '@better-auth/mongo-adapter@1.7.23'
+  - '@better-auth/prisma-adapter@1.7.23'
+  - '@better-auth/telemetry@1.7.23'
+  - '@eslint/config-array@0.23.6'
+  - '@nestjs/cli@12.0.13'
+  - '@nestjs/schedule@12.0.4'
+  - '@nestjs/swagger@12.1.2'
+  - better-auth@1.7.23
+  - eslint@10.15.0
 
 overrides:
   # eslint-config-next (transitively) pins eslint-plugin-react@7.37.5,
@@ -46,7 +59,6 @@ overrides:
   'browserslist': '4.28.7'
   'deepmerge-ts': '8.0.0'
   'mysql2': '3.23.1'
-  'qs': '6.16.0'
 
   # ── Dependabot #12 (GHSA-w5hq-g745-h8pq) - uuid buffer bounds check. ──
   # uuid < 11.1.1 lacks a buffer-bounds guard on the v3/v5/v6 API methods.
@@ -77,7 +89,8 @@ overrides:
   # @prisma/dev -> @prisma/streams-local -> ajv. It is also a dev-toolchain dep
   # (via @nestjs/cli). The earlier "DEV toolchain dep here, not in the runtime
   # graph" comment was wrong; treat findings here as runtime-reachable.
-  'fast-uri': '3.1.8'
+  # SUPERSEDED 2026-11-14: moved to 3.1.9, see the 2026-11-14 block below.
+  'fast-uri': '3.1.9'
 
   # brace-expansion GHSA-6j4f-fj2g-mc7p (high, stack exhaustion in
   # parseCommaParts), GHSA-qhr7-859c-m2p7 (high, recursion on nested brace
@@ -104,4 +117,54 @@ overrides:
   # is deliberately left alone rather than dragged across a major boundary to
   # satisfy a scanner. Only 8.x moves, to the first patched version - which
   # fits jsdom's own declared range.
-  'undici@>=8 <9': '8.10.2'
+  # SUPERSEDED 2026-11-14: six further advisories DO cover the 7.x line, so
+  # both copies move now. See the 2026-11-14 block below.
+  'undici@>=7 <8': '7.30.1'
+  'undici@>=8 <9': '8.12.4'
+
+  # ── Dependabot 2026-11-14 - 55 open advisories. ───────────────────────
+  # The two worst are fixed at the PARENT, not here: next@16.3.7 carried two
+  # critical RCEs (use-cache typed-array return, Image Optimization SVG path)
+  # and better-auth@1.7.2 carried an OAuth/magic-link account takeover. See
+  # apps/web/package.json (next ^16.4.6, better-auth ^1.7.23). What follows is
+  # the transitive surface no parent bump reaches.
+  #
+  # qs - GHSA-6pq8-jhm2-2vcw (stringify throws on arrayFormat 'comma' with
+  # null elements, affected <= 6.16.0). The 2026-09-03 pin at 6.16.0 sat
+  # inside the affected range. express@5.3.0 and superagent declare ^6.16.0,
+  # so 6.17.1 is a legal re-resolve, not a range break.
+  #
+  # fast-uri - four advisories now (percent-encoded scheme spoofing, host
+  # confusion, path equivalence, first-segment colon injection) all patched at
+  # 3.1.9. The 4.x line is a major and ajv@8.20.0 declares ^3.0.1, so 3.1.9
+  # stays inside the legal bound.
+  #
+  # glob - GHSA-3g3m-2fjr-6pw4 (AbortSignal cancellation bypass) affects
+  # >= 9.0.0 <= 14.0.1, so there is NO fix on 13.x. @serwist/build pins
+  # 13.0.6 exactly, which means the only way off the vulnerable line is the
+  # 14.x major. glob 14 ships a CJS `require` condition, so the serwist
+  # builder keeps resolving; `pnpm build` on apps/web is the proof.
+  #
+  # minimatch - GHSA-g3hv-75wg-m249 (globparts amplification DoS) affects
+  # >= 7.0.0 < 11.0.1, again with no fix on 10.x.
+  # @typescript-eslint/typescript-estree declares ^10.2.2, so 11.0.8 is a
+  # forced major. minimatch 11 is dual CJS/ESM, so the CJS consumers (eslint
+  # config array, @nestjs/cli, ts-eslint) still load; `pnpm lint` is the proof.
+  'qs': '6.17.1'
+  'glob@>=13 <15': '14.0.6'
+  'minimatch@>=10 <11': '11.0.8'
+
+  # zod - GHSA-mrhx-c7xc-m3w5 (high, memory exhaustion while validating
+  # oversized constrained collections) is patched at 4.6.6, so it is the only
+  # advisory here with no safe line to fall back to. Three copies were
+  # installed: 4.6.7 (our own workspaces, better-auth), 4.4.3 (@serwist/build)
+  # and 3.25.76 (@paalstack/react-ui, which declares ^3.25.76 and is the last
+  # 3.x release ever published). The selector only claims requests that can
+  # still land below 4.6.6, so our own ^4.6.7 entries are left alone.
+  #
+  # The react-ui copy is the one worth justifying: its dist ships NO runtime
+  # `zod` import at all (grep for zod in dist/*.js returns nothing); the only
+  # reference is a single `import z from 'zod'` in index.d.ts used for one
+  # `z.ZodObject` type. Forcing that type onto zod 4 therefore cannot change
+  # library behaviour, and `pnpm type-check` on apps/web is the proof.
+  'zod@<4.6.6': '4.6.7'
