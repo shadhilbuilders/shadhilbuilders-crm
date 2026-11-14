@@ -347,6 +347,15 @@ model User {
   // service's flip-to-false write and the BFF's 403 handler all still work.
   // Setting this column to true for any user re-arms the gate for that user.
   mustChangePassword Boolean   @default(false)
+  // better-auth 1.7 (2026-11-14 upgrade): `organizationName` is declared as an
+  // additionalField on the auth user model so the register form can send it,
+  // and `createOrgForSignup` (packages/auth-client/src/org-owner.ts) reads it
+  // off the signup payload. 1.7 validates its auth tables against the live
+  // Prisma schema on every request and fails the request with "Prisma schema
+  // mismatch" for any declared field that has no column, so the column is a
+  // hard requirement now. Nullable: admin-created users and the seed never set
+  // it, only self-signup does.
+  organizationName   String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -1523,6 +1532,11 @@ model Session {
   expiresAt DateTime
   ipAddress String?
   userAgent String?  @db.Text
+  // better-auth 1.7 admin() plugin: the admin's user id while an admin is
+  // impersonating this session's user. Unset on every normal login. Same
+  // runtime validator as User.organizationName applies, so the column must
+  // exist or every sign-in 500s with "Prisma schema mismatch".
+  impersonatedBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1544,6 +1558,14 @@ model Account {
   refreshToken String?   @db.Text
   idToken      String?   @db.Text
   expiresAt    DateTime?
+  // better-auth 1.7 (2026-11-14 upgrade) account model: per-token expiry plus
+  // the granted OAuth scope. Nullable and empty for password logins. `expiresAt`
+  // above is the single legacy expiry this schema has carried since 1.2; it is
+  // kept as-is because dropping a column is a destructive migration for no gain
+  // and better-auth only rejects a MISSING field, never an extra one.
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?   @db.Text
   password     String?   @db.Text
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
