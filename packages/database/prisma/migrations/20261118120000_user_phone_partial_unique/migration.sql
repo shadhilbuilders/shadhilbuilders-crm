@@ -1,0 +1,54 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- User phone: per-org, staff-only, active-only uniqueness (2026-11-18)
+--
+-- HAND-AUTHORED, NOT GENERATED. Prisma's schema language cannot express a
+-- partial (predicate) unique index, and `prisma migrate diff` is schema-driven,
+-- so it emits NOTHING for this migration. `prisma migrate dev --create-only`
+-- is equally useless here: `User.phone` already exists (20260831085813_init), so
+-- there is no schema delta and Prisma reports "Already in sync" without writing
+-- a file. This directory was created by hand.
+--
+-- The same limitation is why `one_owner_per_org`
+-- (20260911170000_t_org_multitenancy) and `SiteVisit_one_open_per_lead`
+-- (20261009040000_visit_lead_state_backfill) are hand-authored too. See also
+-- DECISION-CHANGELOG.md: "Prisma cannot express partial indexes; native SQL
+-- only".
+--
+-- WHY EACH PREDICATE EXISTS (removing either silently breaks a real case):
+--
+--   "phone" IS NOT NULL
+--     A plain unique index tolerates NULLs but NOT empty strings, and '' is one
+--     careless `?? ''` away - that idiom already exists in the lead edit path.
+--     With this predicate an empty string is not indexed at all, so it cannot
+--     collide. The write path also rejects '', so this is defence in depth.
+--
+--   "deletedAt" IS NULL
+--     `UsersService.remove()` SOFT-deletes: it only stamps deletedAt and keeps
+--     the row. Without this predicate a leaver holds their number forever and a
+--     rehire can never be given it back. The index must ignore dead rows.
+--
+-- WHY THE ORG SCOPE:
+--     Email uniqueness is already (email, organizationId) since T-EMAIL-PER-ORG.
+--     Two organisations may legitimately employ the same person on the same
+--     mobile, so a global index would produce a cross-tenant 409 - the exact
+--     bug T-EMAIL-PER-ORG fixed for email.
+--
+-- WHY CUSTOMERS ARE UNAFFECTED:
+--     A CUSTOMER account never stores a phone: the buyer's number lives on
+--     their Lead (the WhatsApp identity key). CUSTOMER rows therefore have
+--     phone = NULL and fall outside this index entirely, which is what keeps
+--     spec D2 working - a jointly-bought flat has TWO logins pointing at one
+--     lead, and they must not collide.
+--
+-- LOCKING: CREATE UNIQUE INDEX takes a blocking SHARE lock and cannot be
+-- CONCURRENTLY inside Prisma's migration transaction. Acceptable at the current
+-- row count; revisit if "User" grows large enough for that to matter.
+--
+-- ROLLBACK: DROP INDEX "User_phone_organizationId_key";
+-- No column change, no data rewrite, no backfill - the column has existed since
+-- init and has never been written by any code path.
+-- ────────────────────────────────────────────────────────────────────────────
+
+CREATE UNIQUE INDEX "User_phone_organizationId_key"
+  ON "User" ("phone", "organizationId")
+  WHERE "phone" IS NOT NULL AND "deletedAt" IS NULL;
