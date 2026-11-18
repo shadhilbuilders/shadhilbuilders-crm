@@ -156,7 +156,7 @@ export class UsersController {
   @Patch('me')
   @ApiOperation({
     summary:
-      'Edit your OWN profile (name). No id parameter - the target is the JWT subject, so this route cannot address another user.',
+      'Edit your OWN profile (name, phone). No id parameter - the target is the JWT subject, so this route cannot address another user. CUSTOMER accounts cannot set a phone here: a buyer number belongs to their lead.',
   })
   async updateMe(@Req() req: AuthedRequest, @Body() body: unknown): Promise<UpdatedProfile> {
     const dto: UpdateProfileDto = parseBody(UpdateProfileDtoSchema, body);
@@ -166,7 +166,7 @@ export class UsersController {
   @Patch(':id')
   @ApiOperation({
     summary:
-      'Edit a user name/email (autoplan 2026-09-09). Hierarchy-gated: actor must strictly outrank the target; no self-edit; OWNER protected.',
+      'Edit a user name/email/phone (autoplan 2026-09-09; phone 2026-11-18). Hierarchy-gated: actor must strictly outrank the target; no self-edit; OWNER protected; CUSTOMER accounts are ADMIN/OWNER only.',
   })
   async update(
     @Req() req: AuthedRequest,

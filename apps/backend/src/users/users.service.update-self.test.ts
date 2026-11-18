@@ -202,7 +202,7 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
 
   it('writes an audit row in the same transaction with a real before/after pair', async () => {
     const service = makeService();
-    const before = await readSelf({ name: true });
+    const before = await readSelf({ name: true, phone: true });
 
     const next = `Self Edit Audited ${RUN_TAG}`;
     await service.updateSelf(selfActor, { name: next });
@@ -225,8 +225,11 @@ describe.skipIf(!HAS_DB)('UsersService.updateSelf - live DB', () => {
     expect(audit.userId).toBe(SELF_ID);
     expect(audit.organizationId).toBe(ORG);
     expect(audit.entityType).toBe('User');
-    expect(audit.before).toEqual({ name: before?.['name'] });
-    expect(audit.after).toEqual({ name: next });
+    expect(audit.before).toEqual({ name: before?.['name'], phone: before?.['phone'] ?? null });
+    // 2026-11-18: the self-edit audit now carries phone alongside name, so a
+    // number change is reconstructable from history (same treatment email
+    // already gets on the admin edit path).
+    expect(audit.after).toEqual({ name: next, phone: null });
   });
 
   it('cannot reach another user: an id in the body is ignored (the route has no id param)', async () => {

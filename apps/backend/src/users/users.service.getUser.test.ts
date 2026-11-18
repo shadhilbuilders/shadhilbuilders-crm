@@ -226,6 +226,10 @@ function makeService(opts: {
   // ADMIN/OWNER targets take the "sees every org project" branch - needed
   // now that adminRow/ownerRow fixtures reach getUser() too.
   const projectFindMany = vi.fn().mockResolvedValue([]);
+  // 2026-11-18: a CUSTOMER's phone is derived from their lead. Default to "no
+  // lead found", which every pre-existing fixture already expects (a customer
+  // fixture without a lead simply reads phone: null).
+  const leadFindFirst = vi.fn().mockResolvedValue(null);
   // getUser() now runs entirely inside ONE withRlsContext transaction, so
   // the tx handed to the callback must expose every accessor the method
   // touches (the outer client's shape alone is not enough). The mocks are
@@ -235,6 +239,8 @@ function makeService(opts: {
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
     teamMember: { findFirst: teamMemberFindFirst, findMany: teamMemberFindMany },
     project: { findMany: projectFindMany },
+    // 2026-11-18: getUser() derives a CUSTOMER's phone from their lead.
+    lead: { findFirst: leadFindFirst },
     $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
   };
   const fakeClient = {
@@ -242,6 +248,7 @@ function makeService(opts: {
     team: { findFirst: teamFindFirst, findMany: teamFindMany, findUnique: teamFindUnique },
     teamMember: { findFirst: teamMemberFindFirst, findMany: teamMemberFindMany },
     project: { findMany: projectFindMany },
+    lead: { findFirst: leadFindFirst },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock),
   } as never;
   const prismaService = { $client: fakeClient } as never;
@@ -282,6 +289,10 @@ describe('getUser - ADMIN/OWNER scope', () => {
       email: 'exec@x',
       name: 'Priya Sharma',
       role: 'SALES_EXEC',
+      // 2026-11-18: staff phone comes from the account column (the fixture has
+      // none, so null) and phoneSource says so.
+      phone: null,
+      phoneSource: 'USER',
       teamId: 'team-1',
       teamName: "Ravi's Team",
       // Every membership, newest first (2026-11-07) - feeds the picker's

@@ -44,6 +44,7 @@ import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@sha
 import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { CodedConflictException } from '../common/errors/coded-exception';
 import { UsersService } from './users.service';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -788,6 +789,234 @@ describe.skipIf(!HAS_DB)('UsersService read paths - real DB / RLS', () => {
       await db.teamMember.deleteMany({ where: { teamId } });
       await db.user.deleteMany({ where: { id: seId } });
       await db.team.deleteMany({ where: { id: teamId } });
+    });
+  }, 30_000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// User phone + org scoping (2026-11-18)
+//
+// These need the REAL database for two reasons the mocked suite cannot cover:
+//
+//   1. P2002 ATTRIBUTION. The partial phone index is created in SQL (Prisma
+//      cannot express it), and the only way to see the error the service must
+//      interpret is to actually violate it. A hand-rolled
+//      PrismaClientKnownRequestError in a unit test proves only that the parser
+//      matches its own assumption about the shape - which is exactly the bug
+//      this slice fixed (the old mapper assumed email was the only constraint).
+//
+//   2. The partial predicates. `WHERE phone IS NOT NULL AND deletedAt IS NULL`
+//      is enforced by POSTGRES, not by application code. A soft-deleted user
+//      must release their number; a second org must be able to use the same
+//      number. Neither is observable without a real index.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('user phone - uniqueness + attribution (live DB)', () => {
+  const phone = () => `91${Math.floor(6_000_000_000 + Math.random() * 3_000_000_000)}`;
+
+  it('a duplicate phone in one org raises PHONE_ALREADY_EXISTS (not EMAIL)', async () => {
+    if (prisma === null) return;
+    const idA = createId();
+    const idB = createId();
+    const shared = phone();
+
+    // Two staff rows in the same org, both phone-less to begin with.
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: idA,
+          email: `phone-a-${idA}@test.local`,
+          name: 'Phone A',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+      await db.user.create({
+        data: {
+          id: idB,
+          email: `phone-b-${idB}@test.local`,
+          name: 'Phone B',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+
+    // A takes the number - no conflict.
+    await users.update(adminActor, idA, { phone: shared });
+
+    // B tries to take the SAME number in the SAME org -> 409, and the code
+    // must name the PHONE. Before 2026-11-18 every P2002 on User was reported
+    // as EMAIL_ALREADY_EXISTS, which sent the operator to the wrong field.
+    //
+    // NOTE: the actor must OUTRANK the target, so this runs as an ADMIN in the
+    // same org rather than as the target itself (a TELECALLER editing a
+    // TELECALLER is a 403 before any write is attempted).
+    const orgAdminId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: orgAdminId,
+          email: `admin-${orgAdminId}@test.local`,
+          name: 'Org Admin',
+          role: 'ADMIN',
+          organizationId: ORG,
+        },
+      });
+    });
+    const orgAdmin = actorFor({ sub: orgAdminId, role: 'ADMIN' });
+    const conflict = await users.update(orgAdmin, idB, { phone: shared }).catch((e) => e);
+    // CodedConflictException (the repo's typed 409), not Nest's plain
+    // ConflictException - both are HttpException subclasses with status 409.
+    expect(conflict).toBeInstanceOf(CodedConflictException);
+    expect((conflict as CodedConflictException).getStatus()).toBe(409);
+    const body = JSON.stringify(conflict.getResponse?.() ?? conflict);
+    // The whole point: the code names the PHONE. Before 2026-11-18 every P2002
+    // on User was reported as EMAIL_ALREADY_EXISTS, sending the operator to the
+    // wrong field.
+    expect(body).toContain('PHONE_ALREADY_EXISTS');
+    expect(body).not.toContain('EMAIL_ALREADY_EXISTS');
+
+    await adminSeed(async (db) => {
+      await db.user.deleteMany({ where: { id: { in: [idA, idB, orgAdminId] } } });
+    });
+  }, 30_000);
+
+  it('a soft-deleted user RELEASES their phone for reuse (partial predicate)', async () => {
+    if (prisma === null) return;
+    const idOld = createId();
+    const idNew = createId();
+    const shared = phone();
+
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: idOld,
+          email: `gone-${idOld}@test.local`,
+          name: 'Gone',
+          role: 'TELECALLER',
+          organizationId: ORG,
+          phone: shared,
+          // The index ignores dead rows, so this must free the number for a
+          // rehire. Without `deletedAt IS NULL` in the predicate, a leaver
+          // would hold their number forever.
+          deletedAt: new Date(),
+        },
+      });
+      await db.user.create({
+        data: {
+          id: idNew,
+          email: `rehire-${idNew}@test.local`,
+          name: 'Rehire',
+          role: 'TELECALLER',
+          organizationId: ORG,
+          phone: shared,
+        },
+      });
+    });
+
+    const rows = await adminSeed(async (db) =>
+      Promise.all([
+        db.user.findUnique({ where: { id: idOld } }),
+        db.user.findUnique({ where: { id: idNew } }),
+      ]),
+    );
+    expect(rows[0]?.phone).toBe(shared);
+    expect(rows[1]?.phone).toBe(shared);
+
+    await adminSeed(async (db) => {
+      await db.user.deleteMany({ where: { id: { in: [idOld, idNew] } } });
+    });
+  }, 30_000);
+
+  it('two orgs may each hold the same number (per-org index)', async () => {
+    if (prisma === null) return;
+    const idA = createId();
+    const idB = createId();
+    const shared = phone();
+    const otherOrg = `org-phone-${createId().slice(0, 10)}`;
+
+    // Organization is RLS-protected (SELECT-only policies; a generated INSERT
+    // with RETURNING re-checks the SELECT policy), so it is seeded through the
+    // direct BYPASSRLS client - exactly like the existing cross-org fixture
+    // earlier in this suite. A global unique index would 409 the second row.
+    const direct = createDirectPrismaClient();
+    try {
+      await direct.organization.create({
+        data: {
+          id: otherOrg,
+          name: `Phone Test Org ${otherOrg.slice(-6)}`,
+          slug: `phone-test-${otherOrg.slice(-8)}`,
+        },
+      });
+
+      await adminSeed(async (db) => {
+        await db.user.create({
+          data: {
+            id: idA,
+            email: `orga-${idA}@test.local`,
+            name: 'Org A',
+            role: 'TELECALLER',
+            organizationId: ORG,
+            phone: shared,
+          },
+        });
+        await db.user.create({
+          data: {
+            id: idB,
+            email: `orgb-${idB}@test.local`,
+            name: 'Org B',
+            role: 'TELECALLER',
+            organizationId: otherOrg,
+            phone: shared,
+          },
+        });
+      });
+
+      const rows = await adminSeed(async (db) =>
+        db.user.findMany({ where: { id: { in: [idA, idB] } } }),
+      );
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.phone === shared)).toBe(true);
+    } finally {
+      await direct.user.deleteMany({ where: { id: { in: [idA, idB] } } });
+      await direct.organization.deleteMany({ where: { id: otherOrg } });
+      await direct.$disconnect();
+    }
+  }, 30_000);
+
+  it('an ADMIN in another org cannot edit this org’s user (Defect 4)', async () => {
+    if (prisma === null) return;
+    const victimId = createId();
+    await adminSeed(async (db) => {
+      await db.user.create({
+        data: {
+          id: victimId,
+          email: `victim-${victimId}@test.local`,
+          name: 'Victim',
+          role: 'TELECALLER',
+          organizationId: ORG,
+        },
+      });
+    });
+
+    const users = new UsersService({ $client: prisma } as unknown as PrismaService);
+    const foreignAdmin = actorFor({
+      sub: createId(),
+      role: 'ADMIN',
+      organizationId: `org-foreign-${createId().slice(0, 10)}`,
+    });
+
+    // `User` has no RLS, so before this slice the id alone was enough. The
+    // org-scoped target read makes a cross-tenant id read as absent.
+    await expect(users.update(foreignAdmin, victimId, { name: 'Hijacked' })).rejects.toThrow(
+      'not found',
+    );
+
+    await adminSeed(async (db) => {
+      await db.user.deleteMany({ where: { id: victimId } });
     });
   }, 30_000);
 });
