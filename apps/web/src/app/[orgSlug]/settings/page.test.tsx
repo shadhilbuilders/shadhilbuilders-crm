@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   useSessionUser: vi.fn(),
   useUpdateProfile: vi.fn(),
+  useUser: vi.fn(),
   mutate: vi.fn(),
   usePushSubscription: vi.fn(),
   enablePush: vi.fn(),
@@ -43,6 +44,10 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/hooks/queries/users', () => ({
   useUpdateProfile: mocks.useUpdateProfile,
+  // 2026-11-18: the profile section reads the caller's own row for the phone
+  // (the session deliberately carries no PII). Default: a staff user with no
+  // number, which is the shape every existing assertion expects.
+  useUser: mocks.useUser,
 }));
 
 vi.mock('@/hooks/use-push-subscription', () => ({
@@ -130,6 +135,25 @@ beforeEach(() => {
   });
   mocks.useUpdateProfile.mockReturnValue({
     mutate: mocks.mutate,
+    isPending: false,
+  });
+  // 2026-11-18: the profile section reads the caller's own row for the phone.
+  // A staff user with no number is the neutral default for the existing
+  // assertions (they are about name/email/org/notifications, not phone).
+  mocks.useUser.mockReturnValue({
+    data: {
+      id: 'user-1',
+      email: 'telecaller@x',
+      name: 'Tele Caller',
+      role: 'TELECALLER',
+      phone: null,
+      phoneSource: 'USER',
+      teamId: 'team-1',
+      teamName: 'Team One',
+      manager: null,
+      projects: [],
+    },
+    isLoading: false,
     isPending: false,
   });
   mocks.usePushSubscription.mockReturnValue(pushAvailable);

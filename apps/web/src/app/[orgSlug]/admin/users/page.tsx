@@ -67,6 +67,8 @@ import { useOrgSlug } from '@/lib/tenant-context';
 
 import { Skeleton } from '@/components/shared/Skeleton';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { labelFor } from '@/lib/labels';
 import { CreateUserDialog } from './components/CreateUserDialog';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
@@ -101,6 +103,10 @@ type UserRow = {
   role: Role;
   teamId: string | null;
   projects: string[];
+  /** Normalized digits-only (2026-11-18). For a CUSTOMER this is derived from
+   *  their lead; `phoneSource` distinguishes the two. */
+  phone?: string | null;
+  phoneSource?: 'USER' | 'LEAD';
   /** Every team this user reports through, newest first (2026-11-07). */
   reportsTo?: ReportsToLine[];
   /** @deprecated Use `reportsTo`. Kept for one release. */
@@ -127,6 +133,9 @@ export default function UsersPage() {
   const usersQuery = useUsers({
     role: roleFilter.length > 0 ? roleFilter : undefined,
     search: serverSearch,
+    // 2026-11-18: the admin directory is the ONE surface that shows phones.
+    // Every picker built on useUsers deliberately leaves this off.
+    includePhone: true,
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
@@ -533,6 +542,37 @@ function UserTable({
         enableSorting: true,
       },
       {
+        id: 'phone',
+        header: 'Phone',
+        // 2026-11-18: staff numbers come from the account; a CUSTOMER's comes
+        // from their lead. The distinction is stated rather than hidden - a
+        // buyer's number is not editable here, and the tooltip/aria says so,
+        // because "why can't I edit this one?" is the obvious next question.
+        cell: ({ row }) => {
+          const { phone, phoneSource, id } = row.original;
+          if (phone === null || phone === undefined || phone.length === 0) {
+            return (
+              <span className="text-muted-foreground text-sm" data-qa={`user-phone-empty-${id}`}>
+                -
+              </span>
+            );
+          }
+          return (
+            <span className="inline-flex flex-col">
+              <PhoneNumber
+                phone={phone}
+                className="text-sm"
+                ariaLabel={phoneSource === 'LEAD' ? `Phone from lead: ${phone}` : `Phone: ${phone}`}
+              />
+              {phoneSource === 'LEAD' ? (
+                <span className="text-muted-foreground text-xs">from lead</span>
+              ) : null}
+            </span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
         accessorKey: 'role',
         header: 'Role',
         // Role is shown as TEXT (autoplan 2026-09-09). Changing it is a
@@ -727,7 +767,18 @@ function UserTable({
 // Edit dialog - PATCH /api/users/:id (hierarchy-gated server-side)
 // ---------------------------------------------------------------------------
 
-type EditUserFormValues = z.infer<typeof UpdateUserDtoSchema>;
+/**
+ * Form-local schema for the edit dialog.
+ *
+ * PHONE IS RESHAPED (2026-11-18) for the same reason as CreateUserFormSchema:
+ * the wire DTO accepts `string | null` (null = CLEAR), but a text input can
+ * only produce a string, so `null` cannot flow through React Hook Form.
+ * `onSubmit` maps '' -> null (clear) and omits the key for CUSTOMER.
+ */
+const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true }).extend({
+  phone: z.string().optional(),
+});
+type EditUserFormValues = z.infer<typeof EditUserFormSchema>;
 
 function EditUserDialog({
   target,
@@ -739,18 +790,30 @@ function EditUserDialog({
   onClose: () => void;
 }) {
   const form = useForm<EditUserFormValues>({
-    resolver: zodResolver(UpdateUserDtoSchema),
+    resolver: zodResolver(EditUserFormSchema),
     values: {
       name: target?.name ?? '',
       email: target?.email ?? '',
+      // A CUSTOMER's number is derived from their lead, so the field starts
+      // empty AND is disabled below - editing it here would 400.
+      phone: target === null || target.role === 'CUSTOMER' ? '' : (target.phone ?? ''),
     },
     mode: 'onSubmit',
   });
 
   function onSubmit(values: EditUserFormValues) {
     if (target === null) return;
+    // '' means "clear it" for a staff user: the DTO's `null` is what erases a
+    // PII value. A CUSTOMER never sends a phone at all - the service rejects
+    // it, and the field is disabled anyway.
+    const phone = target.role === 'CUSTOMER' ? undefined : values.phone ? values.phone : null;
     updateUser.mutate(
-      { id: target.id, name: values.name, email: values.email },
+      {
+        id: target.id,
+        name: values.name,
+        email: values.email,
+        ...(phone === undefined ? {} : { phone }),
+      },
       {
         onSuccess: () => {
           toast.success(`User ${values.name} updated`);
@@ -762,6 +825,8 @@ function EditUserDialog({
       },
     );
   }
+
+  const isCustomer = target?.role === 'CUSTOMER';
 
   const fields: FormFieldItemType<EditUserFormValues>[] = [
     {
@@ -779,6 +844,24 @@ function EditUserDialog({
       required: true,
       placeholder: 'name@shadhilbuilders.in',
       inputProps: { autoComplete: 'email', 'data-qa': 'edit-user-email' },
+    },
+    {
+      type: 'custom',
+      name: 'phone',
+      label: 'Phone',
+      // Not required: a staff account is valid without a number, and only the
+      // (unbuilt) telephony provisioning actually needs one.
+      description: isCustomer
+        ? 'This buyer has no phone of their own - update it on their lead.'
+        : '10-digit mobile number. +91 is added automatically.',
+      render: ({ field }) => (
+        <PhoneNumberInput
+          {...field}
+          disabled={isCustomer}
+          placeholder={isCustomer ? '-' : '9876543210'}
+          data-qa="edit-user-phone"
+        />
+      ),
     },
   ];
 
