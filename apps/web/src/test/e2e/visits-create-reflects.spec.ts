@@ -32,6 +32,37 @@ const VISITS = '/demo/projects/demo-villas/visits';
  */
 const FIXTURE_LEAD = 'Demo Anjali';
 
+/**
+ * A visit date that is genuinely in the FUTURE and outside the current month.
+ *
+ * WHY THIS IS COMPUTED (fixed 2026-11-18): this used to be the literal
+ * `'2026-11-15'`, described in a comment as "a date comfortably in the FUTURE".
+ * That was true in the first half of November 2026 and false from the 16th
+ * onward. `CreateSiteVisitDtoSchema` enforces
+ * `scheduledFor must be in the future` (packages/api-types/src/visits.ts:99),
+ * so the dialog correctly refused the booking and stayed open with a
+ * validation alert - which is what the test then reported, as
+ * "locator('[role=\"dialog\"]') expected 0, received 1".
+ *
+ * The failure had nothing to do with the behaviour under test, and it appeared
+ * on every branch at once the moment the calendar rolled over. A date computed
+ * from `now` cannot rot that way.
+ *
+ * Two properties are required and both are preserved:
+ *   - outside the month the calendar currently shows, so the assertion that the
+ *     calendar MOVES is meaningful (that is the whole point of the spec);
+ *   - far enough ahead to stay outside that month even when the calendar is
+ *     showing the NEXT one - hence +45 days rather than +7.
+ */
+function futureVisitDate(): { date: string; time: string } {
+  const target = new Date();
+  target.setUTCDate(target.getUTCDate() + 45);
+  return {
+    date: target.toISOString().slice(0, 10),
+    time: '10:00',
+  };
+}
+
 /** The month the calendar is currently showing (\"September 2026\"). */
 async function visibleMonth(page: Page): Promise<string> {
   // Read the month label from the calendar's own DateNavigator (the
@@ -136,9 +167,11 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
     await page.waitForTimeout(400);
 
     // A date comfortably in the FUTURE (the dialog forbids a past slot) and
-    // outside the month the calendar is currently showing.
-    await dialog.getByRole('textbox', { name: /date/i }).fill('2026-11-15');
-    await dialog.getByRole('textbox', { name: /time/i }).fill('10:00');
+    // outside the month the calendar is currently showing. Computed, not
+    // hardcoded - see futureVisitDate().
+    const slot = futureVisitDate();
+    await dialog.getByRole('textbox', { name: /date/i }).fill(slot.date);
+    await dialog.getByRole('textbox', { name: /time/i }).fill(slot.time);
     await dialog
       .getByRole('button', { name: /^schedule$/i })
       .last()
