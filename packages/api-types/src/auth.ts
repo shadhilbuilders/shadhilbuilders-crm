@@ -7,8 +7,28 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
+import { PhoneSchema } from './common';
 import { RoleSchema } from './enums';
 import { TeamReportingLineSchema } from './reporting';
+
+/**
+ * A phone field that can be SET, CLEARED, or OMITTED (2026-11-18).
+ *
+ * `PhoneSchema` alone is not enough for an edit surface. It rejects `''` (so
+ * a blank form field fails with a readable message rather than writing an
+ * empty string) and it rejects `null` (so there is NO way to erase a number
+ * once set). A PII field with no erase path is not acceptable - and a plain
+ * `.optional()` only covers "omitted", not "cleared".
+ *
+ * Verified against the installed Zod (the union wraps a `superRefine` +
+ * `transform`, so this was checked rather than assumed):
+ *   '9876543210' -> '919876543210'   (normalized)
+ *   null         -> null             (clears the column)
+ *   undefined    -> undefined        (field omitted, column untouched)
+ *   ''           -> rejected         (never a silent no-op)
+ */
+export const ClearablePhoneSchema = z.union([PhoneSchema, z.null()]);
+export type ClearablePhone = z.infer<typeof ClearablePhoneSchema>;
 
 /**
  * Email format - strict enough to reject obvious typos, lenient enough to
@@ -75,6 +95,11 @@ const teamIdSchema = z.string().trim().min(1, 'Select a team for this user').opt
  * POST /api/auth/signup - admin-provisioned account creation. `role`
  * defaults to TELECALLER for self-serve flows; managers/admins are created
  * from the admin console, which sets role explicitly.
+ *
+ * `phone` (2026-11-18): staff contactability. Optional - an account is valid
+ * without one, and FreJun provisioning is what actually requires a number.
+ * Rejected for CUSTOMER below, because a buyer's number belongs to their
+ * Lead (the WhatsApp identity key), not to a second copy on the account.
  */
 export const SignupDtoSchema = z.object({
   email: emailSchema,
@@ -82,6 +107,7 @@ export const SignupDtoSchema = z.object({
   name: nameSchema,
   role: RoleSchema.default('TELECALLER'),
   teamId: teamIdSchema,
+  phone: ClearablePhoneSchema.optional(),
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 
@@ -124,6 +150,17 @@ export const UserFilterDtoSchema = z.object({
    * table must still list banned users.
    */
   availableOnly: z.boolean().optional(),
+  /**
+   * When true, each row also carries `phone` (2026-11-18).
+   *
+   * OFF BY DEFAULT ON PURPOSE. This payload is not just the admin users table:
+   * `useUsers` backs six other consumers - LeadReassignDialog,
+   * LeadCoOwnerDialog, AddTeamMembersDialog, the team manager picker,
+   * AssignedEngineerRow and the new-lead assignee picker. Returning staff
+   * mobiles to all of them would widen PII exposure for no product reason, so
+   * the field is opt-in and a future picker that forgets it leaks nothing.
+   */
+  includePhone: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -138,6 +175,17 @@ export const UserListResultSchema = z.object({
       name: z.string(),
       role: RoleSchema,
       teamId: z.string().nullable(),
+      /**
+       * Present only when the caller passed `includePhone` (2026-11-18).
+       * Normalized digits-only, same shape as `Lead.phoneE164`. For a CUSTOMER
+       * row this is DERIVED from their lead - a buyer has no `User.phone`
+       * column value, so the same field carries the lead's number and
+       * `phoneSource` says where it came from.
+       */
+      phone: z.string().nullable().optional(),
+      /** How `phone` was resolved: the account column, or the lead. Omitted
+       *  when `includePhone` was not set. */
+      phoneSource: z.enum(['USER', 'LEAD']).optional(),
       // Project names derived from the user's team via ProjectTeam.
       // admin Users table (autoplan 2026-09-12). Empty array = no projects.
       projects: z.array(z.string()),
@@ -176,6 +224,17 @@ export const UserDetailSchema = z.object({
   email: z.string(),
   name: z.string(),
   role: RoleSchema,
+  /**
+   * Staff contact number, normalized digits-only (2026-11-18). Null when unset.
+   *
+   * For a CUSTOMER target this is DERIVED from their lead and is null when no
+   * lead is linked - the account itself never stores a phone, because a buyer's
+   * number is the lead's WhatsApp identity. `phoneSource` distinguishes the two
+   * so the UI can label a derived value honestly.
+   */
+  phone: z.string().nullable().optional(),
+  /** 'USER' = the account column; 'LEAD' = derived from customerLeadId. */
+  phoneSource: z.enum(['USER', 'LEAD']).optional(),
   /** The "display team" (see resolveDisplayTeamId): newest membership for
    *  ordinary staff, the led team for a MANAGER. Null when none. */
   teamId: z.string().nullable(),
@@ -221,14 +280,18 @@ export const ChangeRoleDtoSchema = z.object({
 export type ChangeRoleDto = z.infer<typeof ChangeRoleDtoSchema>;
 
 /**
- * PATCH /api/users/:id - edit a user's name/email (autoplan 2026-09-09).
- * Hierarchy-gated in the service: the actor must strictly outrank the
- * target (no self-edit, OWNER protected). `name`/`email` are optional so a
- * caller can update just one field.
+ * PATCH /api/users/:id - edit a user name/email/phone (autoplan 2026-09-09;
+ * phone 2026-11-18). Hierarchy-gated in the service: the actor must strictly
+ * outrank the target (no self-edit, OWNER protected). Fields are optional so a
+ * caller can update just one.
+ *
+ * `phone: null` CLEARS the number (see ClearablePhoneSchema); omitting it
+ * leaves the column untouched.
  */
 export const UpdateUserDtoSchema = z.object({
   name: nameSchema.optional(),
   email: emailSchema.optional(),
+  phone: ClearablePhoneSchema.optional(),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
 
@@ -243,18 +306,32 @@ export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
  *     separate surface: the route resolves the target from the JWT `sub`, so a
  *     caller can only ever edit themselves and no hierarchy check applies.
  *
- *   - `name` only. `email` is deliberately absent: this deployment configures
- *     NO email verification (packages/auth-client/src/auth.ts has no
- *     `emailVerification` block), so letting a user rewrite their own login
- *     address would move the account to an address nobody has proven they own.
- *     Email changes stay with ADMIN/OWNER via PATCH /api/users/:id.
+ *   - `name` and `phone` only (phone added 2026-11-18). `email` is deliberately
+ *     absent: this deployment configures NO email verification
+ *     (packages/auth-client/src/auth.ts has no `emailVerification` block), so
+ *     letting a user rewrite their own login address would move the account to
+ *     an address nobody has proven they own. Email changes stay with
+ *     ADMIN/OWNER via PATCH /api/users/:id.
+ *
+ *   - BOTH fields are optional. Before 2026-11-18 `name` was required, which was
+ *     fine while it was the only field: now a staff member saving ONLY a phone
+ *     number would otherwise have to resend their name. An empty body is
+ *     rejected by the refinement below rather than being a silent no-op.
+ *
+ *   - `phone` is refused for CUSTOMER accounts in the service, not here: the
+ *     DTO has no role to inspect. A buyer's number lives on their Lead.
  *
  * Reuses `nameSchema` so the self-edit rule (trim, 1..120) can never drift
  * from the admin edit rule.
  */
-export const UpdateProfileDtoSchema = z.object({
-  name: nameSchema,
-});
+export const UpdateProfileDtoSchema = z
+  .object({
+    name: nameSchema.optional(),
+    phone: ClearablePhoneSchema.optional(),
+  })
+  .refine((values) => values.name !== undefined || values.phone !== undefined, {
+    message: 'Nothing to update - provide a name or a phone number',
+  });
 export type UpdateProfileDto = z.infer<typeof UpdateProfileDtoSchema>;
 
 /**
