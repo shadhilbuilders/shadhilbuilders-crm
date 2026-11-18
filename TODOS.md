@@ -5,6 +5,51 @@ P0 first. Format reference: `~/.cursor/skills/gstack/review/TODOS-format.md`.
 
 ## Users / Teams
 
+### Customer-facing phone display in the portal (blocked on RLS)
+
+**What:** Show a buyer their own mobile number in `/portal`, sourced from their
+`Lead`.
+
+**Why it is not free:** `Lead` has no CUSTOMER SELECT policy (`policies.sql` — only
+`lead_select_telecaller`, `_manager`, `_admin`, `_mentioned`, `_cron_service`), and
+FORCE RLS is on. A CUSTOMER's own `tx.lead.findFirst()` returns **zero rows
+silently**, not an error. `customer-portal.service.ts` therefore never reads `Lead`
+today — it reaches units only through `booking_select_customer`.
+
+**What it needs:** a `SECURITY DEFINER` helper (same shape as
+`customer_lead_id()`, `policies.sql:2036`), a `PortalMeDto` field, and a test that
+the helper cannot widen another role's read. Roughly a day, and it should not ride
+along with the `User.phone` change.
+
+**Context:** `docs/designs/2026-11-18-user-phone.md` D3 cut this deliberately. The
+portal has never displayed a phone — only `Organization.contactPhone` in
+`PortalLock` — so this is a new capability, not a regression.
+
+**Priority:** P3
+**Depends on:** the `User.phone` slice landing first.
+
+### Org-scope the `changeRole()` and `assignManager()` target reads
+
+**What:** Both read the target user with `findUnique({ where: { id } })` and no
+`organizationId` filter (`users.service.ts:456`, `:963`), gated only on the role
+hierarchy. `User` carries no RLS, so an ADMIN in org A can currently act on a user
+in org B if they know the id.
+
+**Why it matters more now:** the `User.phone` slice fixes `update()` (third site)
+and adds a **per-org** unique phone index. The same missing filter on the other two
+paths is the same bug class, and it is worse on a column with a tenant-scoped
+constraint.
+
+**Context:** found during the 2026-11-18 review of
+`docs/designs/2026-11-18-user-phone.md`; deliberately not bundled there to keep
+that diff to one behavioural change per site. `update()` gets the filter in this
+slice.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None — but land it separately, with a cross-org test in
+`users.service.rls.test.ts`.
+
 ### ~~Multi-team ENGINEER shows the manager of their newest team~~ — RESOLVED 2026-11-07
 
 **Decision (product):** report EVERY team and its manager.
