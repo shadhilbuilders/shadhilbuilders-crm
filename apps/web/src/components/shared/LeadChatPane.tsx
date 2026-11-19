@@ -901,7 +901,7 @@ export function LeadChatPane({
                       : 'Sign in to send a message'
                   }
                   disabled={!canSend}
-                  className="max-h-0 min-h-10 w-full resize-none [scrollbar-width:none] py-2.5 text-sm wrap-anywhere [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  className="max-h-10 min-h-10 w-full resize-none [scrollbar-width:none] py-2.5 text-sm wrap-anywhere [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                   aria-label="Message body"
                   data-qa="chat-input"
                 />
