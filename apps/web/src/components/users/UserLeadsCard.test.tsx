@@ -239,4 +239,16 @@ describe('UserLeadsCard - rendering', () => {
     await mount(<UserLeadsCard userId="user-42" />);
     expect(container?.textContent).toContain('No leads are linked to this user yet.');
   });
+
+  it('renders the phone as a tel: link, formatted with the country code', async () => {
+    // 2026-11-19: the number used to be a muted <span> of raw stored digits, so
+    // the one thing anyone wants to do with it (dial) needed a copy-paste.
+    await mount(<UserLeadsCard userId="user-42" />);
+    const links = Array.from(container?.querySelectorAll('a[href^="tel:"]') ?? []);
+    expect(links.length).toBe(2);
+    // A bare 10-digit Indian mobile is 91-prefixed by telUrl, so the handset
+    // dials the country code instead of treating 9 as one.
+    expect(links[0]?.getAttribute('href')).toBe('tel:+919876500010');
+    expect(links[0]?.textContent).toContain('98765 00010');
+  });
 });

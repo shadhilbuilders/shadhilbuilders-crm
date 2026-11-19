@@ -50,6 +50,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { LeadReassignDialog } from '@/components/leads/LeadReassignDialog';
@@ -522,7 +523,19 @@ function LeadTable({
               {row.original.name}
             </Button>
             {typeof row.original.phone === 'string' && row.original.phone.length > 0 ? (
-              <span className="text-muted-foreground block text-xs">{row.original.phone}</span>
+              // Tappable, because dialling is the first thing anyone does from
+              // this row. Renders the formatted number (98765 30109) rather than
+              // the raw stored digits, and the tel: href carries the +91 so a
+              // handset dials the country code instead of a local number.
+              // A block wrapper keeps the number on its own line under the
+              // name, which is how the raw span sat before it became a link.
+              <div>
+                <PhoneNumber
+                  phone={row.original.phone}
+                  className="text-link text-xs"
+                  largeTapTarget
+                />
+              </div>
             ) : null}
           </div>
         ),

@@ -6,8 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { formatPhone, telUrl } from './phone';
 
 describe('telUrl', () => {
-  it('builds tel: from a plain 10-digit number', () => {
-    expect(telUrl('9876543210')).toBe('tel:9876543210');
+  it('builds a +91 tel: from a bare 10-digit Indian mobile', () => {
+    // 2026-11-19: this used to stay local-dial. But a 6-9 + 9-digit value IS an
+    // Indian mobile (that is exactly the mapping normalizePhoneDigits applies),
+    // and leaving it bare meant the same number dialled differently depending on
+    // whether the row had been normalized yet. The number is unchanged; only the
+    // dial string carries its country code.
+    expect(telUrl('9876543210')).toBe('tel:+919876543210');
   });
 
   it('strips spaces/dashes/parens', () => {
@@ -25,9 +30,11 @@ describe('telUrl', () => {
     expect(telUrl('919876543210')).toBe('tel:+919876543210');
   });
 
-  it('does NOT add a + to a bare 10-digit local number', () => {
-    // `tel:+9876543210` would be country code 9 - a different number.
-    expect(telUrl('9876543210')).not.toContain('+');
+  it('never invents a country code for a 10-digit number outside the mobile range', () => {
+    // The +91 rule above is narrow on purpose: only 6-9 leading digits are an
+    // Indian mobile. Anything else stays exactly as given, because guessing a
+    // country code here would dial a different number.
+    expect(telUrl('1234567890')).toBe('tel:1234567890');
   });
 
   it('returns empty href for masked placeholders (not dialable)', () => {

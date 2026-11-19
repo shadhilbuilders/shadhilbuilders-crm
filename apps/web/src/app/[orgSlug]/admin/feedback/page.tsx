@@ -25,6 +25,7 @@ import { LuArrowDown, LuStar } from '@paalstack/react-icons/lu';
 
 import { ModulePending } from '@/components/shared/ModulePending';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { Skeleton } from '@/components/shared/Skeleton';
 
 import { useFeedback, useUpdateFeedbackStatus, type FeedbackRow } from '@/hooks/queries/feedback';
@@ -217,7 +218,9 @@ function Row({ row, tab, pendingStatusId, onStatus }: RowProps) {
             <span className="text-muted-foreground text-xs">· {row.project}</span>
           ) : null}
           {row.phone !== null && row.phone.length > 0 ? (
-            <span className="text-muted-foreground text-xs">· {row.phone}</span>
+            <span className="text-muted-foreground text-xs">
+              · <PhoneNumber phone={row.phone} className="text-link text-xs" />
+            </span>
           ) : null}
         </div>
 

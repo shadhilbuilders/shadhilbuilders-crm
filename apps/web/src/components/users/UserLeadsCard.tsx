@@ -31,6 +31,7 @@ import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { dateIntl } from '@paalstack/react-ui/lib';
 
 import { LeadStatusBadge } from '@/components/shared/LeadStatusBadge';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { useLeads, useLeadsEnvelope } from '@/hooks/queries/crm';
 import { useProjects } from '@/hooks/queries/projects';
@@ -161,7 +162,11 @@ export function UserLeadsCard({ userId }: { userId: string }) {
                 </Button>
               )}
               {typeof lead.phone === 'string' && lead.phone.length > 0 ? (
-                <span className="text-muted-foreground block text-xs">{lead.phone}</span>
+                // Same treatment as the leads table: formatted + tel: linked, so
+                // a manager reviewing someone's book can dial straight from it.
+                <div>
+                  <PhoneNumber phone={lead.phone} className="text-link text-xs" largeTapTarget />
+                </div>
               ) : null}
             </div>
           );

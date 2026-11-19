@@ -27,6 +27,12 @@ export function telUrl(phone: string): string {
   if (digits.startsWith('+')) return `tel:${digits}`;
   // The normalized stored form (91 + a 10-digit Indian mobile).
   if (/^91\d{10}$/.test(digits)) return `tel:+${digits}`;
+  // A bare 10-digit Indian mobile. Same mapping normalizePhoneDigits applies
+  // (6-9 followed by nine digits IS an Indian mobile), so the dialer gets a
+  // country code instead of guessing. Before 2026-11-19 this fell through to
+  // the raw link, which meant two leads with the same number dialled
+  // differently depending on whether it had been normalized yet.
+  if (/^[6-9]\d{9}$/.test(digits)) return `tel:+91${digits}`;
   // Local 10-digit and unrecognised shapes: unchanged.
   return `tel:${digits}`;
 }
