@@ -29,12 +29,33 @@ const mocks = vi.hoisted(() => ({
   useUser: vi.fn(),
   useAssignManager: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useTeams: vi.fn(() => ({ data: [] })),
+  // 2026-11-19: the panel now owns Edit + Delete, so it mounts the shared
+  // dialogs and navigates away after a soft delete.
+  useUpdateUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useDeleteUser: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useChangeUserRole: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  routerReplace: vi.fn(),
 }));
 
 vi.mock('@/hooks/queries/users', () => ({
   useUser: mocks.useUser,
   useAssignManager: mocks.useAssignManager,
+  useUpdateUser: mocks.useUpdateUser,
+  useDeleteUser: mocks.useDeleteUser,
+  useChangeUserRole: mocks.useChangeUserRole,
   useResetUserPassword: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: mocks.routerReplace, push: vi.fn(), refresh: vi.fn() }),
+  useParams: () => ({}),
+}));
+
+// The dialogs build their return path from the org slug; the real hook needs a
+// TenantProvider this render does not mount.
+vi.mock('@/lib/tenant-context', () => ({
+  useOrgSlug: () => 'test',
+  useProjectSlug: () => null,
 }));
 
 vi.mock('@/hooks/queries/teams', () => ({
@@ -104,6 +125,10 @@ afterEach(async () => {
   mocks.useUser.mockReset();
   mocks.useAssignManager.mockClear();
   mocks.useTeams.mockClear();
+  mocks.useUpdateUser.mockClear();
+  mocks.useDeleteUser.mockClear();
+  mocks.useChangeUserRole.mockClear();
+  mocks.routerReplace.mockClear();
 });
 
 describe('UserDetailView - state matrix', () => {
@@ -456,5 +481,199 @@ describe('UserDetailView - state matrix', () => {
     expect(html).not.toContain('data-qa="user-manager-row"');
     expect(html).not.toContain('No manager assigned');
     expect(html).not.toContain('data-qa="user-assign-manager-button"');
+  });
+});
+
+// 2026-11-19: Edit + Delete on the specific-user page.
+//
+// The panel is where an admin lands after clicking a row, so it carries the two
+// actions the list hides in a dropdown. What these pin is the GATING, because it
+// has to mirror two different server guards (update: strictly outrank, no
+// self-edit; remove: admin class, no self, OWNER protected) and the delete
+// navigation, because a soft-deleted user no longer resolves on this route.
+describe('UserDetailView - edit and delete actions', () => {
+  const TARGET = {
+    id: 'user-2',
+    email: 'priya@example.com',
+    name: 'Priya Sharma',
+    role: 'TELECALLER',
+    teamId: 'team-1',
+    teamName: "Ravi's Team",
+    manager: null,
+    projects: [],
+    phone: '919876543210',
+  };
+
+  function asActor(id: string, role: string) {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id, role, email: `${id}@x`, teamId: null },
+      isPending: false,
+    });
+  }
+
+  function withTarget(overrides: Record<string, unknown> = {}) {
+    mocks.useUser.mockReturnValue({
+      data: { ...TARGET, ...overrides },
+      isLoading: false,
+      error: null,
+    });
+  }
+
+  function button(selector: string): HTMLButtonElement | null {
+    return container?.querySelector<HTMLButtonElement>(selector) ?? null;
+  }
+
+  async function click(el: Element | null): Promise<void> {
+    expect(el).not.toBeNull();
+    await act(async () => {
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  }
+
+  // The dialogs are Radix portals: their DOM lands in <body>, not in the
+  // container the panel was rendered into.
+  function field(name: string): HTMLInputElement | null {
+    return document.querySelector<HTMLInputElement>(`[data-qa="${name}"]`);
+  }
+
+  it('an ADMIN sees Edit and Delete on a staff member they outrank', async () => {
+    asActor('admin-1', 'ADMIN');
+    withTarget();
+
+    await mount();
+
+    expect(button('[data-qa="user-edit-button"]')).not.toBeNull();
+    expect(button('[data-qa="user-delete-button"]')).not.toBeNull();
+  });
+
+  it('hides both on an OWNER row - nobody outranks the OWNER and it cannot be deleted', async () => {
+    asActor('admin-1', 'ADMIN');
+    withTarget({ id: 'owner-1', role: 'OWNER', name: 'Arun Owner' });
+
+    await mount();
+
+    expect(button('[data-qa="user-edit-button"]')).toBeNull();
+    expect(button('[data-qa="user-delete-button"]')).toBeNull();
+  });
+
+  it('hides both on your own account', async () => {
+    asActor('admin-1', 'ADMIN');
+    withTarget({ id: 'admin-1', role: 'ADMIN', name: 'Self Admin' });
+
+    await mount();
+
+    expect(button('[data-qa="user-edit-button"]')).toBeNull();
+    expect(button('[data-qa="user-delete-button"]')).toBeNull();
+  });
+
+  it('Edit opens the shared dialog prefilled, with the phone in 10-digit form', async () => {
+    asActor('admin-1', 'ADMIN');
+    withTarget();
+
+    await mount();
+    await click(button('[data-qa="user-edit-button"]'));
+
+    // The stored value is 12-digit E.164; the field must show the 10-digit form
+    // or the first keystroke truncates it (defect history in lib/phone.ts).
+    expect(field('edit-user-name')?.value).toBe('Priya Sharma');
+    expect(field('edit-user-email')?.value).toBe('priya@example.com');
+    expect(field('edit-user-phone')?.value).toBe('9876543210');
+  });
+
+  it('Delete confirms through the mutation and leaves the dead route', async () => {
+    asActor('admin-1', 'ADMIN');
+    withTarget();
+    const mutate = vi.fn((_id: string, opts?: { onSuccess?: () => void }) => {
+      opts?.onSuccess?.();
+    });
+    mocks.useDeleteUser.mockReturnValue({ mutate, isPending: false });
+
+    await mount();
+    await click(button('[data-qa="user-delete-button"]'));
+
+    const confirm = Array.from(document.querySelectorAll('button')).find((b) =>
+      /delete user/i.test(b.textContent ?? ''),
+    );
+    await click(confirm ?? null);
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate.mock.calls[0]?.[0]).toBe('user-2');
+    // Leaving the route is the point: a soft-deleted user 404s from here.
+    expect(mocks.routerReplace).toHaveBeenCalledWith('/test/admin/users');
+  });
+});
+
+// 2026-11-19: the role change joined Edit and Delete on this page, sharing the
+// dialog the users list already used. Its gating is assertCanChangeRole's shape:
+// never OWNER as source or destination (nothing outranks OWNER), never self.
+describe('UserDetailView - change role', () => {
+  const TARGET = {
+    id: 'exec-9',
+    email: 'karthik@example.com',
+    name: 'Karthik R',
+    role: 'SALES_EXEC',
+    teamId: 'team-1',
+    teamName: "Ravi's Team",
+    manager: null,
+    projects: [],
+    phone: null,
+  };
+
+  function actor(id: string, role: string) {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id, role, email: `${id}@x`, teamId: null },
+      isPending: false,
+    });
+  }
+
+  async function click(el: Element | null): Promise<void> {
+    expect(el).not.toBeNull();
+    await act(async () => {
+      el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  }
+
+  it('offers the role change on a user the actor outranks', async () => {
+    actor('admin-1', 'ADMIN');
+    mocks.useUser.mockReturnValue({ data: TARGET, isLoading: false, error: null });
+
+    await mount();
+
+    expect(container?.querySelector('[data-qa="user-change-role-button"]')).not.toBeNull();
+  });
+
+  it('hides it on your own account and on the OWNER row', async () => {
+    actor('admin-1', 'ADMIN');
+    mocks.useUser.mockReturnValue({
+      data: { ...TARGET, id: 'admin-1', name: 'Self Admin', role: 'ADMIN' },
+      isLoading: false,
+      error: null,
+    });
+    await mount();
+    expect(container?.querySelector('[data-qa="user-change-role-button"]')).toBeNull();
+    await unmount();
+
+    mocks.useUser.mockReturnValue({
+      data: { ...TARGET, id: 'owner-1', name: 'Arun Owner', role: 'OWNER' },
+      isLoading: false,
+      error: null,
+    });
+    await mount();
+    expect(container?.querySelector('[data-qa="user-change-role-button"]')).toBeNull();
+  });
+
+  it('opens the shared dialog showing the current role', async () => {
+    actor('admin-1', 'ADMIN');
+    mocks.useUser.mockReturnValue({ data: TARGET, isLoading: false, error: null });
+
+    await mount();
+    await click(container?.querySelector('[data-qa="user-change-role-button"]') ?? null);
+
+    // Portal content: <body>, not the mount container.
+    const dialogText = document.body.textContent ?? '';
+    expect(dialogText).toContain('Change role for Karthik R');
+    expect(dialogText).toContain('Current role');
+    // Sales exec, not a generic default: the form is seeded from the target.
+    expect(document.body.querySelector('[data-qa="change-role-confirm"]')).not.toBeNull();
   });
 });

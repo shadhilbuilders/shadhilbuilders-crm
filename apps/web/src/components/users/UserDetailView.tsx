@@ -16,6 +16,18 @@
 // T-USER-LEADS (2026-09-24): the Leads table lists every lead linked to the
 // user (owner OR co-owner). Projects are read-only (T-TEAM-AUTHORITATIVE).
 //
+// Actions (2026-11-19): the panel is the place an admin lands after clicking a
+// row, so it carries the two actions the list only offers in a dropdown - Edit
+// (name / email / phone, PATCH /api/users/:id) and Delete (soft delete,
+// DELETE /api/users/:id). Both dialogs are shared with the list
+// (components/users/UserEditDialogs), not reimplemented here.
+//
+// Gating mirrors the server exactly:
+//   edit   - admin class, not yourself, strictly outranks the target
+//            (`update()` rejects self-edit and equal/higher rank)
+//   delete - admin class, not yourself, target is not the OWNER
+//            (`remove()` protects the OWNER and refuses self-delete)
+//
 // Auth: ADMIN/OWNER only; the backend additionally scopes by role.
 import { useEffect, useMemo, useState } from 'react';
 
@@ -32,13 +44,36 @@ import {
   toast,
   TypographyP,
 } from '@paalstack/react-ui';
-import { LuFolderKanban, LuKeyRound, LuUserCog } from '@paalstack/react-icons/lu';
+import {
+  LuFolderKanban,
+  LuKeyRound,
+  LuPencil,
+  LuShieldCheck,
+  LuTrash2,
+  LuUserCog,
+} from '@paalstack/react-icons/lu';
 
-import { useAssignManager, useUser, type BackendUserDetail } from '@/hooks/queries/users';
+import {
+  useAssignManager,
+  useChangeUserRole,
+  useDeleteUser,
+  useUpdateUser,
+  useUser,
+  type BackendUserDetail,
+} from '@/hooks/queries/users';
 import { useTeams } from '@/hooks/queries/teams';
 import { hasReportingLine, reportsToTeamManager } from '@shadhil/api-types';
 import { canManageUsers, isAdminLike, outranks, useSessionUser, type Role } from '@/lib/session';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
+import { useRouter } from 'next/navigation';
+import { orgHref } from '@/lib/nav';
+import { useOrgSlug } from '@/lib/tenant-context';
+import {
+  ChangeRoleDialog,
+  DeleteUserDialog,
+  EditUserDialog,
+} from '@/components/users/UserActionDialogs';
+import { creatableRolesFor } from '@/lib/user-roles';
 import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -146,6 +181,26 @@ function UserDetailContent({
   const canResetPassword =
     isAdminLike(actorRole) && detail.id !== actorId && outranks(actorRole, detail.role);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  const router = useRouter();
+  const orgSlug = useOrgSlug();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  const changeRole = useChangeUserRole();
+
+  // Same rules the service enforces (see the header note). Written out rather
+  // than folded into one boolean so each mirrors one server guard.
+  const canEditUser =
+    isAdminLike(actorRole) && detail.id !== actorId && outranks(actorRole, detail.role);
+  const canDeleteUser = isAdminLike(actorRole) && detail.id !== actorId && detail.role !== 'OWNER';
+  // assertCanChangeRole refuses OWNER as source or destination and lets only the
+  // admin class hand out ENGINEER; both fall out of the rank comparison plus this
+  // page's admin gate, so it mirrors the row action on the users list exactly
+  // (strictly outrank, never self).
+  const canChangeRole =
+    isAdminLike(actorRole) && detail.id !== actorId && outranks(actorRole, detail.role);
 
   return (
     <div className="flex flex-col gap-4">
@@ -154,19 +209,57 @@ function UserDetailContent({
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle className="text-xl">{detail.name}</CardTitle>
             <Badge variant="secondary">{labelFor('role', detail.role)}</Badge>
-            {canResetPassword ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => setPasswordOpen(true)}
-                data-qa="user-change-password-button"
-              >
-                <LuKeyRound className="mr-2 size-4" />
-                Change password
-              </Button>
-            ) : null}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {canEditUser ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditOpen(true)}
+                  data-qa="user-edit-button"
+                  leftIcon={<LuPencil className="size-4" />}
+                >
+                  Edit
+                </Button>
+              ) : null}
+              {canChangeRole ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRoleOpen(true)}
+                  data-qa="user-change-role-button"
+                  leftIcon={<LuShieldCheck className="size-4" />}
+                >
+                  Change role
+                </Button>
+              ) : null}
+              {canDeleteUser ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteOpen(true)}
+                  data-qa="user-delete-button"
+                  className="text-destructive hover:text-destructive"
+                  leftIcon={<LuTrash2 className="size-4" />}
+                >
+                  Delete
+                </Button>
+              ) : null}
+              {canResetPassword ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPasswordOpen(true)}
+                  data-qa="user-change-password-button"
+                >
+                  <LuKeyRound className="mr-2 size-4" />
+                  Change password
+                </Button>
+              ) : null}
+            </div>
           </div>
           <p className="text-muted-foreground text-sm">{detail.email}</p>
         </CardHeader>
@@ -326,6 +419,31 @@ function UserDetailContent({
       <ResetPasswordDialog
         target={passwordOpen ? { id: detail.id, name: detail.name } : null}
         onClose={() => setPasswordOpen(false)}
+      />
+
+      <EditUserDialog
+        target={editOpen ? detail : null}
+        updateUser={updateUser}
+        onClose={() => setEditOpen(false)}
+      />
+
+      <ChangeRoleDialog
+        target={roleOpen ? detail : null}
+        // CUSTOMER is create-only: it needs a lead pointer a role change cannot
+        // collect, and the service rejects the transition (400).
+        assignableRoles={creatableRolesFor(actorRole).filter((r) => r !== 'CUSTOMER')}
+        changeRole={changeRole}
+        onClose={() => setRoleOpen(false)}
+      />
+
+      <DeleteUserDialog
+        target={deleteOpen ? detail : null}
+        deleteUser={deleteUser}
+        onClose={() => setDeleteOpen(false)}
+        // The row is gone after a soft delete, so this page must not stay on a
+        // route that can only answer 404. `replace` keeps the dead URL out of
+        // the history.
+        onDeleted={() => router.replace(orgHref(orgSlug, '/admin/users'))}
       />
     </div>
   );
