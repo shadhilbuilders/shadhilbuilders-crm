@@ -325,6 +325,10 @@ export class OutboundService {
           data: {
             status: 'SENT',
             wamid: deliveryResult.wamid,
+            // A row that failed once and succeeded on a retry keeps the old
+            // error text otherwise, so a SENT row renders with an error beside
+            // it on the delivery page. Clear it on success.
+            lastError: null,
           },
         });
       }

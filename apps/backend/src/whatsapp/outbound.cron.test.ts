@@ -123,7 +123,12 @@ async function ensureFixtures(): Promise<void> {
 
 async function seedOutbound(
   label: string,
-  opts: { lastAttemptAt?: Date | null; attempts?: number; wamid?: string } = {},
+  opts: {
+    lastAttemptAt?: Date | null;
+    attempts?: number;
+    wamid?: string;
+    lastError?: string;
+  } = {},
 ): Promise<{ messageId: string; outboundId: string }> {
   if (prisma === null) throw new Error('prisma missing');
   const suffix = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -153,6 +158,7 @@ async function seedOutbound(
         attempts: opts.attempts ?? 0,
         ...(opts.lastAttemptAt !== undefined ? { lastAttemptAt: opts.lastAttemptAt } : {}),
         ...(opts.wamid !== undefined ? { wamid: opts.wamid } : {}),
+        ...(opts.lastError !== undefined ? { lastError: opts.lastError } : {}),
         organizationId: 'ceid01lpfe1esm8jwsxid41k28',
       },
     });
@@ -330,6 +336,31 @@ describe.skipIf(!HAS_DB || !HAS_REDIS)('T-E2b outbound cron - lease + claim + se
     expect(updated?.wamid).toBe('wamid.happy');
     // attempts was 0 at seed; claimPending increments to 1
     expect(updated?.attempts).toBe(1);
+  });
+
+  it('retry that succeeds clears the stale lastError', async () => {
+    // attempts=1 + an old lastAttemptAt puts the row past the first backoff
+    // window, and lastError carries the text from the attempt that failed.
+    const { outboundId } = await seedOutbound('retry-clears-error', {
+      attempts: 1,
+      lastAttemptAt: new Date(Date.now() - 10 * 60 * 1000),
+      lastError: 'WhatsApp API HTTP error 400: (#133010) Account not registered',
+    });
+    stubWhatsApp.nextResult = { wamid: 'wamid.retry.ok' };
+
+    const tick = await cron.runOnce();
+    expect(tick.sent).toBe(1);
+
+    const updated = await adminSeed(async (db) =>
+      db.outboundMessage.findUnique({
+        where: { id: outboundId },
+        select: { status: true, wamid: true, lastError: true },
+      }),
+    );
+    expect(updated?.status).toBe('SENT');
+    expect(updated?.wamid).toBe('wamid.retry.ok');
+    // Without the fix this keeps the 133010 text beside a SENT row.
+    expect(updated?.lastError).toBeNull();
   });
 
   it('lock contention: another replica holds the lock → no-op', async () => {
