@@ -20,3 +20,9 @@ apps/web/public/sw.js
 apps/web/next-env.d.ts
 apps/web/src/generated/
 **/src/generated/
+
+# Playwright storage state: gitignored, holds real session cookies, exists only
+# on the machine that ran the e2e suite. Formatting it would rewrite a file that
+# is never reviewed and never reaches CI, so `format:check` passes there but
+# fails locally without this line.
+apps/web/src/test/e2e/.auth/
