@@ -31,11 +31,12 @@
 // non-throwing on the landing side (mirror pattern). This endpoint is that
 // write.
 
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 import { withRlsContext, type PrismaClient } from '@shadhil/database';
 import { CreateLeadDtoSchema, normalizeLeadSource } from '@shadhil/api-types';
 
+import { toE164 } from '../whatsapp/whatsapp.client';
 import { LeadsService } from '../leads/leads.service';
 import { LeadFactsService } from '../leads/lead-facts.service';
 import { PrismaService } from '../prisma/prisma.module';
@@ -147,57 +148,138 @@ export class PublicLeadsService {
       iss: 'shadhil-crm',
     };
 
-    const lead = await withRlsContext(
-      this.client,
-      { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
-      async (tx) => {
-        const client = tx as unknown as PrismaClient;
+    let lead: Awaited<ReturnType<LeadsService['createInTransaction']>>;
+    try {
+      lead = await withRlsContext(
+        this.client,
+        { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
+        async (tx) => {
+          const client = tx as unknown as PrismaClient;
 
-        const created = await this.leadsService.createInTransaction(actor, createDto, client);
+          const created = await this.leadsService.createInTransaction(actor, createDto, client);
 
-        const email = (dto.email ?? '').trim();
-        if (email !== '') {
-          const recorded = await this.leadFacts.recordInTransaction(
-            actor,
-            created.id,
-            {
-              field: 'email',
-              value: email,
-              evidence: [
-                {
-                  kind: 'enquiry.form-email',
-                  // T-LEAD-SOURCES (2026-11-05): channel-agnostic wording. The
-                  // same endpoint takes a landing enquiry, a Meta lead-form
-                  // post and a portal enquiry, and the rep reads this sentence
-                  // on the lead page. Naming a channel here would be wrong for
-                  // the others.
-                  detail: 'the enquiry carried this address',
-                },
-              ],
-              method: 'public-enquiry',
-            },
-            client,
-          );
-
-          // A form address on a blank field is VERIFIED, so a refusal here
-          // would be a bug, not a policy decision. Log it loudly: the lead is
-          // still created, and the landing page keeps Sheets as its primary
-          // record, so the address is recoverable rather than lost.
-          if (!recorded.applied) {
-            this.logger.error(
-              `[public-leads] email fact NOT applied lead=${created.id} band=${recorded.band ?? 'none'} reason=${recorded.reason ?? 'unknown'}`,
+          const email = (dto.email ?? '').trim();
+          if (email !== '') {
+            const recorded = await this.leadFacts.recordInTransaction(
+              actor,
+              created.id,
+              {
+                field: 'email',
+                value: email,
+                evidence: [
+                  {
+                    kind: 'enquiry.form-email',
+                    // T-LEAD-SOURCES (2026-11-05): channel-agnostic wording. The
+                    // same endpoint takes a landing enquiry, a Meta lead-form
+                    // post and a portal enquiry, and the rep reads this sentence
+                    // on the lead page. Naming a channel here would be wrong for
+                    // the others.
+                    detail: 'the enquiry carried this address',
+                  },
+                ],
+                method: 'public-enquiry',
+              },
+              client,
             );
-          }
-        }
 
-        return created;
-      },
-    );
+            // A form address on a blank field is VERIFIED, so a refusal here
+            // would be a bug, not a policy decision. Log it loudly: the lead is
+            // still created, and the landing page keeps Sheets as its primary
+            // record, so the address is recoverable rather than lost.
+            if (!recorded.applied) {
+              this.logger.error(
+                `[public-leads] email fact NOT applied lead=${created.id} band=${recorded.band ?? 'none'} reason=${recorded.reason ?? 'unknown'}`,
+              );
+            }
+          }
+
+          return created;
+        },
+      );
+    } catch (error) {
+      // 2026-11-19: a repeat enquiry is a normal event for a builder, not an
+      // error. Before this, a known mobile made this endpoint answer 409
+      // DUPLICATE_VALUE ("A record with these values already exists") and the
+      // landing page logged a failed mirror. The second enquiry is now appended
+      // to the lead that already holds the number and the caller is told it
+      // succeeded.
+      //
+      // T-PHONE-PER-ORG (same day): the unique index is (organizationId, phone),
+      // so this branch only fires for a number that is already a lead in THIS
+      // org. A number held by another workspace is no longer a conflict at all -
+      // the insert simply succeeds.
+      const handled = await this.appendRepeatEnquiry(actor, dto, orgId, notes, error);
+      if (handled !== null) return handled;
+      throw error;
+    }
 
     this.logger.log(
       `[public-leads] created lead=${lead.id} owner=${lead.ownerId} source=${createDto.source} org=${orgId} project=${projectId ?? 'null'}`,
     );
     return { ok: true, id: lead.id, state: lead.state };
+  }
+
+  /**
+   * Turn a duplicate-phone create into a repeat enquiry on the existing lead.
+   *
+   * Returns `null` when the failure is not a unique violation, so the caller
+   * rethrows the original error untouched. When the number belongs to a lead in
+   * ANOTHER workspace, RLS hides that row from this org-scoped lookup, so we
+   * cannot attach to it and say so plainly instead of writing a lead that the
+   * next insert would reject again.
+   */
+  private async appendRepeatEnquiry(
+    actor: JwtPayload,
+    dto: PublicCreateLeadDto,
+    orgId: string,
+    notes: string,
+    error: unknown,
+  ): Promise<PublicCreateLeadResult | null> {
+    if ((error as { code?: string } | null)?.code !== 'P2002') return null;
+
+    const phoneE164 = toE164(dto.phone);
+    const existing = await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
+      (tx) =>
+        (tx as unknown as PrismaClient).lead.findFirst({
+          where: { organizationId: orgId, OR: [{ phone: dto.phone }, { phoneE164 }] },
+          select: { id: true, state: true },
+        }),
+    );
+
+    if (existing === null) {
+      throw new ConflictException(
+        'This mobile number already belongs to a lead outside this workspace, ' +
+          'so the enquiry was not stored. Use a different number or clear the ' +
+          'existing lead in the workspace that holds it.',
+      );
+    }
+
+    const body = ['Repeat website enquiry - same mobile as this lead.', notes]
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .join('\n\n');
+
+    await withRlsContext(
+      this.client,
+      { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
+      (tx) =>
+        (tx as unknown as PrismaClient).activity.create({
+          data: {
+            leadId: existing.id,
+            organizationId: orgId,
+            userId: actor.sub,
+            type: 'NOTE',
+            body,
+          },
+        }),
+    );
+
+    this.logger.warn(
+      `[public-leads] duplicate phone - repeat enquiry appended to lead=${existing.id} org=${orgId}`,
+    );
+    return { ok: true, id: existing.id, state: existing.state };
   }
 
   /** Resolve an org slug -> org id. Falls back to PUBLIC_ORG_ID env when the

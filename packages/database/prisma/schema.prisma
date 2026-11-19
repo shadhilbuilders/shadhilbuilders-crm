@@ -843,12 +843,23 @@ model Lead {
   // T-E2b (2026-09-04): `phone` keeps the user-entered display format
   // (e.g. "98765 43210"); `phoneE164` is the E.164-normalized form
   // (e.g. "919876543210"). Outbound WhatsApp sends to phoneE164;
-  // inbound webhook looks up by phoneE164. The unique index on phone
-  // stays for display-layer dedup; phoneE164 has its own unique index.
-  // Existing rows are backfilled by the 2026_09_04_t_e2b_phone_e164
-  // migration (UPDATE ... SET phoneE164 = digits-only-of-phone).
-  phone               String        @unique
-  phoneE164           String?       @unique
+  // inbound webhook looks up by phoneE164. Existing rows were backfilled by
+  // the 2026_09_04_t_e2b_phone_e164 migration (UPDATE ... SET phoneE164 =
+  // digits-only-of-phone).
+  //
+  // T-PHONE-PER-ORG (2026-11-19, owner ruling): uniqueness is per ORGANIZATION,
+  // not global. It was global, and that made the multi-tenant model false -
+  // the same buyer enquiring about two builders' projects was rejected on the
+  // second one, and the public landing endpoint answered 409 DUPLICATE_VALUE
+  // for any number that already existed anywhere in the CRM (including the
+  // sandbox org). A phone identifies a person; a person may legitimately be a
+  // lead for more than one builder. The tenant axis is what must not repeat.
+  //
+  // Consequence to keep in mind: the inbound WhatsApp webhook can no longer
+  // read the org off the phone. It resolves per candidate org (it already
+  // loops) and logs when a number matches in more than one.
+  phone               String
+  phoneE164           String?
   email               String?
   source              String?
   state               LeadState     @default(NEW)
@@ -902,6 +913,8 @@ model Lead {
   facts             LeadFact[]
   customerUsers     User[]             @relation("CustomerLeadUser")
 
+  @@unique([organizationId, phone])
+  @@unique([organizationId, phoneE164])
   @@index([ownerId])
   @@index([coOwnerId])
   @@index([teamId])

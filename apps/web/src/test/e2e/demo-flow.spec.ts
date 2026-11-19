@@ -176,10 +176,11 @@ test.describe('T-DEMOBOOK - Sunday demo flow (live backend+web)', () => {
     if (probe.broken) throw new Error(probe.reason);
 
     const createdLeadName = `Demo Sprint Lead ${Date.now().toString().slice(-6)}`;
-    // The phone MUST be unique per run: Lead.phoneE164 is unique, so a hardcoded
-    // '9876543210' made every re-run fail with
-    //   `400 Lead with phone 919876543210 already exists`
-    // which took down STEP 3 and every step that depends on its lead id.
+    // The phone MUST be unique per run within the demo org. The unique index is
+    // (organizationId, phone) since 2026-11-19, so a hardcoded '9876543210' no
+    // longer collides ACROSS orgs - but it still collides with the lead the
+    // previous run made in this same org, which took down STEP 3 and every step
+    // that depends on its lead id.
     // 10 digits, Indian mobile prefix.
     const uniquePhone = `98${Date.now().toString().slice(-8)}`;
     await page.getByLabel(/Full name/i).fill(createdLeadName);

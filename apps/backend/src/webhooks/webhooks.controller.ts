@@ -337,15 +337,21 @@ export class WebhooksController {
     const mediaInfo = isText ? null : extractMedia(message);
 
     // T-WA-MULTITENANT (2026-11-19): resolve the owning org BEFORE writing
-    // anything. Lead.phoneE164 is globally unique, so the phone itself tells us
-    // which tenant a reply belongs to. The handler used to stamp every row with
-    // PUBLIC_ORG_ID, which buried replies from any other org's lead as unknown
-    // contacts in the public org. An unknown number still falls back to
-    // PUBLIC_ORG_ID: Meta never tells us which tenant an unknown sender belongs
-    // to, and inventing one would be worse than the fallback.
+    // anything. The handler used to stamp every row with PUBLIC_ORG_ID, which
+    // buried replies from any other org's lead as unknown contacts in the
+    // public org. An unknown number still falls back to PUBLIC_ORG_ID: Meta
+    // never tells us which tenant an unknown sender belongs to, and inventing
+    // one would be worse than the fallback.
+    //
+    // T-PHONE-PER-ORG (2026-11-19): Lead.phoneE164 is unique per org now, not
+    // globally, so the phone no longer identifies the tenant by itself - this
+    // loop is what does. If the same number is a lead in two orgs the inbound
+    // is genuinely ambiguous (Meta sends no tenant hint), so we take the first
+    // match and log both, because silence here would look like a routing bug.
     const orgIds = await this.webhookOrgIds();
     let owningOrgId = process.env['PUBLIC_ORG_ID'] ?? '';
     let lead: { id: string; name: string | null } | null = null;
+    const matchedOrgIds: string[] = [];
     for (const candidateOrgId of orgIds) {
       const hit = await withRlsContext(
         barePrisma,
@@ -354,13 +360,26 @@ export class WebhooksController {
           role: 'CRON_SERVICE',
           organizationId: candidateOrgId,
         },
-        (tx) => tx.lead.findUnique({ where: { phoneE164 }, select: { id: true, name: true } }),
+        (tx) =>
+          tx.lead.findFirst({
+            where: { phoneE164, organizationId: candidateOrgId },
+            select: { id: true, name: true },
+          }),
       );
       if (hit !== null) {
-        lead = hit;
-        owningOrgId = candidateOrgId;
-        break;
+        matchedOrgIds.push(candidateOrgId);
+        if (lead === null) {
+          lead = hit;
+          owningOrgId = candidateOrgId;
+        }
       }
+    }
+    if (matchedOrgIds.length > 1) {
+      this.logger.warn(
+        `[whatsapp] inbound from ${phoneE164} matches leads in ${matchedOrgIds.join(
+          ', ',
+        )} - routing to ${owningOrgId}. Same number, multiple tenants; pick manually if this is wrong.`,
+      );
     }
 
     return withRlsContext(

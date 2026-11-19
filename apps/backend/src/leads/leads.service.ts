@@ -1029,12 +1029,18 @@ export class LeadsService {
     // Steps 5+: write Lead + audit log. The `client` is already a
     // tx with RLS context set, so we use it directly - no inner
     // withRlsContext wrapper.
-    const existing = await client.lead.findUnique({
-      where: { phone: dto.phone },
+    // T-PHONE-PER-ORG (2026-11-19): the unique index is
+    // (organizationId, phone), so this check is scoped to the actor's org and
+    // the message says so. A lead with the same number in ANOTHER org is not a
+    // conflict - that is a different builder's customer.
+    const existing = await client.lead.findFirst({
+      where: { phone: dto.phone, organizationId: actor.organizationId },
       select: { id: true },
     });
-    if (existing) {
-      throw new BadRequestException(`Lead with phone ${dto.phone} already exists`);
+    if (existing !== null) {
+      throw new BadRequestException(
+        `Lead with phone ${dto.phone} already exists in this organization`,
+      );
     }
 
     // T-LEAD-PROJECT-REQUIRED (2026-09-16): validate the project BEFORE the

@@ -745,7 +745,11 @@ async function main() {
 
   for (const lead of demoLeads) {
     await prisma.lead.upsert({
-      where: { phone: lead.phone },
+      // T-PHONE-PER-ORG (2026-11-19): phone is unique per organization, so the
+      // lookup key is the composite one. Seeding by phone alone no longer
+      // compiles, and would have been wrong anyway - another org may hold the
+      // same customer.
+      where: { organizationId_phone: { organizationId: SEED_ORG_ID, phone: lead.phone } },
       update: {
         state: lead.state,
         name: lead.name,
@@ -775,8 +779,8 @@ async function main() {
   // the portal's lock screen shows. The booking is created APPROVED directly
   // (seed bypasses the HOLD -> TOKEN -> APPROVED workflow on purpose); the
   // Booking trigger derives Unit.status as for any other booking.
-  const customerLead = await prisma.lead.findUniqueOrThrow({
-    where: { phone: SEED_CUSTOMER_LEAD_PHONE },
+  const customerLead = await prisma.lead.findFirstOrThrow({
+    where: { phone: SEED_CUSTOMER_LEAD_PHONE, organizationId: SEED_ORG_ID },
     select: { id: true },
   });
   const customerUnit = await prisma.unit.findUniqueOrThrow({

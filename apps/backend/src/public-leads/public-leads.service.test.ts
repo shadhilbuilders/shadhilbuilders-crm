@@ -20,33 +20,53 @@ function harness(
   options: {
     recordedApplies?: boolean;
     createdLead?: { id: string };
+    /** Makes the lead insert reject, e.g. a P2002 unique violation. */
+    createFails?: unknown;
+    /** The lead the duplicate-phone lookup finds (null = another workspace). */
+    existingLead?: { id: string; state: string } | null;
   } = {},
 ) {
   const recorded: Recorded[] = [];
+  const activities: Array<Record<string, unknown>> = [];
 
   const tx = {
     $executeRawUnsafe: async () => 1,
     organization: { findUnique: async () => ({ id: ORG }) },
     project: { findFirst: async () => ({ id: PROJECT }) },
     user: { findFirst: async () => ({ id: OWNER }) },
+    lead: {
+      findFirst: async () =>
+        options.existingLead === undefined
+          ? { id: 'lead-old', state: 'CONTACTED' }
+          : options.existingLead,
+    },
+    activity: {
+      create: async (args: { data: Record<string, unknown> }) => {
+        activities.push(args.data);
+        return args.data;
+      },
+    },
   };
 
   const prisma = {
     $client: { $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) },
   };
 
-  const createInTransaction = vi.fn(async (_actor: unknown, dto: unknown) => ({
-    id: options.createdLead?.id ?? 'lead-new',
-    name: 'Ramesh',
-    phone: '9876543210',
-    phoneE164: '919876543210',
-    state: 'NEW',
-    source: 'LANDING',
-    ownerId: OWNER,
-    ownerName: null,
-    teamId: 'team-1',
-    ...(dto as object),
-  }));
+  const createInTransaction = vi.fn(async (_actor: unknown, dto: unknown) => {
+    if (options.createFails !== undefined) throw options.createFails;
+    return {
+      id: options.createdLead?.id ?? 'lead-new',
+      name: 'Ramesh',
+      phone: '9876543210',
+      phoneE164: '919876543210',
+      state: 'NEW',
+      source: 'LANDING',
+      ownerId: OWNER,
+      ownerName: null,
+      teamId: 'team-1',
+      ...(dto as object),
+    };
+  });
 
   const recordInTransaction = vi.fn(
     async (_actor: unknown, leadId: string, dto: Record<string, unknown>) => {
@@ -69,7 +89,7 @@ function harness(
     prisma as never,
   );
 
-  return { service, recorded, createInTransaction, recordInTransaction };
+  return { service, recorded, activities, createInTransaction, recordInTransaction };
 }
 
 describe('PublicLeadsService - the landing enquiry produces an email fact', () => {
@@ -197,5 +217,76 @@ describe('PublicLeadsService - inbound channels other than the landing page', ()
 
   it('records an unknown channel as OTHER instead of dropping the lead', async () => {
     expect(await sourceOf('some-new-portal-2027')).toBe('OTHER');
+  });
+});
+
+// 2026-11-19: Lead.phone / Lead.phoneE164 are globally unique. Before this, a
+// second enquiry from a number the CRM already held came back as
+// 409 {"code":"DUPLICATE_VALUE"} and the landing page logged a failed mirror -
+// even though a repeat enquiry from the same customer is exactly the kind of
+// lead a builder wants.
+describe('PublicLeadsService - a repeat enquiry on a known mobile', () => {
+  const env = process.env;
+
+  beforeEach(() => {
+    process.env = {
+      ...env,
+      PUBLIC_ORG_ID: ORG,
+      LEADS_FALLBACK_PROJECT_ID: PROJECT,
+      LEADS_FALLBACK_OWNER_ID: OWNER,
+    };
+  });
+
+  afterEach(() => {
+    process.env = env;
+  });
+
+  it('appends the enquiry to the existing lead and reports success', async () => {
+    const { service, activities, recorded } = harness({
+      createFails: Object.assign(new Error('unique violation'), { code: 'P2002' }),
+      existingLead: { id: 'lead-old', state: 'CONTACTED' },
+    });
+
+    const result = await service.createLead({
+      fullName: 'Ramesh Kumar',
+      phone: '9876543210',
+      email: 'ramesh@example.com',
+      requirement: '3 BHK villa',
+      message: 'Please call after 6pm',
+    } as never);
+
+    // The caller gets the lead that already holds the number, not an error.
+    expect(result).toEqual({ ok: true, id: 'lead-old', state: 'CONTACTED' });
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      leadId: 'lead-old',
+      organizationId: ORG,
+      type: 'NOTE',
+    });
+    // Both the requirement and the message must survive - they are what the rep
+    // reads when the repeat enquiry arrives.
+    expect(activities[0]?.['body']).toContain('3 BHK villa');
+    expect(activities[0]?.['body']).toContain('Please call after 6pm');
+    // Nothing was created, so there is no new lead to fill facts on.
+    expect(recorded).toHaveLength(0);
+  });
+
+  it('says plainly when the number belongs to another workspace', async () => {
+    const { service } = harness({
+      createFails: Object.assign(new Error('unique violation'), { code: 'P2002' }),
+      existingLead: null,
+    });
+
+    await expect(
+      service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never),
+    ).rejects.toThrow(/outside this workspace/);
+  });
+
+  it('leaves an unrelated failure alone', async () => {
+    const { service } = harness({ createFails: new Error('connection reset') });
+
+    await expect(
+      service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never),
+    ).rejects.toThrow('connection reset');
   });
 });
