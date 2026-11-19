@@ -653,13 +653,35 @@ export function useSendWelcomeMessage(leadId: string) {
   });
 }
 
+/**
+ * T-WA-WINDOW: the caches one chat event must refresh for a lead.
+ *
+ * Exported so the invalidation contract is testable without rendering a hook
+ * (this repo has no @testing-library/react; see booking-cache-invalidation.test.ts).
+ *
+ * The thread state is here because the customer's inbound is what OPENS Meta's 24h
+ * reply window, and that state query polls only once a minute. Refreshing messages
+ * alone left the composer saying "window closed" for up to 60s after the customer
+ * replied - the operator read that as the integration being broken.
+ */
+export function invalidateChatSideEffects(
+  client: QueryClient,
+  leadId: string,
+  kind: 'CUSTOMER' | 'INTERNAL',
+): void {
+  void client.invalidateQueries({ queryKey: ['chat', leadId, kind] });
+  void client.invalidateQueries({ queryKey: ['chat-state', leadId] });
+}
+
 export function useMessagesRealtime(
   leadId: string | null,
   kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER',
 ): void {
   const queryClient = useQueryClient();
   useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {
-    void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
+    if (leadId !== null && leadId.length > 0) {
+      invalidateChatSideEffects(queryClient, leadId, kind);
+    }
   });
 }
 
