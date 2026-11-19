@@ -33,7 +33,7 @@ export type IdParamDto = z.infer<typeof IdParamDtoSchema>;
  *   0XXXXXXXXXX    → 91XXXXXXXXXX  (strip leading 0, prepend 91)
  *   XXXXXXXXXX     → 91XXXXXXXXXX  (10 digits starting 6-9 = Indian mobile)
  *   +1XXXXXXXXXX   → 1XXXXXXXXXX   (international, strip +)
- *   7–15 digits otherwise          → as-is (international)
+ *   10–15 digits otherwise         → as-is (international)
  *
  * Anything outside these shapes fails validation. The output is the
  * normalized digits-only E.164 form (no leading "+").
@@ -79,8 +79,14 @@ export function normalizePhoneDigits(raw: string): string {
   if (/^0\d{10}$/.test(digits)) return '91' + digits.slice(1);
   // Indian mobile: 10 digits starting with 6-9 → prepend 91
   if (/^[6-9]\d{9}$/.test(digits)) return '91' + digits;
-  // International: 7+ digits, starts with a valid country code
-  if (/^\d{7,15}$/.test(digits)) return digits;
+  // International: 10+ digits, up to the E.164 ceiling.
+  //
+  // This used to be `\d{7,15}`, with a comment claiming it checked for a valid
+  // country code - it never did, and the effect was that `9876543` passed as a
+  // "foreign" number and every form submitted with a 7-digit typo. The CRM is
+  // Indian-first, so anything shorter than a full number is a mistake; genuine
+  // E.164 numbers are 10-15 digits once the country code is included.
+  if (/^\d{10,15}$/.test(digits)) return digits;
 
   throw new Error('Invalid phone number format');
 }

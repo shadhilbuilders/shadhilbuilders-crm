@@ -38,9 +38,13 @@ describe('PublicCreateLeadDtoSchema.phone', () => {
     expect(parsePhone('abcdefg123').success).toBe(false);
   });
 
-  it('rejects values shorter than 7 digits', () => {
+  it('rejects values shorter than 10 digits', () => {
+    // The floor is a full number, not "probably something". A 7-digit value used
+    // to pass as international and reach the create DTO.
     expect(parsePhone('98765').success).toBe(false);
     expect(parsePhone('123456').success).toBe(false);
+    expect(parsePhone('9876543').success).toBe(false);
+    expect(parsePhone('987654321').success).toBe(false);
   });
 
   it('rejects more than 15 digits (the server ceiling)', () => {

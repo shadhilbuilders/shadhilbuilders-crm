@@ -62,14 +62,16 @@ import { z } from 'zod';
  * conditions, both derived from what `normalizePhoneDigits` accepts:
  *   - alphabet: digits plus the separators it strips (space, hyphen, dot,
  *     parens, leading +);
- *   - 7-15 DIGITS, matching its international fallback `\d{7,15}`. Counting
+ *   - 10-15 DIGITS, matching its international floor of `\d{10,15}`. Counting
  *     digits rather than characters matters: a 20-char rule admitted
- *     `12345678901234567890` while the server caps at 15.
+ *     `12345678901234567890` while the server caps at 15. The floor used to be
+ *     7, which let a 7-digit typo through this gate and only failed a layer
+ *     down.
  */
 function isPlausiblePublicPhone(value: string): boolean {
   if (!/^\+?[\d\s\-().]*$/.test(value)) return false;
   const digits = value.replace(/\D/g, '').length;
-  return digits >= 7 && digits <= 15;
+  return digits >= 10 && digits <= 15;
 }
 
 export const PublicCreateLeadDtoSchema = z.object({

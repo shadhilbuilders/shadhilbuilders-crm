@@ -109,17 +109,16 @@ describe('isValidPhoneInput', () => {
   });
 
   it('rejects a partial number being typed', () => {
-    // The server normalizer's international fallback is `\d{7,15}`, so the
-    // true boundary is 7 digits. Below that is unambiguously "still typing".
-    // (9 digits IS accepted - as an international number - which is the
-    // server's rule; being stricter here would block values the API takes.)
-    for (const value of ['9', '98765', '987654']) {
+    // The floor is a full 10 digits: anything shorter is a number still being
+    // typed. It used to be 7 (the international fallback was `\d{7,15}`), which
+    // is how a 7-digit phone could be submitted.
+    for (const value of ['9', '98765', '987654', '9876543', '987654321']) {
       expect(isValidPhoneInput(value), value).toBe(false);
     }
   });
 
-  it('accepts a 7-digit value, matching the server floor', () => {
-    expect(isValidPhoneInput('9876543')).toBe(true);
+  it('rejects a 7-digit value instead of reading it as international', () => {
+    expect(isValidPhoneInput('9876543')).toBe(false);
   });
 
   it('rejects non-numeric garbage', () => {
@@ -152,6 +151,15 @@ describe('PhoneInputSchema', () => {
 
   it('fails a partial number with a readable message', () => {
     const result = PhoneInputSchema.safeParse('98765');
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error.issues[0]?.message).toBe(phoneFieldMessage);
+  });
+
+  it('fails a 7-digit number, which used to be submitted as international', () => {
+    // The field-level rule every phone form resolver uses (lead create, lead
+    // edit, create user, settings). This is the behaviour the form submit hangs
+    // off, so pin it here and not only on the predicate.
+    const result = PhoneInputSchema.safeParse('9876543');
     expect(result.success).toBe(false);
     expect(result.success === false && result.error.issues[0]?.message).toBe(phoneFieldMessage);
   });
