@@ -43,6 +43,8 @@ export type UpdateProjectInput = {
   address?: string;
   reraNumber?: string | null;
   cmdaNumber?: string | null;
+  /** URL segment. Changing it moves every /<slug>/... URL for that project. */
+  slug?: string;
 };
 
 export function useProjects() {

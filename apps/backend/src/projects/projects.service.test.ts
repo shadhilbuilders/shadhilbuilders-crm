@@ -7,8 +7,9 @@
 //   2. create: ADMIN/OWNER pass, MANAGER/TELECALLER/SALES_EXEC 403;
 //      slug derived from name, collision suffix appended; audit row
 //      written in the same tx.
-//   3. update: ADMIN/OWNER pass, staff 403; slug NOT in the update
-//      payload even if a caller attempts one; audit before/after.
+//   3. update: ADMIN/OWNER pass, staff 403; slug IS editable (2026-11-19)
+//      with a 409 on a clash instead of create()'s silent suffix; audit
+//      before/after carries the slug on both sides.
 //   4. remove: SOFT delete - ADMIN/OWNER only (staff 403); 409 when
 //      bookings exist; stamps deletedAt (row kept), audit row on success.
 //
@@ -48,6 +49,7 @@ type MockTx = {
   project: {
     findMany: Mock<(args?: MockArgs) => Promise<MockProjectRow[]>>;
     findUnique: Mock<(args: MockArgs) => Promise<MockProjectRow | null>>;
+    findFirst: Mock<(args: MockArgs) => Promise<unknown>>;
     create: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
     update: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
     delete: Mock<(args: MockArgs) => Promise<MockProjectRow>>;
@@ -77,6 +79,8 @@ const txCapture: { current: MockTx | undefined } = { current: undefined };
 
 function makeTx(overrides: {
   projectFindUnique?: (args: MockArgs) => MockProjectRow | null | undefined;
+  /** Row returned by the org-wide slug clash check in update(). */
+  projectFindFirst?: (args: MockArgs) => unknown;
   bookingCount?: number;
   leadCount?: number;
   memberLeadCount?: number;
@@ -127,6 +131,7 @@ function makeTx(overrides: {
         }
         return row;
       }),
+      findFirst: vi.fn(async (args: MockArgs) => overrides.projectFindFirst?.(args) ?? null),
       create: vi.fn(async (args: MockArgs) => {
         const data = (args.data ?? {}) as {
           slug: string;
@@ -420,16 +425,48 @@ describe('ProjectsService.update', () => {
     expect(audit.data.before.name).toBe('Shadhil Metro Heights');
   });
 
-  it('a caller-supplied slug is ignored (slug immutable)', async () => {
+  // 2026-11-19: the slug became editable, so the old "slug is ignored" test is
+  // gone. These pin the replacement contract instead.
+  it('ADMIN can change the slug; the row and the audit both carry it', async () => {
     const svc = new ProjectsService({ $client: {} } as never);
     const tx = txCapture.current!;
-    // Runtime callers sending a slug (DTO parse strips unknown keys in
-    // the controller, but the service must ALSO not spread it through)
-    // - cast through unknown to simulate a hand-built body object.
-    const hostile = { name: 'Renamed', slug: 'hijacked' } as unknown as Parameters<
-      ProjectsService['update']
-    >[2];
-    await svc.update(adminActor, 'proj-metro', hostile);
+    const row = await svc.update(adminActor, 'proj-metro', { slug: 'metro-heights' });
+    expect(row.slug).toBe('metro-heights');
+    const args = tx.project.update.mock.calls[0]![0] as any;
+    expect(args.data.slug).toBe('metro-heights');
+    const audit = tx.auditLog.create.mock.calls[0]![0] as any;
+    expect(audit.data.before.slug).toBe('shadhil-metro-heights');
+    expect(audit.data.after.slug).toBe('metro-heights');
+  });
+
+  it('a slug another project already holds is a 409, not a silent suffix', async () => {
+    txCapture.current = makeTx({
+      projectFindFirst: () => ({ name: 'Shadhil Greens', deletedAt: null }),
+    });
+    const svc = new ProjectsService({ $client: {} } as never);
+    const tx = txCapture.current!;
+    await expect(svc.update(adminActor, 'proj-metro', { slug: 'shadhil-greens' })).rejects.toThrow(
+      /already used by "Shadhil Greens"/,
+    );
+    // Nothing was written: the rejection happens before the UPDATE.
+    expect(tx.project.update).not.toHaveBeenCalled();
+  });
+
+  it('a slug still held by a soft-deleted project is a 409 with its own message', async () => {
+    txCapture.current = makeTx({
+      projectFindFirst: () => ({ name: 'Old Project', deletedAt: new Date('2026-10-01') }),
+    });
+    const svc = new ProjectsService({ $client: {} } as never);
+    await expect(svc.update(adminActor, 'proj-metro', { slug: 'old-project' })).rejects.toThrow(
+      /belongs to a deleted project/,
+    );
+  });
+
+  it('re-sending the current slug touches nothing (no clash query, no write)', async () => {
+    const svc = new ProjectsService({ $client: {} } as never);
+    const tx = txCapture.current!;
+    await svc.update(adminActor, 'proj-metro', { slug: 'shadhil-metro-heights' });
+    expect(tx.project.findFirst).not.toHaveBeenCalled();
     const args = tx.project.update.mock.calls[0]![0] as any;
     expect(args.data.slug).toBeUndefined();
   });

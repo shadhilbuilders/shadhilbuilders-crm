@@ -10,7 +10,7 @@
 //                             operational data; the switcher needs it).
 //   POST   /api/projects    - ADMIN/OWNER only (service guard; RLS is the
 //                             second wall).
-//   PATCH  /api/projects/:id - ADMIN/OWNER only. Slug is immutable.
+//   PATCH  /api/projects/:id - ADMIN/OWNER only. The slug IS editable.
 //   DELETE /api/projects/:id - OWNER only (service guard). 409 when the
 //                             project still has active inventory.
 // ────────────────────────────────────────────────────────────────────────────
@@ -108,7 +108,12 @@ export type CreateProjectDto = z.infer<typeof CreateProjectDtoSchema>;
  * PATCH /api/projects/:id body - partial. Omitted fields keep their value;
  * explicit `null` clears the optional compliance fields. `address` is
  * non-nullable (column is NOT NULL) - it can be replaced, not removed.
- * `slug` and `createdAt` are immutable (stable identity + chronology).
+ * `createdAt` is immutable (chronology).
+ *
+ * `slug` IS editable (2026-11-19). It is the URL segment for every project
+ * page, so a change moves those URLs; the service rejects a slug already used
+ * anywhere in the org (409) rather than silently suffixing it, because the
+ * admin typed a specific value. Omitted keeps the current slug.
  *
  * Derived from `CreateProjectDtoSchema` (perf-reuse-schemas) so `name`/
  * `address` keep the SAME constraints (single source of truth), then
@@ -117,6 +122,27 @@ export type CreateProjectDto = z.infer<typeof CreateProjectDtoSchema>;
  * them (a documented contract the service honors via `dto.x ?? null`) -
  * `.partial()` alone would reject `null`.
  */
+/**
+ * Project slug - the URL segment, e.g. /shadhil-metro-heights/leads.
+ *
+ * 2026-11-19: projects can now be renamed at the URL level. Creating a project
+ * still derives the slug from its name, but an ADMIN may rewrite it from the
+ * edit dialog, so it needs its own rule instead of relying on the slugifier.
+ *
+ * Lowercase letters, digits and single hyphens: no leading/trailing hyphen, no
+ * doubled hyphen. That is exactly what slugifyProjectName can produce, so an
+ * edited slug stays indistinguishable from a derived one - and a hand-typed
+ * value cannot introduce a segment that breaks the [projectSlug] route.
+ */
+export const ProjectSlugSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2, 'Slug must be at least 2 characters')
+  .max(80, 'Slug is too long')
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers and single hyphens');
+export type ProjectSlug = z.infer<typeof ProjectSlugSchema>;
+
 export const UpdateProjectDtoSchema = CreateProjectDtoSchema.pick({
   name: true,
   address: true,
@@ -124,6 +150,7 @@ export const UpdateProjectDtoSchema = CreateProjectDtoSchema.pick({
   .extend({
     reraNumber: z.string().trim().max(64).nullable().optional(),
     cmdaNumber: z.string().trim().max(64).nullable().optional(),
+    slug: ProjectSlugSchema.optional(),
   })
   .partial();
 export type UpdateProjectDto = z.infer<typeof UpdateProjectDtoSchema>;

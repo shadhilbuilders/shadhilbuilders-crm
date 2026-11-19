@@ -5,8 +5,9 @@
 // page-export constraint): the Dialog wrapper is a shell; these bodies
 // are the testable contract.
 //
-// Create → POST /api/projects (ADMIN/OWNER; slug derived server-side).
-// Edit   → PATCH /api/projects/:id (ADMIN/OWNER; slug immutable).
+// Create → POST /api/projects (ADMIN/OWNER; slug derived from the name).
+// Edit   → PATCH /api/projects/:id (ADMIN/OWNER; slug editable since
+//          2026-11-19 - it is the URL segment, so it is shown as a field).
 // Delete → DELETE /api/projects/:id (OWNER only; 409 when bookings exist).
 
 import { Button, Form, toast, TypographyP } from '@paalstack/react-ui';
@@ -16,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
 
-import { CreateProjectDtoSchema } from '@shadhil/api-types';
+import { CreateProjectDtoSchema, ProjectSlugSchema } from '@shadhil/api-types';
 import {
   useCreateProject,
   useDeleteProject,
@@ -33,7 +34,12 @@ import {
 // omitted (create) or null (edit).
 // ---------------------------------------------------------------------------
 
-type ProjectFormValues = z.infer<typeof CreateProjectDtoSchema>;
+// The edit dialog also exposes the slug, so the form schema is the create DTO
+// plus an optional slug validated by the shared ProjectSlugSchema - the same
+// rule the backend enforces. Create mode never sends it.
+const ProjectFormSchema = CreateProjectDtoSchema.extend({ slug: ProjectSlugSchema.optional() });
+
+type ProjectFormValues = z.infer<typeof ProjectFormSchema>;
 
 export function ProjectFormBody({
   mode,
@@ -49,9 +55,10 @@ export function ProjectFormBody({
   const pending = createProject.isPending || updateProject.isPending;
 
   const form = useForm<ProjectFormValues>({
-    resolver: zodResolver(CreateProjectDtoSchema),
+    resolver: zodResolver(ProjectFormSchema),
     defaultValues: {
       name: project?.name ?? '',
+      slug: project?.slug ?? '',
       address: project?.address ?? '',
       reraNumber: project?.reraNumber ?? '',
       cmdaNumber: project?.cmdaNumber ?? '',
@@ -85,9 +92,14 @@ export function ProjectFormBody({
       return;
     }
     if (project === undefined) return;
+    const nextSlug = values.slug?.trim() ?? '';
+    // Send the slug only when it actually changed: the service 409s on a clash
+    // and there is no reason to rewrite the same value into the audit row.
+    const slugPatch = nextSlug.length > 0 && nextSlug !== project.slug ? { slug: nextSlug } : {};
     updateProject.mutate(
       {
         id: project.id,
+        ...slugPatch,
         name: values.name.trim(),
         address: values.address.trim(),
         reraNumber:
@@ -101,7 +113,11 @@ export function ProjectFormBody({
       },
       {
         onSuccess: (updated) => {
-          toast.success(`Project ${updated.name} updated`);
+          toast.success(
+            updated.slug === project.slug
+              ? `Project ${updated.name} updated`
+              : `Project ${updated.name} updated - its pages moved to /${updated.slug}`,
+          );
           onDone();
         },
         onError: (error: unknown) => {
@@ -123,6 +139,25 @@ export function ProjectFormBody({
         'data-qa': 'project-form-name',
       },
     },
+    // Slug only exists once a project does: create derives it from the name.
+    ...(mode === 'edit'
+      ? [
+          {
+            type: 'input' as const,
+            name: 'slug' as const,
+            label: 'URL slug',
+            description:
+              'The address of every page for this project. Changing it moves those URLs - old links stop working.',
+            placeholder: 'e.g. shadhil-metro-heights',
+            inputProps: {
+              maxLength: 80,
+              autoCapitalize: 'none',
+              spellCheck: false,
+              'data-qa': 'project-form-slug',
+            },
+          },
+        ]
+      : []),
     {
       type: 'input',
       name: 'address',

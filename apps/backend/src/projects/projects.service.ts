@@ -333,8 +333,13 @@ export class ProjectsService {
   }
 
   /**
-   * Update name / compliance fields. ADMIN/OWNER only. Slug is immutable
-   * (stable identity for the [projectId] route segment).
+   * Update name / address / compliance fields / slug. ADMIN or OWNER only.
+   *
+   * The slug IS editable (2026-11-19): it is the URL segment for every project
+   * page, and renaming a project should not leave a stale slug behind it.
+   * Because the admin typed a specific value we reject a clash with 409 instead
+   * of quietly suffixing it the way create() does - silently landing on
+   * "my-project-2" is worse than being told the slug is taken.
    */
   async update(actor: JwtPayload, id: string, dto: UpdateProjectDto): Promise<ProjectRow> {
     if (!isAdminClass(actor.role)) {
@@ -347,10 +352,28 @@ export class ProjectsService {
       if (existing === null || isSoftDeleted(existing)) {
         throw new NotFoundException(`Project ${id} not found.`);
       }
+      const nextSlug = dto.slug !== undefined && dto.slug !== existing.slug ? dto.slug : undefined;
+      if (nextSlug !== undefined) {
+        // Soft-deleted rows still own their slug (the unique index does not
+        // exclude them), so the check spans the org without a deletedAt
+        // filter - otherwise the UPDATE would fail with a raw P2002.
+        const clash = await tx.project.findFirst({
+          where: { organizationId: actor.organizationId, slug: nextSlug, id: { not: id } },
+          select: { name: true, deletedAt: true },
+        });
+        if (clash !== null) {
+          throw new ConflictException(
+            isSoftDeleted(clash)
+              ? `The slug "${nextSlug}" still belongs to a deleted project. Pick another one.`
+              : `The slug "${nextSlug}" is already used by "${clash.name}". Pick another one.`,
+          );
+        }
+      }
       const updated = await tx.project.update({
         where: { id },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(nextSlug !== undefined ? { slug: nextSlug } : {}),
           ...(dto.address !== undefined ? { address: dto.address ?? null } : {}),
           ...(dto.reraNumber !== undefined ? { reraNumber: dto.reraNumber ?? null } : {}),
           ...(dto.cmdaNumber !== undefined ? { cmdaNumber: dto.cmdaNumber ?? null } : {}),
@@ -365,12 +388,14 @@ export class ProjectsService {
           entityId: id,
           before: {
             name: existing.name,
+            slug: existing.slug,
             address: existing.address,
             reraNumber: existing.reraNumber,
             cmdaNumber: existing.cmdaNumber,
           },
           after: {
             name: updated.name,
+            slug: updated.slug,
             address: updated.address,
             reraNumber: updated.reraNumber,
             cmdaNumber: updated.cmdaNumber,
