@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
-import { notFound } from 'next/navigation';
 
 import { DOCUMENT_TITLE_SUFFIX } from '@/lib/document-title';
 import { getProjectBySlug } from '@/lib/server/tenant';
+import { requireTenant } from '@/lib/server/tenant-guard';
 import { ProjectProvider, type ProjectContextValue } from '@/lib/tenant-context';
 
 export const dynamic = 'force-dynamic';
@@ -12,15 +11,17 @@ export const dynamic = 'force-dynamic';
  * Project pages title as "Lead Inbox · Skyline | Shadhil Builders CRM".
  * A segment's title.template replaces the parent template instead of nesting
  * inside it, so the brand suffix has to be repeated here.
+ *
+ * Metadata never throws: on any failure it degrades to the generic name so
+ * the real handling happens once, in the layout below (a throw here would
+ * surface as an error page before the layout could redirect sensibly).
  */
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ projectSlug: string }>;
-}): Promise<Metadata> {
+}: LayoutProps<'/[orgSlug]/projects/[projectSlug]'>): Promise<Metadata> {
   const { projectSlug } = await params;
-  const project = await getProjectBySlug(projectSlug);
-  const name = project?.name ?? 'Project';
+  const result = await getProjectBySlug(projectSlug);
+  const name = result.ok ? result.data.name : 'Project';
 
   return {
     title: {
@@ -38,18 +39,25 @@ export async function generateMetadata({
  *
  * The org is already resolved by the enclosing [orgSlug] OrganizationLayout;
  * this layout only needs to resolve the project within it.
+ *
+ * FAILURE HANDLING: mirrors the org layout (2026-11-19) through the shared
+ * `requireTenant` guard - an unresolved lookup is no longer an automatic 404,
+ * so an expired session redirects to sign-in and an outage reaches the error
+ * boundary rather than telling the user their project does not exist.
  */
 export default async function ProjectLayout({
   children,
   params,
-}: {
-  children: ReactNode;
-  params: Promise<{ projectSlug: string }>;
-}) {
-  const { projectSlug } = await params;
+}: LayoutProps<'/[orgSlug]/projects/[projectSlug]'>) {
+  const { projectSlug, orgSlug } = await params;
 
-  const project = await getProjectBySlug(projectSlug);
-  if (project === null) notFound();
+  const project = requireTenant(
+    await getProjectBySlug(projectSlug),
+    // `params` carries ancestor segments (Next docs: "from the root segment
+    // down to that layout"), so orgSlug is available here.
+    `/${orgSlug}/projects/${projectSlug}`,
+    'this project',
+  );
 
   const projectValue: ProjectContextValue = {
     id: project.id,

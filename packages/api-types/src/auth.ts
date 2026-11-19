@@ -388,6 +388,20 @@ export const RefreshTokenDtoSchema = z.object({
 export type RefreshTokenDto = z.infer<typeof RefreshTokenDtoSchema>;
 
 /**
+ * The `code` JwtAuthGuard puts on its 403 while a user still owes a password
+ * rotation (see apps/backend/src/auth/jwt-auth.guard.ts).
+ *
+ * Declared here - in the shared wire-contract package - because THREE layers
+ * read it and none of them can import the others: the browser client
+ * (apis/client.ts) routes the 403 to the right rotation screen, the server
+ * tenant guard routes it to /change-password, and a test asserts the
+ * backend's own literal matches. A hand-copied string is what let the
+ * cookie-name bug ship four times (see lib/session-cookie.ts); the same
+ * failure mode was already present for this code, so it gets one home.
+ */
+export const PASSWORD_CHANGE_REQUIRED = 'PASSWORD_CHANGE_REQUIRED';
+
+/**
  * T-S hardening (2026-09-04, Week 5): POST /api/users/:id/change-password.
  *
  * Change a user's own password (or, for ADMIN/OWNER, any user's).

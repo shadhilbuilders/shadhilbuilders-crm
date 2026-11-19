@@ -9,6 +9,8 @@
 // Import direction note: portal-routing.ts imports ONLY `type { Role }` from
 // this file, which is erased at compile time - so importing its route
 // constants here is not a runtime cycle.
+import { PASSWORD_CHANGE_REQUIRED } from '@shadhil/api-types';
+
 import { PORTAL_CHANGE_PASSWORD } from '@/lib/portal-routing';
 
 export class ApiError extends Error {
@@ -163,7 +165,7 @@ export async function api<T>(
       body !== null &&
       typeof body === 'object' &&
       'code' in body &&
-      (body as { code?: unknown }).code === 'PASSWORD_CHANGE_REQUIRED'
+      (body as { code?: unknown }).code === PASSWORD_CHANGE_REQUIRED
     ) {
       // Audience-specific destination (2026-11-10). A CUSTOMER must rotate
       // inside the portal shell (masthead + Sign out, no Cancel), while staff
