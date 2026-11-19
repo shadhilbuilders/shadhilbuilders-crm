@@ -43,6 +43,7 @@ import { ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../auth/public.decorator';
 import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
+import { listOrganizationIds } from '../common/cron-orgs';
 import { STORAGE_PROVIDER } from '../storage/storage.tokens';
 import type { StorageProvider } from '../storage/storage.provider';
 import { WhatsAppClient } from '../whatsapp/whatsapp.client';
@@ -226,6 +227,36 @@ export class WebhooksController {
     return result;
   }
 
+  /**
+   * Orgs to probe when resolving an inbound message or a status callback.
+   * PUBLIC_ORG_ID comes first so a single-tenant deployment costs one query.
+   *
+   * T-WA-MULTITENANT (2026-11-19): both webhook paths used to run entirely
+   * inside PUBLIC_ORG_ID's RLS context. The status UPDATE then matched nothing
+   * for any other org (the outbox row sat at SENT while Meta had already
+   * reported delivered) and an inbound reply from another org's lead was filed
+   * as an unknown contact in the PUBLIC org. Meta tells us which number the
+   * event came from, never which tenant, so the phone number is the only join
+   * we have: probe each org's own RLS context and take the one that matches.
+   */
+  private async webhookOrgIds(): Promise<string[]> {
+    const publicOrgId = process.env['PUBLIC_ORG_ID'] ?? '';
+    let all: string[] = [];
+    try {
+      all = await listOrganizationIds(barePrisma);
+    } catch (err) {
+      // Never fail the webhook on this: Meta retries for days and a retry storm
+      // helps nobody. Falling back to PUBLIC_ORG_ID keeps single-tenant working.
+      this.logger.error(
+        `webhook: could not list organizations, falling back to PUBLIC_ORG_ID: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    if (publicOrgId.length === 0) return all;
+    return [publicOrgId, ...all.filter((id) => id !== publicOrgId)];
+  }
+
   // ── Status update handler ─────────────────────────────────────────
   // Map Meta's `status` string to our OutboundStatus enum, then
   // find the matching OutboundMessage by metaMessageId (the wamid
@@ -244,32 +275,39 @@ export class WebhooksController {
       return false;
     }
 
-    return withRlsContext(
-      barePrisma,
-      {
-        userId: 'CRON_SERVICE',
-        role: 'CRON_SERVICE',
-        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
-      },
-      async (tx) => {
-        const updated = await tx.$executeRawUnsafe(
-          `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
-          ourStatus,
-          status.id,
-        );
-        if (updated === 0) {
-          // Could be: (a) a status for a message we never sent (test
-          // event, recovery from a different system), or (b) a status
-          // arriving after the OutboundMessage row was deleted. Either
-          // way, log so we can spot patterns.
-          this.logger.debug(
-            `No OutboundMessage matches wamid=${status.id} (status=${status.status}, phone_number_id=${metadata?.phone_number_id ?? '?'})`,
+    // Try each org until one owns the outbox row. The update carries no org
+    // predicate, so RLS decides what it can see - one context per org is the
+    // only way to reach rows outside PUBLIC_ORG_ID.
+    const orgIds = await this.webhookOrgIds();
+    for (const organizationId of orgIds) {
+      const updated = await withRlsContext(
+        barePrisma,
+        {
+          userId: 'CRON_SERVICE',
+          role: 'CRON_SERVICE',
+          organizationId,
+        },
+        async (tx) => {
+          return await tx.$executeRawUnsafe(
+            `UPDATE "OutboundMessage" SET status = $1::"OutboundStatus" WHERE "wamid" = $2`,
+            ourStatus,
+            status.id,
           );
-          return false;
-        }
-        return true;
-      },
+        },
+      );
+      if (updated > 0) return true;
+    }
+
+    // Could be: (a) a status for a message we never sent (test event, recovery
+    // from a different system), (b) a status arriving after the OutboundMessage
+    // row was deleted, or (c) a send from a different database entirely (a dev
+    // box pointed at the same Meta app). Log so we can spot patterns.
+    this.logger.debug(
+      `No OutboundMessage matches wamid=${status.id} (status=${status.status}, phone_number_id=${
+        metadata?.phone_number_id ?? '?'
+      }) across ${orgIds.length} org(s)`,
     );
+    return false;
   }
 
   // ── Inbound message handler ───────────────────────────────────────
@@ -298,12 +336,39 @@ export class WebhooksController {
     // MEDIA (2B): supported inbound media types carry a Meta media id.
     const mediaInfo = isText ? null : extractMedia(message);
 
+    // T-WA-MULTITENANT (2026-11-19): resolve the owning org BEFORE writing
+    // anything. Lead.phoneE164 is globally unique, so the phone itself tells us
+    // which tenant a reply belongs to. The handler used to stamp every row with
+    // PUBLIC_ORG_ID, which buried replies from any other org's lead as unknown
+    // contacts in the public org. An unknown number still falls back to
+    // PUBLIC_ORG_ID: Meta never tells us which tenant an unknown sender belongs
+    // to, and inventing one would be worse than the fallback.
+    const orgIds = await this.webhookOrgIds();
+    let owningOrgId = process.env['PUBLIC_ORG_ID'] ?? '';
+    let lead: { id: string; name: string | null } | null = null;
+    for (const candidateOrgId of orgIds) {
+      const hit = await withRlsContext(
+        barePrisma,
+        {
+          userId: 'CRON_SERVICE',
+          role: 'CRON_SERVICE',
+          organizationId: candidateOrgId,
+        },
+        (tx) => tx.lead.findUnique({ where: { phoneE164 }, select: { id: true, name: true } }),
+      );
+      if (hit !== null) {
+        lead = hit;
+        owningOrgId = candidateOrgId;
+        break;
+      }
+    }
+
     return withRlsContext(
       barePrisma,
       {
         userId: 'CRON_SERVICE',
         role: 'CRON_SERVICE',
-        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+        organizationId: owningOrgId,
       },
       async (tx) => {
         // 1) Dedup via WebhookEvent.externalId unique constraint.
@@ -313,7 +378,7 @@ export class WebhooksController {
               source: 'WHATSAPP',
               externalId,
               payload: message as object,
-              organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+              organizationId: owningOrgId,
             },
           });
         } catch (e) {
@@ -322,12 +387,7 @@ export class WebhooksController {
           throw e;
         }
 
-        // 2) Find the lead by phoneE164.
-        const lead = await tx.lead.findUnique({
-          where: { phoneE164 },
-          select: { id: true, name: true },
-        });
-
+        // 2) The lead lookup already ran above - it is what chose the org.
         if (lead) {
           // 3a) Known lead - create the Message row. Text OR media.
           // Use $executeRaw for consistency with the existing text path
@@ -340,7 +400,7 @@ export class WebhooksController {
           let mediaType: string | null = null;
           let mediaFilename: string | null = null;
           if (mediaInfo !== null) {
-            const stored = await this.downloadAndStoreInboundMedia(mediaInfo);
+            const stored = await this.downloadAndStoreInboundMedia(mediaInfo, owningOrgId);
             if (stored !== null) {
               mediaKey = stored.mediaKey;
               mediaType = stored.mediaType;
@@ -352,7 +412,7 @@ export class WebhooksController {
           await tx.$executeRawUnsafe(
             `INSERT INTO "Message" (id, "organizationId", "leadId", "userId", direction, channel, body, "externalId", "mediaKey", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
             msgId,
-            process.env['PUBLIC_ORG_ID'] ?? '',
+            owningOrgId,
             lead.id,
             body,
             externalId,
@@ -405,7 +465,7 @@ export class WebhooksController {
             // intentionally-nullable org column). Without this the contact
             // thread would be org-less and unreachable by every RLS policy
             // that compares organizationId to app.user_org_id.
-            organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+            organizationId: owningOrgId,
           },
           update: {
             lastMessageAt: ts,
@@ -422,7 +482,7 @@ export class WebhooksController {
         let contactMediaType: string | null = null;
         let contactMediaFilename: string | null = null;
         if (mediaInfo !== null) {
-          const stored = await this.downloadAndStoreInboundMedia(mediaInfo);
+          const stored = await this.downloadAndStoreInboundMedia(mediaInfo, owningOrgId);
           if (stored !== null) {
             contactMediaKey = stored.mediaKey;
             contactMediaType = stored.mediaType;
@@ -435,7 +495,7 @@ export class WebhooksController {
         await tx.$executeRawUnsafe(
           `INSERT INTO "Message" (id, "organizationId", "contactId", "userId", direction, channel, body, "externalId", "mediaKey", "mediaType", "mediaFilename", "createdAt") VALUES ($1, $2, $3, NULL, 'IN', 'WHATSAPP', $4, $5, $6, $7, $8, NOW())`,
           contactMsgId,
-          process.env['PUBLIC_ORG_ID'] ?? '',
+          owningOrgId,
           contact.id,
           body,
           externalId,
@@ -460,6 +520,7 @@ export class WebhooksController {
    *  ChatService.displayMediaUrl() (storage/media-display.ts). */
   private async downloadAndStoreInboundMedia(
     media: NonNullable<ReturnType<typeof extractMedia>>,
+    organizationId: string,
   ): Promise<{ mediaKey: string; mediaType: string; filename: string } | null> {
     if (this.whatsapp === undefined || this.storage === undefined) return null;
     try {
@@ -469,7 +530,7 @@ export class WebhooksController {
         return null;
       }
       const stored = await this.storage.save(file.buffer, {
-        organizationId: process.env['PUBLIC_ORG_ID'] ?? '',
+        organizationId,
         mimeType: file.mimeType,
         filename: media.filename ?? file.filename,
       });
