@@ -53,6 +53,7 @@ import type {
   UserListResult,
 } from '@shadhil/api-types';
 import {
+  normalizePhoneDigits,
   reportingTargetFor,
   reportsToTeamManager,
   type TeamReportingLine,
@@ -78,22 +79,81 @@ import { hashPassword, upsertCredentialAccount, verifyPassword } from './credent
  * of the bare "Internal server error" a raw PrismaClientKnownRequestError
  * produced (reported 2026-10-04 - users.service.ts:192 POST /api/users).
  *
- * No `meta.target` sniffing: `(email, organizationId)` is the ONLY unique
- * constraint left on `User` (the old global `@unique` on `email` alone is
- * gone), so a P2002 from either call site below is unambiguously this
- * conflict - and Prisma 7's driver-adapter error shape puts the violated
- * constraint under `meta.driverAdapterError.cause.constraint`, not the
- * classic `meta.target` array, so matching on the constraint NAME would be
- * both unnecessary and version-fragile.
+ * CONSTRAINT ATTRIBUTION (rewritten 2026-11-18, user-phone slice). The
+ * original version assumed `(email, organizationId)` was the ONLY unique
+ * constraint on `User` and mapped every P2002 to EMAIL_ALREADY_EXISTS. The
+ * partial phone index added by this slice makes that assumption false: a
+ * duplicate phone would have been reported to the user as a duplicate email,
+ * pointing them at the wrong field.
+ *
+ * The constraint NAME lives at
+ * `meta.driverAdapterError.cause.constraint.index` - verified against
+ * @prisma/adapter-pg@7.10.0 (dist/index.mjs, SQLSTATE 23505 sets
+ * `constraint = { index: error.constraint }`, so it is an OBJect with an
+ * `index` key, not a string) and @prisma/client@7.10.0 runtime/client.mjs
+ * (`meta = { driverAdapterError: cause }`). `meta.target` - the classic
+ * pre-adapter shape - does not exist anywhere in that runtime, so no fallback
+ * to it is attempted.
+ *
+ * `meta.modelName` is 'User' for both indexes, so it cannot disambiguate.
+ * Anything unrecognised falls through to a NEUTRAL conflict rather than
+ * guessing: a wrong-but-specific message is worse than a vague correct one.
  */
-function rethrowAsEmailConflict(err: unknown): never {
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+const USER_PHONE_INDEX = 'User_phone_organizationId_key';
+const USER_EMAIL_INDEX = 'User_email_organizationId_key';
+
+function violatedUserIndex(err: unknown): string | null {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') {
+    return null;
+  }
+  const meta = err.meta as { driverAdapterError?: { cause?: unknown } } | undefined;
+  return uniqueIndexFromAdapterCause(meta?.driverAdapterError?.cause);
+}
+
+/**
+ * Read the violated unique-index name out of a Prisma 7 driver-adapter error
+ * PAYLOAD (the part under `meta.driverAdapterError`).
+ *
+ * Split out from `rethrowAsUserUniquenessConflict` so the path can be
+ * unit-tested without fabricating a `PrismaClientKnownRequestError`: a fake
+ * class would only prove the parser matches its own assumption about the shape.
+ * The REAL shape is exercised by the DB-backed suite in
+ * users.service.rls.test.ts, which raises a genuine duplicate.
+ *
+ * Verified shape (@prisma/adapter-pg@7.10.0, SQLSTATE 23505):
+ *   { kind: 'UniqueConstraintViolation', constraint: { index: '<name>' }, table }
+ * so `constraint` is an OBJECT with an `index` key - not the string that the
+ * older `meta.target` array carried (absent from the 7.10 runtime entirely).
+ */
+export function uniqueIndexFromAdapterCause(cause: unknown): string | null {
+  const index = (cause as { constraint?: { index?: unknown } } | undefined)?.constraint?.index;
+  return typeof index === 'string' ? index : null;
+}
+
+function rethrowAsUserUniquenessConflict(err: unknown): never {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') {
+    throw err;
+  }
+  const index = violatedUserIndex(err);
+  if (index === USER_PHONE_INDEX) {
+    throw new CodedConflictException(
+      'PHONE_ALREADY_EXISTS',
+      'A user with this phone number already exists in your organization. Use a different number.',
+    );
+  }
+  if (index === USER_EMAIL_INDEX) {
     throw new CodedConflictException(
       'EMAIL_ALREADY_EXISTS',
       'A user with this email already exists in your organization. Use a different email address.',
     );
   }
-  throw err;
+  // Unknown index: the write still failed on a uniqueness rule, so it is a
+  // 409 - but name no field, because naming the wrong one sends the operator
+  // to fix something that was not the problem.
+  throw new CodedConflictException(
+    'USER_UNIQUE_CONFLICT',
+    'That change conflicts with an existing user in your organization.',
+  );
 }
 
 export interface CreatedUser {
@@ -102,6 +162,36 @@ export interface CreatedUser {
   name: string;
   role: Role;
   teamId: string | null;
+}
+
+/**
+ * Search terms to try against the digits-only `User.phone` column (2026-11-18).
+ *
+ * The column stores `919876543210`, but an operator types "98765 43210",
+ * "+91 98765 43210" or "098765 43210". A single normalized term covers the
+ * full-number case; the RAW digit run is kept as a second alternative so a
+ * partial search ("7654", "9876") still matches as a substring instead of
+ * being parsed as a malformed full number and dropped.
+ *
+ * Exported for test: the search clause itself is exercised through `list()`,
+ * but the shape decisions here are worth pinning directly.
+ */
+export function searchPhoneTerms(search: string): string[] {
+  const terms = new Set<string>();
+  // Partial search stays as typed, minus formatting - never normalized, so
+  // "7654" cannot be rewritten into "917654".
+  const rawDigits = search.replace(/\D/g, '');
+  if (rawDigits.length > 0) terms.add(rawDigits);
+  // Full-number search also tries the canonical stored form. Wrapped because
+  // normalizePhoneDigits throws on anything it cannot parse, and a search box
+  // must never 500 on a half-typed query.
+  try {
+    const normalized = normalizePhoneDigits(search);
+    if (normalized.length >= 7) terms.add(normalized);
+  } catch {
+    // Not a parseable number - the raw digit run above already covers it.
+  }
+  return [...terms];
 }
 
 /**
@@ -115,6 +205,8 @@ export interface UpdatedProfile {
   name: string;
   email: string;
   role: Role;
+  /** Staff contact number, normalized digits-only. Null when unset (2026-11-18). */
+  phone: string | null;
 }
 
 @Injectable()
@@ -271,6 +363,16 @@ export class UsersService {
       if (dto.teamId !== undefined) {
         throw new BadRequestException('A CUSTOMER user belongs to no team - omit teamId');
       }
+      // 2026-11-18 (user-phone): a buyer's number lives on their LEAD. Storing
+      // a second copy here would create two truths for one person and, with the
+      // per-org phone index, would make the second login on a jointly-bought
+      // flat fail with a 409 (spec D2). Reject rather than silently ignore, so
+      // the caller learns the rule instead of believing the write landed.
+      if (dto.phone !== undefined && dto.phone !== null) {
+        throw new BadRequestException(
+          'A CUSTOMER has no phone of their own - update the number on their lead instead',
+        );
+      }
     } else if (dto.customerLeadId !== undefined) {
       throw new BadRequestException('customerLeadId is only valid for CUSTOMER users');
     }
@@ -357,7 +459,9 @@ export class UsersService {
       // one through this path) gets a TeamMember row for `teamId` instead of
       // a scalar column write.
       // T-EMAIL-PER-ORG: the unique constraint is (email, organizationId) -
-      // a P2002 here means this email is already taken within THIS org.
+      // a P2002 here means this email is already taken within THIS org. The
+      // phone partial index added 2026-11-18 can also throw P2002, which the
+      // mapper attributes by constraint name before choosing the message.
       const created = await client.user
         .create({
           data: {
@@ -366,6 +470,10 @@ export class UsersService {
             role: dto.role,
             emailVerified: false,
             organizationId: actor.organizationId,
+            // 2026-11-18 (user-phone): staff contact number. Already normalized
+            // by ClearablePhoneSchema. Absent for CUSTOMER (rejected in 1b) and
+            // undefined when the caller omitted it, which Prisma writes as NULL.
+            ...(dto.role === 'CUSTOMER' ? {} : { phone: dto.phone ?? null }),
             ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
             // issue #8 slice 2 (D3): a buyer's login is PROVISIONED by staff
             // with a temporary password that was read out over WhatsApp and
@@ -382,7 +490,7 @@ export class UsersService {
             ...(dto.role === 'CUSTOMER' ? { mustChangePassword: true } : {}),
           },
         })
-        .catch(rethrowAsEmailConflict);
+        .catch(rethrowAsUserUniquenessConflict);
 
       await upsertCredentialAccount(client, created.id, dto.password);
 
@@ -558,9 +666,10 @@ export class UsersService {
   }
 
   /**
-   * PATCH /api/users/:id - edit a user's name/email (autoplan 2026-09-09).
-   * Hierarchy-gated: the actor must strictly outrank the target (no
-   * self-edit, OWNER protected). Mirrors the changeRole guards.
+   * PATCH /api/users/:id - edit a user's name/email/phone (autoplan
+   * 2026-09-09; phone 2026-11-18). Hierarchy-gated: the actor must strictly
+   * outrank the target (no self-edit, OWNER protected). Mirrors the
+   * changeRole guards.
    */
   async update(actor: JwtPayload, targetUserId: string, dto: UpdateUserDto): Promise<CreatedUser> {
     // One RLS transaction: resolveDisplayTeamId reads the FORCE-RLS
@@ -569,9 +678,20 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
-      // 1. Target must exist.
-      const target = await client.user.findUnique({
-        where: { id: targetUserId },
+      // 1. Target must exist IN THIS ORG.
+      //
+      // T-ORG-EXPLICIT (2026-11-18): this read used to be a bare
+      // `findUnique({ id })`. `User` carries NO row-level security (verified in
+      // the live DB: relrowsecurity = false), so without this filter an ADMIN in
+      // org A could edit a user in org B by guessing an id. It also matters more
+      // now than it did: the phone index added by this slice is scoped
+      // (phone, organizationId), so a cross-tenant caller could otherwise force
+      // a 409 inside the victim org's namespace.
+      //
+      // A cross-org id now reads as absent, which is the answer we want - the
+      // same "not found" a genuinely missing row produces.
+      const target = await client.user.findFirst({
+        where: { id: targetUserId, organizationId: actor.organizationId },
       });
       if (!target) {
         throw new NotFoundException(`User ${targetUserId} not found`);
@@ -589,19 +709,42 @@ export class UsersService {
         throw new ForbiddenException(`${actor.role} cannot edit a ${target.role} user`);
       }
 
+      // 3b. A CUSTOMER is administrable ONLY by the admin class.
+      //
+      // The rank table puts CUSTOMER at 1 and MANAGER at 2, so `outranks` above
+      // lets a MANAGER through. roles.ts states the rule explicitly ("MANAGER
+      // may never touch a CUSTOMER row") and enforces it on create and on role
+      // change - but this path did not, so a manager could rename a buyer's
+      // account and rewrite their LOGIN EMAIL. Fixed here (2026-11-18).
+      if (target.role === 'CUSTOMER' && !isAdminClass(actor.role)) {
+        throw new ForbiddenException('Only ADMIN or OWNER can edit a CUSTOMER account');
+      }
+
+      // 3c. A CUSTOMER has no phone of their own - it lives on their lead.
+      //     Reject rather than silently dropping it, so the caller is told.
+      if (target.role === 'CUSTOMER' && dto.phone !== undefined) {
+        throw new BadRequestException(
+          'A CUSTOMER has no phone of their own - update the number on their lead instead',
+        );
+      }
+
       // 4. Apply the update (only the provided fields).
-      const data: { name?: string; email?: string } = {};
+      const data: { name?: string; email?: string; phone?: string | null } = {};
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.email !== undefined) data.email = dto.email;
+      // `null` is the erase path (ClearablePhoneSchema); undefined means
+      // "omitted", which must leave the stored number untouched.
+      if (dto.phone !== undefined) data.phone = dto.phone;
 
       // T-EMAIL-PER-ORG: a P2002 here means the new email is already taken
-      // by someone else within THIS org (see rethrowAsEmailConflict).
+      // by someone else within THIS org, OR on the phone index - the error
+      // mapper above distinguishes them by constraint name.
       const updated = await client.user
         .update({
           where: { id: target.id },
           data,
         })
-        .catch(rethrowAsEmailConflict);
+        .catch(rethrowAsUserUniquenessConflict);
 
       // 5. Audit row - same transaction.
       await client.auditLog.create({
@@ -611,8 +754,8 @@ export class UsersService {
           organizationId: actor.organizationId,
           entityType: 'User',
           entityId: target.id,
-          before: { name: target.name, email: target.email },
-          after: { name: updated.name, email: updated.email },
+          before: { name: target.name, email: target.email, phone: target.phone },
+          after: { name: updated.name, email: updated.email, phone: updated.phone },
           reason: `user.update by ${actor.email} (${actor.role})`,
         },
       });
@@ -659,12 +802,22 @@ export class UsersService {
     //    before/after pair (and so a no-op change can be reported as such).
     const before = await this.client.user.findUnique({
       where: { id: actor.sub },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, email: true, role: true, phone: true },
     });
     if (before === null) {
       // The JWT is valid but the row is gone (hard-deleted account). Fail
       // loudly rather than silently succeeding on nothing.
       throw new NotFoundException(`User ${actor.sub} not found`);
+    }
+
+    // 1b. A CUSTOMER has no phone of their own (2026-11-18). The DTO has no
+    //     role to inspect, so the rule lives here: their number belongs to the
+    //     lead, which is the WhatsApp identity key. Silently dropping the field
+    //     would tell a buyer their number saved when nothing changed.
+    if (before.role === 'CUSTOMER' && dto.phone !== undefined) {
+      throw new BadRequestException(
+        'Your account has no phone of its own - contact the project office to update your number',
+      );
     }
 
     // 2. Write + audit atomically: the audit row must not survive a failed
@@ -674,11 +827,20 @@ export class UsersService {
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       const client = tx as unknown as PrismaClient;
 
-      const updated = await client.user.update({
-        where: { id: actor.sub },
-        data: { name: dto.name },
-        select: { id: true, name: true, email: true, role: true },
-      });
+      // Only the provided fields. `phone: null` is the erase path; undefined
+      // means the caller did not touch it. The DTO's refinement guarantees at
+      // least one field is present, so this is never an empty write.
+      const data: { name?: string; phone?: string | null } = {};
+      if (dto.name !== undefined) data.name = dto.name;
+      if (dto.phone !== undefined) data.phone = dto.phone;
+
+      const updated = await client.user
+        .update({
+          where: { id: actor.sub },
+          data,
+          select: { id: true, name: true, email: true, role: true, phone: true },
+        })
+        .catch(rethrowAsUserUniquenessConflict);
 
       await client.auditLog.create({
         data: {
@@ -687,9 +849,9 @@ export class UsersService {
           organizationId: actor.organizationId,
           entityType: 'User',
           entityId: actor.sub,
-          before: { name: before.name },
-          after: { name: updated.name },
-          reason: `profile name updated by ${actor.email} (${actor.role})`,
+          before: { name: before.name, phone: before.phone },
+          after: { name: updated.name, phone: updated.phone },
+          reason: `profile updated by ${actor.email} (${actor.role})`,
         },
       });
 
@@ -698,6 +860,7 @@ export class UsersService {
         name: updated.name,
         email: updated.email,
         role: updated.role,
+        phone: updated.phone,
       };
     });
   }
@@ -780,6 +943,10 @@ export class UsersService {
           email: true,
           name: true,
           role: true,
+          // 2026-11-18: staff phone + the customer's lead pointer. A CUSTOMER
+          // has no phone of their own; theirs is derived from the lead below.
+          phone: true,
+          customerLeadId: true,
         },
       });
       if (target === null) {
@@ -884,11 +1051,33 @@ export class UsersService {
         orderBy: [{ assignedAt: 'desc' }, { teamId: 'asc' }],
       });
 
+      // 2026-11-18: a CUSTOMER's number lives on their lead, never on the
+      // account. Read under the actor's RLS context, which is safe for the
+      // roles that can reach a customer row here: ADMIN/OWNER hold
+      // lead_select_admin. A MANAGER is already 403'd above (a customer has no
+      // team), and a buyer reading THEMSELF never lands here - `Lead` has no
+      // CUSTOMER SELECT policy, so that read would return zero rows silently
+      // rather than erroring. A missing/soft-deleted lead reads as null.
+      const derivedCustomerPhone =
+        target.role === 'CUSTOMER' && target.customerLeadId !== null
+          ? ((
+              await client.lead.findFirst({
+                where: {
+                  id: target.customerLeadId,
+                  organizationId: actor.organizationId,
+                },
+                select: { phone: true },
+              })
+            )?.phone ?? null)
+          : null;
+
       return {
         id: target.id,
         email: target.email,
         name: target.name,
         role: target.role,
+        phone: target.role === 'CUSTOMER' ? derivedCustomerPhone : (target.phone ?? null),
+        phoneSource: target.role === 'CUSTOMER' ? 'LEAD' : 'USER',
         teamId,
         teamName: team?.name ?? null,
         teamIds: allMemberships.map((m) => m.teamId),
@@ -1455,11 +1644,22 @@ export class UsersService {
       // Server-side search (autoplan 2026-09-09): the toolbar search input
       // sends ?search=...; match name OR email case-insensitively so search
       // works across the whole list, not just the loaded page.
+      //
+      // 2026-11-18: also match `phone`, and match it in BOTH shapes.
+      //
+      // The column stores digits only (`919876543210`), so a plain `contains`
+      // would miss every natural way an operator types a number - "98765
+      // 43210", "+91 98765 43210", "098765 43210". The term is normalized
+      // through the same helper the write path uses, and the RAW term is kept
+      // as a second alternative so a partial digit run still matches mid-string
+      // (searching "7654" must not be turned into a full-number parse failure).
       if (filter.search !== undefined && filter.search.length > 0) {
+        const phoneTerms = searchPhoneTerms(filter.search);
         andClauses.push({
           OR: [
             { name: { contains: filter.search, mode: 'insensitive' } },
             { email: { contains: filter.search, mode: 'insensitive' } },
+            ...phoneTerms.map((term) => ({ phone: { contains: term } })),
           ],
         });
       }
@@ -1481,6 +1681,14 @@ export class UsersService {
             email: true,
             name: true,
             role: true,
+            // 2026-11-18: opt-in (see UserFilterDto.includePhone). Excluded by
+            // default because this same payload backs six picker surfaces that
+            // have no reason to see staff mobiles.
+            ...(filter.includePhone === true ? { phone: true } : {}),
+            // CUSTOMER rows have no phone of their own; theirs is DERIVED from
+            // the lead below. Selecting the pointer here keeps that to one
+            // batched read per page instead of a query per row.
+            ...(filter.includePhone === true ? { customerLeadId: true } : {}),
             // T-TEAM-AUTHORITATIVE (2026-09-13 clean cutover): the NEWEST
             // TeamMember row is this row's "display team" for non-managers
             // (resolveDisplayTeamId's rule) - a MANAGER's team is resolved
@@ -1629,6 +1837,38 @@ export class UsersService {
         orgProjectNames = orgRows.map((p) => p.name);
       }
 
+      // ── Phone for the admin Users table (2026-11-18) ──────────────────────
+      // Opt-in. Staff read their own column; a CUSTOMER has NO phone of their
+      // own (the account never stores one), so theirs is DERIVED from the lead
+      // they are linked to. One batched lead read per page, not a query per
+      // row - same shape as ledTeams above, so paging costs stay unchanged.
+      //
+      // A customer whose lead is missing reads as null, which the table renders
+      // as an em dash. Blank is honest here; inventing a value would not be.
+      const phoneByUserId = new Map<string, { phone: string | null; source: 'USER' | 'LEAD' }>();
+      if (filter.includePhone === true) {
+        const leadIds = rows
+          .map((r) => (r.role === 'CUSTOMER' ? (r.customerLeadId ?? null) : null))
+          .filter((id): id is string => id !== null);
+        const leadPhones =
+          leadIds.length > 0
+            ? await client.lead.findMany({
+                where: { id: { in: leadIds }, organizationId: actor.organizationId },
+                select: { id: true, phone: true },
+              })
+            : [];
+        const phoneByLeadId = new Map(leadPhones.map((l) => [l.id, l.phone] as const));
+        for (const r of rows) {
+          if (r.role === 'CUSTOMER') {
+            const leadPhone =
+              r.customerLeadId != null ? (phoneByLeadId.get(r.customerLeadId) ?? null) : null;
+            phoneByUserId.set(r.id, { phone: leadPhone, source: 'LEAD' });
+          } else {
+            phoneByUserId.set(r.id, { phone: r.phone ?? null, source: 'USER' });
+          }
+        }
+      }
+
       return {
         rows: rows.map((r, i) => ({
           id: r.id,
@@ -1636,6 +1876,14 @@ export class UsersService {
           name: r.name,
           role: r.role,
           teamId: resolvedTeamIds[i] ?? null,
+          // Only present when includePhone was requested; omitting the keys
+          // entirely keeps every other picker's payload byte-identical.
+          ...(filter.includePhone === true
+            ? {
+                phone: phoneByUserId.get(r.id)?.phone ?? null,
+                phoneSource: phoneByUserId.get(r.id)?.source,
+              }
+            : {}),
           // 2026-11-07: exhaustive reporting map. MANAGER/ADMIN -> org OWNER;
           // OWNER/CUSTOMER -> nobody; everyone else -> one line per team.
           reportsTo: (() => {

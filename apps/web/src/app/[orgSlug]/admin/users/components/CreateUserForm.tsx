@@ -19,6 +19,7 @@ import { CreateUserDtoSchema } from '@shadhil/api-types';
 import { useCreateUser } from '@/hooks/queries/users';
 import type { Role } from '@/apis/client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { labelFor } from '@/lib/labels';
 import { CustomerLeadField } from './CustomerLeadField';
 
@@ -43,6 +44,14 @@ function roleNeedsTeam(role: Role | undefined): boolean {
  * The form-local schema: the shared DTO contract PLUS the "team is required
  * for staff roles" rule.
  *
+ * PHONE IS RESHAPED HERE (2026-11-18). On the wire `phone` is the clearable
+ * union (`PhoneSchema | null`), but a text input can only ever produce a
+ * string, so carrying `null` into React Hook Form makes `value` unrenderable.
+ * The form therefore validates a plain string and `onSubmit` maps:
+ *   ''   -> undefined (create) / null (update, i.e. CLEAR)
+ *   '98…' -> the string, normalized by the DTO on the server
+ * `phone` is omitted entirely for CUSTOMER, whose number lives on their lead.
+ *
  * This rule used to live only in `onSubmit` as a `toast.error(...)` early
  * return, which put the message in a transient toast far from the field and
  * left the Team picker itself unmarked - so the dialog looked like it had
@@ -56,22 +65,24 @@ function roleNeedsTeam(role: Role | undefined): boolean {
  * error must land on `teamId`, which only exists while a staff role is
  * selected.
  */
-const CreateUserFormSchema = CreateUserDtoSchema.superRefine((values, ctx) => {
-  if (roleNeedsTeam(values.role) && !values.teamId) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['teamId'],
-      message: 'Select a team for this user',
-    });
-  }
-  if (roleNeedsLead(values.role) && !values.customerLeadId) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['customerLeadId'],
-      message: 'Select the lead this customer belongs to',
-    });
-  }
-});
+const CreateUserFormSchema = CreateUserDtoSchema.omit({ phone: true })
+  .extend({ phone: z.string().optional() })
+  .superRefine((values, ctx) => {
+    if (roleNeedsTeam(values.role) && !values.teamId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teamId'],
+        message: 'Select a team for this user',
+      });
+    }
+    if (roleNeedsLead(values.role) && !values.customerLeadId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['customerLeadId'],
+        message: 'Select the lead this customer belongs to',
+      });
+    }
+  });
 
 export { CreateUserFormSchema };
 
@@ -104,6 +115,7 @@ export function CreateUserForm({
       email: '',
       password: '',
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
+      phone: '',
     },
     mode: 'onSubmit',
   });
@@ -132,12 +144,19 @@ export function CreateUserForm({
       role: Role;
       teamId?: string;
       customerLeadId?: string;
+      phone?: string;
     } = {
       name: values.name,
       email: values.email,
       password: values.password,
       role: values.role,
     };
+    // 2026-11-18: staff contact number. Deliberately NOT sent for CUSTOMER - a
+    // buyer's number lives on their lead, and the server rejects it here. Sent
+    // only when the user actually typed one (empty string would be a 400).
+    if (!roleNeedsLead(values.role) && values.phone) {
+      payload.phone = values.phone;
+    }
     // The missing-team case is already rejected by CreateUserFormSchema, which
     // is what renders the inline error under the Team picker. This guard only
     // catches a submit that bypassed the resolver (e.g. a direct
@@ -217,6 +236,22 @@ export function CreateUserForm({
       selectProps: { 'data-qa': 'create-user-role' },
     },
   ];
+
+  // 2026-11-18: staff phone. Optional. Deliberately NOT shown for CUSTOMER -
+  // that role's number belongs to their lead, and the server rejects a phone
+  // on a customer create. Keyed on `selectedRole` so it disappears the moment
+  // the role picker switches to CUSTOMER.
+  if (!roleNeedsLead(selectedRole)) {
+    fields.push({
+      type: 'custom',
+      name: 'phone',
+      label: 'Phone',
+      description: 'Optional. 10-digit mobile number. +91 is added automatically.',
+      render: ({ field }) => (
+        <PhoneNumberInput {...field} placeholder="9876543210" data-qa="create-user-phone" />
+      ),
+    });
+  }
 
   // Team field - shown only when creating a STAFF user (TELECALLER/SALES_EXEC)
   // so the user is linked to a team. The backend rejects staff users without

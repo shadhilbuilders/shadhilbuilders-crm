@@ -19,6 +19,14 @@ export type BackendCreatedUser = {
   name: string;
   role: Role;
   teamId: string | null;
+  /**
+   * Present on list rows ONLY when the caller passed `includePhone`
+   * (2026-11-18). Normalized digits-only. For a CUSTOMER row this is derived
+   * from their lead - the account stores no phone of its own - and
+   * `phoneSource` says which.
+   */
+  phone?: string | null;
+  phoneSource?: 'USER' | 'LEAD';
   /** Project names the user is a member of (via ProjectMember). */
   projects: string[];
   /**
@@ -42,6 +50,9 @@ export type CreateUserInput = {
   teamId?: string;
   /** Issue #8: required for CUSTOMER, rejected for every other role. */
   customerLeadId?: string;
+  /** Staff contact number (2026-11-18). Omitted for CUSTOMER - a buyer's
+   *  number lives on their lead, and the server rejects it here. */
+  phone?: string;
 };
 
 const USERS_KEY = ['users'] as const;
@@ -53,6 +64,13 @@ export type UsersFilter = {
   projectId?: string;
   /** Exclude banned users (assignee pickers). */
   availableOnly?: boolean;
+  /**
+   * Ask the server for each row's `phone` (2026-11-18). OFF by default: this
+   * payload also backs the reassign / co-owner / team-member / engineer
+   * pickers, which have no business seeing staff mobiles. Only the admin
+   * Users table sets it.
+   */
+  includePhone?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -72,6 +90,9 @@ export function useUsers(filter: UsersFilter = {}) {
       // the picker would serve the previous project's list from cache.
       filter.projectId ?? '',
       filter.availableOnly ?? false,
+      // Part of the key for the same reason: a table showing phones must not
+      // be served the cached picker payload that omitted them.
+      filter.includePhone ?? false,
       filter.limit,
       filter.offset,
     ],
@@ -82,6 +103,7 @@ export function useUsers(filter: UsersFilter = {}) {
           search: filter.search,
           projectId: filter.projectId,
           availableOnly: filter.availableOnly ? 'true' : undefined,
+          includePhone: filter.includePhone ? 'true' : undefined,
           limit: filter.limit,
           offset: filter.offset,
         })}`,
@@ -133,6 +155,12 @@ export type BackendUserDetail = {
   email: string;
   name: string;
   role: Role;
+  /**
+   * Staff contact number, normalized digits-only (2026-11-18). For a CUSTOMER
+   * this is DERIVED from their lead; `phoneSource` says which.
+   */
+  phone?: string | null;
+  phoneSource?: 'USER' | 'LEAD';
   teamId: string | null;
   teamName: string | null;
   /** Populated for TELECALLER/SALES_EXEC/ENGINEER whose team has a manager. */
@@ -196,10 +224,27 @@ export function useChangeUserRole() {
 export function useUpdateUser() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name, email }: { id: string; name?: string; email?: string }) =>
+    // `phone: null` CLEARS the number; omitting it leaves the stored value
+    // untouched (2026-11-18). The distinction is preserved by sending the key
+    // only when the caller set it.
+    mutationFn: ({
+      id,
+      name,
+      email,
+      phone,
+    }: {
+      id: string;
+      name?: string;
+      email?: string;
+      phone?: string | null;
+    }) =>
       api<BackendCreatedUser>(`/users/${id}`, {
         method: 'PATCH',
-        json: { name, email },
+        json: {
+          ...(name !== undefined ? { name } : {}),
+          ...(email !== undefined ? { email } : {}),
+          ...(phone !== undefined ? { phone } : {}),
+        },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });
@@ -213,15 +258,21 @@ export type BackendUpdatedProfile = {
   name: string;
   email: string;
   role: Role;
+  /** Staff contact number, normalized digits-only. Null when unset (2026-11-18). */
+  phone: string | null;
 };
 
 /**
- * PATCH /api/users/me - edit your OWN profile name (settings page, 2026-09-18).
+ * PATCH /api/users/me - edit your OWN profile name/phone (settings page,
+ * 2026-09-18; phone 2026-11-18).
  *
  * No id is passed: the backend resolves the target from the JWT subject, so
  * this hook cannot be misused to edit someone else. Deliberately NOT built on
  * `useUpdateUser` - PATCH /users/:id is the hierarchy-gated ADMIN route and it
  * refuses self-edits, so routing a self-edit through it would 403.
+ *
+ * `phone: null` clears the number. A CUSTOMER receives a 400 from the service
+ * if they send one at all - their number lives on their lead.
  *
  * Invalidates the users list (so an admin's directory shows the new name), and
  * the caller follows up with a session refetch - the sidebar/topbar read the
@@ -230,10 +281,13 @@ export type BackendUpdatedProfile = {
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name }: { name: string }) =>
+    mutationFn: ({ name, phone }: { name?: string; phone?: string | null }) =>
       api<BackendUpdatedProfile>('/users/me', {
         method: 'PATCH',
-        json: { name },
+        json: {
+          ...(name !== undefined ? { name } : {}),
+          ...(phone !== undefined ? { phone } : {}),
+        },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: USERS_KEY });

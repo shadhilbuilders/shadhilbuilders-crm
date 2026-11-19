@@ -38,6 +38,7 @@ import { useAssignManager, useUser, type BackendUserDetail } from '@/hooks/queri
 import { useTeams } from '@/hooks/queries/teams';
 import { hasReportingLine, reportsToTeamManager } from '@shadhil/api-types';
 import { canManageUsers, isAdminLike, outranks, useSessionUser, type Role } from '@/lib/session';
+import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { labelFor } from '@/lib/labels';
 
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -176,6 +177,30 @@ function UserDetailContent({
                 Team
               </dt>
               <dd className="text-sm">{detail.teamName ?? 'No team assigned'}</dd>
+            </div>
+            {/* 2026-11-18: staff numbers come from the account; a CUSTOMER's
+                comes from their lead, so the row says which rather than
+                implying the account owns it. */}
+            <div className="flex items-baseline justify-between gap-2">
+              <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                Phone
+              </dt>
+              <dd className="text-sm" data-qa="user-detail-phone">
+                {detail.phone ? (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <PhoneNumber phone={detail.phone} />
+                    {detail.phoneSource === 'LEAD' ? (
+                      <span className="text-muted-foreground text-xs">from lead</span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {detail.phoneSource === 'LEAD'
+                      ? 'No number on the linked lead'
+                      : 'Not recorded'}
+                  </span>
+                )}
+              </dd>
             </div>
           </dl>
 

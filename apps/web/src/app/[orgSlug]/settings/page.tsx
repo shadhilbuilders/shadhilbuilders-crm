@@ -59,7 +59,7 @@ import { ChangePasswordFormSchema, type ChangePasswordFormValues } from '@shadhi
 import { api } from '@/apis/client';
 import { authClient } from '@/lib/auth-client';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
-import { useUpdateProfile } from '@/hooks/queries/users';
+import { useUpdateProfile, useUser } from '@/hooks/queries/users';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import { useSessionUser } from '@/lib/session';
 import { useOrg, useOrgSlug } from '@/lib/tenant-context';
@@ -67,8 +67,10 @@ import { orgHref, projectHref } from '@/lib/nav';
 import { labelFor } from '@/lib/labels';
 
 import { PasswordInput } from '@/components/shared/PasswordInput';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { toPhoneInputValue } from '@/lib/phone';
 
 // ---------------------------------------------------------------------------
 // Profile (name) - the client-side contract, derived from the SAME rule the
@@ -82,6 +84,10 @@ const ProfileFormSchema = z.object({
     .trim()
     .min(1, 'Name is required')
     .max(120, 'Name must be at most 120 characters'),
+  // Phone is reshaped from the wire DTO (which accepts `string | null`) for the
+  // same reason as the admin dialogs: a text input only produces strings.
+  // '' means CLEAR when submitted - see ProfileSection.onSubmit.
+  phone: z.string().optional(),
 });
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
@@ -180,9 +186,21 @@ function ProfileSection({
 }) {
   const orgSlug = useOrgSlug();
   const updateProfile = useUpdateProfile();
+  // The session deliberately does NOT carry a phone: better-auth embeds
+  // additionalFields into the JWT, and that token lives 7 days - too long to
+  // hold a phone number in a bearer credential (2026-11-18 decision). The
+  // number is read from the scoped detail endpoint instead, which every role
+  // may call for itself. One cheap query, no new surface, no PII in the token.
+  const selfQuery = useUser(userId);
+  const selfDetail = selfQuery.data;
+  const isCustomer = selfDetail?.role === 'CUSTOMER';
+  // A CUSTOMER has no phone of their own; theirs is derived from the lead and
+  // is read-only here.
+  const initialPhone = selfDetail?.phone ?? '';
+
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
-    defaultValues: { name: initialName },
+    defaultValues: { name: initialName, phone: '' },
     mode: 'onSubmit',
   });
 
@@ -191,17 +209,37 @@ function ProfileSection({
   // the incoming value actually differs, so a re-render never clobbers edits.
   useEffect(() => {
     if (initialName !== form.getValues('name') && !form.formState.isDirty) {
-      form.reset({ name: initialName });
+      form.reset({ name: initialName, phone: form.getValues('phone') });
     }
   }, [initialName, form]);
 
+  // Same rule for the phone, which arrives from its own query rather than the
+  // session. An E164 stored value is shortened to the 10-digit form the input
+  // expects - feeding the 12-digit value straight in made the first keystroke
+  // truncate it (the Defect 1 bug on the lead dialog).
+  useEffect(() => {
+    if (form.formState.isDirty) return;
+    const next = toPhoneInputValue(initialPhone);
+    if (next !== form.getValues('phone')) {
+      form.reset({ name: form.getValues('name'), phone: next });
+    }
+  }, [initialPhone, form]);
+
   function onSubmit(values: ProfileFormValues): void {
+    // '' clears the number (the DTO's `null` is what erases it). A CUSTOMER
+    // never sends one - the service rejects it, and the field is disabled.
+    const phone = isCustomer ? undefined : values.phone ? values.phone : null;
     updateProfile.mutate(
-      { name: values.name },
+      { name: values.name, ...(phone === undefined ? {} : { phone }) },
       {
         onSuccess: async (saved) => {
           toast.success('Profile updated');
-          form.reset({ name: saved.name });
+          form.reset(
+            { name: saved.name, phone: toPhoneInputValue(saved.phone) },
+            {
+              keepDirty: false,
+            },
+          );
           await onSaved();
         },
         onError: (err: unknown) => {
@@ -223,6 +261,22 @@ function ProfileSection({
         autoComplete: 'name',
         'data-qa': 'settings-profile-name',
       },
+    },
+    {
+      type: 'custom',
+      name: 'phone',
+      label: 'Phone',
+      description: isCustomer
+        ? 'This is the number on your booking record. Contact the project office to change it.'
+        : 'Optional. 10-digit mobile number. Clear the field to remove it.',
+      render: ({ field }) => (
+        <PhoneNumberInput
+          {...field}
+          disabled={isCustomer}
+          placeholder={isCustomer ? '-' : '9876543210'}
+          data-qa="settings-profile-phone"
+        />
+      ),
     },
   ];
 

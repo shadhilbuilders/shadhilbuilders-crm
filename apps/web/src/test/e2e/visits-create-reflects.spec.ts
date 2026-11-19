@@ -32,6 +32,66 @@ const VISITS = '/demo/projects/demo-villas/visits';
  */
 const FIXTURE_LEAD = 'Demo Anjali';
 
+/**
+ * A visit date that is genuinely in the FUTURE and outside the current month.
+ *
+ * WHY THIS IS COMPUTED (fixed 2026-11-18): this used to be the literal
+ * `'2026-11-15'`, described in a comment as "a date comfortably in the FUTURE".
+ * That was true in the first half of November 2026 and false from the 16th
+ * onward. `CreateSiteVisitDtoSchema` enforces
+ * `scheduledFor must be in the future` (packages/api-types/src/visits.ts:99),
+ * so the dialog correctly refused the booking and stayed open with a
+ * validation alert - which is what the test then reported, as
+ * "locator('[role=\"dialog\"]') expected 0, received 1".
+ *
+ * The failure had nothing to do with the behaviour under test, and it appeared
+ * on every branch at once the moment the calendar rolled over. A date computed
+ * from `now` cannot rot that way.
+ *
+ * Two properties are required and both are preserved:
+ *   - outside the month the calendar currently shows, so the assertion that the
+ *     calendar MOVES is meaningful (that is the whole point of the spec);
+ *   - far enough ahead to stay outside that month even when the calendar is
+ *     showing the NEXT one - hence +45 days rather than +7.
+ */
+function futureVisitDate(): { date: string; time: string } {
+  const target = new Date();
+  target.setUTCDate(target.getUTCDate() + 45);
+  // Land MID-MONTH, not on whatever +45 days happens to hit.
+  //
+  // The calendar picks its month from the selected date, and the page's own
+  // comment records why a near-boundary date is a trap: "the week containing
+  // the 1st begins in the previous month, so a week-rounded value shows the
+  // wrong month (measured - it landed on October for a 15 Nov booking)".
+  // The first attempt at this fix used a bare +45, which on 2026-11-18 gave
+  // 2027-01-02 - the second day of January, i.e. exactly the boundary case
+  // that comment warns about. Pinning to the 15th keeps the date unambiguous
+  // under any week-rounding, while staying well outside the current month.
+  target.setUTCDate(15);
+  return {
+    date: target.toISOString().slice(0, 10),
+    time: '10:00',
+  };
+}
+
+/**
+ * The calendar's month heading for an ISO date, e.g. '2026-12-30' -> 'December
+ * 2026'. Matches the `MMMM YYYY` label visibleMonth() reads.
+ *
+ * Exists because the assertion that the calendar MOVED used to name the month
+ * literally. Once the booked date became computed, that literal could no longer
+ * hold - it was November-only by coincidence.
+ */
+function expectedMonthLabel(isoDate: string): string {
+  const [year, month] = isoDate.split('-').map(Number);
+  // UTC formatting, so the label cannot drift by a day under a negative offset.
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year!, month! - 1, 1)));
+}
+
 /** The month the calendar is currently showing (\"September 2026\"). */
 async function visibleMonth(page: Page): Promise<string> {
   // Read the month label from the calendar's own DateNavigator (the
@@ -136,9 +196,11 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
     await page.waitForTimeout(400);
 
     // A date comfortably in the FUTURE (the dialog forbids a past slot) and
-    // outside the month the calendar is currently showing.
-    await dialog.getByRole('textbox', { name: /date/i }).fill('2026-11-15');
-    await dialog.getByRole('textbox', { name: /time/i }).fill('10:00');
+    // outside the month the calendar is currently showing. Computed, not
+    // hardcoded - see futureVisitDate().
+    const slot = futureVisitDate();
+    await dialog.getByRole('textbox', { name: /date/i }).fill(slot.date);
+    await dialog.getByRole('textbox', { name: /time/i }).fill(slot.time);
     await dialog
       .getByRole('button', { name: /^schedule$/i })
       .last()
@@ -150,12 +212,21 @@ test.describe('creating a visit reflects in the calendar without a refresh', () 
 
     // THE ASSERTION: the calendar followed the booking. Count-only assertions
     // cannot catch this - they pass when the date happens to be in view.
+    //
+    // The expected month is DERIVED from the same date that was booked. It used
+    // to be the literal 'November 2026', which only worked while the hardcoded
+    // booking date happened to land in November - the same rot as the date
+    // itself, one layer down (first seen 2026-11-18: the booking date had been
+    // moved to a computed one, but this assertion still demanded November and
+    // could never pass again).
     const monthAfter = await visibleMonth(page);
+    const expectedMonth = expectedMonthLabel(slot.date);
     expect(
       monthAfter,
-      `calendar stayed on ${monthBefore} after booking a November visit; ` +
-        'the new visit renders off-view, which reads as a failed create',
-    ).toBe('November 2026');
+      `booked ${slot.date} (expected "${expectedMonth}"); calendar went ` +
+        `${monthBefore} -> ${monthAfter}, so the new visit renders off-view, ` +
+        'which reads as a failed create',
+    ).toBe(expectedMonth);
 
     // And the visit is genuinely there, not just the header moved.
     const body = await page.evaluate(

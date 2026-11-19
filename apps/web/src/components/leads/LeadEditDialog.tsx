@@ -27,6 +27,7 @@ import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
 import { useForm } from 'react-hook-form';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
+import { toPhoneInputValue } from '@/lib/phone';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 const FORM_ID = 'lead-edit-form';
@@ -44,6 +45,13 @@ export type LeadEditTarget = {
   phone: string;
   email?: string | null;
 };
+
+/**
+ * Convert a STORED phone value into the 10-digit form `PhoneNumberInput`
+ * expects, for prefill only. See lib/phone.ts for the full rationale - this
+ * re-export keeps the dialog's public surface stable for its tests.
+ */
+export { toPhoneInputValue } from '@/lib/phone';
 
 export type LeadEditDialogProps = {
   lead: LeadEditTarget | null;
@@ -68,7 +76,9 @@ export function LeadEditFormBody({
   const form = useForm<LeadEditFormValues>({
     defaultValues: {
       name: lead.name,
-      phone: lead.phone,
+      // Prefill the 10-digit local form - see toPhoneInputValue. Feeding the
+      // stored 12-digit value here is the Defect 1 corruption path.
+      phone: toPhoneInputValue(lead.phone),
       email: lead.email ?? '',
     },
     mode: 'onSubmit',

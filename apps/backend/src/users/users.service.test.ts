@@ -113,6 +113,11 @@ function makeService(opts: StubOptions = {}) {
   const txMock = {
     user: {
       findUnique: userFindUnique,
+      // 2026-11-18: update()'s target read is now org-scoped findFirst (User
+      // has no RLS, so a bare findUnique({ id }) let a cross-org admin edit
+      // another tenant's user). Same stub value - the fake just has to expose
+      // the method the service calls.
+      findFirst: userFindUnique,
       update: userUpdate,
     },
     // update() resolves the display team inside the same transaction
@@ -129,6 +134,7 @@ function makeService(opts: StubOptions = {}) {
   const fakeClient = {
     user: {
       findUnique: userFindUnique,
+      findFirst: userFindUnique,
       update: userUpdate,
     },
     account: {
@@ -1401,6 +1407,9 @@ function makeManageService(opts: ManageStubOptions = {}) {
   const txMock = {
     user: {
       findUnique: userFindUnique,
+      // 2026-11-18: org-scoped target read (Defect 4) - see the note on the
+      // create() fake above.
+      findFirst: userFindUnique,
       update: userUpdate,
     },
     teamMember: { findFirst: teamMemberFindFirst },
@@ -1415,6 +1424,7 @@ function makeManageService(opts: ManageStubOptions = {}) {
   const fakeClient = {
     user: {
       findUnique: userFindUnique,
+      findFirst: userFindUnique,
       update: userUpdate,
       delete: userDelete,
     },
@@ -1493,6 +1503,94 @@ describe('update - PATCH /api/users/:id (hierarchy-gated)', () => {
   it('unknown target → 404 NotFoundException', async () => {
     const { service } = makeManageService({ target: null });
     await expect(service.update(adminActor, 'missing', { name: 'X' })).rejects.toThrow('not found');
+  });
+
+  // ── 2026-11-18 (user-phone slice) ─────────────────────────────────────────
+
+  it('the target read is ORG-SCOPED (Defect 4: cross-tenant edit)', async () => {
+    // User carries no RLS, so a bare findUnique({ id }) let an admin in org A
+    // edit a user in org B. The where-clause must pin the org.
+    const { service, mocks } = makeManageService();
+    await service.update(adminActor, 'u-priya', { name: 'X' });
+    expect(mocks.userFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'u-priya',
+          organizationId: adminActor.organizationId,
+        }),
+      }),
+    );
+  });
+
+  it('MANAGER editing a CUSTOMER → 403 (Defect 3: rank let managers through)', async () => {
+    // RANK.CUSTOMER is 1 and RANK.MANAGER is 2, so `outranks` alone PASSES.
+    // roles.ts states "MANAGER may never touch a CUSTOMER row" and enforces it
+    // on create/changeRole - this path was the gap.
+    const { service, mocks } = makeManageService({
+      target: {
+        id: 'u-buyer',
+        email: 'buyer@x',
+        name: 'Buyer',
+        role: 'CUSTOMER',
+        teamId: null,
+      },
+    });
+    await expect(service.update(managerActor, 'u-buyer', { name: 'Hijack' })).rejects.toThrow(
+      'Only ADMIN or OWNER can edit a CUSTOMER account',
+    );
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('ADMIN editing a CUSTOMER → allowed (the guard is manager-specific)', async () => {
+    const { service, mocks } = makeManageService({
+      target: {
+        id: 'u-buyer',
+        email: 'buyer@x',
+        name: 'Buyer',
+        role: 'CUSTOMER',
+        teamId: null,
+      },
+    });
+    await service.update(adminActor, 'u-buyer', { name: 'Buyer Two' });
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u-buyer' },
+      data: { name: 'Buyer Two' },
+    });
+  });
+
+  it('writes a phone number', async () => {
+    const { service, mocks } = makeManageService();
+    await service.update(adminActor, 'u-priya', { phone: '919876543210' });
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u-priya' },
+      // No name/email keys: an omitted field must not be rewritten.
+      data: { phone: '919876543210' },
+    });
+  });
+
+  it('CLEARS the phone when given null (the PII erase path)', async () => {
+    const { service, mocks } = makeManageService();
+    await service.update(adminActor, 'u-priya', { phone: null });
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u-priya' },
+      data: { phone: null },
+    });
+  });
+
+  it('rejects a phone write on a CUSTOMER (their number lives on the lead)', async () => {
+    const { service, mocks } = makeManageService({
+      target: {
+        id: 'u-buyer',
+        email: 'buyer@x',
+        name: 'Buyer',
+        role: 'CUSTOMER',
+        teamId: null,
+      },
+    });
+    await expect(service.update(adminActor, 'u-buyer', { phone: '919876543210' })).rejects.toThrow(
+      'no phone of their own',
+    );
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
   });
 });
 

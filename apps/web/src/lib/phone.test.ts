@@ -18,6 +18,18 @@ describe('telUrl', () => {
     expect(telUrl('+919876543210')).toBe('tel:+919876543210');
   });
 
+  // 2026-11-18 (Defect 2): the digits-only STORED form must gain the `+`,
+  // otherwise a handset dials the country code as part of the subscriber
+  // number. Every API-created lead holds this shape.
+  it('adds the + to the digits-only stored form (91 + 10 digits)', () => {
+    expect(telUrl('919876543210')).toBe('tel:+919876543210');
+  });
+
+  it('does NOT add a + to a bare 10-digit local number', () => {
+    // `tel:+9876543210` would be country code 9 - a different number.
+    expect(telUrl('9876543210')).not.toContain('+');
+  });
+
   it('returns empty href for masked placeholders (not dialable)', () => {
     expect(telUrl('+919****3210')).toBe('');
     expect(telUrl('+141****2671')).toBe('');
@@ -25,6 +37,13 @@ describe('telUrl', () => {
 
   it('returns empty href for empty input', () => {
     expect(telUrl('')).toBe('');
+  });
+
+  // PhoneNumber renders whatever the API returned; a malformed row must not
+  // crash the whole table, so telUrl stays tolerant rather than normalizing.
+  it('never throws on unparseable input', () => {
+    expect(() => telUrl('not-a-number')).not.toThrow();
+    expect(telUrl('not-a-number')).toBe('');
   });
 });
 
@@ -37,8 +56,18 @@ describe('formatPhone', () => {
     expect(formatPhone('+919876543210')).toBe('+91 98765 43210');
   });
 
+  // Defect 2: the shape every API-created lead actually stores. Seed data
+  // used 10 digits, which is why this was invisible in demos.
+  it('formats the digits-only stored form (91 + 10 digits)', () => {
+    expect(formatPhone('919876543210')).toBe('+91 98765 43210');
+  });
+
   it('passes unrecognized foreign E164 through unchanged', () => {
     expect(formatPhone('+14155550123')).toBe('+14155550123');
+  });
+
+  it('passes a no-plus foreign number through unchanged', () => {
+    expect(formatPhone('14155550123')).toBe('14155550123');
   });
 
   it('passes masked placeholders through untouched', () => {

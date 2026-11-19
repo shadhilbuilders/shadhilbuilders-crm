@@ -9,7 +9,7 @@
 // instead of "A user with this email already exists...".
 //
 // users.service.ts now catches that SPECIFIC case locally (ConflictException
-// with a precise message - see rethrowAsEmailConflict), because the
+// with a precise message - see rethrowAsUserUniquenessConflict), because the
 // business meaning ("which field, which org") is only known at the call
 // site. This filter is the net for everything NOT caught locally:
 //   - any other PrismaClientKnownRequestError (unique/FK/not-found) that a
