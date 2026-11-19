@@ -82,6 +82,13 @@ function parseFilter(query: Record<string, unknown>): UserFilterDto {
         ? query['projectId']
         : undefined,
     availableOnly: query['availableOnly'] === 'true' ? true : undefined,
+    // 2026-11-19: this was missing, so `?includePhone=true` was accepted by the
+    // DTO and then silently dropped on the floor - the service always took the
+    // "omit phone" branch and the admin Users table (the ONE surface that asks
+    // for mobiles) rendered an em dash for every row, with the edit dialog
+    // prefilled blank. Default stays `undefined`: six pickers share this route
+    // and must not start receiving staff mobiles.
+    includePhone: query['includePhone'] === 'true' ? true : undefined,
     limit: typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
     offset: typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
   });

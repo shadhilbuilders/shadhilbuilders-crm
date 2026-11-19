@@ -80,3 +80,50 @@ describe('UsersController.assignManager - body validation', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/users?includePhone=true - the query param must reach the service.
+//
+// Regression (fixed 2026-11-19): `parseFilter` rebuilds the filter field by
+// field and never copied `includePhone`, so the flag was accepted by the DTO
+// and dropped. The service therefore always omitted `phone`, and the admin
+// Users table - the one surface that asks for it - rendered an em dash in the
+// phone column and opened its edit dialog with an empty phone field, while the
+// value sat in the database.
+// ---------------------------------------------------------------------------
+
+describe('UsersController.list - filter parsing', () => {
+  function makeListController() {
+    const list = vi.fn().mockResolvedValue({ rows: [], total: 0 });
+    const controller = new UsersController({ list } as unknown as UsersService);
+    const req = {
+      user: {
+        sub: 'admin-1',
+        role: 'ADMIN',
+        organizationId: 'ceid01lpfe1esm8jwsxid41k28',
+        email: 'admin@x',
+      } as unknown as Actor,
+    };
+    return { controller, list, req };
+  }
+
+  it('?includePhone=true reaches the service as `true`', async () => {
+    const { controller, list, req } = makeListController();
+
+    await controller.list(req as never, { includePhone: 'true', limit: '10' });
+
+    expect(list).toHaveBeenCalledTimes(1);
+    const filter = list.mock.calls[0]?.[1] as { includePhone?: boolean; limit?: number };
+    expect(filter.includePhone).toBe(true);
+    expect(filter.limit).toBe(10);
+  });
+
+  it('an absent or non-"true" flag stays undefined, so pickers stay PII-free', async () => {
+    for (const query of [{}, { includePhone: 'false' }, { includePhone: '1' }]) {
+      const { controller, list, req } = makeListController();
+      await controller.list(req as never, query);
+      const filter = list.mock.calls[0]?.[1] as { includePhone?: boolean };
+      expect(filter.includePhone, JSON.stringify(query)).toBeUndefined();
+    }
+  });
+});
