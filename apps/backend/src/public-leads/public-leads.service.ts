@@ -93,13 +93,13 @@ export class PublicLeadsService {
       this.logger.log(`[public-leads] ownerOverride org=${orgId} owner=${forcedOwnerId}`);
     }
 
-    // Resolve the configured fallback owner (engine's no-match fallback).
-    const fallbackOwnerId = process.env['LEADS_FALLBACK_OWNER_ID'] ?? '';
-    if (fallbackOwnerId === '') {
-      throw new BadRequestException(
-        'LEADS_FALLBACK_OWNER_ID is not configured - cannot create a landing lead without a destination owner',
-      );
-    }
+    // Who the create is attributed to (RLS identity + audit row). The configured
+    // fallback owner is the tenant's choice, but an env var cannot be trusted to
+    // outlive a reseed: on 2026-11-19 production still carried an id from another
+    // database, and because the audit row's userId is a foreign key the landing
+    // form answered 400 INVALID_REFERENCE for every submission. The global phone
+    // index used to fail first, which is why nobody had seen it.
+    const fallbackOwnerId = await this.resolveActorUserId(orgId);
 
     const notes = [dto.requirement, dto.message]
       .map((s) => (s && s.trim() ? s.trim() : null))
@@ -217,6 +217,61 @@ export class PublicLeadsService {
       `[public-leads] created lead=${lead.id} owner=${lead.ownerId} source=${createDto.source} org=${orgId} project=${projectId ?? 'null'}`,
     );
     return { ok: true, id: lead.id, state: lead.state };
+  }
+
+  /**
+   * The user id a public lead is attributed to.
+   *
+   * Order: the configured LEADS_FALLBACK_OWNER_ID when it is a live user in THIS
+   * org, else the org OWNER, else the oldest admin. A configured id that does
+   * not resolve is a warning, not a fatal error: refusing the enquiry because an
+   * env var points at a deleted account loses a real customer over a config
+   * detail, and `AuditLog.userId` is a foreign key, so the alternative is the
+   * opaque 400 this used to produce.
+   */
+  private async resolveActorUserId(orgId: string): Promise<string> {
+    const configured = (process.env['LEADS_FALLBACK_OWNER_ID'] ?? '').trim();
+    const pick = async (role: 'OWNER' | 'ADMIN'): Promise<string | null> =>
+      withRlsContext(
+        this.client,
+        { userId: 'cron-service', role: 'ADMIN', organizationId: orgId },
+        async (tx) => {
+          const user = await (tx as unknown as PrismaClient).user.findFirst({
+            where: { organizationId: orgId, deletedAt: null, role },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          });
+          return user?.id ?? null;
+        },
+      );
+
+    if (configured !== '') {
+      const live = await withRlsContext(
+        this.client,
+        { userId: 'cron-service', role: 'ADMIN', organizationId: orgId },
+        async (tx) => {
+          const user = await (tx as unknown as PrismaClient).user.findFirst({
+            where: { id: configured, organizationId: orgId, deletedAt: null },
+            select: { id: true },
+          });
+          return user?.id ?? null;
+        },
+      );
+      if (live !== null) return live;
+      this.logger.warn(
+        `[public-leads] LEADS_FALLBACK_OWNER_ID=${configured} is not a live user in org ${orgId}; ` +
+          'attributing the enquiry to the org owner instead. Fix the env var.',
+      );
+    }
+
+    const owner = (await pick('OWNER')) ?? (await pick('ADMIN'));
+    if (owner === null) {
+      throw new BadRequestException(
+        'This workspace has no owner or admin to attribute a landing lead to. ' +
+          'Set LEADS_FALLBACK_OWNER_ID to a live user in the workspace.',
+      );
+    }
+    return owner;
   }
 
   /**

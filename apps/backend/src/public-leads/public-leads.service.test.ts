@@ -24,6 +24,12 @@ function harness(
     createFails?: unknown;
     /** The lead the duplicate-phone lookup finds (null = another workspace). */
     existingLead?: { id: string; state: string } | null;
+    /** What a by-id user lookup returns (null = the id belongs to nobody). */
+    liveUser?: { id: string } | null;
+    /** The org's OWNER row, used when the configured fallback owner is stale. */
+    orgOwner?: { id: string } | null;
+    /** Fallback of the fallback: an ADMIN when no OWNER exists. */
+    orgAdmin?: { id: string } | null;
   } = {},
 ) {
   const recorded: Recorded[] = [];
@@ -33,7 +39,21 @@ function harness(
     $executeRawUnsafe: async () => 1,
     organization: { findUnique: async () => ({ id: ORG }) },
     project: { findFirst: async () => ({ id: PROJECT }) },
-    user: { findFirst: async () => ({ id: OWNER }) },
+    user: {
+      // One mock, three callers: validateOwner (by id), the configured
+      // fallback-owner check (by id) and the org-owner/admin resolution.
+      findFirst: async (args: { where?: Record<string, unknown> }) => {
+        const where = args?.where ?? {};
+        if (where['id'] !== undefined) {
+          return options.liveUser === undefined ? { id: where['id'] } : options.liveUser;
+        }
+        if (where['role'] === 'OWNER') {
+          return options.orgOwner === undefined ? { id: OWNER } : options.orgOwner;
+        }
+        if (where['role'] === 'ADMIN') return options.orgAdmin ?? null;
+        return { id: OWNER };
+      },
+    },
     lead: {
       findFirst: async () =>
         options.existingLead === undefined
@@ -288,5 +308,79 @@ describe('PublicLeadsService - a repeat enquiry on a known mobile', () => {
     await expect(
       service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never),
     ).rejects.toThrow('connection reset');
+  });
+});
+
+// 2026-11-19: the landing form answered 400 INVALID_REFERENCE in production for
+// every submission, because LEADS_FALLBACK_OWNER_ID still pointed at a user id
+// from another database. AuditLog.userId is a foreign key, so the write died at
+// the audit row with a message nobody could act on. These pin the replacement:
+// a stale id degrades to the org owner, and only a workspace with no owner and
+// admin at all is refused.
+describe('PublicLeadsService - who a public lead is attributed to', () => {
+  const env = process.env;
+
+  beforeEach(() => {
+    process.env = {
+      ...env,
+      PUBLIC_ORG_ID: ORG,
+      LEADS_FALLBACK_PROJECT_ID: PROJECT,
+      LEADS_FALLBACK_OWNER_ID: 'seed_user_from_another_database',
+    };
+  });
+
+  afterEach(() => {
+    process.env = env;
+  });
+
+  it('uses the org OWNER when the configured fallback owner does not exist', async () => {
+    const { service, createInTransaction } = harness({
+      liveUser: null,
+      orgOwner: { id: 'owner-live' },
+    });
+
+    const result = await service.createLead({
+      fullName: 'Ramesh Kumar',
+      phone: '9876543210',
+    } as never);
+
+    expect(result).toEqual({ ok: true, id: 'lead-new', state: 'NEW' });
+    // The create must be attributed to a user that exists, or the audit row's
+    // foreign key rejects the whole transaction.
+    expect(createInTransaction).toHaveBeenCalledTimes(1);
+    expect((createInTransaction.mock.calls[0]?.[0] as { sub: string }).sub).toBe('owner-live');
+  });
+
+  it('falls back to an ADMIN when the org has no OWNER', async () => {
+    const { service, createInTransaction } = harness({
+      liveUser: null,
+      orgOwner: null,
+      orgAdmin: { id: 'admin-live' },
+    });
+
+    await service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never);
+
+    expect((createInTransaction.mock.calls[0]?.[0] as { sub: string }).sub).toBe('admin-live');
+  });
+
+  it('keeps a configured owner that IS a live user in this org', async () => {
+    const { service, createInTransaction } = harness({ liveUser: { id: 'configured-live' } });
+
+    await service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never);
+
+    expect((createInTransaction.mock.calls[0]?.[0] as { sub: string }).sub).toBe('configured-live');
+  });
+
+  it('refuses with an actionable message when the workspace has nobody to attribute it to', async () => {
+    const { service, createInTransaction } = harness({
+      liveUser: null,
+      orgOwner: null,
+      orgAdmin: null,
+    });
+
+    await expect(
+      service.createLead({ fullName: 'Ramesh Kumar', phone: '9876543210' } as never),
+    ).rejects.toThrow(/no owner or admin to attribute/i);
+    expect(createInTransaction).not.toHaveBeenCalled();
   });
 });
