@@ -24,10 +24,12 @@
 import { useEffect } from 'react';
 
 import { Button, Dialog, Form, toast } from '@paalstack/react-ui';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
 import { useUpdateLead } from '@/hooks/queries/crm';
-import { toPhoneInputValue } from '@/lib/phone';
+import { toPhoneInputValue, PhoneInputSchema } from '@/lib/phone';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 const FORM_ID = 'lead-edit-form';
@@ -37,6 +39,18 @@ type LeadEditFormValues = {
   phone: string;
   email: string;
 };
+
+/**
+ * Client contract for the edit dialog. The phone rule is the server's own
+ * (via `PhoneInputSchema`), so the inline message and the API agree.
+ * `name` mirrors the create form's rule; `email` stays optional/loose here
+ * because the dialog already lowercases and omits blanks on submit.
+ */
+const LeadEditFormSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(120, 'Name must be at most 120 characters'),
+  phone: PhoneInputSchema,
+  email: z.string(),
+});
 
 /** Minimal lead shape the dialog needs (from the inbox row). */
 export type LeadEditTarget = {
@@ -74,6 +88,12 @@ export function LeadEditFormBody({
   onSubmit: (values: LeadEditFormValues) => void;
 }) {
   const form = useForm<LeadEditFormValues>({
+    // ADDED 2026-11-19: this form had NO resolver, so a mistyped phone was
+    // handed straight to the mutation and the failure surfaced as a toast.
+    // The schema below validates the SAME shapes the API accepts (it calls
+    // the server's normalizer) while keeping the typed value - `PhoneSchema`
+    // would transform it to `91…` mid-keystroke.
+    resolver: zodResolver(LeadEditFormSchema),
     defaultValues: {
       name: lead.name,
       // Prefill the 10-digit local form - see toPhoneInputValue. Feeding the
@@ -81,7 +101,9 @@ export function LeadEditFormBody({
       phone: toPhoneInputValue(lead.phone),
       email: lead.email ?? '',
     },
-    mode: 'onSubmit',
+    // `onTouched`: flag the number while the user is in the field, clear it
+    // as soon as it parses. `name`/`email` keep their existing behaviour.
+    mode: 'onTouched',
   });
 
   return (

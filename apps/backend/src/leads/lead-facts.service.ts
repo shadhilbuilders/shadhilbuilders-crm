@@ -52,7 +52,26 @@ const SUBJECT_SELECT = {
 
 @Injectable()
 export class LeadFactsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+
+  /**
+   * The Prisma CLIENT, not the Nest provider.
+   *
+   * `PrismaService` is a thin wrapper exposing `$client`, so passing the
+   * service itself to `withRlsContext` made `prisma.$transaction` undefined
+   * and every call here threw
+   *
+   *     TypeError: prisma.$transaction is not a function   -> 500
+   *
+   * The `as unknown as PrismaClient` cast is what hid it: it asserts the
+   * shape instead of checking it, so TypeScript could not see that the two
+   * types have nothing in common. Fixed 2026-11-19 (found by the e2e run -
+   * the lead detail page's facts sheet had been failing to load). Same
+   * accessor as organizations.service.ts, which is the established pattern.
+   */
+  private get client(): PrismaClient {
+    return this.prismaService.$client;
+  }
 
   /**
    * The lead's current values plus its live facts (APPLIED and PROPOSED).
@@ -60,7 +79,7 @@ export class LeadFactsService {
    */
   async list(actor: JwtPayload, leadId: string): Promise<LeadFactsResponse> {
     return withRlsContext(
-      this.prisma as unknown as PrismaClient,
+      this.client,
       rlsContextFrom(actor),
       async (tx) => {
         const lead = await tx.lead.findUnique({
@@ -97,7 +116,7 @@ export class LeadFactsService {
     leadId: string,
     dto: RecordLeadFactDto,
   ): Promise<RecordLeadFactResult> {
-    return withRlsContext(this.prisma as unknown as PrismaClient, rlsContextFrom(actor), (tx) =>
+    return withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
       this.recordInTransaction(actor, leadId, dto, tx as unknown as PrismaClient),
     );
   }
@@ -243,7 +262,7 @@ export class LeadFactsService {
     dto: DecideLeadFactDto,
   ): Promise<LeadFactRow> {
     return withRlsContext(
-      this.prisma as unknown as PrismaClient,
+      this.client,
       rlsContextFrom(actor),
       async (tx) => {
         const fact = await tx.leadFact.findUnique({

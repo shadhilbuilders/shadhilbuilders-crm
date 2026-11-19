@@ -70,6 +70,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { labelFor } from '@/lib/labels';
+import { OptionalPhoneInputSchema, toPhoneInputValue } from '@/lib/phone';
 import { CreateUserDialog } from './components/CreateUserDialog';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 
@@ -776,7 +777,10 @@ function UserTable({
  * `onSubmit` maps '' -> null (clear) and omits the key for CUSTOMER.
  */
 const EditUserFormSchema = UpdateUserDtoSchema.omit({ phone: true }).extend({
-  phone: z.string().optional(),
+  // Validated inline (2026-11-19) - see lib/phone.ts. The server rule is
+  // unchanged; this only surfaces its verdict under the field. OPTIONAL,
+  // because a staff account is valid without a number.
+  phone: OptionalPhoneInputSchema,
 });
 type EditUserFormValues = z.infer<typeof EditUserFormSchema>;
 
@@ -796,9 +800,20 @@ function EditUserDialog({
       email: target?.email ?? '',
       // A CUSTOMER's number is derived from their lead, so the field starts
       // empty AND is disabled below - editing it here would 400.
-      phone: target === null || target.role === 'CUSTOMER' ? '' : (target.phone ?? ''),
+      //
+      // PREFILL IN 10-DIGIT FORM (2026-11-19): this passed the STORED value
+      // straight through, so a normalized `919876543210` (12 chars) sat in a
+      // field that caps typing at 10 - and the first keystroke truncated it
+      // into `919198765432`. That is the Defect 1 pattern documented in
+      // lib/phone.ts, still live on this dialog. Same helper as settings.
+      phone:
+        target === null || target.role === 'CUSTOMER'
+          ? ''
+          : toPhoneInputValue(target.phone),
     },
-    mode: 'onSubmit',
+    // `onTouched` so a mistyped number is flagged while the user is still in
+    // the field, and cleared as soon as it parses.
+    mode: 'onTouched',
   });
 
   function onSubmit(values: EditUserFormValues) {

@@ -205,6 +205,60 @@ describe('SettingsPage - access', () => {
 });
 
 describe('SettingsPage - profile', () => {
+  it('shows the phone error INLINE, not as a toast or a 400', async () => {
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+
+    // A 5-digit value is unambiguously mid-typing and invalid.
+    await act(async () => {
+      phone.focus();
+      setNativeValue(phone, '98765');
+    });
+    // `onTouched` reveals the message on blur (a real focus/blur pair, or
+    // jsdom does not dispatch it).
+    await act(async () => {
+      phone.blur();
+    });
+
+    const inlineError = document.querySelector('[data-qa="form-error-message-phone"]');
+    expect(inlineError?.textContent).toContain('Enter a valid phone number');
+    // The field is marked invalid for assistive tech, not just coloured.
+    expect(phone.getAttribute('aria-invalid')).toBe('true');
+    // Nothing was submitted - the point is to stop before the API.
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it('clears the inline phone error once the number becomes valid', async () => {
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+
+    await act(async () => {
+      phone.focus();
+      setNativeValue(phone, '98765');
+    });
+    await act(async () => {
+      phone.blur();
+    });
+    expect(document.querySelector('[data-qa="form-error-message-phone"]')).not.toBeNull();
+
+    await act(async () => {
+      setNativeValue(phone, '9876543210');
+    });
+    // reValidateMode is onChange by default: a valid value drops the message.
+    expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();
+    expect(phone.getAttribute('aria-invalid')).not.toBe('true');
+  });
+
+  it('accepts a blank phone (clearing it is a supported action)', async () => {
+    await mount();
+    const phone = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-phone"]')!;
+    await act(async () => {
+      setNativeValue(phone, '');
+      phone.blur();
+    });
+    expect(document.querySelector('[data-qa="form-error-message-phone"]')).toBeNull();
+  });
+
   it('prefills the name and shows the email + user id read-only', async () => {
     await mount();
     const name = document.querySelector<HTMLInputElement>('[data-qa="settings-profile-name"]');

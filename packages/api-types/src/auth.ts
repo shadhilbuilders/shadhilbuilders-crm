@@ -26,8 +26,17 @@ import { TeamReportingLineSchema } from './reporting';
  *   null         -> null             (clears the column)
  *   undefined    -> undefined        (field omitted, column untouched)
  *   ''           -> rejected         (never a silent no-op)
+ *
+ * MESSAGE (2026-11-19): a bare union REPLACES the member issues with its own
+ * generic "Invalid input", so a caller sending `phone: "abcdefg123"` learned
+ * nothing about which field or what to do. The union-level `error` below
+ * restores an actionable message. Verified against the installed Zod v4
+ * (union accepts an `error` option; checked, not assumed) - the ACCEPTED
+ * values are unchanged, only the text on rejection.
  */
-export const ClearablePhoneSchema = z.union([PhoneSchema, z.null()]);
+export const ClearablePhoneSchema = z.union([PhoneSchema, z.null()], {
+  error: 'Please enter a valid phone number, or clear it',
+});
 export type ClearablePhone = z.infer<typeof ClearablePhoneSchema>;
 
 /**

@@ -367,6 +367,7 @@ function LeadInboxPageInner() {
           if (deleteTarget === null) return;
           deleteLead.mutate(undefined, {
             onSuccess: () => {
+              toast.success(`Lead ${deleteTarget.name} deleted`);
               setDeleteTarget(null);
             },
             onError: (error) => {

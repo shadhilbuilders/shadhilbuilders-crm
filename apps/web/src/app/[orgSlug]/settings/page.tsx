@@ -70,7 +70,7 @@ import { PasswordInput } from '@/components/shared/PasswordInput';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Skeleton } from '@/components/shared/Skeleton';
-import { toPhoneInputValue } from '@/lib/phone';
+import { toPhoneInputValue, OptionalPhoneInputSchema } from '@/lib/phone';
 
 // ---------------------------------------------------------------------------
 // Profile (name) - the client-side contract, derived from the SAME rule the
@@ -87,7 +87,15 @@ const ProfileFormSchema = z.object({
   // Phone is reshaped from the wire DTO (which accepts `string | null`) for the
   // same reason as the admin dialogs: a text input only produces strings.
   // '' means CLEAR when submitted - see ProfileSection.onSubmit.
-  phone: z.string().optional(),
+  //
+  // Validated inline (2026-11-19): this schema used to be a bare
+  // `z.string().optional()`, so a half-typed or garbage number was accepted
+  // here and only rejected by the API - as a toast, far from the field.
+  // `PhoneInputSchema` applies the server's own normalizer without its
+  // transform, so the message lands under the input and the rules cannot
+  // drift from the endpoint's. OPTIONAL: the profile field may be absent
+  // (staff without a number), and blank still means "clear".
+  phone: OptionalPhoneInputSchema,
 });
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
@@ -201,7 +209,12 @@ function ProfileSection({
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
     defaultValues: { name: initialName, phone: '' },
-    mode: 'onSubmit',
+    // `onTouched`, not `onSubmit`: the phone rule exists to catch a mistyped
+    // number WHILE the user is in the field, and `onSubmit` would only reveal
+    // it after a round-trip attempt. `onTouched` waits for the first blur (so
+    // an untouched optional field is never painted red) and react-hook-form's
+    // reValidateMode then clears the message as soon as the value is valid.
+    mode: 'onTouched',
   });
 
   // The session's name arrives after the first render on a cold load, so keep

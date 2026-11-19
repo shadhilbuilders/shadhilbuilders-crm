@@ -39,6 +39,7 @@ import { CreateLeadDtoSchema, normalizeLeadSource } from '@shadhil/api-types';
 import { LeadsService } from '../leads/leads.service';
 import { LeadFactsService } from '../leads/lead-facts.service';
 import { PrismaService } from '../prisma/prisma.module';
+import { parseServiceBody } from '../common/parse-service-body';
 
 import type { PublicCreateLeadDto, PublicCreateLeadResult } from '@shadhil/api-types';
 
@@ -104,9 +105,11 @@ export class PublicLeadsService {
       .filter(Boolean)
       .join('\n');
 
-    const createDto = CreateLeadDtoSchema.parse({
-      name: dto.fullName,
-      phone: dto.phone,
+    const createDto = parseServiceBody(
+      CreateLeadDtoSchema,
+      {
+        name: dto.fullName,
+        phone: dto.phone,
       // T-LEAD-FACTS (2026-11-05): the address is deliberately NOT written
       // here. It goes through the fact ledger in the same transaction below,
       // so the lead carries the provenance of the address that created it.
@@ -123,7 +126,9 @@ export class PublicLeadsService {
       // Validated owner override threaded into the DTO. The lead service
       // bypasses the engine only when this is present (internal field).
       assignedOwnerId: forcedOwnerId ?? undefined,
-    });
+      },
+      'lead',
+    );
 
     // Synthetic ADMIN actor. teamId:null makes _createWithClient resolve the
     // DEFAULT (oldest) team, as it does for a real teamless admin. sub is

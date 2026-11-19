@@ -3,6 +3,9 @@
 // (leads table, lead detail, WhatsApp unknown contacts) uses one
 // consistent dialer link + display format.
 
+import { normalizePhoneDigits } from '@shadhil/api-types';
+import { z } from 'zod';
+
 /**
  * Build a `tel:` href from a raw phone string. Strips everything but
  * `+` and digits so `"(+91) 98765 43210"` → `tel:+919876543210`.
@@ -90,3 +93,67 @@ export function toPhoneInputValue(stored: string | null | undefined): string {
   if (digits.length === 10) return digits;
   return value;
 }
+/**
+ * Client-side phone rule for forms whose schema leaves `phone` unvalidated.
+ *
+ * WHY NOT `PhoneSchema` DIRECTLY (2026-11-19): `PhoneSchema` TRANSFORMS its
+ * input (`'9876543210' → '919876543210'`). Used as a react-hook-form field
+ * schema it would rewrite the value the user is typing - the field would
+ * jump to 12 digits mid-keystroke, which is exactly the class of bug
+ * `toPhoneInputValue` exists to undo. So this mirrors the RULE without the
+ * transform: validate against the server's own normalizer, keep the value.
+ *
+ * DERIVED, NOT RE-DECLARED. The test below asserts this accepts/rejects the
+ * same shapes as `normalizePhoneDigits` (which `PhoneSchema` itself calls),
+ * so the inline message cannot drift from what the API will accept.
+ *
+ * `''` is ALLOWED here - clearing is handled by the caller (`'' → null` on
+ * submit for the clearable endpoints). Whether the field is REQUIRED is the
+ * field's own concern, not the format's.
+ */
+export const phoneFieldMessage = 'Enter a valid phone number';
+
+export function isValidPhoneInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return true; // "empty" is the caller's decision
+  try {
+    normalizePhoneDigits(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Zod-ready predicate for a phone field that keeps the typed value as-is. */
+export function phoneInputIssue(value: string): string | null {
+  return isValidPhoneInput(value) ? null : phoneFieldMessage;
+}
+
+/**
+ * The field schema to drop into a form's zod object.
+ *
+ * Use this INSTEAD of `z.string().optional()` on every phone field that has
+ * no server-transform step of its own. It is deliberately transform-free
+ * (see `isValidPhoneInput` for why `PhoneSchema` cannot be used here).
+ *
+ * `''` passes: a blank field means "not provided" (or "clear it", which the
+ * caller maps to `null`), and marking it invalid would paint a red border on
+ * an untouched optional field. It does NOT accept `undefined` - a field that
+ * is absent from the payload is a different question from one left blank. For
+ * the optional phone fields use `OptionalPhoneInputSchema`.
+ */
+export const PhoneInputSchema = z
+  .string()
+  .refine((value) => isValidPhoneInput(value), { message: phoneFieldMessage });
+
+/**
+ * The same rule for a phone field the UI treats as OPTIONAL.
+ *
+ * Needed because the api-types DTOs mark phone `.optional()` (an omitted key
+ * means "leave it alone"), and a schema test that builds a payload without a
+ * `phone` key must still pass. Without this, adding the format rule silently
+ * turned every optional phone into a required one - caught by the existing
+ * CreateUserForm tests.
+ */
+export const OptionalPhoneInputSchema = PhoneInputSchema.optional();
+

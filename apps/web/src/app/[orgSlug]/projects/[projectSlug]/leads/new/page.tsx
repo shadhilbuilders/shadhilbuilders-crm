@@ -29,10 +29,11 @@ import { projectHref } from '@/lib/nav';
 import { useProjectId, useOrgSlug, useProjectSlug } from '@/lib/tenant-context';
 import { useSessionUser } from '@/lib/session';
 import { LEAD_SOURCES, labelFor } from '@/lib/labels';
+import { PhoneInputSchema } from '@/lib/phone';
 
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
-import { PhoneSchema } from '@shadhil/api-types';
+import { normalizePhoneDigits } from '@shadhil/api-types';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -51,7 +52,17 @@ const NO_OWNER_OVERRIDE = '';
 
 const createLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').trim().max(120),
-  phone: PhoneSchema,
+  // VALIDATE-ONLY, NORMALIZE-ON-SUBMIT (2026-11-19). This used to be
+  // `PhoneSchema`, whose TRANSFORM rewrites the value to `91XXXXXXXXXX`.
+  // That is fine for a submit payload but wrong for a live-validated field:
+  // the resolver's transformed output is what RHF would feed back on
+  // revalidation, so the input could rewrite itself from 10 digits to 12
+  // while the user was still typing - the Defect 1 corruption path
+  // documented in lib/phone.ts. `PhoneInputSchema` applies the identical
+  // rule with no transform, and onSubmit calls the same
+  // `normalizePhoneDigits` PhoneSchema used, so the stored value is
+  // byte-for-byte unchanged.
+  phone: PhoneInputSchema,
   // Email is optional. The form defaults it to '' (empty string) - but
   // .optional() only allows undefined/missing, not ''. So accept '' as
   // "not provided" via a union with z.literal('') (mirrors the convert
@@ -107,13 +118,19 @@ export default function NewLeadPage() {
       teamId: NO_TEAM_OVERRIDE,
       assignedOwnerId: NO_OWNER_OVERRIDE,
     },
-    mode: 'onSubmit',
+    // `onTouched` so the phone rule reports inline while the user is still in
+    // the field. Safe now that the schema no longer transforms the value -
+    // with the old `PhoneSchema` this mode would have rewritten the input
+    // from 10 digits to 12 mid-typing.
+    mode: 'onTouched',
   });
 
   function onSubmit(values: CreateLeadSchema) {
-    // PhoneSchema already validated + normalized `values.phone` to E.164
-    // digits (no "+", no spaces) during parse - no manual cleanup needed.
-    const phone = values.phone;
+    // `values.phone` is the VALIDATED but still human-shaped value (the field
+    // no longer transforms during validation - see the schema comment). The
+    // normalization is the same call PhoneSchema made, so the payload is
+    // identical to before: E.164 digits, no "+", no spaces.
+    const phone = normalizePhoneDigits(values.phone);
     if (phone.length < 10) {
       toast.error('Phone must be at least 10 digits');
       return;

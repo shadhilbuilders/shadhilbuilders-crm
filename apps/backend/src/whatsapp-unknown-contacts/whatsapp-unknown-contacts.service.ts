@@ -51,6 +51,7 @@ import {
 } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+import { parseServiceBody } from '../common/parse-service-body';
 
 import { LeadsService } from '../leads/leads.service';
 
@@ -199,10 +200,11 @@ export class WhatsappUnknownContactsService {
     // The whole point of this flow is "a WhatsApp message turned
     // into a Lead" - letting the caller set the source defeats the
     // analytics ("how many leads came from WhatsApp this month?").
-    const normalizedDto = CreateLeadDtoSchema.parse({
-      ...dto,
-      source: 'WHATSAPP',
-    });
+    const normalizedDto = parseServiceBody(
+      CreateLeadDtoSchema,
+      { ...dto, source: 'WHATSAPP' },
+      'lead',
+    );
 
     return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
       // Lock the contact row so a concurrent convert/spam on the

@@ -21,6 +21,7 @@ import type { Role } from '@/apis/client';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { labelFor } from '@/lib/labels';
+import { OptionalPhoneInputSchema } from '@/lib/phone';
 import { CustomerLeadField } from './CustomerLeadField';
 
 /** Roles that cannot exist without a team (the service rejects them without
@@ -66,7 +67,11 @@ function roleNeedsTeam(role: Role | undefined): boolean {
  * selected.
  */
 const CreateUserFormSchema = CreateUserDtoSchema.omit({ phone: true })
-  .extend({ phone: z.string().optional() })
+  // Validated inline (2026-11-19): a bare `z.string().optional()` let a
+  // mistyped number through to the API, which rejected it as a toast. See
+  // lib/phone.ts for why this is not `PhoneSchema` (that one transforms).
+  // OPTIONAL, because a staff account is valid without a number.
+  .extend({ phone: OptionalPhoneInputSchema })
   .superRefine((values, ctx) => {
     if (roleNeedsTeam(values.role) && !values.teamId) {
       ctx.addIssue({
@@ -117,7 +122,10 @@ export function CreateUserForm({
       role: (creatableRoles[0] as Role | undefined) ?? 'TELECALLER',
       phone: '',
     },
-    mode: 'onSubmit',
+    // `onTouched` so a mistyped number is flagged while the user is still in
+    // the field (and cleared as soon as it parses), rather than only after a
+    // failed submit. The team/customer-lead refinements above share this.
+    mode: 'onTouched',
   });
 
   // Watch the role so the Team field appears only for staff (and a MANAGER

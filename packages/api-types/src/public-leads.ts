@@ -50,6 +50,28 @@ import { z } from 'zod';
  *     the engine assigns as it does today (rule -> team default ->
  *     LEADS_FALLBACK_OWNER_ID).
  */
+/**
+ * Cheap plausibility gate for the PUBLIC landing form's phone field.
+ *
+ * Length alone (`min(7).max(20)`, the previous rule) admitted `abcdefg123`.
+ * This rejects the obviously-wrong shape at the boundary so the visitor gets
+ * the message on the field they typed, instead of a late 400 (or, before
+ * 2026-11-19, a 500) from the internal create DTO a layer down.
+ *
+ * Deliberately NOT the full rule - `PhoneSchema` remains authoritative. Two
+ * conditions, both derived from what `normalizePhoneDigits` accepts:
+ *   - alphabet: digits plus the separators it strips (space, hyphen, dot,
+ *     parens, leading +);
+ *   - 7-15 DIGITS, matching its international fallback `\d{7,15}`. Counting
+ *     digits rather than characters matters: a 20-char rule admitted
+ *     `12345678901234567890` while the server caps at 15.
+ */
+function isPlausiblePublicPhone(value: string): boolean {
+  if (!/^\+?[\d\s\-().]*$/.test(value)) return false;
+  const digits = value.replace(/\D/g, '').length;
+  return digits >= 7 && digits <= 15;
+}
+
 export const PublicCreateLeadDtoSchema = z.object({
   fullName: z
     .string({ error: 'fullName is required' })
@@ -58,8 +80,19 @@ export const PublicCreateLeadDtoSchema = z.object({
     .max(120, 'Name is too long'),
   phone: z
     .string({ error: 'phone is required' })
-    .min(7, 'Please enter a valid phone number')
-    .max(20, 'Please enter a valid phone number'),
+    // HARDENED 2026-11-19. This was `.min(7).max(20)` - a LENGTH check only,
+    // so `abcdefg123` passed and only failed later, when the service
+    // re-parsed onto CreateLeadDtoSchema (which uses PhoneSchema). That late
+    // failure used to surface as a 500; even now that it is a 400, rejecting
+    // garbage HERE keeps the message at the field the user typed, and means
+    // this public schema does not advertise a contract the real one rejects.
+    //
+    // ONE check, not two. An alphabet regex plus a digit-count refine (the
+    // first attempt) emitted the SAME message twice for `abcdefg123`, because
+    // both issues fired. This single predicate keeps one message per field.
+    // The authoritative SHAPE rule still lives in PhoneSchema one layer down.
+    .trim()
+    .refine(isPlausiblePublicPhone, { message: 'Please enter a valid phone number' }),
   email: z.string().trim().toLowerCase().max(254).optional().or(z.literal('')),
   requirement: z.string().trim().max(2000).optional().or(z.literal('')),
   message: z.string().trim().max(2000).optional().or(z.literal('')),

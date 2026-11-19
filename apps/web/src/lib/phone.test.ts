@@ -79,3 +79,121 @@ describe('formatPhone', () => {
     expect(formatPhone('not-a-number')).toBe('not-a-number');
   });
 });
+
+// ---------------------------------------------------------------------------
+// PhoneInputSchema - the CLIENT-side field rule (2026-11-19)
+// ---------------------------------------------------------------------------
+// The forms used to declare `phone: z.string().optional()`, so a mistyped
+// number was accepted locally and only rejected by the API as a toast. These
+// pin that (a) the rule matches what the server normalizer accepts, and
+// (b) it does NOT transform the value - transforming is what rewrote the
+// input mid-keystroke (Defect 1 / phone.ts).
+import {
+  OptionalPhoneInputSchema,
+  PhoneInputSchema,
+  isValidPhoneInput,
+  phoneFieldMessage,
+} from './phone';
+
+describe('isValidPhoneInput', () => {
+  it('accepts the shapes the server normalizer accepts', () => {
+    for (const value of [
+      '9876543210', // 10-digit Indian mobile
+      '09876543210', // leading 0
+      '919876543210', // already normalized
+      '+919876543210', // explicit E164
+      '14155550123', // international
+    ]) {
+      expect(isValidPhoneInput(value), value).toBe(true);
+    }
+  });
+
+  it('rejects a partial number being typed', () => {
+    // The server normalizer's international fallback is `\d{7,15}`, so the
+    // true boundary is 7 digits. Below that is unambiguously "still typing".
+    // (9 digits IS accepted - as an international number - which is the
+    // server's rule; being stricter here would block values the API takes.)
+    for (const value of ['9', '98765', '987654']) {
+      expect(isValidPhoneInput(value), value).toBe(false);
+    }
+  });
+
+  it('accepts a 7-digit value, matching the server floor', () => {
+    expect(isValidPhoneInput('9876543')).toBe(true);
+  });
+
+  it('rejects non-numeric garbage', () => {
+    for (const value of ['abc', 'not-a-number', '98765abc']) {
+      expect(isValidPhoneInput(value), value).toBe(false);
+    }
+  });
+
+  it('treats an empty string as valid (blank is the caller\'s decision)', () => {
+    // The settings / create-user forms allow clearing a number; marking blank
+    // invalid would paint a red border on an untouched optional field.
+    expect(isValidPhoneInput('')).toBe(true);
+    expect(isValidPhoneInput('   ')).toBe(true);
+  });
+});
+
+describe('PhoneInputSchema', () => {
+  it('passes a valid number through WITHOUT transforming it', () => {
+    // The critical difference from PhoneSchema: the value the user typed
+    // comes back unchanged, so revalidation cannot rewrite the input.
+    const result = PhoneInputSchema.safeParse('9876543210');
+    expect(result.success).toBe(true);
+    expect(result.success && result.data).toBe('9876543210');
+  });
+
+  it('does not prepend 91 the way PhoneSchema does', () => {
+    const result = PhoneInputSchema.safeParse('+919876543210');
+    expect(result.success && result.data).toBe('+919876543210');
+  });
+
+  it('fails a partial number with a readable message', () => {
+    const result = PhoneInputSchema.safeParse('98765');
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error.issues[0]?.message).toBe(
+      phoneFieldMessage,
+    );
+  });
+
+  it('allows the empty string so optional fields stay untouched', () => {
+    expect(PhoneInputSchema.safeParse('').success).toBe(true);
+  });
+});
+
+describe('OptionalPhoneInputSchema', () => {
+  // Regression (2026-11-19): substituting the format rule for the old
+  // `z.string().optional()` silently turned every OPTIONAL phone into a
+  // REQUIRED one. The CreateUserForm schema tests caught it; this pins the
+  // distinction at the source so the next swap cannot repeat it.
+  it('accepts an ABSENT phone (omitted key)', () => {
+    expect(OptionalPhoneInputSchema.safeParse(undefined).success).toBe(true);
+  });
+
+  it('accepts a blank phone (meaning "clear it")', () => {
+    expect(OptionalPhoneInputSchema.safeParse('').success).toBe(true);
+  });
+
+  it('still rejects a malformed phone when one IS provided', () => {
+    expect(OptionalPhoneInputSchema.safeParse('abcdefg').success).toBe(false);
+    expect(OptionalPhoneInputSchema.safeParse('123').success).toBe(false);
+  });
+
+  it('accepts a valid phone', () => {
+    expect(OptionalPhoneInputSchema.safeParse('9876543210').success).toBe(true);
+  });
+
+  it('differs from PhoneInputSchema only on undefined', () => {
+    // The required variant must NOT accept a missing key - that is the whole
+    // reason both exist.
+    expect(PhoneInputSchema.safeParse(undefined).success).toBe(false);
+    expect(OptionalPhoneInputSchema.safeParse(undefined).success).toBe(true);
+    for (const value of ['', '9876543210', 'abcdefg']) {
+      expect(PhoneInputSchema.safeParse(value).success).toBe(
+        OptionalPhoneInputSchema.safeParse(value).success,
+      );
+    }
+  });
+});
