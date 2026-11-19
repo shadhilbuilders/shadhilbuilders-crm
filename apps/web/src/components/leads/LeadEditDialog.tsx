@@ -47,7 +47,11 @@ type LeadEditFormValues = {
  * because the dialog already lowercases and omits blanks on submit.
  */
 const LeadEditFormSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(120, 'Name must be at most 120 characters'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(120, 'Name must be at most 120 characters'),
   phone: PhoneInputSchema,
   email: z.string(),
 });

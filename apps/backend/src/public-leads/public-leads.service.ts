@@ -110,22 +110,22 @@ export class PublicLeadsService {
       {
         name: dto.fullName,
         phone: dto.phone,
-      // T-LEAD-FACTS (2026-11-05): the address is deliberately NOT written
-      // here. It goes through the fact ledger in the same transaction below,
-      // so the lead carries the provenance of the address that created it.
-      // `email` stays undefined on the create DTO, which is also what lets the
-      // ledger fill the blank rather than refuse to overwrite itself.
-      // T-LEAD-SOURCES (2026-11-05): the caller's channel, normalised onto the
-      // closed vocabulary the manager-assignment rules match EXACTLY
-      // (`rule.source === lead.source`). 'facebook', 'ig', 'housing.com' and
-      // the canonical tokens all land on one value; an unrecognised channel
-      // becomes OTHER rather than losing the lead.
-      source: normalizeLeadSource(dto.source),
-      projectId,
-      notes: notes || undefined,
-      // Validated owner override threaded into the DTO. The lead service
-      // bypasses the engine only when this is present (internal field).
-      assignedOwnerId: forcedOwnerId ?? undefined,
+        // T-LEAD-FACTS (2026-11-05): the address is deliberately NOT written
+        // here. It goes through the fact ledger in the same transaction below,
+        // so the lead carries the provenance of the address that created it.
+        // `email` stays undefined on the create DTO, which is also what lets the
+        // ledger fill the blank rather than refuse to overwrite itself.
+        // T-LEAD-SOURCES (2026-11-05): the caller's channel, normalised onto the
+        // closed vocabulary the manager-assignment rules match EXACTLY
+        // (`rule.source === lead.source`). 'facebook', 'ig', 'housing.com' and
+        // the canonical tokens all land on one value; an unrecognised channel
+        // becomes OTHER rather than losing the lead.
+        source: normalizeLeadSource(dto.source),
+        projectId,
+        notes: notes || undefined,
+        // Validated owner override threaded into the DTO. The lead service
+        // bypasses the engine only when this is present (internal field).
+        assignedOwnerId: forcedOwnerId ?? undefined,
       },
       'lead',
     );

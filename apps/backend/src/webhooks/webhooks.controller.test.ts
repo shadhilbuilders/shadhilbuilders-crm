@@ -128,38 +128,38 @@ beforeAll(async () => {
     adminClient,
     { userId: OTHER_USER_ID, role: 'ADMIN', organizationId: OTHER_ORG_ID },
     async (tx) => {
-        await tx.project.upsert({
-          where: { id: OTHER_PROJECT_ID },
-          update: {},
-          create: {
-            id: OTHER_PROJECT_ID,
-            name: `Other Org Project ${OTHER_PROJECT_ID}`,
-            slug: OTHER_PROJECT_ID,
-            address: 'test',
-            organizationId: OTHER_ORG_ID,
-          },
-        });
-        await tx.team.upsert({
-          where: { id: OTHER_TEAM_ID },
-          update: {},
-          create: {
-            id: OTHER_TEAM_ID,
-            name: 'WA Handler Other Team',
-            organizationId: OTHER_ORG_ID,
-          },
-        });
-        await tx.user.upsert({
-          where: { id: OTHER_USER_ID },
-          update: {},
-          create: {
-            id: OTHER_USER_ID,
-            email: 'wa-handler-other-admin@test.local',
-            name: 'WA Handler Other Admin',
-            role: 'ADMIN',
-            organizationId: OTHER_ORG_ID,
-          },
-        });
-        await tx.team.update({ where: { id: OTHER_TEAM_ID }, data: { managerId: OTHER_USER_ID } });
+      await tx.project.upsert({
+        where: { id: OTHER_PROJECT_ID },
+        update: {},
+        create: {
+          id: OTHER_PROJECT_ID,
+          name: `Other Org Project ${OTHER_PROJECT_ID}`,
+          slug: OTHER_PROJECT_ID,
+          address: 'test',
+          organizationId: OTHER_ORG_ID,
+        },
+      });
+      await tx.team.upsert({
+        where: { id: OTHER_TEAM_ID },
+        update: {},
+        create: {
+          id: OTHER_TEAM_ID,
+          name: 'WA Handler Other Team',
+          organizationId: OTHER_ORG_ID,
+        },
+      });
+      await tx.user.upsert({
+        where: { id: OTHER_USER_ID },
+        update: {},
+        create: {
+          id: OTHER_USER_ID,
+          email: 'wa-handler-other-admin@test.local',
+          name: 'WA Handler Other Admin',
+          role: 'ADMIN',
+          organizationId: OTHER_ORG_ID,
+        },
+      });
+      await tx.team.update({ where: { id: OTHER_TEAM_ID }, data: { managerId: OTHER_USER_ID } });
     },
   );
 });
@@ -229,53 +229,53 @@ beforeEach(async () => {
   // Second-org rows: a lead + its outbox row, recreated per test so the phone
   // number stays unique and the status test always starts from SENT.
   otherPhone = `93${suffix.padStart(10, '0')}`.slice(0, 12);
-    await withRlsContext(
-      runtimePrisma as unknown as PrismaClient,
-      { userId: OTHER_USER_ID, role: 'ADMIN', organizationId: OTHER_ORG_ID },
-      async (tx) => {
-        const lead = await tx.lead.create({
-          data: {
-            name: 'Other Org Lead',
-            phone: otherPhone,
-            phoneE164: otherPhone,
-            source: 'WEBSITE',
-            teamId: OTHER_TEAM_ID,
-            ownerId: OTHER_USER_ID,
-            ownerType: 'ADMIN',
-            organizationId: OTHER_ORG_ID,
-            projectId: OTHER_PROJECT_ID,
-          },
-          select: { id: true },
-        });
-        otherLeadId = lead.id;
-        const msg = await tx.message.create({
-          data: {
-            leadId: lead.id,
-            userId: OTHER_USER_ID,
-            direction: 'OUT',
-            channel: 'WHATSAPP',
-            body: 'hi other org',
-            organizationId: OTHER_ORG_ID,
-          },
-          select: { id: true },
-        });
-        const out = await tx.outboundMessage.create({
-          data: {
-            messageId: msg.id,
-            leadId: lead.id,
-            sendType: 'FREEFORM',
-            freeformBody: 'hi other org',
-            status: 'SENT',
-            attempts: 1,
-            lastAttemptAt: new Date(),
-            wamid: 'wamid.test.other.status',
-            organizationId: OTHER_ORG_ID,
-          },
-          select: { id: true },
-        });
-        otherOutboundId = out.id;
-      },
-    );
+  await withRlsContext(
+    runtimePrisma as unknown as PrismaClient,
+    { userId: OTHER_USER_ID, role: 'ADMIN', organizationId: OTHER_ORG_ID },
+    async (tx) => {
+      const lead = await tx.lead.create({
+        data: {
+          name: 'Other Org Lead',
+          phone: otherPhone,
+          phoneE164: otherPhone,
+          source: 'WEBSITE',
+          teamId: OTHER_TEAM_ID,
+          ownerId: OTHER_USER_ID,
+          ownerType: 'ADMIN',
+          organizationId: OTHER_ORG_ID,
+          projectId: OTHER_PROJECT_ID,
+        },
+        select: { id: true },
+      });
+      otherLeadId = lead.id;
+      const msg = await tx.message.create({
+        data: {
+          leadId: lead.id,
+          userId: OTHER_USER_ID,
+          direction: 'OUT',
+          channel: 'WHATSAPP',
+          body: 'hi other org',
+          organizationId: OTHER_ORG_ID,
+        },
+        select: { id: true },
+      });
+      const out = await tx.outboundMessage.create({
+        data: {
+          messageId: msg.id,
+          leadId: lead.id,
+          sendType: 'FREEFORM',
+          freeformBody: 'hi other org',
+          status: 'SENT',
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          wamid: 'wamid.test.other.status',
+          organizationId: OTHER_ORG_ID,
+        },
+        select: { id: true },
+      });
+      otherOutboundId = out.id;
+    },
+  );
 });
 
 afterAll(async () => {
@@ -319,7 +319,9 @@ afterAll(async () => {
       for (const l of leads) {
         await tx.lead.delete({ where: { id: l.id } }).catch(() => null);
       }
-      await tx.webhookEvent.deleteMany({ where: { organizationId: OTHER_ORG_ID } }).catch(() => null);
+      await tx.webhookEvent
+        .deleteMany({ where: { organizationId: OTHER_ORG_ID } })
+        .catch(() => null);
     },
   );
   // Remove the fixture organization itself, children first. Best-effort: a leftover
@@ -570,96 +572,90 @@ describe.skipIf(!HAS_DB)('WhatsApp inbound webhook - T-E2b', () => {
   // the customer's phone showed delivered), and a reply from another org's lead
   // was filed as an unknown contact in the public org.
 
-  it(
-    'status callback updates an OutboundMessage that belongs to another org',
-    async () => {
-      const result = await controller.whatsappInbound({
-        object: 'whatsapp_business_account',
-        entry: [
-          {
-            changes: [
-              {
-                field: 'messages',
-                value: {
-                  metadata: { phone_number_id: '123456' },
-                  statuses: [
-                    {
-                      id: 'wamid.test.other.status',
-                      status: 'delivered',
-                      timestamp: '1700000000',
-                      recipient_id: otherPhone,
-                    },
-                  ],
-                },
+  it('status callback updates an OutboundMessage that belongs to another org', async () => {
+    const result = await controller.whatsappInbound({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: '123456' },
+                statuses: [
+                  {
+                    id: 'wamid.test.other.status',
+                    status: 'delivered',
+                    timestamp: '1700000000',
+                    recipient_id: otherPhone,
+                  },
+                ],
               },
-            ],
-          },
-        ],
-      });
+            },
+          ],
+        },
+      ],
+    });
 
-      expect(result.received).toBe(true);
-      expect(result.statusesUpdated).toBe(1);
+    expect(result.received).toBe(true);
+    expect(result.statusesUpdated).toBe(1);
 
-      const updated = await withRlsContext(
-        runtimePrisma as unknown as PrismaClient,
-        { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: OTHER_ORG_ID },
-        async (tx) =>
-          tx.outboundMessage.findUnique({
-            where: { id: otherOutboundId },
-            select: { status: true },
-          }),
-      );
-      expect(updated?.status).toBe('DELIVERED');
-    },
-  );
+    const updated = await withRlsContext(
+      runtimePrisma as unknown as PrismaClient,
+      { userId: 'CRON_SERVICE', role: 'CRON_SERVICE', organizationId: OTHER_ORG_ID },
+      async (tx) =>
+        tx.outboundMessage.findUnique({
+          where: { id: otherOutboundId },
+          select: { status: true },
+        }),
+    );
+    expect(updated?.status).toBe('DELIVERED');
+  });
 
-  it(
-    'inbound from another org lead lands on that lead, not an unknown contact',
-    async () => {
-      const externalId = `wamid.test.${Date.now()}.other.in`;
+  it('inbound from another org lead lands on that lead, not an unknown contact', async () => {
+    const externalId = `wamid.test.${Date.now()}.other.in`;
 
-      const result = await controller.whatsappInbound({
-        object: 'whatsapp_business_account',
-        entry: [
-          {
-            changes: [
-              {
-                field: 'messages',
-                value: {
-                  metadata: { phone_number_id: '123456' },
-                  messages: [
-                    {
-                      from: otherPhone,
-                      id: externalId,
-                      timestamp: '1700000000',
-                      type: 'text',
-                      text: { body: 'hi from the other org lead' },
-                    },
-                  ],
-                },
+    const result = await controller.whatsappInbound({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: '123456' },
+                messages: [
+                  {
+                    from: otherPhone,
+                    id: externalId,
+                    timestamp: '1700000000',
+                    type: 'text',
+                    text: { body: 'hi from the other org lead' },
+                  },
+                ],
               },
-            ],
-          },
-        ],
-      });
+            },
+          ],
+        },
+      ],
+    });
 
-      expect(result.messagesCreated).toBe(1);
-      expect(result.unknownContactsUpserted).toBe(0);
+    expect(result.messagesCreated).toBe(1);
+    expect(result.unknownContactsUpserted).toBe(0);
 
-      const msg = await withRlsContext(
-        runtimePrisma as unknown as PrismaClient,
-        { userId: OTHER_USER_ID, role: 'ADMIN', organizationId: OTHER_ORG_ID },
-        async (tx) =>
-          tx.message.findFirst({
-            where: { externalId },
-            select: { leadId: true, organizationId: true, direction: true },
-          }),
-      );
-      expect(msg?.leadId).toBe(otherLeadId);
-      expect(msg?.organizationId).toBe(OTHER_ORG_ID);
-      expect(msg?.direction).toBe('IN');
-    },
-  );
+    const msg = await withRlsContext(
+      runtimePrisma as unknown as PrismaClient,
+      { userId: OTHER_USER_ID, role: 'ADMIN', organizationId: OTHER_ORG_ID },
+      async (tx) =>
+        tx.message.findFirst({
+          where: { externalId },
+          select: { leadId: true, organizationId: true, direction: true },
+        }),
+    );
+    expect(msg?.leadId).toBe(otherLeadId);
+    expect(msg?.organizationId).toBe(OTHER_ORG_ID);
+    expect(msg?.direction).toBe('IN');
+  });
 
   it('dedupes by WebhookEvent.externalId (Meta retries)', async () => {
     const externalId = `wamid.test.${Date.now()}.dedup`;

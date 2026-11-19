@@ -806,10 +806,7 @@ function EditUserDialog({
       // field that caps typing at 10 - and the first keystroke truncated it
       // into `919198765432`. That is the Defect 1 pattern documented in
       // lib/phone.ts, still live on this dialog. Same helper as settings.
-      phone:
-        target === null || target.role === 'CUSTOMER'
-          ? ''
-          : toPhoneInputValue(target.phone),
+      phone: target === null || target.role === 'CUSTOMER' ? '' : toPhoneInputValue(target.phone),
     },
     // `onTouched` so a mistyped number is flagged while the user is still in
     // the field, and cleared as soon as it parses.

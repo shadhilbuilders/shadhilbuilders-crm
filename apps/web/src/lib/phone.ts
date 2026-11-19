@@ -156,4 +156,3 @@ export const PhoneInputSchema = z
  * CreateUserForm tests.
  */
 export const OptionalPhoneInputSchema = PhoneInputSchema.optional();
-

@@ -128,7 +128,7 @@ describe('isValidPhoneInput', () => {
     }
   });
 
-  it('treats an empty string as valid (blank is the caller\'s decision)', () => {
+  it("treats an empty string as valid (blank is the caller's decision)", () => {
     // The settings / create-user forms allow clearing a number; marking blank
     // invalid would paint a red border on an untouched optional field.
     expect(isValidPhoneInput('')).toBe(true);
@@ -153,9 +153,7 @@ describe('PhoneInputSchema', () => {
   it('fails a partial number with a readable message', () => {
     const result = PhoneInputSchema.safeParse('98765');
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error.issues[0]?.message).toBe(
-      phoneFieldMessage,
-    );
+    expect(result.success === false && result.error.issues[0]?.message).toBe(phoneFieldMessage);
   });
 
   it('allows the empty string so optional fields stay untouched', () => {

@@ -78,32 +78,28 @@ export class LeadFactsService {
    * Dismissed and superseded rows are history and stay out of the sheet.
    */
   async list(actor: JwtPayload, leadId: string): Promise<LeadFactsResponse> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const lead = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: SUBJECT_SELECT,
-        });
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const lead = await tx.lead.findUnique({
+        where: { id: leadId },
+        select: SUBJECT_SELECT,
+      });
 
-        // The RLS policy already hides other orgs and other teams, so a lead
-        // the actor may not see reads as absent - the correct 404 rather than
-        // a 403 that confirms it exists.
-        if (!lead) throw new NotFoundException('Lead not found');
+      // The RLS policy already hides other orgs and other teams, so a lead
+      // the actor may not see reads as absent - the correct 404 rather than
+      // a 403 that confirms it exists.
+      if (!lead) throw new NotFoundException('Lead not found');
 
-        const rows = await tx.leadFact.findMany({
-          where: { leadId, status: { in: ['APPLIED', 'PROPOSED'] } },
-          orderBy: { observedAt: 'desc' },
-        });
+      const rows = await tx.leadFact.findMany({
+        where: { leadId, status: { in: ['APPLIED', 'PROPOSED'] } },
+        orderBy: { observedAt: 'desc' },
+      });
 
-        return {
-          leadId,
-          values: { name: lead.name, email: lead.email, source: lead.source },
-          facts: rows.map(toWireRow),
-        };
-      },
-    );
+      return {
+        leadId,
+        values: { name: lead.name, email: lead.email, source: lead.source },
+        facts: rows.map(toWireRow),
+      };
+    });
   }
 
   /**
@@ -261,103 +257,97 @@ export class LeadFactsService {
     factId: string,
     dto: DecideLeadFactDto,
   ): Promise<LeadFactRow> {
-    return withRlsContext(
-      this.client,
-      rlsContextFrom(actor),
-      async (tx) => {
-        const fact = await tx.leadFact.findUnique({
-          where: { id: factId },
-          select: {
-            id: true,
-            leadId: true,
-            organizationId: true,
-            field: true,
-            value: true,
-            status: true,
+    return withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+      const fact = await tx.leadFact.findUnique({
+        where: { id: factId },
+        select: {
+          id: true,
+          leadId: true,
+          organizationId: true,
+          field: true,
+          value: true,
+          status: true,
+        },
+      });
+
+      if (!fact || fact.leadId !== leadId) {
+        throw new NotFoundException('Suggestion not found');
+      }
+
+      if (fact.status !== 'PROPOSED') {
+        throw new BadRequestException(`This suggestion has already been settled (${fact.status}).`);
+      }
+
+      if (dto.decision === 'ACCEPT') {
+        await tx.leadFact.updateMany({
+          where: {
+            leadId,
+            field: fact.field,
+            status: { in: ['APPLIED', 'PROPOSED'] },
+            NOT: { id: fact.id },
           },
+          data: { status: 'SUPERSEDED', supersededAt: new Date() },
         });
 
-        if (!fact || fact.leadId !== leadId) {
-          throw new NotFoundException('Suggestion not found');
-        }
-
-        if (fact.status !== 'PROPOSED') {
-          throw new BadRequestException(
-            `This suggestion has already been settled (${fact.status}).`,
-          );
-        }
-
-        if (dto.decision === 'ACCEPT') {
-          await tx.leadFact.updateMany({
-            where: {
-              leadId,
-              field: fact.field,
-              status: { in: ['APPLIED', 'PROPOSED'] },
-              NOT: { id: fact.id },
-            },
-            data: { status: 'SUPERSEDED', supersededAt: new Date() },
-          });
-
-          const accepted = await tx.leadFact.update({
-            where: { id: fact.id },
-            data: {
-              status: 'APPLIED',
-              decidedById: actor.sub,
-              decidedAt: new Date(),
-            },
-          });
-
-          const lead = await tx.lead.findUniqueOrThrow({
-            where: { id: leadId },
-            select: SUBJECT_SELECT,
-          });
-
-          await tx.lead.update({
-            where: { id: leadId },
-            data: columnPatch(fact.field as LeadFactField, fact.value),
-          });
-
-          await tx.auditLog.create({
-            data: {
-              userId: actor.sub,
-              organizationId: fact.organizationId,
-              action: 'lead.fact.accept',
-              entityType: 'Lead',
-              entityId: leadId,
-              before: { [fact.field]: lead[fact.field as LeadFactField] },
-              after: { [fact.field]: fact.value },
-              reason: dto.reason ?? null,
-            },
-          });
-
-          return toWireRow(accepted);
-        }
-
-        const dismissed = await tx.leadFact.update({
+        const accepted = await tx.leadFact.update({
           where: { id: fact.id },
           data: {
-            status: 'DISMISSED',
+            status: 'APPLIED',
             decidedById: actor.sub,
             decidedAt: new Date(),
           },
+        });
+
+        const lead = await tx.lead.findUniqueOrThrow({
+          where: { id: leadId },
+          select: SUBJECT_SELECT,
+        });
+
+        await tx.lead.update({
+          where: { id: leadId },
+          data: columnPatch(fact.field as LeadFactField, fact.value),
         });
 
         await tx.auditLog.create({
           data: {
             userId: actor.sub,
             organizationId: fact.organizationId,
-            action: 'lead.fact.dismiss',
+            action: 'lead.fact.accept',
             entityType: 'Lead',
             entityId: leadId,
-            before: { [fact.field]: fact.value },
-            after: { [fact.field]: 'kept' },
+            before: { [fact.field]: lead[fact.field as LeadFactField] },
+            after: { [fact.field]: fact.value },
             reason: dto.reason ?? null,
           },
         });
 
-        return toWireRow(dismissed);
-      },
-    );
+        return toWireRow(accepted);
+      }
+
+      const dismissed = await tx.leadFact.update({
+        where: { id: fact.id },
+        data: {
+          status: 'DISMISSED',
+          decidedById: actor.sub,
+          decidedAt: new Date(),
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          organizationId: fact.organizationId,
+          action: 'lead.fact.dismiss',
+          entityType: 'Lead',
+          entityId: leadId,
+          before: { [fact.field]: fact.value },
+          after: { [fact.field]: 'kept' },
+          reason: dto.reason ?? null,
+        },
+      });
+
+      return toWireRow(dismissed);
+    });
   }
 }
 
