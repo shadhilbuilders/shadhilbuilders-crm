@@ -385,6 +385,11 @@ export function ChatThreadPanel({
         ) : (
           <form onSubmit={onSubmit}>
             <InputGroup className="items-center gap-1">
+              {/* The library's Textarea defaults to min-h-16 (64px) - right for a
+                  multi-line form, wrong for a one-line composer: the box grows to
+                  64px, the icons centre, and the placeholder sits at the top with a
+                  dead 30px strip under it. 40px matches the lead pane; the control
+                  still grows with a longer draft, capped at 160px. */}
               <InputGroupTextarea
                 ref={textareaRef}
                 value={draft}
@@ -394,6 +399,7 @@ export function ChatThreadPanel({
                 rows={1}
                 aria-label="Message"
                 data-qa="composer"
+                className="max-h-40 min-h-10 py-2.5"
               />
               <InputGroupAddon align="inline-end" className="p-1">
                 <input
