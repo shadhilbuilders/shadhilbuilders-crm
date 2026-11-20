@@ -90,6 +90,28 @@ import UsersPage from './page';
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
+/**
+ * jsdom has no matchMedia, so `useMediaQuery` reports false and the table renders
+ * its full column set - the same as a desktop browser. This stub answers true to
+ * the compact query so the phone layout can be asserted.
+ */
+function stubMatchMedia(matches: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 async function mount(): Promise<void> {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -395,5 +417,95 @@ describe('UsersPage - T-D3 state matrix', () => {
     expect(html).toContain('API 500');
     // No ModulePending-style "failed to load" surface.
     expect(html).not.toContain('failed to load');
+  });
+});
+
+// 2026-11-19: at 390px the users table was 852px wide inside a 357px scroller
+// and the row-actions menu sat at x=829 - in the DOM, off screen, with nothing
+// hinting the table scrolled sideways. The three widest, least identifying
+// columns drop below md so the menu lands on screen.
+describe('UsersPage - phone layout', () => {
+  const ROWS = {
+    rows: [
+      {
+        id: 'u-1',
+        name: 'Admin',
+        email: 'a@x',
+        role: 'ADMIN',
+        teamId: null,
+        projects: [],
+      },
+      {
+        id: 'u-priya',
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        phone: '9876543210',
+        role: 'SALES_EXEC',
+        teamId: 't-1',
+        projects: ['Shadhil Metro Heights'],
+        reportsTo: [
+          {
+            teamId: 't-1',
+            teamName: 'Metro Sales',
+            manager: { id: 'mgr-1', name: 'Ravi Manager', email: 'ravi@example.com' },
+          },
+        ],
+      },
+    ],
+    total: 2,
+  };
+
+  function signIn(): void {
+    mocks.useSessionUser.mockReturnValue({
+      user: { id: 'u-1', name: 'Admin', email: 'a@x', role: 'ADMIN', teamId: null },
+      isPending: false,
+      error: null,
+    });
+    mocks.useUsers.mockReturnValue({
+      data: ROWS,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+  }
+
+  afterEach(() => {
+    // Leave jsdom as the suite found it for every other file in this worker.
+    Reflect.deleteProperty(window, 'matchMedia');
+  });
+
+  it('drops Phone, Reports to and Projects below md and keeps the actions', async () => {
+    stubMatchMedia(true);
+    signIn();
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+
+    expect(html).not.toContain('data-qa="user-reports-to-u-priya"');
+    expect(html).not.toContain('Ravi Manager');
+    expect(html).not.toContain('1 project');
+    // The three columns are gone from the header too, not just the cells.
+    expect(html).not.toContain('Reports to');
+    expect(html).not.toContain('>Projects<');
+    // Phone cell text: the number itself must not be rendered.
+    expect(html).not.toContain('9876543210');
+
+    // What a phone actually needs stays: identity, role, and the menu.
+    expect(html).toContain('data-qa="user-row-link-u-priya"');
+    expect(html).toContain('Sales Executive');
+    expect(html).toContain('data-qa="data-table-row-actions-button"');
+  });
+
+  it('keeps the full column set at desktop width', async () => {
+    stubMatchMedia(false);
+    signIn();
+
+    await mount();
+    const html = container?.innerHTML ?? '';
+
+    expect(html).toContain('Reports to');
+    expect(html).toContain('Ravi Manager');
+    expect(html).toContain('9876543210');
+    expect(html).toContain('data-qa="data-table-row-actions-button"');
   });
 });

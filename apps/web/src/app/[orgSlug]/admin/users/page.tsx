@@ -34,6 +34,7 @@ import {
   TypographyP,
 } from '@paalstack/react-ui';
 import type { DataTableColumnDef } from '@paalstack/react-ui';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { useDebouncedValue } from '@paalstack/react-hooks';
 import { LuEllipsis, LuKeyRound, LuPencil, LuTrash2, LuUserCog } from '@paalstack/react-icons/lu';
 import { useEffect, useMemo, useState } from 'react';
@@ -485,8 +486,15 @@ function UserTable({
     [],
   );
 
-  const columns = useMemo<DataTableColumnDef<UserRow>[]>(
-    () => [
+  // Phone, Reports to and Projects are the three widest columns and the three
+  // least needed to recognise a person. At 390px they pushed the row-actions
+  // menu to x=829 in a 357px scroller: present in the DOM, invisible in
+  // practice, with no cue that the table scrolled. Below md they are dropped so
+  // the actions land on screen.
+  const compact = useMediaQuery('(max-width: 767px)');
+
+  const columns = useMemo<DataTableColumnDef<UserRow>[]>(() => {
+    const all: DataTableColumnDef<UserRow>[] = [
       {
         accessorKey: 'name',
         header: 'Name',
@@ -610,6 +618,9 @@ function UserTable({
         enableSorting: false,
       },
       {
+        // `id` is explicit so the compact filter can name it; accessorKey stays
+        // for the sort/accessor. phone and reportsTo already do the same.
+        id: 'projects',
         accessorKey: 'projects',
         header: 'Projects',
         // Shows a COUNT, not the joined name list (autoplan 2026-09-13) -
@@ -651,9 +662,11 @@ function UserTable({
         enableSorting: false,
         enableHiding: false,
       },
-    ],
-    [selfId, actorRole, orgSlug, onEdit, onDelete, onRoleChange, onChangePassword],
-  );
+    ];
+    if (!compact) return all;
+    const droppedForPhone = new Set(['phone', 'reportsTo', 'projects']);
+    return all.filter((column) => !droppedForPhone.has(column.id ?? ''));
+  }, [selfId, actorRole, orgSlug, onEdit, onDelete, onRoleChange, onChangePassword, compact]);
 
   const isSearchActive = search.trim().length > 0;
 
