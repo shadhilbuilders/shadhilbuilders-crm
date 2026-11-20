@@ -12,7 +12,8 @@
 import { BadRequestException, Body, Controller, Inject, Module, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthedRequest } from '../auth/jwt-auth.guard';
-import type { MintTicketDto, MintTicketResponse } from '@shadhil/api-types';
+import { MintTicketDtoSchema } from '@shadhil/api-types';
+import type { MintTicketResponse } from '@shadhil/api-types';
 
 import { RealtimeService } from './realtime.service';
 
@@ -28,22 +29,16 @@ export class RealtimeTicketController {
       'Mint a 5-minute single-use stream ticket for an SSE channel (notifications | audit | chat:<leadId>).',
   })
   async mint(@Req() req: AuthedRequest, @Body() body: unknown): Promise<MintTicketResponse> {
-    // Body parse: the shared Zod schema in api-types (MintTicketDtoSchema)
-    // is applied in the service via parseChannel + channel checks. The
-    // minimal shape check here mirrors the parseBody helper pattern.
-    const raw = body as { channel?: unknown };
-    if (
-      raw === null ||
-      typeof raw !== 'object' ||
-      typeof raw.channel !== 'string' ||
-      raw.channel.length === 0
-    ) {
-      // Must throw a real HttpException: a bare Error with a .status is
-      // not mapped by Nest's default exception filter -> surfaces as 500
-      // instead of 400 (found via API smoke test).
+    // The shared schema in api-types, not a hand-rolled typeof chain: the
+    // channel rules (length, then the per-channel checks in the service) live
+    // in one place. Must throw a real HttpException - a bare Error with a
+    // .status is not mapped by Nest's exception filter and surfaces as 500
+    // instead of 400 (found via API smoke test).
+    const parsed = MintTicketDtoSchema.safeParse(body);
+    if (!parsed.success) {
       throw new BadRequestException('body.channel must be a non-empty string');
     }
-    return this.realtime.mintTicket(req.user!, { channel: raw.channel });
+    return this.realtime.mintTicket(req.user!, { channel: parsed.data.channel });
   }
 }
 
