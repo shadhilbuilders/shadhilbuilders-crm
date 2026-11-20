@@ -30,7 +30,10 @@
 # standalone. Coolify sets its own labels when it manages the proxy.
 #
 # RELIABILITY: every service uses `restart: unless-stopped`, so a crashed
-# container comes back on its own.
+# container comes back on its own - with ONE exception, pgbouncer, which uses
+# `restart: always`. See the note on that service: after a WSL/daemon restart
+# it can lose the race against postgres, and `unless-stopped` does not retry a
+# failure it did not count. That single difference is deliberate, not drift.
 #
 # HEALTHCHECKS (added 2026-10-01): every service now declares one. Note what a
 # healthcheck does and does NOT do here - `unless-stopped` only reacts to a
@@ -114,7 +117,30 @@ services:
     # lives in docker/pgbouncer.ini.
     image: edoburu/pgbouncer:v1.25.2-p0
     container_name: shadhil-pgbouncer
-    restart: unless-stopped
+    # `always`, NOT `unless-stopped` (changed 2026-11-20).
+    #
+    # WHY THIS ONE SERVICE DIFFERS FROM THE OTHER FIVE. `unless-stopped` is
+    # only honoured for a container Docker still has in memory. When the WSL
+    # distro rebooted at 17:58:52, Docker re-adopted all five containers and
+    # restarted postgres + redis fine - but pgbouncer lost the race: postgres
+    # needs ~27s to become healthy, pgbouncer tried immediately, could not
+    # reach `postgres`, exited, and Docker made ZERO restart attempts
+    # (verified: RestartCount=0 while the other two had also restarted on
+    # their own). The result was every DB query failing with
+    # "Can't reach database server at 127.0.0.1:6432" and the staff-invite
+    # page rendering "temporarily unavailable".
+    #
+    # Note `depends_on: postgres: service_healthy` does NOT help here: that is
+    # a `docker compose up` ordering directive, and it is not re-evaluated when
+    # the daemon adopts containers at boot.
+    #
+    # `always` makes Docker retry on every exit rather than giving up after a
+    # failure it did not count, so pgbouncer keeps retrying until postgres is
+    # reachable. The trade-off is real and accepted: `docker stop` no longer
+    # sticks for this container (Docker brings it back on the next daemon
+    # start), which is the right trade for the one service whose absence takes
+    # the whole app down.
+    restart: always
     environment:
       AUTH_TYPE: scram-sha-256
       DB_USER: shadhil

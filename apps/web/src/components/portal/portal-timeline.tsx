@@ -113,7 +113,7 @@ export function PortalTimeline({
           type="button"
           variant="outline"
           size="lg"
-          className="mt-5 min-h-11 w-full rounded-full"
+          className="mt-5 w-full rounded-full"
           onClick={onLoadMore}
           disabled={isLoadingMore}
           data-qa="portal-load-more"

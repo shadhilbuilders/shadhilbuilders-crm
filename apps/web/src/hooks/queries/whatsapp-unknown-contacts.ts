@@ -59,7 +59,11 @@ export function useWaUnknownContacts(query: Partial<WhatsappUnknownContactListQu
       nextCursor:
         typeof raw.nextCursor === 'string' && raw.nextCursor.length > 0 ? raw.nextCursor : null,
     }),
-    staleTime: 10_000,
+    // The WhatsApp Chats convert flow and the admin triage queue both need
+    // new inbound numbers without a full reload; inherit the app-wide 5-minute
+    // staleTime and they stay frozen until refresh.
+    staleTime: 0,
+    refetchInterval: 15_000,
     placeholderData: keepPreviousData,
   });
 }
@@ -86,6 +90,9 @@ export function useConvertWaUnknownContact() {
       void queryClient.invalidateQueries({
         queryKey: ['whatsapp-unknown-contacts'],
       });
+      // WhatsApp Chats inbox still shows the CONTACT thread until this
+      // invalidation runs; without it the convert looks like a no-op until refresh.
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
       invalidateLeadCaches(queryClient);
     },
   });
@@ -106,6 +113,7 @@ export function useMarkWaUnknownSpam() {
       void queryClient.invalidateQueries({
         queryKey: ['whatsapp-unknown-contacts'],
       });
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
     },
   });
 }

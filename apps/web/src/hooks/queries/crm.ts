@@ -599,11 +599,20 @@ export function useRescheduleVisit() {
 // Chat (contract: packages/api-types/src/chat.ts)
 // ---------------------------------------------------------------------------
 
+/** Lead-thread poll backstop when the SSE stream is down or delayed. */
+const CHAT_MESSAGES_POLL_MS = 30_000;
+
 export function useMessages(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') {
   return useQuery({
     queryKey: ['chat', leadId, kind] as const,
     enabled: leadId !== null && leadId.length > 0,
     queryFn: ({ signal }) => api<unknown[]>(`/chat/${leadId as string}?kind=${kind}`, { signal }),
+    // Live chat cannot inherit the app-wide 5-minute staleTime - a customer
+    // reply (or a send from another tab) must be eligible to refetch as soon
+    // as SSE / focus / invalidation asks for it. A short poll is the backstop
+    // when the realtime stream is unavailable.
+    staleTime: 0,
+    refetchInterval: CHAT_MESSAGES_POLL_MS,
   });
 }
 
@@ -649,6 +658,7 @@ export function useSendWelcomeMessage(leadId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', leadId] });
       void queryClient.invalidateQueries({ queryKey: ['chat-state', leadId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
     },
   });
 }
@@ -663,6 +673,12 @@ export function useSendWelcomeMessage(leadId: string) {
  * reply window, and that state query polls only once a minute. Refreshing messages
  * alone left the composer saying "window closed" for up to 60s after the customer
  * replied - the operator read that as the integration being broken.
+ *
+ * The conversation list is here too: the WhatsApp inbox left pane keys off
+ * `chat-conversations`, and without this invalidation a lead-thread SSE event
+ * refreshed the open bubbles while the list preview / unread / ordering stayed
+ * frozen until a full page reload (global staleTime is 5 minutes, so window-focus
+ * refetch alone does not rescue it).
  */
 export function invalidateChatSideEffects(
   client: QueryClient,
@@ -671,6 +687,7 @@ export function invalidateChatSideEffects(
 ): void {
   void client.invalidateQueries({ queryKey: ['chat', leadId, kind] });
   void client.invalidateQueries({ queryKey: ['chat-state', leadId] });
+  void client.invalidateQueries({ queryKey: ['chat-conversations'] });
 }
 
 export function useMessagesRealtime(
@@ -757,6 +774,9 @@ export function useSendMessage(leadId: string, kind: 'CUSTOMER' | 'INTERNAL' = '
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', leadId, kind] });
+      // Keep the WhatsApp inbox list (preview / unread / sort) in lockstep with
+      // the thread the operator just wrote into.
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
     },
   });
 }
@@ -784,6 +804,11 @@ export type ChatConversationFilter = {
   enabled?: boolean;
 };
 
+/** Inbox poll interval: backstop when no thread is open (no per-thread SSE). */
+const CHAT_CONVERSATIONS_POLL_MS = 15_000;
+/** Contact threads have no working SSE (stream is leadId-scoped); poll instead. */
+const CHAT_CONTACT_POLL_MS = 10_000;
+
 /** GET /api/chat/conversations - the inbox list (server-filtered). */
 export function useChatConversations(filter: ChatConversationFilter = {}) {
   return useQuery({
@@ -803,7 +828,11 @@ export function useChatConversations(filter: ChatConversationFilter = {}) {
         { signal },
       ),
     // Inbox freshness matters (a customer reply must appear without a manual
-    // refresh); SSE invalidates this key, and a short poll is the backstop.
+    // refresh). SSE invalidates this key when a thread is open; a short poll
+    // is the backstop for the list alone, and staleTime:0 lets focus/reconnect
+    // refetch instead of being blocked by the app-wide 5-minute default.
+    staleTime: 0,
+    refetchInterval: CHAT_CONVERSATIONS_POLL_MS,
     refetchOnWindowFocus: true,
   });
 }
@@ -814,19 +843,35 @@ export function useContactMessages(contactId: string | null) {
     queryKey: ['chat-contact', contactId] as const,
     enabled: contactId !== null && contactId.length > 0,
     queryFn: ({ signal }) => api<unknown[]>(`/chat/contact/${contactId as string}`, { signal }),
+    staleTime: 0,
+    // Contact SSE currently mints `chat:<contactId>` against a lead-scoped
+    // stream + ticket check, so events never land. Poll until a real contact
+    // channel exists.
+    refetchInterval: CHAT_CONTACT_POLL_MS,
   });
 }
 
-/** SSE: invalidate the open contact thread + the list when a message lands. */
+/**
+ * Contact-thread live updates.
+ *
+ * Kept as a hook so `ChatThreadPanel` can call it unconditionally (stable hook
+ * order), but it deliberately does NOT open an SSE stream.
+ *
+ * Why: the realtime channel vocabulary is lead-scoped by contract
+ * (`parseChannel` -> `{ kind: 'chat', leadId }`, and `mintTicket` 403s when no
+ * Lead row matches). A contactId is a cuid too, so the mint passed validation
+ * and then failed authorization - and `openStream` re-mints on every backoff
+ * retry. Those 403 loops burned the per-user ticket budget (10/min, 60/hour)
+ * that `notifications` shares, so simply opening an unknown-number thread
+ * starved the app-wide notification stream.
+ *
+ * `useContactMessages` polls instead (refetchInterval), and sends/read-marks
+ * invalidate explicitly, so the pane still updates without a reload.
+ */
 export function useContactMessagesRealtime(contactId: string | null): void {
-  const queryClient = useQueryClient();
-  useRealtimeChannel(
-    contactId !== null && contactId.length > 0 ? `chat:${contactId}` : null,
-    () => {
-      void queryClient.invalidateQueries({ queryKey: ['chat-contact', contactId] });
-      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
-    },
-  );
+  // Reference the argument so the signature documents intent and linters keep
+  // the "unused parameter" check honest; no subscription is opened.
+  void contactId;
 }
 
 /** POST /api/chat/send-to-contact - reply on an unknown-contact thread. */

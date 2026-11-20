@@ -60,3 +60,20 @@ export class CodedNotFoundException extends CodedException {
     super(404, code, message, details);
   }
 }
+
+/**
+ * 410 Gone with a stable code (2026-11-20, staff invites).
+ *
+ * A staff-invite link that has expired, been revoked, or already been used is
+ * not "missing" - the caller holds a real credential for a resource that
+ * USED TO exist and is now permanently unavailable. 404 would tell the
+ * invitee their link was never valid (sending them back to the admin for a
+ * typo they did not make), and 403 would imply they lack permission rather
+ * than that the window closed. 410 is the honest answer, and the accept page
+ * maps it to a specific card per code.
+ */
+export class CodedGoneException extends CodedException {
+  constructor(code: string, message: string, details?: unknown) {
+    super(410, code, message, details);
+  }
+}

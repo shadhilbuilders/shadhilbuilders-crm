@@ -17,7 +17,7 @@ import {
   conversationTime,
   toSelection,
 } from '@/components/whatsapp/ChatConversationList';
-import { replyWindowState } from '@/components/whatsapp/ChatThreadPanel';
+import { latestInboundAt, replyWindowState } from '@/components/whatsapp/ChatThreadPanel';
 
 describe('replyWindowState - the 24h WhatsApp reply window', () => {
   const now = new Date('2026-09-25T12:00:00Z');
@@ -46,6 +46,23 @@ describe('replyWindowState - the 24h WhatsApp reply window', () => {
     // Failing closed matters: the alternative lets a send through that the
     // outbound cron then drops without the operator seeing anything.
     expect(replyWindowState('not-a-date', now).open).toBe(false);
+  });
+});
+
+describe('latestInboundAt - live reply-window input', () => {
+  it('returns null when no inbound messages exist', () => {
+    expect(latestInboundAt([{ direction: 'OUT', createdAt: '2026-09-25T10:00:00Z' }])).toBeNull();
+    expect(latestInboundAt([])).toBeNull();
+  });
+
+  it('picks the newest inbound even when rows are unsorted', () => {
+    expect(
+      latestInboundAt([
+        { direction: 'IN', createdAt: '2026-09-25T10:00:00Z' },
+        { direction: 'OUT', createdAt: '2026-09-25T11:00:00Z' },
+        { direction: 'IN', createdAt: '2026-09-25T10:30:00Z' },
+      ]),
+    ).toBe('2026-09-25T10:30:00Z');
   });
 });
 

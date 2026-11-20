@@ -1026,7 +1026,7 @@ BEGIN
     'Consent','WebhookEvent','ManagerAssignmentRule','Team','Project',
     'Phase','Unit','StreamTicket','OutboundMessage',
     'ProjectOption','WhatsappUnknownContact','Organization',
-    'TeamMember','ProjectTeam','MessageRecipient'
+    'TeamMember','ProjectTeam','MessageRecipient','Invite'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
@@ -1059,6 +1059,10 @@ BEGIN
     'Phase','Unit','StreamTicket','OutboundMessage',
     'ProjectOption','WhatsappUnknownContact','Organization',
     'TeamMember','ProjectTeam','MessageRecipient'
+    -- NOTE: "Invite" is deliberately ABSENT here. It gets column-level UPDATE
+    -- below, because a table-wide UPDATE grant would defeat the only defence
+    -- against rewriting email/role/teamId (a WITH CHECK cannot see the OLD
+    -- row). See the Invite block at the end of this file.
   ]
   LOOP
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO shadhil_app;', t);
@@ -2231,5 +2235,207 @@ CREATE POLICY project_milestone_write_admin ON "ProjectMilestone"
   )
   WITH CHECK (
     current_setting('app.user_role', true) = 'ADMIN'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+  );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Invite (2026-11-20) - staff invite links.
+-- ────────────────────────────────────────────────────────────────────────────
+-- Mirrors migration 20261120120000_staff_invites. This block IS the canonical
+-- copy; the migration carries the same statements so `prisma migrate` is the
+-- single schema-change entry point.
+--
+-- WHY THIS TABLE IS FENCED when User / Verification / StreamTicket are not:
+-- accepting an invite has no JWT, so there is no app.user_org_id to scope by
+-- until the row is read. Rather than leave the table open (and rely on a
+-- service-layer filter being right in every future edit), the TOKEN ITSELF
+-- becomes the scope: the accept path sets app.invite_token_hash and the token
+-- arms match that exact column. A caller who does not hold the token matches
+-- zero rows.
+--
+-- One unfenced read remains and cannot be avoided: the accept path must
+-- resolve a presented token to an org BEFORE withRlsContext can be called (it
+-- rejects an empty organizationId). That lookup is a unique-key probe by
+-- tokenHash returning ids only - never email, name, or the token itself.
+
+-- PRIVILEGE LAYER (see the note in the GRANT loop above). The app role can
+-- read/insert/delete invites and update ONLY the lifecycle columns. It can
+-- never write email / name / phone / role / teamId / organizationId /
+-- tokenHash-after-issue beyond resend, which is how "an accepted invite cannot
+-- be rewritten into a different person or privilege" is enforced where RLS
+-- structurally cannot.
+GRANT SELECT, INSERT, DELETE ON "Invite" TO shadhil_app;
+GRANT UPDATE (
+  "status",
+  "expiresAt",
+  "lastSentAt",
+  "tokenHash",
+  "acceptedAt",
+  "acceptedByUserId",
+  "revokedAt",
+  "revokedById",
+  "updatedAt"
+) ON "Invite" TO shadhil_app;
+
+ALTER TABLE "Invite" ENABLE ROW LEVEL SECURITY;
+
+-- Recursion-safe "does this user manage this team". MUST NOT be a raw EXISTS
+-- on "TeamMember": that table's SELECT policy subqueries "Team", so an
+-- "Invite" policy -> "TeamMember" -> "Team" cycle raises 42P17. Same shape as
+-- team_member_exists / project_unit_ids.
+CREATE OR REPLACE FUNCTION team_manager_is_self(p_team_id TEXT, p_user_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM "Team" t
+    WHERE t."id" = p_team_id
+      AND t."managerId" = p_user_id
+      AND t."deletedAt" IS NULL
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION team_manager_is_self(TEXT, TEXT) TO shadhil_app;
+
+-- ── The token pre-flight resolver ──────────────────────────────────────────
+-- THE CHICKEN-AND-EGG, SOLVED PROPERLY.
+--
+-- The accept path has no JWT, so it has no app.user_org_id - and
+-- invite_select_token requires one. A plain SELECT on the bare client
+-- therefore returns ZERO rows under FORCE RLS (verified live: the bare client
+-- sees 0 Invite rows). So the pre-flight lookup cannot be an ordinary query.
+--
+-- This function is that one deliberate hole, and it is as narrow as possible:
+--   * input is the sha256 hash, never the raw token
+--   * output is ids + status + deadline + the inviter - no email, no name,
+--     no phone, no token echo
+--   * SECURITY DEFINER with search_path pinned, EXECUTE granted only to
+--     shadhil_app, exactly like team_member_exists / project_unit_ids
+--   * STABLE (read-only), so it cannot be used to mutate anything
+--
+-- Holding a valid 256-bit token is what makes this return a row; a wrong hash
+-- returns nothing. Everything AFTER this call runs inside withRlsContext under
+-- the INVITE_ACCEPT policy set and is fully fenced.
+CREATE OR REPLACE FUNCTION invite_resolve_token(p_token_hash TEXT)
+RETURNS TABLE (
+  "id"               TEXT,
+  "organizationId"   TEXT,
+  "teamId"           TEXT,
+  "status"           "InviteStatus",
+  "expiresAt"        TIMESTAMP(3),
+  "invitedById"      TEXT,
+  "organizationSlug" TEXT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT i."id"                AS "id",
+         i."organizationId"    AS "organizationId",
+         i."teamId"            AS "teamId",
+         i."status"            AS "status",
+         i."expiresAt"         AS "expiresAt",
+         i."invitedById"       AS "invitedById",
+         o."slug"              AS "organizationSlug"
+  FROM "Invite" i
+  JOIN "Organization" o ON o."id" = i."organizationId"
+  WHERE i."tokenHash" = p_token_hash;
+$$;
+
+GRANT EXECUTE ON FUNCTION invite_resolve_token(TEXT) TO shadhil_app;
+
+-- Admin class sees every invite in the org. OWNER travels as ADMIN (rls.ts).
+CREATE POLICY invite_select_admin ON "Invite"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
+  );
+
+-- A manager sees invites into teams they lead, and nothing else.
+CREATE POLICY invite_select_manager ON "Invite"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'MANAGER'
+    AND "teamId" IS NOT NULL
+    AND team_manager_is_self("Invite"."teamId", current_setting('app.user_id', true))
+  );
+
+-- The invitee's own row, with no JWT, matched by the token hash alone.
+CREATE POLICY invite_select_token ON "Invite"
+  FOR SELECT
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.invite_token_hash', true) IS NOT NULL
+    AND "tokenHash" = current_setting('app.invite_token_hash', true)
+  );
+
+-- Admin-class write (create / resend / revoke).
+CREATE POLICY invite_write_admin ON "Invite"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) IN ('ADMIN', 'OWNER')
+  );
+
+-- Manager write, scoped to teams they lead (create / resend / revoke).
+-- CONFIRMED 2026-11-20: revoke + resend are manager-allowed on a led team,
+-- consistent with teammember_write_manager. Do not narrow one without the
+-- other - the two surfaces would then disagree about who owns a team's people.
+CREATE POLICY invite_write_manager ON "Invite"
+  FOR ALL
+  USING (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'MANAGER'
+    AND "teamId" IS NOT NULL
+    AND team_manager_is_self("Invite"."teamId", current_setting('app.user_id', true))
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND current_setting('app.user_role', true) = 'MANAGER'
+    AND "teamId" IS NOT NULL
+    AND team_manager_is_self("Invite"."teamId", current_setting('app.user_id', true))
+  );
+
+-- The accept path's single UPDATE: PENDING -> ACCEPTED, token-scoped.
+CREATE POLICY invite_update_accept ON "Invite"
+  FOR UPDATE
+  USING (
+    current_setting('app.user_role', true) = 'INVITE_ACCEPT'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND "tokenHash" = current_setting('app.invite_token_hash', true)
+    AND "status" = 'PENDING'
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.user_org_id', true)
+    AND "status" = 'ACCEPTED'
+  );
+
+-- Acceptance's TeamMember insert: the one team the invite names, for the one
+-- user being created.
+CREATE POLICY teammember_write_invite_accept ON "TeamMember"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'INVITE_ACCEPT'
+    AND "organizationId" = current_setting('app.user_org_id', true)
+    AND "teamId" = current_setting('app.invite_team_id', true)
+    AND "userId" = current_setting('app.user_id', true)
+  );
+
+-- Acceptance's audit rows, same transaction as the action (AGENTS.md A2/G-1).
+CREATE POLICY auditlog_insert_invite_accept ON "AuditLog"
+  FOR INSERT
+  WITH CHECK (
+    current_setting('app.user_role', true) = 'INVITE_ACCEPT'
+    AND current_setting('app.user_id', true) IS NOT NULL
     AND "organizationId" = current_setting('app.user_org_id', true)
   );

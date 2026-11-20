@@ -47,13 +47,23 @@ export type ClearablePhone = z.infer<typeof ClearablePhoneSchema>;
  * Zod's default "Too small: expected string to have >=3 characters", which
  * tells an operator nothing about which field or what to do.
  */
-const emailSchema = z
+export const emailSchema = z
   .string()
   .trim()
   .toLowerCase()
   .min(3, 'Email is required')
   .max(254, 'Email must be at most 254 characters')
   .email('Invalid email address');
+
+/**
+ * Public alias (2026-11-20, staff invites). The invite form, the invite DTO
+ * and `POST /api/users` must all accept exactly the same address shape and
+ * store it in exactly the same normalized form - `Invite.email` is compared
+ * against `User.email` for the "already exists in this org" guard, so a
+ * divergent rule would let an invite through for an address the create path
+ * would then store differently.
+ */
+export const EmailSchema = emailSchema;
 
 /**
  * Password rule: 8–128 chars. NIST 800-63B strength comes from server-side

@@ -34,6 +34,12 @@ const PUBLIC_PATHS = [
   '/login',
   '/api/auth',
   '/api/health',
+  // Staff invite acceptance (2026-11-20). A staff member opening their invite
+  // has NO session - the token in the path is the credential. Without this
+  // entry the gate bounces them to /login?next=/invite/... and the whole flow
+  // is unreachable. See the matcher for the second half of this fix.
+  '/invite',
+  '/api/public/invites',
   '/icons', // PWA brand assets (icon-192, icon-512, maskable-512, apple-touch-180)
   '/cmda-plan.svg', // approved plot-layout artwork: the SW precaches it from /login with no session, so it must never redirect to /login
   '/brand', // brand logo assets - rendered on the unauthenticated auth top bar (/login etc.)
@@ -85,6 +91,6 @@ export const config = {
   // inside the lookahead, so `/icons/icon-192.png`, `/sw.js`, and other
   // public PWA paths never reach the proxy function.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon\\.ico|icons|brand|cmda-plan\\.svg|login|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
+    '/((?!api|_next/static|_next/image|favicon\\.ico|icons|brand|cmda-plan\\.svg|login|invite|manifest\\.webmanifest|manifest\\.json|offline|sw\\.js|workbox-).*)',
   ],
 };

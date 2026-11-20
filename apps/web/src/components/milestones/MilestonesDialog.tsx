@@ -131,7 +131,7 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-full"
+              className="w-full"
               leftIcon={<LuPlus className="size-4" />}
               disabled={drafts.length >= MAX_MILESTONES_PER_PROJECT}
               onClick={() => {
@@ -143,7 +143,7 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
               Add milestone
             </Button>
             {problem !== null && drafts.length > 0 ? (
-              <p className="text-destructive text-sm" role="alert">
+              <p className="text-danger text-sm" role="alert">
                 {problem}
               </p>
             ) : null}

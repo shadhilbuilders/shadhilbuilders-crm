@@ -46,4 +46,22 @@ describe('proxy session gate', () => {
     const res = proxy(req('/shadhil-builders/admin', '__Secure-better-auth.session_token=t'));
     expect(res.headers.get('location')).toBeNull();
   });
+
+  // ── Staff invites (2026-11-20) ────────────────────────────────────────────
+  // A staff member opening an invite has NO session: the token in the path is
+  // the credential. This file's own header documents four separate incidents
+  // caused by a public path being missed here, and missing /invite would make
+  // the whole onboarding flow unreachable - the invitee would land on
+  // /login?next=/invite/... instead of their form.
+  it('lets an anonymous /invite/<token> render the accept form', () => {
+    const res = proxy(req('/invite/abc123TOKEN'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('lets the public invite API through without a session', () => {
+    // The accept form POSTs here; a redirect would turn the submit into a
+    // navigation to /login and the account would never be created.
+    expect(proxy(req('/api/public/invites/abc123TOKEN')).headers.get('location')).toBeNull();
+  });
 });

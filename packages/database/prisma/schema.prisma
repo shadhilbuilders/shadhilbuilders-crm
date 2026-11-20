@@ -291,6 +291,7 @@ model Organization {
   projectTeams            ProjectTeam[]
   messageRecipients       MessageRecipient[]
   leadFacts               LeadFact[]
+  invites                 Invite[]
 
   @@index([slug])
 }
@@ -398,6 +399,12 @@ model User {
   banReason                 String?
   banExpires                DateTime?
 
+  // Staff invites (2026-11-20). Three named relations - a user can be the
+  // inviter, the acceptance target, and the revoker of DIFFERENT invites.
+  invitesSent               Invite[]           @relation("InviteInvitedBy")
+  inviteAccepted            Invite?            @relation("InviteAcceptedBy")
+  invitesRevoked            Invite[]           @relation("InviteRevokedBy")
+
   // Issue #8 slice 2: the Lead a CUSTOMER login belongs to. NULL for every
   // staff role and for a customer whose lead was deleted (SetNull), which is
   // why the portal treats a null pointer as "not provisioned" rather than
@@ -461,6 +468,7 @@ model Team {
   assignmentRules ManagerAssignmentRule[]
   teamMembers     TeamMember[]
   projectTeams    ProjectTeam[]
+  invites         Invite[]
 
   // T-TEAM-CRUD: per-org name uniqueness, mirrors Project's
   // @@unique([organizationId, slug]) exactly (plain composite - not
@@ -515,6 +523,97 @@ model TeamMember {
   @@index([userId])
   @@index([teamId])
   @@index([organizationId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2c. Invite (staff invite link - 2026-11-20)
+// ────────────────────────────────────────────────────────────────────────────
+// A single-use, 7-day token that lets a staff member provision THEIR OWN
+// account: they set their own name / phone / password, and the User row is
+// created only on acceptance. This is ADDITIVE - the admin's existing
+// "create a user with a temporary password" path (POST /api/users,
+// UsersService.create) is untouched and still the answer for CUSTOMER
+// provisioning (which needs a customerLeadId the invite form cannot collect).
+//
+// WHY A SEPARATE TABLE rather than an INVITED state on User: a half-created
+// User row would be a real account with no credential, visible to every
+// surface that lists users (pickers, team rosters, RLS joins) and needing a
+// new state to be threaded through all of them. The invite is not a user
+// until it is accepted.
+//
+// THE RAW TOKEN IS NEVER STORED. `tokenHash` is sha256(raw) hex; the raw
+// value leaves the server exactly once (the create/resend response) and is
+// what the admin copies or sends over WhatsApp. Lookup is by this unique
+// column, so no secret is ever compared in application code.
+//
+// RLS: this table IS fenced (unlike User/Verification) - see
+// prisma/rls/policies.sql. Five policies cover admin read/write, manager
+// read/write limited to teams they lead, and two token-scoped arms for the
+// unauthenticated accept path (SELECT + the PENDING->ACCEPTED UPDATE),
+// driven by app.invite_token_hash. One bare read remains unavoidable: the
+// accept path must resolve the token to an org before withRlsContext can be
+// called, so that single lookup runs unfenced by unique tokenHash and
+// returns ids only.
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model Invite {
+  id               String   @id @default(cuid())
+  organizationId   String
+  /// Pinned, lowercased (EmailSchema). The accept payload has NO email field,
+  /// so a forwarded link cannot be completed by a different address.
+  email            String
+  /// Admin-entered. The invitee may correct it on accept.
+  name             String
+  /// The number the LINK IS SENT TO (required). Digits-only normalized, same
+  /// shape as User.phone (`91XXXXXXXXXX`) so it feeds a wa.me deep link
+  /// directly. NOT unique: two staff may share a site phone, and a re-invite
+  /// after revocation legitimately repeats it.
+  phone            String
+  role             Role
+  /// Required for TELECALLER / SALES_EXEC / ENGINEER (same rule as
+  /// UsersService.create). NULL is valid only for roles that carry no team.
+  teamId           String?
+  /// sha256 of the raw token, hex. UNIQUE - the lookup key for the public
+  /// accept path.
+  tokenHash        String   @unique
+  invitedById      String
+  status           InviteStatus @default(PENDING)
+  /// PENDING past this instant reads as EXPIRED (computed on read by
+  /// effectiveStatus(), never by a cron and never written back).
+  expiresAt        DateTime
+  /// Set on create and again on every resend. Delivery is manual (WhatsApp /
+  /// copy), so this records when the link was last issued, not a receipt.
+  lastSentAt       DateTime @default(now())
+  acceptedAt       DateTime?
+  /// UNIQUE: one acceptance per user, and it gives the accept transaction a
+  /// stable id to put in AuditLog/TeamMember before the User row exists.
+  acceptedByUserId String?  @unique
+  revokedAt        DateTime?
+  revokedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team           Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  invitedBy      User         @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
+  acceptedByUser User?        @relation("InviteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  revokedBy      User?        @relation("InviteRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([email])
+  @@index([expiresAt])
+  // One live invite per (org, email lowercased) is enforced by a PARTIAL
+  // unique index in the migration (Prisma's schema language cannot express
+  // `WHERE status = 'PENDING'`) - same precedent as one_owner and
+  // ChatReadState's two partial indexes:
+  //   CREATE UNIQUE INDEX "Invite_one_pending_per_email"
+  //     ON "Invite"("organizationId", lower("email"))
+  //     WHERE status = 'PENDING';
 }
 
 // ────────────────────────────────────────────────────────────────────────────

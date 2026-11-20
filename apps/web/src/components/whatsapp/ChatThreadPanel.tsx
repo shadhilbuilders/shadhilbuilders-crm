@@ -201,7 +201,15 @@ export function ChatThreadPanel({
 
   const grouped = useMemo(() => withDateSeparators(rows, new Date()), [rows]);
 
-  const windowState = replyWindowState(thread.lastInboundAt);
+  // Prefer the latest INBOUND in the loaded thread over the frozen selection
+  // snapshot. Without this, a customer reply that arrives while the pane is
+  // open updates the bubbles (SSE/poll) but leaves the composer showing
+  // "window closed" until the operator re-selects the row.
+  const liveLastInboundAt = useMemo(
+    () => latestInboundAt(rows) ?? thread.lastInboundAt,
+    [rows, thread.lastInboundAt],
+  );
+  const windowState = replyWindowState(liveLastInboundAt);
   const sendDisabled = !windowState.open || draft.trim().length === 0 || send.isPending;
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -447,6 +455,29 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+}
+
+/**
+ * Newest inbound `createdAt` in the thread, or null when the customer has
+ * never written. Pure helper so the reply-window derivation is unit-testable.
+ */
+export function latestInboundAt(
+  rows: ReadonlyArray<{ direction?: Direction; createdAt?: string }>,
+): string | null {
+  let latest: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    if (row.direction !== 'IN' || typeof row.createdAt !== 'string' || row.createdAt.length === 0) {
+      continue;
+    }
+    const ms = Date.parse(row.createdAt);
+    if (Number.isNaN(ms)) continue;
+    if (ms >= latestMs) {
+      latestMs = ms;
+      latest = row.createdAt;
+    }
+  }
+  return latest;
 }
 
 export { separatorLabel, dateIntl };

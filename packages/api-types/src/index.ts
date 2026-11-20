@@ -37,6 +37,7 @@ export * from './pricing';
 export * from './reminders';
 export * from './teams';
 export * from './team-membership';
+export * from './invites';
 export * from './organizations';
 export * from './notifications';
 export * from './audit';

@@ -40,13 +40,14 @@ describe('a chat event refreshes the thread AND its reply-window state', () => {
       ['chat', LEAD, 'INTERNAL'],
       ['chat-state', LEAD],
       ['chat-state', 'other-lead'],
+      ['chat-conversations', {}],
       ['leads'],
     ]) {
       client.setQueryData(key, []);
     }
   });
 
-  it('drops the message list and the window state for that lead', () => {
+  it('drops the message list, the window state, and the inbox list for that lead', () => {
     invalidateChatSideEffects(client, LEAD, 'CUSTOMER');
 
     const stateQueries = client
@@ -58,6 +59,8 @@ describe('a chat event refreshes the thread AND its reply-window state', () => {
     // closed-window notice for up to a minute after the customer writes.
     expect(stateQueries.find((q) => q.queryKey[1] === LEAD)?.state.isInvalidated).toBe(true);
     expect(invalidatedRoots(client)).toContain('chat');
+    // Without this, the WhatsApp Chats left pane stayed frozen until a full reload.
+    expect(invalidatedRoots(client)).toContain('chat-conversations');
   });
 
   it('leaves another lead\u2019s window state alone', () => {

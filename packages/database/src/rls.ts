@@ -47,6 +47,18 @@ import type { PrismaClient } from './generated/prisma/client';
 // claim. It has INSERT-only RLS power on the Feedback table
 // (feedback_insert_public_api) and CANNOT read/mutate anything else.
 // The public endpoint sets it via withRlsContext.
+//
+// INVITE_ACCEPT (2026-11-20) is the staff-invite acceptance marker. Like
+// CRON_SERVICE/PUBLIC_API it is GUC-only: no Prisma enum value, no JWT
+// claim, never accepted as input. Its entire authority is the token-scoped
+// SET documented below:
+//   - "Invite"  : SELECT + UPDATE (PENDING -> ACCEPTED) scoped to
+//                 app.invite_token_hash (invite_select_token /
+//                 invite_update_accept)
+//   - "TeamMember": INSERT scoped to app.invite_team_id (the one team the
+//                 invite names) and app.user_id (the new user itself)
+//   - "AuditLog": INSERT for the invite.accept / user.create rows
+// It cannot read leads, users, or any other org's data.
 export type Role =
   | 'OWNER'
   | 'ADMIN'
@@ -56,7 +68,8 @@ export type Role =
   | 'ENGINEER'
   | 'CUSTOMER'
   | 'CRON_SERVICE'
-  | 'PUBLIC_API';
+  | 'PUBLIC_API'
+  | 'INVITE_ACCEPT';
 
 export interface RlsContext {
   userId: string;
@@ -64,6 +77,27 @@ export interface RlsContext {
   /** T-ORG: the tenant the actor belongs to. Drives app.user_org_id so
    *  every org-scoped policy gates on it. */
   organizationId: string;
+  /**
+   * 2026-11-20: sha256 of the RAW staff-invite token (hex). Set ONLY by the
+   * accept path. Drives `app.invite_token_hash`, which is the entire fence
+   * on the "Invite" table: the token arms match a row only when this equals
+   * the row's stored `tokenHash`. Absent for every ordinary request, so
+   * those arms evaluate NULL and match nothing (fail-closed) - the admin /
+   * manager policies are what apply.
+   */
+  inviteTokenHash?: string;
+  /**
+   * 2026-11-20: the invite's `teamId`. Set ONLY by the accept path. Drives
+   * `app.invite_team_id`, which scopes the TeamMember INSERT grant to
+   * exactly the team the invite names - so acceptance can never add the new
+   * user to a team the invite did not specify.
+   *
+   * Nullable because an invite can legitimately carry no team (a role that
+   * needs none). A null/empty value leaves the GUC UNSET rather than set to
+   * an empty string, so the TeamMember arm compares against NULL and writes
+   * nothing - which is correct, since there is no membership to grant.
+   */
+  inviteTeamId?: string | null;
 }
 
 export type RlsTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
@@ -106,6 +140,9 @@ const ROLES: readonly string[] = [
   'CUSTOMER',
   'CRON_SERVICE',
   'PUBLIC_API',
+  // 2026-11-20: staff-invite acceptance. GUC-only marker (see the Role doc
+  // block above) - it must be accepted here or withRlsContext throws.
+  'INVITE_ACCEPT',
 ];
 
 /**
@@ -171,6 +208,26 @@ export async function withRlsContext<T>(
       await tx.$executeRawUnsafe(`SET LOCAL app.user_id = ${sqlLiteral(ctx.userId)}`);
       await tx.$executeRawUnsafe(`SET LOCAL app.user_role = ${sqlLiteral(rlsRole)}`);
       await tx.$executeRawUnsafe(`SET LOCAL app.user_org_id = ${sqlLiteral(orgValue)}`);
+
+      // 2026-11-20: staff-invite fence. Both are set ONLY when present, so a
+      // normal request leaves them unset and every invite policy arm that
+      // reads them evaluates NULL -> matches nothing (fail-closed). The role
+      // is NOT downcast for INVITE_ACCEPT: the ternary above only rewrites
+      // OWNER, and these policies match the marker verbatim.
+      if (ctx.inviteTokenHash !== undefined && ctx.inviteTokenHash.length > 0) {
+        await tx.$executeRawUnsafe(
+          `SET LOCAL app.invite_token_hash = ${sqlLiteral(ctx.inviteTokenHash)}`,
+        );
+      }
+      // Emptiness matters: an invite with no team must leave the GUC UNSET.
+      // Setting it to '' would make the TeamMember WITH CHECK compare
+      // '' = '' against a text column that is never empty, which reads as
+      // "no membership granted" only by accident. Unset is the honest state.
+      if (typeof ctx.inviteTeamId === 'string' && ctx.inviteTeamId.length > 0) {
+        await tx.$executeRawUnsafe(
+          `SET LOCAL app.invite_team_id = ${sqlLiteral(ctx.inviteTeamId)}`,
+        );
+      }
 
       return fn(tx as unknown as RlsTx);
     },

@@ -94,7 +94,7 @@ const OfflinePage = () => {
         <p className="text-muted-foreground max-w-sm">
           Open Shadhil CRM online once to enable offline access.
         </p>
-        <Button onClick={() => location.reload()} size="lg" className="min-h-11 min-w-32">
+        <Button onClick={() => location.reload()} size="lg" className="min-w-32">
           Retry
         </Button>
       </div>
@@ -123,7 +123,7 @@ const OfflinePage = () => {
           onClick={() => location.reload()}
           variant="outline"
           size="lg"
-          className="min-h-11 min-w-32"
+          className="min-w-32"
         >
           Retry
         </Button>

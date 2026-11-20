@@ -65,7 +65,7 @@ export function ThemeToggleButton({
       type="button"
       variant="ghost"
       size="sm"
-      className={className ?? 'my-1.5 min-w-12 px-2.5'}
+      className={className ?? 'min-h-11 min-w-11 px-2.5'}
       onClick={onClick}
       aria-label={label}
       data-qa="theme-toggle"

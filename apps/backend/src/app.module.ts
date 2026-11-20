@@ -8,6 +8,9 @@ import { AuthModule } from './auth/auth.module';
 import { BetterAuthMiddlewareModule } from './auth/better-auth.middleware';
 import { PlaceholderGateModule } from './auth/placeholder-gate.middleware';
 import { UsersModule } from './users/users.module';
+// Staff invites (2026-11-20): single-use links a staff member completes
+// themselves. ADDITIVE to UsersModule's temp-password create path.
+import { InvitesModule } from './invites/invites.module';
 import { LeadsModule } from './leads/leads.module';
 import { TeamsModule } from './teams/teams.module';
 import { OrganizationsModule } from './organizations/organizations.module';
@@ -57,6 +60,10 @@ import { StorageModule } from './storage/storage.module';
     // Feature modules (9 per plan §2 + users)
     AuthModule,
     UsersModule,
+    // Staff invites (2026-11-20). Imported right after UsersModule because it
+    // reuses the same role-hierarchy helpers and credential writer - keeping
+    // them adjacent documents that relationship.
+    InvitesModule,
     // T-S: PlaceholderGateModule must come BEFORE BetterAuthMiddlewareModule
     // so its middleware fires first (Nest applies module middlewares in
     // the order modules appear in `imports`). The gate rejects sign-in

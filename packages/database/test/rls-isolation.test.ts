@@ -1347,6 +1347,16 @@ function roleFromCtx(
       'CUSTOMER contexts belong in customer-portal-rls.test.ts, not the 4x8x4 matrix',
     );
   }
+  // INVITE_ACCEPT (2026-11-20) is a GUC-only marker for the staff-invite
+  // accept transaction, not a business role - it has no place in a 4x8x4
+  // isolation matrix over Lead/Activity/Message/Booking. Its policies are
+  // covered by invite-rls-matrix.test.ts, which asserts the token fence and
+  // the TeamMember teamId pinning directly.
+  if (ctx.role === 'INVITE_ACCEPT') {
+    expect.unreachable(
+      'INVITE_ACCEPT belongs in invite-rls-matrix.test.ts, not the 4x8x4 matrix',
+    );
+  }
   return ctx.role;
 }
 

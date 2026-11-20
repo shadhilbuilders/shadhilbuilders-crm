@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
   Heading,
   Loading,
+  Tabs,
   Tooltip,
   TypographyP,
 } from '@paalstack/react-ui';
@@ -62,6 +63,8 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { PhoneNumber } from '@/components/shared/PhoneNumber';
 import { labelFor } from '@/lib/labels';
 import { CreateUserDialog } from './components/CreateUserDialog';
+import { InviteStaffDialog } from './components/InviteStaffDialog';
+import { InvitesTab } from './components/InvitesTab';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 import {
   ChangeRoleDialog,
@@ -129,6 +132,15 @@ export default function UsersPage() {
   // staff users without a teamId). MANAGER's team is auto-resolved server-side.
   const teamsQuery = useTeams();
   const [createOpen, setCreateOpen] = useState(false);
+  // Staff-invite dialog (2026-11-20). A SEPARATE open state from createOpen:
+  // the two dialogs are different provisioning paths and only one should ever
+  // be mounted open, but sharing a flag would make the trigger ambiguous.
+  const [inviteOpen, setInviteOpen] = useState(false);
+  // Which panel the tabs show. Local state, not the URL: useSearchParams in
+  // Next 16 needs a Suspense boundary, which would restructure the tree
+  // page.test.tsx asserts on - and this page's manual create path must stay
+  // untouched. URL persistence is a follow-up on its own merits.
+  const [tab, setTab] = useState<'members' | 'invites'>('members');
   const [mounted, setMounted] = useState(false);
 
   // Row-action targets (autoplan 2026-09-09).
@@ -184,19 +196,46 @@ export default function UsersPage() {
           isAdminLike(user.role) ? 'All users across the organization.' : 'Your team members.'
         }
         action={
-          <CreateUserDialog
-            open={createOpen}
-            onOpenChange={setCreateOpen}
-            creatableRoles={[...creatableRoles]}
-            createUser={createUser}
-            showTeamField={isAdminLike(user.role)}
-            teams={teamsQuery.data ?? []}
-            teamsLoading={teamsQuery.isLoading}
-          />
+          // Two provisioning paths, side by side:
+          //   "Add user"      - the EXISTING temp-password dialog (unchanged).
+          //   "Invite staff"  - a link the staff member completes themselves.
+          // Both are offered to the same actor set, and `creatableRolesFor`
+          // gates which roles each may use, so they can never disagree.
+          <div className="flex flex-wrap items-center gap-2">
+            <CreateUserDialog
+              open={createOpen}
+              onOpenChange={setCreateOpen}
+              creatableRoles={[...creatableRoles]}
+              createUser={createUser}
+              showTeamField={isAdminLike(user.role)}
+              teams={teamsQuery.data ?? []}
+              teamsLoading={teamsQuery.isLoading}
+            />
+            <InviteStaffDialog
+              open={inviteOpen}
+              onOpenChange={setInviteOpen}
+              creatableRoles={[...creatableRoles]}
+              showTeamField={isAdminLike(user.role)}
+              teams={teamsQuery.data ?? []}
+              teamsLoading={teamsQuery.isLoading}
+            />
+          </div>
         }
       />
 
-      {usersQuery.isLoading ? (
+      <Tabs
+        value={tab}
+        onValueChange={(next) => setTab(next === 'invites' ? 'invites' : 'members')}
+        variant="line"
+        tabs={[
+          {
+            value: 'members',
+            // The existing tree, moved here untouched: same skeletons, same
+            // error block, same UserTable and same dialogs below.
+            label: 'Members',
+            content: (
+              <>
+                {usersQuery.isLoading ? (
         <Skeleton variant="table" />
       ) : usersQuery.error !== null && usersQuery.error !== undefined ? (
         <div
@@ -279,6 +318,29 @@ export default function UsersPage() {
       />
 
       <ResetPasswordDialog target={passwordTarget} onClose={() => setPasswordTarget(null)} />
+              </>
+            ),
+          },
+          {
+            value: 'invites',
+            label: 'Invites',
+            content: (
+              <InvitesTab
+                createTrigger={
+                  <InviteStaffDialog
+                    open={inviteOpen}
+                    onOpenChange={setInviteOpen}
+                    creatableRoles={[...creatableRoles]}
+                    showTeamField={isAdminLike(user.role)}
+                    teams={teamsQuery.data ?? []}
+                    teamsLoading={teamsQuery.isLoading}
+                  />
+                }
+              />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
