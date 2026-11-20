@@ -76,8 +76,7 @@ export default {
   meta: {
     type: 'problem',
     docs: {
-      description:
-        'A @Body() typed unknown/any must be parsed by a Zod schema in the handler',
+      description: 'A @Body() typed unknown/any must be parsed by a Zod schema in the handler',
     },
     schema: [],
     messages: {
