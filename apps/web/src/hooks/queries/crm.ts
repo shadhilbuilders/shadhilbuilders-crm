@@ -20,6 +20,7 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import { api, qs } from '@/apis/client';
 import { useRealtimeChannel } from '@/hooks/use-realtime-channel';
+import { contactChatChannel, leadChatChannel } from '@shadhil/api-types';
 
 import type {
   BookingTransitionDto,
@@ -599,8 +600,15 @@ export function useRescheduleVisit() {
 // Chat (contract: packages/api-types/src/chat.ts)
 // ---------------------------------------------------------------------------
 
-/** Lead-thread poll backstop when the SSE stream is down or delayed. */
-const CHAT_MESSAGES_POLL_MS = 30_000;
+/**
+ * Lead-thread poll backstop when the SSE stream is down or delayed.
+ *
+ * This is a SAFETY NET, not the delivery mechanism - the `chat:<leadId>` SSE
+ * stream carries new messages, and since T-SSE-ANCHOR (2026-11-21) that stream
+ * cannot silently skip a row. 60s keeps a dropped-connection pane eventually
+ * correct without paying for a fast poll on every open thread.
+ */
+const CHAT_MESSAGES_POLL_MS = 60_000;
 
 export function useMessages(leadId: string | null, kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') {
   return useQuery({
@@ -695,7 +703,7 @@ export function useMessagesRealtime(
   kind: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER',
 ): void {
   const queryClient = useQueryClient();
-  useRealtimeChannel(leadId !== null && leadId.length > 0 ? `chat:${leadId}` : null, () => {
+  useRealtimeChannel(leadId !== null && leadId.length > 0 ? leadChatChannel(leadId) : null, () => {
     if (leadId !== null && leadId.length > 0) {
       invalidateChatSideEffects(queryClient, leadId, kind);
     }
@@ -806,8 +814,15 @@ export type ChatConversationFilter = {
 
 /** Inbox poll interval: backstop when no thread is open (no per-thread SSE). */
 const CHAT_CONVERSATIONS_POLL_MS = 15_000;
-/** Contact threads have no working SSE (stream is leadId-scoped); poll instead. */
-const CHAT_CONTACT_POLL_MS = 10_000;
+/**
+ * Contact-thread poll interval - a SAFETY NET, not the delivery mechanism.
+ *
+ * The `chat-contact:<contactId>` stream carries new messages. Keeping this at
+ * 60s (rather than the old 30s) is only defensible because the stream can no
+ * longer skip a row (T-SSE-ANCHOR). Before that fix the poll WAS the guarantee,
+ * so it had to be short.
+ */
+const CHAT_CONTACT_POLL_MS = 60_000;
 
 /** GET /api/chat/conversations - the inbox list (server-filtered). */
 export function useChatConversations(filter: ChatConversationFilter = {}) {
@@ -844,34 +859,32 @@ export function useContactMessages(contactId: string | null) {
     enabled: contactId !== null && contactId.length > 0,
     queryFn: ({ signal }) => api<unknown[]>(`/chat/contact/${contactId as string}`, { signal }),
     staleTime: 0,
-    // Contact SSE currently mints `chat:<contactId>` against a lead-scoped
-    // stream + ticket check, so events never land. Poll until a real contact
-    // channel exists.
+    // Safety net for the `chat-contact:<id>` stream, not the primary path.
     refetchInterval: CHAT_CONTACT_POLL_MS,
   });
 }
 
 /**
- * Contact-thread live updates.
+ * SSE: invalidate the open contact thread + the list when a message lands.
  *
- * Kept as a hook so `ChatThreadPanel` can call it unconditionally (stable hook
- * order), but it deliberately does NOT open an SSE stream.
+ * The channel is `chat-contact:<contactId>` - a DISTINCT channel from
+ * `chat:<leadId>`, because a Message belongs to exactly one thread. Minting
+ * `chat:<contactId>` (what this did until 2026-11-21) passed the cuid check
+ * but 403'd in mintTicket, and the retry loop drained the per-user ticket
+ * budget shared with `notifications`.
  *
- * Why: the realtime channel vocabulary is lead-scoped by contract
- * (`parseChannel` -> `{ kind: 'chat', leadId }`, and `mintTicket` 403s when no
- * Lead row matches). A contactId is a cuid too, so the mint passed validation
- * and then failed authorization - and `openStream` re-mints on every backoff
- * retry. Those 403 loops burned the per-user ticket budget (10/min, 60/hour)
- * that `notifications` shares, so simply opening an unknown-number thread
- * starved the app-wide notification stream.
- *
- * `useContactMessages` polls instead (refetchInterval), and sends/read-marks
- * invalidate explicitly, so the pane still updates without a reload.
+ * Invalidation only - the hook does not append frames to the cache, so it
+ * cannot double-add a message that the poll also fetched.
  */
 export function useContactMessagesRealtime(contactId: string | null): void {
-  // Reference the argument so the signature documents intent and linters keep
-  // the "unused parameter" check honest; no subscription is opened.
-  void contactId;
+  const queryClient = useQueryClient();
+  useRealtimeChannel(
+    contactId !== null && contactId.length > 0 ? contactChatChannel(contactId) : null,
+    () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat-contact', contactId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+    },
+  );
 }
 
 /** POST /api/chat/send-to-contact - reply on an unknown-contact thread. */

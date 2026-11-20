@@ -54,23 +54,80 @@ export type MintTicketResponse = z.infer<typeof MintTicketResponseSchema>;
  * Canonical channel vocabulary. Helpers below parse a channel string
  * into a typed discriminator; the controller uses them to dispatch.
  *
- * `chat` channels carry the leadId - `parseChannel()` validates it as
- * a cuid and rejects unknown channel shapes with a typed error.
+ * Two chat thread kinds exist because a Message belongs to exactly one
+ * thread (`leadId` XOR `contactId`, enforced by the schema CHECK):
+ *   - `chat:<leadId>`              - a known customer's thread
+ *   - `chat-contact:<contactId>`   - a number that is not a lead yet
+ * Both carry a cuid, which `parseChannel()` validates, and both reject
+ * unknown shapes with a typed error.
+ *
+ * The contact form was added 2026-11-21: before it, the inbox opened an
+ * SSE stream on `chat:<contactId>`, which passed the cuid check but then
+ * 403'd in mintTicket (no Lead with that id). `openStream` re-mints on
+ * every backoff retry, and those 403 loops drained the per-user ticket
+ * budget (10/min) shared with `notifications` - so opening one
+ * unknown-number thread starved notification realtime app-wide.
  */
 export type RealtimeChannel =
-  { kind: 'notifications' } | { kind: 'audit' } | { kind: 'chat'; leadId: string };
+  | { kind: 'notifications' }
+  | { kind: 'audit' }
+  | { kind: 'chat'; leadId: string }
+  | { kind: 'chat-contact'; contactId: string };
 
 const CUID_RE = /^c[a-z0-9]{20,}$/i;
+
+const CONTACT_CHAT_PREFIX = 'chat-contact:';
+const LEAD_CHAT_PREFIX = 'chat:';
+
+/** Channel string for a lead's chat thread. Never hand-roll this string. */
+export function leadChatChannel(leadId: string): string {
+  return `${LEAD_CHAT_PREFIX}${leadId}`;
+}
+
+/** Channel string for an unknown-contact chat thread. */
+export function contactChatChannel(contactId: string): string {
+  return `${CONTACT_CHAT_PREFIX}${contactId}`;
+}
 
 export function parseChannel(raw: string): RealtimeChannel | null {
   if (raw === 'notifications') return { kind: 'notifications' };
   if (raw === 'audit') return { kind: 'audit' };
-  if (raw.startsWith('chat:')) {
-    const leadId = raw.slice('chat:'.length);
+  // Checked BEFORE the lead prefix: `chat-contact:` must not be read as a
+  // lead id of "-contact:<id>". (It would fail the cuid test today, but
+  // relying on that is a trap for whoever adds a non-cuid channel later.)
+  if (raw.startsWith(CONTACT_CHAT_PREFIX)) {
+    const contactId = raw.slice(CONTACT_CHAT_PREFIX.length);
+    if (CUID_RE.test(contactId)) return { kind: 'chat-contact', contactId };
+    return null;
+  }
+  if (raw.startsWith(LEAD_CHAT_PREFIX)) {
+    const leadId = raw.slice(LEAD_CHAT_PREFIX.length);
     if (CUID_RE.test(leadId)) return { kind: 'chat', leadId };
     return null;
   }
   return null;
+}
+
+/**
+ * The `/api/sse` path a channel streams from, e.g. `/chat/<leadId>`.
+ *
+ * Lives here (not in the web app) so the browser hook and the SSE service
+ * cannot drift: the hook builds the URL from this, the service matches the
+ * route on it. An unrecognised channel falls back to `/<channel>`, which is
+ * what `notifications` and `audit` already use.
+ */
+export function ssePathForChannel(channel: string): string {
+  const parsed = parseChannel(channel);
+  if (parsed === null) return `/${channel}`;
+  switch (parsed.kind) {
+    case 'chat':
+      return `/chat/${parsed.leadId}`;
+    case 'chat-contact':
+      return `/chat-contact/${parsed.contactId}`;
+    case 'notifications':
+    case 'audit':
+      return `/${parsed.kind}`;
+  }
 }
 
 /**

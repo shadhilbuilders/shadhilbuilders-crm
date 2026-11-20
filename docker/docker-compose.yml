@@ -371,6 +371,11 @@ services:
       # and the ticket in the URL is the auth credential (no cookies by
       # design; Decisions #33/#37).
       CORS_ORIGINS: https://${CRM_HOST:-crm.shadhilbuilders.in},http://localhost:3000
+      # T-SSE-TICK (2026-11-21): the SSE stream is a per-client DB poller, not
+      # an event bus, so this interval is multiplied by every open stream.
+      # 5000ms = 3x less load than the old 1500ms default. Pinned here (not
+      # left to the code default) so a deploy cannot silently revert it.
+      SSE_DB_TICK_MS: "5000"
       # Same DB path as the api: pooled non-owner URL + session pooling.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required in .env}
       POOL_MODE: session

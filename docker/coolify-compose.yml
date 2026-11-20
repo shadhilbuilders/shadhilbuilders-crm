@@ -168,6 +168,10 @@ services:
       NODE_ENV: production
       REALTIME_SSE_PORT: "8090"
       CORS_ORIGINS: https://crm.shadhilbuilders.in
+      # T-SSE-TICK (2026-11-21): per-client DB poller; 5s instead of 1.5s to
+      # cut transaction load 3x without losing anything the web polls do not
+      # already guarantee. See apps/realtime-sse/src/config.ts.
+      SSE_DB_TICK_MS: "5000"
       DATABASE_URL: postgresql://shadhil_app:${PG_PASSWORD}@shadhil-pgbouncer:6432/shadhil_crm?schema=public
       POOL_MODE: session
     ulimits:

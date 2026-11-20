@@ -62,8 +62,15 @@ What we DO know from the code and the compose file:
 
 - All six services carry `restart: unless-stopped`, so a crashed container comes
   back without a human. That is the largest single contributor to not being down.
-- The SSE client reconnects on its own with exponential backoff and replays
-  missed events, so an SSE restart is largely invisible to the user.
+- The SSE client reconnects on its own with exponential backoff and resumes from
+  its last event id, so an SSE restart is largely invisible to the user.
+  (Fixed 2026-11-21, T-SSE-ANCHOR: the service used to advance its "last seen"
+  anchor to wall-clock time after each fetch rather than to the newest row, so a
+  row committed inside the tick window could be skipped permanently. The anchor
+  is now the `(createdAt, id)` of the newest row actually emitted, which cannot
+  move past unseen data - see `apps/realtime-sse/src/cursor.ts`. The web layer's
+  15-30s polling is still retained as a backstop, but it is no longer load-bearing
+  for correctness.)
 - Cron work is crash-idempotent (Redis lease + `SCHEDULED → PROCESSING` claim),
   so a restart mid-job does not double-send or drop.
 - The API refuses to boot on bad config (`assertBootEnv`) rather than running

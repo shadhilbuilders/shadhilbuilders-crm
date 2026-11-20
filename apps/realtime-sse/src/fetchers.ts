@@ -1,9 +1,10 @@
 // Per-channel fetchers.
 //
-// Each function returns a Fetcher: (lastSeenAt: Date) => Promise<SseFrame[]>
-// that the stream pipeline calls on every DB_TICK_MS. Fetchers MUST
-// return frames ordered ascending by creation time (the pipeline
-// appends them in order).
+// Each function returns a Fetcher: (cursor: StreamCursor) => Promise<CursorFrame[]>
+// that the stream pipeline calls on every DB_TICK_MS. Fetchers MUST return
+// frames ordered ascending by (createdAt, id) - the pipeline advances its
+// cursor to the maximum emitted tuple, so the DB order and the cursor order
+// have to agree or the window between pages is undefined.
 //
 // T-E2 (Week 6, 2026-09-04). The port of the broken Nest controller's
 // data fetchers - these run inside the working setInterval loop in
@@ -20,10 +21,20 @@
 // fetcher saw nothing, so it emitted no frame. We resolve the
 // consuming user's role + org (User is NOT row-level secured, so it
 // is readable on the bare client) and scope every fetch to that actor.
+//
+// T-SSE-ANCHOR (2026-11-21): the filter is a (createdAt, id) CURSOR, not
+// `createdAt > lastSeenAt`. See cursor.ts for the lost-row bug this closes.
+// The `OR ... AND` below is the tuple comparison
+// `(createdAt, id) > (cursor.createdAt, cursor.id)` spelled out, because
+// Prisma cannot express a row-value comparison. Both branches are needed:
+// the first catches later timestamps, the second catches same-timestamp
+// rows with a larger id (which the plain `>` would drop).
 
 import type { PrismaClient, Role } from '@shadhil/database';
-import { withRlsContext } from '@shadhil/database';
-import type { SseFrame } from './stream.js';
+import { Prisma, withRlsContext } from '@shadhil/database';
+
+import type { CursorFrame, StreamCursor } from './cursor.js';
+import { START_OF_STREAM } from './cursor.js';
 
 const FETCH_BATCH = 50;
 
@@ -58,22 +69,52 @@ export async function resolveUserContext(prisma: PrismaClient, userId: string): 
   };
 }
 
+/**
+ * The `(createdAt, id) > (cursor.createdAt, cursor.id)` predicate.
+ *
+ * Shared so all four channels page consistently - a channel that forgot the
+ * tie-breaker branch would silently drop same-timestamp rows, which is the
+ * exact bug this file was changed to fix.
+ */
+function afterCursor(cursor: StreamCursor): {
+  OR: [{ createdAt: { gt: Date } }, { createdAt: Date; id: { gt: string } }];
+} {
+  return {
+    OR: [
+      { createdAt: { gt: cursor.createdAt } },
+      // Same timestamp, higher id. `gte` on the date plus `gt` on the id is
+      // equivalent and avoids relying on exact microsecond equality - but
+      // `equals` (the default) is what Prisma generates here and matches the
+      // documented tuple semantics, so keep it explicit.
+      { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+    ],
+  };
+}
+
+/**
+ * Ordering that matches `afterCursor`. Without this the batch may come back
+ * in an order that disagrees with the cursor, and the window between pages
+ * becomes undefined (rows could be skipped or re-sent).
+ */
+const CURSOR_ORDER = [{ createdAt: 'asc' }, { id: 'asc' }] as const;
+
 /** Notifications fetcher - emits one frame per row. */
 export const notificationsFetcher =
   (prisma: PrismaClient, user: SseUser) =>
-  async (lastSeenAt: Date): Promise<SseFrame[]> => {
+  async (cursor: StreamCursor): Promise<CursorFrame[]> => {
     const rows = await withRlsContext(
       prisma,
       { userId: user.userId, role: user.role, organizationId: user.organizationId },
       async (tx) =>
         tx.notification.findMany({
-          where: { userId: user.userId, createdAt: { gt: lastSeenAt } },
-          orderBy: { createdAt: 'asc' },
+          where: { userId: user.userId, ...afterCursor(cursor) },
+          orderBy: [...CURSOR_ORDER],
           take: FETCH_BATCH,
         }),
     );
     return rows.map((n) => ({
       id: n.id,
+      cursor: { createdAt: n.createdAt, id: n.id },
       data: {
         id: n.id,
         userId: n.userId,
@@ -93,7 +134,7 @@ export const notificationsFetcher =
  *  ADMIN/OWNER see all rows; everyone else sees only their own. */
 export const auditFetcher =
   (prisma: PrismaClient, user: SseUser) =>
-  async (lastSeenAt: Date): Promise<SseFrame[]> => {
+  async (cursor: StreamCursor): Promise<CursorFrame[]> => {
     const seeAll = user.role === 'ADMIN' || user.role === 'OWNER';
     const rows = await withRlsContext(
       prisma,
@@ -101,15 +142,16 @@ export const auditFetcher =
       async (tx) =>
         tx.auditLog.findMany({
           where: {
-            createdAt: { gt: lastSeenAt },
+            ...afterCursor(cursor),
             ...(seeAll ? {} : { userId: user.userId }),
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: [...CURSOR_ORDER],
           take: FETCH_BATCH,
         }),
     );
     return rows.map((a) => ({
       id: a.id,
+      cursor: { createdAt: a.createdAt, id: a.id },
       data: {
         id: a.id,
         userId: a.userId,
@@ -127,19 +169,20 @@ export const auditFetcher =
 /** Chat fetcher - emits one frame per Message for the given lead. */
 export const chatFetcher =
   (prisma: PrismaClient, user: SseUser, leadId: string) =>
-  async (lastSeenAt: Date): Promise<SseFrame[]> => {
+  async (cursor: StreamCursor): Promise<CursorFrame[]> => {
     const rows = await withRlsContext(
       prisma,
       { userId: user.userId, role: user.role, organizationId: user.organizationId },
       async (tx) =>
         tx.message.findMany({
-          where: { leadId, createdAt: { gt: lastSeenAt } },
-          orderBy: { createdAt: 'asc' },
+          where: { leadId, ...afterCursor(cursor) },
+          orderBy: [...CURSOR_ORDER],
           take: FETCH_BATCH,
         }),
     );
     return rows.map((m) => ({
       id: m.id,
+      cursor: { createdAt: m.createdAt, id: m.id },
       data: {
         id: m.id,
         leadId: m.leadId,
@@ -151,3 +194,100 @@ export const chatFetcher =
       },
     }));
   };
+
+/**
+ * Contact-thread chat fetcher - same contract as `chatFetcher`, keyed on
+ * `contactId` instead of `leadId` (a Message belongs to exactly one thread).
+ *
+ * Visibility comes from `message_select_contact`, which gates on the
+ * ADMIN/OWNER/MANAGER role plus the org, and re-checks the parent contact's
+ * org (including the intentionally-nullable org-less case). Running inside
+ * withRlsContext is what makes that policy apply - a bare findMany would be
+ * filtered to zero rows and the stream would look connected but silent.
+ */
+export const contactChatFetcher =
+  (prisma: PrismaClient, user: SseUser, contactId: string) =>
+  async (cursor: StreamCursor): Promise<CursorFrame[]> => {
+    const rows = await withRlsContext(
+      prisma,
+      { userId: user.userId, role: user.role, organizationId: user.organizationId },
+      async (tx) =>
+        tx.message.findMany({
+          where: { contactId, ...afterCursor(cursor) },
+          orderBy: [...CURSOR_ORDER],
+          take: FETCH_BATCH,
+        }),
+    );
+    return rows.map((m) => ({
+      id: m.id,
+      cursor: { createdAt: m.createdAt, id: m.id },
+      data: {
+        id: m.id,
+        contactId: m.contactId,
+        direction: m.direction,
+        channel: m.channel,
+        body: m.body,
+        mediaUrl: m.mediaUrl,
+        createdAt: m.createdAt.toISOString(),
+      },
+    }));
+  };
+
+/**
+ * Resolve the cursor to resume a reconnecting client from.
+ *
+ * A Last-Event-ID names the last row the CLIENT saw, so we look up that row's
+ * (createdAt, id) and continue strictly after it - no gap, no repeat.
+ *
+ * `extraWhere` pins the lookup to the channel's thread, so a forged or stale
+ * id from another thread cannot pull this stream forward (which would skip
+ * rows). If the row is gone (pruned/older than the lookup) we fall back to the
+ * start of stream: re-sending is recoverable by the client's cache, whereas
+ * skipping is not.
+ *
+ * NOTE the deliberate absence of `new Date()` anywhere in this file. The
+ * previous implementation anchored on the wall clock, which is what lost rows.
+ */
+export async function cursorForLastEvent(
+  prisma: PrismaClient,
+  model: 'Notification' | 'AuditLog' | 'Message',
+  lastEventId: string | null,
+  extraWhere?: Record<string, string>,
+): Promise<StreamCursor> {
+  if (lastEventId === null) return START_OF_STREAM;
+
+  const where = extraWhere !== undefined ? { id: lastEventId, ...extraWhere } : { id: lastEventId };
+
+  // Typed access per model rather than a string-keyed Record cast: Prisma's
+  // query types are per-delegate, and a cast is how the wrong column name
+  // (e.g. `leadId` on a Notification) would slip through unnoticed.
+  const found = await (async (): Promise<{ createdAt: Date; id: string } | null> => {
+    switch (model) {
+      case 'Notification':
+        return prisma.notification.findFirst({
+          where,
+          select: { createdAt: true, id: true },
+        });
+      case 'AuditLog':
+        return prisma.auditLog.findFirst({
+          where,
+          select: { createdAt: true, id: true },
+        });
+      case 'Message':
+        return prisma.message.findFirst({
+          where,
+          select: { createdAt: true, id: true },
+        });
+    }
+  })();
+
+  if (found === null) return START_OF_STREAM;
+  return { createdAt: found.createdAt, id: found.id };
+}
+
+// Re-exported so callers do not need a second import for the tuple type.
+export type { CursorFrame, StreamCursor };
+
+// `Prisma` is imported for the generated delegate types above; keep the
+// reference explicit so the import is not dropped by a future refactor.
+export type NotificationWhereInput = Prisma.NotificationWhereInput;

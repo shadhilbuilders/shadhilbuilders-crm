@@ -1,7 +1,15 @@
 // Redis client module. Used for:
-//  - SSE pub/sub (eng review A9: per-channel event broadcast)
 //  - @Cron locks (eng review A3: SET NX EX 50 to prevent double-fire)
 //  - rate limiting (per-request quotas)
+//
+// NOT used for SSE fan-out despite what earlier versions of this comment
+// claimed. Eng review A9 proposed "per-channel event broadcast" over Redis,
+// but that was never built: apps/realtime-sse is a plain DB poller
+// (see apps/realtime-sse/src/server.ts tick loop), and there is no
+// publish/subscribe or LISTEN/NOTIFY anywhere in the repo. Recorded here so
+// nobody reads the plan and assumes cross-instance push already works -
+// with more than one SSE instance today, each instance polls independently
+// and no events are shared between them.
 //
 // T-G8: REDIS_URL is now REQUIRED. The previous `process.env.REDIS_URL ?? 'redis://localhost:6379'`
 // silent default caused prod to silently lose pub/sub + cron locks

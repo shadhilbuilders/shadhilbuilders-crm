@@ -10,11 +10,14 @@
 // THREE channels, three slightly different fetchers, but a shared
 // write loop. The fetcher is a closure that returns a Promise<Frame[]>;
 // the loop calls it on every DB_TICK_MS and writes each frame.
+//
+// The live loop itself lives in server.ts (handleStream). An older duplicate
+// of it (`startLiveLoop`) was deleted 2026-11-21: it carried the same
+// wall-clock anchor bug, so leaving a second, tempting copy around was just a
+// way to reintroduce it. Ordering/fetch logic is in fetchers.ts + cursor.ts.
 
 import type { PrismaClient } from '@shadhil/database';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-
-import { config } from './config.js';
 
 /** A single SSE frame ready to be serialized onto the socket. */
 export interface SseFrame {
@@ -25,10 +28,6 @@ export interface SseFrame {
   /** SSE event name (default 'message'). */
   event?: string;
 }
-
-/** A channel-specific fetcher: given the last seen timestamp, return
- *  all frames newer than that timestamp. Called every DB_TICK_MS. */
-export type Fetcher = (lastSeenAt: Date) => Promise<SseFrame[]>;
 
 /** SSE response framing helpers - kept tiny and pure. */
 export function writeFrame(res: ServerResponse, frame: SseFrame): void {
@@ -49,57 +48,6 @@ export function openStream(res: ServerResponse): void {
     'X-Accel-Buffering': 'no',
   });
   res.write(': stream-open\n\n');
-}
-
-/** Run the live poll loop. Returns a teardown function that the caller
- *  MUST invoke when the client disconnects (res.on('close', teardown)). */
-export function startLiveLoop(
-  res: ServerResponse,
-  fetcher: Fetcher,
-  state: { lastSeenAt: Date },
-): () => void {
-  let stopped = false;
-
-  const tick = (): void => {
-    if (stopped) return;
-    fetcher(state.lastSeenAt)
-      .then((frames) => {
-        if (stopped) return;
-        for (const f of frames) {
-          // Advance lastSeenAt to the id of the last frame (frames are
-          // ordered ascending by creation time by the fetcher).
-          writeFrame(res, f);
-        }
-        if (frames.length > 0 && frames[frames.length - 1]!.id !== undefined) {
-          // Use the frame's id as the new anchor; the id is the row cuid
-          // which sorts lexicographically by creation time. We update
-          // lastSeenAt separately on the fetcher side using createdAt
-          // for correctness, but lastSeenAt is consumed by the fetcher
-          // so it has to be a Date - we keep it monotonic per fetch.
-          state.lastSeenAt = new Date();
-        }
-      })
-      .catch((err: unknown) => {
-        if (stopped) return;
-        // eslint-disable-next-line no-console
-        console.error('[sse] tick failed:', err instanceof Error ? err.message : err);
-      });
-  };
-
-  const tickTimer = setInterval(tick, config.dbTickMs);
-  const heartbeatTimer = setInterval(() => {
-    if (!stopped) res.write(': keep-alive\n\n');
-  }, config.heartbeatMs);
-
-  // First tick immediately so the backlog is flushed without waiting
-  // DB_TICK_MS.
-  tick();
-
-  return () => {
-    stopped = true;
-    clearInterval(tickTimer);
-    clearInterval(heartbeatTimer);
-  };
 }
 
 /** Ticket consume - port of apps/backend's RealtimeService.consumeTicket.

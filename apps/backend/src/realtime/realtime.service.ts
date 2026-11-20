@@ -22,6 +22,15 @@
 //   - "chat:<leadId>" - allowed only if the actor could read the lead
 //                       (same RLS visibility the REST list enforces:
 //                       owner, same-team, or admin/owner)
+//   - "chat-contact:<contactId>" - allowed only if the actor could read the
+//                       unknown-contact row. The RLS SELECT policy on
+//                       WhatsappUnknownContact is ADMIN/OWNER/MANAGER +
+//                       org-match (the inbox is a manager+ surface), so the
+//                       lookup below IS the authorization - a telecaller
+//                       gets a 403 exactly like the REST list would give
+//                       them. Before 2026-11-21 this channel did not exist
+//                       and the inbox minted 'chat:<contactId>', which
+//                       failed the Lead lookup and 403'd on every retry.
 import {
   BadRequestException,
   ForbiddenException,
@@ -122,6 +131,33 @@ export class RealtimeService {
           select: { id: true },
         });
         return lead !== null;
+      });
+      if (!allowed) {
+        throw new ForbiddenException(`no access to channel ${dto.channel}`);
+      }
+    }
+
+    // 2b. Unknown-contact threads. Same shape as the lead check, but against
+    //     WhatsappUnknownContact - whose own SELECT policy is the manager+
+    //     org-scoped gate the inbox already relies on. Reading the row
+    //     inside withRlsContext means an actor who could not list the
+    //     contact (telecaller, other org) sees nothing and is refused.
+    if (parsed.kind === 'chat-contact') {
+      const allowed = await withRlsContext(this.client, rlsContextFrom(actor), async (tx) => {
+        const contact = await (
+          tx as unknown as {
+            whatsappUnknownContact: {
+              findUnique: (args: {
+                where: { id: string };
+                select: { id: true };
+              }) => Promise<{ id: string } | null>;
+            };
+          }
+        ).whatsappUnknownContact.findUnique({
+          where: { id: parsed.contactId },
+          select: { id: true },
+        });
+        return contact !== null;
       });
       if (!allowed) {
         throw new ForbiddenException(`no access to channel ${dto.channel}`);

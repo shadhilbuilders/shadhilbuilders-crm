@@ -8,7 +8,7 @@
     "start": "tsx --env-file-if-exists=../../.env src/server.ts",
     "type-check": "tsc --noEmit",
     "lint": "echo 'lint pending - apps/realtime-sse/ has no eslint config yet' && exit 0",
-    "test": "echo 'tests pending - apps/realtime-sse/ has no vitest config yet' && exit 0"
+    "test": "vitest run"
   },
   "dependencies": {
     "@shadhil/api-types": "workspace:*",
@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
   }
 }

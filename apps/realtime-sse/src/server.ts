@@ -16,13 +16,42 @@
 // (POST /api/realtime/ticket); this service only owns the GET
 // /api/sse/* consumer side.
 
+// Bare Node http SSE server - T-E2 fix (Week 6, 2026-09-04).
+//
+// Why a separate service: @nestjs/core 12.0.1's @Sse() handler is
+// broken for any subscription chain that requires an await inside
+// its factory, and @fastify/sse 0.6.0 (verified on 2026-09-04) has
+// the same shape of bug: its `reply.sse.keepAlive()` is a no-op until
+// the first frame is yielded, and the first frame from an async
+// generator that does real setup work never reaches the socket. The
+// only path that has demonstrated working SSE in this codebase is the
+// bare-Node pattern proven by the canary `/api/sse/ping` (plain
+// setInterval that writes to res directly). So this service uses
+// bare node:http with manual SSE framing - no framework between the
+// code and the socket.
+//
+// The main Nest backend still owns the StreamTicket model + mint flow
+// (POST /api/realtime/ticket); this service only owns the GET
+// /api/sse/* consumer side.
+
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { prisma, type PrismaClient } from '@shadhil/database';
+import { Prisma } from '@shadhil/database';
 
 import { config } from './config.js';
 import {
+  advanceCursor,
+  createSeenIds,
+  START_OF_STREAM,
+  type CursorFrame,
+  type Fetcher,
+  type StreamCursor,
+} from './cursor.js';
+import {
   auditFetcher,
   chatFetcher,
+  contactChatFetcher,
+  cursorForLastEvent,
   notificationsFetcher,
   resolveUserContext,
   type SseUser,
@@ -55,6 +84,15 @@ const SSE_HEADERS: Record<string, string | number> = {
   'X-Accel-Buffering': 'no',
 };
 
+/**
+ * How many recently emitted row ids to remember per connection, to drop a
+ * duplicate frame before it reaches the client. The cursor should make
+ * duplicates impossible, so this only covers a fetch that outlives a tick;
+ * it needs to exceed the rows a single tick can emit, not the channel's
+ * history. 200 = 4x the fetcher batch size, flat memory per connection.
+ */
+const DEDUPE_WINDOW = 200;
+
 function openSse(res: ServerResponse): void {
   res.writeHead(200, SSE_HEADERS);
   res.write(': stream-open\n\n');
@@ -80,15 +118,19 @@ async function handleStream(
   res: ServerResponse,
   opts: {
     channel: string;
-    // Builder: given the resolved RLS user + an optional lead scope,
+    // Builder: given the resolved RLS user + an optional thread scope,
     // return the fetcher. The user is resolved once per connection (the
-    // ticket binds a user); leadId is only set for the chat channel.
-    fetcher: (
-      user: SseUser,
-      leadId: string | undefined,
-    ) => (lastSeenAt: Date) => Promise<SseFrame[]>;
+    // ticket binds a user); threadId is only set for chat channels and is
+    // a leadId or a contactId depending on the route.
+    fetcher: (user: SseUser, threadId: string | undefined) => Fetcher;
     anchorModel: 'Notification' | 'AuditLog' | 'Message';
-    anchorExtraWhere?: (req: IncomingMessage) => { leadId: string } | undefined;
+    /**
+     * Extra WHERE columns for the anchor lookup, so a reconnect that carries
+     * a Last-Event-ID cannot resolve a Message row from a DIFFERENT thread
+     * and resume from its timestamp. `{ leadId }` for lead threads,
+     * `{ contactId }` for unknown-contact threads, undefined otherwise.
+     */
+    anchorExtraWhere?: (req: IncomingMessage) => Record<string, string> | undefined;
   },
 ): Promise<void> {
   const ticket = readQueryString(req, 'ticket');
@@ -112,28 +154,66 @@ async function handleStream(
   // to zero rows and the stream never emits a frame (the live-chat bug).
   const user = await resolveUserContext(prisma, consumed.userId);
   const extra = opts.anchorExtraWhere?.(req);
-  const leadId = extra?.leadId;
+  // The thread scope is whichever column the extra-where names - a leadId on
+  // /chat/:id, a contactId on /chat-contact/:id. Passed through so a fetcher
+  // builder that wants it can use it; the shipped builders close over the id
+  // directly, which is clearer at the call site.
+  const threadId = extra === undefined ? undefined : Object.values(extra)[0];
   const lastEventId = readQueryString(req, 'lastEventId');
-  const anchor = await anchorFor(opts.anchorModel, lastEventId, extra);
-  const fetcher = opts.fetcher(user, leadId);
+  // Resume position = the (createdAt, id) of the row the client last saw.
+  const startCursor = await cursorForLastEvent(prisma, opts.anchorModel, lastEventId, extra);
+  const fetcher = opts.fetcher(user, threadId);
 
   // T-PERF-2 #4: track active connections via a gauge. Increment on
   // stream open, decrement on close. The gauge value is the live count of
   // open SSE streams at scrape time.
   bumpActive(1);
-  // Derive a low-cardinality channel label (notifications, audit, chat)
-  // for the metrics - the full channel string includes the leadId for
-  // chat, which would explode label cardinality.
-  const channelLabel = opts.channel.startsWith('chat:') ? 'chat' : opts.channel;
+  // Derive a low-cardinality channel label (notifications, audit, chat) for
+  // the metrics - the full channel string includes the thread id, which
+  // would explode label cardinality. Contact threads report under the same
+  // 'chat' label: from an operator's view they are the same subsystem.
+  const channelLabel =
+    opts.channel.startsWith('chat:') || opts.channel.startsWith('chat-contact:')
+      ? 'chat'
+      : opts.channel;
 
   // Open the stream first - this commits the SSE headers synchronously.
   openSse(res);
 
+  // T-SSE-ANCHOR (2026-11-21): the cursor is the ONLY thing that decides what
+  // gets emitted. It advances exclusively to the tuple of a row actually
+  // written to this socket - never to `new Date()`. See cursor.ts for the
+  // lost-row bug the wall-clock version caused.
+  let cursor: StreamCursor = startCursor;
+  // Drops a duplicate frame if a fetch ever outlives the tick interval.
+  const seen = createSeenIds(DEDUPE_WINDOW);
+  let stopped = false;
+
+  /** Write frames, skipping duplicates, then advance the cursor. */
+  const emit = (frames: readonly CursorFrame[]): number => {
+    let written = 0;
+    for (const frame of frames) {
+      // A frame carries its row id; a fetcher that omits it cannot be
+      // de-duplicated, so treat that as a programming error rather than
+      // silently emitting a possible repeat.
+      if (frame.id === undefined) {
+        throw new Error(`[sse] frame without an id on channel ${opts.channel}`);
+      }
+      if (!seen.add(frame.id)) continue;
+      writeFrame(res, frame);
+      written += 1;
+    }
+    // Advance from the FETCHED frames, not the written ones: a duplicate was
+    // already consumed and is still valid ordering information.
+    cursor = advanceCursor(cursor, frames);
+    return written;
+  };
+
   // Backlog flush.
   try {
-    const backlog = await fetcher(anchor);
+    const backlog = await fetcher(cursor);
     metrics.gauge('realtime_sse_backlog_size', { channel: channelLabel }, backlog.length);
-    for (const f of backlog) writeFrame(res, f);
+    emit(backlog);
   } catch (err) {
     writeFrame(res, { event: 'error', data: { message: errMsg(err) } });
   }
@@ -143,12 +223,16 @@ async function handleStream(
   // When the client disconnects, both timers are cleared and the
   // response is ended - this is the same shape that the
   // /api/sse/ping canary proved works.
-  let lastSeenAt = anchor;
-  let stopped = false;
+  //
+  // Non-overlap: if a fetch takes longer than dbTickMs, the next tick is
+  // skipped rather than queued. Two concurrent fetches would race on `cursor`
+  // and could emit the same rows twice or move the cursor backwards.
+  let tickInFlight = false;
   const tickTimer = setInterval(() => {
-    if (stopped) return;
+    if (stopped || tickInFlight) return;
+    tickInFlight = true;
     const startedAt = Date.now();
-    fetcher(lastSeenAt)
+    fetcher(cursor)
       .then((frames) => {
         if (stopped) return;
         // T-PERF-2 #4: observe the tick latency per channel.
@@ -157,12 +241,14 @@ async function handleStream(
           { channel: channelLabel },
           (Date.now() - startedAt) / 1000,
         );
-        for (const f of frames) writeFrame(res, f);
-        if (frames.length > 0) lastSeenAt = new Date();
+        emit(frames);
       })
       .catch((err: unknown) => {
         if (stopped) return;
         writeFrame(res, { event: 'error', data: { message: errMsg(err) } });
+      })
+      .finally(() => {
+        tickInFlight = false;
       });
   }, config.dbTickMs);
 
@@ -179,27 +265,12 @@ async function handleStream(
   });
 }
 
-async function anchorFor(
-  model: 'Notification' | 'AuditLog' | 'Message',
-  lastEventId: string | null,
-  extraWhere?: { leadId: string },
-): Promise<Date> {
-  if (lastEventId === null) return new Date(0);
-  const delegate = (
-    prisma as unknown as Record<
-      string,
-      {
-        findUnique: (args: {
-          where: unknown;
-          select: unknown;
-        }) => Promise<{ createdAt: Date } | null>;
-      }
-    >
-  )[model];
-  const where = extraWhere !== undefined ? { id: lastEventId, ...extraWhere } : { id: lastEventId };
-  const row = await delegate.findUnique({ where, select: { createdAt: true } });
-  return row?.createdAt ?? new Date(0);
-}
+// `anchorFor` (wall-clock anchor lookup) was removed 2026-11-21. Resuming is
+// now `cursorForLastEvent` in fetchers.ts, which resolves Last-Event-ID to the
+// row's (createdAt, id) instead of only its timestamp - the timestamp alone
+// cannot express "after this exact row" when rows share a createdAt.
+
+
 
 function readQueryString(req: IncomingMessage, key: string): string | null {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -210,9 +281,15 @@ function readQueryString(req: IncomingMessage, key: string): string | null {
 const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function readLeadId(req: IncomingMessage): string | null {
+  return readPathSegment(req, /^\/api\/sse\/chat\/([^/]+)$/);
+}
+
+/** Extract the single dynamic path segment a route pattern captures. */
+function readPathSegment(req: IncomingMessage, pattern: RegExp): string | null {
   const url = new URL(req.url ?? '/', 'http://localhost');
-  const m = url.pathname.match(/^\/api\/sse\/chat\/([^/]+)$/);
-  return m?.[1] ?? null;
+  const m = url.pathname.match(pattern);
+  const segment = m?.[1];
+  return typeof segment === 'string' && segment.length > 0 ? segment : null;
 }
 
 // ── Router ──────────────────────────────────────────────────────────
@@ -282,6 +359,28 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Unknown-contact thread (2026-11-21). Same pipeline, keyed on contactId.
+  // Matched BEFORE the generic chat route above would be ambiguous: the two
+  // paths differ by the /chat-contact/ segment, so ordering does not actually
+  // matter here - keeping them adjacent makes the pair obvious.
+  if (req.method === 'GET' && /^\/api\/sse\/chat-contact\/[^/]+$/.test(path)) {
+    const contactId = readPathSegment(req, /^\/api\/sse\/chat-contact\/([^/]+)$/);
+    if (contactId === null) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ statusCode: 400, message: 'missing contactId' }));
+      return;
+    }
+    await handleStream(req, res, {
+      channel: `chat-contact:${contactId}`,
+      // The extra-where shape is lead-specific; contact threads scope inside
+      // the fetcher instead.
+      fetcher: (user) => contactChatFetcher(prisma, user, contactId),
+      anchorModel: 'Message',
+      anchorExtraWhere: () => ({ contactId }),
+    });
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ statusCode: 404, message: 'not found' }));
 });
@@ -291,7 +390,7 @@ server.listen(config.port, () => {
   console.log(`[realtime-sse] listening on http://localhost:${config.port}`);
   // eslint-disable-next-line no-console
   console.log(
-    `[realtime-sse] routes: GET /api/sse/{ping,healthz,notifications,audit,chat/:leadId}`,
+    `[realtime-sse] routes: GET /api/sse/{ping,healthz,notifications,audit,chat/:leadId,chat-contact/:contactId}`,
   );
   // eslint-disable-next-line no-console
   console.log(

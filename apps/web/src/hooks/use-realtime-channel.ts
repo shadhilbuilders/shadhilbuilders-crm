@@ -17,6 +17,8 @@
 // and opens a new one. Cleanup on unmount is automatic.
 import { useEffect, useRef } from 'react';
 
+import { ssePathForChannel } from '@shadhil/api-types';
+
 import { openStream } from '@/lib/sse';
 
 export function useRealtimeChannel(channel: string | null, onMessage: () => void): void {
@@ -38,7 +40,10 @@ export function useRealtimeChannel(channel: string | null, onMessage: () => void
     // browser gets the live stream.
     if (typeof EventSource === 'undefined') return;
     const cleanup = openStream<unknown>({
-      path: channel.startsWith('chat:') ? `/chat/${channel.slice('chat:'.length)}` : `/${channel}`,
+      // The channel -> URL mapping lives in @shadhil/api-types so the hook and
+      // the SSE service cannot drift. Before 2026-11-21 this hand-rolled
+      // `chat:${id}` -> `/chat/${id}` and had no case for contact threads.
+      path: ssePathForChannel(channel),
       channel,
       onMessage: () => {
         onMessageRef.current();
