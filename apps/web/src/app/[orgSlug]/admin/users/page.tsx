@@ -503,7 +503,10 @@ function UserTable({
         // The whole row is clickable too (tableRowProps below); the link
         // keeps middle-click / cmd-click / keyboard working.
         cell: ({ row }) => (
-          <div className="min-w-45">
+          // min-w-45 keeps the name from wrapping mid-surname on desktop, but a
+          // 180px floor is a third of a 390px screen and is most of why the
+          // table overflowed there.
+          <div className={compact ? 'min-w-0' : 'min-w-45'}>
             <Link
               href={orgHref(orgSlug, `/admin/users/${row.original.id}`)}
               className="text-link text-sm font-medium hover:underline hover:underline-offset-2"
@@ -519,8 +522,12 @@ function UserTable({
         enableSorting: true,
       },
       {
+        id: 'email',
         accessorKey: 'email',
         header: 'Email',
+        // Hidden below md with phone/reportsTo/projects: a long address alone was
+        // wider than the viewport. The name still links to the detail page, and
+        // the search matches email, so nothing becomes unreachable.
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">{row.original.email}</span>
         ),
@@ -664,7 +671,7 @@ function UserTable({
       },
     ];
     if (!compact) return all;
-    const droppedForPhone = new Set(['phone', 'reportsTo', 'projects']);
+    const droppedForPhone = new Set(['email', 'phone', 'reportsTo', 'projects']);
     return all.filter((column) => !droppedForPhone.has(column.id ?? ''));
   }, [selfId, actorRole, orgSlug, onEdit, onDelete, onRoleChange, onChangePassword, compact]);
 
@@ -673,6 +680,12 @@ function UserTable({
   return (
     <div className="space-y-2">
       <DataTable
+        // The actions column is pinned to the right edge of the scroller. Even
+        // with four columns dropped on a phone the table can still be a few
+        // pixels wider than the screen, and a menu that is 3px off screen is as
+        // unreachable as one 300px off screen. `bg-card` covers the cells that
+        // scroll underneath it.
+        className="[&_td:last-child]:bg-card [&_th:last-child]:bg-card [&_td:last-child]:sticky [&_td:last-child]:right-0 [&_td:last-child]:z-[1] [&_th:last-child]:sticky [&_th:last-child]:right-0 [&_th:last-child]:z-[1]"
         columns={columns}
         rows={users}
         // Search is server-side (onSearchValueChange → API). The DataTable's
