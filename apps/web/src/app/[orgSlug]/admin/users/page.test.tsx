@@ -484,11 +484,13 @@ describe('UsersPage - phone layout', () => {
     expect(html).not.toContain('data-qa="user-reports-to-u-priya"');
     expect(html).not.toContain('Ravi Manager');
     expect(html).not.toContain('1 project');
-    // The three columns are gone from the header too, not just the cells.
+    // The four columns are gone from the header too, not just the cells.
     expect(html).not.toContain('Reports to');
     expect(html).not.toContain('>Projects<');
-    // Phone cell text: the number itself must not be rendered.
+    expect(html).not.toContain('>Email<');
+    // Their content must not be rendered either.
     expect(html).not.toContain('9876543210');
+    expect(html).not.toContain('priya@example.com');
 
     // What a phone actually needs stays: identity, role, and the menu.
     expect(html).toContain('data-qa="user-row-link-u-priya"');
