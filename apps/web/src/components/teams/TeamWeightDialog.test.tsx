@@ -67,6 +67,29 @@ async function mount(open = true): Promise<void> {
   });
 }
 
+/**
+ * Poll for an element that appears on a timer.
+ *
+ * The info tooltip opens on Radix's own delay, so a single act() after
+ * pointerenter is a race: it wins on a fast machine and loses on a loaded CI
+ * runner, which is exactly how this file went red on 2026-11-20 while passing
+ * eight runs in a row locally. Wait for the thing, don't hope for it.
+ */
+async function waitForElement(
+  find: () => Element | null,
+  timeoutMs = 3000,
+): Promise<Element | null> {
+  const start = Date.now();
+  let found = find();
+  while (found === null && Date.now() - start < timeoutMs) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    found = find();
+  }
+  return found;
+}
+
 async function unmount(): Promise<void> {
   await act(async () => {
     root?.unmount();
@@ -148,7 +171,15 @@ describe('TeamWeightDialog', () => {
     await act(async () => {
       trigger?.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
     });
-    const help = document.body.querySelector('[data-qa="team-weight-help"]');
+    // Radix also opens on focus; that covers a runner where pointerenter alone
+    // does not start the open timer.
+    await act(async () => {
+      (trigger as HTMLElement | null)?.focus?.();
+    });
+    const help = await waitForElement(() =>
+      document.body.querySelector('[data-qa="team-weight-help"]'),
+    );
+    expect(help).not.toBeNull();
     expect(help?.tagName).toBe('UL');
     expect(help?.querySelectorAll('li')).toHaveLength(3);
     expect(help?.textContent).toContain('share of new leads');
