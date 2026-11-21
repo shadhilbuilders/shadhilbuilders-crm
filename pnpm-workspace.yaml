@@ -1,17 +1,17 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # pnpm 11 - approve build scripts for these specific packages.
 # Without this, pnpm 11 ignores Prisma client generation and esbuild native
 # binary setup, which breaks `pnpm db:generate` and `pnpm build`.
 allowBuilds:
-  "@prisma/client": true
-  "@prisma/engines": true
+  '@prisma/client': true
+  '@prisma/engines': true
   prisma: true
   esbuild: true
   unrs-resolver: true
-  "@scarf/scarf": true
+  '@scarf/scarf': true
 
 minimumReleaseAgeExclude:
   - '@paalstack/react-ui@1.3.1 || 1.4.0 || 1.4.1 || 1.4.2 || 1.5.0 || 1.5.1 || 1.6.0 || 1.6.1 || 1.6.2 || 1.7.0 || 1.7.1 || 1.7.2'
@@ -168,3 +168,22 @@ overrides:
   # `z.ZodObject` type. Forcing that type onto zod 4 therefore cannot change
   # library behaviour, and `pnpm type-check` on apps/web is the proof.
   'zod@<4.6.6': '4.6.7'
+
+  # ── Dependabot #80 - effect ReDoS (GHSA pending, alert opened 2026-11-21). ──
+  # `Schema.TemplateLiteral` compiles user-supplied template strings into a
+  # regex without escaping, so a crafted literal can backtrack catastrophically.
+  # Patched in 3.22.1.
+  #
+  # Two paths pull effect, and NEITHER can fix itself:
+  #   @prisma/config@7.10.0 -> effect "3.20.0" (an EXACT pin; 7.10.1, the newest
+  #     7.x, still pins 3.20.0 - there is no parent bump short of prisma 8,
+  #     which is release-candidate only). This one is runtime-reachable through
+  #     prisma -> @prisma/client -> better-auth/database.
+  #   @hookform/resolvers@5.9.1 -> optional peer "effect": "^3.10.3", so 3.22.1
+  #     is inside its declared range.
+  # The override therefore moves ONE copy for all consumers, outside
+  # @prisma/config's exact pin. Same major, and the advisory itself is a fix to
+  # Schema, which is the surface prisma pins for its config loader - so
+  # `pnpm db:generate` (which loads @prisma/config) and `pnpm build` are the
+  # proofs to re-run after any prisma bump.
+  'effect@<3.22.1': '3.22.1'
