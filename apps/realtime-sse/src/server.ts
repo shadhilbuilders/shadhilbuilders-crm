@@ -270,8 +270,6 @@ async function handleStream(
 // row's (createdAt, id) instead of only its timestamp - the timestamp alone
 // cannot express "after this exact row" when rows share a createdAt.
 
-
-
 function readQueryString(req: IncomingMessage, key: string): string | null {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const v = url.searchParams.get(key);

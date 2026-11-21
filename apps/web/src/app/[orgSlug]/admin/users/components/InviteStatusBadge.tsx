@@ -24,9 +24,7 @@ const LABELS: Readonly<Record<InviteStatus, string>> = {
 };
 
 /** Existing Badge variants only - no new colour is introduced for this feature. */
-const VARIANTS: Readonly<
-  Record<InviteStatus, 'success' | 'info' | 'muted' | 'warning'>
-> = {
+const VARIANTS: Readonly<Record<InviteStatus, 'success' | 'info' | 'muted' | 'warning'>> = {
   // Waiting on the staff member: informational, not an alarm.
   PENDING: 'warning',
   // The account exists. This is the good outcome.
@@ -37,13 +35,7 @@ const VARIANTS: Readonly<
   EXPIRED: 'muted',
 };
 
-export function InviteStatusBadge({
-  status,
-  testId,
-}: {
-  status: InviteStatus;
-  testId?: string;
-}) {
+export function InviteStatusBadge({ status, testId }: { status: InviteStatus; testId?: string }) {
   return (
     <Badge variant={VARIANTS[status]} data-qa={testId ?? `invite-status-${status}`}>
       {LABELS[status]}

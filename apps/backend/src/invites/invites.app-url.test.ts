@@ -17,7 +17,13 @@ import { buildInviteUrl } from './invites.links';
 import { InvitesService } from './invites.service';
 
 // The service reads env at call time, so each case can swap the environment.
-const KEYS = ['APP_URL', 'NEXT_PUBLIC_APP_URL', 'CORS_ORIGINS', 'BETTER_AUTH_URL', 'API_PORT'] as const;
+const KEYS = [
+  'APP_URL',
+  'NEXT_PUBLIC_APP_URL',
+  'CORS_ORIGINS',
+  'BETTER_AUTH_URL',
+  'API_PORT',
+] as const;
 let saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {

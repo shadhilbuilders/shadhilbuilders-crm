@@ -32,9 +32,7 @@ describe('buildInviteUrl', () => {
 
 describe('buildWhatsappUrl', () => {
   it('uses the digits-only form (the stored shape)', () => {
-    expect(buildWhatsappUrl('919876543210', 'hi')).toBe(
-      'https://wa.me/919876543210?text=hi',
-    );
+    expect(buildWhatsappUrl('919876543210', 'hi')).toBe('https://wa.me/919876543210?text=hi');
   });
 
   it('STRIPS a plus sign, which would silently 404', () => {
@@ -46,9 +44,7 @@ describe('buildWhatsappUrl', () => {
   });
 
   it('strips spaces and punctuation defensively', () => {
-    expect(buildWhatsappUrl('+91 98765 43210', 'hi')).toBe(
-      'https://wa.me/919876543210?text=hi',
-    );
+    expect(buildWhatsappUrl('+91 98765 43210', 'hi')).toBe('https://wa.me/919876543210?text=hi');
   });
 
   it('uses https (not whatsapp://) so it also works on desktop', () => {

@@ -71,9 +71,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             <Heading className="mb-1">Join {result.data.organizationName}</Heading>
             <TypographyP className="text-muted-foreground text-sm">
               You have been invited as{' '}
-              <span className="text-foreground font-medium">
-                {roleLabel(result.data.role)}
-              </span>
+              <span className="text-foreground font-medium">{roleLabel(result.data.role)}</span>
               {result.data.teamName !== null ? ` on ${result.data.teamName}` : ''}.
             </TypographyP>
           </div>

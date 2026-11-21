@@ -27,6 +27,20 @@ import type { Page } from '@playwright/test';
 import { gotoApp, login } from './helpers';
 
 /**
+ * The Users page is ORG-SCOPED: every app route lives under `/[orgSlug]/...`
+ * (see `src/app/[orgSlug]/layout.tsx`). Navigating to a bare `/admin/users`
+ * matches no route and renders Next's 404, so the tab this file is about never
+ * exists - which is how it failed on CI on 2026-11-20: four timeouts waiting
+ * for a `role="tab"` on a "Page not found" screen.
+ *
+ * `demo` is the DEMO OWNER's org slug (`DEMO_ORG_SLUG` in
+ * packages/database/scripts/setup-demo-user.ts), and the session in the shared
+ * storageState is that owner. Every other spec hardcodes the same prefix
+ * (`/demo/projects/demo-villas/...`), so this matches the suite.
+ */
+const USERS_PATH = '/demo/admin/users';
+
+/**
  * Real device widths. 320 is the narrowest in use (iPhone SE 1st gen / Fold
  * outer screen); landscape heights are included because a phone on its side has
  * almost no vertical room, which is where a dialog's footer submit falls below
@@ -51,7 +65,7 @@ const VIEWPORTS: ReadonlyArray<{ w: number; h: number; label: string }> = [
  * then gets blamed on the feature.
  */
 async function openInvitesTab(page: Page): Promise<void> {
-  await gotoApp(page, '/admin/users');
+  await gotoApp(page, USERS_PATH);
   const invitesTab = page.locator('[role="tab"]', { hasText: 'Invites' });
   await invitesTab.waitFor({ state: 'visible', timeout: 20_000 });
   await invitesTab.click();

@@ -14,7 +14,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createId } from '@paralleldrive/cuid2';
 import type { JwtPayload } from '@shadhil/auth';
-import { INVITE_ALREADY_PENDING, INVITE_EMAIL_TAKEN, CreateInviteDtoSchema } from '@shadhil/api-types';
+import {
+  INVITE_ALREADY_PENDING,
+  INVITE_EMAIL_TAKEN,
+  CreateInviteDtoSchema,
+} from '@shadhil/api-types';
 import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';

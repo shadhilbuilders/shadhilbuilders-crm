@@ -119,12 +119,7 @@ const OfflinePage = () => {
         >
           View cached leads
         </Link>
-        <Button
-          onClick={() => location.reload()}
-          variant="outline"
-          size="lg"
-          className="min-w-32"
-        >
+        <Button onClick={() => location.reload()} variant="outline" size="lg" className="min-w-32">
           Retry
         </Button>
       </div>

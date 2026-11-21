@@ -40,7 +40,12 @@ type Props = {
   testId?: string;
 };
 
-export function InviteSendActions({ whatsappUrl, phone, inviteeName, testId = 'invite-send' }: Props) {
+export function InviteSendActions({
+  whatsappUrl,
+  phone,
+  inviteeName,
+  testId = 'invite-send',
+}: Props) {
   const dial = telUrl(phone);
   const formatted = formatPhone(phone);
 

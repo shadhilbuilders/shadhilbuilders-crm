@@ -306,12 +306,19 @@ function InviteStaffDialogBody({
             testId="invite-send"
           />
           <p className="text-muted-foreground text-xs">
-            This link expires in 7 days. If it is lost, use Resend on the Invites tab - that
-            issues a new link and the old one stops working.
+            This link expires in 7 days. If it is lost, use Resend on the Invites tab - that issues
+            a new link and the old one stops working.
           </p>
         </div>
       ) : (
-        <Form form={form} id={formId} onSubmit={onSubmit} hideSubmitButton hideResetButton fields={fields} />
+        <Form
+          form={form}
+          id={formId}
+          onSubmit={onSubmit}
+          hideSubmitButton
+          hideResetButton
+          fields={fields}
+        />
       )}
     </Dialog>
   );

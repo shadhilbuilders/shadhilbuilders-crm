@@ -24,7 +24,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { AcceptInviteFormSchema, type AcceptInviteFormValues, type PublicInvitePreview } from '@shadhil/api-types';
+import {
+  AcceptInviteFormSchema,
+  type AcceptInviteFormValues,
+  type PublicInvitePreview,
+} from '@shadhil/api-types';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { authClient } from '@/lib/auth-client';
@@ -64,22 +68,19 @@ export function AcceptInviteForm({ token, preview }: Props) {
     try {
       // Same-origin proxy (see app/api/public/invites/[token]/route.ts):
       // the browser cannot reach BACKEND_API_URL and has no session for the BFF.
-      response = await fetch(
-        `/api/public/invites/${encodeURIComponent(token)}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            name: values.name,
-            password: values.password,
-            // '' means "keep the invite's number" - send nothing rather than a
-            // blank string the schema would reject.
-            ...(values.phone !== undefined && values.phone.trim().length > 0
-              ? { phone: values.phone }
-              : {}),
-          }),
-        },
-      );
+      response = await fetch(`/api/public/invites/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: values.name,
+          password: values.password,
+          // '' means "keep the invite's number" - send nothing rather than a
+          // blank string the schema would reject.
+          ...(values.phone !== undefined && values.phone.trim().length > 0
+            ? { phone: values.phone }
+            : {}),
+        }),
+      });
     } catch {
       setFailure({
         title: 'Could not reach the server',

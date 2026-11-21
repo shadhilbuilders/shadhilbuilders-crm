@@ -108,10 +108,7 @@ describe('AcceptInviteForm - phone correction', () => {
  */
 async function submitWithPassword(el: HTMLDivElement): Promise<void> {
   const setValue = (input: HTMLInputElement, value: string): void => {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      'value',
-    )?.set;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
     setter?.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
@@ -136,9 +133,11 @@ describe('AcceptInviteForm - submission failures are inline and persistent', () 
   it('shows an inline alert for an expired invite', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ code: 'INVITE_EXPIRED' }), { status: 410 }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ code: 'INVITE_EXPIRED' }), { status: 410 }),
+        ),
     );
 
     const el = mount();
@@ -154,9 +153,11 @@ describe('AcceptInviteForm - submission failures are inline and persistent', () 
   it('names a phone collision and tells the user what to do', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ code: 'PHONE_ALREADY_EXISTS' }), { status: 409 }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ code: 'PHONE_ALREADY_EXISTS' }), { status: 409 }),
+        ),
     );
 
     const el = mount();

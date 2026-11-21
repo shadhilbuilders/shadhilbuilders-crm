@@ -167,7 +167,7 @@ export function AppHeader() {
             />
           </>
         ) : null}
-        <ThemeToggle className='size-9 min-h-9 min-w-9 p-0 sm:size-11 sm:min-h-11 sm:min-w-11' />
+        <ThemeToggle className="size-9 min-h-9 min-w-9 p-0 sm:size-11 sm:min-h-11 sm:min-w-11" />
         <NotificationBell />
         {/* T23 (PR3): render a UserSkeleton placeholder in the slot
             where the UserMenu will mount once the session resolves.

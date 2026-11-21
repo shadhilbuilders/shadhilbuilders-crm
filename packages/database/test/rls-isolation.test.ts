@@ -1353,9 +1353,7 @@ function roleFromCtx(
   // covered by invite-rls-matrix.test.ts, which asserts the token fence and
   // the TeamMember teamId pinning directly.
   if (ctx.role === 'INVITE_ACCEPT') {
-    expect.unreachable(
-      'INVITE_ACCEPT belongs in invite-rls-matrix.test.ts, not the 4x8x4 matrix',
-    );
+    expect.unreachable('INVITE_ACCEPT belongs in invite-rls-matrix.test.ts, not the 4x8x4 matrix');
   }
   return ctx.role;
 }

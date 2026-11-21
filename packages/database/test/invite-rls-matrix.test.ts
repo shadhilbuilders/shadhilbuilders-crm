@@ -191,9 +191,9 @@ describe.skipIf(!DATABASE_AVAILABLE)('Invite RLS - the token arm', () => {
   });
 
   it('denies when no hash is set at all', async () => {
-    expect(
-      await visibleInvites({ userId: NEW_USER_ID, role: 'INVITE_ACCEPT', orgId: ORG_A }),
-    ).toBe(0);
+    expect(await visibleInvites({ userId: NEW_USER_ID, role: 'INVITE_ACCEPT', orgId: ORG_A })).toBe(
+      0,
+    );
   });
 
   it('a bare read with no GUCs sees nothing (FORCE RLS is real)', async () => {
@@ -206,9 +206,9 @@ describe.skipIf(!DATABASE_AVAILABLE)('Invite RLS - the token arm', () => {
 
 describe.skipIf(!DATABASE_AVAILABLE)('Invite RLS - admin and manager read arms', () => {
   it('ADMIN sees the org’s invites', async () => {
-    expect(
-      await visibleInvites({ userId: ADMIN_ID, role: 'ADMIN', orgId: ORG_A }),
-    ).toBeGreaterThan(0);
+    expect(await visibleInvites({ userId: ADMIN_ID, role: 'ADMIN', orgId: ORG_A })).toBeGreaterThan(
+      0,
+    );
   });
 
   it('TELECALLER sees nothing', async () => {
@@ -221,9 +221,9 @@ describe.skipIf(!DATABASE_AVAILABLE)('Invite RLS - admin and manager read arms',
     // MANAGER_ID leads TEAM_A, which the fixture invite targets.
     expect(await visibleInvites({ userId: MANAGER_ID, role: 'MANAGER', orgId: ORG_A })).toBe(1);
     // OTHER_MANAGER_ID leads TEAM_B, not the invite's team.
-    expect(
-      await visibleInvites({ userId: OTHER_MANAGER_ID, role: 'MANAGER', orgId: ORG_A }),
-    ).toBe(0);
+    expect(await visibleInvites({ userId: OTHER_MANAGER_ID, role: 'MANAGER', orgId: ORG_A })).toBe(
+      0,
+    );
   });
 
   it('a manager cannot cross orgs', async () => {

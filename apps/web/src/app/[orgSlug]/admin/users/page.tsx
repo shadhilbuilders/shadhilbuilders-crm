@@ -236,88 +236,93 @@ export default function UsersPage() {
             content: (
               <>
                 {usersQuery.isLoading ? (
-        <Skeleton variant="table" />
-      ) : usersQuery.error !== null && usersQuery.error !== undefined ? (
-        <div
-          role="alert"
-          className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
-        >
-          <p className="text-sm font-medium">Couldn&apos;t load users.</p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {usersQuery.error instanceof Error ? usersQuery.error.message : 'Unexpected error.'}
-          </p>
-          <Button
-            variant="outline"
-            className="mt-3"
-            onClick={() => void usersQuery.refetch()}
-            data-qa="users-retry-button"
-          >
-            Try again
-          </Button>
-        </div>
-      ) : (
-        <UserTable
-          users={users}
-          total={total}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setPage(1);
-          }}
-          selfId={user.id}
-          actorRole={user.role}
-          isFetching={usersQuery.isFetching}
-          roleFilter={roleFilter}
-          onRoleFilterChange={(roles) => {
-            setRoleFilter(roles);
-            setPage(1); // a new filter starts back at page 1
-          }}
-          search={search}
-          onSearchChange={(next) => {
-            setSearch(next);
-            setPage(1); // a new search starts back at page 1
-          }}
-          onEdit={(row) => setEditTarget(row)}
-          onDelete={(row) => setDeleteTarget(row)}
-          onRoleChange={(row) => setRoleTarget(row)}
-          onChangePassword={(row) => setPasswordTarget(row)}
-          createTrigger={
-            <CreateUserDialog
-              open={createOpen}
-              onOpenChange={setCreateOpen}
-              creatableRoles={[...creatableRoles]}
-              createUser={createUser}
-              showTeamField={isAdminLike(user.role)}
-              teams={teamsQuery.data ?? []}
-              teamsLoading={teamsQuery.isLoading}
-            />
-          }
-        />
-      )}
+                  <Skeleton variant="table" />
+                ) : usersQuery.error !== null && usersQuery.error !== undefined ? (
+                  <div
+                    role="alert"
+                    className="border-destructive/40 bg-destructive/5 rounded-lg border p-6 text-center"
+                  >
+                    <p className="text-sm font-medium">Couldn&apos;t load users.</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {usersQuery.error instanceof Error
+                        ? usersQuery.error.message
+                        : 'Unexpected error.'}
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void usersQuery.refetch()}
+                      data-qa="users-retry-button"
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : (
+                  <UserTable
+                    users={users}
+                    total={total}
+                    page={page}
+                    pageSize={pageSize}
+                    onPageChange={setPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size);
+                      setPage(1);
+                    }}
+                    selfId={user.id}
+                    actorRole={user.role}
+                    isFetching={usersQuery.isFetching}
+                    roleFilter={roleFilter}
+                    onRoleFilterChange={(roles) => {
+                      setRoleFilter(roles);
+                      setPage(1); // a new filter starts back at page 1
+                    }}
+                    search={search}
+                    onSearchChange={(next) => {
+                      setSearch(next);
+                      setPage(1); // a new search starts back at page 1
+                    }}
+                    onEdit={(row) => setEditTarget(row)}
+                    onDelete={(row) => setDeleteTarget(row)}
+                    onRoleChange={(row) => setRoleTarget(row)}
+                    onChangePassword={(row) => setPasswordTarget(row)}
+                    createTrigger={
+                      <CreateUserDialog
+                        open={createOpen}
+                        onOpenChange={setCreateOpen}
+                        creatableRoles={[...creatableRoles]}
+                        createUser={createUser}
+                        showTeamField={isAdminLike(user.role)}
+                        teams={teamsQuery.data ?? []}
+                        teamsLoading={teamsQuery.isLoading}
+                      />
+                    }
+                  />
+                )}
 
-      <EditUserDialog
-        target={editTarget}
-        updateUser={updateUser}
-        onClose={() => setEditTarget(null)}
-      />
+                <EditUserDialog
+                  target={editTarget}
+                  updateUser={updateUser}
+                  onClose={() => setEditTarget(null)}
+                />
 
-      <DeleteUserDialog
-        target={deleteTarget}
-        deleteUser={deleteUser}
-        onClose={() => setDeleteTarget(null)}
-      />
+                <DeleteUserDialog
+                  target={deleteTarget}
+                  deleteUser={deleteUser}
+                  onClose={() => setDeleteTarget(null)}
+                />
 
-      <ChangeRoleDialog
-        target={roleTarget}
-        // CUSTOMER is create-only: it needs a lead pointer that a role change cannot collect.
-        assignableRoles={creatableRoles.filter((r) => r !== 'CUSTOMER')}
-        changeRole={changeRole}
-        onClose={() => setRoleTarget(null)}
-      />
+                <ChangeRoleDialog
+                  target={roleTarget}
+                  // CUSTOMER is create-only: it needs a lead pointer that a role change cannot collect.
+                  assignableRoles={creatableRoles.filter((r) => r !== 'CUSTOMER')}
+                  changeRole={changeRole}
+                  onClose={() => setRoleTarget(null)}
+                />
 
-      <ResetPasswordDialog target={passwordTarget} onClose={() => setPasswordTarget(null)} />
+                <ResetPasswordDialog
+                  target={passwordTarget}
+                  onClose={() => setPasswordTarget(null)}
+                />
               </>
             ),
           },

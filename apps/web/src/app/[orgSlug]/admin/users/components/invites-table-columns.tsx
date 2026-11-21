@@ -23,13 +23,7 @@ import { labelFor } from '@/lib/labels';
 import { InviteStatusBadge } from './InviteStatusBadge';
 
 /** Columns dropped on a phone. Exported so the tab and its test agree. */
-export const INVITE_COMPACT_DROPPED = new Set([
-  'email',
-  'phone',
-  'role',
-  'team',
-  'expiresAt',
-]);
+export const INVITE_COMPACT_DROPPED = new Set(['email', 'phone', 'role', 'team', 'expiresAt']);
 
 export function buildInviteColumns({
   compact,
@@ -90,9 +84,7 @@ export function buildInviteColumns({
     {
       id: 'role',
       header: 'Role',
-      cell: ({ row }) => (
-        <span className="text-sm">{labelFor('role', row.original.role)}</span>
-      ),
+      cell: ({ row }) => <span className="text-sm">{labelFor('role', row.original.role)}</span>,
       enableSorting: false,
     },
     {

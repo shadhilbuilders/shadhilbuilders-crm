@@ -75,7 +75,8 @@ export class InvitesController {
     const parsed = InviteFilterDtoSchema.safeParse({
       status: typeof query['status'] === 'string' ? query['status'] : undefined,
       limit: typeof query['limit'] === 'string' ? Number.parseInt(query['limit'], 10) : undefined,
-      offset: typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
+      offset:
+        typeof query['offset'] === 'string' ? Number.parseInt(query['offset'], 10) : undefined,
     });
     if (!parsed.success) {
       throw new BadRequestException(
@@ -93,10 +94,7 @@ export class InvitesController {
       'Rotate an invite token and extend its expiry. The old link dies immediately. ' +
       'Rejected for an accepted invite.',
   })
-  async resend(
-    @Req() req: AuthedRequest,
-    @Param('id') id: string,
-  ): Promise<CreateInviteResult> {
+  async resend(@Req() req: AuthedRequest, @Param('id') id: string): Promise<CreateInviteResult> {
     return this.invites.resend(req.user!, id);
   }
 

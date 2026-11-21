@@ -44,8 +44,7 @@ function useClipboardAvailable(): boolean {
   const [available, setAvailable] = useState(false);
   useEffect(() => {
     setAvailable(
-      typeof navigator !== 'undefined' &&
-        typeof navigator.clipboard?.writeText === 'function',
+      typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function',
     );
   }, []);
   return available;
@@ -108,9 +107,7 @@ export function CopyableLink({ value, label = 'Invite link', testId = 'invite-li
             type="button"
             variant="outline"
             onClick={() => void handleCopy()}
-            leftIcon={
-              copied ? <LuCheck className="size-4" /> : <LuCopy className="size-4" />
-            }
+            leftIcon={copied ? <LuCheck className="size-4" /> : <LuCopy className="size-4" />}
             data-qa={`${testId}-copy-button`}
             // pointer-fine: keeps the 44px finger target from inflating the
             // dialog on a desktop mouse, where 44px is just a chunky button.

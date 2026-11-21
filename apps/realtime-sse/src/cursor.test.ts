@@ -57,11 +57,7 @@ describe('advanceCursor', () => {
   });
 
   it('takes the maximum across an unordered batch', () => {
-    const next = advanceCursor(START_OF_STREAM, [
-      frame(T1, 'a'),
-      frame(T3, 'c'),
-      frame(T2, 'b'),
-    ]);
+    const next = advanceCursor(START_OF_STREAM, [frame(T1, 'a'), frame(T3, 'c'), frame(T2, 'b')]);
     expect(next).toEqual({ createdAt: new Date(T3), id: 'c' });
   });
 
@@ -79,12 +75,12 @@ describe('same-timestamp rows (the reason the cursor is a tuple)', () => {
   const shared = T1;
 
   it('orders same-timestamp rows by id', () => {
-    expect(isAfter({ createdAt: new Date(shared), id: 'b' }, { createdAt: new Date(shared), id: 'a' })).toBe(
-      true,
-    );
-    expect(isAfter({ createdAt: new Date(shared), id: 'a' }, { createdAt: new Date(shared), id: 'b' })).toBe(
-      false,
-    );
+    expect(
+      isAfter({ createdAt: new Date(shared), id: 'b' }, { createdAt: new Date(shared), id: 'a' }),
+    ).toBe(true);
+    expect(
+      isAfter({ createdAt: new Date(shared), id: 'a' }, { createdAt: new Date(shared), id: 'b' }),
+    ).toBe(false);
   });
 
   it('advances within a shared timestamp instead of stalling', () => {

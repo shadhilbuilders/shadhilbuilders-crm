@@ -84,12 +84,20 @@ export function InviteRowActions({ invite }: { invite: InviteRow }) {
             />
           ) : null}
 
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setResendOpen(true)} data-qa="invite-row-resend">
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setResendOpen(true)}
+            data-qa="invite-row-resend"
+          >
             <LuRefreshCw className="text-muted-foreground mr-2 size-4" />
             Resend (new link)
           </DropdownMenuItem>
 
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setRevokeOpen(true)} data-qa="invite-row-revoke">
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setRevokeOpen(true)}
+            data-qa="invite-row-revoke"
+          >
             <LuBan className="text-muted-foreground mr-2 size-4" />
             Revoke
           </DropdownMenuItem>

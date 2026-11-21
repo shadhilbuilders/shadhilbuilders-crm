@@ -82,10 +82,7 @@ export class InvitesPublicController {
       'joined plus the pinned email and phone. 404 for an unknown token, 410 for ' +
       'expired / revoked / already accepted.',
   })
-  async preview(
-    @Param('token') token: string,
-    @Ip() ip: string,
-  ): Promise<PublicInvitePreview> {
+  async preview(@Param('token') token: string, @Ip() ip: string): Promise<PublicInvitePreview> {
     assertWithinRateLimit(ip);
     return this.invites.preview(token);
   }

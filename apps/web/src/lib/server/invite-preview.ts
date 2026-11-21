@@ -29,8 +29,7 @@ export type InvitePreviewFailure =
   | { kind: 'unavailable' };
 
 export type InvitePreviewResult =
-  | { ok: true; data: PublicInvitePreview }
-  | { ok: false; failure: InvitePreviewFailure };
+  { ok: true; data: PublicInvitePreview } | { ok: false; failure: InvitePreviewFailure };
 
 /** Matches the backend's invite error codes (see @shadhil/api-types). */
 function classify(status: number, body: unknown): InvitePreviewFailure {

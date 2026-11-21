@@ -627,8 +627,7 @@ export class InvitesService {
         // Phone: omitted keeps the invite's number; provided corrects it.
         // The correction is recorded below - a silent rewrite would let an
         // invite be redirected to a different handset with no trace.
-        const phoneUsed =
-          dto.phone !== undefined && dto.phone !== null ? dto.phone : invite.phone;
+        const phoneUsed = dto.phone !== undefined && dto.phone !== null ? dto.phone : invite.phone;
         const phoneCorrected = phoneUsed !== invite.phone;
 
         // A staff phone is unique per org (User_phone_organizationId_key, a
@@ -728,9 +727,7 @@ export class InvitesService {
               acceptedByUserId: user.id,
               // Only when they actually differ - an unconditional pair would
               // train a reader to ignore the field.
-              ...(phoneCorrected
-                ? { phoneOnInvite: invite.phone, phoneUsed }
-                : {}),
+              ...(phoneCorrected ? { phoneOnInvite: invite.phone, phoneUsed } : {}),
             },
             reason: `invite accepted by ${user.email}`,
           },
@@ -808,9 +805,7 @@ export class InvitesService {
   ): Promise<string | null> {
     const needsTeam = ROLES_REQUIRING_TEAM.includes(dto.role as Role);
     if (needsTeam && dto.teamId === undefined) {
-      throw new BadRequestException(
-        `teamId is required when inviting a ${dto.role} user`,
-      );
+      throw new BadRequestException(`teamId is required when inviting a ${dto.role} user`);
     }
     if (dto.teamId === undefined) return null;
 
@@ -898,6 +893,6 @@ export class InvitesService {
       name: invite.name,
       organizationName: org?.name ?? 'our team',
     });
-      return { invite: this.toRow(invite, new Date()), ...links };
+    return { invite: this.toRow(invite, new Date()), ...links };
   }
 }
