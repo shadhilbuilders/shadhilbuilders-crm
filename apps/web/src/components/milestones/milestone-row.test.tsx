@@ -2,16 +2,17 @@
 //
 // protects= every field in the row starts on ONE left rail (the numeral owns its
 //           own gutter column, it does not indent the name field), and the
-//           44px height reaches the <input> element rather than its wrapper;
+//           36px field height (`min-h-9`) reaches the <input> element rather
+//           than its wrapper, while the icon buttons stay at 44px;
 // fails_when= the name field is indented 28px from the dates below it, or
-//           `min-h-11` is passed through `className` and lands on the wrapper;
+//           `min-h-9` is passed through `className` and lands on the wrapper;
 // no_claim= static markup, not a visual diff.
 //
 // WHY THESE ASSERTIONS ARE THE TEST. Both defects are CSS-in-className, so no
 // unit test can "see" the result without a browser. What a test CAN pin is the
 // structure that caused them, measured on the shipped dialog:
 //   - name input left x=47.2 vs date inputs x=19.2 (28px = w-5 + gap-2),
-//   - input centre ~6px above the 44px icon buttons' centre.
+//   - the field height living on the wrapper instead of the input.
 // Pin the structure, and neither bug can come back silently.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -55,9 +56,9 @@ describe('MilestoneRow', () => {
   it('sizes the field itself, not its wrapper', () => {
     const html = render();
     // `inputClassName` reaches the <input>; `className` would hit the wrapper.
-    expect(html).not.toContain('className="min-h-11"');
-    // Every field in the row is 44px: name + both dates.
-    expect(html.match(/min-h-11/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(html).not.toContain('className="min-h-9"');
+    // Every field in the row is 36px: name + both dates.
+    expect(html.match(/min-h-9/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it('numbers the row from one and labels its controls for a screen reader', () => {
@@ -112,7 +113,7 @@ describe('MilestoneRow', () => {
   it('keeps the name field usable on phones without squeezing the controls', () => {
     const html = render();
     const nameTag = html.match(/<input[^>]*aria-label="Milestone 1 name"[^>]*>/)?.[0] ?? '';
-    expect(nameTag).toContain('min-h-11');
+    expect(nameTag).toContain('min-h-9');
 
     // Wrap is allowed, and the actions refuse to shrink.
     expect(html).toContain('flex flex-wrap items-center gap-2');

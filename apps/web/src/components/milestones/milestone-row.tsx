@@ -38,8 +38,8 @@ export type MilestoneRowProps = {
   onRemove: () => void;
 };
 
-/** 44px tap target, applied to the <input> itself (see note 2 above). */
-const FIELD = 'min-h-11';
+/** 36px height, applied to the <input> itself (see note 2 above). */
+const FIELD = 'min-h-9';
 
 export function MilestoneRow({
   draft,
@@ -115,6 +115,7 @@ export function MilestoneRow({
                 icon={<LuTrash2 className="size-4" />}
                 aria-label={`Remove milestone ${position}`}
                 variant="ghost"
+                color="danger"
                 className="size-11 shrink-0"
                 onClick={onRemove}
               />

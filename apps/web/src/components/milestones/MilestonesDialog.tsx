@@ -6,7 +6,7 @@
 // milestone, 44px controls, the dialog body scrolls under a pinned footer.
 import { useEffect, useRef, useState } from 'react';
 
-import { Button, Dialog, toast } from '@paalstack/react-ui';
+import { AlertDialog, Button, Dialog, toast } from '@paalstack/react-ui';
 import { LuPlus } from '@paalstack/react-icons/lu';
 import { MAX_MILESTONES_PER_PROJECT } from '@shadhil/api-types';
 
@@ -18,6 +18,7 @@ import {
   newDraft,
   toPayload,
   validateDrafts,
+  warnDrafts,
   type MilestoneDraft,
 } from './milestone-draft';
 import { MilestoneRow } from './milestone-row';
@@ -43,12 +44,13 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
     setDrafts((list) => list.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
   const problem = validateDrafts(drafts);
+  const warning = warnDrafts(drafts);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
 
-  function save() {
-    if (problem !== null) {
-      toast.error(problem);
-      return;
-    }
+  // What the buyer currently sees, as opposed to what the editor holds.
+  const savedCount = query.data?.length ?? 0;
+
+  function persist() {
     replace.mutate(toPayload(drafts), {
       onSuccess: () => {
         toast.success('Milestones saved');
@@ -59,97 +61,139 @@ export function MilestonesDialog({ projectId, open, onOpenChange }: MilestonesDi
     });
   }
 
+  function save() {
+    if (problem !== null) {
+      toast.error(problem);
+      return;
+    }
+    // Saving an empty list deletes every milestone the buyer can see. One PUT,
+    // no undo, so ask first rather than relying on the audit row afterwards.
+    if (drafts.length === 0 && savedCount > 0) {
+      setConfirmEmpty(true);
+      return;
+    }
+    persist();
+  }
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      contentClassName="grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg"
-      header={{
-        title: 'Project milestones',
-        description:
-          'Buyers see these on their portal, in this order. Mark one reached with a date.',
-      }}
-      footer={
-        <div className="flex w-full justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={replace.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={save}
-            isLoading={replace.isPending}
-            loadingText="Saving..."
-            data-qa="milestones-save"
-          >
-            Save milestones
-          </Button>
-        </div>
-      }
-    >
-      <div
-        className="-mx-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain px-1"
-        data-qa="milestones-editor"
-      >
-        {query.isPending ? (
-          <p className="text-muted-foreground text-sm" role="status">
-            Loading milestones...
-          </p>
-        ) : query.isError ? (
-          <div role="alert" className="text-destructive text-sm">
-            Could not load milestones.{' '}
-            <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <>
-            {drafts.length === 0 ? (
-              <p className="text-muted-foreground text-sm" data-qa="milestones-empty">
-                No milestones yet. Add the first checkpoint buyers should look forward to.
-              </p>
-            ) : null}
-            <ol className="space-y-3">
-              {drafts.map((d, index) => (
-                <MilestoneRow
-                  key={d.key}
-                  draft={d}
-                  index={index}
-                  isFirst={index === 0}
-                  isLast={index === drafts.length - 1}
-                  onChange={(patch) => update(d.key, patch)}
-                  onMoveUp={() => setDrafts((l) => moveDraft(l, index, -1))}
-                  onMoveDown={() => setDrafts((l) => moveDraft(l, index, 1))}
-                  onRemove={() => setDrafts((l) => l.filter((x) => x.key !== d.key))}
-                />
-              ))}
-            </ol>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        contentClassName="grid-rows-[auto_minmax(0,1fr)_auto] max-h-[calc(100dvh-4rem)] overflow-hidden sm:max-w-lg"
+        header={{
+          title: 'Project milestones',
+          description:
+            'Buyers see these on their portal, in this order. Mark one reached with a date.',
+        }}
+        footer={
+          <div className="flex w-full justify-end gap-2">
             <Button
               type="button"
               variant="outline"
-              className="w-full"
-              leftIcon={<LuPlus className="size-4" />}
-              disabled={drafts.length >= MAX_MILESTONES_PER_PROJECT}
-              onClick={() => {
-                counter.current += 1;
-                setDrafts((l) => [...l, newDraft(`new-${counter.current}`)]);
-              }}
-              data-qa="milestone-add"
+              onClick={() => onOpenChange(false)}
+              disabled={replace.isPending}
             >
-              Add milestone
+              Cancel
             </Button>
-            {problem !== null && drafts.length > 0 ? (
-              <p className="text-danger text-sm" role="alert">
-                {problem}
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-    </Dialog>
+            <Button
+              type="button"
+              onClick={save}
+              isLoading={replace.isPending}
+              loadingText="Saving..."
+              data-qa="milestones-save"
+            >
+              Save milestones
+            </Button>
+          </div>
+        }
+      >
+        <div
+          className="-mx-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain px-1"
+          data-qa="milestones-editor"
+        >
+          {query.isPending ? (
+            <p className="text-muted-foreground text-sm" role="status">
+              Loading milestones...
+            </p>
+          ) : query.isError ? (
+            <div role="alert" className="text-destructive text-sm">
+              Could not load milestones.{' '}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void query.refetch()}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <>
+              {drafts.length === 0 ? (
+                <p className="text-muted-foreground text-sm" data-qa="milestones-empty">
+                  No milestones yet. Add the first checkpoint buyers should look forward to.
+                </p>
+              ) : null}
+              <ol className="space-y-3">
+                {drafts.map((d, index) => (
+                  <MilestoneRow
+                    key={d.key}
+                    draft={d}
+                    index={index}
+                    isFirst={index === 0}
+                    isLast={index === drafts.length - 1}
+                    onChange={(patch) => update(d.key, patch)}
+                    onMoveUp={() => setDrafts((l) => moveDraft(l, index, -1))}
+                    onMoveDown={() => setDrafts((l) => moveDraft(l, index, 1))}
+                    onRemove={() => setDrafts((l) => l.filter((x) => x.key !== d.key))}
+                  />
+                ))}
+              </ol>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                leftIcon={<LuPlus className="size-4" />}
+                disabled={drafts.length >= MAX_MILESTONES_PER_PROJECT}
+                onClick={() => {
+                  counter.current += 1;
+                  setDrafts((l) => [...l, newDraft(`new-${counter.current}`)]);
+                }}
+                data-qa="milestone-add"
+              >
+                Add milestone
+              </Button>
+              {problem !== null && drafts.length > 0 ? (
+                <p className="text-danger text-sm" role="alert">
+                  {problem}
+                </p>
+              ) : null}
+              {warning !== null && problem === null ? (
+                <p className="text-muted-foreground text-sm" data-qa="milestones-warning">
+                  {warning}
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmEmpty}
+        onOpenChange={setConfirmEmpty}
+        header={{
+          title: 'Delete every milestone?',
+          description: `This removes all ${savedCount} milestones from this project, and buyers stop seeing any checkpoints on their portal.`,
+        }}
+        cancelButtonText="Keep editing"
+        confirmButtonText="Delete them"
+        confirmButtonProps={{ 'data-qa': 'milestones-confirm-empty' }}
+        onConfirm={() => {
+          setConfirmEmpty(false);
+          persist();
+        }}
+      />
+    </>
   );
 }

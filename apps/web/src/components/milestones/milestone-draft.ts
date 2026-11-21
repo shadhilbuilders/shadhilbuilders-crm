@@ -2,7 +2,9 @@
 // of the component so ordering, date conversion and validation are unit-tested
 // without a DOM. A draft is what the form holds; `toPayload` is the wire shape.
 import {
+  COMPLETED_AT_FUTURE_TOLERANCE_MS,
   MAX_MILESTONES_PER_PROJECT,
+  findDuplicateMilestoneName,
   type ProjectMilestoneRow,
   type ReplaceMilestonesDto,
 } from '@shadhil/api-types';
@@ -19,6 +21,9 @@ export type MilestoneDraft = {
 
 const toDay = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
 const toIso = (day: string): string | null => (day === '' ? null : `${day}T00:00:00.000Z`);
+
+/** Epoch ms for a draft's `YYYY-MM-DD` day, or NaN when the input is not a day. */
+const dayMs = (day: string): number => Date.parse(`${day}T00:00:00.000Z`);
 
 export function draftsFromRows(rows: readonly ProjectMilestoneRow[]): MilestoneDraft[] {
   return rows.map((r) => ({
@@ -56,7 +61,38 @@ export function validateDrafts(list: readonly MilestoneDraft[]): string | null {
   if (blank !== -1) return `Milestone ${blank + 1} needs a name.`;
   const tooLong = list.findIndex((d) => d.name.trim().length > 80);
   if (tooLong !== -1) return `Milestone ${tooLong + 1} has a name over 80 characters.`;
+
+  // Same rule the DTO enforces, so the user hears about it before hitting Save.
+  const duplicate = findDuplicateMilestoneName(list.map((d) => d.name));
+  if (duplicate !== null) {
+    return `Milestone ${duplicate.index + 1} repeats the name "${duplicate.name}". Give each one a different name.`;
+  }
+
+  const badDate = list.findIndex(
+    (d) => d.completedDay !== '' && Number.isNaN(dayMs(d.completedDay)),
+  );
+  if (badDate !== -1) return `Milestone ${badDate + 1} has an invalid completion date.`;
+  const future = list.findIndex(
+    (d) =>
+      d.completedDay !== '' &&
+      dayMs(d.completedDay) > Date.now() + COMPLETED_AT_FUTURE_TOLERANCE_MS,
+  );
+  if (future !== -1) return `Milestone ${future + 1} cannot be marked reached with a future date.`;
+
   return null;
+}
+
+/**
+ * Non-blocking note: a completion date earlier than the target date is allowed
+ * (targets get revised after the fact) but is usually a typo, so the editor
+ * shows it without refusing the save.
+ */
+export function warnDrafts(list: readonly MilestoneDraft[]): string | null {
+  const index = list.findIndex(
+    (d) => d.completedDay !== '' && d.targetDay !== '' && d.completedDay < d.targetDay,
+  );
+  if (index === -1) return null;
+  return `Milestone ${index + 1} was completed before its target date. Check the target date if that was not intended.`;
 }
 
 export function toPayload(list: readonly MilestoneDraft[]): ReplaceMilestonesDto {
