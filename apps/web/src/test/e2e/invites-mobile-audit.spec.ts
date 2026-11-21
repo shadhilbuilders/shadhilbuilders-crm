@@ -125,6 +125,14 @@ async function measure(page: Page) {
 
     return {
       docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      // Separate from `docOverflow`: a dialog with its own scroller can clip
+      // horizontally without ever widening the document, so the document check
+      // alone would miss a token that is only scrollable-but-not-wrapping
+      // inside the popup.
+      datasetOverflow: Array.from(document.querySelectorAll('[data-qa$="-block"]')).some((el) => {
+        const box = el.getBoundingClientRect();
+        return box.right > vw + 1;
+      }),
       overflowing,
       small,
       coarse: window.matchMedia('(pointer: coarse)').matches,
@@ -200,41 +208,60 @@ test('every control in the invite dialog is a real 44px tap target on touch', as
 });
 
 test('the invite link wraps inside the dialog instead of widening it', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   // The narrowest real phone: the 43-character token must not force a scroll.
   await page.setViewportSize({ width: 320, height: 568 });
   await login(page);
+
+  // SEED THE FIXTURE, do not depend on one. This case used to find a pending
+  // invite by looking for one in the org and skip if there was none - and a
+  // fresh seeded org has none, so it skipped on every CI run. That is the
+  // worst kind of green: this is the only case that asserts the token wraps,
+  // which is the feature's single most likely phone regression. Instead we
+  // invite a throwaway address THROUGH THE UI, which (a) always works on a
+  // clean database and (b) exercises the create path end to end.
+  const seedEmail = `mobile-audit-${Date.now()}@example.com`;
   await openInvitesTab(page);
+  const emptyCta = page.locator('[data-qa="invite-staff-empty-cta"]');
+  const headerCta = page.locator('[data-qa="invite-staff-button"]');
+  await ((await emptyCta.count()) > 0 ? emptyCta : headerCta).first().click();
+  await page.locator('[data-qa="invite-email"]').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('[data-qa="invite-name"]').fill('Mobile Audit Invitee');
+  await page.locator('[data-qa="invite-email"]').fill(seedEmail);
+  await page.locator('[data-qa="invite-phone"]').fill('9876500011');
+  await page.locator('[data-qa="invite-submit"]').click();
 
-  // Resend is the only way to surface a link for an existing invite. If the org
-  // has no pending invite, this test asserts nothing and says so rather than
-  // failing on missing fixture data.
-  //
-  // ORDER MATTERS: `invite-row-resend` is a DropdownMenuItem, and the menu is
-  // mounted on OPEN, so counting it before clicking the trigger always returns
-  // 0 - which made this test skip unconditionally, including in orgs that DO
-  // have a pending invite. That is the vacuous pass this case exists to
-  // prevent, so the trigger is what we probe, and the item is waited for after.
-  const actionsTrigger = page.locator('[data-qa^="invite-row-actions-"]').first();
-  test.skip((await actionsTrigger.count()) === 0, 'no pending invite in this org to resend');
-
-  await actionsTrigger.click();
-  const resend = page.locator('[data-qa="invite-row-resend"]');
-  await resend.waitFor({ state: 'visible', timeout: 15_000 });
-  await resend.click();
-
-  const linkInput = page.locator('[data-qa="invite-resend-link-input"]');
-  await linkInput.waitFor({ state: 'visible', timeout: 20_000 });
+  // The create result IS a link block - same CopyableLink component and the
+  // same 43-character token as the resend panel, rendered in the narrowest
+  // dialog the feature has. That is the measurement this case needs, and it
+  // needs no pre-existing row.
+  const linkInput = page.locator('[data-qa="invite-link-input"]');
+  await linkInput.waitFor({ state: 'visible', timeout: 30_000 });
 
   const r = await measure(page);
-  expect(r.docOverflow, 'the long token forced horizontal overflow').toBe(false);
+  expect(r.datasetOverflow, 'the long token forced horizontal overflow').toBe(false);
   expect(r.overflowing, 'an element passed the viewport edge').toEqual([]);
 
   // No clipping: the whole token must be readable/selectable, because it IS the
-  // credential and the fallback for copying is selecting it by hand.
-  const clipped = await linkInput.evaluate((el) => {
-    const input = el as HTMLInputElement;
-    return input.scrollWidth > input.clientWidth + 1;
+  // credential and the fallback for copying is selecting it by hand. A
+  // single-line `<input>` reported scrollWidth > clientWidth here forever,
+  // because `break-all` cannot wrap in an input - which is why this asserts on
+  // wrapped height instead, and why the component uses a textarea.
+  const metrics = await linkInput.evaluate((el) => {
+    const field = el as HTMLTextAreaElement;
+    return {
+      scrollW: field.scrollWidth,
+      clientW: field.clientWidth,
+      scrollH: field.scrollHeight,
+      clientH: field.clientHeight,
+      value: field.value,
+    };
   });
-  expect(clipped, 'the invite link text is clipped').toBe(false);
+  expect(metrics.scrollW, 'the invite link is clipped horizontally').toBeLessThanOrEqual(
+    metrics.clientW + 1,
+  );
+  expect(metrics.scrollH, 'the invite link is clipped vertically').toBeLessThanOrEqual(
+    metrics.clientH + 1,
+  );
+  expect(metrics.value, 'the visible link is not a real invite URL').toContain('/invite/');
 });

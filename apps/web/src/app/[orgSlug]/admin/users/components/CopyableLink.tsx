@@ -102,7 +102,11 @@ export function CopyableLink({ value, label = 'Invite link', testId = 'invite-li
           ref={inputRef}
           readOnly
           value={value}
-          rows={2}
+          // Three rows, measured: at 320px the wrapped 43-character token needs
+          // three lines (scrollHeight 48 vs 33 for two), so a 2-row box clipped
+          // the end of the credential - the same defect as the input it
+          // replaced, one dimension over.
+          rows={3}
           aria-label={`${label} - select to copy`}
           data-qa={`${testId}-input`}
           onFocus={(e) => e.currentTarget.select()}
