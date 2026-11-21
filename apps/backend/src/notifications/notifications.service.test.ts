@@ -485,7 +485,59 @@ describe('emit - service hook for notification creation', () => {
     );
   });
 
-  it('deep-links a booking notification to the booking page, not the lead page', async () => {
+  it('protects= an explicit href wins for the push deep link (org-level events)', async () => {
+    // feedback.created has NO lead, NO unit and NO booking to derive a link
+    // from, so the emitter passes the route it already knows. Without this
+    // branch every feedback push would fall back to '/' and drop the reader on
+    // the dashboard instead of the admin triage page.
+    const sendToUser = vi.fn().mockResolvedValue(1);
+    const push = { sendToUser } as never;
+    const client = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client)),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      notification: {
+        create: vi.fn().mockResolvedValue({
+          id: 'n-fb',
+          type: 'feedback.created',
+          title: 'New 5/5 feedback',
+          body: 'Priya: great plots',
+          leadId: null,
+          unitId: null,
+          read: false,
+          createdAt: new Date('2026-11-21T00:00:00Z'),
+        }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
+      // Deliberately absent: no lead/unit lookups should be needed.
+      lead: { findUnique: vi.fn() },
+      unit: { findUnique: vi.fn() },
+    } as never;
+    const service = new NotificationsService({ $client: client } as never, push);
+
+    await service.emit('admin-1', {
+      type: 'feedback.created',
+      title: 'New 5/5 feedback',
+      body: 'Priya: great plots',
+      href: '/shadhil-builders/admin/feedback',
+      organizationId: 'org-1',
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sendToUser).toHaveBeenCalledWith(
+      'admin-1',
+      expect.objectContaining({
+        title: 'New 5/5 feedback',
+        url: '/shadhil-builders/admin/feedback',
+      }),
+      'org-1',
+    );
+    // No entity resolution ran, because the href short-circuits it.
+    expect((client as { lead: { findUnique: unknown } }).lead.findUnique).not.toHaveBeenCalled();
+    expect((client as { unit: { findUnique: unknown } }).unit.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('protects= a booking notification deep-links to the booking page, not the lead page', async () => {
     // Regression: booking notifications used to deep-link to the lead page.
     // With bookingId present, the push must go to
     // `/{orgSlug}/projects/{projectSlug}/bookings/{bookingId}`.

@@ -254,6 +254,10 @@ IMAGEKIT_URL_ENDPOINT=<from ImageKit>
 # Optional
 TELEGRAM_BOT_TOKEN=<optional - alerts no-op when absent>
 TELEGRAM_CHANNEL_ID=<optional>
+# Web push (recommended - see "Web push" below)
+VAPID_PUBLIC_KEY=<generate once per environment>
+VAPID_PRIVATE_KEY=<generate once per environment>
+VAPID_SUBJECT=mailto:admin@shadhilbuilders.in
 ```
 
 Two things that bite:
@@ -264,6 +268,55 @@ Two things that bite:
   Omit either and the container exits with a list naming every missing var.
 
 There is no `WA_BUSINESS_ACCOUNT_ID` - the backend does not read it.
+
+#### Web push (`VAPID_*`) - optional, but silent when missing
+
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` are deliberately NOT in the
+boot-env required list, because `PushService` must work in dev without them.
+The consequence is that their absence is **invisible from the app**: the
+container starts, the in-app bell works, and every push silently no-ops
+(`sendToUser` returns 0 after one warn line in the backend log). On the client,
+`GET /api/push/vapid-key` returns `null`, `usePushSubscription` treats that as
+"unsupported", and the "Enable notifications" prompt never appears - so nobody
+reports a bug, they just never get an OS notification.
+
+Generate a pair **once per environment** and reuse it. Rotating the pair
+invalidates every stored `PushSubscription` row (browsers re-subscribe on next
+prompt, but nobody is told), and a mismatched public/private pair fails at
+send time with `VapidPkHashMismatch` rather than at boot:
+
+```
+# FROM apps/backend - web-push is a dependency of that package, so the
+# command fails with MODULE_NOT_FOUND when run from the repo root.
+cd apps/backend && node -e "console.log(require('web-push').generateVAPIDKeys())"
+```
+
+Expect `{ publicKey: 'B...' (87 chars), privateKey: '...' (43 chars) }`.
+
+Verify after deploying. The route sits behind the global JWT guard, so an
+unauthenticated curl returns `{"message":"Missing Bearer token"...}` with HTTP
+401 - that is NOT a missing key, and it is the easiest way to misread this
+check. Use the container env and the boot log instead, and only then an
+authenticated call:
+
+```
+# expect three lines: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
+docker exec <shadhil-api-container> env | grep -c '^VAPID_'
+# expect no output at all; a hit means push is disabled (no-op)
+docker logs <shadhil-api-container> 2>&1 | grep 'web push disabled'
+# authenticated - expect {"publicKey":"B..."} ; a null publicKey means disabled
+curl -s -H "Authorization: Bearer $TOKEN" \
+  https://api.crm.shadhilbuilders.in/api/push/vapid-key
+```
+
+A pair that is present but mismatched (public not derived from private) boots
+clean and only fails at send time with `VapidPkHashMismatch`, so presence alone
+is not proof. To check the pair, derive the P-256 point from the private scalar
+and compare it against `VAPID_PUBLIC_KEY`.
+
+Also note push is **per device and per consent**: an admin who never accepted
+the browser prompt gets the in-app row and bell badge but no OS notification.
+That is expected browser behaviour, not a broken deployment.
 
 ### 3e. Application - `shadhil-web` (Next.js)
 
