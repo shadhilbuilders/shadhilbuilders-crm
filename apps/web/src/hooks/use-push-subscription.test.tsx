@@ -1,12 +1,21 @@
-// use-push-subscription - VAPID key-rotation behaviour.
+// use-push-subscription - server-truth reconciliation for web push.
 //
-// After the deployed pair is rotated, every browser subscription still carries
-// the OLD applicationServerKey. The push service rejects sends against it with a
-// 403 (VapidPkHashMismatch), which is neither 404 nor 410, so the backend never
-// prunes the row - the device silently stops receiving push while the UI still
-// says "subscribed". The hook must therefore compare the subscription's key with
-// the one the server serves now, drop a stale one, and let the enable path
-// rebuild it. jsdom has no service worker or push stack, so all of it is faked.
+// The browser holding a PushSubscription proves nothing about the server: the
+// row may have been pruned (404/410), dropped after a VAPID key rotation, or
+// never written because the subscribe POST failed. The old hook trusted the
+// browser alone, so a device could show "Enabled on this device" while receiving
+// nothing, with no UI path back. These tests pin the reconciliation:
+//
+// protects=  a subscription the server cannot deliver to is never reported as
+//            enabled; a missing row is healed by re-posting; a row under a
+//            retired key is dropped and surfaced as "needs re-registering";
+//            state is only claimed after the server confirms.
+// fails_when= the badge says enabled while the server has no usable record, a
+//            successful enable is reported before the POST lands, or a retired
+//            subscription is left in place (subscribe() then throws
+//            InvalidStateError).
+// no_claim= does NOT exercise a real service worker, real VAPID signing, or the
+//            backend; the browser push stack and the api client are faked.
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,6 +67,14 @@ function makeSubscription(applicationServerKey: ArrayBuffer | null): FakeSubscri
 
 let currentSubscription: FakeSubscription | null = null;
 let subscribe: ReturnType<typeof vi.fn>;
+
+/** What `GET /push/status` answers, or 'error' to simulate the backend being down. */
+type StatusReply = { registered: boolean; keyMatches: boolean } | 'error';
+/** What `POST /push/subscribe` answers, or 'error' to simulate the write failing. */
+type PostReply = { ok: true; keyMatches: boolean } | 'error';
+
+let statusReply: StatusReply;
+let postReply: PostReply;
 
 function installBrowser(permission: NotificationPermission = 'granted'): void {
   subscribe = vi.fn(async (options: PushSubscriptionOptionsInit) => {
@@ -117,9 +134,20 @@ async function renderHook(): Promise<PushCapability> {
 beforeEach(() => {
   latest = null;
   currentSubscription = null;
-  mocks.api.mockImplementation(async (path: string) =>
-    path === '/push/vapid-key' ? { publicKey: CURRENT_KEY } : undefined,
-  );
+  statusReply = { registered: true, keyMatches: true };
+  postReply = { ok: true, keyMatches: true };
+  mocks.api.mockImplementation(async (path: string) => {
+    if (path === '/push/vapid-key') return { publicKey: CURRENT_KEY };
+    if (path.startsWith('/push/status')) {
+      if (statusReply === 'error') throw new Error('backend unreachable');
+      return statusReply;
+    }
+    if (path === '/push/subscribe') {
+      if (postReply === 'error') throw new Error('write failed');
+      return postReply;
+    }
+    return undefined;
+  });
 });
 
 afterEach(() => {
@@ -132,8 +160,8 @@ afterEach(() => {
   delete (window as { PushManager?: unknown }).PushManager;
 });
 
-describe('usePushSubscription - VAPID key rotation', () => {
-  it('keeps a subscription that was created with the current key', async () => {
+describe('usePushSubscription - reconciles with the server on mount', () => {
+  it('reports subscribed only when the server holds the endpoint under the current key', async () => {
     installBrowser();
     currentSubscription = makeSubscription(CURRENT_KEY_BYTES.slice().buffer);
 
@@ -141,20 +169,66 @@ describe('usePushSubscription - VAPID key rotation', () => {
 
     expect(capability.isSupported).toBe(true);
     expect(capability.isSubscribed).toBe(true);
+    expect(capability.needsRepair).toBe(false);
+    expect(mocks.api).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `/push/status?endpoint=${encodeURIComponent(currentSubscription.endpoint)}`,
+      ),
+    );
+    expect(mocks.api).not.toHaveBeenCalledWith('/push/subscribe', expect.anything());
     expect(currentSubscription.unsubscribe).not.toHaveBeenCalled();
   });
 
-  it('drops a subscription bound to a retired key so the device can re-subscribe', async () => {
+  it('heals a missing row by re-posting a subscription whose key still matches', async () => {
+    // This is the "device shows enabled, table is empty" case: the row was
+    // pruned on 404/410 or the original POST never landed.
+    installBrowser();
+    currentSubscription = makeSubscription(CURRENT_KEY_BYTES.slice().buffer);
+    statusReply = { registered: false, keyMatches: false };
+
+    const capability = await renderHook();
+
+    expect(mocks.api).toHaveBeenCalledWith(
+      '/push/subscribe',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(capability.isSubscribed).toBe(true);
+    expect(capability.needsRepair).toBe(false);
+  });
+
+  it('drops a subscription registered under a retired key and asks for a re-register', async () => {
     installBrowser();
     currentSubscription = makeSubscription(RETIRED_KEY_BYTES.slice().buffer);
+    statusReply = { registered: true, keyMatches: false };
 
     const capability = await renderHook();
 
     expect(currentSubscription.unsubscribe).toHaveBeenCalledTimes(1);
     expect(capability.isSupported).toBe(true);
-    // Nothing is registered server-side for the new key yet, so the prompt /
-    // Settings enable button must be offered again.
     expect(capability.isSubscribed).toBe(false);
+    expect(capability.needsRepair).toBe(true);
+  });
+
+  it('does not post a retired-key subscription back to the server', async () => {
+    installBrowser();
+    currentSubscription = makeSubscription(RETIRED_KEY_BYTES.slice().buffer);
+    statusReply = { registered: false, keyMatches: false };
+
+    await renderHook();
+
+    // Re-posting it would recreate a row that can never be delivered to.
+    expect(mocks.api).not.toHaveBeenCalledWith('/push/subscribe', expect.anything());
+  });
+
+  it('trusts the browser when the status call fails, rather than calling a working device broken', async () => {
+    installBrowser();
+    currentSubscription = makeSubscription(CURRENT_KEY_BYTES.slice().buffer);
+    statusReply = 'error';
+
+    const capability = await renderHook();
+
+    expect(capability.isSubscribed).toBe(true);
+    expect(capability.needsRepair).toBe(false);
   });
 
   it('treats an unreadable applicationServerKey as a match (Safari)', async () => {
@@ -167,9 +241,42 @@ describe('usePushSubscription - VAPID key rotation', () => {
     expect(capability.isSubscribed).toBe(true);
   });
 
-  it('enablePush replaces a retired-key subscription instead of reporting success', async () => {
+  it('stays not-subscribed when the browser has no subscription at all', async () => {
+    installBrowser();
+
+    const capability = await renderHook();
+
+    expect(capability.isSupported).toBe(true);
+    expect(capability.isSubscribed).toBe(false);
+    expect(capability.needsRepair).toBe(false);
+    // No endpoint to ask about, so no status round trip either.
+    expect(
+      mocks.api.mock.calls.filter(([path]) => String(path).startsWith('/push/status')),
+    ).toHaveLength(0);
+  });
+});
+
+describe('usePushSubscription - enablePush never claims more than the server has', () => {
+  it('does not report success when registering an existing subscription fails', async () => {
+    installBrowser();
+    currentSubscription = makeSubscription(CURRENT_KEY_BYTES.slice().buffer);
+    await renderHook();
+    postReply = 'error';
+
+    let enabled = true;
+    await act(async () => {
+      enabled = await latest!.enablePush();
+    });
+
+    expect(enabled).toBe(false);
+    expect(latest!.isSubscribed).toBe(false);
+    expect(latest!.needsRepair).toBe(true);
+  });
+
+  it('replaces a retired-key subscription instead of reporting success', async () => {
     installBrowser();
     currentSubscription = makeSubscription(RETIRED_KEY_BYTES.slice().buffer);
+    statusReply = { registered: true, keyMatches: false };
     await renderHook();
     mocks.api.mockClear();
 
@@ -189,7 +296,7 @@ describe('usePushSubscription - VAPID key rotation', () => {
     );
   });
 
-  it('enablePush is a no-op when the subscription already uses the current key', async () => {
+  it('confirms registration with the server when the subscription already matches', async () => {
     installBrowser();
     currentSubscription = makeSubscription(CURRENT_KEY_BYTES.slice().buffer);
     await renderHook();
@@ -202,7 +309,56 @@ describe('usePushSubscription - VAPID key rotation', () => {
 
     expect(enabled).toBe(true);
     expect(subscribe).not.toHaveBeenCalled();
-    // The key lookup itself is expected; registering the subscription again is not.
-    expect(mocks.api).not.toHaveBeenCalledWith('/push/subscribe', expect.anything());
+    // The key lookup plus the confirmation POST; no new subscription.
+    expect(mocks.api).toHaveBeenCalledWith(
+      '/push/subscribe',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
+
+describe('usePushSubscription - reRegister', () => {
+  it('drops the stale subscription, subscribes fresh, and registers it', async () => {
+    installBrowser();
+    const stale = makeSubscription(RETIRED_KEY_BYTES.slice().buffer);
+    currentSubscription = stale;
+    statusReply = { registered: true, keyMatches: false };
+    await renderHook();
+    // The mount reconciliation already dropped it once (retired key).
+    expect(stale.unsubscribe).toHaveBeenCalledTimes(1);
+
+    let repaired = false;
+    await act(async () => {
+      repaired = await latest!.reRegister();
+    });
+
+    // reRegister clears whatever the browser still holds before subscribing:
+    // reusing a live subscription returns the SAME endpoint, which after a
+    // rotation can never become deliverable.
+    expect(stale.unsubscribe).toHaveBeenCalledTimes(2);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(
+      toBase64Url(new Uint8Array(subscribe.mock.calls[0]![0].applicationServerKey as ArrayBuffer)),
+    ).toBe(CURRENT_KEY);
+    expect(repaired).toBe(true);
+    expect(latest!.isSubscribed).toBe(true);
+    expect(latest!.needsRepair).toBe(false);
+  });
+
+  it('reports failure and keeps needsRepair when the register POST fails', async () => {
+    installBrowser();
+    currentSubscription = makeSubscription(RETIRED_KEY_BYTES.slice().buffer);
+    statusReply = { registered: false, keyMatches: false };
+    await renderHook();
+    postReply = 'error';
+
+    let repaired = true;
+    await act(async () => {
+      repaired = await latest!.reRegister();
+    });
+
+    expect(repaired).toBe(false);
+    expect(latest!.isSubscribed).toBe(false);
+    expect(latest!.needsRepair).toBe(true);
   });
 });

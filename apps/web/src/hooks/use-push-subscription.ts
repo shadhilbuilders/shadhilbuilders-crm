@@ -101,13 +101,43 @@ export type PushCapability = {
   checked: boolean;
   /** Current `Notification.permission` ('default' | 'granted' | 'denied'). */
   permission: NotificationPermission;
+  /**
+   * The browser holds a subscription the SERVER cannot deliver to: no row, or a
+   * row registered under a retired VAPID key. `isSubscribed` is false in that
+   * state; this flag is what makes "Re-register this device" appear instead of a
+   * dead end where the badge claims enabled and nothing ever arrives.
+   */
+  needsRepair: boolean;
   /** User-initiated: request permission (if needed) + subscribe + register. */
   enablePush: () => Promise<boolean>;
+  /** User-initiated: drop whatever the browser holds and register against the current key. */
+  reRegister: () => Promise<boolean>;
 };
+
+type PushServerStatus = { registered: boolean; keyMatches: boolean };
+
+/** POST the browser's subscription so the server can actually deliver to it. */
+async function registerWithServer(sub: PushSubscription): Promise<PushServerStatus> {
+  return api<PushServerStatus>('/push/subscribe', {
+    method: 'POST',
+    json: {
+      endpoint: sub.endpoint,
+      p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')!))),
+      auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')!))),
+      platform: 'WEB',
+    },
+  });
+}
+
+/** Server truth about this endpoint. The only authority on whether push can land. */
+async function fetchServerStatus(endpoint: string): Promise<PushServerStatus> {
+  return api<PushServerStatus>(`/push/status?endpoint=${encodeURIComponent(endpoint)}`);
+}
 
 export function usePushSubscription(): PushCapability {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [needsRepair, setNeedsRepair] = useState(false);
   const [checked, setChecked] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>(() =>
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
@@ -170,16 +200,69 @@ export function usePushSubscription(): PushCapability {
         }
         const existing = await reg.pushManager.getSubscription();
         if (cancelled) return;
-        // A subscription bound to a retired VAPID key can never receive again.
-        // Drop it here so `isSubscribed` goes false and the enable path rebuilds.
-        const usable = existing !== null && matchesServerKey(existing, publicKey) ? existing : null;
-        if (existing !== null && usable === null) {
+        setIsSupported(true);
+
+        if (existing === null) {
+          subRef.current = null;
+          setIsSubscribed(false);
+          setNeedsRepair(false);
+          setChecked(true);
+          return;
+        }
+
+        // The browser holding a subscription proves nothing about the server:
+        // the row may have been pruned on 404/410, dropped after a VAPID key
+        // rotation, or never written because the subscribe POST failed. That gap
+        // is how a device shows "Enabled on this device" while receiving
+        // nothing. Ask the server, then reconcile.
+        let status: PushServerStatus | null = null;
+        try {
+          status = await fetchServerStatus(existing.endpoint);
+        } catch {
+          // Backend unreachable. Fall back to trusting the browser rather than
+          // telling a working device it is broken.
+          status = null;
+        }
+        if (cancelled) return;
+
+        if (status === null || (status.registered && status.keyMatches)) {
+          subRef.current = existing;
+          setIsSubscribed(true);
+          setNeedsRepair(false);
+          setChecked(true);
+          return;
+        }
+
+        if (status.registered && !status.keyMatches) {
+          // Registered under a retired VAPID key: nothing can make this endpoint
+          // deliver, and leaving it in place also makes subscribe() throw
+          // InvalidStateError. Drop it and offer the repair path.
           await existing.unsubscribe().catch(() => undefined);
           if (cancelled) return;
+          subRef.current = null;
+          setIsSubscribed(false);
+          setNeedsRepair(true);
+          setChecked(true);
+          return;
         }
-        subRef.current = usable;
-        setIsSupported(true);
-        setIsSubscribed(usable !== null);
+
+        // Not registered at all. If the browser's key is the one the server
+        // signs with now, the row was simply pruned or the POST never landed -
+        // re-post it (idempotent, no user gesture needed). A browser key that
+        // does not match means the device has to subscribe again, which needs a
+        // click on iOS.
+        const keyMatches = matchesServerKey(existing, publicKey);
+        const healed = keyMatches
+          ? await registerWithServer(existing).then(
+              (result) => result.keyMatches,
+              () => false,
+            )
+          : false;
+        if (cancelled) return;
+        if (!keyMatches) await existing.unsubscribe().catch(() => undefined);
+        subRef.current = healed ? existing : null;
+        setIsSubscribed(healed);
+        setNeedsRepair(!healed);
         setChecked(true);
       } catch {
         if (!cancelled) {
@@ -209,9 +292,17 @@ export function usePushSubscription(): PushCapability {
       // already granted for this origin (returning user), skip the prompt.
       const existing = (await reg.pushManager.getSubscription()) ?? subRef.current;
       if (existing !== null && matchesServerKey(existing, publicKey)) {
-        subRef.current = existing;
-        setIsSubscribed(true);
-        return true;
+        // Already subscribed here, but never claim success before the SERVER has
+        // the row: a failed POST is exactly how a device ends up showing
+        // "enabled" while nothing can be delivered.
+        const registered = await registerWithServer(existing).then(
+          (result) => result.keyMatches,
+          () => false,
+        );
+        subRef.current = registered ? existing : null;
+        setIsSubscribed(registered);
+        setNeedsRepair(!registered);
+        return registered;
       }
       if (existing !== null) {
         // Bound to a retired VAPID key - clear it before subscribing again.
@@ -229,24 +320,75 @@ export function usePushSubscription(): PushCapability {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
       });
+
+      // Register with the server FIRST, then claim the state. `setIsSubscribed`
+      // before this point is what made a failed POST look like success.
+      const result = await registerWithServer(sub).then(
+        (value) => value,
+        () => null,
+      );
+      if (result === null) {
+        subRef.current = null;
+        setIsSubscribed(false);
+        setNeedsRepair(true);
+        return false;
+      }
       subRef.current = sub;
       setIsSubscribed(true);
+      setNeedsRepair(!result.keyMatches);
       setPermission('granted');
-
-      await api('/push/subscribe', {
-        method: 'POST',
-        json: {
-          endpoint: sub.endpoint,
-          p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')!))),
-          auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')!))),
-          platform: 'WEB',
-        },
-      });
       return true;
     } catch {
       return false;
     }
   }, []);
 
-  return { isSupported, isSubscribed, checked, permission, enablePush };
+  /**
+   * Repair path for a device whose browser subscription the server cannot use
+   * (row pruned, never written, or registered under a retired VAPID key).
+   *
+   * Always re-subscribes rather than reusing: `subscribe()` on a live
+   * subscription returns the SAME endpoint, so reusing it after a rotation can
+   * never produce a deliverable one. Runs from a click, which is the user
+   * activation iOS requires for subscribe().
+   */
+  const reRegister = useCallback(async (): Promise<boolean> => {
+    try {
+      const reg = await swReadyOrNull();
+      if (reg === null) return false;
+      const { publicKey } = await api<{ publicKey: string | null }>('/push/vapid-key');
+      if (!publicKey) return false;
+
+      const existing = await reg.pushManager.getSubscription();
+      if (existing !== null) await existing.unsubscribe().catch(() => undefined);
+      subRef.current = null;
+
+      const permission =
+        Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      setPermission(permission);
+      if (permission !== 'granted') return false;
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+      });
+      const result = await registerWithServer(sub).then(
+        (value) => value,
+        () => null,
+      );
+      if (result === null) {
+        setIsSubscribed(false);
+        setNeedsRepair(true);
+        return false;
+      }
+      subRef.current = sub;
+      setIsSubscribed(true);
+      setNeedsRepair(false);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  return { isSupported, isSubscribed, checked, permission, needsRepair, enablePush, reRegister };
 }

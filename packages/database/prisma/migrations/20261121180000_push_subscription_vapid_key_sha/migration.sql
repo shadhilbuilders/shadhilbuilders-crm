@@ -1,0 +1,26 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- PushSubscription.vapidKeySha - which VAPID key pair a device registered under
+-- (2026-11-21)
+--
+-- WHY: rotating the deployed VAPID pair makes every existing endpoint
+-- undeliverable (the push service rejects a send signed with a different key,
+-- 403 VapidPkHashMismatch). Until now nothing recorded that relationship, so the
+-- server could not tell a live endpoint from a dead one, and the client could not
+-- ask: Safari may report `options.applicationServerKey` as null, and a cached
+-- bundle can predate any client-side check entirely. With the fingerprint on the
+-- row, `GET /api/push/status` answers `{ registered, keyMatches }` from server
+-- truth and the device repairs itself.
+--
+-- NULLABLE ON PURPOSE: existing rows predate the column. NULL means "registered
+-- while we were not recording this", which PushService treats as a mismatch so
+-- those devices re-register once. A backfill is impossible - the key the row was
+-- created with was never stored.
+--
+-- NO RLS CHANGE: the push_subscription_* policies are row-scoped predicates over
+-- userId/organizationId; a new nullable column does not alter them, and the
+-- table-level GRANTs in rls/policies.sql already cover new columns.
+--
+-- ROLLBACK: ALTER TABLE "PushSubscription" DROP COLUMN "vapidKeySha";
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "PushSubscription" ADD COLUMN "vapidKeySha" TEXT;

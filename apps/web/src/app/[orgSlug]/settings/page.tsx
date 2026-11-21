@@ -514,6 +514,9 @@ function NotificationsSection() {
       return needsIosHomeScreenInstall()
         ? { tone: 'warn' as const, label: 'Needs Home Screen install' }
         : { tone: 'muted' as const, label: 'Not supported here' };
+    // The browser holds a subscription the server cannot deliver to. Saying
+    // "Enabled" here was the lie: nothing arrives and there is no way back.
+    if (push.needsRepair) return { tone: 'warn' as const, label: 'Needs re-registering' };
     if (push.isSubscribed) return { tone: 'ok' as const, label: 'Enabled on this device' };
     if (push.permission === 'denied')
       return { tone: 'warn' as const, label: 'Blocked in this browser' };
@@ -536,6 +539,23 @@ function NotificationsSection() {
       );
     } else {
       toast.error('Notifications were not enabled');
+    }
+  }
+
+  // The repair action: the browser holds a subscription the server cannot use
+  // (pruned row, failed registration, or a key rotation). It always re-subscribes
+  // from a click, because iOS only allows subscribe() under user activation.
+  async function repair(): Promise<void> {
+    setPending(true);
+    const ok = await push.reRegister();
+    setPending(false);
+    if (ok) toast.success('Notifications re-registered on this device');
+    else if (push.permission === 'denied') {
+      toast.error(
+        'This browser has blocked notifications. Allow them in the site settings, then try again.',
+      );
+    } else {
+      toast.error('Could not re-register notifications on this device');
     }
   }
 
@@ -567,9 +587,11 @@ function NotificationsSection() {
                 ? 'Blocked at the browser level - enable it in your browser site settings first.'
                 : iosInstall
                   ? 'iPhone and iPad only deliver notifications to apps added to the Home Screen. Open this site in Safari, tap Share, choose "Add to Home Screen", then enable notifications there. Needs iOS 16.4 or later.'
-                  : push.checked && !push.isSupported
-                    ? 'This browser cannot receive push notifications (no service worker or push support).'
-                    : 'Alerts are delivered per device - enable them on each browser you use.'}
+                  : push.checked && push.needsRepair
+                    ? 'This device is marked as subscribed, but the server has no usable record for it, so alerts cannot arrive. Re-register to fix it.'
+                    : push.checked && !push.isSupported
+                      ? 'This browser cannot receive push notifications (no service worker or push support).'
+                      : 'Alerts are delivered per device - enable them on each browser you use.'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -583,16 +605,28 @@ function NotificationsSection() {
                     ? 'install-required'
                     : !push.isSupported
                       ? 'unsupported'
-                      : push.isSubscribed
-                        ? 'subscribed'
-                        : push.permission === 'denied'
-                          ? 'denied'
-                          : 'available'
+                      : push.needsRepair
+                        ? 'repair'
+                        : push.isSubscribed
+                          ? 'subscribed'
+                          : push.permission === 'denied'
+                            ? 'denied'
+                            : 'available'
               }
             >
               {state.label}
             </Badge>
-            {canOfferEnable ? (
+            {push.checked && push.needsRepair && push.permission !== 'denied' ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void repair()}
+                disabled={pending}
+                data-qa="settings-push-reregister"
+              >
+                {pending ? 'Re-registering...' : 'Re-register'}
+              </Button>
+            ) : canOfferEnable ? (
               <Button
                 type="button"
                 size="sm"

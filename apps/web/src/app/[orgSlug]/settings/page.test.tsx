@@ -396,6 +396,38 @@ describe('SettingsPage - notifications tells the truth', () => {
     expect(document.body.textContent ?? '').toContain('Enabled on this device');
   });
 
+  it('never claims enabled when the server has no usable record, and offers the repair', async () => {
+    // The exact bug seen on a real iPhone: the browser holds a subscription, so
+    // the badge said "Enabled on this device", while the server had no row and
+    // could deliver nothing - with no way back.
+    const reRegister = vi.fn(async () => true);
+    mocks.usePushSubscription.mockReturnValue({
+      ...pushAvailable,
+      isSubscribed: false,
+      needsRepair: true,
+      permission: 'granted',
+      reRegister,
+    });
+
+    await mount();
+
+    const badge = document.querySelector('[data-push-state]');
+    expect(badge?.getAttribute('data-push-state')).toBe('repair');
+    expect(document.body.textContent ?? '').toContain('Needs re-registering');
+    expect(document.body.textContent ?? '').not.toContain('Enabled on this device');
+
+    const repairButton = document.querySelector<HTMLButtonElement>(
+      '[data-qa="settings-push-reregister"]',
+    );
+    expect(repairButton).not.toBeNull();
+    expect(document.querySelector('[data-qa="settings-push-enable"]')).toBeNull();
+
+    await act(async () => {
+      repairButton?.click();
+    });
+    expect(reRegister).toHaveBeenCalledTimes(1);
+  });
+
   it('renders NO quiet-hours / per-trigger switches (v1.1, no backend)', async () => {
     await mount();
     const text = document.body.textContent ?? '';

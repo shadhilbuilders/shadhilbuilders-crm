@@ -1377,6 +1377,14 @@ model PushSubscription {
   p256dh         String
   auth           String
   platform       PushPlatform
+  // Which VAPID key pair this endpoint was registered under (sha256 of the
+  // server's public key, first 16 hex chars). An endpoint created with key A
+  // can never be delivered to with key B - the push service rejects the send -
+  // so after a key rotation every row whose fingerprint does not match the
+  // CURRENT key is dead and must be re-registered by the device. NULL means
+  // "registered before this column existed", which is treated as unknown and
+  // therefore as suspicious: see PushService.status().
+  vapidKeySha    String?
   createdAt      DateTime     @default(now())
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
