@@ -12,8 +12,16 @@
 // button that silently does nothing there is the worst possible outcome: the
 // admin believes they copied something and sends nothing. So when the API is
 // unavailable we (a) hide the Copy button entirely and (b) render the link in
-// a readonly input that selects itself on focus, which makes long-press ->
+// a readonly TEXTAREA that selects itself on focus, which makes long-press ->
 // Select All work the way a phone user expects.
+//
+// WHY A TEXTAREA AND NOT AN `<input>` (2026-11-21): `break-all` has no effect
+// on a single-line input - it cannot wrap, so it scrolls horizontally instead.
+// The 43-character token was therefore CLIPPED at both dialog widths: the
+// visible text stopped mid-token with no ellipsis and no cue, and hand-select
+// copying (the whole reason this fallback exists) could not see the rest. A
+// textarea wraps, so the credential is fully readable; it is still readonly and
+// still selects all on focus, so the copy idioms are unchanged.
 //
 // The confirmation is announced, not just shown: on a phone the clipboard
 // gives no feedback of its own, and a screen-reader user gets nothing at all
@@ -53,7 +61,7 @@ function useClipboardAvailable(): boolean {
 export function CopyableLink({ value, label = 'Invite link', testId = 'invite-link' }: Props) {
   const canCopy = useClipboardAvailable();
   const [copied, setCopied] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear the "Copied" flash on unmount so a fast dialog close cannot leave a
@@ -87,17 +95,21 @@ export function CopyableLink({ value, label = 'Invite link', testId = 'invite-li
 
       {/* break-all + font-mono: the token is 43 unbroken base64url characters,
           which otherwise forces a 320px dialog to scroll sideways. Same idiom
-          the webhooks/audit pages use for long opaque ids. */}
+          the webhooks/audit pages use for long opaque ids. A textarea (not an
+          input) so the wrapping actually happens - see the file header. */}
       <div className="border-border bg-muted/40 rounded-md border p-2">
-        <input
+        <textarea
           ref={inputRef}
           readOnly
           value={value}
+          rows={2}
           aria-label={`${label} - select to copy`}
           data-qa={`${testId}-input`}
           onFocus={(e) => e.currentTarget.select()}
           onClick={(e) => e.currentTarget.select()}
-          className="text-foreground w-full bg-transparent font-mono text-xs break-all outline-none"
+          // resize-none: a drag handle on a credential field invites the user to
+          // reshape a security-sensitive block for no benefit.
+          className="text-foreground block max-h-24 w-full resize-none bg-transparent font-mono text-xs break-all outline-none"
         />
       </div>
 

@@ -37,7 +37,14 @@ import {
 import type { DataTableColumnDef } from '@paalstack/react-ui';
 import { useMediaQuery } from '@/lib/use-media-query';
 import { useDebouncedValue } from '@paalstack/react-hooks';
-import { LuEllipsis, LuKeyRound, LuPencil, LuTrash2, LuUserCog } from '@paalstack/react-icons/lu';
+import {
+  LuEllipsis,
+  LuKeyRound,
+  LuPencil,
+  LuTrash2,
+  LuUserCog,
+  LuUserPlus,
+} from '@paalstack/react-icons/lu';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -330,16 +337,22 @@ export default function UsersPage() {
             value: 'invites',
             label: 'Invites',
             content: (
+              // The dialog itself is mounted ONCE, in the page header above.
+              // This empty-state CTA only opens it: rendering a second
+              // <InviteStaffDialog> here would render a second closed-state
+              // trigger button, which is exactly what a `[data-qa=
+              // "invite-staff-button"]` locator then resolves to - two
+              // elements, and Playwright's strict mode refuses to guess.
               <InvitesTab
                 createTrigger={
-                  <InviteStaffDialog
-                    open={inviteOpen}
-                    onOpenChange={setInviteOpen}
-                    creatableRoles={[...creatableRoles]}
-                    showTeamField={isAdminLike(user.role)}
-                    teams={teamsQuery.data ?? []}
-                    teamsLoading={teamsQuery.isLoading}
-                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => setInviteOpen(true)}
+                    leftIcon={<LuUserPlus className="h-4 w-4" />}
+                    data-qa="invite-staff-empty-cta"
+                  >
+                    Invite staff
+                  </Button>
                 }
               />
             ),

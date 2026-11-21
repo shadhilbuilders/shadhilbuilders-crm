@@ -37,8 +37,17 @@ export function buildInviteColumns({
       accessorKey: 'name',
       header: 'Name',
       cell: ({ row }) => (
-        <div className={compact ? 'min-w-0' : 'min-w-40'}>
-          <span className="text-sm font-medium" data-qa={`invite-name-${row.original.id}`}>
+        // `max-w-*` on the compact branch is load-bearing, not cosmetic: table
+        // auto-layout sizes a column to its MAX-CONTENT width, and `truncate`
+        // alone cannot shrink it because the cell is `whitespace-nowrap`. With
+        // no cap the email made this column 215px at a 320px viewport (286px of
+        // content), so Name + Status + Actions totalled 350px and the row ran
+        // off the screen. 8rem fits all three columns inside the phone.
+        <div className={compact ? 'max-w-32 min-w-0' : 'min-w-40'}>
+          <span
+            className="block truncate text-sm font-medium"
+            data-qa={`invite-name-${row.original.id}`}
+          >
             {row.original.name}
           </span>
           {/* On a phone the email is dropped as a COLUMN but kept here as
@@ -138,8 +147,17 @@ export function buildInviteColumns({
 
 /** The empty state, shared so the tab and its test render the same copy. */
 export function InvitesEmptyState({ createTrigger }: { createTrigger: React.ReactNode }) {
+  // 2026-11-21: this block used to sit inside a DataTable cell, and a cell is
+  // `whitespace-nowrap` (Table's base class). The copy and the CTA therefore
+  // could not wrap, so the TABLE grew to 577px inside a 286px scroller at a
+  // 320px viewport and the "Invite staff" button's right edge landed at 366px -
+  // off screen, with nothing indicating the empty state scrolled. The table
+  // itself legitimately stays wide (its three remaining columns); the empty
+  // state does not have to. InvitesTab sets
+  // `emptyContentTableCellProps={{ className: 'whitespace-normal' }}` so this
+  // wraps to the width of the phone instead of stretching the grid.
   return (
-    <div className="space-y-1 rounded-lg p-10 text-center">
+    <div className="space-y-1 rounded-lg p-4 text-center sm:p-10">
       <TypographyP className="text-xl font-medium">No invites yet.</TypographyP>
       <TypographyP className="text-muted-foreground text-sm not-first:mt-0">
         Invite a staff member and send them a link - they set their own password.

@@ -209,11 +209,18 @@ test('the invite link wraps inside the dialog instead of widening it', async ({ 
   // Resend is the only way to surface a link for an existing invite. If the org
   // has no pending invite, this test asserts nothing and says so rather than
   // failing on missing fixture data.
-  const resend = page.locator('[data-qa="invite-row-resend"]').first();
-  const hasResend = (await resend.count()) > 0;
-  test.skip(!hasResend, 'no pending invite in this org to resend');
+  //
+  // ORDER MATTERS: `invite-row-resend` is a DropdownMenuItem, and the menu is
+  // mounted on OPEN, so counting it before clicking the trigger always returns
+  // 0 - which made this test skip unconditionally, including in orgs that DO
+  // have a pending invite. That is the vacuous pass this case exists to
+  // prevent, so the trigger is what we probe, and the item is waited for after.
+  const actionsTrigger = page.locator('[data-qa^="invite-row-actions-"]').first();
+  test.skip((await actionsTrigger.count()) === 0, 'no pending invite in this org to resend');
 
-  await page.locator('[data-qa^="invite-row-actions-"]').first().click();
+  await actionsTrigger.click();
+  const resend = page.locator('[data-qa="invite-row-resend"]');
+  await resend.waitFor({ state: 'visible', timeout: 15_000 });
   await resend.click();
 
   const linkInput = page.locator('[data-qa="invite-resend-link-input"]');

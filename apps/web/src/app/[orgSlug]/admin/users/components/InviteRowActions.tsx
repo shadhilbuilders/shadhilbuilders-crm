@@ -86,7 +86,15 @@ export function InviteRowActions({ invite }: { invite: InviteRow }) {
 
           <DropdownMenuItem
             className="cursor-pointer"
-            onClick={() => setResendOpen(true)}
+            onClick={() => {
+              // Open the dialog AND issue the new link. Opening alone showed
+              // the dialog's explanatory branch ("Issues a fresh link for
+              // ...") with no link and no request - the menu promised a new
+              // link and delivered a dialog about one. The mutation is what
+              // rotates the token; the menu item is the user's consent.
+              setResendOpen(true);
+              resend.mutate(invite.id);
+            }}
             data-qa="invite-row-resend"
           >
             <LuRefreshCw className="text-muted-foreground mr-2 size-4" />

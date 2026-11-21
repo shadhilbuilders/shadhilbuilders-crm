@@ -41,8 +41,16 @@ export function InvitesTab({ createTrigger }: { createTrigger: ReactNode }) {
     offset: (page - 1) * pageSize,
   });
 
-  // Same breakpoint the Members table uses, so the two tabs collapse together.
-  const compact = useMediaQuery('(max-width: 767px)');
+  // Compact until the FULL column set actually fits (measured 2026-11-21).
+  //
+  // This is NOT the Members table's 767px, and the difference is measured, not
+  // stylistic: with real rows the eight invite columns need ~871px of
+  // max-content width, so at a 768-843px tablet, or an 844px landscape phone,
+  // the desktop set overflowed its scroller by 60-130px - the row's right edge
+  // passed the viewport edge, which `invites-mobile-audit.spec.ts` reports as
+  // sideways scroll. Below 1024 the compact three columns are the only honest
+  // layout; at 1024+ there is room for all eight.
+  const compact = useMediaQuery('(max-width: 1023px)');
 
   const columns = useMemo(
     () =>
@@ -104,7 +112,15 @@ export function InvitesTab({ createTrigger }: { createTrigger: ReactNode }) {
         showTotalResults: true,
         showOnlyIfTotalGreaterThanPageSize: true,
       }}
-      isLoading={query.isFetching}
+      // `isLoading` is FIRST-LOAD only, never `isFetching`. Resend/revoke
+      // invalidate INVITES_KEY, and DataTable renders `loadingContent` INSTEAD
+      // of the rows - so a background refetch unmounted every row, and with it
+      // the per-row resend dialog that had just received the new link. The
+      // dialog vanished the instant the request succeeded, which is exactly
+      // what invites-mobile-audit.spec.ts caught: POST /resend -> 200, then no
+      // link on screen. A background refresh must leave the current page up
+      // (the row is stale for one paint; the alternative is a dead end).
+      isLoading={query.isLoading}
       loadingContent={<Loading content="Loading invites..." />}
       className="[&_td:last-child]:bg-card [&_th:last-child]:bg-card [&_td:last-child]:sticky [&_td:last-child]:right-0 [&_td:last-child]:z-1 [&_th:last-child]:sticky [&_th:last-child]:right-0 [&_th:last-child]:z-1"
       toolbarLeftSideContent={
@@ -124,6 +140,12 @@ export function InvitesTab({ createTrigger }: { createTrigger: ReactNode }) {
         />
       }
       emptyContent={<InvitesEmptyState createTrigger={createTrigger} />}
+      // The empty state is prose + a CTA, not tabular data. Table cells are
+      // `whitespace-nowrap`, which made the empty state 577px wide at a 320px
+      // viewport and pushed the CTA 46px past the right edge - a sideways
+      // scroll with no visible cue. Real rows can overflow (that is what the
+      // scroller is for); prose must wrap.
+      emptyContentTableCellProps={{ className: 'whitespace-normal' }}
       tableContainerClassName="rounded-lg border"
     />
   );

@@ -147,8 +147,15 @@ test('leads inbox: status filter supports multi-select', async ({ page }) => {
   await expect(rows.filter({ hasText: 'New' }).first()).toBeVisible({ timeout: 10_000 });
   const talked = rows.filter({ hasText: 'Talked' });
   if ((await talked.count()) === 0) {
+    // `isEnabled()` on a locator that is NOT in the DOM waits for it to appear
+    // and then fails the test on timeout - it does not answer "false". And the
+    // pagination block only renders when the total exceeds one page
+    // (`showOnlyIfTotalGreaterThanPageSize`), so the "everything fit" case -
+    // the normal one once the seeded lead count drops - blew the 60s test
+    // budget waiting for a control that was never going to mount. Count first
+    // (immediate, no waiting), then ask about state.
     const next = page.locator('[data-qa=pagination-next]');
-    if (await next.isEnabled()) await next.click();
+    if ((await next.count()) > 0 && (await next.isEnabled())) await next.click();
   }
   await expect(talked.first()).toBeVisible({ timeout: 10_000 });
 });

@@ -266,7 +266,18 @@ function InviteStaffDialogBody({
       }}
       open={open}
       onOpenChange={onOpenChange}
-      contentClassName="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg"
+      // The dialog is a grid: header / body / footer are siblings, and the
+      // FOOTER carries the submit. Scrolling the whole popup (the previous
+      // `overflow-y-auto` here) therefore scrolled the submit off screen on a
+      // landscape phone, where a 100dvh-4rem cap is ~256px - the form alone is
+      // taller than that, so the footer sat below the fold and the dialog
+      // looked like it had no way to submit (caught by
+      // invites-mobile-audit.spec.ts at 568x320).
+      //
+      // `max-h` + `grid-rows-[auto_minmax(0,1fr)_auto]` instead pins the header
+      // and footer and makes the BODY the only scrolling region: the body is
+      // `children` and gets `overflow-y-auto` per-step below.
+      contentClassName="max-h-[calc(100dvh-4rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg"
       footer={
         isResult ? (
           <div className="flex w-full justify-end">
@@ -297,7 +308,7 @@ function InviteStaffDialogBody({
         // tab stop: after the async step change the admin's next action is
         // here, and leaving focus on the unmounted submit button would strand
         // a keyboard user at the top of the page.
-        <div ref={copyRef} tabIndex={-1} className="space-y-4 outline-none">
+        <div ref={copyRef} tabIndex={-1} className="min-h-0 space-y-4 overflow-y-auto outline-none">
           <CopyableLink value={result.inviteUrl} testId="invite-link" />
           <InviteSendActions
             whatsappUrl={result.whatsappUrl}
@@ -317,6 +328,7 @@ function InviteStaffDialogBody({
           onSubmit={onSubmit}
           hideSubmitButton
           hideResetButton
+          className="min-h-0 overflow-y-auto"
           fields={fields}
         />
       )}
