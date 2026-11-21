@@ -83,9 +83,17 @@ export function NavUser({
             render={
               <SidebarMenuButton
                 size="lg"
-                className="data-[state=open]:bg-sidebar-accent-normal data-[state=open]:text-sidebar-accent-normal-foreground min-w-0 cursor-pointer"
+                // `data-popup-open` is the attribute Base UI's Menu.Trigger
+                // actually emits while the menu is open (verified on the
+                // rendered node; Radix's `data-state="open"` does not exist
+                // here, so the old `data-[state=open]:` variants never fired
+                // and the trigger gave no "this menu is open" feedback).
+                className="data-popup-open:bg-sidebar-accent-normal data-popup-open:text-sidebar-accent-normal-foreground min-w-0 cursor-pointer"
                 data-qa="sidebar-user-trigger"
-                aria-label="Account menu"
+                // Names the person, like the topbar's equivalent. A bare
+                // "Account menu" dropped the only identity context a screen
+                // reader user gets from this control.
+                aria-label={`Account menu for ${name}`}
                 title={name}
               >
                 <AvatarRoot className="h-8 w-8 shrink-0 rounded-lg">

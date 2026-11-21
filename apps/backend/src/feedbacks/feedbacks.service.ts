@@ -23,7 +23,14 @@
 // first line of abuse defense; an in-process per-IP fixed-window limiter
 // here is the second (cheap, no Redis dependency).
 
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -44,6 +51,8 @@ import {
 } from '@shadhil/database';
 
 import { PrismaService } from '../prisma/prisma.module';
+
+import { FeedbackNotifier } from './feedback-notifier.service';
 
 import type { JwtPayload } from '@shadhil/auth';
 
@@ -136,7 +145,15 @@ function rowToJson(row: {
 export class FeedbacksService {
   private readonly logger = new Logger(FeedbacksService.name);
 
-  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
+    // @Optional() (rule 7h): notifying the admin class is best-effort and must
+    // never turn a committed feedback row into a failed submit. Optional keeps
+    // the existing one-arg test factories green.
+    @Optional()
+    @Inject(FeedbackNotifier)
+    private readonly notifier?: FeedbackNotifier,
+  ) {}
 
   private get client(): PrismaClient {
     return this.prismaService.$client;
@@ -201,6 +218,24 @@ export class FeedbacksService {
     );
 
     this.logger.log(`[feedback] public submit id=${id} rating=${dto.rating} ip=${meta.ip}`);
+
+    // Tell the admin class (ADMIN + OWNER) that feedback landed (2026-11-21).
+    // Fire-and-forget, exactly like SiteUpdateNotifier: the row is already
+    // committed, and a notification fault must never delay or fail the visitor's
+    // submit. The notifier itself never rejects; the .catch is defensive.
+    if (this.notifier !== undefined) {
+      void this.notifier
+        .notifyNewFeedback({
+          organizationId,
+          feedbackId: id,
+          rating: dto.rating,
+          name: dto.name ?? null,
+          project: dto.project ?? null,
+          message: dto.message ?? null,
+        })
+        .catch(() => undefined);
+    }
+
     return { ok: true, id };
   }
 

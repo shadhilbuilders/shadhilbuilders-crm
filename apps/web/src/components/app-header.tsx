@@ -63,6 +63,7 @@ import {
 } from '@/hooks/queries/crm';
 import { dateIntl } from '@/lib/format';
 import { notificationInboxCopy } from '@/lib/notification-inbox';
+import { notificationHref } from '@/lib/notification-links';
 
 import { OfflineQueueBadge } from '@/components/offline-queue-badge';
 
@@ -228,6 +229,8 @@ type NotificationRow = {
   type?: string;
   title?: string;
   body?: string;
+  leadId?: string | null;
+  unitId?: string | null;
   read?: boolean;
   createdAt?: string;
 };
@@ -269,8 +272,15 @@ function NotificationBell() {
   // never disagree. Logic lives in app-header-helpers.ts (unit-tested).
   const unread = renderedUnreadCount(mounted, query.data?.unread);
 
+  // Same leak as UserMenu: AppHeader lives in the [orgSlug] LAYOUT, so it
+  // outlives the page it sits above and its portalled popup is not unmounted
+  // by a navigation. "View all notifications" therefore used to land on the
+  // inbox with the popover still open over it. Controlled open state; Escape
+  // and outside press still close it via onOpenChange.
+  const [open, setOpen] = useState(false);
+
   return (
-    <PopoverRoot>
+    <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -317,6 +327,15 @@ function NotificationBell() {
               {rows.map((row, index) => {
                 const isRead = row.read === true;
                 const id = typeof row.id === 'string' ? row.id : null;
+                const titleText =
+                  typeof row.title === 'string' && row.title.length > 0
+                    ? row.title
+                    : 'Notification';
+                // 2026-11-21: the row is where the reader ACTS, so it carries the
+                // destination (feedback lands on the admin triage page; leads on
+                // the lead). `notificationHref` returns null for anything with no
+                // destination, which stays plain text rather than a dead link.
+                const rowHref = notificationHref(orgSlug, projectSlugCtx, row);
                 return (
                   <li
                     key={id ?? `n-${index}`}
@@ -331,9 +350,24 @@ function NotificationBell() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {typeof row.title === 'string' && row.title.length > 0
-                          ? row.title
-                          : 'Notification'}
+                        {rowHref === null ? (
+                          titleText
+                        ) : (
+                          <Link
+                            href={rowHref}
+                            className="text-link hover:underline"
+                            data-qa="notification-popover-link"
+                            // This popover lives in the [orgSlug] LAYOUT, so a
+                            // navigation does not unmount it - close it explicitly
+                            // or it stays open over the destination page.
+                            onClick={() => {
+                              setOpen(false);
+                              if (!isRead && id !== null) markRead.mutate([id]);
+                            }}
+                          >
+                            {titleText}
+                          </Link>
+                        )}
                       </p>
                       {typeof row.body === 'string' && row.body.length > 0 ? (
                         <p className="text-muted-foreground line-clamp-2 text-xs">{row.body}</p>
@@ -372,6 +406,7 @@ function NotificationBell() {
         <Link
           href={href}
           className="hover:bg-accent flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 text-sm"
+          onClick={() => setOpen(false)}
         >
           View all notifications
         </Link>
@@ -404,8 +439,14 @@ function UserMenu({
 }) {
   const AdminIcon = ADMIN_LAUNCHER.icon;
   const EmployeeIcon = EMPLOYEE_LAUNCHER.icon;
+  // The popup is portalled outside the route subtree, so a row click that
+  // navigates (or signs out) leaves it open over the NEXT page until the user
+  // dismisses it. Control the open state and close it on selection; Escape /
+  // outside press still close it through onOpenChange.
+  const [open, setOpen] = useState(false);
+  const closeMenu = () => setOpen(false);
   return (
-    <PopoverRoot>
+    <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -437,6 +478,7 @@ function UserMenu({
             href={adminHref}
             className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
             data-qa="account-menu-admin"
+            onClick={closeMenu}
           >
             <AdminIcon className="size-4 shrink-0" />
             {ADMIN_LAUNCHER.label}
@@ -447,6 +489,7 @@ function UserMenu({
             href={employeeHref}
             className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
             data-qa="account-menu-employee"
+            onClick={closeMenu}
           >
             <EmployeeIcon className="size-4 shrink-0" />
             {EMPLOYEE_LAUNCHER.label}
@@ -457,6 +500,7 @@ function UserMenu({
             href={settingsHref}
             className="hover:bg-accent mt-1 flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm"
             data-qa="account-menu-settings"
+            onClick={closeMenu}
           >
             <LuSettings className="size-4 shrink-0" />
             Settings
@@ -473,7 +517,17 @@ function UserMenu({
             Settings
           </span>
         )}
-        <Button variant="ghost" size="sm" className="mt-1 w-full justify-start" onClick={onSignOut}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 w-full justify-start"
+          onClick={() => {
+            // Close first: sign-out redirects, and a portalled popup would
+            // otherwise survive the navigation for the session-teardown paint.
+            closeMenu();
+            onSignOut();
+          }}
+        >
           <LuLogOut className="mr-2 h-4 w-4" />
           Sign out
         </Button>

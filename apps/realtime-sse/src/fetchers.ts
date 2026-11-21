@@ -32,6 +32,7 @@
 
 import type { PrismaClient, Role } from '@shadhil/database';
 import { Prisma, withRlsContext } from '@shadhil/database';
+import { notificationTypesHiddenFrom } from '@shadhil/api-types';
 
 import type { CursorFrame, StreamCursor } from './cursor.js';
 import { START_OF_STREAM } from './cursor.js';
@@ -98,16 +99,28 @@ function afterCursor(cursor: StreamCursor): {
  */
 const CURSOR_ORDER = [{ createdAt: 'asc' }, { id: 'asc' }] as const;
 
-/** Notifications fetcher - emits one frame per row. */
+/** Notifications fetcher - emits one frame per row.
+ *
+ * 2026-11-21: admin-only types are excluded for non-admin viewers. The SSE
+ * stream builds its own `where` (it never goes through NotificationsService), so
+ * this is the second place the rule has to be applied - without it a demoted
+ * ADMIN keeps receiving `feedback.created` frames that link to a page that 403s
+ * for them. Same helper as the REST list and the badge count, so the three read
+ * paths cannot disagree. */
 export const notificationsFetcher =
   (prisma: PrismaClient, user: SseUser) =>
   async (cursor: StreamCursor): Promise<CursorFrame[]> => {
+    const hiddenTypes = notificationTypesHiddenFrom(user.role);
     const rows = await withRlsContext(
       prisma,
       { userId: user.userId, role: user.role, organizationId: user.organizationId },
       async (tx) =>
         tx.notification.findMany({
-          where: { userId: user.userId, ...afterCursor(cursor) },
+          where: {
+            userId: user.userId,
+            ...(hiddenTypes !== null ? { NOT: { type: { in: hiddenTypes } } } : {}),
+            ...afterCursor(cursor),
+          },
           orderBy: [...CURSOR_ORDER],
           take: FETCH_BATCH,
         }),

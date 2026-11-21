@@ -19,6 +19,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   'booking.transition': 'Booking update',
   'visit.scheduled': 'Visit booked',
   'visit.outcome': 'Visit outcome',
+  // Org-level (2026-11-21): a public feedback submission, triaged from the
+  // admin feedback inbox.
+  'feedback.created': 'New feedback',
 };
 
 export function notificationTypeLabel(type: string): string {

@@ -141,4 +141,85 @@ describe('NavUser account menu', () => {
     expect(qa('sidebar-user-settings')?.textContent).toContain('Settings');
     expect(qa('sidebar-user-signout')?.textContent).toContain('Sign out');
   });
+
+  // ---------------------------------------------------------------------
+  // Close-on-select. The popup is portalled to <body>, so it is not inside
+  // the page tree: a menu that stays open after a row navigates sits on top
+  // of the NEXT page until dismissed. Base UI closes it for us, but that is
+  // a library default, not a guarantee this component states - so pin it.
+  // ---------------------------------------------------------------------
+  it('closes the menu when a link row is chosen', async () => {
+    await mountOpen({});
+    expect(qa('sidebar-user-settings')).not.toBeNull();
+    await act(async () => {
+      qa('sidebar-user-settings')!.click();
+    });
+    expect(qa('sidebar-user-settings')).toBeNull();
+  });
+
+  it('closes the menu when "Switch Admin" is chosen', async () => {
+    await mountOpen({});
+    await act(async () => {
+      qa('sidebar-user-admin')!.click();
+    });
+    expect(qa('sidebar-user-admin')).toBeNull();
+  });
+
+  it('fires onSignOut and closes the menu', async () => {
+    let signedOut = 0;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <SidebarProvider>
+          <NavUser
+            name="Deepak Owner"
+            email="owner@x.in"
+            role="OWNER"
+            settingsHref="/shadhil-builders/settings"
+            adminHref={null}
+            onSignOut={() => {
+              signedOut += 1;
+            }}
+          />
+        </SidebarProvider>,
+      );
+    });
+    await act(async () => {
+      (document.querySelector('[data-qa="sidebar-user-trigger"]') as HTMLElement).click();
+    });
+    await act(async () => {
+      qa('sidebar-user-signout')!.click();
+    });
+    expect(signedOut).toBe(1);
+    expect(qa('sidebar-user-signout')).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------
+  // Trigger open state + accessible name.
+  // The open-state variant used to be `data-[state=open]:...`, the Radix
+  // spelling. Base UI's Menu.Trigger emits `data-popup-open` (there is no
+  // data-state at all), so those classes never applied and the trigger gave
+  // no "menu is open" affordance. Assert against the LIVE node so a future
+  // library swap that renames the attribute fails here instead of silently
+  // going flat again.
+  // ---------------------------------------------------------------------
+  it('styles the trigger open state from the attribute Base UI actually sets', async () => {
+    await mountOpen({});
+    const trigger = document.querySelector('[data-qa="sidebar-user-trigger"]') as HTMLElement;
+    expect(trigger).not.toBeNull();
+    expect(trigger.matches('[data-popup-open]'), 'trigger is not marked open').toBe(true);
+    // The class list must key off that same attribute. (Don't assert the
+    // ABSENCE of `data-[state=open]`: the library's own sidebarMenuButton
+    // base string ships that Radix spelling, so it is present regardless.)
+    expect(trigger.className).toContain('data-popup-open:bg-sidebar-accent-normal');
+    expect(trigger.className).toContain('data-popup-open:text-sidebar-accent-normal-foreground');
+  });
+
+  it('names the trigger after the signed-in user', async () => {
+    await mountOpen({});
+    const trigger = document.querySelector('[data-qa="sidebar-user-trigger"]');
+    expect(trigger?.getAttribute('aria-label')).toBe('Account menu for Deepak Owner');
+  });
 });

@@ -25,7 +25,12 @@ import { LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { rlsContextFrom, withRlsContext, type PrismaClient } from '@shadhil/database';
 import type { JwtPayload } from '@shadhil/auth';
-import type { MarkReadDto, NotificationFilterDto } from '@shadhil/api-types';
+import {
+  notificationTypesHiddenFrom,
+  ORG_LEVEL_NOTIFICATION_TYPES,
+  type MarkReadDto,
+  type NotificationFilterDto,
+} from '@shadhil/api-types';
 
 import { cronContextFor } from '../common/cron-orgs';
 import { PrismaService } from '../prisma/prisma.module';
@@ -104,6 +109,21 @@ export class NotificationsService {
         baseWhere['type'] = { startsWith: dto.typePrefix };
       }
     }
+
+    // ADMIN-ONLY TYPES (2026-11-21): a non-admin is never served an
+    // `feedback.created` row, whatever filters they send. The audience is
+    // resolved at emit time, but a Notification row is keyed by `userId` and
+    // outlives the role that earned it - a demoted ADMIN would otherwise keep
+    // seeing (and badging) rows whose only destination 403s for them.
+    //
+    // Expressed as NOT.type.in (not type.notIn) on purpose: `type` is already
+    // used above for the type / typePrefix filter, and a second `type` key on
+    // the same object would silently clobber one of them. `NOT` is a separate
+    // top-level key, so it ANDs cleanly with whatever the tabs asked for.
+    const hiddenTypes = notificationTypesHiddenFrom(actor.role);
+    if (hiddenTypes !== null) {
+      baseWhere['NOT'] = { type: { in: hiddenTypes } };
+    }
     // T-ProjectSwitch: scope the inbox to the active project via the related
     // lead. Notification has NO `lead` relation field (only leadId), so
     // resolve the project's lead ids first (RLS-filtered) and narrow with
@@ -117,6 +137,12 @@ export class NotificationsService {
     // in this `where` uses a top-level OR, so there is no clobber risk.
     // A notification with NEITHER a lead nor a unit stays hidden under a
     // project filter (system events are not project work) - pinned by test.
+    //
+    // 2026-11-21: org-level types are the documented EXCEPTION. `feedback.created`
+    // belongs to the organization, not to a project, so the third arm below keeps
+    // it visible. ORG_LEVEL_NOTIFICATION_TYPES lives in @shadhil/api-types so the
+    // web's link resolver reads the same array - drift would surface as an
+    // invisible row or a dead link, never as an error.
     if (dto.projectId !== undefined) {
       const [projectLeads, projectUnits] = await Promise.all([
         withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
@@ -143,6 +169,8 @@ export class NotificationsService {
       baseWhere['OR'] = [
         { leadId: { in: projectLeads.map((l: { id: string }) => l.id) } },
         { unitId: { in: projectUnits.map((u) => u.project_unit_ids) } },
+        // Org-level events carry neither anchor; keep them reachable.
+        { type: { in: [...ORG_LEVEL_NOTIFICATION_TYPES] } },
       ];
     }
 
@@ -180,10 +208,15 @@ export class NotificationsService {
       withRlsContext(this.client, rlsContextFrom(actor), (tx) =>
         (tx as unknown as PrismaClient).notification.count({
           // Same type clamp as the list, or the bell badge would count rows
-          // the list refuses to show.
-          where: siteOnly
-            ? { read: false, type: { startsWith: SITE_ONLY_TYPE_PREFIX } }
-            : { read: false },
+          // the list refuses to show. The admin-only exclusion matters most
+          // here: a demoted ADMIN must not carry a badge for rows they can no
+          // longer open. Both clauses compose - they are different axes (which
+          // types this ROLE works on vs which types only admins may see).
+          where: {
+            read: false,
+            ...(siteOnly ? { type: { startsWith: SITE_ONLY_TYPE_PREFIX } } : {}),
+            ...(hiddenTypes !== null ? { NOT: { type: { in: hiddenTypes } } } : {}),
+          },
         }),
       ),
     ]);
@@ -278,6 +311,14 @@ export class NotificationsService {
       /** Present for booking notifications so the push deep-links to the
        *  booking page (`/bookings/{bookingId}`) rather than the lead's. */
       bookingId?: string;
+      /**
+       * Explicit app-route deep link for notifications with NO lead/unit/booking
+       * anchor (org-level events such as `feedback.created`, 2026-11-21). When
+       * present it wins over every derived link below - the emitter already knows
+       * the destination, so guessing from an id would send the reader elsewhere.
+       * The href is also carried into the web push payload.
+       */
+      href?: string;
       /** Tenant of the recipient. Optional: when omitted it is read from the
        *  recipient's own User row, never from PUBLIC_ORG_ID (T-CRON-MULTITENANT). */
       organizationId?: string;
@@ -337,6 +378,7 @@ export class NotificationsService {
           leadId: created.leadId ?? undefined,
           unitId: created.unitId ?? undefined,
           bookingId: payload.bookingId,
+          href: payload.href,
           organizationId,
         });
 
@@ -391,6 +433,8 @@ export class NotificationsService {
       leadId?: string;
       unitId?: string;
       bookingId?: string;
+      /** Pre-resolved app route (org-level events). Wins over every derivation. */
+      href?: string;
       organizationId: string;
     },
   ): void {
@@ -398,17 +442,19 @@ export class NotificationsService {
     try {
       void (async () => {
         const url =
-          payload.bookingId !== undefined
-            ? await this.resolveBookingDeepLink(
-                payload.organizationId,
-                payload.leadId,
-                payload.bookingId,
-              )
-            : payload.leadId !== undefined
-              ? await this.resolveLeadDeepLink(payload.organizationId, payload.leadId)
-              : payload.unitId !== undefined
-                ? await this.resolveUnitDeepLink(payload.organizationId, payload.unitId)
-                : undefined;
+          payload.href !== undefined && payload.href.length > 0
+            ? payload.href
+            : payload.bookingId !== undefined
+              ? await this.resolveBookingDeepLink(
+                  payload.organizationId,
+                  payload.leadId,
+                  payload.bookingId,
+                )
+              : payload.leadId !== undefined
+                ? await this.resolveLeadDeepLink(payload.organizationId, payload.leadId)
+                : payload.unitId !== undefined
+                  ? await this.resolveUnitDeepLink(payload.organizationId, payload.unitId)
+                  : undefined;
         await this.push
           ?.sendToUser(
             recipientSub,

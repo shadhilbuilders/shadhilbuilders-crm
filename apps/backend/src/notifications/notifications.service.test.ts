@@ -154,10 +154,19 @@ describe('list - ENGINEER inbox is clamped to site updates', () => {
     const countWheres = client.notification.count.mock.calls.map((c) => c[0].where);
     expect(countWheres).toHaveLength(2);
     expect(countWheres).toContainEqual(expect.objectContaining(scope));
-    expect(countWheres).toContainEqual({ read: false, ...scope });
+    // The unread count carries BOTH the progress.* clamp and the admin-only
+    // exclusion (2026-11-21): different axes, so they compose rather than
+    // one overriding the other.
+    expect(countWheres).toContainEqual({
+      read: false,
+      ...scope,
+      NOT: { type: { in: ['feedback.created'] } },
+    });
   });
 
-  it('leaves a TELECALLER unread count unscoped (regression guard)', async () => {
+  it('leaves a TELECALLER unread count unscoped by TYPE PREFIX (regression guard)', async () => {
+    // A TELECALLER has no progress.* clamp - but since 2026-11-21 they DO carry
+    // the admin-only exclusion, so the count matches what the list will show.
     const { service, client } = makeService();
     client.notification.findMany.mockResolvedValue([]);
     client.notification.count.mockResolvedValue(0);
@@ -167,7 +176,12 @@ describe('list - ENGINEER inbox is clamped to site updates', () => {
       offset: 0,
     });
     const countWheres = client.notification.count.mock.calls.map((c) => c[0].where);
-    expect(countWheres).toContainEqual({ read: false });
+    expect(countWheres).toContainEqual({
+      read: false,
+      NOT: { type: { in: ['feedback.created'] } },
+    });
+    // No progress.* clamp for a telecaller.
+    expect(countWheres).not.toContainEqual(expect.objectContaining({ type: expect.anything() }));
   });
 
   it('scopes an ENGINEER "mark all" to site updates only', async () => {
@@ -214,9 +228,14 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     });
 
     const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
-    // Both anchors are in the filter: a lead row OR a unit row of this project.
+    // Both anchors are in the filter: a lead row OR a unit row of this project,
+    // plus the org-level exception arm (2026-11-21).
     expect(where).toMatchObject({
-      OR: [{ leadId: { in: ['l-1'] } }, { unitId: { in: ['unit-1'] } }],
+      OR: [
+        { leadId: { in: ['l-1'] } },
+        { unitId: { in: ['unit-1'] } },
+        { type: { in: ['feedback.created'] } },
+      ],
     });
     // Nothing else in the where is a top-level OR, so the arms cannot clobber.
     expect(where).not.toHaveProperty('leadId');
@@ -224,7 +243,9 @@ describe('list - active-project narrowing (2026-11-08)', () => {
 
   it('fails_when= a notification with neither a lead nor a unit is pulled in', async () => {
     // The documented behaviour: system events are not project work. This pins
-    // that the filter is an OR of two id sets, not "everything".
+    // that the filter is an OR of two id sets plus the CLOSED org-level type
+    // list - never "everything". A bare row of an unlisted type matches none of
+    // the three arms, so it stays out.
     const { service, client } = makeService();
     client.lead.findMany.mockResolvedValue([{ id: 'l-1' }]);
     client.$queryRaw.mockResolvedValue([{ project_unit_ids: 'unit-1' }]);
@@ -239,11 +260,43 @@ describe('list - active-project narrowing (2026-11-08)', () => {
     });
 
     const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
-    // A bare row matches neither arm: `leadId IN (lead ids)` and
-    // `unitId IN (unit ids)` are both false for `null`.
+    // A bare row matches none of the arms: `leadId IN (lead ids)` and
+    // `unitId IN (unit ids)` are both false for `null`, and `type` is not in
+    // the org-level list. This actor is a TELECALLER, so the admin-only
+    // exclusion is also present (and it is what makes the org-level arm
+    // harmless for them - the arm admits the type, NOT excludes it back out).
     expect(where).toEqual({
-      OR: [{ leadId: { in: ['l-1'] } }, { unitId: { in: ['unit-1'] } }],
+      OR: [
+        { leadId: { in: ['l-1'] } },
+        { unitId: { in: ['unit-1'] } },
+        { type: { in: ['feedback.created'] } },
+      ],
+      NOT: { type: { in: ['feedback.created'] } },
     });
+  });
+
+  it('protects= an org-level feedback notification survives the project filter', async () => {
+    // fails_when= the feedback row is inserted and then invisible: the
+    // notifications page ALWAYS sends projectId, and `feedback.created` has no
+    // lead and no unit to match an anchor arm with.
+    const { service, client } = makeService();
+    client.lead.findMany.mockResolvedValue([]);
+    client.$queryRaw.mockResolvedValue([]);
+    client.notification.findMany.mockResolvedValue([]);
+    client.notification.count.mockResolvedValue(0);
+
+    await service.list(makeActor({ role: 'ADMIN' }), {
+      unreadOnly: false,
+      projectId: 'proj-1',
+      limit: 50,
+      offset: 0,
+    });
+
+    const where = client.notification.findMany.mock.calls[0]?.[0]?.where;
+    // The org-level arm is present even when the project has no leads or units -
+    // that is exactly the state a fresh project (or an admin-only org) is in.
+    const arms = (where as { OR: Array<Record<string, unknown>> }).OR;
+    expect(arms).toContainEqual({ type: { in: ['feedback.created'] } });
   });
 
   it('does not resolve units when no project filter is active', async () => {

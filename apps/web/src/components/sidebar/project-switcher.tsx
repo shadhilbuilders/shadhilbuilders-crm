@@ -109,7 +109,11 @@ export function ProjectSwitcher({
             render={
               <SidebarMenuButton
                 size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
+                // `data-popup-open`, not `data-state=open` - see the note in
+                // nav-user.tsx. Base UI's Menu.Trigger emits data-popup-open;
+                // the Radix-style variant never matched, so the trigger showed
+                // no open state.
+                className="data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground cursor-pointer"
                 data-qa="project-switcher-trigger"
                 aria-label="Switch project"
               >

@@ -328,7 +328,7 @@ function InviteStaffDialogBody({
           onSubmit={onSubmit}
           hideSubmitButton
           hideResetButton
-          className="min-h-0 overflow-y-auto"
+          className="min-h-0 overflow-y-auto px-2"
           fields={fields}
         />
       )}

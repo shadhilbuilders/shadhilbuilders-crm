@@ -35,6 +35,78 @@ export const NotificationFilterDtoSchema = z.object({
 export type NotificationFilterDto = z.infer<typeof NotificationFilterDtoSchema>;
 
 /**
+ * Notification types that belong to the ORGANIZATION, not to a project
+ * (2026-11-21).
+ *
+ * THE CONTRACT THIS ENCODES. The notifications page always sends the active
+ * project id, and the backend narrows the inbox to that project's lead and unit
+ * ids. A notification with neither anchor would be inserted and then
+ * permanently invisible - the bug the `unitId` arm was added to fix for site
+ * photos. Org-level events are the deliberate exception: they are exempt from
+ * that narrowing, and the web links them to an org-scoped page.
+ *
+ * ONE list, consumed by BOTH sides, because the failure mode of drift is silent:
+ * the backend would hide the row or the web would render a dead link, and
+ * neither shows up as an error. Add a type here when a new org-level event
+ * ships, never one side at a time.
+ *
+ * `feedback.created`: a public feedback submission. `progress.*` types are
+ * project-scoped (site staff only) and must NOT be added here.
+ */
+export const ORG_LEVEL_NOTIFICATION_TYPES = ['feedback.created'] as const;
+
+export type OrgLevelNotificationType = (typeof ORG_LEVEL_NOTIFICATION_TYPES)[number];
+
+/**
+ * Notification types that ONLY the admin class may be served (2026-11-21).
+ *
+ * WHY THIS IS A SEPARATE LIST FROM "org-level". The two axes are different
+ * questions and conflating them is a real leak:
+ *
+ *   - ORG-LEVEL means "not attached to a project", so the active-project filter
+ *     must not hide it. `feedback.created` is org-level.
+ *   - ADMIN-ONLY means "only ADMIN/OWNER may see it at all". `feedback.created`
+ *     is also admin-only, because its only destination
+ *     (`/{orgSlug}/admin/feedback`) 403s for every other role.
+ *
+ * Resolving the audience at EMIT time (live ADMIN/OWNER rows) is necessary but
+ * NOT sufficient: a Notification row is keyed by `userId` and outlives the role
+ * that earned it. Demote an ADMIN to TELECALLER and their existing
+ * `feedback.created` rows are still theirs - so the list, the unread badge and
+ * the SSE stream would keep serving rows that link to a page they cannot open.
+ * The role gate therefore has to be applied on every READ path as well, which is
+ * what this list is for.
+ */
+export const ADMIN_ONLY_NOTIFICATION_TYPES = ['feedback.created'] as const;
+
+export type AdminOnlyNotificationType = (typeof ADMIN_ONLY_NOTIFICATION_TYPES)[number];
+
+/** ADMIN or OWNER - the roles the admin namespace (and its pages) admit. */
+function isAdminClassRole(role: string | null | undefined): boolean {
+  return role === 'ADMIN' || role === 'OWNER';
+}
+
+/**
+ * Types the viewer's role must never be served.
+ *
+ * `null` = no restriction (admin class). An ARRAY, possibly empty in principle,
+ * is a real restriction - callers must express it as `type: { notIn: [...] }`,
+ * never treat it as "no filter". Used by all three read paths: the REST list,
+ * the unread badge count, and the SSE stream fetcher. One helper so they can
+ * never disagree about who sees what.
+ */
+export function notificationTypesHiddenFrom(role: string | null | undefined): string[] | null {
+  return isAdminClassRole(role) ? null : [...ADMIN_ONLY_NOTIFICATION_TYPES];
+}
+
+/** True when `type` is an org-level notification (no project anchor needed). */
+export function isOrgLevelNotificationType(type: string | null | undefined): boolean {
+  return (
+    typeof type === 'string' && (ORG_LEVEL_NOTIFICATION_TYPES as readonly string[]).includes(type)
+  );
+}
+
+/**
  * SSE event shape for the notifications channel.
  */
 export const NotificationEventSchema = z.object({
