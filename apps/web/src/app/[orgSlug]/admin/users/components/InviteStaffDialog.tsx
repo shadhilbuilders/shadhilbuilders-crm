@@ -281,8 +281,8 @@ function InviteStaffDialogBody({
       footer={
         isResult ? (
           <div className="flex w-full justify-end">
-            <Button onClick={() => onOpenChange(false)} data-qa="invite-done">
-              Done
+            <Button variant="outline" onClick={() => onOpenChange(false)} data-qa="invite-close">
+              Close
             </Button>
           </div>
         ) : (

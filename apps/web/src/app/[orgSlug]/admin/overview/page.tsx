@@ -405,7 +405,7 @@ function ProblemCard({
     <section className="min-w-0">
       <div className="mb-2 flex flex-col gap-y-1.5 sm:mb-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold tracking-wide uppercase">{title}</h2>
-        <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
+        <span className="text-muted-foreground text-sm whitespace-break-spaces tabular-nums">
           {count} {count === 1 ? 'problem' : 'problems'} · {sub}
         </span>
       </div>
