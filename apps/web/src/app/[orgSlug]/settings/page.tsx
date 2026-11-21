@@ -61,6 +61,7 @@ import { authClient } from '@/lib/auth-client';
 import { pickDefaultProject, useProjects } from '@/hooks/queries';
 import { useUpdateProfile, useUser } from '@/hooks/queries/users';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
+import { needsIosHomeScreenInstall } from '@/lib/push-install-guidance';
 import { useSessionUser } from '@/lib/session';
 import { useOrg, useOrgSlug } from '@/lib/tenant-context';
 import { orgHref, projectHref } from '@/lib/nav';
@@ -509,12 +510,20 @@ function NotificationsSection() {
 
   const state = (() => {
     if (!push.checked) return { tone: 'muted' as const, label: 'Checking...' };
-    if (!push.isSupported) return { tone: 'muted' as const, label: 'Not supported here' };
+    if (!push.isSupported)
+      return needsIosHomeScreenInstall()
+        ? { tone: 'warn' as const, label: 'Needs Home Screen install' }
+        : { tone: 'muted' as const, label: 'Not supported here' };
     if (push.isSubscribed) return { tone: 'ok' as const, label: 'Enabled on this device' };
     if (push.permission === 'denied')
       return { tone: 'warn' as const, label: 'Blocked in this browser' };
     return { tone: 'muted' as const, label: 'Not enabled on this device' };
   })();
+  // iPhone/iPad in a browser tab: the push API does not exist there, so the fix
+  // is installing to the Home Screen, not a browser setting. Without this the
+  // page told the user the browser "cannot receive push notifications", which is
+  // wrong and sends them looking for a setting that does not exist.
+  const iosInstall = push.checked && needsIosHomeScreenInstall();
 
   async function enable(): Promise<void> {
     setPending(true);
@@ -556,9 +565,11 @@ function NotificationsSection() {
             <p className="text-muted-foreground text-xs">
               {push.checked && push.permission === 'denied'
                 ? 'Blocked at the browser level - enable it in your browser site settings first.'
-                : push.checked && !push.isSupported
-                  ? 'This browser cannot receive push notifications (no service worker or push support).'
-                  : 'Alerts are delivered per device - enable them on each browser you use.'}
+                : iosInstall
+                  ? 'iPhone and iPad only deliver notifications to apps added to the Home Screen. Open this site in Safari, tap Share, choose "Add to Home Screen", then enable notifications there. Needs iOS 16.4 or later.'
+                  : push.checked && !push.isSupported
+                    ? 'This browser cannot receive push notifications (no service worker or push support).'
+                    : 'Alerts are delivered per device - enable them on each browser you use.'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -568,13 +579,15 @@ function NotificationsSection() {
               data-push-state={
                 !push.checked
                   ? 'checking'
-                  : !push.isSupported
-                    ? 'unsupported'
-                    : push.isSubscribed
-                      ? 'subscribed'
-                      : push.permission === 'denied'
-                        ? 'denied'
-                        : 'available'
+                  : iosInstall
+                    ? 'install-required'
+                    : !push.isSupported
+                      ? 'unsupported'
+                      : push.isSubscribed
+                        ? 'subscribed'
+                        : push.permission === 'denied'
+                          ? 'denied'
+                          : 'available'
               }
             >
               {state.label}

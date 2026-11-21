@@ -32,6 +32,11 @@ import { Button, toast } from '@paalstack/react-ui';
 import { LuBell, LuX } from '@paalstack/react-icons/lu';
 
 import { usePushSubscription } from '@/hooks/use-push-subscription';
+import {
+  IOS_INSTALL_HINT_KEY,
+  IOS_INSTALL_HINT_VERSION,
+  needsIosHomeScreenInstall,
+} from '@/lib/push-install-guidance';
 
 const DISMISS_KEY = 'shadhil:portal-push-dismissed';
 /** Bump to deliberately re-offer to buyers who previously declined. */
@@ -99,15 +104,32 @@ export function PortalPushPrompt() {
     }
   };
 
+  // Exception: an iPhone/iPad browser tab, where the push API does not exist at
+  // all. Staying hidden there meant the buyer was told nothing and simply never
+  // got notifications; the install hint is the only actionable next step.
+  const installHint =
+    push.checked &&
+    !push.isSupported &&
+    needsIosHomeScreenInstall() &&
+    safeGetItem(IOS_INSTALL_HINT_KEY) !== IOS_INSTALL_HINT_VERSION;
+
   const handleDismiss = (): void => {
-    safeSetItem(DISMISS_KEY, PROMPT_VERSION);
+    if (installHint) {
+      // Own latch: declining the install hint must not suppress the push offer
+      // later inside the installed app (and vice versa).
+      safeSetItem(IOS_INSTALL_HINT_KEY, IOS_INSTALL_HINT_VERSION);
+    } else {
+      safeSetItem(DISMISS_KEY, PROMPT_VERSION);
+    }
     setDismissed(true);
   };
 
   // Hidden while: the latch is set, capability has not resolved, the browser
   // cannot push here, or this device is already subscribed. A buyer who cannot
-  // receive push is never shown a promise the app cannot keep.
-  if (dismissed || !push.checked || !push.isSupported || push.isSubscribed) return null;
+  // receive push is never shown a promise the app cannot keep - except for the
+  // install hint above, which is the one offer that is actionable.
+  if (dismissed || !push.checked) return null;
+  if (!installHint && (!push.isSupported || push.isSubscribed)) return null;
 
   return (
     <div
@@ -130,25 +152,41 @@ export function PortalPushPrompt() {
             className="text-base font-medium text-[var(--portal-navy)]"
             data-qa="portal-push-title"
           >
-            Get a notification when new photos arrive
+            {installHint
+              ? 'Add this page to your Home Screen'
+              : 'Get a notification when new photos arrive'}
           </p>
           <p className="text-sm text-[var(--portal-ink-2)]">
-            {blocked
-              ? 'Notifications are blocked for this site. Open your browser\u2019s site settings, allow notifications, then try again.'
-              : 'We will send one when the site team posts progress on your home.'}
+            {installHint
+              ? 'iPhone and iPad only send notifications to apps on the Home Screen. Tap Share, choose \u201cAdd to Home Screen\u201d, then open the icon and enable notifications there.'
+              : blocked
+                ? 'Notifications are blocked for this site. Open your browser\u2019s site settings, allow notifications, then try again.'
+                : 'We will send one when the site team posts progress on your home.'}
           </p>
         </div>
       </div>
-      <Button
-        type="button"
-        size="lg"
-        className="mt-3 min-h-11 w-full rounded-full bg-[var(--portal-navy)] text-[var(--portal-paper)]"
-        onClick={() => void handleEnable()}
-        disabled={pending}
-        data-qa="portal-push-enable"
-      >
-        {pending ? 'Enabling...' : blocked ? 'Try again' : 'Enable notifications'}
-      </Button>
+      {installHint ? (
+        <Button
+          type="button"
+          size="lg"
+          className="mt-3 min-h-11 w-full rounded-full bg-[var(--portal-navy)] text-[var(--portal-paper)]"
+          onClick={handleDismiss}
+          data-qa="portal-push-install-ack"
+        >
+          Got it
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          size="lg"
+          className="mt-3 min-h-11 w-full rounded-full bg-[var(--portal-navy)] text-[var(--portal-paper)]"
+          onClick={() => void handleEnable()}
+          disabled={pending}
+          data-qa="portal-push-enable"
+        >
+          {pending ? 'Enabling...' : blocked ? 'Try again' : 'Enable notifications'}
+        </Button>
+      )}
     </div>
   );
 }

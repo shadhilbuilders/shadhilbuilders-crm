@@ -233,3 +233,51 @@ describe('PushEnablePrompt - consent gating', () => {
     expect(mocks.toast.error).not.toHaveBeenCalled();
   });
 });
+
+// iOS in a browser tab has NO push API at all (`Notification` is undefined), so
+// the capability hook correctly reports isSupported:false and the dialog used to
+// render nothing - a silent dead end. The only actionable offer there is Add to
+// Home Screen, which is what these pin.
+const IPHONE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+describe('PushEnablePrompt - iOS install hint', () => {
+  afterEach(() => {
+    delete (navigator as { userAgent?: unknown }).userAgent;
+  });
+
+  it('offers Add to Home Screen instead of silence on an iPhone in a Safari tab', async () => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: IPHONE_UA });
+    mocks.usePushSubscription.mockReturnValue(basePush({ isSupported: false }));
+    await mount();
+
+    const props = mocks.AlertDialog.mock.calls.at(-1)?.[0];
+    expect(props?.open).toBe(true);
+    expect(props?.header?.title).toBe('Add Shadhil CRM to your Home Screen');
+    // Informational, not an enable action: the confirm label changes so the
+    // button cannot look like it will subscribe the device.
+    expect((props as { confirmButtonText?: string } | undefined)?.confirmButtonText).toBe('Got it');
+  });
+
+  it('stays closed on a desktop browser that cannot push', async () => {
+    mocks.usePushSubscription.mockReturnValue(basePush({ isSupported: false }));
+    await mount();
+    expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.open).toBe(false);
+  });
+
+  it('dismissing the hint writes its own latch and leaves the push offer alone', async () => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: IPHONE_UA });
+    mocks.usePushSubscription.mockReturnValue(basePush({ isSupported: false }));
+    await mount();
+
+    await act(async () => mocks.AlertDialog.mock.calls.at(-1)?.[0]?.onCancel?.());
+
+    expect(window.localStorage.getItem('shadhil:push-ios-install-dismissed')).toBe('v1');
+    expect(window.localStorage.getItem('shadhil:push-prompt-dismissed')).toBeNull();
+
+    await unmount();
+    mocks.AlertDialog.mockClear();
+    await mount();
+    expect(mocks.AlertDialog.mock.calls.at(-1)?.[0]?.open).toBe(false);
+  });
+});

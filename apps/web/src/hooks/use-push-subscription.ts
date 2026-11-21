@@ -29,6 +29,30 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 /**
+ * Does this browser subscription belong to the VAPID key the server currently
+ * serves?
+ *
+ * Rotating the key pair leaves every existing browser subscription bound to the
+ * OLD `applicationServerKey`. Sends against it fail at the push service with a
+ * 403 (`VapidPkHashMismatch`), which is not a 404/410, so the backend never
+ * prunes the row (`push.service.deliver`) - the device silently stops receiving
+ * push while the UI still reports "subscribed". Comparing the keys is what makes
+ * a rotation self-heal: the stale subscription is dropped and the device
+ * re-subscribes against the current key.
+ *
+ * Unreadable option (Safari) counts as a match, so an unreadable value never
+ * throws away a subscription that still works.
+ */
+function matchesServerKey(sub: PushSubscription, publicKey: string): boolean {
+  const raw = sub.options?.applicationServerKey;
+  if (!raw) return true;
+  const existing = new Uint8Array(raw as ArrayBuffer);
+  const current = urlBase64ToUint8Array(publicKey);
+  if (existing.length !== current.length) return false;
+  return existing.every((byte, i) => byte === current[i]);
+}
+
+/**
  * A bounded substitute for `navigator.serviceWorker.ready`.
  *
  * WHY THIS EXISTS (root-caused live on the Settings page, 2026-09-18):
@@ -146,9 +170,16 @@ export function usePushSubscription(): PushCapability {
         }
         const existing = await reg.pushManager.getSubscription();
         if (cancelled) return;
-        subRef.current = existing;
+        // A subscription bound to a retired VAPID key can never receive again.
+        // Drop it here so `isSubscribed` goes false and the enable path rebuilds.
+        const usable = existing !== null && matchesServerKey(existing, publicKey) ? existing : null;
+        if (existing !== null && usable === null) {
+          await existing.unsubscribe().catch(() => undefined);
+          if (cancelled) return;
+        }
+        subRef.current = usable;
         setIsSupported(true);
-        setIsSubscribed(existing !== null);
+        setIsSubscribed(usable !== null);
         setChecked(true);
       } catch {
         if (!cancelled) {
@@ -177,10 +208,17 @@ export function usePushSubscription(): PushCapability {
       // A fresh (not yet subscribed) device needs permission first. If it's
       // already granted for this origin (returning user), skip the prompt.
       const existing = (await reg.pushManager.getSubscription()) ?? subRef.current;
-      if (existing) {
+      if (existing !== null && matchesServerKey(existing, publicKey)) {
         subRef.current = existing;
         setIsSubscribed(true);
         return true;
+      }
+      if (existing !== null) {
+        // Bound to a retired VAPID key - clear it before subscribing again.
+        // Leaving it in place makes `subscribe()` throw InvalidStateError.
+        await existing.unsubscribe().catch(() => undefined);
+        subRef.current = null;
+        setIsSubscribed(false);
       }
 
       const permission = await Notification.requestPermission();

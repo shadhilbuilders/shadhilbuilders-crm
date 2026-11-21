@@ -165,3 +165,41 @@ describe('PortalPushPrompt behaviour', () => {
     expect(window.localStorage.getItem(DISMISS_KEY)).toBeNull();
   });
 });
+
+// An iPhone/iPad in a browser tab has no push API at all (iOS hides `Notification`
+// outside a Home Screen web app), so the card used to render nothing and the
+// buyer was never told why they get no alerts. The install hint is the offer.
+describe('PortalPushPrompt on iOS', () => {
+  const IPHONE_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+  afterEach(() => {
+    delete (navigator as { userAgent?: unknown }).userAgent;
+  });
+
+  it('asks the buyer to add the page to the Home Screen instead of staying silent', () => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: IPHONE_UA });
+    setCapability({ isSupported: false });
+
+    const el = mount();
+
+    expect(prompt(el)).not.toBeNull();
+    expect(el.textContent).toContain('Add this page to your Home Screen');
+    expect(el.textContent).toContain('Add to Home Screen');
+    expect(button(el, 'portal-push-enable')).toBeNull();
+  });
+
+  it('the acknowledgement latches under its own key, not the push-dismiss key', () => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: IPHONE_UA });
+    setCapability({ isSupported: false });
+
+    const el = mount();
+    act(() => {
+      button(el, 'portal-push-install-ack')?.click();
+    });
+
+    expect(window.localStorage.getItem('shadhil:push-ios-install-dismissed')).toBe('v1');
+    expect(window.localStorage.getItem(DISMISS_KEY)).toBeNull();
+    expect(prompt(el)).toBeNull();
+  });
+});
