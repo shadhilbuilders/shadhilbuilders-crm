@@ -8,6 +8,11 @@ import type { RedisService } from '../redis/redis.module';
 
 import { VisitRemindersService } from './visit-reminders.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 const ORG = 'ceid01lpfe1esm8jwsxid41k28';
@@ -116,8 +121,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
         data: {
           id: ids.lead,
           name: 'Reminder Lead',
-          phone,
-          phoneE164: `9${phone}`,
+          ...leadPhoneFields(phone),
           source: 'WHATSAPP',
           state: 'VISIT_SCHEDULED',
           ownerId: ids.tc,
@@ -134,8 +138,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
         data: {
           id: ids.lead2,
           name: 'Reminder Lead 2',
-          phone: phone2,
-          phoneE164: `9${phone2}`,
+          ...leadPhoneFields(phone2),
           source: 'WHATSAPP',
           state: 'VISIT_SCHEDULED',
           ownerId: ids.tc,
@@ -150,8 +153,7 @@ describe.skipIf(!HAS_DB)('VisitRemindersService', () => {
         data: {
           id: ids.lead3,
           name: 'Reminder Lead 3',
-          phone: phone3,
-          phoneE164: `9${phone3}`,
+          ...leadPhoneFields(phone3),
           source: 'WHATSAPP',
           state: 'VISIT_SCHEDULED',
           ownerId: ids.tc,

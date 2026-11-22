@@ -34,9 +34,13 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { JwtPayload } from '@shadhil/auth';
 import { withRlsContext, type PrismaClient } from '@shadhil/database';
-import { CreateLeadDtoSchema, normalizeLeadSource } from '@shadhil/api-types';
+import {
+  CreateLeadDtoSchema,
+  leadPhoneColumns,
+  normalizeLeadSource,
+  toPhoneInput,
+} from '@shadhil/api-types';
 
-import { toE164 } from '../whatsapp/whatsapp.client';
 import { LeadsService } from '../leads/leads.service';
 import { LeadFactsService } from '../leads/lead-facts.service';
 import { PrismaService } from '../prisma/prisma.module';
@@ -111,6 +115,10 @@ export class PublicLeadsService {
       {
         name: dto.fullName,
         phone: dto.phone,
+        // The country the visitor typed under. Without it the re-parse below
+        // falls back to the Indian rule and a US enquiry lands as an Indian
+        // number - the defect this whole change exists for.
+        phoneCountry: dto.phoneCountry,
         // T-LEAD-FACTS (2026-11-05): the address is deliberately NOT written
         // here. It goes through the fact ledger in the same transaction below,
         // so the lead carries the provenance of the address that created it.
@@ -208,7 +216,7 @@ export class PublicLeadsService {
       // so this branch only fires for a number that is already a lead in THIS
       // org. A number held by another workspace is no longer a conflict at all -
       // the insert simply succeeds.
-      const handled = await this.appendRepeatEnquiry(actor, dto, orgId, notes, error);
+      const handled = await this.appendRepeatEnquiry(actor, dto, orgId, projectId, notes, error);
       if (handled !== null) return handled;
       throw error;
     }
@@ -287,18 +295,26 @@ export class PublicLeadsService {
     actor: JwtPayload,
     dto: PublicCreateLeadDto,
     orgId: string,
+    projectId: string,
     notes: string,
     error: unknown,
   ): Promise<PublicCreateLeadResult | null> {
     if ((error as { code?: string } | null)?.code !== 'P2002') return null;
 
-    const phoneE164 = toE164(dto.phone);
+    // 2026-11-22: same parse as create, so a repeat enquiry keys on the same
+    // canonical value the lead was stored with. Deriving this with its own
+    // normalizer is how a foreign repeat enquiry used to miss its lead and
+    // create a duplicate.
+    const { phone, phoneE164 } = leadPhoneColumns(toPhoneInput(dto.phone, dto.phoneCountry));
     const existing = await withRlsContext(
       this.client,
       { userId: actor.sub, role: 'ADMIN', organizationId: orgId },
       (tx) =>
         (tx as unknown as PrismaClient).lead.findFirst({
-          where: { organizationId: orgId, OR: [{ phone: dto.phone }, { phoneE164 }] },
+          // Identity is per project: the same buyer enquiring about two
+          // projects is two leads, and the repeat enquiry must match the one
+          // in THIS project.
+          where: { organizationId: orgId, projectId, OR: [{ phoneE164 }, { phone }] },
           select: { id: true, state: true },
         }),
     );

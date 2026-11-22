@@ -38,11 +38,11 @@ describe('isPlaceholderEmail', () => {
 describe('CreateInviteDtoSchema', () => {
   const base = { name: 'Ravi Kumar', phone: '9876543210', role: 'TELECALLER', teamId: 'team-1' };
 
-  it('accepts an invite with no email at all, and normalises the phone', () => {
+  it('accepts an invite with no email at all, and accepts the phone as typed', () => {
     const parsed = CreateInviteDtoSchema.safeParse(base);
     expect(parsed.success).toBe(true);
     expect(parsed.data?.email).toBeUndefined();
-    expect(parsed.data?.phone).toBe('919876543210');
+    expect(parsed.data?.phone).toBe('9876543210');
   });
 
   it('still validates an address when one is given', () => {

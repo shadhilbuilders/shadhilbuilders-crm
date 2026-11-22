@@ -35,6 +35,11 @@ import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 import { RemindersService, REMINDER_LOCK_KEY } from './reminders.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
 // fixture leads below need a project.
@@ -167,7 +172,7 @@ async function seedDueReminder(label: string): Promise<string> {
       create: {
         id: 'qiurlpko8u0914y4k1eb8y3h',
         name: 'Test Reminder Lead',
-        phone: '9900000099',
+        ...leadPhoneFields('9900000099'),
         state: 'NEW',
         teamId: 'yxt9evh7y5x9pkpxl61ywbyl',
         ownerId: 'dyamh3gezek1ag5wh8xn9ib5',

@@ -41,6 +41,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
+import { tryParsePhone } from '@shadhil/api-types';
+
 import { Public } from '../auth/public.decorator';
 import { prisma as barePrisma, withRlsContext } from '@shadhil/database';
 import { listOrganizationIds } from '../common/cron-orgs';
@@ -329,8 +331,19 @@ export class WebhooksController {
   }): Promise<'message' | 'unknown-contact' | 'unknown-contact-message' | 'deduped' | 'ignored'> {
     if (!message.id || !message.from) return 'ignored';
     const externalId = message.id;
-    const phoneE164 = toE164(message.from);
-    if (!phoneE164) return 'ignored';
+    // One parser for every inbound number. Meta sends international digits, so
+    // this reads them as E.164 and never guesses a country. A value that cannot
+    // be parsed is still answered 200 to Meta (a non-200 makes it retry
+    // forever), but it is recorded as an unknown contact rather than dropped:
+    // a counter nobody reads is still a lost customer.
+    const inbound = tryParsePhone({ source: 'e164', digits: String(message.from) });
+    if (!inbound.ok) {
+      this.logger.error(
+        `WhatsApp inbound: unparseable from=${String(message.from)} reason=${inbound.reason}`,
+      );
+      return 'ignored';
+    }
+    const phoneE164 = inbound.value.e164;
 
     const isText = message.type === 'text' && typeof message.text?.body === 'string';
     // MEDIA (2B): supported inbound media types carry a Meta media id.
@@ -574,18 +587,6 @@ export class WebhooksController {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
-
-/**
- * Normalize a phone number to E.164 (digits only, no leading '+').
- * Mirrors `toE164` from `~/workspace/shadhil-projects/landing-page/lib/whatsapp.ts`
- * - both codebases share the same Meta integration, so the rules
- * for "what counts as E.164" must match exactly.
- */
-function toE164(raw: string): string {
-  let digits = raw.replace(/[\s\-().]/g, '');
-  if (digits.startsWith('+')) digits = digits.slice(1);
-  return digits;
-}
 
 /** Extract supported inbound media (image/video/audio/document) from a Meta
  *  message. Returns null when the message isn't a media type we handle. */

@@ -25,6 +25,11 @@ import { prisma as runtimePrisma, type PrismaClient, withRlsContext } from '@sha
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
 // every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
@@ -174,7 +179,7 @@ beforeAll(async () => {
       create: {
         id: LEAD_1_ID,
         name: 'MMT Lead Team1',
-        phone: `91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`,
+        ...leadPhoneFields(`91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`),
         source: 'TEST',
         state: 'NEW',
         ownerId: TC_1_ID,
@@ -193,7 +198,7 @@ beforeAll(async () => {
       create: {
         id: LEAD_2_ID,
         name: 'MMT Lead Team2',
-        phone: `91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`,
+        ...leadPhoneFields(`91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`),
         source: 'TEST',
         state: 'NEW',
         ownerId: TC_2_ID,

@@ -32,6 +32,11 @@ import { LeadsService } from '../leads/leads.service';
 
 import { VisitsService } from './visits.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
@@ -141,8 +146,7 @@ describe.skipIf(!HAS_DB)('visit -> lead sync coverage (T-LEAD-SYNC-COVERAGE)', (
         data: {
           id: leadId,
           name: `LSC Lead ${seq}`,
-          phone: `93${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`,
-          phoneE164: `9193${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`,
+          ...leadPhoneFields(`93${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`),
           source: 'WHATSAPP',
           state: state as never,
           ownerId: TC_ID,

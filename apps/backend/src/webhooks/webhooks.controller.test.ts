@@ -169,9 +169,12 @@ beforeEach(async () => {
   // assertions can count + look up without cross-test bleed. The
   // phone numbers include a per-test suffix to avoid unique-key
   // collisions with rows left by previous crashed runs.
-  const suffix = Date.now().toString(36);
-  knownPhone = `91${suffix.padStart(10, '0')}`.slice(0, 12);
-  unknownPhone = `92${suffix.padStart(10, '0')}`.slice(0, 12);
+  // Digits only: Meta's `from` is E.164 digits, and the lead lookup compares
+  // them byte-for-byte against Lead.phoneE164. A base36 suffix put letters in
+  // the fixture, which the parser strips, so the lookup never matched.
+  const suffix = String(Date.now()).slice(-10);
+  knownPhone = `91${suffix}`;
+  unknownPhone = `92${suffix}`;
 
   await withRlsContext(
     runtimePrisma as unknown as PrismaClient,

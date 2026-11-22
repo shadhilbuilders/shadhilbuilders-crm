@@ -229,9 +229,8 @@ describe.skipIf(SKIP)('InvitesService.create - hierarchy and guards', () => {
   it('stores the digits-only phone it is given (the DTO normalizes upstream)', async () => {
     // NOTE: normalization happens in `PhoneSchema`, i.e. at the CONTROLLER
     // boundary. The service receives an already-transformed DTO, so this
-    // asserts the contract it actually has - it stores `dto.phone` verbatim.
-    // Passing '+91...' straight to the service (bypassing the DTO) would store
-    // the plus, which is why the controller must always parse the body.
+    // 2026-11-22: the service canonicalises now, so the stored value is digits
+    // with the dial code, not the typed string. The link follows from that.
     const service = makeService();
     const parsed = CreateInviteDtoSchema.parse({
       email: inviteEmail('phone'),
@@ -241,7 +240,7 @@ describe.skipIf(SKIP)('InvitesService.create - hierarchy and guards', () => {
       teamId: TEAM_ID,
     });
     const result = await service.create(adminActor, parsed);
-    expect(result.invite.phone).toBe(parsed.phone);
+    expect(result.invite.phone).toBe('919876543210');
     // And the derived link therefore has no stray '+' in the wa.me path.
     expect(result.whatsappUrl).not.toContain('+91');
   });

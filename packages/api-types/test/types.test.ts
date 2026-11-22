@@ -83,24 +83,25 @@ describe('@shadhil/api-types - lead DTOs', () => {
   // INSERTs before the column constraint, which is why this is enforced.)
   const PROJECT_ID = 'oe6g1xkagiisnn4oeefpdyhk';
 
-  it('CreateLeadDto accepts valid lead with 10-digit phone (normalized to E.164)', () => {
+  it('CreateLeadDto accepts a valid lead with a 10-digit phone and leaves it as typed', () => {
     const r = CreateLeadDtoSchema.parse({
       name: 'Rajesh',
       phone: '9876543210',
       source: 'Meta',
       projectId: PROJECT_ID,
     });
-    // Landing-page normalizePhone: bare 10-digit Indian mobile → +91 prefix.
-    expect(r.phone).toBe('919876543210');
+    // The DTO no longer rewrites: canonicalisation needs a country, which the
+    // service has and the schema does not.
+    expect(r.phone).toBe('9876543210');
   });
-  it('CreateLeadDto normalizes phone with +91 prefix', () => {
+  it('CreateLeadDto accepts a +91 phone as typed', () => {
     const r = CreateLeadDtoSchema.parse({
       name: 'Priya',
       phone: '+91 98765 43210',
       source: 'Google',
       projectId: PROJECT_ID,
     });
-    expect(r.phone).toBe('919876543210');
+    expect(r.phone).toBe('+91 98765 43210');
   });
   it('CreateLeadDto rejects too-short phone', () => {
     expect(() => CreateLeadDtoSchema.parse({ name: 'x', phone: '123', source: 'Meta' })).toThrow();

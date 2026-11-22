@@ -23,6 +23,11 @@ import { LeadsService } from '../leads/leads.service';
 
 import { VisitsService } from './visits.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL, so the
 // fixture leads below need a project.
@@ -85,8 +90,7 @@ async function seedLeadWithVisit(
       data: {
         id: leadId,
         name: `VOC Lead ${seq}`,
-        phone: `91${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`,
-        phoneE164: `919${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`,
+        ...leadPhoneFields(`91${String(RUN).slice(-8)}${String(seq).padStart(3, '0')}`),
         source: 'WHATSAPP',
         state: 'VISIT_SCHEDULED',
         // Default stays `SE_ID` for both: most of this suite exercises the
@@ -969,8 +973,7 @@ describe.skipIf(!HAS_DB)('VisitsService.create - which leads accept a visit', ()
         data: {
           id: leadId,
           name: `CVE Lead ${eligibilitySeq} (${state})`,
-          phone: `92${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`,
-          phoneE164: `9192${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`,
+          ...leadPhoneFields(`92${String(RUN).slice(-8)}${String(eligibilitySeq).padStart(3, '0')}`),
           source: 'WHATSAPP',
           state: state as never,
           ownerId: TC_ID,

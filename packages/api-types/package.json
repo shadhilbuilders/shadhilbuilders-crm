@@ -13,6 +13,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./phone": {
+      "types": "./src/phone.ts",
+      "require": "./dist/phone.js",
+      "import": "./dist/phone.js",
+      "default": "./dist/phone.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -29,6 +35,7 @@
   },
   "dependencies": {
     "@shadhil/database": "workspace:*",
+    "libphonenumber-js": "1.13.12",
     "zod": "^4.6.7"
   },
   "devDependencies": {

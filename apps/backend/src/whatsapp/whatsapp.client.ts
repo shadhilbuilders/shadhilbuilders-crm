@@ -98,6 +98,7 @@
 // you have approved.
 // ────────────────────────────────────────────────────────────────────
 
+import { parsePhone } from '@shadhil/api-types';
 import { Injectable, Logger } from '@nestjs/common';
 
 const GRAPH_API_VERSION = 'v26.0';
@@ -123,14 +124,6 @@ export interface WhatsAppDelivery {
    *  phone number not in allowed list". */
   errorCode: number | null;
   errorTitle: string | null;
-}
-
-/** Normalize a raw phone number to E.164 (digits only, no +). */
-export function toE164(raw: string): string {
-  // Strip spaces, dashes, parentheses, dots
-  let digits = raw.replace(/[\s\-().]/g, '');
-  if (digits.startsWith('+')) digits = digits.slice(1);
-  return digits;
 }
 
 /** Outcome of one send. `accepted=false` is a soft failure: the

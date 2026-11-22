@@ -32,6 +32,11 @@ import { createDirectPrismaClient } from '@shadhil/database/test-db-isolation';
 import { PrismaService } from '../prisma/prisma.module';
 import { LeadsService } from './leads.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 // ManagerAssignmentRule has NO INSERT policy by design (rule management is an
@@ -200,7 +205,7 @@ describe('autoAssignLeads = true → team round-robin, least-loaded telecaller w
         data: {
           id: `auto-seed-lead-${RUN_TAG}`,
           name: 'Seed burden',
-          phone: `+9199${(Date.now() % 100000000).toString().padStart(8, '0')}`,
+          ...leadPhoneFields(`+9199${(Date.now() % 100000000).toString().padStart(8, '0')}`),
           source: 'TEST',
           projectId: PROJECT_ID,
           teamId: TEAM_A,
@@ -253,7 +258,7 @@ describe('autoAssignLeads = true → team round-robin, least-loaded telecaller w
           data: {
             id: `auto-burden-a1-${i}-${RUN_TAG}`,
             name: `A1 burden ${i}`,
-            phone: `+9199${((Date.now() + 10 + i) % 100000000).toString().padStart(8, '0')}`,
+            ...leadPhoneFields(`+9199${((Date.now() + 10 + i) % 100000000).toString().padStart(8, '0')}`),
             source: 'TEST',
             projectId: PROJECT_ID,
             teamId: TEAM_A,
@@ -268,7 +273,7 @@ describe('autoAssignLeads = true → team round-robin, least-loaded telecaller w
           data: {
             id: `auto-burden-b1-${i}-${RUN_TAG}`,
             name: `B1 burden ${i}`,
-            phone: `+9199${((Date.now() + 100 + i) % 100000000).toString().padStart(8, '0')}`,
+            ...leadPhoneFields(`+9199${((Date.now() + 100 + i) % 100000000).toString().padStart(8, '0')}`),
             source: 'TEST',
             projectId: PROJECT_ID,
             teamId: TEAM_B,
@@ -570,7 +575,7 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
           data: {
             id: `auto-cap-burden-${i}-${RUN_TAG}`,
             name: `Cap burden ${i}`,
-            phone: `+9198${((Date.now() + 900 + i) % 100000000).toString().padStart(8, '0')}`,
+            ...leadPhoneFields(`+9198${((Date.now() + 900 + i) % 100000000).toString().padStart(8, '0')}`),
             source: 'TEST',
             projectId: PROJECT_CAP,
             teamId: TEAM_CAP,
@@ -653,7 +658,7 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
         data: {
           id: `auto-full-burden-${RUN_TAG}`,
           name: 'Full burden',
-          phone: `+9196${((Date.now() + 970) % 100000000).toString().padStart(8, '0')}`,
+          ...leadPhoneFields(`+9196${((Date.now() + 970) % 100000000).toString().padStart(8, '0')}`),
           source: 'TEST',
           projectId: PROJECT_FULL,
           teamId: TEAM_FULL,
@@ -765,7 +770,7 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
           data: {
             id: `auto-dedupe-burden-${i}-${RUN_TAG}`,
             name: `Dedupe burden ${i}`,
-            phone: `+9192${((Date.now() + 960 + i) % 100000000).toString().padStart(8, '0')}`,
+            ...leadPhoneFields(`+9192${((Date.now() + 960 + i) % 100000000).toString().padStart(8, '0')}`),
             source: 'TEST',
             projectId: PROJECT_DEDUPE,
             teamId: TEAM_DEDUPE,
@@ -850,7 +855,7 @@ describe('T-MAXOPENLEADS: a capped telecaller stops receiving new leads', () => 
           data: {
             id: `auto-nocap-burden-${i}-${RUN_TAG}`,
             name: `NoCap burden ${i}`,
-            phone: `+9194${((Date.now() + i) % 100000000).toString().padStart(8, '0')}`,
+            ...leadPhoneFields(`+9194${((Date.now() + i) % 100000000).toString().padStart(8, '0')}`),
             source: 'TEST',
             projectId: PROJECT_NOCAP,
             teamId: TEAM_NOCAP,

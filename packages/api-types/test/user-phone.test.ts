@@ -22,16 +22,16 @@ import {
 } from '../src/auth';
 
 describe('ClearablePhoneSchema', () => {
-  it('normalizes a bare 10-digit Indian mobile to digits-only', () => {
-    expect(ClearablePhoneSchema.parse('9876543210')).toBe('919876543210');
+  it('accepts a bare 10-digit Indian mobile without rewriting it', () => {
+    expect(ClearablePhoneSchema.parse('9876543210')).toBe('9876543210');
   });
 
-  it('normalizes a +91 E164 value', () => {
-    expect(ClearablePhoneSchema.parse('+919876543210')).toBe('919876543210');
+  it('accepts a +91 E164 value without rewriting it', () => {
+    expect(ClearablePhoneSchema.parse('+919876543210')).toBe('+919876543210');
   });
 
-  it('strips a leading 0 and prepends 91', () => {
-    expect(ClearablePhoneSchema.parse('09876543210')).toBe('919876543210');
+  it('accepts a leading 0 without rewriting it', () => {
+    expect(ClearablePhoneSchema.parse('09876543210')).toBe('09876543210');
   });
 
   it('passes null through - this is the ERASE path', () => {
@@ -58,7 +58,7 @@ describe('ClearablePhoneSchema', () => {
 describe('UpdateUserDtoSchema (admin edit)', () => {
   it('accepts a phone-only update', () => {
     const parsed = UpdateUserDtoSchema.parse({ phone: '9876543210' });
-    expect(parsed.phone).toBe('919876543210');
+    expect(parsed.phone).toBe('9876543210');
     expect(parsed.name).toBeUndefined();
   });
 
@@ -78,7 +78,7 @@ describe('UpdateUserDtoSchema (admin edit)', () => {
 describe('UpdateProfileDtoSchema (self edit)', () => {
   it('accepts a phone-only self edit - name is optional as of 2026-11-18', () => {
     const parsed = UpdateProfileDtoSchema.parse({ phone: '9876543210' });
-    expect(parsed.phone).toBe('919876543210');
+    expect(parsed.phone).toBe('9876543210');
     expect(parsed.name).toBeUndefined();
   });
 
@@ -121,7 +121,7 @@ describe('CreateUserDtoSchema', () => {
       teamId: 'team-1',
       phone: '9876543210',
     });
-    expect(parsed.phone).toBe('919876543210');
+    expect(parsed.phone).toBe('9876543210');
   });
 
   it('accepts a staff user WITHOUT a phone (optional)', () => {

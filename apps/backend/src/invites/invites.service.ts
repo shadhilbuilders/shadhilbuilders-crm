@@ -9,6 +9,7 @@
 // withRlsContext transaction so the business row and its AuditLog commit
 // atomically (AGENTS.md A2/G-1). The one exception is the accept path's
 // pre-flight lookup, which cannot be fenced - see `accept()` for why.
+import { canonicalPhoneOrThrow } from '../common/phone';
 import {
   BadRequestException,
   ForbiddenException,
@@ -263,7 +264,9 @@ export class InvitesService {
         organizationId: actor.organizationId,
         email,
         name: dto.name,
-        phone: dto.phone,
+        // The DTO requires a non-blank phone, so the null case cannot happen;
+        // the fallback keeps the type honest without an assertion.
+        phone: canonicalPhoneOrThrow(dto.phone, dto.phoneCountry) ?? dto.phone,
         role: dto.role as Role,
         teamId,
         tokenHash: hashInviteToken(rawToken),
@@ -713,7 +716,16 @@ export class InvitesService {
         // Phone: omitted keeps the invite's number; provided corrects it.
         // The correction is recorded below - a silent rewrite would let an
         // invite be redirected to a different handset with no trace.
-        const phoneUsed = dto.phone !== undefined && dto.phone !== null ? dto.phone : invite.phone;
+        //
+        // A provided number is canonicalised with the country it was typed in
+        // (2026-11-22), the same call the create path makes: `dto.phone` is
+        // national digits from the form, and storing those raw would put a
+        // different shape in the column than every other writer produces.
+        const correctedPhone =
+          dto.phone !== undefined && dto.phone !== null
+            ? canonicalPhoneOrThrow(dto.phone, dto.phoneCountry)
+            : null;
+        const phoneUsed = correctedPhone ?? invite.phone;
         const phoneCorrected = phoneUsed !== invite.phone;
 
         // A staff phone is unique per org (User_phone_organizationId_key, a

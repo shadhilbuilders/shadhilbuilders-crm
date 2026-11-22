@@ -117,7 +117,9 @@ beforeAll(async () => {
       .padStart(4, '0')}`;
     await db.lead.upsert({
       where: { id: TEST_LEAD_ID },
-      update: { phoneE164: uniquePhone },
+      // Both columns move together: the CHECK refuses a lead whose phone and
+      // phoneE164 disagree.
+      update: { phone: uniquePhone, phoneE164: uniquePhone },
       create: {
         id: TEST_LEAD_ID,
         name: 'Rajesh Kumar',
@@ -284,40 +286,10 @@ describe.skipIf(!HAS_DB)('ChatService.send → OutboundService.enqueue (T-E2b)',
     expect(call.freeformBody).toBe('The site visit is confirmed for Saturday 11 AM');
   });
 
-  it('does NOT call outbound.enqueue when channel=IN_APP and the lead has NO phoneE164', async () => {
-    await openReplyWindow();
-    capturedCalls.length = 0;
-    // A lead without a phoneE164 (e.g. a record created with a display
-    // phone but no normalized number, or a non-messaging lead) must not
-    // enqueue a WhatsApp send - there is no reachable number.
-    if (prisma === null) throw new Error('prisma missing');
-    const service = makeService();
-    await adminSeed(async (db) => {
-      await db.lead.update({
-        where: { id: TEST_LEAD_ID },
-        data: { phoneE164: null },
-      });
-    });
-
-    try {
-      await service.send(actor, {
-        leadId: TEST_LEAD_ID,
-        body: 'Internal note: spoke to lead by phone',
-        channel: 'IN_APP',
-        kind: 'CUSTOMER',
-      });
-    } finally {
-      // Restore the fixture lead's phoneE164 for sibling tests.
-      const uniquePhone = `${Date.now()}${Math.floor(Math.random() * 10000)
-        .toString()
-        .padStart(4, '0')}`;
-      await adminSeed(async (db) => {
-        await db.lead.update({ where: { id: TEST_LEAD_ID }, data: { phoneE164: uniquePhone } });
-      });
-    }
-
-    expect(capturedCalls).toHaveLength(0);
-  });
+  // 2026-11-22: the previous case here ("IN_APP with a lead that has no
+  // phoneE164") tested a state the schema no longer allows - phoneE164 is NOT
+  // NULL. The channel rule it was standing in for is covered by the sibling
+  // tests above, which assert what actually gets enqueued.
 
   it('truncates body at 1000 chars to leave headroom under Meta 1024 limit', async () => {
     await openReplyWindow();

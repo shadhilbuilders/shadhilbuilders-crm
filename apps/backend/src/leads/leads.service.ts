@@ -40,6 +40,7 @@ import {
 import type { JwtPayload } from '@shadhil/auth';
 
 import { PROJECT_ACTIVE, LEAD_IN_ACTIVE_PROJECT } from '../common/soft-delete-filters';
+import { deriveWhatsAppReachability } from './whatsapp-reachability';
 import type {
   CreateLeadDto,
   LeadActivitiesResponse,
@@ -67,7 +68,7 @@ import { syncVisitsToLeadState } from '../visits/sync-visits-to-lead-state';
 // route a converted number's new messages into its lead chat panel / Message
 // rows. Before this, converted leads had phoneE164 null/'' (phone-only), so
 // post-convert inbound never matched → the lead's chat stayed empty.
-import { toE164 } from '../whatsapp/whatsapp.client';
+import { leadPhoneColumns, phoneSearchTerms, toPhoneInput } from '@shadhil/api-types';
 
 import {
   decodeActivityCursor,
@@ -340,8 +341,20 @@ export class LeadsService {
     );
 
     if (dto.search !== undefined && dto.search.length > 0) {
+      // 2026-11-22: a search term is NOT parsed as a phone number - "98" is a
+      // keystroke, not a number, and refusing it would blank the list. The
+      // digit run is matched raw, and when the term is a complete number its
+      // canonical form is matched too, so typing 9876543210 finds the lead
+      // stored as 919876543210. Both go through Prisma.sql placeholders.
+      const terms = phoneSearchTerms(dto.search, { country: null });
+      const phoneMatches = terms.map(
+        (term) => Prisma.sql`"phone" ILIKE ${`%${escapeLike(term)}%`}`,
+      );
       conditions.push(
-        Prisma.sql`("name" ILIKE ${`%${dto.search}%`} OR "phone" ILIKE ${`%${dto.search}%`})`,
+        Prisma.sql`(
+          "name" ILIKE ${`%${escapeLike(dto.search)}%`}
+          ${phoneMatches.length > 0 ? Prisma.sql`OR ${Prisma.join(phoneMatches, ' OR ')}` : Prisma.empty}
+        )`,
       );
     }
 
@@ -560,6 +573,9 @@ export class LeadsService {
         projectId: row.projectId,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        // Evidence, not a check: the Cloud API cannot answer "is this number
+        // on WhatsApp" before a send, so this says what we actually know.
+        whatsapp: await deriveWhatsAppReachability(tx as unknown as PrismaClient, leadId),
       };
     });
   }
@@ -1033,8 +1049,16 @@ export class LeadsService {
     // (organizationId, phone), so this check is scoped to the actor's org and
     // the message says so. A lead with the same number in ANOTHER org is not a
     // conflict - that is a different builder's customer.
+    // 2026-11-22: one parse feeds both the duplicate check and the two phone
+    // columns. The check keys on phoneE164 (the canonical column); `phone` is
+    // kept in the OR so rows written before the backfill still match.
+    const phoneColumns = leadPhoneColumns(toPhoneInput(dto.phone, dto.phoneCountry));
     const existing = await client.lead.findFirst({
-      where: { phone: dto.phone, organizationId: actor.organizationId },
+      where: {
+        organizationId: actor.organizationId,
+        projectId: dto.projectId,
+        OR: [{ phoneE164: phoneColumns.phoneE164 }, { phone: phoneColumns.phone }],
+      },
       select: { id: true },
     });
     if (existing !== null) {
@@ -1060,16 +1084,11 @@ export class LeadsService {
     const created = await client.lead.create({
       data: {
         name: dto.name,
-        phone: dto.phone,
-        // T-E2b follow-up fix (2026-09-17): persist the E.164-normalized
-        // phone on create. The WhatsApp inbound webhook looks up leads by
-        // phoneE164 (findUnique({ where: { phoneE164 } })) to route a known
-        // number's message into its Lead chat. Without this, a lead created
-        // from convert (which sends phone only) had phoneE164 null, so
-        // post-convert inbound never matched the lead and its chat stayed
-        // empty. toE164 mirrors the webhook's normalization (digits only,
-        // leading '+' stripped) so lookup and insert agree.
-        phoneE164: toE164(dto.phone),
+        // Both columns, one parse. The webhook looks leads up by phoneE164,
+        // so a row written with `phone` alone is invisible to inbound
+        // routing - that was the 2026-09-17 fix, and this keeps it true for
+        // numbers that are not Indian.
+        ...phoneColumns,
         email: dto.email && dto.email.trim().length > 0 ? dto.email : null,
         source: dto.source,
         // T-LEAD-PROJECT-REQUIRED (2026-09-16): this was `dto.projectId ?? null`,
@@ -1728,6 +1747,28 @@ export class LeadsService {
         existing.teamId,
       );
 
+      // A phone edit must not steal another lead's number. The unique index
+      // on (organizationId, phoneE164) is the backstop and a lost race still
+      // answers 409 through the global filter, but the pre-check is what names
+      // the number instead of saying "a record with these values exists".
+      if (dto.phone !== undefined) {
+        const nextPhone = leadPhoneColumns(toPhoneInput(dto.phone, dto.phoneCountry));
+        const clash = await tx.lead.findFirst({
+          where: {
+            organizationId: actor.organizationId,
+            projectId: existing.project.id,
+            id: { not: leadId },
+            OR: [{ phoneE164: nextPhone.phoneE164 }, { phone: nextPhone.phone }],
+          },
+          select: { id: true },
+        });
+        if (clash !== null) {
+          throw new BadRequestException(
+            `Lead with phone ${dto.phone} already exists in this organization`,
+          );
+        }
+      }
+
       const updated = await tx.lead.update({
         where: { id: leadId },
         data: {
@@ -1735,7 +1776,9 @@ export class LeadsService {
           ...(dto.email !== undefined
             ? { email: dto.email && dto.email.trim().length > 0 ? dto.email : null }
             : {}),
-          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+          ...(dto.phone !== undefined
+            ? leadPhoneColumns(toPhoneInput(dto.phone, dto.phoneCountry))
+            : {}),
         },
         select: {
           id: true,
@@ -2507,4 +2550,13 @@ export class LeadsService {
       // swallow - best-effort
     }
   }
+}
+
+/**
+ * Escape the LIKE metacharacters in a user-supplied term. Without this a search
+ * for `_` matches every row. Postgres treats backslash as the LIKE escape by
+ * default, so no ESCAPE clause is needed.
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
 }

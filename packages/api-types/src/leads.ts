@@ -8,7 +8,7 @@
 
 import { z } from 'zod';
 import { LeadStateSchema, LeadOwnerTypeSchema, ActivityTypeSchema } from './enums';
-import { PhoneSchema } from './common';
+import { CountryCodeSchema, PhoneSchema } from './common';
 
 /**
  * Lead source - free-form today (Meta ads, landing site, referral). When the
@@ -37,6 +37,9 @@ export const CreateLeadDtoSchema = z.object({
     .min(1)
     .max(120),
   phone: PhoneSchema,
+  // Country the number was typed in. Omitted means the pre-existing Indian
+  // paths (convert, imports), which parse under the named legacy rule.
+  phoneCountry: CountryCodeSchema.optional(),
   // Email is optional but .optional() only allows undefined/missing, not
   // ''. Several clients (new-lead form, landing mirror) may send ''
   // for a blank optional field, so accept '' as "not provided" too.
@@ -76,6 +79,7 @@ export const UpdateLeadDtoSchema = z.object({
   id: z.string().cuid2(),
   name: z.string().trim().min(1).max(120).optional(),
   phone: PhoneSchema.optional(),
+  phoneCountry: CountryCodeSchema.optional(),
   email: z
     .union([z.literal(''), z.email().trim().toLowerCase().max(254)])
     .nullable()
@@ -198,7 +202,20 @@ export const LeadDetailSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
-export type LeadDetail = z.infer<typeof LeadDetailSchema>;
+export const WhatsAppReachabilitySchema = z.object({
+  state: z.enum(['REACHABLE', 'UNREACHABLE', 'UNKNOWN']),
+  detail: z.string().nullable(),
+});
+export type WhatsAppReachability = z.infer<typeof WhatsAppReachabilitySchema>;
+
+export type LeadDetail = z.infer<typeof LeadDetailSchema> & {
+  /**
+   * Whether this lead can actually receive a WhatsApp message. Derived from
+   * evidence (an inbound message, or Meta's 131026), never guessed: the Cloud
+   * API has no pre-flight lookup.
+   */
+  whatsapp?: WhatsAppReachability;
+};
 
 /**
  * GET /api/leads/:id/activities - the lead's timeline (oldest → newest).

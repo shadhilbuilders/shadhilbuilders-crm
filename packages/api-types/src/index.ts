@@ -48,4 +48,5 @@ export * from './integrations';
 export * from './public-leads';
 export * from './dashboard';
 export * from './common';
+export * from './phone';
 export * from './realtime';

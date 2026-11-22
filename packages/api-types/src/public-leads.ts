@@ -22,6 +22,8 @@
 // ────────────────────────────────────────────────────────────────────────────
 import { z } from 'zod';
 
+import { tryParsePhone } from './phone';
+
 // ────────────────────────────────────────────────────────────────────────
 // Public submit DTO (POST /api/public/leads)
 // ────────────────────────────────────────────────────────────────────────
@@ -68,9 +70,16 @@ import { z } from 'zod';
  *     7, which let a 7-digit typo through this gate and only failed a layer
  *     down.
  */
-function isPlausiblePublicPhone(value: string): boolean {
+function isPlausiblePublicPhone(value: string, country?: string): boolean {
   if (!/^\+?[\d\s\-().]*$/.test(value)) return false;
   const digits = value.replace(/\D/g, '').length;
+  // With a country the floor is that country's: a UAE mobile is 9 digits and a
+  // Singapore or Hong Kong mobile is 8, and this gate sits in front of the
+  // main acquisition path. Without a country the historical 10-15 rule holds.
+  if (country !== undefined && country !== '') {
+    if (digits < 6 || digits > 15) return false;
+    return tryParsePhone({ source: 'typed', raw: value, country: country as never }).ok;
+  }
   return digits >= 10 && digits <= 15;
 }
 
@@ -80,6 +89,7 @@ export const PublicCreateLeadDtoSchema = z.object({
     .trim()
     .min(1, 'Name is required')
     .max(120, 'Name is too long'),
+  phoneCountry: z.string().trim().length(2).toUpperCase().optional(),
   phone: z
     .string({ error: 'phone is required' })
     // HARDENED 2026-11-19. This was `.min(7).max(20)` - a LENGTH check only,
@@ -93,8 +103,7 @@ export const PublicCreateLeadDtoSchema = z.object({
     // first attempt) emitted the SAME message twice for `abcdefg123`, because
     // both issues fired. This single predicate keeps one message per field.
     // The authoritative SHAPE rule still lives in PhoneSchema one layer down.
-    .trim()
-    .refine(isPlausiblePublicPhone, { message: 'Please enter a valid phone number' }),
+    .trim(),
   email: z.string().trim().toLowerCase().max(254).optional().or(z.literal('')),
   requirement: z.string().trim().max(2000).optional().or(z.literal('')),
   message: z.string().trim().max(2000).optional().or(z.literal('')),
@@ -107,7 +116,18 @@ export const PublicCreateLeadDtoSchema = z.object({
   projectSlug: z.string().trim().min(1).max(120).optional().or(z.literal('')),
   // Optional direct-owner override (validated against the org/team).
   ownerId: z.string().trim().min(1).max(120).optional().or(z.literal('')),
-});
+  })
+  // The phone gate needs the sibling country, so it runs on the object.
+  .superRefine((value, ctx) => {
+    if (!isPlausiblePublicPhone(value.phone, value.phoneCountry)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['phone'],
+        message: 'Please enter a valid phone number',
+      });
+    }
+  });
+
 export type PublicCreateLeadDto = z.infer<typeof PublicCreateLeadDtoSchema>;
 
 /** Shape of POST /api/public/leads success. `id` + `state` let the landing

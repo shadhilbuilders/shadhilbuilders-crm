@@ -24,6 +24,11 @@ import { PrismaService } from '../prisma/prisma.module';
 import { RedisService } from '../redis/redis.module';
 import { OverdueAlertsService, OVERDUE_ALERT_LOCK_KEY } from './overdue-alerts.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const HAS_REDIS = Boolean(process.env.REDIS_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
@@ -134,7 +139,7 @@ async function seedFixtures(): Promise<void> {
       data: {
         id: LEAD_ID,
         name: 'Test Overdue Lead',
-        phone: `99${runToken.replace(/[^0-9]/g, '').slice(0, 8)}`,
+        ...leadPhoneFields(`99${runToken.replace(/[^0-9]/g, '').slice(0, 8)}`),
         state: 'NEW',
         ownerId: OWNER_ID,
         ownerType: 'TELECALLER',

@@ -96,6 +96,8 @@ describe('parseServiceBody', () => {
     );
     // PhoneSchema normalizes on the way through - proves we used the REAL
     // schema, not a stub.
-    expect(parsed.phone).toBe('919876543210');
+    // 2026-11-22: PhoneSchema validates shape only; canonicalisation needs a
+    // country, which lives in the service, not in the schema.
+    expect(parsed.phone).toBe('9876543210');
   });
 });

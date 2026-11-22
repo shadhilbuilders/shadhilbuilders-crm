@@ -19,7 +19,7 @@
 import { z } from 'zod';
 
 import { ClearablePhoneSchema, EmailSchema } from './auth';
-import { PhoneSchema } from './common';
+import { CountryCodeSchema, PhoneSchema } from './common';
 import { RoleSchema } from './enums';
 
 /**
@@ -86,6 +86,7 @@ export const CreateInviteDtoSchema = z.object({
     .min(1, 'Name is required')
     .max(120, 'Name must be at most 120 characters'),
   phone: PhoneSchema,
+  phoneCountry: CountryCodeSchema.optional(),
   role: RoleSchema,
   teamId: z.string().trim().min(1).max(64).optional(),
 });
@@ -246,6 +247,11 @@ export const AcceptInviteDtoSchema = z.object({
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be at most 128 characters'),
   phone: ClearablePhoneSchema.optional(),
+  /**
+   * The country the corrected number was typed in (2026-11-22). Absent keeps
+   * the pre-existing Indian reading, exactly like every other phone DTO.
+   */
+  phoneCountry: CountryCodeSchema.optional(),
 });
 export type AcceptInviteDto = z.infer<typeof AcceptInviteDtoSchema>;
 

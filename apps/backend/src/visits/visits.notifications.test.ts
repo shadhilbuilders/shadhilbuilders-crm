@@ -36,6 +36,11 @@ import { PrismaService } from '../prisma/prisma.module';
 
 import { VisitsService } from './visits.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const prisma: PrismaClient | null = HAS_DB ? runtimePrisma : null;
 
@@ -180,8 +185,7 @@ async function seedLeadWithVisit(): Promise<{ leadId: string; visitId: string }>
       data: {
         id: leadId,
         name: `Notif Lead ${n}`,
-        phone,
-        phoneE164: `9${phone}`,
+        ...leadPhoneFields(phone),
         source: 'WHATSAPP',
         state: 'VISIT_SCHEDULED',
         // The telecaller owns; the exec conducts (the real plan §3 shape).

@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 
+import { isCountryCode, parsePhone } from './phone';
+
 /** Standard pagination for list endpoints. */
 export const PaginationDtoSchema = z.object({
   limit: z.number().int().min(1).max(200).default(50),
@@ -38,57 +40,68 @@ export type IdParamDto = z.infer<typeof IdParamDtoSchema>;
  * Anything outside these shapes fails validation. The output is the
  * normalized digits-only E.164 form (no leading "+").
  */
-export const PhoneSchema = z
-  .string()
-  .superRefine((raw, ctx) => {
-    // Reuse the landing page's throwing validator for shape checks;
-    // surface its failure as a Zod issue so `.safeParse` returns
-    // `success:false` instead of re-throwing.
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      normalizePhoneDigits(raw);
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Please enter a valid phone number',
-      });
-    }
-  })
-  .transform((raw) => normalizePhoneDigits(raw));
+/**
+ * Shape rule for a phone number as it arrives over the wire.
+ *
+ * This validates SHAPE and nothing else: characters, and 10 to 15 digits. It
+ * deliberately does NOT rewrite the value. The old version appended `91` to
+ * anything that looked like an Indian mobile, which is how +1 650 234 5678
+ * became an Indian number before any service saw it. Canonicalisation now
+ * happens once, in `parsePhone`, where the country is known.
+ */
+export const PhoneSchema = z.string().superRefine((raw, ctx) => {
+  try {
+    assertPhoneShape(raw);
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Please enter a valid phone number',
+    });
+  }
+});
 export type PhoneNumber = z.infer<typeof PhoneSchema>;
 
 /**
- * Normalize a raw phone number to E.164 format (digits only, no +).
- * Ported verbatim from landing-page/lib/enquiry-schema.ts `normalizePhone`.
- * Throws on unparseable input.
+ * An ISO 3166-1 alpha-2 country, validated at runtime.
  *
- * Handles:
- *   +91XXXXXXXXXX  → 91XXXXXXXXXX
- *   91XXXXXXXXXX   → 91XXXXXXXXXX
- *   0XXXXXXXXXX    → 91XXXXXXXXXX  (strip leading 0, prepend 91)
- *   XXXXXXXXXX     → 91XXXXXXXXXX  (10 digits starting 6-9 = Indian mobile)
- *   +1XXXXXXXXXX   → 1XXXXXXXXXX   (international, strip +)
+ * `CountryCode` is a TypeScript type, so a DTO that declares it proves
+ * nothing at run time. An invalid code must be refused loudly, never fall
+ * back to the domestic default.
+ */
+export const CountryCodeSchema = z.string().superRefine((value, ctx) => {
+  if (!isCountryCode(value)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Unknown country code',
+    });
+  }
+});
+
+/** Characters and digit count only. Throws on a shape that cannot be a phone. */
+function assertPhoneShape(raw: string): void {
+  if (!/^\+?[\d\s\-().]*$/.test(raw)) throw new Error('Invalid phone number format');
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) {
+    throw new Error('Invalid phone number format');
+  }
+}
+
+/**
+ * Normalize a raw phone number to E.164 digits (no `+`).
+ *
+ * Kept for the Indian-only paths that still call it. It delegates to the one
+ * parser in `./phone`, under the explicitly named `legacy-national` rule, so
+ * there is exactly one implementation of the Indian assumption in the
+ * codebase instead of two that disagree.
+ *
+ * Throws on unparseable input.
  */
 export function normalizePhoneDigits(raw: string): string {
-  let digits = raw.replace(/[\s\-().]/g, '');
-  if (digits.startsWith('+')) digits = digits.slice(1);
-
-  // Indian: starts with 91 and has 12 digits total
-  if (/^91\d{10}$/.test(digits)) return digits;
-  // Indian: starts with 0 and has 11 digits → strip 0, prepend 91
-  if (/^0\d{10}$/.test(digits)) return '91' + digits.slice(1);
-  // Indian mobile: 10 digits starting with 6-9 → prepend 91
-  if (/^[6-9]\d{9}$/.test(digits)) return '91' + digits;
-  // International: 10+ digits, up to the E.164 ceiling.
-  //
-  // This used to be `\d{7,15}`, with a comment claiming it checked for a valid
-  // country code - it never did, and the effect was that `9876543` passed as a
-  // "foreign" number and every form submitted with a 7-digit typo. The CRM is
-  // Indian-first, so anything shorter than a full number is a mistake; genuine
-  // E.164 numbers are 10-15 digits once the country code is included.
-  if (/^\d{10,15}$/.test(digits)) return digits;
-
-  throw new Error('Invalid phone number format');
+  try {
+    return parsePhone({ source: 'legacy-national', raw }).e164;
+  } catch {
+    throw new Error('Invalid phone number format');
+  }
 }
 
 /**

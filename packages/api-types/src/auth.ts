@@ -7,7 +7,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { PhoneSchema } from './common';
+import { CountryCodeSchema, PhoneSchema } from './common';
 import { RoleSchema } from './enums';
 import { TeamReportingLineSchema } from './reporting';
 
@@ -127,6 +127,7 @@ export const SignupDtoSchema = z.object({
   role: RoleSchema.default('TELECALLER'),
   teamId: teamIdSchema,
   phone: ClearablePhoneSchema.optional(),
+  phoneCountry: CountryCodeSchema.optional(),
 });
 export type SignupDto = z.infer<typeof SignupDtoSchema>;
 
@@ -311,6 +312,7 @@ export const UpdateUserDtoSchema = z.object({
   name: nameSchema.optional(),
   email: emailSchema.optional(),
   phone: ClearablePhoneSchema.optional(),
+  phoneCountry: CountryCodeSchema.optional(),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDtoSchema>;
 
@@ -352,6 +354,7 @@ export const UpdateProfileDtoSchema = z
   .object({
     name: nameSchema.optional(),
     phone: ClearablePhoneSchema.optional(),
+  phoneCountry: CountryCodeSchema.optional(),
     email: emailSchema.optional(),
     /**
      * Only ever read to authorise an `email` change. Never stored, never

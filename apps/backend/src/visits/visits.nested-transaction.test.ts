@@ -76,11 +76,13 @@ async function adminSeed<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 }
 
 function leadFixture(id: string, seq: number): Prisma.LeadUncheckedCreateInput {
+  // phone and phoneE164 are the same canonical digits (CHECK constraint).
+  const phone = `9198${String(RUN).slice(-7)}${String(seq).padStart(3, '0')}`;
   return {
     id,
     name: `NestedTx Lead ${seq}`,
-    phone: `9198${String(RUN).slice(-7)}${String(seq).padStart(3, '0')}`,
-    phoneE164: `91988${String(RUN).slice(-7)}${String(seq).padStart(3, '0')}`,
+    phone,
+    phoneE164: phone,
     source: 'WHATSAPP',
     // VISIT_REQUESTED is what makes create() run the nested auto-advance.
     state: 'VISIT_REQUESTED',

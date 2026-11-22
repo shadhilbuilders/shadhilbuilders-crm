@@ -41,6 +41,8 @@ import {
   PROJECT_TEAM_LIVE,
 } from '../common/soft-delete-filters';
 import type { JwtPayload } from '@shadhil/auth';
+
+import { canonicalPhoneOrThrow } from '../common/phone';
 import type {
   AssignManagerDto,
   CreateUserDto,
@@ -632,7 +634,9 @@ export class UsersService {
             // 2026-11-18 (user-phone): staff contact number. Already normalized
             // by ClearablePhoneSchema. Absent for CUSTOMER (rejected in 1b) and
             // undefined when the caller omitted it, which Prisma writes as NULL.
-            ...(dto.role === 'CUSTOMER' ? {} : { phone: dto.phone ?? null }),
+            ...(dto.role === 'CUSTOMER'
+              ? {}
+              : { phone: canonicalPhoneOrThrow(dto.phone, dto.phoneCountry) }),
             ...(dto.role === 'CUSTOMER' ? { customerLeadId: dto.customerLeadId } : {}),
             // issue #8 slice 2 (D3): a buyer's login is PROVISIONED by staff
             // with a temporary password that was read out over WhatsApp and
@@ -893,7 +897,9 @@ export class UsersService {
       if (dto.email !== undefined) data.email = dto.email;
       // `null` is the erase path (ClearablePhoneSchema); undefined means
       // "omitted", which must leave the stored number untouched.
-      if (dto.phone !== undefined) data.phone = dto.phone;
+      if (dto.phone !== undefined) {
+        data.phone = canonicalPhoneOrThrow(dto.phone, dto.phoneCountry);
+      }
 
       // T-EMAIL-PER-ORG: a P2002 here means the new email is already taken
       // by someone else within THIS org, OR on the phone index - the error
@@ -1036,7 +1042,9 @@ export class UsersService {
         emailVerified?: boolean;
       } = {};
       if (dto.name !== undefined) data.name = dto.name;
-      if (dto.phone !== undefined) data.phone = dto.phone;
+      if (dto.phone !== undefined) {
+        data.phone = canonicalPhoneOrThrow(dto.phone, dto.phoneCountry);
+      }
       if (dto.email !== undefined) {
         data.email = dto.email;
         // Nothing has proven the new address yet, so it is stored unverified.

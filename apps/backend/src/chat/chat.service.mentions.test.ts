@@ -32,6 +32,11 @@ import { PrismaService } from '../prisma/prisma.module';
 import { UsersService } from '../users/users.service';
 import { ChatService } from './chat.service';
 
+// Lead.phone and Lead.phoneE164 hold the same canonical digits (DB CHECK
+// Lead_phone_equals_phoneE164). One evaluation feeds both columns.
+const leadPhoneFields = (phone: string) => ({ phone, phoneE164: phone });
+
+
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 // T-LEAD-PROJECT-REQUIRED (2026-09-16): Lead.projectId is NOT NULL now, so
 // every fixture lead needs a project. cuid2-shaped in case it passes a DTO.
@@ -173,7 +178,7 @@ beforeAll(async () => {
       create: {
         id: LEAD_ID,
         name: 'MTM Lead',
-        phone: `91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`,
+        ...leadPhoneFields(`91${(1000000000 + Math.floor(Math.random() * 8999999999)).toString()}`),
         source: 'TEST',
         state: 'NEW',
         ownerId: MGR_ID,
@@ -378,6 +383,23 @@ describe.skipIf(!HAS_DB)('ChatService targeted @mentions (T-MENTION-TARGET)', ()
     // lead access.
     notified = [];
     const service = makeService();
+
+    // Every Lead now carries phoneE164, so an IN_APP CUSTOMER message on this
+    // lead IS a WhatsApp send and is gated on the 24-hour reply window. Open
+    // the window with an inbound message so this case still pins the GRANT
+    // rule (customer replies never grant) rather than the window guard.
+    await adminSeed(async (db) => {
+      await db.message.create({
+        data: {
+          leadId: LEAD_ID,
+          organizationId: ORG,
+          direction: 'IN',
+          channel: 'WHATSAPP',
+          kind: 'CUSTOMER',
+          body: 'Here are the details I asked for.',
+        },
+      });
+    });
 
     const sent = await service.send(managerActor, {
       leadId: LEAD_ID,
